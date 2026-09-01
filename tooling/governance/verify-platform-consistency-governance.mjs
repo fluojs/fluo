@@ -913,7 +913,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // default-value or options overload, plus JWT refresh-token-specific HMAC
   // algorithm policy separation from narrow access-token algorithm allowlists,
   // plus HTTP conditional-request middleware/guard ordering, representation
-  // existence, conditional/HEAD response ownership, and cross-adapter
+  // existence, conditional/HEAD response ownership, single-range 206 and
+  // bodyless 416 partial responses, If-Range reuse of selected validators,
+  // identity-encoded representation-byte metadata, and cross-adapter
   // conformance.
 
   assert(
