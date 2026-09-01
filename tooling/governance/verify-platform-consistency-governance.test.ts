@@ -2711,7 +2711,7 @@ describe('Queue lifecycle and migration discoverability', () => {
     }
   });
 
-  it('keeps cross-scope Redis and jobName ownership rejection aligned across source, regressions, and docs', () => {
+  it('keeps cross-scope ownership namespace and jobName rejection aligned across source, regressions, and docs', () => {
     expect(() => enforceQueueWorkerOwnershipContract()).not.toThrow();
   });
 

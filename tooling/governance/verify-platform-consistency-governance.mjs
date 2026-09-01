@@ -2918,24 +2918,64 @@ export function enforceQueueWorkerOwnershipContract() {
   const ownershipSource = read('packages/queue/src/worker-ownership.ts');
   const moduleSource = read('packages/queue/src/module.ts');
   const regressionSource = read('packages/queue/src/worker-ownership.test.ts');
+  const unconfiguredNamespaceDiagnostic =
+    'Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.';
 
   assert(
-    ownershipSource.includes('getRedisClientToken(moduleContext.options.clientName)') &&
-      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
-      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
-    'Queue ownership validation must compare the effective Redis dependency and discovered jobName inside each registration boundary.',
+    ownershipSource.includes('const ownershipNamespace = moduleContext.options.ownershipNamespace;') &&
+      !ownershipSource.includes('moduleContext.options.clientName') &&
+      ownershipSource.includes('function canShareBackend(') &&
+      ownershipSource.includes('ownershipNamespace === undefined ||') &&
+      ownershipSource.includes('existingOwner.ownershipNamespace === undefined ||') &&
+      ownershipSource.includes('ownershipNamespace === existingOwner.ownershipNamespace'),
+    'Queue ownership identity must use application-supplied ownershipNamespace, treating an absent namespace as compatible and only explicitly different namespaces as isolated.',
   );
   assert(
-    moduleSource.includes('assertUniqueQueueWorkerOwnership(typedDeps[3])') &&
-      moduleSource.indexOf('assertUniqueQueueWorkerOwnership(typedDeps[3])') <
+    ownershipSource.includes(unconfiguredNamespaceDiagnostic) &&
+      (ownershipSource.match(/Queue ownership namespace is unconfigured for scope/g) ?? []).length === 1 &&
+      ownershipSource.indexOf(unconfiguredNamespaceDiagnostic) <
+        ownershipSource.indexOf('const descriptors = discoverQueueWorkerDescriptors('),
+    'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic per registration before worker descriptor iteration.',
+  );
+  assert(
+    ownershipSource.includes(
+      'const compatibleOwners = owners.filter((owner) => canShareBackend(ownershipNamespace, owner));',
+    ) &&
+      ownershipSource.includes(
+        "existingOwner.ownershipEnforcement === 'reject' ||\n          moduleContext.options.ownershipEnforcement === 'reject'",
+      ) &&
+      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
+      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
+    'Queue ownership validation must compare compatible ownership namespaces and discovered jobName inside each registration boundary, rejecting when either compatible owner enforces rejection.',
+  );
+  assert(
+    moduleSource.includes(
+      'assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType)',
+    ) &&
+      moduleSource.indexOf(
+        'assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType)',
+      ) <
         moduleSource.indexOf('new QueueLifecycleService(...typedDeps)'),
     'Queue lifecycle provider creation must reject ownership collisions before BullMQ bootstrap creates worker resources.',
   );
   assert(
-    regressionSource.includes('rejects the same Redis dependency and jobName across distinct queue scopes') &&
-      regressionSource.includes('allows the same jobName across scopes backed by distinct Redis dependencies') &&
+    regressionSource.includes(
+      'warns about an unconfigured ownership namespace collision without creating resources first',
+    ) &&
+      regressionSource.includes('warns about a mixed configured and unconfigured ownership namespace collision') &&
+      regressionSource.includes(
+        'rejects a mixed configured and unconfigured ownership namespace collision before creating resources',
+      ) &&
+      regressionSource.includes(
+        'rejects when an unconfigured registration collides with a later reject owner',
+      ) &&
+      regressionSource.includes('warns once for a lone unconfigured ownership namespace') &&
+      regressionSource.includes(
+        'rejects the same jobName for different Redis clients with one ownership namespace',
+      ) &&
+      regressionSource.includes('allows the same jobName across explicitly distinct ownership namespaces') &&
       regressionSource.includes('expect(bullmqState.queueNames).toEqual([])'),
-    'Queue ownership regressions must cover collision rejection before resource creation and the distinct-Redis allowance.',
+    'Queue ownership regressions must cover unconfigured diagnostics, mixed namespace compatibility, rejection before resource creation, later-owner rejection, DI-independent ownership, and explicitly distinct namespace allowance.',
   );
 }
 
