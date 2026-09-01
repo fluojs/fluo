@@ -7,6 +7,7 @@ import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 
 interface QueueWorkerOwner {
   readonly ownershipEnforcement: 'warn' | 'reject';
+  readonly ownershipNamespace?: string;
   readonly moduleName: string;
   readonly scope: string;
   readonly workerName: string;
@@ -113,19 +114,15 @@ function assertUniqueQueueScopes(moduleContexts: readonly QueueRegistrationConte
   }
 }
 
-function getJobOwners(
-  ownersByBackendIdentity: Map<string, Map<string, QueueWorkerOwner>>,
-  backendIdentity: string,
-): Map<string, QueueWorkerOwner> {
-  const existing = ownersByBackendIdentity.get(backendIdentity);
-
-  if (existing) {
-    return existing;
-  }
-
-  const created = new Map<string, QueueWorkerOwner>();
-  ownersByBackendIdentity.set(backendIdentity, created);
-  return created;
+function canShareBackend(
+  ownershipNamespace: string | undefined,
+  existingOwner: QueueWorkerOwner,
+): boolean {
+  return (
+    ownershipNamespace === undefined ||
+    existingOwner.ownershipNamespace === undefined ||
+    ownershipNamespace === existingOwner.ownershipNamespace
+  );
 }
 
 /**
@@ -147,11 +144,18 @@ export function assertUniqueQueueWorkerOwnership(
     return;
   }
 
-  const ownersByBackendIdentity = new Map<string, Map<string, QueueWorkerOwner>>();
+  const ownersByJobName = new Map<string, QueueWorkerOwner[]>();
 
   for (const moduleContext of moduleContexts) {
-    const backendIdentity = moduleContext.options.ownershipNamespace ?? UNCONFIGURED_BACKEND_IDENTITY;
-    const ownersByJobName = getJobOwners(ownersByBackendIdentity, backendIdentity);
+    const ownershipNamespace = moduleContext.options.ownershipNamespace;
+
+    if (ownershipNamespace === undefined) {
+      logger.warn(
+        `Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.`,
+        'QueueLifecycleService',
+      );
+    }
+
     const descriptors = discoverQueueWorkerDescriptors(
       compiledModules,
       moduleContext.options,
@@ -160,9 +164,14 @@ export function assertUniqueQueueWorkerOwnership(
     );
 
     for (const descriptor of descriptors.values()) {
-      const existingOwner = ownersByJobName.get(descriptor.jobName);
+      const owners = ownersByJobName.get(descriptor.jobName) ?? [];
+      const existingOwner = owners.find((owner) => canShareBackend(ownershipNamespace, owner));
 
       if (existingOwner) {
+        const backendIdentity =
+          ownershipNamespace === undefined || existingOwner.ownershipNamespace === undefined
+            ? UNCONFIGURED_BACKEND_IDENTITY
+            : ownershipNamespace;
         const message =
           `Cross-scope @fluojs/queue worker ownership collision for backend identity "${backendIdentity}" and jobName "${descriptor.jobName}" between scopes "${existingOwner.scope}" (${existingOwner.workerName} in ${existingOwner.moduleName}) and "${moduleContext.scope}" (${descriptor.workerName} in ${descriptor.moduleName}).`;
 
@@ -181,12 +190,14 @@ export function assertUniqueQueueWorkerOwnership(
         );
       }
 
-      ownersByJobName.set(descriptor.jobName, {
+      owners.push({
         moduleName: descriptor.moduleName,
         ownershipEnforcement: moduleContext.options.ownershipEnforcement,
+        ownershipNamespace,
         scope: moduleContext.scope,
         workerName: descriptor.workerName,
       });
+      ownersByJobName.set(descriptor.jobName, owners);
     }
   }
 }

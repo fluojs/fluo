@@ -137,6 +137,8 @@ describe('queue worker ownership', () => {
       expect(result.kind).toBe('started');
       if (result.kind === 'started') {
         expect(warnings).toEqual([
+          'Queue ownership namespace is unconfigured for scope "first". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.',
+          'Queue ownership namespace is unconfigured for scope "second". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.',
           'Cross-scope @fluojs/queue worker ownership collision for backend identity "(unconfigured)" and jobName "shared-worker-queue" between scopes "first" (FirstScopedWorker in FirstQueueFeatureModule) and "second" (SecondScopedWorker in SecondQueueFeatureModule). Set matching QueueModule.forRoot({ ownershipNamespace }) values for registrations that share one BullMQ backend, then opt into ownershipEnforcement: "reject" to fail before BullMQ resources are created.',
         ]);
       }
@@ -146,6 +148,187 @@ describe('queue worker ownership', () => {
       if (result.kind === 'started') {
         await result.app.close();
       }
+    }
+  });
+
+  it('warns about a mixed configured and unconfigured ownership namespace collision', async () => {
+    // Given
+    const warnings: string[] = [];
+    class FirstScopedJob {}
+    class SecondScopedJob {}
+
+    @QueueWorker(FirstScopedJob, { jobName: 'shared-worker-queue' })
+    class FirstScopedWorker {
+      async handle(_job: FirstScopedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondScopedJob, { jobName: 'shared-worker-queue' })
+    class SecondScopedWorker {
+      async handle(_job: SecondScopedJob): Promise<void> {}
+    }
+
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false, scope: 'first' })],
+      providers: [FirstScopedWorker],
+    });
+
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, {
+      imports: [
+        QueueModule.forRoot({
+          global: false,
+          ownershipNamespace: 'orders-redis-db-0',
+          scope: 'second',
+        }),
+      ],
+      providers: [SecondScopedWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstQueueFeatureModule, SecondQueueFeatureModule],
+    });
+
+    // When
+    const result = await bootstrapApplication({
+      logger: {
+        debug() {},
+        error() {},
+        log() {},
+        warn(message: string) {
+          warnings.push(message);
+        },
+      } satisfies ApplicationLogger,
+      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+      rootModule: AppModule,
+    }).then(
+      (app) => ({ app, kind: 'started' } as const),
+      (error: unknown) => ({ error, kind: 'failed' } as const),
+    );
+
+    try {
+      // Then
+      expect(result.kind).toBe('started');
+      expect(warnings).toHaveLength(2);
+      expect(warnings[0]).toContain('Queue ownership namespace is unconfigured for scope "first".');
+      expect(warnings[1]).toContain('Cross-scope @fluojs/queue worker ownership collision');
+    } finally {
+      if (result.kind === 'started') {
+        await result.app.close();
+      }
+    }
+  });
+
+  it('rejects a mixed configured and unconfigured ownership namespace collision before creating resources', async () => {
+    // Given
+    class FirstScopedJob {}
+    class SecondScopedJob {}
+
+    @QueueWorker(FirstScopedJob, { jobName: 'shared-worker-queue' })
+    class FirstScopedWorker {
+      async handle(_job: FirstScopedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondScopedJob, { jobName: 'shared-worker-queue' })
+    class SecondScopedWorker {
+      async handle(_job: SecondScopedJob): Promise<void> {}
+    }
+
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false, scope: 'first' })],
+      providers: [FirstScopedWorker],
+    });
+
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, {
+      imports: [
+        QueueModule.forRoot({
+          global: false,
+          ownershipEnforcement: 'reject',
+          ownershipNamespace: 'orders-redis-db-0',
+          scope: 'second',
+        }),
+      ],
+      providers: [SecondScopedWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstQueueFeatureModule, SecondQueueFeatureModule],
+    });
+
+    // When
+    const result = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+      rootModule: AppModule,
+    }).then(
+      (app) => ({ app, kind: 'started' } as const),
+      (error: unknown) => ({ error, kind: 'failed' } as const),
+    );
+
+    try {
+      // Then
+      expect(result.kind).toBe('failed');
+      if (result.kind === 'failed') {
+        expect(result.error).toMatchObject({
+          message:
+            'Cross-scope @fluojs/queue worker ownership collision for backend identity "(unconfigured)" and jobName "shared-worker-queue" between scopes "first" (FirstScopedWorker in FirstQueueFeatureModule) and "second" (SecondScopedWorker in SecondQueueFeatureModule). Configure distinct ownershipNamespace or @QueueWorker(..., { jobName }) values.',
+        });
+      }
+      expect(bullmqState.queueNames).toEqual([]);
+      expect(bullmqState.workerNames).toEqual([]);
+    } finally {
+      if (result.kind === 'started') {
+        await result.app.close();
+      }
+    }
+  });
+
+  it('warns once for a lone unconfigured ownership namespace', async () => {
+    // Given
+    const warnings: string[] = [];
+    class ScopedJob {}
+    class SecondScopedJob {}
+
+    @QueueWorker(ScopedJob)
+    class ScopedWorker {
+      async handle(_job: ScopedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondScopedJob)
+    class SecondScopedWorker {
+      async handle(_job: SecondScopedJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [ScopedWorker, SecondScopedWorker],
+    });
+
+    // When
+    const app = await bootstrapApplication({
+      logger: {
+        debug() {},
+        error() {},
+        log() {},
+        warn(message: string) {
+          warnings.push(message);
+        },
+      } satisfies ApplicationLogger,
+      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+      rootModule: AppModule,
+    });
+
+    try {
+      // Then
+      expect(warnings).toEqual([
+        'Queue ownership namespace is unconfigured for scope "default". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.',
+      ]);
+    } finally {
+      await app.close();
     }
   });
 
