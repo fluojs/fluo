@@ -2112,6 +2112,7 @@ describe('@fluojs/platform-fastify', () => {
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
+      host: '127.0.0.1',
       port: 0,
     });
 
