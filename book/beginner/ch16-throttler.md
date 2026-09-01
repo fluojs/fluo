@@ -137,6 +137,15 @@ When you use the `@Throttle()` decorator, you pass metadata that `ThrottlerGuard
 
 The decorator can be applied to both classes, meaning Controllers, and methods. When applied to a class, it affects every method in that class. This is useful when grouping related endpoints that should share a particular rate limiting policy. If a method also has an `@Throttle()` decorator, the method-level decorator takes priority over the class-level decorator. This hierarchical override model lets you configure traffic control with very high precision.
 
+### 16.3.5 Migrating from @nestjs/throttler
+`@fluojs/throttler` is not a one-to-one replacement for `@nestjs/throttler`. Preserve Fluo's contracts instead of copying NestJS configuration verbatim:
+
+- **Convert TTL units.** NestJS uses milliseconds and Fluo uses seconds. A NestJS `ttl: 60_000` becomes `ttl: 60`; copying the value directly produces a window 1,000 times longer.
+- **Reshape skipped controllers when necessary.** NestJS named skip metadata can set a method-level `false` to reactivate throttling below a skipped class. Fluo's argument-free `@SkipThrottle()` combines class and method skips additively, so move the protected method to a controller that is not skipped, or enforce that exception in an application-owned guard wrapper.
+- **Prepare asynchronous inputs before registration.** Fluo provides synchronous `ThrottlerModule.forRoot(...)`, not NestJS `forRootAsync(...)`. Resolve secrets, configuration, and store construction at the application bootstrap boundary before registering final options.
+- **Keep policies at their transport boundary.** Fluo's `ThrottlerGuard` and `keyGenerator` operate on HTTP contexts. Use transport-owned guards or middleware for WebSocket messages, GraphQL operations, RPC calls, and queue workers.
+- **Plan counter continuity explicitly.** NestJS and Fluo use different bucket keys and storage call contracts. Migration starts a new window by default; use an application-owned compatibility store or a bounded cutover only when existing counters must remain continuous.
+
 ## 16.4 Storage Providers: Memory vs. Redis
 The throttler needs somewhere to store each tracker's request count. Choosing the right storage Provider is an important decision that affects both the performance and correctness of rate limiting.
 

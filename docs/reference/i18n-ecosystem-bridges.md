@@ -39,7 +39,7 @@ A bridge helper can graduate from guidance to first-party runtime surface only w
 
 ## Recommended user path
 
-- Migrating from NestJS i18n: start with `I18nModule.forRoot(...)`, use `@fluojs/i18n/http` to bind request locale explicitly, and use `@fluojs/i18n/validation` after validation fails instead of relying on global request context.
+- Migrating from NestJS i18n: follow the [NestJS migration guide](../getting-started/migrate-from-nestjs.md) to asynchronously preload every locale/namespace at the application-owned bootstrap boundary before `I18nModule.forRoot(...)` performs synchronous registration. Preserve namespace trees, convert NestJS fallbacks explicitly to `fallbackLocales`, and keep the framework-agnostic root contract without a runtime bridge. A missing catalog rejects preload with `I18N_MISSING_CATALOG`; message fallback applies only after catalogs exist. Then use `@fluojs/i18n/http` to bind request locale explicitly, and use `@fluojs/i18n/validation` after validation fails instead of relying on global request context.
 - Sharing catalogs with i18next or next-intl: keep catalog conversion in application tooling, then load the resulting `I18nMessageTree` through the core service or loader subpaths.
 - Building a third-party bridge: follow the [Third-Party Extension Contract](../contracts/third-party-extension-contract.md) and expose explicit module/config APIs rather than import-time patching.
 
