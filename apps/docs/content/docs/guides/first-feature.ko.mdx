@@ -52,26 +52,34 @@ Provider는 business behavior를 소유해야 합니다. Controller는 transport
 ## 3. HTTP boundary 정의
 
 ```ts
-import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
 import { UsersService } from './users.service';
 
-interface CreateUserBody {
-  name: string;
+class CreateUserDto {
+  @FromBody()
+  name!: string;
+}
+
+class FindUserParamsDto {
+  @FromPath('id')
+  id!: string;
 }
 
 @Controller('/users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
-  @Post()
-  create(@Body() body: CreateUserBody) {
-    return this.users.create(body.name);
+  @Post('/')
+  @RequestDto(CreateUserDto)
+  create(input: CreateUserDto) {
+    return this.users.create(input.name);
   }
 
   @Get('/:id')
-  findOne(@Param('id') id: string) {
-    return this.users.findById(id);
+  @RequestDto(FindUserParamsDto)
+  findOne(input: FindUserParamsDto) {
+    return this.users.findById(input.id);
   }
 }
 ```
@@ -83,7 +91,10 @@ Controller는 route shape와 request binding을 소유합니다. Package나 pers
 Route가 실제 외부 입력을 받기 시작하면 `@fluojs/validation`을 사용하세요. DTO validation은 edge에 두고, 검증된 값을 내부로 전달합니다.
 
 ```ts
+import { FromBody } from '@fluojs/http';
+
 export class CreateUserDto {
+  @FromBody()
   name!: string;
 }
 ```
