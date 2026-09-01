@@ -719,6 +719,50 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 
 `@Injectable()`을 제거할 때 codemod는 필요한 `import type` binding을 유지하고 obsolete `@Injectable` import binding만 제거합니다. 다른 NestJS runtime value import는 제거하지 않습니다. `Optional`처럼 변환되지 않는 value는 수동 검토를 위해 남습니다. 남아 있는 모든 `@nestjs/common` import를 수동으로 검증한 뒤 NestJS dependency를 제거하기 전에 마이그레이션하거나 제거하세요.
 
+## HTTP 마이그레이션 경계
+
+### route grammar는 NestJS보다 좁다
+
+| NestJS route 선언 | fluo 마이그레이션 |
+| --- | --- |
+| `assets/*`, `:path*`, `(.*)` 같은 wildcard 및 catch-all | 명시적인 route를 정의하세요. fluo는 literal segment와 segment 전체를 차지하는 `:param` placeholder만 지원하며, 넓은 matching은 middleware-only입니다. |
+| `:id(\\d+)`, `:id?`, `report-:id` 같은 regex-like, optional, mixed-segment parameter | 동작을 명시적인 route로 나누고 바인딩된 값을 application code에서 검증하세요. `*`, `?`, `+`, grouping token, bracket, brace, backslash, 그리고 완전한 `:param` segment 밖의 `:`는 거부됩니다. |
+
+NestJS router가 제공하는 HTTP wildcard 지원을 fluo에서 추론하면 안 됩니다. fluo의 `ALL` method는 하나의 명시적인 path에서 모든 HTTP method를 선택할 수 있지만 path grammar를 넓히지는 않습니다. catch-all 마이그레이션을 설계하기 전에 [HTTP Catch-All Route Grammar Decision](../architecture/http-catch-all-route-grammar.ko.md)을 확인하세요.
+
+### 전역 pipeline 등록은 bootstrap에 둔다
+
+NestJS의 application-wide pipeline 호출은 DI provider token이 아니라 `FluoFactory.create(...)` option으로 매핑됩니다:
+
+```ts
+const application = await FluoFactory.create(AppModule, {
+  middleware: [new RequestLogMiddleware()],
+  interceptors: [new EnvelopeInterceptor()],
+  filters: [new ApiExceptionFilter()],
+});
+```
+
+| NestJS 등록 | fluo 마이그레이션 |
+| --- | --- |
+| `app.use(...)` | bootstrap에서 `middleware`를 제공하세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
+| `app.useGlobalInterceptors(...)` | bootstrap에서 `interceptors`를 제공하세요. |
+| `app.useGlobalFilters(...)` | bootstrap에서 `filters`를 제공하세요. 전역 filter는 module, controller, handler-scoped filter보다 먼저 실행되며, error를 처리한 첫 filter가 chain을 멈춥니다. |
+| `app.useGlobalGuards(...)` 또는 `APP_GUARD` | application-wide guard array는 없습니다. 필요한 각 controller 또는 handler에 `@UseGuards(...)`를 명시적으로 두고, 이 반복이 의도적이라면 application-owned shared decorator 또는 base-controller convention을 사용하세요. |
+
+`APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, `APP_PIPE`는 NestJS 전용 provider token입니다. 이를 fluo `providers` entry로 등록하면 injectable이 될 뿐 전역 HTTP pipeline을 구성하지는 않습니다. `APP_*` discovery에 의존하지 말고 앞의 bootstrap array, 명시적인 guard metadata, fluo의 binding/validation contract를 사용하세요.
+
+### multipart file은 portable request seam을 사용한다
+
+`FileInterceptor`, `FilesInterceptor`, `@UploadedFile()`, `@UploadedFiles()`, Multer 전용 request object를 fluo로 그대로 옮기면 안 됩니다. host adapter가 `RequestContext.request.files`에 portable multipart value를 제공하므로 active request context에서 그 array를 읽고, array가 없을 수 있음을 의도적으로 처리하세요:
+
+```ts
+import { assertRequestContext } from '@fluojs/http';
+
+const files = assertRequestContext().request.files ?? [];
+```
+
+각 file은 `fieldname`, `originalname`, `mimetype`, `buffer`, `size`를 가진 portable `FrameworkRequestFile`입니다. storage, validation, application policy는 adapter-specific upload interceptor 밖에 두세요.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.ko.md)
@@ -727,3 +771,7 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 - [CQRS Contract](../architecture/cqrs.ko.md)
 - [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.ko.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.ko.md)
+- [Book Chapter 5: Routing and Controllers](../../book/beginner/ch05-routing-controllers.ko.md)
+- [Book Chapter 9: Guards and Interceptors](../../book/beginner/ch09-guards-interceptors.ko.md)
+- [Book Chapter 11: Request Pipeline Anatomy](../../book/advanced/ch11-request-pipeline.ko.md)
+- [Book Chapter 12: Execution Chain and Exception Chain](../../book/advanced/ch12-execution-chain.ko.md)

@@ -719,6 +719,50 @@ The codemod can rewrite imports, remove `@Injectable()`, map provider scopes, mi
 
 When removing `@Injectable()`, the codemod retains required `import type` bindings and removes only the obsolete `@Injectable` import binding. It does not remove other NestJS runtime value imports: unconverted values such as `Optional` remain for manual review. Manually verify every remaining `@nestjs/common` import, then migrate or remove it before removing the NestJS dependency.
 
+## HTTP migration boundaries
+
+### Route grammar is narrower than NestJS
+
+| NestJS route declaration | fluo migration |
+| --- | --- |
+| Wildcards and catch-alls such as `assets/*`, `:path*`, or `(.*)` | Define explicit routes instead. fluo supports only literal segments and full-segment `:param` placeholders; broad matching remains middleware-only. |
+| Regex-like, optional, or mixed-segment parameters such as `:id(\\d+)`, `:id?`, or `report-:id` | Split the behavior into explicit routes and validate the bound value in application code. `*`, `?`, `+`, grouping tokens, brackets, braces, backslashes, and a `:` outside a complete `:param` segment are rejected. |
+
+Do not infer HTTP wildcard support from NestJS's router. A fluo `ALL` method can select every HTTP method for one explicit path, but it does not widen the path grammar. See the [HTTP Catch-All Route Grammar Decision](../architecture/http-catch-all-route-grammar.md) before designing a catch-all migration.
+
+### Global pipeline registration belongs at bootstrap
+
+NestJS's application-wide pipeline calls map to `FluoFactory.create(...)` options, not to DI provider tokens:
+
+```ts
+const application = await FluoFactory.create(AppModule, {
+  middleware: [new RequestLogMiddleware()],
+  interceptors: [new EnvelopeInterceptor()],
+  filters: [new ApiExceptionFilter()],
+});
+```
+
+| NestJS registration | fluo migration |
+| --- | --- |
+| `app.use(...)` | Supply `middleware` at bootstrap. This application-wide chain runs in addition to module middleware. |
+| `app.useGlobalInterceptors(...)` | Supply `interceptors` at bootstrap. |
+| `app.useGlobalFilters(...)` | Supply `filters` at bootstrap. Global filters run before module, controller, and handler-scoped filters; the first filter that handles an error stops the chain. |
+| `app.useGlobalGuards(...)` or `APP_GUARD` | No application-wide guard array exists. Put `@UseGuards(...)` explicitly on each controller or handler that requires it, and use an application-owned shared decorator or base-controller convention when that repetition is intentional. |
+
+`APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, and `APP_PIPE` are NestJS-specific provider tokens. Registering one as a fluo `providers` entry only makes it injectable; it does not configure a global HTTP pipeline. Use the bootstrap arrays above, explicit guard metadata, and fluo's binding/validation contracts instead of relying on `APP_*` discovery.
+
+### Multipart files use the portable request seam
+
+Do not carry `FileInterceptor`, `FilesInterceptor`, `@UploadedFile()`, `@UploadedFiles()`, or Multer-specific request objects into fluo. The host adapter supplies portable multipart values on `RequestContext.request.files`; read that array from the active request context and handle an absent array deliberately:
+
+```ts
+import { assertRequestContext } from '@fluojs/http';
+
+const files = assertRequestContext().request.files ?? [];
+```
+
+Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`, `mimetype`, `buffer`, and `size`. Keep storage, validation, and application policy outside adapter-specific upload interceptors.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.md)
@@ -727,3 +771,7 @@ When removing `@Injectable()`, the codemod retains required `import type` bindin
 - [CQRS Contract](../architecture/cqrs.md)
 - [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.md)
+- [Book Chapter 5: Routing and Controllers](../../book/beginner/ch05-routing-controllers.md)
+- [Book Chapter 9: Guards and Interceptors](../../book/beginner/ch09-guards-interceptors.md)
+- [Book Chapter 11: Request Pipeline Anatomy](../../book/advanced/ch11-request-pipeline.md)
+- [Book Chapter 12: Execution Chain and Exception Chain](../../book/advanced/ch12-execution-chain.md)
