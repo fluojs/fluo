@@ -182,20 +182,20 @@ function serializeCookie(name: string, value: string, options: CookieOptionValue
     parts.push(`Expires=${formatExpiry(options.expires)}`);
   }
 
-  if (options.domain !== undefined) {
-    parts.push(`Domain=${options.domain}`);
-  }
-
   if (options.path !== undefined) {
     parts.push(`Path=${options.path}`);
   }
 
-  if (options.httpOnly === true) {
-    parts.push('HttpOnly');
+  if (options.domain !== undefined) {
+    parts.push(`Domain=${options.domain}`);
   }
 
   if (options.secure === true) {
     parts.push('Secure');
+  }
+
+  if (options.httpOnly === true) {
+    parts.push('HttpOnly');
   }
 
   if (sameSite !== undefined) {
