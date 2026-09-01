@@ -248,6 +248,7 @@ re-export for the documented deprecation window.
 | Public API authoring and documentation baseline | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output modes and artifact ownership | `docs/reference/toolchain-contract-matrix.md` | `packages/cli/README.md` and `docs/reference/package-surface.md` |
 | Bootstrap path or startup sequence facts | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
+| JWT `iat` validation and verifier migration semantics | `docs/architecture/auth-and-jwt.md` | `packages/jwt/README.md` for verified claims from `JwtService.verify(...)`; use `DefaultJwtVerifier.verifyAccessToken(...)` for `JwtPrincipal`, or `verifyAccessTokenWithOverrides(...)` to preserve per-call verifier options |
 | Human learning flow or tutorial material | `book/README.md` | relevant chapters under `book/` |
 
 JWT async-registration clarification: `JwtModule.forRootAsync({ inject, useFactory, global? })` accepts only its supported typed configuration; NestJS `imports`, `useClass`, and `useExisting` have no dynamic-module semantics, while extra JavaScript object properties are unread at runtime rather than validated or rejected. Dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider.
