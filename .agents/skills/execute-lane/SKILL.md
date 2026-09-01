@@ -86,6 +86,30 @@ The operator (human or agent session):
 
 1. Executes that action (dispatch an implementer child, run scoped checks,
    fan out the read-only review triad, `gh pr create`, `gh pr merge`, ...).
+
+   Triad composition is selective. The merge contract requires one exact-head
+   review verdict, not three fixed axes — the lead picks which axes can
+   affect the diff. Classification is mechanical and fail-closed: the lead
+   reads `git diff --name-only <base>...<head>` ITSELF (never accepts an
+   implementer's or child's self-report), assigns every changed file to an
+   axis's review scope, and skips ONLY an axis whose scope is provably
+   empty:
+
+   | Changed files | code | contract | verification |
+   | --- | --- | --- | --- |
+   | docs/README/*.md only (no test, no source) | skip | required | skip |
+   | tests/fixtures only (no source) | required | skip | required |
+   | anything else, mixed, or unclassifiable | required | required | required |
+
+   The axis whose domain IS the changed file type is never skippable:
+   a docs-only change is precisely the contract axis's case (a silent
+   contract narrowing IS a docs diff), and a test-only change is precisely
+   the code axis's case (assertion weakening ships as a test diff). An
+   enforcement/guard/governance-tooling change always escalates to the full
+   triad regardless of which table row it lands on. When in doubt, run the
+   axis — a skipped axis is only ever justified by an empty scope, not by a
+   small diff size. Record the chosen axes in the review fact value so a
+   stale-head re-review reproduces the same composition.
    Dispatch EVERY issue currently in `implement` as ONE batch of
    implementer children — worktrees isolate them and the engine imposes
    no width limit (a live run held 10 simultaneously; merges serialize
