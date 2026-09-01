@@ -54,7 +54,10 @@ adapter는 host가 제공할 때 direct peer address와 transport protocol을
 `FrameworkRequest.connection`에 snapshot합니다. Node, Express, Fastify는
 공유 Node request normalization path를 통해 이 portable seam을 채웁니다.
 Fetch-only adapter는 standard `Request`가 peer address를 노출하지 않으므로
-이를 생략할 수 있습니다.
+이를 생략할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가
+아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면
+`resolveHttpConnection(...)`은 peer, host, port를 보고하지 않으며 `Request`
+URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
 
 `resolveHttpConnection(request, { trustProxy })`는 immutable public connection
 model을 만듭니다. forwarding header는 direct peer가 명시적인 `trustProxy`

@@ -21,7 +21,7 @@
 npm install @fluojs/runtime
 ```
 
-배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다.
+배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가 아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면 peer, host, port가 없고 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
 
 ## 사용 시점
 

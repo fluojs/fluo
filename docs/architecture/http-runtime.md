@@ -54,7 +54,10 @@ Adapters snapshot a direct peer address and transport protocol into
 `FrameworkRequest.connection` when their host exposes them. Node, Express, and
 Fastify populate this portable seam through the shared Node request
 normalization path; Fetch-only adapters may omit it because standard `Request`
-objects expose no peer address.
+objects expose no peer address. A fetch-style HTTPS `Request` is not Node
+transport parity: without an adapter-provided `connection` snapshot or explicit
+headers, `resolveHttpConnection(...)` reports no peer, host, or port and does
+not infer HTTPS, `secure`, host, or port from the `Request` URL.
 
 `resolveHttpConnection(request, { trustProxy })` derives the immutable public
 connection model. Forwarding headers can influence client address, protocol,

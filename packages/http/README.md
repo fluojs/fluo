@@ -297,7 +297,7 @@ const connection = resolveHttpConnection(context.request, {
 });
 ```
 
-`connection` is immutable and exposes the selected `clientAddress`, direct `remoteAddress`, trusted `proxyChain`, `protocol`, `secure`, `host`, `hostname`, and `port`. Fetch-only adapters may leave the direct address undefined because the Web `Request` contract does not expose it. The legacy `trustProxyHeaders: true` setting preserves its existing full-header behavior; replace it with `trustProxy` to describe the deployment boundary precisely. Only use either setting when you control the proxy that rewrites those headers. If an adapter provides neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
+`connection` is immutable and exposes the selected `clientAddress`, direct `remoteAddress`, trusted `proxyChain`, `protocol`, `secure`, `host`, `hostname`, and `port`. Fetch-only adapters may leave the direct address undefined because the Web `Request` contract does not expose it. A fetch-style HTTPS `Request` without an adapter-provided `connection` snapshot or explicit headers has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from its URL. The legacy `trustProxyHeaders: true` setting is broad compatibility only and is not recommended for new deployments; use `trustProxy` to describe the deployment boundary precisely. Only use either setting when you control the proxy that rewrites those headers. If an adapter provides neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
 
 ### Server-sent events
 

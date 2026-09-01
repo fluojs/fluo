@@ -291,7 +291,7 @@ const connection = resolveHttpConnection(context.request, {
 });
 ```
 
-`connection`은 immutable이며 선택된 `clientAddress`, direct `remoteAddress`, 신뢰된 `proxyChain`, `protocol`, `secure`, `host`, `hostname`, `port`를 노출합니다. Fetch-only adapter는 Web `Request` contract가 direct address를 제공하지 않으므로 해당 값을 undefined로 둘 수 있습니다. 기존 `trustProxyHeaders: true` 설정은 기존 full-header behavior를 보존하지만, deployment boundary를 정확히 기술하려면 `trustProxy`로 교체하세요. 두 설정 모두 해당 header를 다시 쓰는 proxy를 제어할 때만 사용해야 합니다. 어댑터가 신뢰 가능한 proxy chain과 raw socket identity를 모두 제공하지 않는다면 shared fallback bucket 대신 명시적인 `keyResolver`를 설정하세요.
+`connection`은 immutable이며 선택된 `clientAddress`, direct `remoteAddress`, 신뢰된 `proxyChain`, `protocol`, `secure`, `host`, `hostname`, `port`를 노출합니다. Fetch-only adapter는 Web `Request` contract가 direct address를 제공하지 않으므로 해당 값을 undefined로 둘 수 있습니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없는 fetch-style HTTPS `Request`는 peer, host, port를 갖지 않으며 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다. 기존 `trustProxyHeaders: true` 설정은 광범위한 compatibility 전용이며 새 deployment에는 권장하지 않습니다. deployment boundary는 `trustProxy`로 정확히 기술하세요. 두 설정 모두 해당 header를 다시 쓰는 proxy를 제어할 때만 사용해야 합니다. 어댑터가 신뢰 가능한 proxy chain과 raw socket identity를 모두 제공하지 않는다면 shared fallback bucket 대신 명시적인 `keyResolver`를 설정하세요.
 
 ### 서버 전송 이벤트
 

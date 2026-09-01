@@ -95,7 +95,7 @@ You can also pass any object that implements the `ThrottlerStore` contract throu
 
 ### Custom Key Generation
 
-By default, the throttler resolves client identity from the raw socket `remoteAddress` only. If your deployment sits behind a trusted reverse proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true`. If no trusted socket or proxy identity is available, it throws instead of collapsing unrelated callers into a shared bucket. You can also customize this to use API keys, user IDs, or other identifiers.
+By default, the throttler resolves client identity from the raw socket `remoteAddress` only. For a deployment behind a trusted reverse proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, configure `trustProxy` as the primary recommendation and restrict it to the proxy addresses your application actually observes. `trustProxyHeaders: true` is broad legacy compatibility only and is not recommended for new deployments. If no trusted socket or proxy identity is available, it throws instead of collapsing unrelated callers into a shared bucket. You can also customize this to use API keys, user IDs, or other identifiers.
 
 Counters are scoped by route identity and client identity. The route portion includes module, controller, method, path, version, and the deterministic source/method position assigned by the HTTP route compiler. Distinct compiled handlers therefore remain isolated even when their display names and emitted source match, while identical artifact layouts produce the same identity across application instances for distributed bucket sharing. When a request is rejected, `ThrottlerGuard` returns `429` and sets `Retry-After`.
 
@@ -103,11 +103,12 @@ Counters are scoped by route identity and client identity. The route portion inc
 ThrottlerModule.forRoot({
   ttl: 60,
   limit: 100,
-  trustProxy: ['10.0.0.0/8'],
+  // Accept forwarding metadata only from this known reverse proxy.
+  trustProxy: ['192.0.2.10/32'],
 });
 ```
 
-`trustProxy` is the explicit forwarding boundary for the default client key. It accepts `false`, a trusted-hop count, address/CIDR rules, or a predicate. Untrusted or malformed forwarding data cannot replace the direct transport identity. `trustProxyHeaders: true` preserves the legacy full-header behavior; replace it with `trustProxy` for new deployments.
+`trustProxy` is the explicit forwarding boundary for the default client key. It accepts `false`, a trusted-hop count, address/CIDR rules, or a predicate. Untrusted or malformed forwarding data cannot replace the direct transport identity. `trustProxyHeaders: true` preserves broad legacy full-header compatibility only; use `trustProxy` for new deployments.
 
 ```typescript
 ThrottlerModule.forRoot({
@@ -137,7 +138,7 @@ When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explici
 - Resolve async secrets, configuration, and store construction before synchronous `ThrottlerModule.forRoot(...)` registration; fluo does not provide NestJS `forRootAsync(...)` shapes.
 - `ThrottlerGuard` and `keyGenerator` are HTTP-only. Apply separate transport-owned guards or middleware to WebSocket, GraphQL, RPC, and queue policies.
 - Persisted NestJS windows do not continue by default because bucket keys and storage call contracts differ. Use an application-owned compatibility store or a bounded cutover when continuity is required.
-- Forwarded client IP headers are ignored by default. Prefer `trustProxy` to declare a hop count, CIDR list, or predicate for a trusted proxy boundary. `trustProxyHeaders: true` is broad legacy compatibility mode that trusts the complete forwarding chain, not only the direct peer.
+- Forwarded client IP headers are ignored by default. Prefer `trustProxy` to declare a hop count, CIDR list, or predicate for a trusted proxy boundary. `trustProxyHeaders: true` is broad legacy compatibility mode that trusts the complete forwarding chain, not only the direct peer, and is not recommended for new deployments.
 - The guaranteed limit-exceeded response contract is HTTP `429` with `Retry-After`. Additional rate-limit headers or response bodies should be added at the application boundary, for example with an exception filter.
 
 For migration examples and the complete compatibility map, see the [NestJS → fluo Migration Map](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.md).
@@ -149,7 +150,7 @@ For migration examples and the complete compatibility map, see the [NestJS → f
 - `ThrottlerModuleOptions`: Public options shape accepted by `ThrottlerModule.forRoot(...)`.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers and DI tokens are not part of the public contract.
 
-`ttl` and `limit` must be positive finite integers. `global` defaults to `true`; set `global: false` when the throttler providers should stay scoped to the importing module. `trustProxy` is the recommended explicit boundary and uses `TrustProxyPolicy` from `@fluojs/http`; `trustProxyHeaders` is the broad legacy compatibility alternative. `keyGenerator`, when provided, must be a function. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
+`ttl` and `limit` must be positive finite integers. `global` defaults to `true`; set `global: false` when the throttler providers should stay scoped to the importing module. `trustProxy` is the recommended explicit boundary and uses `TrustProxyPolicy` from `@fluojs/http`; `trustProxyHeaders` is broad legacy compatibility only and is not recommended for new deployments. `keyGenerator`, when provided, must be a function. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
 
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
