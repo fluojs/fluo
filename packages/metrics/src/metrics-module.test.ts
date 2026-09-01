@@ -582,6 +582,98 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('does not reject an inactive process handles collector name', async () => {
+    const activeHandlesDescriptor = Object.getOwnPropertyDescriptor(process, '_getActiveHandles');
+    Reflect.deleteProperty(process, '_getActiveHandles');
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'nodejs_active_handles',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('nodejs_active_handles')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (activeHandlesDescriptor) {
+        Object.defineProperty(process, '_getActiveHandles', activeHandlesDescriptor);
+      }
+    }
+  });
+
+  it('does not reject an inactive process requests collector name', async () => {
+    const activeRequestsDescriptor = Object.getOwnPropertyDescriptor(process, '_getActiveRequests');
+    Reflect.deleteProperty(process, '_getActiveRequests');
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'nodejs_active_requests',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('nodejs_active_requests')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (activeRequestsDescriptor) {
+        Object.defineProperty(process, '_getActiveRequests', activeRequestsDescriptor);
+      }
+    }
+  });
+
+  it('rejects a Linux-active default collector name', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+
+    const sharedRegistry = new Registry();
+    new Gauge({
+      help: 'Application metric with a Linux-active default collector name.',
+      name: 'process_open_fds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+        'A metric with the name process_open_fds has already been registered.',
+      );
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
+    }
+  });
+
   it('uses explicit platform telemetry labels when provided', async () => {
     class AppModule {}
 

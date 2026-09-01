@@ -250,6 +250,9 @@ type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Toke
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
 const require = createRequire(import.meta.url);
+// prom-client exposes collector IDs publicly but not their metric names. This v15.1.3-only
+// private metadata seam keeps collision preflight side-effect-free; the exact package pin and
+// runtime-support regression must be updated together before changing prom-client.
 const DEFAULT_METRIC_COLLECTORS = collectDefaultMetrics.metricsList.map((collectorName) => {
   const collector: unknown = require(`prom-client/lib/metrics/${collectorName}`);
 
@@ -337,6 +340,14 @@ function assertNoDefaultMetricCollisions(registry: Registry): void {
 }
 
 function isDefaultCollectorActive(collectorName: string): boolean {
+  if (collectorName === 'processHandles') {
+    return typeof Reflect.get(process, '_getActiveHandles') === 'function';
+  }
+
+  if (collectorName === 'processRequests') {
+    return typeof Reflect.get(process, '_getActiveRequests') === 'function';
+  }
+
   if (collectorName === 'processOpenFileDescriptors') {
     return process.platform === 'linux';
   }
