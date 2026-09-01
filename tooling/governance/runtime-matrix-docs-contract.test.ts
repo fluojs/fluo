@@ -218,6 +218,34 @@ describe('runtime matrix docs contract', () => {
     }
   });
 
+  it('keeps the openapi runtime boundary aligned to its mandatory runtime dependency range', () => {
+    const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+
+    for (const manifestPath of [
+      'packages/openapi/package.json',
+      'examples/openapi-multiple-documents/package.json',
+    ]) {
+      expect(JSON.parse(read(manifestPath))).toMatchObject({ engines: { node: nodeListenerEngine } });
+    }
+
+    for (const path of ['packages/openapi/README.md', 'packages/openapi/README.ko.md']) {
+      expect(read(path)).toContain(nodeListenerEngine);
+    }
+
+    for (const path of [
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+    ]) {
+      const openapiLinesDeclaringTheRange = read(path)
+        .split('\n')
+        .filter((line) => line.includes('@fluojs/openapi') && line.includes(nodeListenerEngine));
+
+      expect(openapiLinesDeclaringTheRange).not.toHaveLength(0);
+    }
+  });
+
   it('keeps book setup prerequisites aligned to the Node.js listener baseline', () => {
     const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 

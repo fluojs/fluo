@@ -105,7 +105,7 @@ await app.listen();
 
 ## Conformance Coverage
 
-`packages/platform-nodejs/src/index.test.ts` and `packages/platform-nodejs/src/lifecycle.test.ts` are the package-local regression targets for the documented Node.js contract. The adapter portability suite runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+`packages/platform-nodejs/src/index.test.ts` and `packages/platform-nodejs/src/lifecycle.test.ts` are the package-local regression targets for the documented Node.js contract. The adapter portability suite runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, single byte-range status/header/body semantics, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
 This package exposes an `HttpApplicationAdapter`; it is not a runtime-managed `PlatformComponent` registered under `platform.components`. Therefore the generic `createPlatformConformanceHarness(...)` component lifecycle checks are outside this package's supported contract, while `createHttpAdapterPortabilityHarness(...)` is the applicable shared harness.
 

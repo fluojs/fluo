@@ -1,14 +1,19 @@
 import type { Token } from '@fluojs/core';
-import type { Provider, Container } from '@fluojs/di';
+import type { Container, Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CacheInterceptor } from './interceptor.js';
+import { CacheService } from './service.js';
 import { MemoryStore } from './stores/memory-store.js';
 import { RedisStore } from './stores/redis-store.js';
-import { CacheService } from './service.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
-import type { CacheModuleOptions, NormalizedCacheModuleOptions, RedisCompatibleClient } from './types.js';
+import type {
+  CacheAsyncModuleOptions,
+  CacheModuleOptions,
+  NormalizedCacheModuleOptions,
+  RedisCompatibleClient,
+} from './types.js';
 
 const DEFAULT_MEMORY_STORE_TTL_SECONDS = 300;
 const REDIS_PEER_MODULE_SPECIFIER = '@fluojs/redis';
@@ -152,14 +157,9 @@ async function createStore(options: NormalizedCacheModuleOptions, container: Con
   return new MemoryStore();
 }
 
-function createCacheModuleProviders(options: CacheModuleOptions = {}): Provider[] {
-  const normalized = normalizeCacheModuleOptions(options);
-
+function createCacheRuntimeProviders(optionsProvider: Provider): Provider[] {
   return [
-    {
-      provide: CACHE_OPTIONS,
-      useValue: normalized,
-    },
+    optionsProvider,
     {
       inject: [CACHE_OPTIONS, RUNTIME_CONTAINER],
       provide: CACHE_STORE,
@@ -223,7 +223,59 @@ export class CacheModule {
     return defineModule(CacheRootModule, {
       exports: [CacheService, CacheInterceptor],
       global: normalized.global,
-      providers: createCacheModuleProviders(options),
+      providers: createCacheRuntimeProviders({
+        provide: CACHE_OPTIONS,
+        useValue: normalized,
+      }),
+    });
+  }
+
+  /**
+   * Register cache providers from an injected async factory.
+   *
+   * @remarks
+   * The factory runs once per module registration through the application container,
+   * and its resolved options are normalized with the same defaults as
+   * {@link CacheModule.forRoot}. Module visibility comes from the `global` option on this
+   * call because module metadata is fixed before the factory runs; a `global` value in the
+   * factory result is ignored. A rejected factory fails bootstrap.
+   *
+   * @param options Injected factory registration options.
+   * @returns A runtime module exporting `CacheService` and `CacheInterceptor`.
+   *
+   * @example
+   * ```ts
+   * CacheModule.forRootAsync({
+   *   inject: [ConfigService],
+   *   useFactory: (config) => ({
+   *     store: 'redis',
+   *     ttl: config.cacheTtlSeconds,
+   *   }),
+   * });
+   * ```
+   */
+  static forRootAsync(options: CacheAsyncModuleOptions): ModuleType {
+    class CacheRootAsyncModule extends CacheModule {}
+
+    return defineModule(CacheRootAsyncModule, {
+      exports: [CacheService, CacheInterceptor],
+      global: options.global ?? false,
+      providers: createCacheRuntimeProviders({
+        inject: options.inject,
+        provide: CACHE_OPTIONS,
+        scope: 'singleton',
+        useFactory: (...deps: unknown[]) => {
+          const factoryOptions: ReturnType<CacheAsyncModuleOptions['useFactory']> = Reflect.apply(
+            options.useFactory,
+            options,
+            deps,
+          );
+
+          return Promise.resolve(factoryOptions).then((resolved) =>
+            normalizeCacheModuleOptions({ ...resolved, global: options.global ?? false }),
+          );
+        },
+      }),
     });
   }
 }

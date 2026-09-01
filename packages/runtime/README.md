@@ -21,7 +21,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 npm install @fluojs/runtime
 ```
 
-The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts.
+The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
 
 ## When to Use
 
@@ -69,6 +69,10 @@ await app.listen();
 ### Optional Early Hints capability
 
 The runtime preserves the adapter-owned optional `context.response.earlyHints` capability without making it part of the required response method surface. Node.js, Express, and Fastify responses provide the writer; Web-standard response factories omit it so Bun, Deno, Workers, and custom Fetch hosts are detectable as unsupported before use. Early writes remain independent from final status, headers, body, and commit ownership. See the [`@fluojs/http` Early Hints contract](../http/README.md#early-hints).
+
+### Conditional request bootstrap
+
+Runtime bootstrap accepts the `conditionalRequest` option from `@fluojs/http`. Its resolver returns explicit representation existence plus optional validators; it runs after middleware and guards, before interceptors and controller invocation. See the [`@fluojs/http` Conditional Requests contract](../http/README.md#conditional-requests) for the resolver shape, RFC 9110 precedence, and `HEAD` rules.
 
 ### Application Context (No HTTP)
 
@@ -239,7 +243,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
-- `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider; `CreateApplicationOptions` exposes the same field through `FluoFactory.create(...)`.
+- `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider and `BootstrapApplicationOptions.conditionalRequest` configures representation validation; `CreateApplicationOptions` exposes both fields through `FluoFactory.create(...)`.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, and `createRuntimeInspectionSnapshot(...)`: Runtime-owned immutable projections that add effective compiled route diagnostics to platform snapshots without changing HTTP route behavior.

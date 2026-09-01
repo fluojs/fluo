@@ -23,7 +23,7 @@ Use this guide when you need bearer tokens, cookie auth, scope-based route prote
 | Concern | Package | Use for |
 | --- | --- | --- |
 | Token core | `@fluojs/jwt` | Access token signing, verification, JWKS, refresh-token primitives |
-| Strategy execution | `@fluojs/passport` | `AuthStrategy`, `AuthGuard`, `@UseAuth`, `@RequireScopes`, cookie and refresh presets |
+| Strategy execution | `@fluojs/passport` | `AuthStrategy`, `AuthGuard`, `@UseAuth`, `@RequireScopes`, bearer, cookie, and refresh presets |
 | Rate limiting | `@fluojs/throttler` | Login protection, API quotas, Redis-backed distributed buckets |
 | HTTP boundary | `@fluojs/http` | Controllers, guards, request context, route metadata |
 | Runnable example | `examples/auth-jwt-passport` | Token route, protected profile route, e2e-style tests |
@@ -109,29 +109,17 @@ export class AuthModule {}
 
 ## Protect routes with `@fluojs/passport`
 
-Passport in fluo is strategy-agnostic. A strategy implements `AuthStrategy`, authenticates a request, and returns a principal. `AuthGuard` runs that strategy for protected routes.
+Passport in fluo is strategy-agnostic. `BearerJwtStrategy` is the built-in preset for the standard `Authorization: Bearer <token>` path: it extracts the credential, delegates verification to `DefaultJwtVerifier`, and returns the normalized principal. `AuthGuard` runs the registered strategy for protected routes.
 
 ```ts
-import { Inject, Module } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
-import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
-
-@Inject(DefaultJwtVerifier)
-export class BearerJwtStrategy implements AuthStrategy {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
-
-  async authenticate(context: GuardContext) {
-    const authorization = context.requestContext.request.headers.authorization;
-    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
-
-    if (scheme !== 'Bearer' || !token) {
-      throw new AuthenticationRequiredError('Bearer access token is required.');
-    }
-
-    return this.verifier.verifyAccessToken(token);
-  }
-}
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 @Module({
   imports: [
@@ -142,8 +130,8 @@ export class BearerJwtStrategy implements AuthStrategy {
       secret: 'your-secure-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [BearerJwtStrategy],
@@ -151,7 +139,7 @@ export class BearerJwtStrategy implements AuthStrategy {
 export class AuthModule {}
 ```
 
-Both module registrations are required for JWT-based passport auth: `JwtModule` provides the verifier, and `PassportModule` registers the named strategy that `@UseAuth('jwt')` resolves.
+Both module registrations are required for JWT-based passport auth: `JwtModule` provides the verifier, and `PassportModule` registers the built-in strategy name that `@UseAuth(BEARER_JWT_STRATEGY_NAME)` resolves. Write a custom `AuthStrategy` only when your application needs policy beyond the preset, such as token revocation, account-state checks, or alternate credential extraction.
 
 ### Scopes and protected handlers
 
@@ -164,7 +152,7 @@ import { RequireScopes, UseAuth } from '@fluojs/passport';
 @Controller('/profile')
 export class ProfileController {
   @Get('/')
-  @UseAuth('jwt')
+  @UseAuth(BEARER_JWT_STRATEGY_NAME)
   @RequireScopes('profile:read')
   async getProfile(input: never, ctx: RequestContext) {
     return { user: ctx.principal };
@@ -234,6 +222,7 @@ Use refresh tokens when clients need long-lived sessions without extending acces
 ```ts
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -241,18 +230,6 @@ import {
   RefreshTokenStrategy,
   UseAuth,
 } from '@fluojs/passport';
-
-@Module({
-  imports: [
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
-    PassportModule.forRoot(
-      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
-      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
-    ),
-  ],
-  providers: [MyRefreshTokenService],
-})
-export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -262,7 +239,26 @@ export class AuthController {
     return ctx.principal;
   }
 }
+
+@Module({
+  controllers: [AuthController],
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-access-token-secret',
+    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
 ```
+
+`RefreshTokenModule` owns a class passed to `forRoot(...)`. When that class has constructor dependencies, define an application-owned module that provides and exports those dependencies, then pass it through `imports` with `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`. Do not also register `MyRefreshTokenService` in `AuthModule.providers`; that duplicates the provider and fails with `duplicateProviderPolicy: 'throw'`. `JwtModule` is a sibling import, so keep `global: true` to expose `DefaultJwtVerifier` to `RefreshTokenStrategy`.
 
 For production, refresh-token rotation needs an atomic `RefreshTokenStore.consume(...)` implementation so replayed tokens are detected reliably. In-memory stores are only appropriate for development and single-instance deployments.
 
@@ -339,7 +335,7 @@ When an app sits behind a trusted reverse proxy, opt in to proxy header identity
 | Package | Public API |
 | --- | --- |
 | `@fluojs/jwt` | `JwtModule`, `DefaultJwtSigner`, `DefaultJwtVerifier`, `JwtService`, `JwksClient`, `RefreshTokenService`, `JwtPrincipal`, JWT error classes, status helpers |
-| `@fluojs/passport` | `PassportModule`, `AuthGuard`, `AuthStrategy`, `UseAuth`, `UseOptionalAuth`, `RequireScopes`, `CookieAuthModule`, `RefreshTokenModule`, Passport.js bridge helpers, diagnostics helpers |
+| `@fluojs/passport` | `PassportModule`, `AuthGuard`, `AuthStrategy`, `UseAuth`, `UseOptionalAuth`, `RequireScopes`, `BearerJwtStrategy`, `BEARER_JWT_STRATEGY_NAME`, `createBearerJwtStrategyRegistration`, `CookieAuthModule`, `RefreshTokenModule`, Passport.js bridge helpers, diagnostics helpers |
 | `@fluojs/throttler` | `ThrottlerModule`, `ThrottlerGuard`, `Throttle`, `SkipThrottle`, `RedisThrottlerStore`, `createMemoryThrottlerStore`, `ThrottlerStore`, diagnostics helpers |
 
 ## Runnable example
@@ -360,9 +356,9 @@ Recommended reading order:
 
 1. `src/auth/login.dto.ts` — request boundary
 2. `src/auth/auth.service.ts` — token issuance
-3. `src/auth/bearer.strategy.ts` — bearer verification
+3. `src/auth/bearer.strategy.ts` — built-in bearer preset re-export
 4. `src/auth/auth.controller.ts` — open and protected routes
-5. `src/auth/auth.module.ts` — module registration
+5. `src/auth/auth.module.ts` — preset strategy registration
 6. `src/app.test.ts` — service, strategy, and e2e-style checks
 
 ## Common mistakes

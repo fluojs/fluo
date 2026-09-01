@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
-import { SseResponse, encodeSseComment, encodeSseMessage, isSseMessage } from './sse.js';
+import {
+  SseResponse,
+  encodeSseComment,
+  encodeSseMessage,
+  isSseMessage,
+  waitForSseResponseCompletion,
+} from './sse.js';
 
 interface MockSseStream extends FrameworkResponseStream {
   _closed: boolean;
@@ -162,6 +168,19 @@ describe('SseResponse', () => {
     expect(stream.writes).toEqual(['event: message\nid: 1\ndata: hello\n\n', ': note\n\n']);
     expect(stream.closeCalls).toBe(1);
     expect(stream.removeCloseListenerCalls).toBe(1);
+  });
+
+  it('settles completion while preserving a raw stream close failure', async () => {
+    const stream = createMockSseStream();
+    const response = createMockResponse(stream);
+    const sse = new SseResponse(createContext(response));
+
+    stream.close = () => {
+      throw new Error('stream close failed');
+    };
+
+    expect(() => sse.close()).toThrow('stream close failed');
+    await expect(waitForSseResponseCompletion(sse)).resolves.toBeUndefined();
   });
 
   it('closes the stream when the request signal aborts', () => {

@@ -937,6 +937,39 @@ describe('dispatcher runtime', () => {
     expect(response.simpleJsonBody).toEqual({ ok: true });
   });
 
+  it('reports conditional request routes as full-path execution in stats and diagnostics', async () => {
+    @Controller('/conditional-fast-path-diagnostics')
+    class ConditionalFastPathDiagnosticsController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(ConditionalFastPathDiagnosticsController);
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return { exists: false };
+        },
+      },
+      fastPathDebugHeaders: true,
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalFastPathDiagnosticsController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/conditional-fast-path-diagnostics'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.fastPathRoutes).toBe(0);
+    expect(stats?.fullPathRoutes).toBe(1);
+    expect(stats?.routes[0]?.executionPath).toBe('full');
+    expect(stats?.routes[0]?.fallbackReason).toContain('conditional requests');
+    expect(response.headers['X-Fluo-Path']).toContain('full; route=GET:/');
+    expect(response.headers['X-Fluo-Path']).toContain('conditional requests');
+  });
+
   it('dispatches OPTIONS and HEAD route decorators through the HTTP pipeline', async () => {
     @Controller('/metadata')
     class MetadataController {
@@ -1305,6 +1338,52 @@ describe('dispatcher runtime', () => {
     expect(bytesResponse.body).toEqual(Uint8Array.from([1, 2, 3]));
     expect(bufferResponse.simpleJsonBody).toBeUndefined();
     expect(bufferResponse.body).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it('keeps ArrayBuffer values on the generic writer for range fallbacks', async () => {
+    @Controller('/generic-range-fallback')
+    class GenericRangeFallbackController {
+      @Get('/buffer')
+      getBuffer() {
+        return Uint8Array.from([4, 5, 6]).buffer;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: { etag: { opaqueValue: 'buffer-v1', strength: 'strong' } },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: GenericRangeFallbackController }]),
+      rootContainer: new Container().register(GenericRangeFallbackController),
+    });
+    const malformedRangeResponse = createFastPathResponse();
+    const ifRangeFallbackResponse = createFastPathResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/generic-range-fallback/buffer', 'GET', { range: 'items=0-1' }),
+      malformedRangeResponse,
+    );
+    await dispatcher.dispatch(
+      createRequest('/generic-range-fallback/buffer', 'GET', {
+        'if-range': '"buffer-v2"',
+        range: 'bytes=0-1',
+      }),
+      ifRangeFallbackResponse,
+    );
+
+    for (const response of [malformedRangeResponse, ifRangeFallbackResponse]) {
+      expect(response.simpleJsonBody).toBeUndefined();
+      expect(response.body).toBeInstanceOf(ArrayBuffer);
+      expect(response.headers['Accept-Ranges']).toBeUndefined();
+      expect(response.headers['Content-Range']).toBeUndefined();
+      expect(response.headers['Content-Length']).toBeUndefined();
+    }
+    expect(ifRangeFallbackResponse.headers.ETag).toBe('"buffer-v1"');
   });
 
   it('preserves explicit success headers and status on the simple JSON fast path', async () => {
@@ -1914,6 +1993,7 @@ describe('dispatcher runtime', () => {
       stream(_input: undefined, ctx: ReturnType<typeof assertRequestContext>) {
         const sse = new SseResponse(ctx);
         sse.send({ ok: true }, { event: 'ready', id: 'evt-1' });
+        sse.close();
         return sse;
       }
     }

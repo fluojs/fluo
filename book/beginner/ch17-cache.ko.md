@@ -105,10 +105,22 @@ export class AppModule {}
 
 Top-level `keyPrefix`는 nested `redis` connection option이 아니라 Redis 소유권 경계입니다. 기본값은 `fluo:cache:`이며, 모든 cache entry에 prefix를 붙이고 `CacheService.reset()`을 해당 namespace로 제한합니다. 설정된 prefix의 Redis glob metacharacter는 reset scan 전에 escape되므로 `*`, `?`, bracket, backslash를 포함한 prefix도 literal 소유권 경계로 유지됩니다. 여러 애플리케이션이 Redis를 공유한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요. 빈 prefix는 의도적으로 `*` scan을 피하고 store instance가 직접 쓰고 계속 추적하는 key만 reset하므로, 재시작이나 여러 process를 가로지르는 reset 소유권을 제공할 수 없습니다.
 
-### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
-실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서 `CacheModule.forRoot(options)`는 동기 모듈 진입점입니다. Lifecycle-managed 경로에서는 기본 또는 named raw client를 `@fluojs/redis`로 준비한 뒤, `store: 'redis'`와 선택적 `redis.clientName`으로 해당 등록을 가리키는 일반 cache option을 전달합니다. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
+### 17.3.2 Injected Async Configuration and Secret Management: Best Practices
+실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. 최종 store, TTL, namespace, key strategy가 DI 또는 비동기 bootstrap 작업에 의존하면 `CacheModule.forRootAsync({ inject, useFactory, global? })`를 사용하세요. Factory는 준비된 `CacheModuleOptions` 값을 반환할 수 있지만 module visibility는 outer `global?` option만 소유하므로, 반환된 `global`은 무시됩니다. Inject한 의존성은 bootstrap runtime provider 또는 globally visible module의 export여야 하며, import하는 parent module에만 local인 provider는 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되고, reject되면 부분 설정된 cache 없이 bootstrap이 실패합니다.
 
-애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
+```typescript
+CacheModule.forRootAsync({
+  inject: [CacheSettingsService],
+  useFactory: async (settings: CacheSettingsService) => ({
+    store: await settings.resolveStore(),
+    ttl: settings.ttlSeconds,
+    keyPrefix: settings.keyPrefix,
+    httpKeyStrategy: 'route+query',
+  }),
+})
+```
+
+Option이 이미 준비된 경우에는 동기 `CacheModule.forRoot(options)` 경로가 적합합니다. Lifecycle-managed Redis 경로는 `store: 'redis'`와 선택적 `redis.clientName`을 통해 `@fluojs/redis`의 기본 또는 named raw client를 해석할 수 있습니다. 애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
 
 ```typescript
 import Redis from 'ioredis';
@@ -129,7 +141,7 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
 export class AppModule {}
 ```
 
-이 명시적 설정 방식에서도 **환경 인식 저장소 선택(Environment-Aware Store Selection)**은 가능합니다. 애플리케이션 경계에서 필요한 설정을 읽고, 모듈 등록 전에 캐시 옵션을 선택한 뒤, 최종 객체를 `CacheModule.forRoot(...)`에 전달합니다. 예를 들어 프로덕션에서는 고성능 Redis 클러스터를 선택하고, CI/CD 파이프라인에서는 빌드 환경을 가볍고 빠르게 유지하기 위해 `store: 'memory'`를 전달할 수 있습니다. 중요한 경계는 현재 공개 API가 async factory가 아니라 이미 준비된 options 객체를 받는다는 점입니다.
+두 registration 경로 모두 **환경 인식 저장소 선택(Environment-Aware Store Selection)**을 지원합니다. DI나 bootstrap 작업이 최종 선택을 결정하면 `forRootAsync(...)`를 사용하고, 그렇지 않으면 application boundary에서 객체를 준비해 `forRoot(...)`에 전달하세요. 예를 들어 production에서는 고성능 Redis cluster를 선택하고 CI에서는 `store: 'memory'`를 사용할 수 있습니다. Async registration은 request-time configuration lookup을 추가하지 않고 등록마다 하나의 최종 options 객체를 resolve하고 normalize합니다.
 
 ### 17.3.3 Custom Store Options Beyond the Built-ins
 현재 공개 계약이 기본 제공하는 저장소는 메모리와 Redis뿐입니다. 둘 중 하나로 시작한 뒤, 요구 사항이 더 특수하다면 `CacheStore` 계약을 구현한 커스텀 저장소를 연결하는 방식으로 확장합니다. 즉, `CacheModule`이 여러 내장 백엔드를 전환해 주는 모델이 아니라, 검증된 기본 저장소 두 가지와 사용자 구현 저장소를 조합하는 모델로 이해하는 편이 정확합니다.
