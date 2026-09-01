@@ -283,7 +283,7 @@ export function createFrameworkResponse(
         : serialized.payload;
       const activeCompression = resolveCompression();
 
-      if (activeCompression) {
+      if (activeCompression && response.statusCode !== 206 && !response.hasHeader('Content-Range')) {
         this.committed = true;
 
         return Promise.resolve(activeCompression.write(payload, { contentType }))

@@ -296,6 +296,10 @@ describe('@fluojs/platform-fastify', () => {
       await fastifyPortabilityHarness.assertSupportsConditionalRequests();
     });
 
+    it('preserves single byte range semantics through the real listener', async () => {
+      await fastifyPortabilityHarness.assertSupportsSingleByteRanges();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

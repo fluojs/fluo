@@ -13,6 +13,7 @@
 - [응답 쿠키](#응답-쿠키)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
+- [바이트 범위 응답](#바이트-범위-응답)
 - [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
 - [공개 API](#공개-api)
@@ -491,6 +492,23 @@ const app = await bootstrapNodeApplication(AppModule, {
 representation이 없으면 `{ exists: false }`를, 존재하지만 validator가 의도적으로 없으면 `{ exists: true }`를 반환합니다. Dispatcher는 application/module middleware와 guard 뒤에 이 resolver를 평가하므로 conditional `304`와 `412`가 authorization 또는 audit logic을 우회하지 않습니다. 유효한 entity-tag list와 HTTP-date form만 받아들이며 malformed conditional field는 무시합니다.
 
 dispatcher는 RFC 9110 precedence와 comparison을 소유합니다. 성공한 `If-Match`는 `If-Unmodified-Since`만 건너뛰고, 이후에도 `If-None-Match`가 `If-Modified-Since`보다 우선합니다. `If-Match`는 strong comparison, `If-None-Match`는 weak comparison을 사용합니다. `304`와 `412`는 body 없이 `ETag`/`Last-Modified`를 유지하며 redirect와 지원되는 custom response-writer 경로에도 적용됩니다. 같은 selected representation에서는 `HEAD`와 `GET`이 같은 conditional 결과를 사용하고 framework-generated `HEAD` body는 억제됩니다. 명시적인 `@Head` route는 독립 route이며 custom response writer는 body emission을 소유하므로 직접 bodyless `HEAD` contract를 지켜야 합니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
+
+## 바이트 범위 응답
+
+`Uint8Array` 또는 `ArrayBuffer`를 반환하면 RFC 단일 `bytes` 범위 응답이 자동으로 활성화됩니다. 유효한 범위는 `206`, `Accept-Ranges: bytes`, `Content-Range`, 정확한 identity-byte `Content-Length`를 생성합니다. malformed 또는 multi-range field는 전체 `200` representation으로 fallback하고, 충족 불가능한 범위는 `Content-Range: bytes */<size>`와 body 없는 `416`을 반환합니다.
+
+portable `ReadableStream`에는 정확한 전체 크기와 함께 `createByteRangeResponse(...)`를 사용하세요. `HEAD`가 stream을 만들지 않아야 하면 factory를 전달합니다.
+
+```ts
+import { createByteRangeResponse } from '@fluojs/http';
+
+return createByteRangeResponse(
+  () => file.stream(),
+  { contentType: 'image/png', size: file.size },
+);
+```
+
+dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `If-Range`는 정확한 strong `ETag` 또는 현재 `Last-Modified` date일 때만 partial response를 허용하며, 그 외에는 전체 representation을 보냅니다. partial response는 range offset과 length를 보존하도록 identity byte를 유지하고 Node compression을 건너뜁니다. `HEAD`는 GET의 status와 metadata를 보존하면서 stream을 열지 않습니다.
 
 ## 관련 패키지
 

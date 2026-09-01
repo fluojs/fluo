@@ -214,6 +214,65 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
     });
   }
 
+  /** Verifies single-byte-range metadata and payload slicing through fetch dispatch. */
+  async assertSupportsSingleByteRanges(): Promise<void> {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const [bounded, suffix, unsatisfiable, head] = await Promise.all([
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=2-4' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=-2' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=9-' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { range: 'bytes=2-4' },
+          method: 'HEAD',
+        })),
+      ]);
+      const [boundedBytes, suffixBytes, unsatisfiableBody, headBody] = await Promise.all([
+        bounded.bytes(),
+        suffix.bytes(),
+        unsatisfiable.text(),
+        head.text(),
+      ]);
+
+      if (
+        bounded.status !== 206
+        || suffix.status !== 206
+        || unsatisfiable.status !== 416
+        || head.status !== 206
+        || bounded.headers.get('accept-ranges') !== 'bytes'
+        || bounded.headers.get('content-range') !== 'bytes 2-4/6'
+        || suffix.headers.get('content-range') !== 'bytes 4-5/6'
+        || unsatisfiable.headers.get('content-range') !== 'bytes */6'
+        || unsatisfiableBody !== ''
+        || head.headers.get('content-range') !== bounded.headers.get('content-range')
+        || headBody !== ''
+        || !sameBytes(boundedBytes, Uint8Array.from([2, 3, 4]))
+        || !sameBytes(suffixBytes, Uint8Array.from([4, 5]))
+      ) {
+        throw new Error(`${this.options.name} adapter changed single byte-range response semantics.`);
+      }
+    });
+  }
+
   async assertPreservesQueryArraysAndDecoding(): Promise<void> {
     @Controller('/query')
     class QueryController {
@@ -584,4 +643,9 @@ export function createWebRuntimeHttpAdapterPortabilityHarness<
   options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
 ): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp> {
   return new WebRuntimeHttpAdapterPortabilityHarness(options);
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength
+    && left.every((value, index) => value === right[index]);
 }

@@ -137,6 +137,10 @@ describe('@fluojs/platform-nodejs', () => {
       await nodejsPortabilityHarness.assertSupportsConditionalRequests();
     });
 
+    it('preserves single byte range semantics through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsSingleByteRanges();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await nodejsPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

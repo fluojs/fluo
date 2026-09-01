@@ -456,6 +456,68 @@ export class HttpAdapterPortabilityHarness<
     });
   }
 
+  /** Verifies single-byte-range metadata and payload slicing through a real network listener. */
+  async assertSupportsSingleByteRanges(): Promise<void> {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port: 0,
+    } as TBootstrapOptions);
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const [bounded, suffix, unsatisfiable, head] = await Promise.all([
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=2-4' } }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=-2' } }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=9-' } }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=2-4' }, method: 'HEAD' }),
+      ]);
+
+      const [boundedBytes, suffixBytes, unsatisfiableBody, headBody] = await Promise.all([
+        bounded.bytes(),
+        suffix.bytes(),
+        unsatisfiable.text(),
+        head.text(),
+      ]);
+
+      if (
+        bounded.status !== 206
+        || suffix.status !== 206
+        || unsatisfiable.status !== 416
+        || head.status !== 206
+        || bounded.headers.get('accept-ranges') !== 'bytes'
+        || bounded.headers.get('content-range') !== 'bytes 2-4/6'
+        || bounded.headers.get('content-length') !== '3'
+        || suffix.headers.get('content-range') !== 'bytes 4-5/6'
+        || unsatisfiable.headers.get('content-range') !== 'bytes */6'
+        || unsatisfiableBody !== ''
+        || head.headers.get('content-range') !== bounded.headers.get('content-range')
+        || head.headers.get('content-length') !== bounded.headers.get('content-length')
+        || headBody !== ''
+        || !equalByteArrays(boundedBytes, Uint8Array.from([2, 3, 4]))
+        || !equalByteArrays(suffixBytes, Uint8Array.from([4, 5]))
+      ) {
+        throw new Error(`${this.options.name} adapter changed single byte-range response semantics.`);
+      }
+    });
+  }
+
   /**
    * Asserts that the adapter preserves malformed cookie values without crashing
    * or incorrectly normalizing them.
@@ -1071,6 +1133,11 @@ export function createHttpAdapterPortabilityHarness<
   options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>,
 ): HttpAdapterPortabilityHarness<TBootstrapOptions, TRunOptions, TApp> {
   return new HttpAdapterPortabilityHarness(options);
+}
+
+function equalByteArrays(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength
+    && left.every((value, index) => value === right[index]);
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
