@@ -340,6 +340,56 @@ jobs:
       - name: Run official web runtime adapter portability suite
         run: pnpm vitest run packages/testing/src/portability/web-runtime-adapter-portability.test.ts --testNamePattern "${{ matrix.adapter }} web runtime adapter portability"
 
+  native-response-cookie-conformance:
+    name: Native response cookie conformance (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime:
+          - bun
+          - deno
+          - cloudflare-workers
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build portable cookie helper
+        run: pnpm --filter @fluojs/http... build
+
+      - name: Setup Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run Bun response cookie conformance
+        if: matrix.runtime == 'bun'
+        run: bun test tooling/native-runtime/response-cookie-conformance.test.mjs
+
+      - name: Setup Deno
+        if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+
+      - name: Run Deno response cookie conformance
+        if: matrix.runtime == 'deno'
+        run: deno test --allow-read tooling/native-runtime/response-cookie-conformance.test.mjs
+
+      - name: Run Cloudflare Workers response cookie conformance
+        if: matrix.runtime == 'cloudflare-workers'
+        run: node --test tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs
+
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
     runs-on: ubuntu-latest
@@ -375,6 +425,7 @@ jobs:
       - test
       - studio-browser
       - official-web-runtime-adapter-portability
+      - native-response-cookie-conformance
       - verify-platform-consistency-governance
       - resolve-pr-verification-scope
     runs-on: ubuntu-latest

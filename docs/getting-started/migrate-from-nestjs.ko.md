@@ -4,6 +4,28 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
+## 응답 쿠키 마이그레이션
+
+`res.cookie()`와 `res.clearCookie()`를 `@fluojs/http`의 `setCookie(response, name, value, options?)`, `clearCookie(response, name, options?)`로 바꾸세요. 이 free function은 `FrameworkResponse`를 통해 작동하므로 controller가 Express나 Fastify에 결합되지 않습니다.
+
+```ts
+// Before: Express를 사용하는 NestJS
+res.cookie('session', token, { httpOnly: true, maxAge: 3_600_000 });
+res.clearCookie('session');
+
+// After: fluo
+setCookie(context.response, 'session', token, {
+  httpOnly: true,
+  maxAgeSeconds: 3_600,
+  path: '/',
+});
+clearCookie(context.response, 'session', { path: '/' });
+```
+
+> **경고:** Express `res.cookie()`의 기본값은 `Path=/`입니다. 이식 가능한 `setCookie()`는 `options.path`를 전달하지 않으면 `Path`를 작성하지 않으므로, Express cookie의 scope를 보존하려면 마이그레이션할 때 `path: '/'`를 전달하세요. `clearCookie()`에도 동일한 `path`(그리고 있을 경우 `domain`)를 반복 전달해야 합니다.
+
+`maxAgeSeconds`에는 명시적인 정수 초 단위 lifetime을 사용하고 Express의 millisecond 값을 그대로 옮기지 마세요. 반복 helper 호출은 독립적이고 순서가 보존되는 `Set-Cookie` field로 유지됩니다. clear operation은 `Max-Age=0`과 과거 `Expires`를 작성하므로 같은 browser cookie를 대상으로 하려면 기존 `path`와 `domain`을 다시 전달해야 합니다.
+
 ## 실행 가능한 JWT 학습 경로
 
 완전한 Chapter 14 경로에서는 `JwtModule.forRootAsync(...)`보다 먼저 `ConfigModule.forRoot()`와 global `AuthPersistenceModule`을 import합니다. `AuthPersistenceModule`은 durable `REFRESH_TOKEN_STORE` 및 `CREDENTIALS_VERIFIER` token을 export하고, `AuthModule`은 `AuthService`를 `providers`에, `AuthController`를 `controllers`에 등록합니다. 이는 NestJS dynamic-module configuration이 아니라 application-graph wiring입니다. 전체 실행 가능한 module은 [`book/beginner/ch14-jwt.ko.md`](../../book/beginner/ch14-jwt.ko.md)를 따르세요.

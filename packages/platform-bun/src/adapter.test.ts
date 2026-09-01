@@ -327,6 +327,10 @@ function registerBunWebRuntimePortabilitySuite(): void {
   });
 
   describe('Bun web-runtime portability conformance', () => {
+    it('preserves ordered independent response cookies through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
     it('supports HTTP-owned error representations through the shared web-runtime harness', async () => {
       await bunPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

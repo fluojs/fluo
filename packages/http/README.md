@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Response Cookies](#response-cookies)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
@@ -168,6 +169,28 @@ function someDeepHelper() {
 ```
 
 `runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or the `node:async_hooks` module. The root `@fluojs/http` export selects a runtime-specific entrypoint without probing or instantiating async-context storage: Node and Bun register the host constructor during module initialization, while Deno, worker, browser, and default entries remain free of Node built-in imports. The request-local store itself is still created lazily on first use. Promise-returning non-async callbacks keep synchronous invocation, return, and throw behavior, and their continuations retain the bound context until the returned promise settles. The helpers never replace `Promise.prototype.then`, so unrelated promise continuations cannot capture a request. Hosts without an async-context primitive use a synchronous-only fallback that clears the context before awaited work resumes.
+
+## Response Cookies
+
+Use the portable `setCookie()` and `clearCookie()` helpers instead of adapter-native response APIs. Every call writes one independent `Set-Cookie` field, so repeated calls preserve their order and are never comma-folded.
+
+```ts
+import { clearCookie, setCookie } from '@fluojs/http';
+
+setCookie(context.response, 'session', sessionToken, {
+  httpOnly: true,
+  maxAgeSeconds: 60 * 60,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+
+clearCookie(context.response, 'session', {
+  path: '/',
+});
+```
+
+`maxAgeSeconds` is a non-negative whole-second lifetime on every adapter. Values are percent-encoded, names and attributes are validated before the response changes, and `sameSite: 'none'` requires `secure: true`. To delete the same browser cookie, repeat its original `path` and `domain`; `httpOnly`, `secure`, and `sameSite` are policy attributes rather than browser matching keys.
 
 ## Early Hints
 
@@ -358,6 +381,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `appendVaryHeader`
+- **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`

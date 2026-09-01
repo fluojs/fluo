@@ -4,6 +4,28 @@
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
+## Response cookie migration
+
+Replace `res.cookie()` and `res.clearCookie()` with `setCookie(response, name, value, options?)` and `clearCookie(response, name, options?)` from `@fluojs/http`. These free functions work through `FrameworkResponse`, so they do not couple controllers to Express or Fastify.
+
+```ts
+// Before: NestJS with Express
+res.cookie('session', token, { httpOnly: true, maxAge: 3_600_000 });
+res.clearCookie('session');
+
+// After: fluo
+setCookie(context.response, 'session', token, {
+  httpOnly: true,
+  maxAgeSeconds: 3_600,
+  path: '/',
+});
+clearCookie(context.response, 'session', { path: '/' });
+```
+
+> **Warning:** Express `res.cookie()` defaults `Path=/`. Portable `setCookie()` emits no `Path` unless you pass `options.path`, so pass `path: '/'` when migrating an Express cookie to preserve its scope. Repeat the same `path` (and `domain`, when present) for `clearCookie()`.
+
+Use `maxAgeSeconds` as an explicit whole-second lifetime; do not carry Express millisecond values into the new option. Repeated helper calls stay independent and ordered `Set-Cookie` fields. A clear operation emits `Max-Age=0` and a past `Expires`; pass the original `path` and `domain` again to target the same browser cookie.
+
 ## Executable JWT learning path
 
 For the complete Chapter 14 path, import `ConfigModule.forRoot()` and the global `AuthPersistenceModule` before `JwtModule.forRootAsync(...)`. `AuthPersistenceModule` exports the durable `REFRESH_TOKEN_STORE` and `CREDENTIALS_VERIFIER` tokens, while `AuthModule` registers `AuthService` in `providers` and `AuthController` in `controllers`. This is application-graph wiring, not NestJS dynamic-module configuration; follow [`book/beginner/ch14-jwt.md`](../../book/beginner/ch14-jwt.md) for the complete executable module.

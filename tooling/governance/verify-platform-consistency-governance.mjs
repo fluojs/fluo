@@ -234,6 +234,7 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'apps/docs/content/docs/guides/auth.mdx',
   'apps/docs/content/docs/guides/auth.ko.mdx',
+  // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
@@ -2685,6 +2686,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
     'assertSupportsHttpErrorRepresentations()',
     'assertDoesNotCommitAbortedHttpErrorRepresentations()',
     'assertPreservesMalformedCookieValues()',
+    'assertSupportsPortableResponseCookies()',
     'assertPreservesRawBodyForJsonAndText()',
     'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
     'assertExcludesRawBodyForMultipart()',
@@ -2750,6 +2752,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
     for (const marker of [
       '## Adapter Portability Requirements',
       'createHttpAdapterPortabilityHarness(...)',
+      'assertSupportsPortableResponseCookies()',
       'assertSupportsCustomHttpRouteMethods()',
       'assertSupportsHttpErrorRepresentations()',
       'assertDoesNotCommitAbortedHttpErrorRepresentations()',

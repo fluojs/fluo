@@ -29,6 +29,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 ## Adapter Portability Requirements
 
 - [ ] MUST: For HTTP adapters, run `createHttpAdapterPortabilityHarness(...)` from `@fluojs/testing/http-adapter-portability`.
+- [ ] MUST: Run `assertSupportsPortableResponseCookies()` to verify independent, ordered response `Set-Cookie` fields.
 - [ ] MUST: Verify `QUERY` and extension HTTP methods with `assertSupportsCustomHttpRouteMethods()`.
 - [ ] MUST: Configure `createErrorRepresentationBootstrapOptions` and run both `assertSupportsHttpErrorRepresentations()` and `assertDoesNotCommitAbortedHttpErrorRepresentations()`.
 - [ ] MUST: Preserve malformed cookie values without crashing or normalizing them away.
