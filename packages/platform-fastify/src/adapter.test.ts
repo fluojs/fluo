@@ -1684,6 +1684,54 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('routes opted-in multipart parts without pre-buffering through Fastify dispatch', async () => {
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          name: string;
+          value?: string;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : {
+          name: first.value.name,
+          streamed: first.value.kind === 'field',
+          value: first.value.value,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      multipart: { strategy: 'stream' },
+      port: 0,
+    });
+    const port = await listenOnEphemeralPort(app);
+
+    try {
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await fetch(`http://127.0.0.1:${String(port)}/streaming-upload`, {
+        body: form,
+        method: 'POST',
+      });
+
+      await expect(response.json()).resolves.toEqual({
+        name: 'title',
+        streamed: true,
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided', async () => {
     @Controller('/uploads')
     class UploadController {

@@ -1468,6 +1468,55 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('routes opted-in multipart parts without pre-buffering through Express dispatch', async () => {
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          name: string;
+          value?: string;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : {
+          name: first.value.name,
+          streamed: first.value.kind === 'field',
+          value: first.value.value,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapExpressApplication(AppModule, {
+      cors: false,
+      multipart: { strategy: 'stream' },
+      port,
+    });
+
+    try {
+      await app.listen();
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await fetch(`http://127.0.0.1:${String(port)}/streaming-upload`, {
+        body: form,
+        method: 'POST',
+      });
+
+      await expect(response.json()).resolves.toEqual({
+        name: 'title',
+        streamed: true,
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('accepts a cors string and merges framework defaults', async () => {
     @Controller('/ping')
     class PingController {

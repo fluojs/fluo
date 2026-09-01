@@ -11,6 +11,38 @@ import {
 } from './web.js';
 
 describe('dispatchWebRequest', () => {
+  it('delivers opted-in multipart parts to dispatch without pre-buffering', async () => {
+    const boundary = 'fluo-web-streaming-route';
+    const request = new Request('https://runtime.test/uploads', {
+      body: `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nAda\r\n--${boundary}--\r\n`,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+    });
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(frameworkRequest: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          expect(request.bodyUsed).toBe(false);
+          const parts = frameworkRequest.body as AsyncIterable<{
+            kind: string;
+            name: string;
+            value?: string;
+          }>;
+          const first = await parts[Symbol.asyncIterator]().next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await frameworkResponse.send({ streamed: true });
+        },
+      },
+      multipart: { strategy: 'stream' },
+      request,
+    });
+
+    await expect(response.json()).resolves.toEqual({ streamed: true });
+  });
+
   it('exposes Early Hints as unsupported on Web response facades', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {
@@ -549,7 +581,7 @@ describe('Web multipart consumption boundary', () => {
     await expect(parseMultipart(bufferedFirst)).resolves.toMatchObject({
       fields: { title: 'portable' },
     });
-    await expect(parseMultipartStream(bufferedFirst).next()).rejects.toThrow(
+    expect(() => parseMultipartStream(bufferedFirst)).toThrow(
       'Multipart request body has already been consumed.',
     );
   });
@@ -573,7 +605,7 @@ describe('Web multipart consumption boundary', () => {
       throw new TypeError('Expected the Web framework raw request.');
     }
 
-    await expect(parseMultipartStream(frameworkRequest.raw).next()).rejects.toThrow(
+    expect(() => parseMultipartStream(frameworkRequest.raw as Request)).toThrow(
       'Multipart request body has already been consumed.',
     );
   });

@@ -15,6 +15,12 @@ export interface UploadedFile {
  * Configures multipart parsing limits for fields, files, headers, and total payload size.
  */
 export interface MultipartOptions {
+  /**
+   * Selects bounded streaming defaults when an application adapter exposes multipart parts through `request.body`.
+   *
+   * `parseMultipart(...)` remains buffered regardless of this option so its established acceptance defaults stay intact.
+   */
+  strategy?: 'buffered' | 'stream';
   /** Maximum size in bytes for one non-file field. */
   maxFieldSize?: number;
   /** Maximum number of non-file fields. */
@@ -109,7 +115,7 @@ export async function parseMultipart(
   const fields: Record<string, string | string[]> = {};
   const files: UploadedFile[] = [];
 
-  for await (const part of parseMultipartStream(request, options)) {
+  for await (const part of createMultipartParts(request, options, false)) {
     if (part.kind === 'field') {
       appendMultipartField(fields, part.name, part.value);
       continue;
@@ -141,26 +147,20 @@ export async function parseMultipart(
  * @returns An async iterator of typed field and file parts.
  * @throws {MultipartBodyConsumedError} When buffered or streaming parsing already selected the body.
  */
-export async function* parseMultipartStream(
+export function parseMultipartStream(
   request: Request | MultipartRequestLike,
   options: MultipartOptions = {},
-): AsyncGenerator<MultipartPart> {
+): AsyncIterableIterator<MultipartPart> {
+  return createMultipartParts(request, options, true);
+}
+
+function createMultipartParts(
+  request: Request | MultipartRequestLike,
+  options: MultipartOptions,
+  useStreamingDefaults: boolean,
+): AsyncIterableIterator<MultipartPart> {
   markMultipartBodyConsumed(request);
-  const parser = new MultipartStreamParser(request, options);
-
-  try {
-    while (true) {
-      const part = await parser.nextPart();
-
-      if (part === undefined) {
-        return;
-      }
-
-      yield part;
-    }
-  } finally {
-    await parser.closeIfIncomplete();
-  }
+  return new MultipartPartIterator(new MultipartStreamParser(request, options, useStreamingDefaults));
 }
 
 /**
@@ -189,9 +189,41 @@ export function markMultipartBodyConsumed(request: Request | MultipartRequestLik
   }
 }
 
+class MultipartPartIterator implements AsyncIterableIterator<MultipartPart> {
+  private closed = false;
+
+  constructor(private readonly parser: MultipartStreamParser) {}
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<MultipartPart> {
+    return this;
+  }
+
+  async next(): Promise<IteratorResult<MultipartPart>> {
+    if (this.closed) {
+      return { done: true, value: undefined };
+    }
+
+    const part = await this.parser.nextPart();
+
+    if (part === undefined) {
+      this.closed = true;
+      return { done: true, value: undefined };
+    }
+
+    return { done: false, value: part };
+  }
+
+  async return(): Promise<IteratorResult<MultipartPart>> {
+    this.closed = true;
+    this.parser.closeIfIncomplete();
+    return { done: true, value: undefined };
+  }
+}
+
 class MultipartStreamParser {
   private activeFile = false;
   private buffer: Uint8Array<ArrayBufferLike> = new Uint8Array();
+  private cancellationStarted = false;
   private done = false;
   private failure?: Error;
   private fileController?: ReadableStreamDefaultController<Uint8Array>;
@@ -205,31 +237,43 @@ class MultipartStreamParser {
   private readonly maxHeaderSize: number;
   private readonly maxTotalSize: number;
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  private readerReadPending = false;
+  private released = false;
   private readonly signal?: AbortSignal;
+  private terminalDrained = false;
   private totalSize = 0;
   private fieldCount = 0;
   private fileCount = 0;
   private partEnded = false;
 
-  constructor(request: Request | MultipartRequestLike, options: MultipartOptions) {
+  constructor(
+    request: Request | MultipartRequestLike,
+    options: MultipartOptions,
+    useStreamingDefaults: boolean,
+  ) {
     const headers = normalizeRequestHeaders(request.headers);
     const boundary = extractMultipartBoundary(headers.get('content-type'));
 
     this.initialDelimiter = TEXT_ENCODER.encode(`--${boundary}`);
     this.fileDelimiter = TEXT_ENCODER.encode(`\r\n--${boundary}`);
-    this.maxFieldSize = options.maxFieldSize ?? DEFAULT_MAX_FIELD_SIZE;
+    this.maxTotalSize = options.maxTotalSize ?? DEFAULT_MAX_TOTAL_SIZE;
+    this.maxFieldSize = options.maxFieldSize
+      ?? (useStreamingDefaults ? DEFAULT_MAX_FIELD_SIZE : this.maxTotalSize);
     this.maxFields = options.maxFields ?? DEFAULT_MAX_FIELDS;
     this.maxFileSize = options.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
     this.maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
-    this.maxHeaderSize = options.maxHeaderSize ?? DEFAULT_MAX_HEADER_SIZE;
-    this.maxTotalSize = options.maxTotalSize ?? DEFAULT_MAX_TOTAL_SIZE;
-    validateContentLength(headers, this.maxTotalSize);
+    this.maxHeaderSize = options.maxHeaderSize
+      ?? (useStreamingDefaults ? DEFAULT_MAX_HEADER_SIZE : this.maxTotalSize);
     this.signal = request instanceof Request ? request.signal : request.signal;
     this.reader = resolveMultipartStreamBody(request).getReader();
     this.signal?.addEventListener('abort', this.handleAbort, { once: true });
 
-    if (this.signal?.aborted) {
-      void this.cancel(toAbortError(this.signal.reason));
+    const contentLengthError = getContentLengthError(headers, this.maxTotalSize);
+
+    if (contentLengthError) {
+      this.fail(contentLengthError);
+    } else if (this.signal?.aborted) {
+      this.fail(toAbortError(this.signal.reason));
     }
   }
 
@@ -246,18 +290,26 @@ class MultipartStreamParser {
     }
 
     if (this.done) {
+      await this.drainAfterClosingBoundary();
       this.release();
       return undefined;
     }
 
     const headers = await this.readHeaders();
-    const disposition = parseContentDisposition(headers['content-disposition']);
+    let disposition: { filename?: string; name: string };
+
+    try {
+      disposition = parseContentDisposition(headers['content-disposition']);
+    } catch (error: unknown) {
+      this.fail(error);
+      throw error;
+    }
 
     if (disposition.filename === undefined) {
       this.fieldCount += 1;
 
       if (this.fieldCount > this.maxFields) {
-        await this.cancel(new PayloadTooLargeException(`Exceeded maximum field count of ${String(this.maxFields)}.`));
+        this.fail(new PayloadTooLargeException(`Exceeded maximum field count of ${String(this.maxFields)}.`));
         this.throwIfFailed();
       }
 
@@ -273,7 +325,7 @@ class MultipartStreamParser {
     this.fileCount += 1;
 
     if (this.fileCount > this.maxFiles) {
-      await this.cancel(new PayloadTooLargeException(`Exceeded maximum file count of ${String(this.maxFiles)}.`));
+      this.fail(new PayloadTooLargeException(`Exceeded maximum file count of ${String(this.maxFiles)}.`));
       this.throwIfFailed();
     }
 
@@ -288,14 +340,14 @@ class MultipartStreamParser {
     };
   }
 
-  async closeIfIncomplete(): Promise<void> {
+  closeIfIncomplete(): void {
     if (!this.done && !this.failure) {
-      await this.cancel(new Error('Multipart parser has been cancelled.'));
+      this.fail(new Error('Multipart parser has been cancelled.'));
     }
   }
 
   private readonly handleAbort = (): void => {
-    void this.cancel(toAbortError(this.signal?.reason));
+    this.fail(toAbortError(this.signal?.reason));
   };
 
   private createFileStream(name: string): ReadableStream<Uint8Array> {
@@ -303,7 +355,7 @@ class MultipartStreamParser {
 
     return new ReadableStream<Uint8Array>({
       cancel: async (reason) => {
-        await this.cancel(reason);
+        this.fail(reason);
       },
       pull: async (controller) => {
         this.fileController = controller;
@@ -324,7 +376,7 @@ class MultipartStreamParser {
             const error = new PayloadTooLargeException(
               `File "${name}" exceeds the maximum size of ${String(this.maxFileSize)} bytes.`,
             );
-            await this.cancel(error);
+            this.fail(error);
             throw error;
           }
 
@@ -337,14 +389,14 @@ class MultipartStreamParser {
           throw parserError;
         }
       },
-    });
+    }, { highWaterMark: 0 });
   }
 
   private async consumeInitialDelimiter(): Promise<void> {
     await this.ensure(this.initialDelimiter.byteLength + 2);
 
     if (!matchesAt(this.buffer, this.initialDelimiter, 0)) {
-      await this.cancel(new Error('Multipart body does not start with its declared boundary.'));
+      this.fail(new Error('Multipart body does not start with its declared boundary.'));
       this.throwIfFailed();
     }
 
@@ -357,7 +409,7 @@ class MultipartStreamParser {
     }
 
     if (!equalsBytes(ending, TEXT_ENCODER.encode('\r\n'))) {
-      await this.cancel(new Error('Multipart boundary is malformed.'));
+      this.fail(new Error('Multipart boundary is malformed.'));
       this.throwIfFailed();
     }
   }
@@ -372,7 +424,7 @@ class MultipartStreamParser {
       const separator = line.indexOf(':');
 
       if (separator <= 0) {
-        await this.cancel(new Error('Multipart part contains a malformed header.'));
+        this.fail(new Error('Multipart part contains a malformed header.'));
         this.throwIfFailed();
       }
 
@@ -380,7 +432,7 @@ class MultipartStreamParser {
       const value = line.slice(separator + 1).trim();
 
       if (headers[name] !== undefined) {
-        await this.cancel(new Error(`Multipart part contains a repeated "${name}" header.`));
+        this.fail(new Error(`Multipart part contains a repeated "${name}" header.`));
         this.throwIfFailed();
       }
 
@@ -404,7 +456,7 @@ class MultipartStreamParser {
       size += chunk.byteLength;
 
       if (size > this.maxFieldSize) {
-        await this.cancel(new PayloadTooLargeException(
+        this.fail(new PayloadTooLargeException(
           `Field exceeds the maximum size of ${String(this.maxFieldSize)} bytes.`,
         ));
         this.throwIfFailed();
@@ -419,6 +471,9 @@ class MultipartStreamParser {
   private async readPartChunk(): Promise<Uint8Array | undefined> {
     if (this.partEnded) {
       this.partEnded = false;
+      if (this.done) {
+        await this.drainAfterClosingBoundary();
+      }
       return undefined;
     }
 
@@ -427,22 +482,40 @@ class MultipartStreamParser {
       const delimiterIndex = indexOfBytes(this.buffer, this.fileDelimiter);
 
       if (delimiterIndex !== -1) {
-        const chunk = this.consume(delimiterIndex);
-        this.consume(this.fileDelimiter.byteLength);
-        await this.ensure(2);
-        const ending = this.consume(2);
+        const suffixOffset = delimiterIndex + this.fileDelimiter.byteLength;
+        const suffixLength = 2;
 
-        if (equalsBytes(ending, TEXT_ENCODER.encode('--'))) {
-          this.done = true;
-        } else if (equalsBytes(ending, TEXT_ENCODER.encode('\r\n'))) {
-          // The next call starts the following part header block.
-        } else {
-          await this.cancel(new Error('Multipart boundary is malformed.'));
-          this.throwIfFailed();
+        if (this.buffer.byteLength < suffixOffset + suffixLength) {
+          if (delimiterIndex > 0) {
+            return this.consume(delimiterIndex);
+          }
+
+          await this.readMore();
+          continue;
         }
 
-        this.partEnded = true;
-        return chunk.byteLength === 0 ? undefined : chunk;
+        const ending = this.buffer.slice(suffixOffset, suffixOffset + suffixLength);
+
+        if (equalsBytes(ending, TEXT_ENCODER.encode('--'))) {
+          const chunk = this.consume(delimiterIndex);
+          this.consume(this.fileDelimiter.byteLength + suffixLength);
+          this.done = true;
+          this.partEnded = chunk.byteLength > 0;
+
+          if (chunk.byteLength === 0) {
+            await this.drainAfterClosingBoundary();
+            return undefined;
+          }
+
+          return chunk;
+        } else if (equalsBytes(ending, TEXT_ENCODER.encode('\r\n'))) {
+          const chunk = this.consume(delimiterIndex);
+          this.consume(this.fileDelimiter.byteLength + suffixLength);
+          this.partEnded = chunk.byteLength > 0;
+          return chunk.byteLength === 0 ? undefined : chunk;
+        }
+
+        return this.consume(suffixOffset);
       }
 
       const retainedBytes = this.fileDelimiter.byteLength - 1;
@@ -465,7 +538,7 @@ class MultipartStreamParser {
         this.consume(delimiter.byteLength);
 
         if (value.byteLength > limit) {
-          await this.cancel(new PayloadTooLargeException(message));
+          this.fail(new PayloadTooLargeException(message));
           this.throwIfFailed();
         }
 
@@ -473,7 +546,7 @@ class MultipartStreamParser {
       }
 
       if (this.buffer.byteLength > limit) {
-        await this.cancel(new PayloadTooLargeException(message));
+        this.fail(new PayloadTooLargeException(message));
         this.throwIfFailed();
       }
 
@@ -487,13 +560,29 @@ class MultipartStreamParser {
     }
   }
 
-  private async readMore(): Promise<void> {
+  private async readMore(allowEof = false): Promise<boolean> {
     this.throwIfFailed();
-    const result = await this.reader.read();
+    this.readerReadPending = true;
+    let result: ReadableStreamReadResult<Uint8Array>;
+
+    try {
+      result = await this.reader.read();
+    } finally {
+      this.readerReadPending = false;
+      if (this.failure) {
+        this.release();
+      }
+    }
+
+    this.throwIfFailed();
 
     if (result.done) {
+      if (allowEof) {
+        return false;
+      }
+
       const error = new Error('Multipart body ended before its closing boundary.');
-      await this.cancel(error);
+      this.fail(error);
       throw error;
     }
 
@@ -501,13 +590,14 @@ class MultipartStreamParser {
     this.totalSize += chunk.byteLength;
 
     if (this.totalSize > this.maxTotalSize) {
-      await this.cancel(new PayloadTooLargeException(
+      this.fail(new PayloadTooLargeException(
         `${MULTIPART_BODY_LIMIT_MESSAGE} ${String(this.maxTotalSize)} bytes.`,
       ));
       this.throwIfFailed();
     }
 
     this.buffer = concatBytes([this.buffer, chunk], this.buffer.byteLength + chunk.byteLength);
+    return true;
   }
 
   private consume(size: number): Uint8Array {
@@ -516,21 +606,52 @@ class MultipartStreamParser {
     return value;
   }
 
-  private async cancel(reason: unknown): Promise<void> {
-    if (!this.failure) {
-      const error = toError(reason);
-      this.failure = error;
-      this.done = true;
-      this.fileController?.error(error);
-      this.fileController = undefined;
-      this.activeFile = false;
-      this.signal?.removeEventListener('abort', this.handleAbort);
-      await this.reader.cancel(reason).catch(() => undefined);
-      this.reader.releaseLock();
+  private async drainAfterClosingBoundary(): Promise<void> {
+    if (this.terminalDrained) {
+      return;
+    }
+
+    while (true) {
+      this.buffer = new Uint8Array();
+
+      if (!await this.readMore(true)) {
+        this.terminalDrained = true;
+        this.release();
+        return;
+      }
     }
   }
 
+  private fail(reason: unknown): void {
+    if (this.failure) {
+      return;
+    }
+
+    const error = toError(reason);
+    this.failure = error;
+    this.done = true;
+    this.fileController?.error(error);
+    this.fileController = undefined;
+    this.activeFile = false;
+    this.signal?.removeEventListener('abort', this.handleAbort);
+
+    if (!this.cancellationStarted) {
+      this.cancellationStarted = true;
+      void this.reader.cancel(reason).then(
+        () => this.release(),
+        () => this.release(),
+      );
+    }
+
+    this.release();
+  }
+
   private release(): void {
+    if (this.released || this.readerReadPending) {
+      return;
+    }
+
+    this.released = true;
     this.signal?.removeEventListener('abort', this.handleAbort);
     this.reader.releaseLock();
   }
@@ -607,18 +728,20 @@ function resolveMultipartStreamBody(request: Request | MultipartRequestLike): Re
   return converted;
 }
 
-function validateContentLength(headers: Headers, maxTotalSize: number): void {
+function getContentLengthError(headers: Headers, maxTotalSize: number): PayloadTooLargeException | undefined {
   const contentLength = headers.get('content-length');
 
   if (contentLength === null) {
-    return;
+    return undefined;
   }
 
   const parsedContentLength = Number(contentLength);
 
   if (Number.isFinite(parsedContentLength) && parsedContentLength > maxTotalSize) {
-    throw new PayloadTooLargeException(`${MULTIPART_BODY_LIMIT_MESSAGE} ${String(maxTotalSize)} bytes.`);
+    return new PayloadTooLargeException(`${MULTIPART_BODY_LIMIT_MESSAGE} ${String(maxTotalSize)} bytes.`);
   }
+
+  return undefined;
 }
 
 function indexOfBytes(input: Uint8Array, needle: Uint8Array): number {
@@ -717,7 +840,7 @@ function createReadableStreamFromAsyncIterable(source: AsyncIterable<Uint8Array>
 
       controller.enqueue(value);
     },
-  });
+  }, { highWaterMark: 0 });
 }
 
 function normalizeRequestHeaders(

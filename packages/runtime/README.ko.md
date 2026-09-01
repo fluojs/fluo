@@ -68,10 +68,11 @@ await app.listen();
 
 ### 스트리밍 멀티파트 소비
 
-애플리케이션 route가 업로드 파일 하나를 `Uint8Array`로 실체화하지 않고 큰 파일을 소비해야 할 때는
-`@fluojs/runtime/web`의 `parseMultipartStream(...)`을 사용하세요. 기존 `parseMultipart(...)` API는
-명시적인 buffered mode로 유지됩니다. 요청마다 정확히 하나의 mode를 선택해야 하며, 같은 body를
-buffered와 streaming으로 함께 파싱하면 `MultipartBodyConsumedError`로 reject됩니다.
+큰 업로드 파일을 `Uint8Array`로 실체화하지 않고 standalone raw `Request` 또는 request-like body에서
+소비할 때는 `@fluojs/runtime/web`의 `parseMultipartStream(...)`을 사용하세요. 기존
+`parseMultipart(...)` API는 명시적인 buffered mode로 유지됩니다. 요청마다 정확히 하나의 mode를
+선택해야 하며, 같은 body를 buffered와 streaming으로 함께 파싱하면
+`MultipartBodyConsumedError`로 reject됩니다.
 
 ```typescript
 import {
@@ -95,6 +96,34 @@ for await (const part of parseMultipartStream(request, {
   await store(file.stream); // 다음 part를 읽기 전에 끝까지 소비하거나 cancel
 }
 ```
+
+Node.js, Express, Fastify, Web 애플리케이션 dispatch에서는 bootstrap의
+`multipart.strategy: 'stream'`으로 opt in하세요. route는 `RequestContext.request.body`에서 같은
+`AsyncIterable<MultipartPart>`를 받으며, adapter dispatch는 route가 소비하기 전 iterator만 만들고
+pull 또는 buffering을 수행하지 않습니다.
+
+```typescript
+const app = await bootstrapNodejsApplication(AppModule, {
+  multipart: {
+    strategy: 'stream',
+    maxTotalSize: 25 * 1024 * 1024,
+  },
+});
+
+@Controller('/uploads')
+class UploadController {
+  @Post('/')
+  async upload(_input: undefined, context: RequestContext) {
+    for await (const part of context.request.body as AsyncIterable<MultipartPart>) {
+      // 다음 part로 진행하기 전에 각 file stream을 소비합니다.
+    }
+  }
+}
+```
+
+Streaming mode에는 제한된 field/header 기본값이 적용됩니다. Buffered `parseMultipart(...)`는
+`maxFieldSize`, `maxFields`, `maxHeaderSize`를 명시할 때만 해당 제한을 적용하여 기존 field/header
+acceptance를 유지합니다.
 
 `MultipartFilePart.stream`은 parser가 제어하는 backpressure를 가진 Web
 `ReadableStream<Uint8Array>`입니다. Complete request가 도착하기 전에 file body를 yield하며,

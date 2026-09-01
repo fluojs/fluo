@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PayloadTooLargeException } from '@fluojs/http';
 
-import { parseMultipart, parseMultipartStream } from './multipart.js';
+import {
+  MultipartBodyConsumedError,
+  parseMultipart,
+  parseMultipartStream,
+} from './multipart.js';
 
 const TEXT_DECODER = new TextDecoder();
 const TEXT_ENCODER = new TextEncoder();
@@ -314,6 +318,31 @@ describe('parseMultipart', () => {
     await expect(result).rejects.toThrow(message);
     expect(source.body.locked).toBe(false);
   });
+
+  it('keeps legacy buffered field and header acceptance unbounded unless configured', async () => {
+    const boundary = 'fluo-buffered-defaults';
+    const oversizedField = 'x'.repeat(1024 * 1024 + 1);
+    const oversizedHeader = `x-fluo-extension: ${'y'.repeat(8 * 1024 + 1)}`;
+    const request = new Request('http://localhost/uploads', {
+      body: createMultipartBody(boundary, [
+        {
+          headers: [
+            'content-disposition: form-data; name="title"',
+            oversizedHeader,
+          ],
+          value: oversizedField,
+        },
+      ]),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    await expect(parseMultipart(request)).resolves.toMatchObject({
+      fields: { title: oversizedField },
+    });
+  });
 });
 
 describe('parseMultipartStream', () => {
@@ -603,9 +632,274 @@ describe('parseMultipartStream', () => {
     expect(cancellationReason).toBeInstanceOf(Error);
     expect(source.body.locked).toBe(false);
 
-    await expect(parseMultipartStream(source.request).next()).rejects.toThrow(
+    expect(() => parseMultipartStream(source.request)).toThrow(
       'Multipart request body has already been consumed.',
     );
+  });
+
+  it('continues with the following field after an empty nonfinal field', async () => {
+    const boundary = 'fluo-empty-field';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [
+        {
+          headers: ['content-disposition: form-data; name="empty"'],
+          value: '',
+        },
+        {
+          headers: ['content-disposition: form-data; name="following"'],
+          value: 'parsed',
+        },
+      ]),
+    ]).request);
+
+    await expect(parts.next()).resolves.toMatchObject({
+      done: false,
+      value: { kind: 'field', name: 'empty', value: '' },
+    });
+    await expect(parts.next()).resolves.toMatchObject({
+      done: false,
+      value: { kind: 'field', name: 'following', value: 'parsed' },
+    });
+  });
+
+  it('continues with the following field after an empty nonfinal file', async () => {
+    const boundary = 'fluo-empty-file';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [
+        {
+          headers: [
+            'content-disposition: form-data; name="upload"; filename="empty.txt"',
+            'content-type: text/plain',
+          ],
+          value: '',
+        },
+        {
+          headers: ['content-disposition: form-data; name="following"'],
+          value: 'parsed',
+        },
+      ]),
+    ]).request);
+    const first = await parts.next();
+
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected an empty file multipart part.');
+    }
+
+    await expect(new Response(first.value.stream).text()).resolves.toBe('');
+    await expect(parts.next()).resolves.toMatchObject({
+      done: false,
+      value: { kind: 'field', name: 'following', value: 'parsed' },
+    });
+  });
+
+  it('preserves boundary-like file bytes until a complete valid suffix arrives', async () => {
+    const boundary = 'fluo-boundary-like';
+    const fileBytes = `before\r\n--${boundary}Xafter`;
+    const source = createChunkedMultipartRequest(boundary, [
+      `--${boundary}\r\ncontent-disposition: form-data; name="upload"; filename="payload.txt"\r\n\r\nbefore\r\n--${boundary}`,
+      `Xafter\r\n--${boundary}-`,
+      '-\r',
+      '\n',
+    ]);
+    const parts = parseMultipartStream(source.request);
+    const first = await parts.next();
+
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected a file multipart part.');
+    }
+
+    await expect(new Response(first.value.stream).text()).resolves.toBe(fileBytes);
+    await expect(parts.next()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it('fails promptly while cancellation remains pending and releases after it settles', async () => {
+    const boundary = 'fluo-pending-cancel';
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        return new Promise<void>(() => {});
+      },
+      start(controller) {
+        controller.enqueue(TEXT_ENCODER.encode('not-the-declared-boundary'));
+      },
+    });
+    const parts = parseMultipartStream({
+      body,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    });
+
+    await expect(parts.next()).rejects.toThrow('Multipart body does not start with its declared boundary.');
+  });
+
+  it('keeps the parser failure when source cancellation rejects', async () => {
+    const boundary = 'fluo-rejected-cancel';
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(new Error('source cancellation rejected'));
+      },
+      start(controller) {
+        controller.enqueue(TEXT_ENCODER.encode('not-the-declared-boundary'));
+      },
+    });
+    const parts = parseMultipartStream({
+      body,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    });
+
+    await expect(parts.next()).rejects.toThrow('Multipart body does not start with its declared boundary.');
+    expect(body.locked).toBe(false);
+  });
+
+  it('cancels and unlocks content-length preflight failures before iteration', async () => {
+    const boundary = 'fluo-content-length-preflight';
+    let cancellationReason: unknown;
+    const body = new ReadableStream<Uint8Array>({
+      cancel(reason) {
+        cancellationReason = reason;
+      },
+    });
+    const parts = parseMultipartStream({
+      body,
+      headers: {
+        'content-length': '1024',
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    }, { maxTotalSize: 1 });
+
+    await expect(parts.next()).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(cancellationReason).toBeInstanceOf(PayloadTooLargeException);
+    expect(body.locked).toBe(false);
+  });
+
+  it('drains epilogue bytes through EOF and enforces the total-size limit', async () => {
+    const boundary = 'fluo-terminal-drain';
+    const closing = createMultipartBody(boundary, []);
+    const source = createChunkedMultipartRequest(boundary, [`${closing}epilogue`]);
+    const maxTotalSize = TEXT_ENCODER.encode(closing).byteLength;
+    const parts = parseMultipartStream(source.request, { maxTotalSize });
+
+    await expect(parts.next()).rejects.toThrow(
+      `Multipart body exceeds the maximum size of ${String(maxTotalSize)} bytes.`,
+    );
+    expect(source.body.locked).toBe(false);
+  });
+
+  it('reserves consumption when called and rejects a second iterator clearly', () => {
+    const boundary = 'fluo-eager-reservation';
+    const source = createChunkedMultipartRequest(boundary, [createMultipartBody(boundary, [])]);
+
+    parseMultipartStream(source.request);
+
+    expect(() => parseMultipartStream(source.request)).toThrow(MultipartBodyConsumedError);
+  });
+
+  it('rejects advancing before an active file stream settles', async () => {
+    const boundary = 'fluo-active-file';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [
+        {
+          headers: ['content-disposition: form-data; name="first"; filename="first.txt"'],
+          value: 'one',
+        },
+        {
+          headers: ['content-disposition: form-data; name="second"; filename="second.txt"'],
+          value: 'two',
+        },
+      ]),
+    ]).request);
+    const first = await parts.next();
+
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected the first file multipart part.');
+    }
+
+    await expect(parts.next()).rejects.toThrow(
+      'Consume or cancel the active multipart file stream before reading the next part.',
+    );
+    await first.value.stream.cancel(new Error('active-file test cleanup'));
+  });
+
+  it('cancels an async-iterable source when iteration returns early', async () => {
+    const boundary = 'fluo-async-iterable';
+    let released = false;
+    const source = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next(): Promise<IteratorResult<Uint8Array>> {
+            return {
+              done: false,
+              value: TEXT_ENCODER.encode(createMultipartBody(boundary, [
+                {
+                  headers: ['content-disposition: form-data; name="title"'],
+                  value: 'Ada',
+                },
+              ])),
+            };
+          },
+          async return(): Promise<IteratorResult<Uint8Array>> {
+            released = true;
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+    const parts = parseMultipartStream({
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      [Symbol.asyncIterator]: source[Symbol.asyncIterator],
+      url: 'http://localhost/uploads',
+    });
+
+    await parts.return?.(undefined);
+
+    expect(released).toBe(true);
+  });
+
+  it('does not pull an async-iterable body before the parser needs bytes', async () => {
+    const boundary = 'fluo-gated-pull';
+    let pulls = 0;
+    const source = {
+      async *[Symbol.asyncIterator]() {
+        pulls += 1;
+        yield TEXT_ENCODER.encode(createMultipartBody(boundary, []));
+      },
+    };
+    const parts = parseMultipartStream({
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      [Symbol.asyncIterator]: source[Symbol.asyncIterator],
+      url: 'http://localhost/uploads',
+    });
+
+    expect(pulls).toBe(0);
+    await expect(parts.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(pulls).toBe(1);
+  });
+
+  it('uses the stored abort reason when a pending read completes as done', async () => {
+    const boundary = 'fluo-abort-after-done';
+    const abort = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      start() {},
+    });
+    const parts = parseMultipartStream({
+      body,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      signal: abort.signal,
+      url: 'http://localhost/uploads',
+    });
+    const result = parts.next();
+
+    abort.abort(new Error('client disconnected while pending'));
+
+    await expect(result).rejects.toThrow('client disconnected while pending');
+    expect(body.locked).toBe(false);
   });
 });
 

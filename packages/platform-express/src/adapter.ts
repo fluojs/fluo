@@ -66,7 +66,7 @@ import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
-import { parseMultipart } from '@fluojs/runtime/web';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import express, {
   type ErrorRequestHandler,
   type Express,
@@ -81,6 +81,7 @@ import express, {
  * @remarks Native middleware remains platform-specific and follows Express response and error-chain semantics.
  */
 export type ExpressNativeMiddleware = RequestHandler | ErrorRequestHandler;
+type StreamingMultipartOptions = MultipartOptions & { strategy?: 'stream' };
 
 /**
  * Describes the express adapter options contract.
@@ -814,10 +815,17 @@ async function createFrameworkRequest(
   };
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const parsed = await parseMultipartRequest(request, {
+      const resolvedMultipartOptions = {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
+      };
+
+      if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream(request, resolvedMultipartOptions);
+        return;
+      }
+
+      const parsed = await parseMultipartRequest(request, resolvedMultipartOptions);
       frameworkRequest.body = parsed.fields;
       frameworkRequest.files = parsed.files;
       return;

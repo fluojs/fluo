@@ -21,6 +21,7 @@ import {
   markMultipartBodyConsumed,
   type MultipartOptions,
   parseMultipart,
+  parseMultipartStream,
   type UploadedFile,
 } from './multipart.js';
 
@@ -405,6 +406,16 @@ function createDeferredWebFrameworkRequest(
   const hasRequestBody = request.body !== null;
   const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
+      const resolvedMultipartOptions = {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      };
+
+      if (multipartOptions?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream(request, resolvedMultipartOptions);
+        return;
+      }
+
       const materializedRequest = request.clone();
       markMultipartBodyConsumed(request);
       const result = await parseMultipart(createRequestWithSnapshotMetadata(
@@ -412,10 +423,7 @@ function createDeferredWebFrameworkRequest(
         request.url,
         method,
         requestHeaders,
-      ), {
-        ...multipartOptions,
-        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
+      ), resolvedMultipartOptions);
       frameworkRequest.body = result.fields;
       frameworkRequest.files = result.files;
       return;
@@ -482,6 +490,7 @@ function createRequestWithSnapshotMetadata(
   const init: RequestInit & { duplex?: 'half' } = {
     headers: new Headers(headers),
     method,
+    signal: request.signal,
   };
 
   if (request.body) {

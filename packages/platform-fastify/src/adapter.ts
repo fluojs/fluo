@@ -34,7 +34,7 @@ import type {
   MultipartOptions,
   UploadedFile,
 } from '@fluojs/runtime';
-import { parseMultipart } from '@fluojs/runtime/web';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
@@ -90,6 +90,7 @@ const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', '
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 type FastifyNativeRouteMethod = (typeof FASTIFY_NATIVE_ROUTE_METHODS)[number];
+type StreamingMultipartOptions = MultipartOptions & { strategy?: 'stream' };
 
 type RouteDescribingDispatcher = Dispatcher & {
   describeRoutes?: () => readonly HandlerDescriptor[];
@@ -1014,12 +1015,18 @@ function createDeferredFrameworkRequest(
     let files: UploadedFile[] | undefined;
 
     if (isMultipart) {
-      const parsed = await parseMultipartRequest(request, {
+      const resolvedMultipartOptions = {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
-      body = parsed.fields;
-      files = parsed.files;
+      };
+
+      if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
+        body = parseMultipartStream(request.raw, resolvedMultipartOptions);
+      } else {
+        const parsed = await parseMultipartRequest(request, resolvedMultipartOptions);
+        body = parsed.fields;
+        files = parsed.files;
+      }
     }
 
     frameworkRequest.body = body;

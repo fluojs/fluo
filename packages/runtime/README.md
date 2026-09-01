@@ -68,10 +68,11 @@ await app.listen();
 
 ### Streaming multipart consumption
 
-Use `parseMultipartStream(...)` from `@fluojs/runtime/web` when an application route must consume
-large uploaded files without materializing each file as a `Uint8Array`. The existing
-`parseMultipart(...)` API remains the explicit buffered mode. Select exactly one mode for a request:
-buffered and streaming parsing of the same body reject with `MultipartBodyConsumedError`.
+Use `parseMultipartStream(...)` from `@fluojs/runtime/web` for a standalone raw `Request` or
+request-like body when large uploaded files must not be materialized as `Uint8Array` values. The
+existing `parseMultipart(...)` API remains the explicit buffered mode. Select exactly one mode for
+a request: buffered and streaming parsing of the same body reject with
+`MultipartBodyConsumedError`.
 
 ```typescript
 import {
@@ -95,6 +96,34 @@ for await (const part of parseMultipartStream(request, {
   await store(file.stream); // finish or cancel before reading the next part
 }
 ```
+
+For Node.js, Express, Fastify, and Web application dispatch, opt in at application bootstrap with
+`multipart.strategy: 'stream'`. The route receives the same `AsyncIterable<MultipartPart>` through
+`RequestContext.request.body`; adapter dispatch creates the iterator but does not pull or buffer it
+before the route consumes it.
+
+```typescript
+const app = await bootstrapNodejsApplication(AppModule, {
+  multipart: {
+    strategy: 'stream',
+    maxTotalSize: 25 * 1024 * 1024,
+  },
+});
+
+@Controller('/uploads')
+class UploadController {
+  @Post('/')
+  async upload(_input: undefined, context: RequestContext) {
+    for await (const part of context.request.body as AsyncIterable<MultipartPart>) {
+      // Consume each file stream before advancing to the next part.
+    }
+  }
+}
+```
+
+Streaming mode applies bounded field and header defaults. Buffered `parseMultipart(...)` preserves
+its prior acceptance behavior for fields and headers unless `maxFieldSize`, `maxFields`, or
+`maxHeaderSize` is explicitly configured.
 
 `MultipartFilePart.stream` is a Web `ReadableStream<Uint8Array>` with parser-driven
 backpressure: a file body is yielded before the complete request arrives, and the next request
