@@ -16,7 +16,7 @@ import { getCachedDtoMetadata, resolveNestedDto } from './internal/dto-metadata-
 import { getIterableValues, isPlainObject } from './internal/object-utils.js';
 import { getRuleHandler, type NonCustomRule } from './internal/rule-handlers.js';
 import { buildIssue, joinFieldPath, normalizeResult, prefixIssues } from './internal/validation-issues.js';
-import type { ValidationIssue, Validator } from './types.js';
+import type { MaterializeOptions, ValidationIssue, Validator } from './types.js';
 
 function toFieldName(propertyKey: MetadataPropertyKey): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
@@ -116,7 +116,7 @@ async function validateNestedRule(
       continue;
     }
 
-    const nestedDto = createNestedDtoInstance(resolvedDto, entry, context);
+    const nestedDto = createNestedDtoInstance(resolvedDto, entry, context, nestedPath);
     const shouldTrackEntry = trackedEntry && !(entry instanceof resolvedDto)
       ? enterTraversal(trackedEntry, context)
       : false;
@@ -267,13 +267,17 @@ export class DefaultValidator implements Validator {
     throw new DtoValidationError('Validation failed.', issues);
   }
 
-  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
+  async materialize<T>(value: unknown, target: Constructor<T>, options: MaterializeOptions = {}): Promise<T> {
     assertValidRootValue(value, target);
 
     const traversal: NestedTraversalContext = {
       active: new WeakSet<object>(),
       hydrateExistingInstances: true,
+      undeclaredProperties: options.undeclaredProperties ?? 'preserve',
       materialized: new WeakMap<object, WeakMap<Constructor, object>>(),
+      ...(options.undeclaredProperties === 'reject'
+        ? { declaredNestedKeys: new WeakMap<object, ReadonlySet<PropertyKey>>() }
+        : {}),
     };
     const instance = createNestedDtoInstance(target, value, traversal);
     const issues = await collectValidationIssuesInternal(target, instance, {}, traversal);

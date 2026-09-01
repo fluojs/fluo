@@ -1013,6 +1013,30 @@ describe('enforceContractCompanionUpdates', () => {
     expect(enforceGenericCompanions).not.toThrow();
   });
 
+  it('accepts strict validation materialization with bilingual contract companions', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const contractFiles = [
+      'packages/validation/README.md',
+      'packages/validation/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'book/beginner/ch06-validation.md',
+      'book/beginner/ch06-validation.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When
+    const enforceCompanions = () => enforceContractCompanionUpdates(contractFiles);
+
+    // Then
+    expect(enforceCompanions).not.toThrow();
+  });
+
   it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const guidanceFiles = [

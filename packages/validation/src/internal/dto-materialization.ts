@@ -1,16 +1,24 @@
 import type { Constructor } from '@fluojs/core';
 
 import { DtoValidationError } from '../errors.js';
-import type { ValidationIssue } from '../types.js';
+import type { MaterializeOptions, ValidationIssue } from '../types.js';
 import { getCachedDtoMetadata } from './dto-metadata-cache.js';
-import { assignSafeOwnEnumerableProperties, isPlainObject } from './object-utils.js';
+import {
+  assignSafeOwnEnumerableProperties,
+  getIterableValues,
+  isPlainObject,
+  isSafeOwnEnumerableProperty,
+} from './object-utils.js';
+import { joinFieldPath } from './validation-issues.js';
 
 /**
  * Carries invocation-local DTO traversal state across materialization and validation.
  */
 export interface NestedTraversalContext {
   readonly active: WeakSet<object>;
+  readonly declaredNestedKeys?: WeakMap<object, ReadonlySet<PropertyKey>>;
   readonly hydrateExistingInstances?: boolean;
+  readonly undeclaredProperties?: MaterializeOptions['undeclaredProperties'];
   readonly materialized?: WeakMap<object, WeakMap<Constructor, object>>;
 }
 
@@ -45,6 +53,43 @@ function rememberMaterializedInstance(
 
 function canMaterialize<T>(value: unknown, target: Constructor<T>): value is object {
   return value instanceof target || isPlainObject(value);
+}
+
+function collectDeclaredKeys(
+  instance: Record<PropertyKey, unknown>,
+  target: Constructor,
+): Set<PropertyKey> {
+  const metadata = getCachedDtoMetadata(target);
+
+  return new Set<PropertyKey>([
+    ...Reflect.ownKeys(instance),
+    ...metadata.mergedPropertyKeys,
+    ...Array.from(metadata.bindingMap.values()).flatMap((binding) => binding.key === undefined ? [] : [binding.key]),
+  ]);
+}
+
+function rememberConflictingNestedKeys(
+  value: unknown,
+  targets: readonly Constructor[],
+  context?: NestedTraversalContext,
+): void {
+  if (!context?.declaredNestedKeys) {
+    return;
+  }
+
+  const declaredKeys = new Set<PropertyKey>();
+
+  for (const target of targets) {
+    for (const key of collectDeclaredKeys(new target() as Record<PropertyKey, unknown>, target)) {
+      declaredKeys.add(key);
+    }
+  }
+
+  for (const entry of getIterableValues(value) ?? [value]) {
+    if (isPlainObject(entry)) {
+      context.declaredNestedKeys.set(entry, declaredKeys);
+    }
+  }
 }
 
 /**
@@ -91,12 +136,14 @@ export function exitTraversal(value: unknown, context?: NestedTraversalContext):
  * @param target Nested DTO constructor.
  * @param rawValue Raw nested value.
  * @param context Invocation-local traversal state.
+ * @param fieldPrefix Parent path used for undeclared-property issues.
  * @returns The materialized DTO value or the original unsupported value.
  */
 export function createNestedDtoInstance<T>(
   target: Constructor<T>,
   rawValue: unknown,
   context?: NestedTraversalContext,
+  fieldPrefix?: string,
 ): T {
   if (rawValue instanceof target && context?.hydrateExistingInstances !== true) {
     return rawValue as T;
@@ -128,6 +175,31 @@ export function createNestedDtoInstance<T>(
     const metadata = getCachedDtoMetadata(target);
 
     if (isPlainObject(rawValue)) {
+      if (context?.undeclaredProperties === 'reject') {
+        const declaredKeys = collectDeclaredKeys(instance, target);
+        const declaredNestedKeys = context.declaredNestedKeys?.get(rawValue);
+
+        if (declaredNestedKeys) {
+          for (const key of declaredNestedKeys) {
+            declaredKeys.add(key);
+          }
+        }
+        const issues = Reflect.ownKeys(rawValue)
+          .filter((key) => isSafeOwnEnumerableProperty(rawValue, key) && !declaredKeys.has(key))
+          .map((key): ValidationIssue => {
+            const field = fieldPrefix ? joinFieldPath(fieldPrefix, String(key)) : String(key);
+            return {
+              code: 'UNDECLARED_PROPERTY',
+              field,
+              message: `${field} is not declared by the DTO.`,
+            };
+          });
+
+        if (issues.length > 0) {
+          throw new DtoValidationError('Validation failed.', issues);
+        }
+      }
+
       assignSafeOwnEnumerableProperties(instance, rawValue);
 
       for (const propertyKey of metadata.mergedPropertyKeys) {
@@ -138,10 +210,14 @@ export function createNestedDtoInstance<T>(
     }
 
     for (const nestedEntry of metadata.nestedDtoTransforms) {
-      const hasConflictingTarget = metadata.nestedDtoTransforms.some(
-        (candidate) => candidate.propertyKey === nestedEntry.propertyKey && candidate.target !== nestedEntry.target,
+      const nestedTargets = metadata.nestedDtoTransforms
+        .filter((candidate) => candidate.propertyKey === nestedEntry.propertyKey)
+        .map((candidate) => candidate.target);
+      const hasConflictingTarget = nestedTargets.some(
+        (candidate) => candidate !== nestedEntry.target,
       );
       if (hasConflictingTarget) {
+        rememberConflictingNestedKeys(instance[nestedEntry.propertyKey], nestedTargets, context);
         continue;
       }
 
@@ -150,7 +226,10 @@ export function createNestedDtoInstance<T>(
         continue;
       }
 
-      instance[nestedEntry.propertyKey] = transformNestedCollectionValue(currentValue, nestedEntry.target, context);
+      const fieldPath = fieldPrefix
+        ? joinFieldPath(fieldPrefix, String(nestedEntry.propertyKey))
+        : String(nestedEntry.propertyKey);
+      instance[nestedEntry.propertyKey] = transformNestedCollectionValue(currentValue, nestedEntry.target, context, fieldPath);
     }
 
     return instance as T;
@@ -159,7 +238,12 @@ export function createNestedDtoInstance<T>(
   }
 }
 
-function transformNestedValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
+function transformNestedValue(
+  value: unknown,
+  target: Constructor,
+  context: NestedTraversalContext | undefined,
+  fieldPrefix: string,
+): unknown {
   if (value === undefined || value === null) {
     return value;
   }
@@ -172,23 +256,34 @@ function transformNestedValue(value: unknown, target: Constructor, context?: Nes
     return value;
   }
 
-  return createNestedDtoInstance(target, value, context);
+  return createNestedDtoInstance(target, value, context, fieldPrefix);
 }
 
-function transformNestedCollectionValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
+function transformNestedCollectionValue(
+  value: unknown,
+  target: Constructor,
+  context: NestedTraversalContext | undefined,
+  fieldPrefix: string,
+): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => transformNestedValue(item, target, context));
+    return value.map((item, index) => transformNestedValue(item, target, context, `${fieldPrefix}[${String(index)}]`));
   }
 
   if (value instanceof Set) {
-    return new Set(Array.from(value.values(), (item) => transformNestedValue(item, target, context)));
+    return new Set(Array.from(
+      value.values(),
+      (item, index) => transformNestedValue(item, target, context, `${fieldPrefix}[${String(index)}]`),
+    ));
   }
 
   if (value instanceof Map) {
-    return new Map(Array.from(value.entries(), ([key, item]) => [key, transformNestedValue(item, target, context)]));
+    return new Map(Array.from(
+      value.entries(),
+      ([key, item], index) => [key, transformNestedValue(item, target, context, `${fieldPrefix}[${String(index)}]`)],
+    ));
   }
 
-  return transformNestedValue(value, target, context);
+  return transformNestedValue(value, target, context, fieldPrefix);
 }
 
 function buildInvalidRootIssue(): ValidationIssue {
