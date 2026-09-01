@@ -17,7 +17,6 @@ export interface ConditionalRequestResult {
   /** Current representation validators that must remain visible to adapters. */
   readonly validators: ResponseValidators | undefined;
 }
-
 function formatEntityTag(tag: EntityTag): string {
   return `${tag.strength === 'weak' ? 'W/' : ''}"${tag.opaqueValue}"`;
 }
@@ -418,22 +417,4 @@ export function applyResponseValidators(
   if (lastModified !== undefined) {
     response.setHeader('Last-Modified', new Date(lastModified).toUTCString());
   }
-}
-
-/**
- * Writes a bodyless conditional response through every supported adapter facade.
- *
- * @param response Mutable adapter-normalized response.
- * @param outcome Selected non-proceed conditional request outcome.
- * @param validators Current representation validators.
- * @returns A promise that settles after the adapter accepts the bodyless response.
- */
-export async function writeConditionalResponse(
-  response: FrameworkResponse,
-  outcome: Exclude<ConditionalRequestOutcome, 'proceed'>,
-  validators: ResponseValidators | undefined,
-): Promise<void> {
-  applyResponseValidators(response, validators);
-  response.setStatus(outcome === 'not-modified' ? 304 : 412);
-  await response.send(undefined);
 }

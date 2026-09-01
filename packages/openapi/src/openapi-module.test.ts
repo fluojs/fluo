@@ -2335,7 +2335,10 @@ describe('OpenApiModule', () => {
 
     const descriptors = cloneSnapshotValue(
       createHandlerMapping([{ controllerToken: DescriptorStableController }]).descriptors,
-    );
+    ).map((descriptor) => ({
+      ...descriptor,
+      route: { ...descriptor.route },
+    }));
     const extraModels = [StableExtraModel];
     const sources: HandlerSource[] = [{ controllerToken: StableController }];
     const securitySchemes = {
@@ -2362,7 +2365,12 @@ describe('OpenApiModule', () => {
     const openApiModule = OpenApiModule.forRoot(options);
 
     descriptors[0]!.route.path = '/descriptor-mutated';
-    descriptors.push(...createHandlerMapping([{ controllerToken: DescriptorMutatedController }]).descriptors);
+    descriptors.push(
+      ...createHandlerMapping([{ controllerToken: DescriptorMutatedController }]).descriptors.map((descriptor) => ({
+        ...descriptor,
+        route: { ...descriptor.route },
+      })),
+    );
     extraModels.push(MutatedExtraModel);
     sources.push({ controllerToken: MutatedController });
     securitySchemes.apiKeyAuth.name = 'mutated-api-key';

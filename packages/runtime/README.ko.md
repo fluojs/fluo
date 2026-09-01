@@ -140,6 +140,10 @@ Runtime은 adapter가 소유하는 optional `context.response.earlyHints` capabi
 
 Runtime bootstrap은 `@fluojs/http`의 `conditionalRequest` option을 받습니다. Resolver는 명시적인 representation 존재 여부와 optional validator를 반환하며 middleware와 guard 뒤, interceptor와 controller 호출 전에 실행됩니다. Resolver shape, RFC 9110 precedence, `HEAD` 규칙은 [`@fluojs/http` Conditional Requests 계약](../http/README.ko.md#conditional-requests)을 참고하세요.
 
+### Access log observer
+
+`createAccessLogObserver(...)`를 bootstrap `observers` option으로 전달하면 portable request lifecycle record를 애플리케이션 소유 structured logging으로 라우팅할 수 있습니다. Observer는 native adapter에서도 complete fallback path를 선택해 dispatcher lifecycle을 보존합니다. Trusted client identity와 header allowlist 요구사항은 [`@fluojs/http` Access logging 계약](../http/README.ko.md#access-logging)을 참고하세요.
+
 ### 애플리케이션 컨텍스트 (HTTP 제외)
 
 백그라운드 워커나 스크립트의 경우, `createApplicationContext`를 사용하여 HTTP 설정을 건너뛸 수 있습니다.
@@ -195,6 +199,42 @@ const app = await fluoFactory.create(AppModule, {
   filters: [new GlobalErrorFilter()],
 });
 ```
+
+### Content negotiation
+
+`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `contentNegotiation`을 받아 HTTP
+dispatcher에 변경 없이 전달합니다. Application boundary에서 formatter를 한 번 구성하고 route의 허용
+representation은 `@Produces(...)`로 선택하세요.
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+import { fluoFactory } from '@fluojs/runtime';
+
+@Controller('/reports')
+class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      { mediaType: 'application/json', format: JSON.stringify },
+      { mediaType: 'text/plain', format: (value) => `plain:${JSON.stringify(value)}` },
+    ],
+  },
+});
+```
+
+Runtime은 `Accept`를 parse하거나 response policy를 소유하지 않습니다. `@fluojs/http`가 문서화된
+quality, wildcard, suffix, default, malformed-input, 406 의미를 적용하고 성공한 모든 formatter 선택에
+canonical `Vary: Accept`를 작성합니다. Standalone application context는 HTTP dispatcher를 만들지
+않으므로 이 option을 사용하지 않습니다. 자세한 내용은
+[HTTP package contract](../http/README.ko.md#content-negotiation)를 참고하세요.
 
 ### Optional HTML Error Representations
 

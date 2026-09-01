@@ -13,7 +13,10 @@ import type {
   HandlerDescriptor,
   RequestContext,
 } from '../../types.js';
-import { type ResolvedContentNegotiation, writeSuccessResponse } from '../dispatch-response-policy.js';
+import {
+  type ResolvedContentNegotiation,
+  writeSuccessResponse,
+} from '../dispatch-response-policy.js';
 import { isRequestAborted } from '../request-abort.js';
 import type { FastPathExecutionResult } from './eligibility-checker.js';
 

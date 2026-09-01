@@ -22,7 +22,7 @@ async function resolveGuard(definition: GuardLike, requestContext: RequestContex
  * @param context The context.
  * @returns The run guard chain result.
  */
-export async function runGuardChain(definitions: GuardLike[], context: GuardContext): Promise<void> {
+export async function runGuardChain(definitions: readonly GuardLike[], context: GuardContext): Promise<void> {
   if (definitions.length === 0) {
     return;
   }

@@ -85,7 +85,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@nestjs/throttler` global throttler setup | `ThrottlerModule.forRoot(...)` plus explicit `@UseGuards(ThrottlerGuard)` from `@fluojs/throttler` / `@fluojs/http` | Module registration provides the policy and guard provider; route enforcement starts only where the guard is attached. |
 | `@WebSocketGateway()` with `@SubscribeMessage()` and parameter decorators | `@WebSocketGateway()` with `@OnMessage(event?)`, positional handler arguments, and optional `WebSocketRoomService` from `@fluojs/websockets` | fluo websocket handlers receive `(payload, socket, request, socketId)` directly. The stable `socketId` can be passed to `WebSocketRoomService`. There are no Nest-style `@MessageBody()`, `@ConnectedSocket()`, or `@SubscribeMessage()` parameter/decorator rewrites. |
 | NestJS Socket.IO gateway return values, gateway `path`, scoped providers, or `@WebSocketServer()` | `@fluojs/socket.io` plus `@fluojs/websockets` decorators with `@OnMessage(...)`, explicit acknowledgement callbacks, singleton gateway registration, and `@Inject(SOCKETIO_SERVER)` | Socket.IO handlers do not turn return values into implicit emits or ACK replies. fluo maps `@WebSocketGateway({ path: '/chat' })` to the Socket.IO namespace `/chat`, while the Engine.IO request path stays `/socket.io/`; do not carry over a NestJS Engine.IO `path` assumption. Register migrated gateways as singleton providers/controllers because request/transient gateways are warned and skipped. `serverBacked` is unsupported for Socket.IO gateways. Install/import the websockets companion for decorators and inject `SOCKETIO_SERVER` when migrating gateway-server access, multi-room emits, or volatile delivery. |
-| `@nestjs/cache-manager` / `CacheModule.register(...)` / `registerAsync(...)` | `CacheModule.forRoot(...)`, `CacheModule.forRootAsync({ inject, useFactory, global? })`, `CacheService`, and cache decorators from `@fluojs/cache-manager` | Use injected-factory async registration when final store, TTL, namespace, or key strategy depends on DI or bootstrap work. Dependencies must come from bootstrap runtime providers or globally visible exports; NestJS `imports`, `useClass`, and `useExisting` are unsupported. |
+| `@nestjs/cache-manager` / `CacheModule.register(...)` / `registerAsync(...)` | `CacheModule.forRoot(...)`, `CacheModule.forRootAsync({ inject, useFactory, global? })`, `CacheService`, and cache decorators from `@fluojs/cache-manager` | Use synchronous registration after preparing final Redis/custom stores, or injected-factory async registration when final store, TTL, namespace, or key strategy depends on DI or bootstrap work. Async dependencies must come from bootstrap runtime providers or globally visible exports; NestJS `imports`, `useClass`, and `useExisting` are unsupported. Inject `CacheService` for manual cache operations, use `httpKeyStrategy` or `@CacheKey(...)` for request-aware keys, express `ttl` in seconds, map `isGlobal` to module-local `global`, and re-express NestJS store adapters as fluo `CacheStore` values. |
 | `@nestjs/event-emitter` / `@OnEvent()` handlers | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, and `@OnEvent(EventClass)` from `@fluojs/event-bus` | Event routing is class-based, `static eventKey` stabilizes distributed transport channels, handlers are discovered only from singleton providers/controllers, and awaited or background publish work remains in shutdown drain tracking. A listener that throws or rejects is logged and isolated for local and inbound transport dispatch, so other matching listeners continue; that listener failure alone does not reject `publish(...)` or surface through inbound callback completion. |
 | `@nestjs/cqrs` command/query/event handlers and sagas | `CqrsModule.forRoot(...)`, standard `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, and `@Saga(...)` from `@fluojs/cqrs` | CQRS discovery scans singleton providers only, not controllers or emitted design metadata. Commands and queries remain point-to-point; event handlers and sagas fan out by provider token before delegated `@fluojs/event-bus` publication. |
 | `ClientsModule.register(...)`, injected `ClientProxy`, and NestJS broker transport options | `MicroservicesModule.forRoot({ transport })`, `MICROSERVICE` typed as `Microservice`, and transport adapters from `@fluojs/microservices/<transport>` | Registration and the programmatic facade stay on root `@fluojs/microservices`; NATS, Kafka, and RabbitMQ collaborators remain application-owned, and `send()`, `emit()`, and `close()` have distinct completion boundaries described below. |
@@ -172,6 +172,10 @@ Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is support
 - Cache-manager migration supports `CacheModule.forRootAsync({ inject, useFactory, global? })` as an injected-factory path, not a NestJS dynamic-module shape clone. Dependencies must be bootstrap runtime providers or globally visible module exports; parent-local providers and ordinary sibling/parent exports are not visible. Return final options such as `store`, `ttl`, `keyPrefix`, `redis.clientName`, and `httpKeyStrategy` from `useFactory`. The outer `global?` controls module visibility, while `imports`, `useClass`, and `useExisting` are unsupported.
 - NestJS-style cache-key customization should move to fluo's documented key seams instead of subclassing the interceptor. Use a function-valued `httpKeyStrategy` for an application-wide request-aware policy, or `@CacheKey(...)` with a literal key or key factory for handler-local behavior.
 - Custom cache tooling should read exported cache metadata helpers such as `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)` rather than reimplementing private metadata keys.
+- Cache TTL values are seconds, not milliseconds, and `@CacheTTL(ttlSeconds: number)` accepts only a static number. Inspect the installed underlying `cache-manager` dependency/version before converting a NestJS TTL: divide by 1000 only when that dependency generation defines TTLs in milliseconds. Move dynamic per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`.
+- The default HTTP cache key is path-only. `httpKeyStrategy` defaults to `'route'`, so query values are ignored until you select `'route+query'`, a function strategy, or `@CacheKey(...)`.
+- NestJS `isGlobal` becomes fluo `global`, whose default is `false`. Cache providers are module-local unless a migration sets `global: true` or imports `CacheModule.forRoot(...)` into every consuming module.
+- NestJS store adapters such as `cache-manager-redis-store` are not fluo `CacheStore` values. Select the built-in `store: 'redis'` path or pass an object implementing `get`, `set`, `del`, and `reset`, and keep teardown ownership explicit: fluo forwards shutdown only to a store's optional `close()`/`dispose()`, so a directly supplied `redis.client` stays application-owned.
 - Event-bus migration is class-based rather than string-pattern based. Use `@OnEvent(EventClass)`, keep retryable or slow side effects idempotent, and move long-running/retry-heavy work to an explicit queue handoff instead of hiding it in an awaited event handler.
 - Event-bus publisher completion is not an acknowledgement that every listener succeeded. Matching local listener failures are logged and isolated, while other matching listeners continue. A local listener failure alone does not reject `publish(...)`. Inbound transport listeners follow the same isolation rule, so inbound callback completion does not surface isolated listener failures. Publisher completion does not prove that every listener succeeded. Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract. Those failures retain their own separately documented behavior.
 - Use a directly declared `static eventKey` when distributed routing must survive class renames or minification. Transport publication fans out across the concrete event and inherited event channels; an inherited `eventKey` does not silently replace the subclass channel name.
@@ -632,6 +636,48 @@ class OrdersMicroserviceModule {}
 
 Kafka and RabbitMQ keep inbound consumer callbacks pending until handler execution and any request response publication settle, so the broker adapter can choose acknowledgement or retry. That consumer-side boundary remains separate from the producer-side `emit()` promise. During shutdown, close the `Microservice` facade first, then close or drain caller-owned broker resources from the application bootstrap layer.
 
+### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration
+
+`@nestjs/cache-manager` and `@fluojs/cache-manager` expose overlapping cache concepts, but their option names, units, defaults, and ownership do not all carry over. Convert each of the following before reusing a NestJS cache configuration.
+
+- **TTL unit and defaults.** fluo `ttl` is a number of seconds. Before converting a NestJS TTL, inspect the installed underlying `cache-manager` dependency/version: divide by 1000 only when that dependency generation defines TTLs in milliseconds; copying such a value unchanged inflates expiry by 1000x. When `ttl` is omitted, `CacheModule.forRoot(...)` applies `300` seconds on the default memory path and `0` for the `redis` and custom-store paths.
+- **TTL `0` and invalid values.** `ttl: 0` means "no expiry", not "do not cache". A negative or non-finite TTL is treated as invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and the cache write for that handler, so the route falls through to the handler on every request.
+- **Static `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)` stores one static number as route metadata; it accepts no factory, context argument, or async value. A NestJS handler that computed a per-request lifetime must call `CacheService.set(key, value, ttlSeconds)` explicitly instead.
+- **Query-sensitive keys.** `httpKeyStrategy` defaults to `'route'`, which keys entries on the concrete request path only and ignores query values, so `/search?q=a` and `/search?q=b` would share one entry. Select `httpKeyStrategy: 'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` whenever a response varies by query parameters.
+- **`isGlobal` to `global`.** Rename `isGlobal` to `global`. Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules stay module-local. Either set `global: true` or import the returned module into each module that resolves cache providers; otherwise bootstrap fails to resolve them.
+- **Custom store adaptation.** `store` accepts `'memory'`, `'redis'`, or a `CacheStore` object. NestJS store adapters such as `cache-manager-redis-store` do not satisfy that contract; either use the built-in `store: 'redis'` path or wrap the adapter in an object exposing `get`, `set`, `del`, and `reset`. Convert callback/options completion to the Promise result that `CacheStore` expects, map Fluo `ttlSeconds` to the legacy adapter TTL in seconds, and make `reset()` delete only the cache namespace. Never blindly forward `CacheService.reset()` to a whole-database `flushDb`, because that could delete application-owned data outside the configured cache namespace.
+- **Teardown ownership.** Application shutdown closes `CacheService`, which forwards teardown only to a store's optional `close()` or `dispose()` hook. Implement one of those hooks on a custom store that owns sockets, pools, or timers. A raw client passed through `redis.client` is never closed by the module and must be closed from the application lifecycle, while a client resolved through `@fluojs/redis` keeps that package's own lifecycle ownership.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import Redis from 'ioredis';
+
+// Application-owned client: fluo never closes this instance.
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      // If the installed underlying cache-manager generation uses milliseconds,
+      // NestJS `ttl: 60_000` becomes 60 seconds.
+      ttl: 60,
+      // NestJS `isGlobal: true` becomes `global: true`.
+      global: true,
+      // Opt in explicitly when responses vary by query parameters.
+      httpKeyStrategy: 'route+query',
+      store: 'redis',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+class AppModule {}
+
+async function shutdown() {
+  await cacheClient.quit();
+}
+```
+
 ## Removed Concepts
 
 - `@Injectable()` as the default provider marker. Provider registration happens through the module `providers` array.
@@ -644,7 +690,8 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - Assuming every documented platform is part of `fluo new`; starter coverage is defined separately in the support matrix.
 - Assuming `@nestjs/terminus` controller decorators or a separate default liveness route are one-to-one Terminus migration targets.
 - Assuming `@nestjs/throttler` named definitions, global guard registration, or proxy header trust carry over without explicit Fluo wiring.
-- Assuming `@nestjs/cache-manager` async dynamic-module `imports`, `useClass`, `useExisting`, implicit global cache enforcement, or interceptor subclassing carries over. fluo supports injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, explicit `CacheInterceptor` placement, and documented key strategy hooks.
+- Assuming `@nestjs/cache-manager` async dynamic-module `imports`, `useClass`, `useExisting`, implicit global cache enforcement, or interceptor subclassing carries over. fluo supports synchronous `CacheModule.forRoot(...)` and injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, explicit `CacheInterceptor` placement, and documented key strategy hooks.
+- Assuming NestJS cache option units, defaults, or ownership carry over. fluo `ttl` is in seconds with a memory-path default of `300`, `@CacheTTL(...)` takes only a static number, conversion divides a NestJS TTL by `1000` only when the installed underlying `cache-manager` dependency generation defines milliseconds, `httpKeyStrategy` defaults to path-only `'route'`, `global` replaces `isGlobal` and defaults to module-local `false`, and NestJS store adapters must first be adapted to Fluo's `CacheStore` contract, shutdown reaches an adapted custom store only through `close()` or `dispose()`, and directly supplied Redis clients remain application-owned.
 - Assuming the deprecated Mongoose compatibility interceptor or implicit connection ownership should become the primary migration target. fluo keeps connection ownership application-side and prefers service `@Transaction()` plus explicit `requestTransaction(...)` boundaries.
 - Assuming NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, or implicit gateway server injection exists in fluo websocket gateways.
 - Assuming Socket.IO gateway return values become implicit client replies. fluo requires explicit ACK callbacks or raw `SOCKETIO_SERVER` emits.

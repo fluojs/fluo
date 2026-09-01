@@ -1,4 +1,5 @@
 export * from './adapter.js';
+export * from './access-log-observer.js';
 export {
   createByteRangeResponse,
 } from './byte-range-response.js';

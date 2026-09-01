@@ -32,6 +32,7 @@ type WriteErrorResponseOptions = {
   readonly handler?: HandlerDescriptor;
   readonly logger?: DispatcherLogger;
   readonly representation?: HttpErrorRepresentationOptions;
+  readonly varyAccept?: boolean;
 };
 
 function toHttpException(error: unknown): HttpException {
@@ -117,6 +118,10 @@ export async function writeErrorResponse(
 ): Promise<void> {
   if (requestContext.response.committed || isRequestAborted(requestContext.request)) {
     return;
+  }
+
+  if (options.varyAccept) {
+    appendVaryHeader(requestContext.response, 'Accept');
   }
 
   const httpError = toHttpException(error);
