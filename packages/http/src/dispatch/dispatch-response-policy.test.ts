@@ -12,6 +12,7 @@ import {
   Header,
   type MiddlewareContext,
   type Next,
+  Redirect,
 } from '../index.js';
 import {
   registerFrameworkResponseValueFinalizer,
@@ -269,5 +270,87 @@ describe('dispatch response policy', () => {
 
     expect(response.committed).toBe(true);
     expect(response.statusCode).toBe(500);
+  });
+
+  it('retains resolved validators when a custom response writer commits the response', async () => {
+    const htmlEntry = { html: '<main>Validator writer</main>' };
+
+    registerFrameworkResponseWriter(htmlEntry, (context) => {
+      context.applySuccessResponseMetadata();
+      context.response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return context.response.send(htmlEntry.html);
+    });
+
+    @Controller('/validator-writer')
+    class ValidatorWriterController {
+      @Get('/')
+      getValue() {
+        return htmlEntry;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'writer-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00Z'),
+            },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorWriterController }]),
+      rootContainer: new Container().register(ValidatorWriterController),
+    });
+    const response = createResponse();
+
+    // Given: a custom response writer commits the selected representation.
+    // When: the dispatcher writes the successful response.
+    await dispatcher.dispatch(createRequest('/validator-writer'), response);
+
+    // Then: its body and the dispatcher-owned validators are both present.
+    expect(response.body).toBe('<main>Validator writer</main>');
+    expect(response.headers.ETag).toBe('"writer-v1"');
+    expect(response.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+  });
+
+  it('retains resolved validators when a redirect commits the response', async () => {
+    @Controller('/validator-redirect')
+    class ValidatorRedirectController {
+      @Get('/')
+      @Redirect('/destination', 302)
+      getValue() {
+        return { redirected: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'redirect-v1', strength: 'weak' },
+              lastModified: new Date('2026-01-01T00:00:00Z'),
+            },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorRedirectController }]),
+      rootContainer: new Container().register(ValidatorRedirectController),
+    });
+    const response = createResponse();
+
+    // Given: a route commits a redirect response.
+    // When: the dispatcher writes the successful response.
+    await dispatcher.dispatch(createRequest('/validator-redirect'), response);
+
+    // Then: redirect metadata and the selected validators remain visible.
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.Location).toBe('/destination');
+    expect(response.headers.ETag).toBe('W/"redirect-v1"');
+    expect(response.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
   });
 });

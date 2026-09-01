@@ -14,14 +14,15 @@ This document defines the current request execution contract implemented by `@fl
 6. Matched route params are copied into `requestContext.request.params`, then observers may receive `onHandlerMatched`.
 7. Module-level middleware attached to the matched handler runs after global middleware and before guard execution.
 8. `runGuardChain(...)` resolves guards from the request container and throws `ForbiddenException` when any guard returns `false`.
-9. The interceptor chain is composed from global interceptors followed by route interceptors.
-10. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
-11. The controller method receives `(input, requestContext)` and returns the handler result.
-12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
-13. A handler that returns a manual `SseResponse` keeps its dispatch open until explicit close, request abort, or raw stream close. Only after that completion do middleware settle, request observers receive success and finish, and request-scoped resources dispose.
-14. After module-level and application-level middleware have fully settled, including their work after `await next()`, the dispatcher emits `onRequestSuccess` with the handler result.
-15. If any stage throws, including middleware work after `next()` returns, the dispatcher emits `onRequestError` without a preceding success notification, then runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
-16. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
+9. When configured, `conditionalRequest.resolve(...)` runs after application/module middleware and guards, but before interceptors and controller invocation. A `304` or `412` therefore never bypasses authorization or middleware-owned audit work.
+10. The interceptor chain is composed from global interceptors followed by route interceptors.
+11. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
+12. The controller method receives `(input, requestContext)` and returns the handler result.
+13. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, validators, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
+14. A handler that returns a manual `SseResponse` keeps its dispatch open until explicit close, request abort, or raw stream close. Only after that completion do middleware settle, request observers receive success and finish, and request-scoped resources dispose.
+15. After module-level and application-level middleware have fully settled, including their work after `await next()`, the dispatcher emits `onRequestSuccess` with the handler result.
+16. If any stage throws, including middleware work after `next()` returns, the dispatcher emits `onRequestError` without a preceding success notification, then runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
+17. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
 
 ## Error Representation Boundary
 
@@ -66,6 +67,14 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 | Handler lookup | `HandlerMapping.match(request)` returns one `HandlerMatch` containing the descriptor and extracted params, or `undefined` when no route matches. |
 | Missing route behavior | `matchHandlerOrThrow(...)` throws `HandlerNotFoundError` for unmatched method and path combinations. |
 | Response defaults | `writeSuccessResponse(...)` defaults `POST` to `201`, `DELETE` and `OPTIONS` with `undefined` payload to `204`, and other successful routes to `200` unless route metadata overrides the status. |
+
+## Conditional Requests
+
+`BootstrapApplicationOptions.conditionalRequest` gives the dispatcher a resolver for the selected representation. It returns either `{ exists: false }` when no representation exists or `{ exists: true, validators? }` when one exists, with optional `ETag` and `Last-Modified` validators. The dispatcher evaluates the resolver after route selection, application/module middleware, and guards, but before interceptors or the controller handler, so conditional outcomes never bypass authorization or middleware-owned audit work.
+
+The policy follows RFC validator precedence: `If-Match` takes precedence over `If-Unmodified-Since`; `If-None-Match` takes precedence over `If-Modified-Since`. `If-Match` uses strong comparison, while `If-None-Match` uses weak comparison. A failed unsafe precondition produces a bodyless `412`; a fresh safe representation produces a bodyless `304`. Both responses retain resolved validators. `HEAD` receives the same validators and status as `GET`; framework-managed response writing suppresses its body. An explicit `@Head` handler remains an independent route, and custom response writers own body emission, including preserving the bodyless `HEAD` contract.
+
+The dispatcher applies validators through the portable `FrameworkResponse` facade. Node.js, Express, Fastify, Bun, Deno, and Cloudflare Workers therefore expose identical conditional-response headers and body suppression.
 
 ## Middleware Constraints
 

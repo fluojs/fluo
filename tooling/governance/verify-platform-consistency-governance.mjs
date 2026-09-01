@@ -911,7 +911,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // where ConfigModule never reads external secret Providers itself and
   // ConfigService.get/getOrThrow accept a single key with no NestJS
   // default-value or options overload, plus JWT refresh-token-specific HMAC
-  // algorithm policy separation from narrow access-token algorithm allowlists.
+  // algorithm policy separation from narrow access-token algorithm allowlists,
+  // plus HTTP conditional-request middleware/guard ordering, representation
+  // existence, conditional/HEAD response ownership, and cross-adapter
+  // conformance.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),

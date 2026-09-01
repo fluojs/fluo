@@ -160,7 +160,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - `ThrottlerGuard`와 `keyGenerator`는 HTTP `GuardContext`와 `MiddlewareContext`를 소비하므로 WebSocket, GraphQL, RPC, queue transport 정책이 아니다. 각 transport 경계에서 transport-owned guard 또는 middleware로 동등한 제한을 구현하세요.
 - NestJS의 persisted throttle window가 fluo에서 계속된다고 가정하면 안 된다. 두 패키지는 서로 다른 bucket key와 storage call contract를 사용하므로 기본 migration은 새 window로 시작한다. 연속성이 필요하면 application-owned compatibility store를 제공하거나 기존 window가 만료되는 것을 허용하는 bounded cutover를 사용하세요.
 - `@fluojs/platform-express`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요하며 Express를 host engine으로만 보존한다. 이 bounded range는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 listener-level RFC `QUERY` ingress를 정확하게 유지한다. NestJS HTTP adapter를 교체하기 전에 controller와 provider를 TC39 표준 데코레이터로 마이그레이션하고, class-level `@Inject(...)`로 constructor token을 선언하며, 명시적 module/provider registration을 사용한다. `experimentalDecorators`와 `emitDecoratorMetadata`는 비활성화한 상태로 유지해야 하며, HTTP host 변경은 NestJS decorator, reflection metadata, implicit dependency-discovery semantics를 보존하지 않는다.
-- `@fluojs/platform-express`는 implicit middleware translation layer로 동작하지 않는다. Adapter가 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않는다. NestJS 또는 Express migration에서 가져온 native Express/Connect `(req, res, next)` middleware는 Express routing과 fluo dispatch보다 먼저 배열 순서대로 실행되는 adapter의 명시적 `nativeMiddleware` 옵션으로 construction-time에 제공해야 한다. bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않는다. Handler가 `next()`를 호출하면 fluo로 계속 진행하고 response를 끝내면 진행하지 않는다. Native failure는 Express error chain에 남고 native middleware resource는 애플리케이션이 소유한다. 이식 가능한 동작은 fluo `Middleware`로 재작성한 뒤 `fluoFactory.create({ middleware })`에 넣는 방식을 우선한다.
+- `@fluojs/platform-express`는 implicit middleware translation layer로 동작하지 않는다. Adapter가 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않는다. NestJS 또는 Express migration에서 가져온 native Express/Connect `(req, res, next)` middleware는 Express routing과 fluo dispatch보다 먼저 배열 순서대로 실행되는 adapter의 명시적 `nativeMiddleware` 옵션으로 construction-time에 제공해야 한다. bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않는다. Handler가 `next()`를 호출하면 fluo로 계속 진행하고 response를 끝내면 진행하지 않는다. Native failure는 Express error chain에 남고 native middleware resource는 애플리케이션이 소유한다. 이식 가능한 동작은 fluo `Middleware`로 재작성한 뒤 `fluoFactory.create(AppModule, { middleware })`에 넣는 방식을 우선한다.
 - Forwarded client IP header는 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서 `trustProxyHeaders: true`를 설정한 경우에만 사용된다.
 - Throttling된 응답에서 보장되는 metadata는 HTTP `429`와 `Retry-After`다. 추가 rate-limit header나 body shape는 애플리케이션 경계에서 더한다.
 - WebSocket migration은 decorator-for-decorator 치환이 아닙니다. `@fluojs/websockets`의 `@OnMessage(event?)`를 사용하고, handler 입력은 `(payload, socket, request, socketId)` positional argument로 읽으며, room membership 또는 broadcast에는 NestJS gateway server injection이나 parameter decorator가 그대로 이어진다고 가정하지 말고 `WebSocketRoomService`를 사용합니다. `WebSocketRoomService`는 runtime lifecycle service가 구현하는 type-only contract이며, `@Inject(...)`로 lifecycle service token(root entrypoint: `WebSocketGatewayLifecycleService`; 명시적 Node subpath: `NodeWebSocketGatewayLifecycleService`; 다른 runtime subpath: 해당 `*WebSocketGatewayLifecycleService`)을 주입하고 constructor parameter를 `WebSocketRoomService`로 type 지정하세요. Root `@fluojs/websockets`와 `@fluojs/websockets/node` module path는 Node.js default이며 upgrade guard가 `IncomingMessage`를 받습니다. Bun, Deno, Cloudflare Workers migration은 guard/request type과 runtime lifecycle service가 올바른 subpath boundary에 머물도록 `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`에서 import해야 합니다. Room broadcast backpressure는 Node.js 기반 adapter만 적용하며, fetch-style runtime은 room broadcast에 backpressure policy를 적용하지 않습니다. Raw WebSocket gateway 반환값은 기본적으로 await된 뒤 무시됩니다. Reply는 runtime socket argument로 명시적으로 보내거나 `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`로 올바른 `{ event, data? }` return reply를 opt-in하세요.
@@ -719,6 +719,50 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 
 `@Injectable()`을 제거할 때 codemod는 필요한 `import type` binding을 유지하고 obsolete `@Injectable` import binding만 제거합니다. 다른 NestJS runtime value import는 제거하지 않습니다. `Optional`처럼 변환되지 않는 value는 수동 검토를 위해 남습니다. 남아 있는 모든 `@nestjs/common` import를 수동으로 검증한 뒤 NestJS dependency를 제거하기 전에 마이그레이션하거나 제거하세요.
 
+## HTTP 마이그레이션 경계
+
+### route grammar는 NestJS보다 좁다
+
+| NestJS route 선언 | fluo 마이그레이션 |
+| --- | --- |
+| `assets/*`, `:path*`, `(.*)` 같은 wildcard 및 catch-all | 명시적인 route를 정의하세요. fluo는 literal segment와 segment 전체를 차지하는 `:param` placeholder만 지원하며, 넓은 matching은 middleware-only입니다. |
+| `:id(\\d+)`, `:id?`, `report-:id` 같은 regex-like, optional, mixed-segment parameter | 동작을 명시적인 route로 나누고 바인딩된 값을 application code에서 검증하세요. `*`, `?`, `+`, grouping token, bracket, brace, backslash, 그리고 완전한 `:param` segment 밖의 `:`는 거부됩니다. |
+
+NestJS router가 제공하는 HTTP wildcard 지원을 fluo에서 추론하면 안 됩니다. fluo의 `ALL` method는 하나의 명시적인 path에서 모든 HTTP method를 선택할 수 있지만 path grammar를 넓히지는 않습니다. catch-all 마이그레이션을 설계하기 전에 [HTTP Catch-All Route Grammar Decision](../architecture/http-catch-all-route-grammar.ko.md)을 확인하세요.
+
+### 전역 pipeline 등록은 bootstrap에 둔다
+
+NestJS의 application-wide pipeline 호출은 DI provider token이 아니라 `FluoFactory.create(...)` option으로 매핑됩니다:
+
+```ts
+const application = await FluoFactory.create(AppModule, {
+  middleware: [new RequestLogMiddleware()],
+  interceptors: [new EnvelopeInterceptor()],
+  filters: [new ApiExceptionFilter()],
+});
+```
+
+| NestJS 등록 | fluo 마이그레이션 |
+| --- | --- |
+| `app.use(...)` | bootstrap에서 portable `middleware`를 제공하세요. NestJS/Express `(req, res, next)` middleware를 `FluoFactory.create(AppModule, { middleware })`로 그대로 옮기면 안 됩니다. portable contract는 `handle(MiddlewareContext, next)`이며, Express 전용 handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 두세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
+| `app.useGlobalInterceptors(...)` | bootstrap에서 `interceptors`를 제공하세요. |
+| `app.useGlobalFilters(...)` | bootstrap에서 `filters`를 제공하세요. 이것이 shipped filter registration의 전부입니다. filter는 선언 순서대로 fluo 내장 error writer보다 먼저 실행되며, `true`를 반환한 첫 filter가 chain을 멈춥니다. |
+| `app.useGlobalGuards(...)` 또는 `APP_GUARD` | application-wide guard array는 없습니다. 필요한 각 controller 또는 handler에 `@UseGuards(...)`를 명시적으로 두고, 이 반복이 의도적이라면 application-owned shared decorator 또는 base-controller convention을 사용하세요. |
+
+`APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, `APP_PIPE`는 NestJS 전용 provider token입니다. 이를 fluo `providers` entry로 등록하면 injectable이 될 뿐 전역 HTTP pipeline을 구성하지는 않습니다. `APP_*` discovery에 의존하지 말고 앞의 bootstrap array, 명시적인 guard metadata, fluo의 binding/validation contract를 사용하세요.
+
+### multipart file은 portable request seam을 사용한다
+
+`FileInterceptor`, `FilesInterceptor`, `@UploadedFile()`, `@UploadedFiles()`, Multer 전용 request object를 fluo로 그대로 옮기면 안 됩니다. host adapter가 `RequestContext.request.files`에 portable multipart value를 제공하므로 active request context에서 그 array를 읽고, array가 없을 수 있음을 의도적으로 처리하세요:
+
+```ts
+import { assertRequestContext } from '@fluojs/http';
+
+const files = assertRequestContext().request.files ?? [];
+```
+
+각 file은 `fieldname`, `originalname`, `mimetype`, `buffer`, `size`를 가진 portable `FrameworkRequestFile`입니다. storage, validation, application policy는 adapter-specific upload interceptor 밖에 두세요.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.ko.md)
@@ -727,3 +771,7 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 - [CQRS Contract](../architecture/cqrs.ko.md)
 - [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.ko.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.ko.md)
+- [Book Chapter 5: Routing and Controllers](../../book/beginner/ch05-routing-controllers.ko.md)
+- [Book Chapter 9: Guards and Interceptors](../../book/beginner/ch09-guards-interceptors.ko.md)
+- [Book Chapter 11: Request Pipeline Anatomy](../../book/advanced/ch11-request-pipeline.ko.md)
+- [Book Chapter 12: Execution Chain and Exception Chain](../../book/advanced/ch12-execution-chain.ko.md)
