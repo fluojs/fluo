@@ -1,4 +1,14 @@
-import { mkdir, mkdtemp, rename, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  rename,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+  type FileHandle,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,6 +17,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNodeFileSystemAssetSource } from '../node.js';
 
 const containmentTestState = vi.hoisted(() => ({
+  closedPaths: [] as string[],
+  openedPaths: [] as string[],
+  onHandle: undefined as undefined | ((path: string, handle: FileHandle) => void),
   onOpen: undefined as undefined | ((path: string) => Promise<void>),
 }));
 
@@ -16,8 +29,19 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...actual,
     async open(...args: Parameters<typeof actual.open>) {
-      await containmentTestState.onOpen?.(String(args[0]));
-      return await actual.open(...args);
+      const path = String(args[0]);
+      await containmentTestState.onOpen?.(path);
+      const handle = await actual.open(...args);
+      containmentTestState.openedPaths.push(path);
+      const close = handle.close.bind(handle);
+
+      handle.close = async () => {
+        containmentTestState.closedPaths.push(path);
+        await close();
+      };
+      containmentTestState.onHandle?.(path, handle);
+
+      return handle;
     },
   };
 });
@@ -78,6 +102,10 @@ function openAssetSource(asset: ReturnType<typeof requireStaticAsset>): Readable
 }
 
 afterEach(async () => {
+  containmentTestState.closedPaths.splice(0);
+  containmentTestState.openedPaths.splice(0);
+  containmentTestState.onHandle = undefined;
+  containmentTestState.onOpen = undefined;
   await Promise.all(temporaryDirectories.splice(0).map(async (directory) => {
     await rm(directory, { force: true, recursive: true });
   }));
@@ -130,6 +158,86 @@ describe('Node filesystem static asset source', () => {
     }
 
     await expect(readBytes(selected.source())).resolves.toEqual(Uint8Array.from([4, 5, 6]));
+  });
+
+  it('closes the opened FileHandle after snapshotting a successful asset', async () => {
+    const root = await createAssetDirectory();
+    const path = join(root, 'app.js');
+    await writeFile(path, Uint8Array.of(1));
+    const source = createNodeFileSystemAssetSource({ root });
+
+    await expect(source.resolve('app.js', {
+      acceptedEncodings: ['identity'],
+    })).resolves.toBeDefined();
+
+    expect(containmentTestState.closedPaths).toEqual(containmentTestState.openedPaths);
+  });
+
+  it('closes the opened FileHandle after rejecting an inode mismatch', async () => {
+    const root = await createAssetDirectory();
+    const path = join(root, 'app.js');
+    await writeFile(path, Uint8Array.of(1));
+    containmentTestState.onHandle = (_openedPath, handle) => {
+      const stat = handle.stat.bind(handle);
+      handle.stat = (async (options) => {
+        const metadata = await stat(options);
+
+        return Object.assign(Object.create(Object.getPrototypeOf(metadata)), metadata, {
+          ino: BigInt(metadata.ino) + 1n,
+        });
+      }) as typeof handle.stat;
+    };
+    const source = createNodeFileSystemAssetSource({ root });
+
+    await expect(source.resolve('app.js', {
+      acceptedEncodings: ['identity'],
+    })).resolves.toBeUndefined();
+
+    expect(containmentTestState.closedPaths).toEqual(containmentTestState.openedPaths);
+  });
+
+  it.each([
+    ['metadata probe', 'stat'],
+    ['snapshot read', 'readFile'],
+  ] as const)(
+    'closes the opened FileHandle when the %s fails',
+    async (_operation, method) => {
+      const root = await createAssetDirectory();
+      const path = join(root, 'app.js');
+      await writeFile(path, Uint8Array.of(1));
+      const failure = new Error(`${method} failed`);
+      containmentTestState.onHandle = (_openedPath, handle) => {
+        if (method === 'stat') {
+          handle.stat = (async () => {
+            throw failure;
+          }) as typeof handle.stat;
+        } else {
+          handle.readFile = (async () => {
+            throw failure;
+          }) as typeof handle.readFile;
+        }
+      };
+      const source = createNodeFileSystemAssetSource({ root });
+
+      await expect(source.resolve('app.js', {
+        acceptedEncodings: ['identity'],
+      })).rejects.toBe(failure);
+
+      expect(containmentTestState.closedPaths).toEqual(containmentTestState.openedPaths);
+    },
+  );
+
+  it('closes the opened FileHandle while determining a 406 response', async () => {
+    const root = await createAssetDirectory();
+    const path = join(root, 'app.js');
+    await writeFile(path, Uint8Array.of(1));
+    const source = createNodeFileSystemAssetSource({ root });
+
+    await expect(source.resolve('app.js', {
+      acceptedEncodings: [],
+    })).resolves.toEqual({ notAcceptable: true });
+
+    expect(containmentTestState.closedPaths).toEqual(containmentTestState.openedPaths);
   });
 
   it('retains the opened file when the resolved pathname is replaced', async () => {

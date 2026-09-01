@@ -918,12 +918,6 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
 }
 
 function disableNativeCompression(reply: FastifyReply): void {
-  const compression = Reflect.get(reply, 'compress');
-
-  if (typeof compression === 'function') {
-    Reflect.apply(compression, reply, [false]);
-  }
-
   const cacheControl = reply.getHeader('cache-control');
   const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
 

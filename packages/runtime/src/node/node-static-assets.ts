@@ -56,7 +56,9 @@ export interface NodeFileSystemAssetSourceOptions {
  * Creates a Node-only filesystem source for {@link StaticAssetSource}.
  *
  * @param options Existing root directory and optional precompressed sibling policy.
- * @returns An explicit portable source that lazily opens verified files.
+ * @returns An explicit portable source that eagerly snapshots each verified
+ * selected file into memory, closes its `FileHandle`, and replays only that
+ * immutable byte snapshot through `StaticAsset.source`.
  * @throws {TypeError} When the root is empty, missing, or not a directory.
  */
 export function createNodeFileSystemAssetSource(

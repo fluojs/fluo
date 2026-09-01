@@ -160,7 +160,13 @@ export interface FrameworkResponseStream {
   flush?(): void;
   /** Subscribes to transport closure and returns an optional remover. */
   onClose?(listener: () => void): (() => void) | void;
-  /** Subscribes to transport failures, including an `undefined` failure value. */
+  /**
+   * Subscribes to one transport failure, including an `undefined` failure value.
+   *
+   * The optional remover stops future delivery and should be called when the
+   * streaming operation settles. A reported failure is an occurrence, not a
+   * truthiness check: consumers must propagate even an `undefined` value.
+   */
   onError?(listener: (error: unknown) => void): (() => void) | void;
   waitForDrain?(): Promise<void>;
   /** Writes one chunk; `false` requires callers to await `waitForDrain()`. */

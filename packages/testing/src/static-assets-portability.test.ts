@@ -16,6 +16,7 @@ type BootstrapStaticAssetsApplication = (
   rootModule: ModuleType,
   options: {
     compression: true;
+    configureFastify?: Parameters<typeof bootstrapFastifyApplication>[1]['configureFastify'];
     cors: false;
     middleware: [ReturnType<typeof createStaticAssetsMiddleware>];
     port: 0;
@@ -37,7 +38,12 @@ function createAssetSource(): StaticAssetSource {
       return {
         contentType: 'application/javascript',
         size: bytes.byteLength,
-        source: bytes,
+        source: () => new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
         validators: {
           etag: { opaqueValue: 'asset-v1', strength: 'strong' },
           lastModified: new Date('2026-01-01T00:00:00Z'),
@@ -209,5 +215,28 @@ describe('static asset real-listener portability', () => {
 
   it('serves static assets through the Fastify listener', async () => {
     await assertStaticAssetsOverRealListener(bootstrapFastifyApplication, true);
+  });
+
+  it('keeps streamed static GET, HEAD, 304, and range bytes untouched by Fastify compression-compatible hooks', async () => {
+    await assertStaticAssetsOverRealListener(async (rootModule, options) =>
+      await bootstrapFastifyApplication(rootModule, {
+        ...options,
+        configureFastify(app) {
+          app.decorateReply('compress', () => {
+            throw new Error('Static responses must not call an adapter-specific compression API.');
+          });
+          app.addHook('onSend', async (_request, reply, payload) => {
+            const cacheControl = reply.getHeader('cache-control');
+            const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
+
+            if (/\bno-transform\b/i.test(value)) {
+              return payload;
+            }
+
+            return 'transformed-by-compression';
+          });
+        },
+      }),
+    true);
   });
 });

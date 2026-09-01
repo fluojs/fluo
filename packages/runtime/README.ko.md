@@ -280,8 +280,11 @@ import {
   bootstrapNodeApplication,
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
+  createNodeFileSystemAssetSource,
   createNodeHttpAdapter,
   runNodeApplication,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
 } from '@fluojs/runtime/node';
 ```
 
@@ -296,6 +299,7 @@ const adapter = createNodeHttpAdapter({
 
 - `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거입니다. 기본값은 pretty 형식입니다. 더 간결한 `[fluo] LEVEL [context] message` 줄을 원하면 `{ mode: 'minimal' }`, 런타임 로거 출력을 숨기려면 `{ mode: 'silent' }`, 낮은 심각도 메시지를 걸러내려면 `{ level: 'warn' }` 같은 threshold, 결정적인 비컬러 출력을 원하면 `{ color: false }`를 전달하세요.
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
+- `createNodeFileSystemAssetSource(options)`: `@fluojs/http`의 `StaticAssetSource` contract를 구현하는 Node 전용 filesystem source입니다. `NodeFileSystemAssetSourceOptions`는 `{ root, precompressed }` 경계를 이름 붙이고 `NodeFileSystemAssetPrecompression`은 `.br` / `.gz` sibling 선택을 제어합니다. 허용된 각 representation은 안전하게 열어 immutable in-memory byte snapshot으로 즉시 복사하고 middleware response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열지 않습니다. 따라서 애플리케이션 owner는 선택된 asset 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 snapshot byte를 설명합니다.
 - `createNodeHttpAdapter()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`는 0 이상의 정수만 받습니다.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: 직접 Node runtime flow에서 사용하는 Node 전용 부트스트랩 헬퍼.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.

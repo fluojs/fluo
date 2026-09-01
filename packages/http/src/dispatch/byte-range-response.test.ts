@@ -563,10 +563,9 @@ describe('single byte range response', () => {
   });
 
   it.each(['request signal', 'response close'] as const)(
-    'awaits stream cancellation and releases blocked drain when %s aborts the response',
+    'settles despite never-settling stream cancellation when %s aborts the response',
     async (cancellationSurface) => {
       const abortController = new AbortController();
-      const cancellation = createDeferred<void>();
       const cancellationStarted = createDeferred<void>();
       let cancelCalls = 0;
 
@@ -578,7 +577,7 @@ describe('single byte range response', () => {
             cancel() {
               cancelCalls += 1;
               cancellationStarted.resolve();
-              return cancellation.promise;
+              return new Promise<void>(() => {});
             },
             start(controller) {
               controller.enqueue(Uint8Array.from([0, 1, 2]));
@@ -607,7 +606,6 @@ describe('single byte range response', () => {
       }
 
       await cancellationStarted.promise;
-      cancellation.resolve();
       await expect(dispatch).resolves.toBeUndefined();
 
       expect(cancelCalls).toBe(1);
@@ -781,6 +779,7 @@ describe('single byte range response', () => {
         return createByteRangeResponse(() => new ReadableStream<Uint8Array>({
           cancel() {
             cancelCalls += 1;
+            return new Promise<void>(() => {});
           },
           start(controller) {
             controller.enqueue(Uint8Array.of(1));

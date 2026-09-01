@@ -280,8 +280,11 @@ import {
   bootstrapNodeApplication,
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
+  createNodeFileSystemAssetSource,
   createNodeHttpAdapter,
   runNodeApplication,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
 } from '@fluojs/runtime/node';
 ```
 
@@ -296,6 +299,7 @@ For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`
 
 - `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
+- `createNodeFileSystemAssetSource(options)`: Node-only filesystem implementation of the `@fluojs/http` `StaticAssetSource` contract. `NodeFileSystemAssetSourceOptions` names its `{ root, precompressed }` boundary and `NodeFileSystemAssetPrecompression` selects `.br` / `.gz` siblings. Each accepted representation is securely opened, eagerly copied into an immutable in-memory byte snapshot, and its `FileHandle` is closed before middleware response writing. The returned `source()` only replays that snapshot; it never reopens the pathname. Application owners therefore bound memory by the selected asset size, while `size` and the strong `ETag` describe those exact snapshot bytes.
 - `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
