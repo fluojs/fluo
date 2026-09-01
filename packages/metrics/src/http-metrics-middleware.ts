@@ -83,6 +83,16 @@ export class HttpMetricsMiddleware implements Middleware {
   private readonly pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   private readonly unknownPathLabel: string;
 
+  /**
+   * Create the built-in HTTP request collectors in a Prometheus registry.
+   *
+   * @param registry Registry that owns or reuses the built-in HTTP collectors.
+   * @param options HTTP metric label and duration histogram configuration.
+   * @throws {Error} When raw path labels are configured without the explicit unsafe opt-in.
+   * @throws {Error} When duration histogram bucket boundaries are not finite and strictly increasing.
+   * @throws {Error} When an application-owned collector uses a built-in HTTP collector name.
+   * @throws {Error} When a reused framework collector has a different label schema or HTTP instrumentation configuration.
+   */
   constructor(registry: Registry, options: HttpMetricsMiddlewareOptions = {}) {
     const collectorConfiguration = resolveHttpMetricsCollectorConfiguration(options);
 
