@@ -12,6 +12,8 @@ NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-fr
 
 NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 one-argument `NestFactory.create(AppModule)` bootstrap을 재작성하며, 지원하지 않는 bootstrap variant는 diagnostic과 함께 변경하지 않고 명시적으로 선택한 adapter-independent transform은 bootstrap을 변경하지 않는다.
 
+NestJS metrics migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있으며, 의도적으로 지원하지 않는 Prometheus convenience는 [NestJS parity gaps](./contracts/nestjs-parity-gaps.ko.md)에 기록한다.
+
 NestJS OpenAPI migration map은 생성 문서의 세 가지 차이를 보존한다. fluo는 명시적으로 선언한 응답을 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 `ErrorResponse`를 추가하며 legacy client에는 `defaultErrorResponsesPolicy: 'omit'`을 사용한다. 생성된 `operationId`가 legacy name과 달라 client가 이를 요구하면 `documentTransform`을 사용한다. `OpenApiModule.forRootAsync(...)`에서는 이미 등록한 route를 factory-returned path로 다시 구성할 수 없으므로 `documentPath`와 `uiPath`를 `inject`, `useFactory(...)`와 같은 바깥 registration object에 둔다.
 
 ## Hard Constraints
