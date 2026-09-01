@@ -111,6 +111,39 @@ export function readFirstNonEmptyRequestHeaderValue(
 }
 
 /**
+ * Reads and joins every non-empty request header field value in wire order.
+ *
+ * @param request Adapter-normalized request carrying the inbound headers map.
+ * @param name Header name to resolve case-insensitively.
+ * @returns Comma-delimited values from every matching field, or `undefined` when all are blank.
+ */
+export function readJoinedNonEmptyRequestHeaderValues(
+  request: FrameworkRequest,
+  name: string,
+): string | undefined {
+  const normalizedHeaderName = normalizeHeaderName(name);
+
+  if (!normalizedHeaderName) {
+    return undefined;
+  }
+
+  const values: string[] = [];
+
+  for (const [headerName, value] of Object.entries(request.headers)) {
+    if (headerName.toLowerCase() !== normalizedHeaderName) {
+      continue;
+    }
+
+    const normalizedValue = readJoinedNonEmptyHeaderValue(value);
+    if (normalizedValue !== undefined) {
+      values.push(normalizedValue);
+    }
+  }
+
+  return values.length > 0 ? values.join(',') : undefined;
+}
+
+/**
  * Appends one or more fields to the response `Vary` header with case-insensitive deduplication.
  *
  * @param response Mutable framework response facade that owns the header map.

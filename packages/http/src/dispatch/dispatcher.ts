@@ -32,6 +32,7 @@ import type {
   RequestObserverLike,
 } from '../types.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
+import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import {
@@ -1072,6 +1073,7 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
     ...(context.options.errorRepresentation === undefined
       ? {}
       : { representation: context.options.errorRepresentation }),
+    ...(isContentNegotiationNotAcceptableException(dispatchError) ? { varyAccept: true } : {}),
   });
 }
 

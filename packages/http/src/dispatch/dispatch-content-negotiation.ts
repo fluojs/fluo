@@ -1,5 +1,5 @@
 import { NotAcceptableException } from '../exceptions.js';
-import { readFirstNonEmptyRequestHeaderValue } from '../header-helpers.js';
+import { readJoinedNonEmptyRequestHeaderValues } from '../header-helpers.js';
 import type {
   ContentNegotiationOptions,
   FrameworkRequest,
@@ -25,20 +25,34 @@ export interface ResolvedContentNegotiation {
 
 const NO_ACCEPTABLE_REPRESENTATION_MESSAGE = 'No acceptable response representation found.';
 
+class ContentNegotiationNotAcceptableException extends NotAcceptableException {}
+
 function normalizeMediaType(value: string): string {
   return value.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
 function readAcceptHeader(request: FrameworkRequest): string | undefined {
-  return readFirstNonEmptyRequestHeaderValue(request, 'accept');
+  return readJoinedNonEmptyRequestHeaderValues(request, 'accept');
 }
 
 function parseQuality(value: string): number | undefined {
-  if (!/^(?:0(?:\.\d{1,3})?|1(?:\.0{1,3})?)$/.test(value)) {
+  if (!/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(value)) {
     return undefined;
   }
 
   return Number(value);
+}
+
+/**
+ * Determines whether an error originated from response content negotiation.
+ *
+ * @param error Candidate error emitted while selecting a response formatter.
+ * @returns Whether the error requires `Vary: Accept` on its representation.
+ */
+export function isContentNegotiationNotAcceptableException(
+  error: unknown,
+): error is NotAcceptableException {
+  return error instanceof ContentNegotiationNotAcceptableException;
 }
 
 function isValidMediaRange(mediaRange: string): boolean {
@@ -272,7 +286,7 @@ export function selectResponseFormatter(
   );
 
   if (!allowedFormatters.length) {
-    throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+    throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
   const defaultFormatter = resolveDefaultFormatter(allowedFormatters, allowedNormalizedMediaTypes, contentNegotiation);
@@ -285,7 +299,7 @@ export function selectResponseFormatter(
   const acceptTokens = parseAcceptHeader(acceptHeader);
 
   if (!acceptTokens.length) {
-    throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+    throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
   let selectedFormatter: ResponseFormatter | undefined;
@@ -324,5 +338,5 @@ export function selectResponseFormatter(
     return selectedFormatter;
   }
 
-  throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+  throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
 }

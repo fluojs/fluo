@@ -42,6 +42,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '../index.js';
+import { NotAcceptableException } from '../exceptions.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 
@@ -1486,6 +1487,96 @@ describe('dispatcher runtime', () => {
     expect(response.body).toBe('plain:{"ok":true}');
   });
 
+  it('combines all duplicate-case Accept field values in wire order', async () => {
+    @Controller('/negotiation-combined')
+    class NegotiationCombinedController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationCombinedController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationCombinedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-combined/formatted', 'GET', {
+        Accept: ['application/json;q=0.8'],
+        aCcEpT: ['text/plain;q=0.9'],
+      }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
+  it('uses the configured default formatter for absent and blank Accept headers', async () => {
+    @Controller('/negotiation-default-accept')
+    class NegotiationDefaultAcceptController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationDefaultAcceptController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationDefaultAcceptController }]),
+      rootContainer: root,
+    });
+
+    for (const headers of [{}, { Accept: [' ', ''], aCcEpT: '   ' }]) {
+      const response = createResponse();
+
+      await dispatcher.dispatch(createRequest('/negotiation-default-accept/formatted', 'GET', headers), response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['Content-Type']).toBe('text/plain');
+      expect(response.body).toBe('plain:{"ok":true}');
+    }
+  });
+
   it('keeps negotiated formatter headers while suppressing HEAD bodies', async () => {
     @Controller('/negotiation-head')
     class NegotiationHeadController {
@@ -1618,6 +1709,20 @@ describe('dispatcher runtime', () => {
         status: 406,
       },
     });
+    expect(response.headers.Vary).toBe('Accept');
+    expect(response.committed).toBe(true);
+
+    const deduplicatedResponse = createResponse();
+    deduplicatedResponse.headers.Vary = 'Origin';
+    deduplicatedResponse.headers.vary = 'accept';
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation/json-only', 'GET', { accept: 'text/plain' }),
+      deduplicatedResponse,
+    );
+
+    expect(deduplicatedResponse.headers.Vary).toBe('Origin, accept');
+    expect(deduplicatedResponse.headers.vary).toBeUndefined();
   });
 
   it('returns 406 when Accept tokens are all q=0', async () => {
@@ -1788,6 +1893,114 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('application/json');
     expect(response.body).toBe('{"ok":true}');
+  });
+
+  it('accepts RFC qvalues with empty fractional parts for selection and exclusion', async () => {
+    @Controller('/negotiation-rfc-qvalues')
+    class NegotiationRfcQvaluesController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationRfcQvaluesController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationRfcQvaluesController }]),
+      rootContainer: root,
+    });
+    const qualityOneResponse = createResponse();
+    const qualityZeroResponse = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-rfc-qvalues', 'GET', { accept: 'application/json;q=0.1, text/plain;q=1.' }),
+      qualityOneResponse,
+    );
+    await dispatcher.dispatch(
+      createRequest('/negotiation-rfc-qvalues', 'GET', { accept: 'text/plain;q=0., */*;q=1' }),
+      qualityZeroResponse,
+    );
+
+    expect(qualityOneResponse.headers['Content-Type']).toBe('text/plain');
+    expect(qualityOneResponse.body).toBe('plain:{"ok":true}');
+    expect(qualityZeroResponse.headers['Content-Type']).toBe('application/json');
+    expect(qualityZeroResponse.body).toBe('{"ok":true}');
+  });
+
+  it('rejects qvalues outside RFC bounds and precision', async () => {
+    @Controller('/negotiation-invalid-qvalues')
+    class NegotiationInvalidQvaluesController {
+      @Produces('application/json')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationInvalidQvaluesController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationInvalidQvaluesController }]),
+      rootContainer: root,
+    });
+
+    for (const accept of ['application/json;q=1.0000', 'application/json;q=1.001']) {
+      const response = createResponse();
+
+      await dispatcher.dispatch(createRequest('/negotiation-invalid-qvalues', 'GET', { accept }), response);
+
+      expect(response.statusCode).toBe(406);
+    }
+  });
+
+  it('does not add Vary: Accept to unrelated 406 responses', async () => {
+    @Controller('/unrelated-not-acceptable')
+    class UnrelatedNotAcceptableController {
+      @Get('/')
+      getValue() {
+        throw new NotAcceptableException('Application-defined 406.');
+      }
+    }
+
+    const root = new Container().register(UnrelatedNotAcceptableController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: UnrelatedNotAcceptableController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/unrelated-not-acceptable'), response);
+
+    expect(response.statusCode).toBe(406);
+    expect(response.headers.Vary).toBeUndefined();
+    expect(response.committed).toBe(true);
   });
 
   it('selects structured syntax suffix formatters deterministically', async () => {
