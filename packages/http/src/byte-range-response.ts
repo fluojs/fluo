@@ -65,26 +65,32 @@ export function isByteRangeByteSource(value: unknown): value is ArrayBuffer | Ui
   return value instanceof ArrayBuffer || value instanceof Uint8Array;
 }
 
+/**
+ * Determines whether an ordinary byte result requires byte-range processing.
+ *
+ * Explicit byte-range responses retain their full-response metadata behavior;
+ * this only guards automatic range handling for plain handler values.
+ */
+export function shouldApplyByteRange(
+  request: FrameworkRequest,
+  validators: ResponseValidators | undefined,
+): boolean {
+  return parseByteRangeHeader(readFirstNonEmptyRequestHeaderValue(request, 'range')) !== undefined
+    && matchesIfRange(request, validators);
+}
+
 function resolveByteRange(
   rangeHeader: string | undefined,
   size: number,
   ifRangeMatches: boolean,
 ): ResolvedByteRange {
-  if (!rangeHeader || !ifRangeMatches) {
-    return { kind: 'full' };
-  }
+  const match = parseByteRangeHeader(rangeHeader);
 
-  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
-
-  if (!match) {
+  if (!match || !ifRangeMatches) {
     return { kind: 'full' };
   }
 
   const [, startText, endText] = match;
-
-  if ((startText?.length ?? 0) === 0 && (endText?.length ?? 0) === 0) {
-    return { kind: 'full' };
-  }
 
   if ((startText?.length ?? 0) === 0) {
     const suffixLength = Number(endText);
@@ -117,6 +123,18 @@ function resolveByteRange(
   }
 
   return { end: Math.min(requestedEnd, size - 1), kind: 'partial', start };
+}
+
+function parseByteRangeHeader(rangeHeader: string | undefined): RegExpExecArray | undefined {
+  if (!rangeHeader) {
+    return undefined;
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+
+  return match && (match[1]?.length ?? 0) + (match[2]?.length ?? 0) > 0
+    ? match
+    : undefined;
 }
 
 async function writeByteRangeResponse(

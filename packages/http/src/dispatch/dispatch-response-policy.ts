@@ -8,6 +8,7 @@ import type {
 import {
   createByteRangeResponse,
   isByteRangeByteSource,
+  shouldApplyByteRange,
 } from '../byte-range-response.js';
 import {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
@@ -185,7 +186,7 @@ export async function writeSuccessResponse(
     : value;
   const writerValue = readFrameworkResponseWriter(responseValue)
     ? responseValue
-    : isByteRangeByteSource(responseValue)
+    : isByteRangeByteSource(responseValue) && shouldApplyByteRange(request, validators)
       ? createByteRangeResponse(responseValue)
       : undefined;
   const responseWriter = writerValue

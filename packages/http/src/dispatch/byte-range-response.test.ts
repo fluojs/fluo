@@ -85,12 +85,12 @@ describe('single byte range response', () => {
   });
 
   it.each([
-    ['absent', undefined, 200, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
-    ['malformed', 'items=2-4', 200, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
-    ['multiple', 'bytes=0-1,3-4', 200, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
-    ['suffix', 'bytes=-2', 206, 'bytes 4-5/6', Uint8Array.from([4, 5])],
-    ['open-ended', 'bytes=3-', 206, 'bytes 3-5/6', Uint8Array.from([3, 4, 5])],
-  ])('handles a %s range deterministically', async (_label, range, status, contentRange, body) => {
+    ['absent', undefined, 200, undefined, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
+    ['malformed', 'items=2-4', 200, undefined, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
+    ['multiple', 'bytes=0-1,3-4', 200, undefined, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
+    ['suffix', 'bytes=-2', 206, 'bytes 4-5/6', '2', Uint8Array.from([4, 5])],
+    ['open-ended', 'bytes=3-', 206, 'bytes 3-5/6', '3', Uint8Array.from([3, 4, 5])],
+  ])('handles a %s range deterministically', async (_label, range, status, contentRange, contentLength, body) => {
     @Controller('/assets')
     class AssetController {
       @Get('/logo')
@@ -108,9 +108,9 @@ describe('single byte range response', () => {
     await dispatcher.dispatch(createRequest(range ? { range } : {}), response);
 
     expect(response.statusCode).toBe(status);
-    expect(response.headers['Accept-Ranges']).toBe('bytes');
+    expect(response.headers['Accept-Ranges']).toBe(contentRange ? 'bytes' : undefined);
     expect(response.headers['Content-Range']).toBe(contentRange);
-    expect(response.headers['Content-Length']).toBe(String(body.byteLength));
+    expect(response.headers['Content-Length']).toBe(contentLength);
     expect(response.sentBodies).toEqual([body]);
   });
 
