@@ -132,6 +132,36 @@ describe('parseMultipart', () => {
     expect(result.files[0]?.originalname).toBe('notes"final.txt');
   });
 
+  it.each([
+    'form-data; name="unterminated',
+    'form-data; name="dangling\\',
+    'form-data; name="carriage\rreturn"',
+    'form-data; name="line\nfeed"',
+    'form-data; name="injected\r\nx-injected: true',
+    'form-data; name=title trailing',
+    'form-data; name="title" trailing',
+    'form-data; name=title;',
+  ])('rejects malformed Content-Disposition grammar', async (contentDisposition) => {
+    // Given
+    const boundary = 'fluo-invalid-disposition';
+    const request = new Request('http://localhost/uploads', {
+      body: createMultipartBody(boundary, [{
+        headers: [`content-disposition: ${contentDisposition}`],
+        value: 'ignored',
+      }]),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    // When
+    const result = parseMultipart(request);
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(Error);
+  });
+
   it('parses Web multipart fields and files without Node Buffer conversion APIs', async () => {
     // Given
     const form = new FormData();
@@ -436,6 +466,112 @@ describe('parseMultipart', () => {
 });
 
 describe('parseMultipartStream', () => {
+  it('keeps valid token-form Content-Disposition parameters compatible with buffered parsing', async () => {
+    // Given
+    const boundary = 'fluo-stream-token-disposition';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [
+        {
+          headers: ['content-disposition: form-data; name=title'],
+          value: 'Portable upload',
+        },
+        {
+          headers: [
+            'content-disposition: form-data; name=payload; filename=note.txt',
+            'content-type: text/plain',
+          ],
+          value: 'hello',
+        },
+      ]),
+    ]).request);
+
+    // When
+    const field = await parts.next();
+    const file = await parts.next();
+
+    // Then
+    expect(field).toEqual({
+      done: false,
+      value: {
+        headers: {
+          'content-disposition': 'form-data; name=title',
+        },
+        kind: 'field',
+        name: 'title',
+        value: 'Portable upload',
+      },
+    });
+
+    if (file.done || file.value.kind !== 'file') {
+      throw new TypeError('Expected a token-form multipart file.');
+    }
+
+    expect(file.value).toMatchObject({
+      contentType: 'text/plain',
+      filename: 'note.txt',
+      kind: 'file',
+      name: 'payload',
+    });
+    await expect(new Response(file.value.stream).text()).resolves.toBe('hello');
+    await expect(parts.next()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it('keeps escaped quoted Content-Disposition parameters compatible with buffered parsing', async () => {
+    // Given
+    const boundary = 'fluo-stream-escaped-disposition';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [{
+        headers: [
+          'content-disposition: form-data; name="payload"; filename="notes\\\"final.txt"',
+          'content-type: text/plain',
+        ],
+        value: 'hello',
+      }]),
+    ]).request);
+
+    // When
+    const file = await parts.next();
+
+    // Then
+    if (file.done || file.value.kind !== 'file') {
+      throw new TypeError('Expected an escaped-quoted multipart file.');
+    }
+
+    expect(file.value).toMatchObject({
+      filename: 'notes"final.txt',
+      kind: 'file',
+      name: 'payload',
+    });
+    await expect(new Response(file.value.stream).text()).resolves.toBe('hello');
+    await expect(parts.next()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it.each([
+    'form-data; name="unterminated',
+    'form-data; name="dangling\\',
+    'form-data; name="carriage\rreturn"',
+    'form-data; name="line\nfeed"',
+    'form-data; name="injected\r\nx-injected: true',
+    'form-data; name=title trailing',
+    'form-data; name="title" trailing',
+    'form-data; name=title;',
+  ])('rejects malformed Content-Disposition grammar', async (contentDisposition) => {
+    // Given
+    const boundary = 'fluo-stream-invalid-disposition';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [{
+        headers: [`content-disposition: ${contentDisposition}`],
+        value: 'ignored',
+      }]),
+    ]).request);
+
+    // When
+    const result = parts.next();
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(Error);
+  });
+
   it('yields typed fields and streams each file without reading the complete payload', async () => {
     const boundary = 'fluo-streaming-boundary';
     const fileHeader = `--${boundary}\r\ncontent-disposition: form-data; name="upload"; filename="payload.txt"\r\ncontent-type: text/plain\r\n\r\n`;
