@@ -203,6 +203,7 @@ describe('MyCustomAdapter Portability', () => {
   it('does not commit aborted HTTP error representations', () =>
     harness.assertDoesNotCommitAbortedHttpErrorRepresentations());
   it('preserves malformed cookies', () => harness.assertPreservesMalformedCookieValues());
+  it('supports portable response cookies', () => harness.assertSupportsPortableResponseCookies());
   it('preserves JSON and text raw bodies', () => harness.assertPreservesRawBodyForJsonAndText());
   it('preserves exact raw body bytes', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('excludes multipart raw bodies', () => harness.assertExcludesRawBodyForMultipart());
@@ -219,7 +220,7 @@ describe('MyCustomAdapter Portability', () => {
 });
 ```
 
-This is the complete shipped HTTP portability suite: keep all thirteen assertions instead of treating a smaller sample as Behavioral Contract compliance. `createErrorRepresentationBootstrapOptions` adapts the shared error-representation fixture fields to your adapter's bootstrap options; it is required by both error-representation assertions. Keep `TEST_TLS_CERTIFICATE` and `TEST_TLS_PRIVATE_KEY` in a test-owned PEM fixture, never production credentials, so `assertReportsHttpsStartupUrl(...)` can exercise a real HTTPS listener. The stream-drain assertion applies when the adapter exposes `response.stream.waitForDrain()`.
+This is the complete shipped HTTP portability suite: keep all fourteen assertions instead of treating a smaller sample as Behavioral Contract compliance. `createErrorRepresentationBootstrapOptions` adapts the shared error-representation fixture fields to your adapter's bootstrap options; it is required by both error-representation assertions. Keep `TEST_TLS_CERTIFICATE` and `TEST_TLS_PRIVATE_KEY` in a test-owned PEM fixture, never production credentials, so `assertReportsHttpsStartupUrl(...)` can exercise a real HTTPS listener. The stream-drain assertion applies when the adapter exposes `response.stream.waitForDrain()`.
 
 The harness also checks partial-bootstrap cleanup, exact byte preservation, multipart memory boundaries, startup logging through the application logger, shutdown listener cleanup, and stream-drain settlement. You should also inspect timing data. Slow tests in the portability suite can signal that a lower-level implementation of a platform primitive is not optimized. Use feedback from the harness to refine the adapter and check both correctness and performance.
 

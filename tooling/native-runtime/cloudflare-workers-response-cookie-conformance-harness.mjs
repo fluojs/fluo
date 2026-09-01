@@ -14,17 +14,38 @@ function workerUrlFromOutput(output) {
   return match?.[0];
 }
 
-function assertProcessGroupExited(pid, kill) {
+function processGroupExists(pid, kill) {
   try {
     kill(-pid, 0);
+    return true;
   } catch (error) {
     if (isErrno(error, 'ESRCH')) {
-      return;
+      return false;
     }
     throw error;
   }
+}
 
-  throw new Error(`process group ${pid} still has running descendants after SIGTERM`);
+function signalProcessGroup(pid, signal, kill) {
+  try {
+    kill(-pid, signal);
+    return true;
+  } catch (error) {
+    if (isErrno(error, 'ESRCH')) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function assertProcessGroupExited(pid, kill) {
+  if (processGroupExists(pid, kill)) {
+    throw new Error(`process group ${pid} still has running descendants after forced termination`);
+  }
+}
+
+function hasOpenInheritedStdio(child) {
+  return child.stdio?.some((stream) => stream !== null && stream !== undefined && !stream.destroyed) ?? false;
 }
 
 export function startWorker(spawnWorker = spawn) {
@@ -82,22 +103,19 @@ export async function stopProcessGroup(child, kill = process.kill) {
   }
 
   const leaderExited = child.exitCode === null ? once(child, 'exit') : undefined;
-  const stdioClosed = child.exitCode === null ? once(child, 'close') : undefined;
-  let groupAlreadyExited = false;
-
-  try {
-    kill(-child.pid, 'SIGTERM');
-  } catch (error) {
-    if (!isErrno(error, 'ESRCH')) {
-      throw error;
-    }
-    groupAlreadyExited = true;
-  }
+  const stdioClosed = leaderExited !== undefined || hasOpenInheritedStdio(child) ? once(child, 'close') : undefined;
+  const processGroupRunning = signalProcessGroup(child.pid, 'SIGTERM', kill);
 
   await leaderExited;
+
+  const forceTerminationSent =
+    processGroupRunning && processGroupExists(child.pid, kill)
+      ? signalProcessGroup(child.pid, 'SIGKILL', kill)
+      : false;
+
   await stdioClosed;
 
-  if (!groupAlreadyExited) {
+  if (forceTerminationSent) {
     assertProcessGroupExited(child.pid, kill);
   }
 }

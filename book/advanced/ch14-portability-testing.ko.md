@@ -203,6 +203,7 @@ describe('MyCustomAdapter Portability', () => {
   it('중단된 HTTP 오류 표현을 commit하지 않아야 함', () =>
     harness.assertDoesNotCommitAbortedHttpErrorRepresentations());
   it('잘못된 형식의 쿠키를 보존해야 함', () => harness.assertPreservesMalformedCookieValues());
+  it('portable response cookie를 지원해야 함', () => harness.assertSupportsPortableResponseCookies());
   it('JSON 및 text 원시 바디를 보존해야 함', () => harness.assertPreservesRawBodyForJsonAndText());
   it('정확한 원시 바디 바이트를 보존해야 함', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('multipart 원시 바디를 제외해야 함', () => harness.assertExcludesRawBodyForMultipart());
@@ -219,7 +220,7 @@ describe('MyCustomAdapter Portability', () => {
 });
 ```
 
-이것이 배포된 전체 HTTP portability suite입니다. 더 작은 sample을 Behavioral Contract 준수로 간주하지 말고 13개의 assertion을 모두 유지하세요. `createErrorRepresentationBootstrapOptions`는 공유 error-representation fixture field를 어댑터의 bootstrap option으로 변환하며, 두 error-representation assertion에 필요합니다. `assertReportsHttpsStartupUrl(...)`이 실제 HTTPS listener를 검증할 수 있도록 `TEST_TLS_CERTIFICATE`와 `TEST_TLS_PRIVATE_KEY`는 production credential이 아닌 test-owned PEM fixture에 보관하세요. Stream-drain assertion은 어댑터가 `response.stream.waitForDrain()`을 제공하는 경우에 적용합니다.
+이것이 배포된 전체 HTTP portability suite입니다. 더 작은 sample을 Behavioral Contract 준수로 간주하지 말고 14개의 assertion을 모두 유지하세요. `createErrorRepresentationBootstrapOptions`는 공유 error-representation fixture field를 어댑터의 bootstrap option으로 변환하며, 두 error-representation assertion에 필요합니다. `assertReportsHttpsStartupUrl(...)`이 실제 HTTPS listener를 검증할 수 있도록 `TEST_TLS_CERTIFICATE`와 `TEST_TLS_PRIVATE_KEY`는 production credential이 아닌 test-owned PEM fixture에 보관하세요. Stream-drain assertion은 어댑터가 `response.stream.waitForDrain()`을 제공하는 경우에 적용합니다.
 
 하네스는 partial-bootstrap cleanup, 정확한 byte 보존, multipart memory boundary, application logger를 통한 startup logging, shutdown listener cleanup, stream-drain settlement도 확인합니다. 또한 타이밍 데이터도 함께 봐야 합니다. 이식성 스위트에서 느린 테스트는 플랫폼 프리미티브의 하위 구현이 최적화되지 않았다는 신호일 수 있습니다. 하네스의 피드백을 사용해 어댑터를 정제하면 정확성과 성능을 함께 확인할 수 있습니다.
 

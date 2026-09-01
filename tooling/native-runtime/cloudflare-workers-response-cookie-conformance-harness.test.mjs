@@ -133,8 +133,52 @@ test('accepts an already-exited process group', async () => {
   assert.deepEqual(calls, [[-1006, 'SIGTERM']]);
 });
 
+test('waits for inherited stdio close after a startup exit before proving group cleanup', async () => {
+  const child = createChild(1007, 1);
+  child.stdio = [undefined, new EventEmitter(), new EventEmitter()];
+  const calls = [];
+  let processGroupExists = true;
+  let forcedTerminationSent = false;
+  const cleanup = stopProcessGroup(child, (pid, signal) => {
+    calls.push([pid, signal]);
+    if (signal === 'SIGTERM') {
+      return true;
+    }
+    if (signal === 'SIGKILL') {
+      forcedTerminationSent = true;
+      return true;
+    }
+    if (signal === 0 && processGroupExists) {
+      return true;
+    }
+    throw esrch();
+  });
+
+  await Promise.all([
+    cleanup,
+    new Promise((resolve, reject) => {
+      queueMicrotask(() => {
+        try {
+          assert.equal(forcedTerminationSent, true);
+          processGroupExists = false;
+          child.emit('close', 1, undefined);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }),
+  ]);
+  assert.deepEqual(calls, [
+    [-1007, 'SIGTERM'],
+    [-1007, 0],
+    [-1007, 'SIGKILL'],
+    [-1007, 0],
+  ]);
+});
+
 test('waits for the subscribed stdio close before proving group cleanup', async () => {
-  const child = createChild(1007);
+  const child = createChild(1008);
   const childExited = once(child, 'exit');
   const calls = [];
   const cleanup = stopProcessGroup(child, (pid, signal) => {
@@ -148,23 +192,32 @@ test('waits for the subscribed stdio close before proving group cleanup', async 
     }
     throw esrch();
   });
+  let cleanupSettled = false;
+  void cleanup.then(() => {
+    cleanupSettled = true;
+  });
 
   await childExited;
   await Promise.resolve();
-  assert.deepEqual(calls, [[-1007, 'SIGTERM']]);
+  assert.equal(cleanupSettled, false);
+  assert.deepEqual(calls, [
+    [-1008, 'SIGTERM'],
+    [-1008, 0],
+  ]);
 
   child.emit('close', 0, 'SIGTERM');
   await cleanup;
   assert.deepEqual(calls, [
-    [-1007, 'SIGTERM'],
-    [-1007, 0],
+    [-1008, 'SIGTERM'],
+    [-1008, 0],
   ]);
 });
 
-test('rejects a stubborn descendant without sending a force-exit signal', async () => {
-  const child = createChild(1008);
+test('escalates a stubborn descendant and proves final process-group disappearance', async () => {
+  const child = createChild(1009);
   const childExited = once(child, 'exit');
   const calls = [];
+  let processGroupExists = true;
   const kill = (pid, signal) => {
     calls.push([pid, signal]);
     if (signal === 'SIGTERM') {
@@ -175,18 +228,24 @@ test('rejects a stubborn descendant without sending a force-exit signal', async 
       });
       return true;
     }
-    return true;
+    if (signal === 'SIGKILL') {
+      processGroupExists = false;
+      return true;
+    }
+    if (signal === 0 && processGroupExists) {
+      return true;
+    }
+    throw esrch();
   };
 
-  await assert.rejects(
-    stopProcessGroup(child, kill),
-    /process group 1008 still has running descendants after SIGTERM/,
-  );
+  await stopProcessGroup(child, kill);
   await childExited;
 
   assert.deepEqual(calls, [
-    [-1008, 'SIGTERM'],
-    [-1008, 0],
+    [-1009, 'SIGTERM'],
+    [-1009, 0],
+    [-1009, 'SIGKILL'],
+    [-1009, 0],
   ]);
 });
 

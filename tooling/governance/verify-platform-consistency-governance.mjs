@@ -2684,6 +2684,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
     'assertSupportsHttpErrorRepresentations()',
     'assertDoesNotCommitAbortedHttpErrorRepresentations()',
     'assertPreservesMalformedCookieValues()',
+    'assertSupportsPortableResponseCookies()',
     'assertPreservesRawBodyForJsonAndText()',
     'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
     'assertExcludesRawBodyForMultipart()',
@@ -2749,6 +2750,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
     for (const marker of [
       '## Adapter Portability Requirements',
       'createHttpAdapterPortabilityHarness(...)',
+      'assertSupportsPortableResponseCookies()',
       'assertSupportsCustomHttpRouteMethods()',
       'assertSupportsHttpErrorRepresentations()',
       'assertDoesNotCommitAbortedHttpErrorRepresentations()',

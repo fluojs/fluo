@@ -474,6 +474,19 @@ describe('enforceHttpAdapterPortabilityDocumentationContract', () => {
       /docs\/CONTEXT\.md must keep assertReportsHttpsStartupUrl discoverable/u,
     );
   });
+
+  it('rejects a companion checklist missing portable response cookie coverage', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/contracts/platform-conformance-authoring-checklist.md'
+        ? content.replace('assertSupportsPortableResponseCookies()', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /platform-conformance-authoring-checklist\.md must keep the HTTP portability companion contract marker assertSupportsPortableResponseCookies/u,
+    );
+  });
 });
 
 describe('enforceReactServerFunctionContract', () => {
