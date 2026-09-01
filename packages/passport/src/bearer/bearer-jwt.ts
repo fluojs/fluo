@@ -19,47 +19,18 @@ import type { AuthStrategy, AuthStrategyRegistration, AuthStrategyResult } from 
  */
 export const BEARER_JWT_STRATEGY_NAME = 'jwt';
 
+const BEARER_CREDENTIAL = /^Bearer +([A-Za-z0-9\-._~+/]+=*)$/i;
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
 function parseBearerCredential(authorization: string): string | undefined {
-  for (const character of authorization) {
-    const characterCode = character.charCodeAt(0);
-
-    if (characterCode <= 31 || characterCode === 127) {
-      return undefined;
-    }
-  }
-
-  const separatorIndex = authorization.indexOf(' ');
-
-  if (separatorIndex <= 0) {
-    return undefined;
-  }
-
-  const scheme = authorization.slice(0, separatorIndex);
-
-  if (scheme.toLowerCase() !== 'bearer') {
-    return undefined;
-  }
-
-  let tokenStart = separatorIndex;
-  while (authorization[tokenStart] === ' ') {
-    tokenStart += 1;
-  }
-
-  const token = authorization.slice(tokenStart);
-
-  if (token.length === 0 || token.includes(' ')) {
-    return undefined;
-  }
-
-  return token;
+  return BEARER_CREDENTIAL.exec(authorization)?.[1];
 }
 
-function addBearerChallenge(context: GuardContext): void {
-  context.requestContext.response?.setHeader('WWW-Authenticate', 'Bearer');
+function addBearerChallenge(context: GuardContext, value = 'Bearer'): void {
+  context.requestContext.response?.setHeader('WWW-Authenticate', value);
 }
 
 function readAuthorizationHeader(context: GuardContext): string | undefined {
@@ -83,8 +54,12 @@ function readAuthorizationHeader(context: GuardContext): string | undefined {
  * Credential extraction is strict and matches the documented preset contract:
  * an absent or empty `Authorization` header (including an array-valued header
  * whose first entry is empty) raises {@link AuthenticationRequiredError}; a
- * wrong-scheme or malformed header (including control characters) raises
- * {@link AuthenticationFailedError};
+ * wrong-scheme or malformed header raises {@link AuthenticationFailedError}.
+ * Credentials use the RFC 6750 `b64token` grammar: one or more ASCII letters,
+ * digits, `-`, `.`, `_`, `~`, `+`, or `/`, followed only by optional trailing
+ * `=` padding. Missing or malformed credentials set the bare
+ * `WWW-Authenticate: Bearer` challenge, while expired and invalid verifier
+ * failures set `WWW-Authenticate: Bearer error="invalid_token"`;
  * an expired token raises {@link AuthenticationExpiredError} with the original
  * `JwtExpiredTokenError` preserved as `cause`; an invalid token raises
  * {@link AuthenticationFailedError} with the original `JwtInvalidTokenError`
@@ -132,12 +107,12 @@ export class BearerJwtStrategy implements AuthStrategy {
       return await this.verifier.verifyAccessToken(token);
     } catch (error: unknown) {
       if (error instanceof JwtExpiredTokenError) {
-        addBearerChallenge(context);
+        addBearerChallenge(context, 'Bearer error="invalid_token"');
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
       }
 
       if (error instanceof JwtInvalidTokenError) {
-        addBearerChallenge(context);
+        addBearerChallenge(context, 'Bearer error="invalid_token"');
         throw new AuthenticationFailedError('Access token verification failed.', { cause: error });
       }
 

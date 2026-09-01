@@ -146,7 +146,7 @@ describe('BearerJwtStrategy', () => {
 });
 
 describe('AppModule e2e', () => {
-  it('boots the runnable Fastify application', async () => {
+  it('serializes Bearer challenges and authenticates through an ephemeral Fastify port', async () => {
     const adapter = createFastifyAdapter({ port: 0 });
     const app = await FluoFactory.create(AppModule, { adapter });
 
@@ -163,8 +163,43 @@ describe('AppModule e2e', () => {
         throw new Error('Failed to resolve the runnable Fastify port.');
       }
 
-      const response = await fetch(`http://127.0.0.1:${address.port}/health`);
-      expect(response.status).toBe(200);
+      const origin = `http://127.0.0.1:${address.port}`;
+
+      const missingCredential = await fetch(`${origin}/profile/`);
+      expect(missingCredential.status).toBe(401);
+      expect(missingCredential.headers.get('www-authenticate')).toBe('Bearer');
+
+      const invalidCredential = await fetch(`${origin}/profile/`, {
+        headers: { authorization: 'Bearer invalid-token' },
+      });
+      expect(invalidCredential.status).toBe(401);
+      expect(invalidCredential.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
+
+      const expiredCredential = await fetch(`${origin}/profile/`, {
+        headers: {
+          authorization:
+            'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmbHVvLWF1dGgtZXhhbXBsZS1jbGllbnRzIiwiZXhwIjowLCJpc3MiOiJmbHVvLWF1dGgtZXhhbXBsZSIsInN1YiI6ImV4cGlyZWQifQ.sY5V1fydHfhYke1_1_TTcmYit8Nl5CfhknF2H3wTZUk',
+        },
+      });
+      expect(expiredCredential.status).toBe(401);
+      expect(expiredCredential.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
+
+      const issueResponse = await fetch(`${origin}/auth/token`, {
+        body: JSON.stringify({ username: 'ada' }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      expect(issueResponse.status).toBe(201);
+
+      const issuedToken = await issueResponse.json() as { accessToken: string };
+      const authenticated = await fetch(`${origin}/profile/`, {
+        headers: { aUtHoRiZaTiOn: `bEaReR ${issuedToken.accessToken}` },
+      });
+      expect(authenticated.status).toBe(200);
+      expect(authenticated.headers.get('www-authenticate')).toBeNull();
+      await expect(authenticated.json()).resolves.toMatchObject({
+        user: { subject: 'ada' },
+      });
     } finally {
       await app.close();
     }
@@ -196,7 +231,7 @@ describe('AppModule e2e', () => {
           .send(),
       ).resolves.toMatchObject({
         headers: {
-          'WWW-Authenticate': 'Bearer',
+          'WWW-Authenticate': 'Bearer error="invalid_token"',
         },
         status: 401,
       });
@@ -211,7 +246,7 @@ describe('AppModule e2e', () => {
           .send(),
       ).resolves.toMatchObject({
         headers: {
-          'WWW-Authenticate': 'Bearer',
+          'WWW-Authenticate': 'Bearer error="invalid_token"',
         },
         status: 401,
       });

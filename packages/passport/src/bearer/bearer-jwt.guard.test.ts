@@ -4,7 +4,12 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 import { Controller, Get, createDispatcher, createHandlerMapping } from '@fluojs/http';
 import type { FrameworkRequest, FrameworkResponse, Principal } from '@fluojs/http';
 import { Container, type Provider } from '@fluojs/di';
-import { DefaultJwtVerifier, JwtConfigurationError, JwtInvalidTokenError } from '@fluojs/jwt';
+import {
+  DefaultJwtVerifier,
+  JwtConfigurationError,
+  JwtExpiredTokenError,
+  JwtInvalidTokenError,
+} from '@fluojs/jwt';
 
 import { RequireScopes, UseAuth } from '../decorators.js';
 import { PassportModule } from '../module.js';
@@ -116,6 +121,7 @@ describe('BearerJwtStrategy AuthGuard integration', () => {
     await dispatcher.dispatch(createRequest('/profile', { 'x-request-id': 'req-bearer-401' }), response);
 
     expect(response.statusCode).toBe(401);
+    expect(response.headers['WWW-Authenticate']).toBe('Bearer');
     expect(response.body).toEqual({
       error: {
         code: 'UNAUTHORIZED',
@@ -137,6 +143,19 @@ describe('BearerJwtStrategy AuthGuard integration', () => {
     await dispatcher.dispatch(createRequest('/profile', { authorization: 'Bearer invalid-token' }), response);
 
     expect(response.statusCode).toBe(401);
+    expect(response.headers['WWW-Authenticate']).toBe('Bearer error="invalid_token"');
+  });
+
+  it('maps an expired bearer credential to the invalid_token challenge', async () => {
+    const dispatcher = createGuardedDispatcher(
+      createMockVerifier({ verifyAccessToken: vi.fn().mockRejectedValue(new JwtExpiredTokenError()) }),
+    );
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile', { authorization: 'Bearer expired-token' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.headers['WWW-Authenticate']).toBe('Bearer error="invalid_token"');
   });
 
   it('maps an HTAB-separated bearer credential to the canonical 401 response without verification', async () => {

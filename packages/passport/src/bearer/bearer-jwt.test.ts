@@ -39,6 +39,16 @@ const CONTROL_CHARACTERS = [
   String.fromCharCode(127),
 ];
 
+const INVALID_B64TOKENS = [
+  'token?',
+  'token=fragment',
+  '=token',
+  '토큰',
+  'token value',
+  'token\tvalue',
+  `token${String.fromCharCode(0)}value`,
+];
+
 function createMockVerifier(overrides: Partial<DefaultJwtVerifier> = {}): DefaultJwtVerifier {
   return {
     verifyAccessToken: vi.fn().mockResolvedValue(VERIFIED_PRINCIPAL),
@@ -98,6 +108,33 @@ describe('BearerJwtStrategy credential extraction', () => {
 
       expect(result).toBe(VERIFIED_PRINCIPAL);
       expect(verifier.verifyAccessToken).toHaveBeenCalledWith('valid-token');
+    },
+  );
+
+  it.each(['AZaz09-._~+/', 'padded-token==='])(
+    'accepts an RFC 6750 b64token with optional trailing padding',
+    async (token) => {
+      const verifier = createMockVerifier();
+      const strategy = new BearerJwtStrategy(verifier);
+
+      const result = await strategy.authenticate(createGuardContext(`Bearer ${token}`));
+
+      expect(result).toBe(VERIFIED_PRINCIPAL);
+      expect(verifier.verifyAccessToken).toHaveBeenCalledWith(token);
+    },
+  );
+
+  it.each(INVALID_B64TOKENS)(
+    'rejects a non-RFC 6750 b64token before verification',
+    async (token) => {
+      const verifier = createMockVerifier();
+      const strategy = new BearerJwtStrategy(verifier);
+
+      await expect(
+        strategy.authenticate(createGuardContext(`Bearer ${token}`)),
+      ).rejects.toThrow(AuthenticationFailedError);
+
+      expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
     },
   );
 
