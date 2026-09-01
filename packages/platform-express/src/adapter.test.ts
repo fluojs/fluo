@@ -1165,7 +1165,7 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
-  it('settles stream drain waits when the response stream errors before drain', async () => {
+  it('subscribes to a transport error before rejecting a stream drain wait', async () => {
     const drainSettled = createDeferred<void>();
 
     @Controller('/events')
@@ -1175,7 +1175,7 @@ describe('@fluojs/platform-express', () => {
         const stream = new SseResponse(context);
         const responseStream = context.response.stream;
 
-        if (!responseStream?.waitForDrain) {
+        if (!responseStream?.onError || !responseStream.waitForDrain) {
           throw new Error('Express response stream did not expose waitForDrain().');
         }
 
@@ -1185,13 +1185,29 @@ describe('@fluojs/platform-express', () => {
           throw new Error('Express response stream did not expose the raw response object.');
         }
 
-        const drainWait = responseStream.waitForDrain();
-
-        queueMicrotask(() => {
-          rawResponse.emit('error', new Error('synthetic stream failure'));
+        const failure = new Error('synthetic stream failure');
+        const observedError = createDeferred<unknown>();
+        const removeErrorListener = responseStream.onError((error) => {
+          observedError.resolve(error);
         });
+        const drainWait = responseStream.waitForDrain();
+        rawResponse.emit('error', failure);
 
-        await drainWait;
+        try {
+          await drainWait;
+          throw new Error('Express response stream drain unexpectedly resolved after transport error.');
+        } catch (error) {
+          if (error !== failure) {
+            throw error;
+          }
+        } finally {
+          removeErrorListener?.();
+        }
+
+        if (await observedError.promise !== failure) {
+          throw new Error('Express response stream lost the transport error.');
+        }
+
         drainSettled.resolve();
         stream.close();
 
