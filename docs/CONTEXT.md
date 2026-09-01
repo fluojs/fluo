@@ -279,6 +279,10 @@ transform tokens (`injectable` and `testing`) in `transforms` and per-file
 | `docs/getting-started/` | Bootstrap and setup facts for common starting paths. |
 | `docs/reference/` | Lookup-oriented tables, glossary terms, package matrices, and support snapshots. |
 
+## Studio Runtime Bridge
+
+Studio bridge discoverability is split between [`packages/runtime/README.md`](../packages/runtime/README.md) and [`docs/reference/package-surface.md`](./reference/package-surface.md): package integrations import `StudioDevtoolsRuntime`, `StudioDevtoolsRuntimeTransport`, and `StudioLiveEvent` from `@fluojs/runtime/devtools`, then pass their host-owned bridge as `studioDevtools` to `bootstrapApplication`, `FluoFactory.create`, or `FluoFactory.createApplicationContext`. Delivery is observational: synchronous transport throws and async rejections never change application behavior. An explicit bridge takes precedence over CLI-injected Studio configuration; without either bridge or injected configuration, Studio remains inactive.
+
 ## Navigation
 
 | Need | Read first | Follow with |

@@ -2,7 +2,7 @@ import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { bootstrapApplication, bootstrapModule } from '../bootstrap.js';
+import { bootstrapApplication, bootstrapModule, FluoFactory } from '../bootstrap.js';
 import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../internal/core-metadata.js';
 import type { ApplicationLogger } from '../types.js';
 import type { StudioLiveEvent } from './contracts.js';
@@ -199,6 +199,101 @@ describe('Studio devtools runtime bridge', () => {
     }
   });
 
+  it('redacts all raw request-observation exception details from Studio events', () => {
+    // Given
+    const secrets = {
+      errorCause: 'studio-error-cause-secret',
+      errorMessage: 'studio-error-message-secret',
+      errorName: 'studio-error-name-secret',
+      errorStack: 'studio-error-stack-secret',
+      nonErrorStringification: 'studio-non-error-stringification-secret',
+    } as const;
+    const events: StudioLiveEvent[] = [];
+    const runtime = new StudioDevtoolsRuntime({
+      appId: 'app-test',
+      epoch: 'epoch-test',
+      transport: {
+        publish(event) {
+          events.push(event);
+        },
+      },
+    });
+    const createRequestContext = (requestId: string, statusCode: number) =>
+      ({
+        requestContext: {
+          request: {
+            cookies: {},
+            headers: {},
+            method: 'GET',
+            params: {},
+            path: '/health',
+            query: {},
+            raw: {},
+            requestId,
+            url: '/health',
+          },
+          response: {
+            committed: false,
+            headers: {},
+            redirect() {},
+            async send() {},
+            setHeader() {},
+            setStatus() {},
+            statusCode,
+          },
+        },
+      }) as unknown as Parameters<NonNullable<typeof runtime.requestObserver.onRequestStart>>[0];
+    const error = new Error(secrets.errorMessage, { cause: secrets.errorCause });
+    error.name = secrets.errorName;
+    error.stack = `${error.stack}\n${secrets.errorStack}`;
+    const nonError = {
+      toString() {
+        return secrets.nonErrorStringification;
+      },
+    };
+    const errorContext = createRequestContext('request-error', 500);
+    const nonErrorContext = createRequestContext('request-non-error', 503);
+
+    // When
+    runtime.requestObserver.onRequestStart?.(errorContext);
+    runtime.requestObserver.onRequestError?.(errorContext, error);
+    runtime.requestObserver.onRequestStart?.(nonErrorContext);
+    runtime.requestObserver.onRequestError?.(nonErrorContext, nonError);
+
+    // Then
+    const failedEvents = events.filter(
+      (event): event is Extract<StudioLiveEvent, { type: 'request' }> => event.type === 'request' && event.payload.status === 'failed',
+    );
+    expect(failedEvents).toHaveLength(2);
+    expect(failedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            error: { message: 'Request failed' },
+            requestId: 'request-error',
+            status: 'failed',
+            statusCode: 500,
+          }),
+        }),
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            error: { message: 'Request failed' },
+            requestId: 'request-non-error',
+            status: 'failed',
+            statusCode: 503,
+          }),
+        }),
+      ]),
+    );
+    const serializedEvents = JSON.stringify(events);
+    for (const secret of Object.values(secrets)) {
+      expect(serializedEvents).not.toContain(secret);
+    }
+    for (const event of failedEvents) {
+      expect(event.payload.error).toEqual({ message: 'Request failed' });
+    }
+  });
+
   it('auto-instruments bootstrap when fluo dev --studio injects Studio env', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
     (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {
@@ -244,5 +339,211 @@ describe('Studio devtools runtime bridge', () => {
     });
 
     await app.close();
+  });
+
+  it('publishes application and context bootstrap events through an explicit host bridge', async () => {
+    const events: StudioLiveEvent[] = [];
+    const createBridge = (runtime: 'bun' | 'worker') =>
+      new StudioDevtoolsRuntime({
+        appId: `${runtime}-host`,
+        epoch: `${runtime}-epoch`,
+        runtime,
+        transport: {
+          publish(event) {
+            events.push(event);
+          },
+        },
+      });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const app = await bootstrapApplication({
+      logger,
+      rootModule: AppModule,
+      studioDevtools: createBridge('bun'),
+    });
+    await app.close();
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+      studioDevtools: createBridge('worker'),
+    });
+    await context.close();
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: { appId: 'bun-host', runtime: 'bun' }, type: 'snapshot' }),
+        expect.objectContaining({ source: { appId: 'bun-host', runtime: 'bun' }, type: 'heartbeat' }),
+        expect.objectContaining({ source: { appId: 'worker-host', runtime: 'worker' }, type: 'snapshot' }),
+        expect.objectContaining({ source: { appId: 'worker-host', runtime: 'worker' }, type: 'heartbeat' }),
+      ]),
+    );
+  });
+
+  it('keeps bootstrap and request observation operational when a host transport throws synchronously', async () => {
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const studioDevtools = new StudioDevtoolsRuntime({
+      appId: 'throwing-host',
+      transport: {
+        publish() {
+          throw new Error('host transport unavailable');
+        },
+      },
+    });
+    const observerContext = {
+      requestContext: {
+        request: {
+          cookies: {},
+          headers: {},
+          method: 'GET',
+          path: '/health',
+          params: {},
+          query: {},
+          raw: undefined,
+          requestId: 'request-1',
+          url: '/health',
+        },
+        response: {
+          committed: false,
+          headers: {},
+          redirect() {},
+          async send() {},
+          setHeader() {},
+          setStatus() {},
+          statusCode: 200,
+        },
+      } satisfies Pick<RequestContext, 'request' | 'response'>,
+    } as unknown as Parameters<NonNullable<typeof studioDevtools.requestObserver.onRequestStart>>[0];
+
+    const app = await bootstrapApplication({
+      logger,
+      rootModule: AppModule,
+      studioDevtools,
+    });
+    await app.close();
+
+    const factoryApp = await FluoFactory.create(AppModule, { studioDevtools });
+    await factoryApp.close();
+
+    const context = await FluoFactory.createApplicationContext(AppModule, { studioDevtools });
+    await context.close();
+
+    expect(() => studioDevtools.requestObserver.onRequestStart?.(observerContext)).not.toThrow();
+  });
+
+  it('keeps bootstrap, request observation, and close operational when a host transport rejects asynchronously', async () => {
+    // Given
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    let resolveRejectionTurn: (() => void) | undefined;
+    let rejectionTurnTimeout: ReturnType<typeof setTimeout> | undefined;
+    const rejectionTurnSettled = new Promise<void>((resolve, reject) => {
+      resolveRejectionTurn = resolve;
+      rejectionTurnTimeout = setTimeout(() => {
+        rejectionTurnTimeout = undefined;
+        reject(new Error('Studio transport rejection turn did not settle'));
+      }, 1_000);
+    });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const studioDevtools = new StudioDevtoolsRuntime({
+      appId: 'rejecting-host',
+      transport: {
+        publish() {
+          return Promise.reject(new Error('host transport unavailable'));
+        },
+      },
+    });
+    const observerContext = {
+      requestContext: {
+        request: {
+          cookies: {},
+          headers: {},
+          method: 'GET',
+          path: '/health',
+          params: {},
+          query: {},
+          raw: undefined,
+          requestId: 'request-1',
+          url: '/health',
+        },
+        response: {
+          committed: false,
+          headers: {},
+          redirect() {},
+          async send() {},
+          setHeader() {},
+          setStatus() {},
+          statusCode: 200,
+        },
+      } satisfies Pick<RequestContext, 'request' | 'response'>,
+    } as unknown as Parameters<NonNullable<typeof studioDevtools.requestObserver.onRequestStart>>[0];
+
+    try {
+      // When
+      const app = await bootstrapApplication({
+        logger,
+        rootModule: AppModule,
+        studioDevtools,
+      });
+      studioDevtools.requestObserver.onRequestStart?.(observerContext);
+      await app.close();
+
+      setImmediate(() => {
+        if (rejectionTurnTimeout !== undefined) {
+          clearTimeout(rejectionTurnTimeout);
+          rejectionTurnTimeout = undefined;
+        }
+        resolveRejectionTurn?.();
+      });
+
+      // Then
+      await rejectionTurnSettled;
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      if (rejectionTurnTimeout !== undefined) {
+        clearTimeout(rejectionTurnTimeout);
+      }
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+
+  it('prefers an explicit bridge over CLI injection without calling injected fetch', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
+    const events: StudioLiveEvent[] = [];
+    (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {
+      FLUO_STUDIO: '1',
+      FLUO_STUDIO_TOKEN: 'cli-token',
+      FLUO_STUDIO_URL: 'http://127.0.0.1:49152',
+    };
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const app = await FluoFactory.create(AppModule, {
+      studioDevtools: new StudioDevtoolsRuntime({
+        appId: 'explicit-host',
+        runtime: 'bun',
+        transport: {
+          publish(event) {
+            events.push(event);
+          },
+        },
+      }),
+    });
+    await app.close();
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: { appId: 'explicit-host', runtime: 'bun' }, type: 'snapshot' }),
+      expect.objectContaining({ source: { appId: 'explicit-host', runtime: 'bun' }, type: 'heartbeat' }),
+    ]));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

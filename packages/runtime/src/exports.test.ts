@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as runtimeInternalHttpAdapter from './adapters/internal-http-adapter.js';
 import * as runtimeInternalRequestResponseFactory from './adapters/internal-request-response-factory.js';
+import * as runtimeDevtools from './devtools/index.js';
 import * as runtime from './index.js';
 import * as runtimeInternal from './internal.js';
 import * as runtimeNode from './node.js';
@@ -75,6 +76,12 @@ describe('runtime export boundaries', () => {
     expect(runtimeInternalRequestResponseFactory.dispatchWithRequestResponseFactory).toBeTypeOf('function');
   });
 
+  it('keeps the devtools subpath to the supported host bridge contract', () => {
+    expect(Object.keys(runtimeDevtools).sort()).toEqual([
+      'StudioDevtoolsRuntime',
+    ]);
+  });
+
   it('exports multipart streaming contracts from the Web subpath', () => {
     expect(MultipartBodyConsumedError).toBeTypeOf('function');
     expectTypeOf<MultipartPart>().toEqualTypeOf<MultipartFieldPart | MultipartFilePart>();
@@ -100,6 +107,12 @@ describe('runtime export boundaries', () => {
 
     expect(packageJson.exports).toHaveProperty('./node');
     expect(packageJson.exports).toHaveProperty('./web');
+    expect(packageJson.exports).toMatchObject({
+      './devtools': {
+        import: './dist/devtools/index.js',
+        types: './dist/devtools/index.d.ts',
+      },
+    });
     expect(packageJson.exports).toHaveProperty('./internal');
     expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
     expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');

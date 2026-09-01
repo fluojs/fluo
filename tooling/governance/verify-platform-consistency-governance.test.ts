@@ -115,6 +115,7 @@ async function loadGovernanceInternals() {
     enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforcePlatformNodejsEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
+    enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
   };
 }
 
@@ -3652,6 +3653,45 @@ describe('Studio public docs and migration expectations', () => {
       expect(content).toContain('applyFilters(...)');
       expect(content).toContain('renderMermaid(snapshot)');
     }
+  });
+
+  it('enforces host-owned runtime bridge discoverability from the central governance path', async () => {
+    // Given: the central platform-governance entrypoint and a missing Studio bridge path.
+    const { enforceStudioRuntimeBridgeDiscoverability } = await loadGovernanceInternals();
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.ko.md'
+        ? content.replace('@fluojs/runtime/devtools', '')
+        : content;
+    };
+    let mainCallsStudioBridgeGuard = false;
+
+    // When: the central path is inspected and the discoverability guard reads the affected hub.
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)
+          && node.expression.text === 'enforceStudioRuntimeBridgeDiscoverability') {
+          mainCallsStudioBridgeGuard = true;
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    // Then: main invokes the guard and missing bridge guidance names the affected document.
+    expect(mainCallsStudioBridgeGuard).toBe(true);
+    expect(() => enforceStudioRuntimeBridgeDiscoverability(readText)).toThrow(
+      /docs\/CONTEXT\.ko\.md must document the host-owned @fluojs\/runtime\/devtools bridge/u,
+    );
   });
 });
 

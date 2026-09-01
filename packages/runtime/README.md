@@ -175,9 +175,24 @@ Move shutdown preparation into the documented phase that owns it. Use `onModuleD
 
 ### Studio Devtools Bridge
 
-`@fluojs/runtime` can publish live Studio snapshots and request traces, but it does not read `process.env` directly. `fluo dev --studio` is the application boundary that starts the sidecar, creates the tokenized Studio config, and injects that explicit config into the Node app child before the app imports runtime. Runtime reads each injected field once when it creates the Studio bridge, validates the complete config and its HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the writable process-global injection cannot change instrumentation inputs. If that CLI-provided config is absent, malformed, or missing a tokenized endpoint, Studio instrumentation is a no-op and bootstrap behavior remains unchanged.
+`@fluojs/runtime` can publish live Studio snapshots and request traces without reading `process.env` directly. `fluo dev --studio` remains the default Node path: the CLI starts the sidecar, creates tokenized Studio config, and injects it before the app imports runtime. Runtime reads those injected fields once, validates the HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the legacy process-global cannot change instrumentation inputs.
 
-For this MVP, Node dev runner projects are the full support target. Bun, Deno, and Cloudflare Workers remain unsupported for live Studio until a dedicated bridge is implemented and verified; their runtime bootstraps still no-op when Studio config is absent. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history.
+Package integrations can instead import `StudioDevtoolsRuntime` and its transport contracts from `@fluojs/runtime/devtools`, then pass a host-owned bridge through `studioDevtools` to `bootstrapApplication(...)`, `fluoFactory.create(...)`, or `fluoFactory.createApplicationContext(...)`. An explicit bridge takes precedence over CLI injection and needs no process-global mutation:
+
+```typescript
+import { fluoFactory } from '@fluojs/runtime';
+import { StudioDevtoolsRuntime } from '@fluojs/runtime/devtools';
+
+const studioDevtools = new StudioDevtoolsRuntime({
+  appId: 'my-bun-app',
+  runtime: 'bun',
+  transport: { publish: (event) => hostStudioTransport.send(event) },
+});
+
+const app = await fluoFactory.create(AppModule, { studioDevtools });
+```
+
+This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history. Failed-request events use only the fixed `Request failed` message and never include raw exception text, names, stacks, causes, or stringified values.
 
 ### Global Exception Filters
 
@@ -329,7 +344,7 @@ class UsersModule {}
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
 - Platform snapshot and diagnostic issue production stay in runtime; graph viewing, filtering presentation, and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
 - Compiled route inspection is a one-way projection from `HandlerDescriptor` values. Effective method, path, version, params, module, controller, and handler fields are copied into frozen entries; ordinary routes use `kind: 'http'`, while runtime-aware integrations can publish a more specific marker such as `react-page`. Route inspection never participates in matching, conflict detection, or dispatch and does not retain request body, cookie, header, query-value, or other request-private data.
-- Runtime-connected Studio instrumentation is activated only by explicit CLI-injected Studio config, never by direct `process.env` reads inside runtime package source. Bridge creation captures each known field once into a validated, frozen private snapshot and accepts only an HTTP(S) tokenized endpoint, so later global-object mutation cannot retarget or reauthorize instrumentation. Without valid config and tokenized endpoint, runtime bootstrap is a no-op for Studio, including non-Node runtimes.
+- Runtime-connected Studio instrumentation accepts either an explicit host-owned `studioDevtools` bridge or the default CLI-injected Node config, never direct `process.env` reads. The documented `@fluojs/runtime/devtools` subpath exposes transport-neutral bridge contracts so package integrations do not need private imports or process-global mutation. Explicit bridges take precedence; CLI config is captured once into a validated, frozen private snapshot and remains the no-op fallback when neither bridge nor valid config is present.
 - Studio request traces omit request/response bodies, cookies, and full headers; the trace `url` is sanitized to path-only form before publish so query tokens and fragments are not retained in local Studio event history.
 - Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
 - Runtime retains distinct lifecycle diagnostics from validation, start, rollback, and stop. Failures produced by repeatable `ready()`, `health()`, and `snapshot()` probes are bounded to the latest failure for each component and probe phase, so long-running polling cannot grow `PlatformShellSnapshot.diagnostics` without bound while the latest cause remains visible.
@@ -352,6 +367,7 @@ class UsersModule {}
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider and `BootstrapApplicationOptions.conditionalRequest` configures representation validation; `CreateApplicationOptions` exposes both fields through `FluoFactory.create(...)`.
+- `@fluojs/runtime/devtools`: Package-integration subpath for `StudioDevtoolsRuntime`, its transport contracts, and live Studio event contracts. Pass the created bridge as `studioDevtools` during application or context bootstrap.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, and `createRuntimeInspectionSnapshot(...)`: Runtime-owned immutable projections that add effective compiled route diagnostics to platform snapshots without changing HTTP route behavior.
