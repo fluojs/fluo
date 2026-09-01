@@ -1,3 +1,4 @@
+import { appendVaryHeader } from '../header-helpers.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
@@ -6,23 +7,23 @@ import type {
   ResponseFormatter,
   ResponseValidators,
 } from '../types.js';
-import { appendVaryHeader } from '../header-helpers.js';
+import {
+  applyResponseValidators,
+  type ConditionalRequestOutcome,
+} from './conditional-request-policy.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveContentNegotiation,
+  selectResponseFormatter,
+} from './dispatch-content-negotiation.js';
+import { writeErrorResponse } from './dispatch-error-policy.js';
+import { applyRouteHeaders } from './dispatch-response-metadata.js';
 import {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
   FRAMEWORK_RESPONSE_WRITER,
   type FrameworkResponseValueFinalizer,
   type FrameworkResponseWriter,
 } from './response-integration.js';
-import {
-  type ResolvedContentNegotiation,
-  resolveContentNegotiation,
-  selectResponseFormatter,
-} from './dispatch-content-negotiation.js';
-import {
-  applyResponseValidators,
-  type ConditionalRequestOutcome,
-} from './conditional-request-policy.js';
-import { writeErrorResponse } from './dispatch-error-policy.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -148,9 +149,7 @@ function isJsonContentType(contentType: string): boolean {
 function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): void {
   const { formatter, handler, response, value } = context;
 
-  for (const header of handler.route.headers ?? []) {
-    response.setHeader(header.name, header.value);
-  }
+  applyRouteHeaders(handler, response);
 
   if (formatter) {
     response.setHeader('Content-Type', formatter.mediaType);
@@ -242,6 +241,7 @@ export async function writeSuccessResponse(
   const { formatter } = responsePolicy;
 
   if (conditionalOutcome !== undefined) {
+    applyRouteHeaders(handler, response);
     return writeConditionalResponse(response, conditionalOutcome, validators, responsePolicy);
   }
 

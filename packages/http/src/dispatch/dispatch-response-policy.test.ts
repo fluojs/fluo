@@ -12,6 +12,7 @@ import {
   Header,
   type MiddlewareContext,
   type Next,
+  Produces,
   Redirect,
 } from '../index.js';
 import {
@@ -352,6 +353,76 @@ describe('dispatch response policy', () => {
     expect(response.headers.Location).toBe('/destination');
     expect(response.headers.ETag).toBe('W/"redirect-v1"');
     expect(response.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+  });
+
+  it.each([
+    ['GET'],
+    ['HEAD'],
+  ])('retains route cache metadata on negotiated matching %s validators', async (method) => {
+    let handlerCalls = 0;
+
+    @Controller('/conditional-route-headers')
+    class ConditionalRouteHeadersController {
+      @Get('/')
+      @Produces('application/json')
+      @Header('Vary', 'Origin, origin, ORIGIN')
+      @Header('Cache-Control', 'public, max-age=3600')
+      @Header('Expires', 'Thu, 01 Jan 2026 01:00:00 GMT')
+      getValue() {
+        handlerCalls += 1;
+        return { ok: true };
+      }
+
+      @Head('/')
+      @Produces('application/json')
+      @Header('Vary', 'Origin, origin, ORIGIN')
+      @Header('Cache-Control', 'public, max-age=3600')
+      @Header('Expires', 'Thu, 01 Jan 2026 01:00:00 GMT')
+      headValue() {
+        handlerCalls += 1;
+        return { ok: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'route-cache-v1', strength: 'strong' },
+            },
+          };
+        },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalRouteHeadersController }]),
+      rootContainer: new Container().register(ConditionalRouteHeadersController),
+    });
+    const response = createResponse();
+
+    // Given: negotiated route metadata and a matching current representation validator.
+    // When: a GET or HEAD request carries If-None-Match for that representation.
+    await dispatcher.dispatch(createRequest(
+      '/conditional-route-headers',
+      { accept: 'application/json', 'if-none-match': '"route-cache-v1"' },
+      method,
+    ), response);
+
+    // Then: the bodyless 304 preserves static cache metadata and canonicalizes Vary.
+    expect(response.statusCode).toBe(304);
+    expect(response.body).toBeUndefined();
+    expect(response.headers.Vary).toBe('Origin, Accept');
+    expect(response.headers['Cache-Control']).toBe('public, max-age=3600');
+    expect(response.headers.Expires).toBe('Thu, 01 Jan 2026 01:00:00 GMT');
+    expect(handlerCalls).toBe(0);
   });
 
   it.each([
