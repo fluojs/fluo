@@ -877,6 +877,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
+  // plus HTTP trust-proxy connection identity scope, where forwarding metadata
+  // can replace direct transport identity only behind an explicit trusted peer
+  // boundary and legacy full-chain compatibility remains distinct,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, inherited class/method render-policy
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
