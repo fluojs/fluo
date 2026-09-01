@@ -733,9 +733,6 @@ importers:
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
-      '@fluojs/validation':
-        specifier: workspace:^
-        version: link:../validation
     devDependencies:
       vitest:
         specifier: ^3.2.4

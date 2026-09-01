@@ -44,7 +44,6 @@
   },
   "dependencies": {
     "@fluojs/core": "workspace:^",
-    "@fluojs/validation": "workspace:^",
     "@fluojs/http": "workspace:^",
     "@fluojs/runtime": "workspace:^"
   },
