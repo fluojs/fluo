@@ -84,6 +84,10 @@ Builder는 표준 Path Item operation인 `get`, `put`, `post`, `delete`, `option
 
 `documentTransform` 이후에는 모든 Path Item을 다시 검증합니다. Transform은 OpenAPI 3.1 operation(`trace` 포함), fixed field(`$ref`, `summary`, `description`, `servers`, `parameters`), `x-*` specification extension을 사용할 수 있습니다. `all`, `query` 또는 기타 알 수 없는 key는 문서가 노출되기 전에 생성을 실패시킵니다.
 
+### 2.0으로 마이그레이션
+
+업그레이드하기 전에 모든 `@All()` route 또는 custom handler descriptor를 각각 지원되는 HTTP method route로 바꾸거나 OpenAPI 입력에서 제외하세요. `documentTransform`에서는 `all`, `query` 같은 비표준 Path Item key를 제거하고 표준 operation, fixed field, `x-*` extension만 유지하세요. 지원하지 않는 입력은 이제 잘못된 문서를 생성하는 대신 문서 생성 단계에서 예외를 발생시킵니다.
+
 ### 응답 미디어 타입
 HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 OpenAPI 응답은 해당 미디어 타입을 response `content` 키로 사용합니다. 예를 들어 `@ApiResponse(...)` 스키마가 있는 핸들러에 `@Produces('application/json', 'application/problem+json')`를 붙이면, `application/json`만으로 되돌아가지 않고 두 미디어 타입 모두 같은 응답 스키마로 방출합니다.
 

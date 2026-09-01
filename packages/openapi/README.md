@@ -84,6 +84,10 @@ The builder emits only standard Path Item operations: `get`, `put`, `post`, `del
 
 After `documentTransform`, every Path Item is validated again. Transforms may use the OpenAPI 3.1 operations (including `trace`), fixed fields (`$ref`, `summary`, `description`, `servers`, and `parameters`), and `x-*` specification extensions. Keys such as `all`, `query`, or other unknown fields fail document generation before the document is exposed.
 
+### Migrating to 2.0
+
+Before upgrading, replace every `@All()` route or custom handler descriptor with separate supported HTTP method routes, or exclude it from OpenAPI input. In `documentTransform`, remove nonstandard Path Item keys such as `all` and `query`; retain only standard operations, fixed fields, and `x-*` extensions. Unsupported input now throws during document generation instead of emitting an invalid document.
+
 ### Response Media Types
 When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated OpenAPI responses use those media types as the response `content` keys. For example, `@Produces('application/json', 'application/problem+json')` on a handler with an `@ApiResponse(...)` schema emits both media types with the same response schema instead of silently falling back to only `application/json`.
 
