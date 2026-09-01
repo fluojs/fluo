@@ -152,6 +152,13 @@ Paths follow the `@fluojs/http` route grammar and normalize duplicate or trailin
 ### Async Registration and Options
 Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration comes from DI or async setup. Put registration-time `documentPath` and `uiPath` beside `inject` and `useFactory`; return `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, and `swaggerUiAssets` from the factory. `defaultErrorResponsesPolicy` defaults to injecting standard error responses and an `ErrorResponse` schema, while `documentTransform` runs after document generation and before serving.
 
+### NestJS Migration Contract Differences
+Generated documents are not a one-to-one NestJS Swagger compatibility layer. By default, fluo adds `400`, `401`, `403`, `404`, and `500` responses that do not replace explicitly declared responses, and includes the shared `ErrorResponse` schema. Verify the generated error contract before regenerating clients; set `defaultErrorResponsesPolicy: 'omit'` when the legacy document must not receive those default responses.
+
+Fluo derives each `operationId` deterministically from the controller tag, handler name, HTTP method, and normalized path. Collisions receive numeric suffixes. If generated clients rely on legacy identifiers, rename the generated operation IDs in `documentTransform` before the document is served, then verify the transformed document with the client generator.
+
+With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration options because their routes are compiled before `useFactory(...)` resolves. Keep those paths beside `inject` and `useFactory`; return only document configuration from the factory. A path returned by the factory cannot reconfigure the already-registered routes.
+
 ## Public API
 
 - `OpenApiModule`: Main entry point for OpenAPI integration.
