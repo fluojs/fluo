@@ -165,6 +165,19 @@ describe('enforceContractCompanionUpdates', () => {
     expect(englishContext).toContain('## Release Governance Discoverability');
     expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
   });
+
+  it('keeps the NestJS HTTP pipeline migration boundary discoverable in both contexts', () => {
+    // Given: the bilingual documentation hub.
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    // When: a NestJS pipeline migration needs the portable and native middleware boundary.
+    // Then: both context companions direct readers to that boundary.
+    expect(englishContext).toContain('portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`');
+    expect(englishContext).toContain('createExpressAdapter({ nativeMiddleware: [...] })');
+    expect(koreanContext).toContain('portable bootstrap `middleware`는 `handle(MiddlewareContext, next)`를 구현');
+    expect(koreanContext).toContain('createExpressAdapter({ nativeMiddleware: [...] })');
+  });
 });
 
 describe('collectDirectProcessEnvViolations', () => {
