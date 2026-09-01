@@ -501,7 +501,7 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     return registry.metrics();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     const registrationIndex = this.telemetryState.registrations.lastIndexOf(this);
     if (registrationIndex >= 0) {
       this.telemetryState.registrations.splice(registrationIndex, 1);
@@ -511,11 +511,17 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
       return;
     }
 
-    const originalMetrics = this.telemetryState.originalMetrics;
-    if (originalMetrics) {
-      this.registry.metrics = originalMetrics;
-      this.telemetryState.originalMetrics = undefined;
-    }
+    await this.telemetryState.scrapeQueue.drain(() => {
+      if (this.telemetryState.registrations.length > 0) {
+        return;
+      }
+
+      const originalMetrics = this.telemetryState.originalMetrics;
+      if (originalMetrics) {
+        this.registry.metrics = originalMetrics;
+        this.telemetryState.originalMetrics = undefined;
+      }
+    });
   }
 
   private installRegistryRefresh(): void {
@@ -529,20 +535,20 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     const originalMetrics = registry.metrics;
     telemetryState.originalMetrics = originalMetrics;
     registry.metrics = () => {
-      const activeRegistration = telemetryState.registrations.at(-1);
-      if (!activeRegistration) {
-        return originalMetrics.call(registry);
-      }
+      return telemetryState.scrapeQueue.enqueue(async () => {
+        const activeRegistration = telemetryState.registrations.at(-1);
+        if (!activeRegistration) {
+          return originalMetrics.call(registry);
+        }
 
-      return activeRegistration.collectScrape(() => originalMetrics.call(registry));
+        return activeRegistration.collectScrape(() => originalMetrics.call(registry));
+      });
     };
   }
 
-  private collectScrape(render: () => Promise<string>): Promise<string> {
-    return this.telemetryState.scrapeQueue.enqueue(async () => {
-      await this.refresh();
-      return await render();
-    });
+  private async collectScrape(render: () => Promise<string>): Promise<string> {
+    await this.refresh();
+    return await render();
   }
 
   private async refresh(): Promise<void> {

@@ -78,4 +78,71 @@ describe('SerializedScrapeQueue', () => {
     await expect(queue.enqueue(async () => 'retry')).resolves.toBe('retry');
     expect(queue.state).toEqual({ isRunning: false, queued: 0 });
   });
+
+  it('drains work appended after the observed tail before finalizing', async () => {
+    const queue = new SerializedScrapeQueue();
+    const firstEntered = createDeferred<void>();
+    const firstReleased = createDeferred<void>();
+    const secondEntered = createDeferred<void>();
+    const secondReleased = createDeferred<void>();
+    const finalized = createDeferred<void>();
+
+    const first = queue.enqueue(async () => {
+      firstEntered.resolve();
+      await firstReleased.promise;
+    });
+    await firstEntered.promise;
+
+    const draining = queue.drain(() => {
+      finalized.resolve();
+    });
+    const second = queue.enqueue(async () => {
+      secondEntered.resolve();
+      await secondReleased.promise;
+    });
+
+    firstReleased.resolve();
+    await secondEntered.promise;
+    expect(queue.state).toEqual({ isRunning: true, queued: 0 });
+
+    secondReleased.resolve();
+    await Promise.all([first, second, draining, finalized.promise]);
+    expect(queue.state).toEqual({ isRunning: false, queued: 0 });
+  });
+
+  it('drains queued recovery work after a rejected scrape before finalizing', async () => {
+    const queue = new SerializedScrapeQueue();
+    const firstEntered = createDeferred<void>();
+    const firstReleased = createDeferred<void>();
+    const retryEntered = createDeferred<void>();
+    const retryReleased = createDeferred<void>();
+    const failure = new Error('refresh failed');
+    let finalized = false;
+
+    const first = queue.enqueue(async () => {
+      firstEntered.resolve();
+      await firstReleased.promise;
+      throw failure;
+    });
+    await firstEntered.promise;
+
+    const draining = queue.drain(() => {
+      finalized = true;
+    });
+    const retry = queue.enqueue(async () => {
+      retryEntered.resolve();
+      await retryReleased.promise;
+      return 'retry';
+    });
+
+    firstReleased.resolve();
+    await retryEntered.promise;
+    expect(finalized).toBe(false);
+
+    retryReleased.resolve();
+    await expect(first).rejects.toBe(failure);
+    await expect(retry).resolves.toBe('retry');
+    await draining;
+    expect(finalized).toBe(true);
+  });
 });

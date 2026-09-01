@@ -41,4 +41,18 @@ export class SerializedScrapeQueue {
 
     return scrape;
   }
+
+  async drain(finalizer: () => void): Promise<void> {
+    for (;;) {
+      const observedTail = this.tail;
+      await observedTail;
+
+      if (this.tail !== observedTail) {
+        continue;
+      }
+
+      finalizer();
+      return;
+    }
+  }
 }
