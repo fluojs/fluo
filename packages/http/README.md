@@ -122,8 +122,24 @@ Use `appendVaryHeader(response, ...fields)` when response negotiation or caching
 `Vary` fields without duplicating case variants, re-parsing comma lists by hand, or accidentally
 expanding an existing wildcard `Vary: *` contract.
 
+Use `getResponseHeader(response, name)` and `hasResponseHeader(response, name)` for the same
+case-insensitive lookup over adapter-provided response headers. They preserve the original
+`string | string[]` shape and do not write headers, body, status, or commit state.
+
+Use `buildContentDisposition(disposition, filename)` to create an `attachment` or `inline`
+Content-Disposition field value. It emits an escaped printable-ASCII `filename` fallback and a
+deterministic RFC 8187 UTF-8 `filename*` value. Carriage return and line feed filenames reject
+before a header value is returned.
+
 ```ts
-import { appendVaryHeader, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+  type RequestContext,
+} from '@fluojs/http';
 
 export function readLanguage(context: RequestContext): string | undefined {
   const acceptLanguage = getRequestHeader(context.request, 'accept-language');
@@ -132,6 +148,20 @@ export function readLanguage(context: RequestContext): string | undefined {
 
 export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
+  context.response.setHeader(
+    'Content-Disposition',
+    buildContentDisposition('attachment', 'résumé.pdf'),
+  );
+}
+
+export function readResponseEtag(
+  context: RequestContext,
+): string | string[] | undefined {
+  return getResponseHeader(context.response, 'etag');
+}
+
+export function shouldSetResponseEtag(context: RequestContext): boolean {
+  return !hasResponseHeader(context.response, 'etag');
 }
 ```
 
@@ -373,21 +403,57 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 
 Adapters that parse multipart uploads should attach runtime-neutral `FrameworkRequestFile` values to `FrameworkRequest.files` rather than augmenting the shared HTTP contract with adapter-specific file types. The seam intentionally models the portable fields every HTTP adapter can provide (`fieldname`, `originalname`, `mimetype`, `buffer`, and `size`); platform packages may keep richer native file objects on their raw request surfaces, but guards, binders, middleware, interceptors, and controllers should read files through `RequestContext.request.files` when they need cross-runtime behavior.
 
+### Multipart DTO fields
+
+Use `@FromFiles(fieldname?)` with `@RequestDto(...)` when multipart files are part of a handler's input contract:
+
+```ts
+import {
+  Controller,
+  FromFiles,
+  Optional,
+  Post,
+  RequestDto,
+  type FrameworkRequestFile,
+} from '@fluojs/http';
+
+class UploadAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+
+  @FromFiles('cover')
+  @Optional()
+  cover?: readonly FrameworkRequestFile[];
+}
+
+@Controller('/uploads')
+export class UploadController {
+  @Post('/')
+  @RequestDto(UploadAssetsDto)
+  upload(input: UploadAssetsDto) {
+    return input.attachments.map((file) => file.originalname);
+  }
+}
+```
+
+`@FromFiles(...)` is array-only: when `FrameworkRequest.files` exists, it returns a readonly array filtered by `fieldname` in adapter arrival order; a present collection without matches becomes `[]`. When the collection is absent, required fields produce the standard missing-field error and `@Optional()` leaves the field `undefined`. Converters and validation receive that same portable array. The DTO binder projects only the five `FrameworkRequestFile` fields, so adapter-native file properties cannot leak through the DTO boundary. Direct `RequestContext.request.files` access remains supported for controllers and pipeline stages that need the entire request collection.
+
 Response content negotiation formatters must return `string` or `Uint8Array` from `ResponseFormatter.format(...)`. Node.js `Buffer` values remain assignable because `Buffer` implements `Uint8Array`, but formatter contracts should rely only on runtime-neutral byte behavior.
 
 ## Public API
 
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
-- **Header helpers**: `getRequestHeader`, `appendVaryHeader`
+- **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Portable Subpath (`@fluojs/http/portable`)
@@ -408,6 +474,30 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, and `HttpApplicationAdapter`: internal adapter seams for edge/fetch-style platform packages that must avoid instantiating the full HTTP root barrel.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: Typed request-local response finalization seam. Finalizers compose in registration order, each receives the prior resolved value, and the dispatcher awaits them so throws and rejections follow its normal error policy.
+
+## Conditional Requests
+
+Configure `conditionalRequest` during runtime bootstrap to resolve representation existence separately from optional validators:
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        exists: true,
+        validators: {
+          etag: { opaqueValue: `${handler.route.method}:${request.path}:v1`, strength: 'strong' },
+          lastModified: new Date('2026-01-01T00:00:00Z'),
+        },
+      };
+    },
+  },
+});
+```
+
+Return `{ exists: false }` when no representation exists. Return `{ exists: true }` when it exists but intentionally has no validators. The dispatcher evaluates this resolver after application/module middleware and guards, so conditional `304` and `412` responses never bypass authorization or audit logic. It accepts only valid entity-tag lists and HTTP-date forms; malformed conditional fields are ignored.
+
+The dispatcher owns RFC 9110 precedence and comparison: a successful `If-Match` skips only `If-Unmodified-Since`, then `If-None-Match` still takes precedence over `If-Modified-Since`; `If-Match` uses strong comparison and `If-None-Match` weak comparison. `304` and `412` are bodyless and retain `ETag`/`Last-Modified`, including redirect and supported custom response-writer paths. For the same selected representation, `HEAD` and `GET` use the same conditional result and framework-generated `HEAD` bodies are suppressed. An explicit `@Head` route remains an independent route; custom response writers own their body emission and must preserve the `HEAD` bodyless contract themselves. See the [HTTP Runtime Contract](../../docs/architecture/http-runtime.md).
 
 ## Related Packages
 

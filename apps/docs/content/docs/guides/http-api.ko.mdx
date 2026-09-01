@@ -13,17 +13,26 @@ fluo의 HTTP 모델은 두 책임으로 나뉩니다.
 ## 1. Controller에서 시작
 
 ```ts
-import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
-interface CreateArticleBody {
-  title: string;
-  body: string;
+class CreateArticleDto {
+  @FromBody()
+  title!: string;
+
+  @FromBody()
+  body!: string;
+}
+
+class FindArticleParamsDto {
+  @FromPath('slug')
+  slug!: string;
 }
 
 @Controller('/articles')
 export class ArticlesController {
-  @Post()
-  create(@Body() input: CreateArticleBody) {
+  @Post('/')
+  @RequestDto(CreateArticleDto)
+  create(input: CreateArticleDto) {
     return {
       slug: input.title.toLowerCase().replaceAll(' ', '-'),
       title: input.title,
@@ -32,8 +41,9 @@ export class ArticlesController {
   }
 
   @Get('/:slug')
-  findOne(@Param('slug') slug: string) {
-    return { slug };
+  @RequestDto(FindArticleParamsDto)
+  findOne(input: FindArticleParamsDto) {
+    return { slug: input.slug };
   }
 }
 ```
