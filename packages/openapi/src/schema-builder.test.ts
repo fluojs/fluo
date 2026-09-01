@@ -6,6 +6,39 @@ import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, 
 import { buildOpenApiDocument } from './schema-builder.js';
 
 describe('buildOpenApiDocument', () => {
+  it('generates required path parameters from route templates without DTO bindings', () => {
+    @Controller('/accounts/:accountId/resources')
+    class ResourcesController {
+      @Get('/:resourceId')
+      get() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: ResourcesController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Route Parameters API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/accounts/{accountId}/resources/{resourceId}']?.get?.parameters).toEqual([
+      {
+        in: 'path',
+        name: 'accountId',
+        required: true,
+        schema: { type: 'string' },
+      },
+      {
+        in: 'path',
+        name: 'resourceId',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ]);
+  });
+
   it('keeps nested request-body schemas stable', () => {
     class AuthorDto {
       @IsString()
