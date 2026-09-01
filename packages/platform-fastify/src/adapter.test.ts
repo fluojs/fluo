@@ -119,7 +119,8 @@ async function requestHttp(options: {
   headers?: IncomingHttpHeaders;
   method?: string;
   path: string;
-  port: number;
+  port?: number;
+  target?: string;
 }): Promise<{
   body: string;
   headers: IncomingHttpHeaders;
@@ -128,12 +129,13 @@ async function requestHttp(options: {
 }> {
   return await new Promise((resolve, reject) => {
     const informational: InformationEvent[] = [];
+    const target = options.target === undefined ? undefined : new URL(options.target);
     const request = httpRequest({
       headers: options.headers,
-      host: '127.0.0.1',
+      host: target?.hostname ?? '127.0.0.1',
       method: options.method,
       path: options.path,
-      port: options.port,
+      port: target?.port ?? options.port,
     }, (response) => {
       const chunks: Buffer[] = [];
 
@@ -728,7 +730,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('serializes string responses with JSON structured-suffix media types', () => {
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const requestResponseFactory = Reflect.get(adapter, 'requestResponseFactory') as {
       createResponse(reply: FastifyReply): FrameworkResponse;
     };
@@ -1347,7 +1349,7 @@ describe('@fluojs/platform-fastify', () => {
       controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const app = await fluoFactory.create(AppModule, {
       adapter,
       middleware: [appMiddleware],
@@ -1358,7 +1360,8 @@ describe('@fluojs/platform-fastify', () => {
       },
     });
 
-    const port = await listenOnEphemeralPort(app);
+    await app.listen();
+    const target = adapter.getListenTarget().url;
 
     try {
       const fastifyApp = (adapter as unknown as Record<'app', {
@@ -1377,7 +1380,7 @@ describe('@fluojs/platform-fastify', () => {
       const userResponse = await requestHttp({
         method: 'GET',
         path: '/users///123/?tag=a&tag=b',
-        port,
+        target,
       });
 
       expect(userResponse.statusCode).toBe(200);
@@ -1404,7 +1407,7 @@ describe('@fluojs/platform-fastify', () => {
         headers: { 'x-api-version': '1' },
         method: 'GET',
         path: '/versions/',
-        port,
+        target,
       });
       expect(versionedResponse.statusCode).toBe(200);
       expect(JSON.parse(versionedResponse.body)).toEqual({ route: 'version', version: '1' });
@@ -1412,7 +1415,7 @@ describe('@fluojs/platform-fastify', () => {
       const unversionedResponse = await requestHttp({
         method: 'GET',
         path: '/versions',
-        port,
+        target,
       });
       expect(unversionedResponse.statusCode).toBe(200);
       expect(JSON.parse(unversionedResponse.body)).toEqual({ route: 'version', version: 'latest' });
@@ -1420,14 +1423,14 @@ describe('@fluojs/platform-fastify', () => {
       const allResponse = await requestHttp({
         method: 'PATCH',
         path: '/fallback',
-        port,
+        target,
       });
       expect(allResponse.statusCode).toBe(200);
       expect(JSON.parse(allResponse.body)).toEqual({ method: 'PATCH', route: 'all' });
 
       const [queryResponse, purgeResponse] = await Promise.all([
-        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', port }),
-        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', port }),
+        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', target }),
+        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', target }),
       ]);
       expect(queryResponse.statusCode).toBe(200);
       expect(purgeResponse.statusCode).toBe(200);
@@ -1438,7 +1441,7 @@ describe('@fluojs/platform-fastify', () => {
       const errorResponse = await requestHttp({
         method: 'GET',
         path: '/errors',
-        port,
+        target,
       });
       expect(errorResponse.statusCode).toBe(500);
       expect(JSON.parse(errorResponse.body)).toEqual({
@@ -1453,7 +1456,7 @@ describe('@fluojs/platform-fastify', () => {
       const missingResponse = await requestHttp({
         method: 'GET',
         path: '/missing',
-        port,
+        target,
       });
       expect(missingResponse.statusCode).toBe(404);
       expect(JSON.parse(missingResponse.body)).toEqual({
