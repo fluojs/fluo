@@ -9,6 +9,8 @@ import {
   createHandlerMapping,
   createCorrelationMiddleware,
   Get,
+  Sse,
+  SseResponse,
   type AccessLogEvent,
   type FrameworkRequest,
   type FrameworkResponse,
@@ -153,6 +155,53 @@ describe('createAccessLogObserver', () => {
     ]);
     expect([...new Set(records.map((record) => record.requestId))]).toHaveLength(1);
     expect(response.headers['x-request-id']).toBe(records[0]?.requestId);
+  });
+
+  it('records one aborted terminal event for a pre-closed raw SSE stream through dispatch', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+    const observer = http.createAccessLogObserver({
+      sink: {
+        emit(record) {
+          records.push(record);
+        },
+      },
+    });
+
+    @Controller('/access-log-preclosed-sse')
+    class PreclosedSseController {
+      @Sse('/')
+      stream(_input: undefined, context: http.RequestContext): SseResponse {
+        return new SseResponse(context);
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: PreclosedSseController }]),
+      observers: [observer],
+      rootContainer: new Container().register(PreclosedSseController),
+    });
+    const response = createResponse();
+    response.stream = {
+      closed: true,
+      close() {},
+      write() {
+        return false;
+      },
+    };
+
+    // When
+    await dispatcher.dispatch(createRequest('/access-log-preclosed-sse'), response);
+
+    // Then
+    const terminalRecords = records.filter((record) => record.event === 'http.access.finish');
+    expect(records.map((record) => record.event)).toEqual([
+      'http.access.start',
+      'http.access.finish',
+    ]);
+    expect(terminalRecords).toEqual([
+      expect.objectContaining({ outcome: 'aborted', status: 200 }),
+    ]);
   });
 
   it('emits redacted start and terminal records with monotonic duration and a trusted client', async () => {
