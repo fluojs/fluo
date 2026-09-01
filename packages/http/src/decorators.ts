@@ -600,6 +600,18 @@ export const FromCookie = createDtoFieldDecorator('cookie');
  * @returns A field decorator that marks the binding source as `body`.
  */
 export const FromBody = createDtoFieldDecorator('body');
+/**
+ * Binds a DTO field from portable multipart files.
+ *
+ * The binding always yields a readonly array when the request exposes a file
+ * collection, preserving adapter order and filtering by the optional field name.
+ * An absent file collection remains absent so `@Optional()` can opt out of the
+ * normal required-field error.
+ *
+ * @param key Optional multipart field-name filter. Defaults to the DTO field name.
+ * @returns A field decorator that marks the binding source as `files`.
+ */
+export const FromFiles = createDtoFieldDecorator('files');
 
 /**
  * Marks a DTO field binding as optional.

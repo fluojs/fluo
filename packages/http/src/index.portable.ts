@@ -9,6 +9,7 @@ export {
   Delete,
   FromBody,
   FromCookie,
+  FromFiles,
   FromHeader,
   FromPath,
   FromQuery,
