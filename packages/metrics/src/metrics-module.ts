@@ -1,6 +1,6 @@
 import { Inject, type Token } from '@fluojs/core';
-import { ContainerResolutionError, type Container, type Provider } from '@fluojs/di';
-import { Controller, Get, forRoutes, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
+import { type Container, ContainerResolutionError, type Provider } from '@fluojs/di';
+import { Controller, forRoutes, Get, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
 import {
   defineModule,
   type ModuleType,
@@ -17,8 +17,8 @@ import {
   type HttpMetricsPathLabelMode,
   type HttpMetricsPathLabelNormalizer,
 } from './http-metrics-middleware.js';
-import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsService } from './metrics-service.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
@@ -56,9 +56,12 @@ export interface MetricsModuleOptions {
     /** Instance label value. Defaults to `local`. */
     instance?: string;
   };
-  /** External Prometheus registry to share between built-in and custom metrics. */
+  /** Legacy shared-registry fallback. Prefer the `METRICS_REGISTRY` bootstrap provider. */
   registry?: Registry;
 }
+
+/** Bootstrap provider token for a Registry shared by metrics module instances. */
+export const METRICS_REGISTRY: Token<Registry> = Symbol.for('fluo.metrics.registry');
 
 /** Module entry point that exposes `/metrics` and optional HTTP/runtime telemetry. */
 export class MetricsModule {
@@ -72,11 +75,10 @@ export class MetricsModule {
    * ```ts
    * MetricsModule.forRoot({
    *   http: { pathLabelMode: 'template' },
-   *   registry: new Registry(),
    * });
    * ```
    *
-   * @param options Metrics endpoint, registry, HTTP middleware, and runtime telemetry configuration.
+   * @param options Metrics endpoint, HTTP middleware, and runtime telemetry configuration.
    * @returns A runtime module that exposes metrics through the configured path.
    */
   static forRoot(options: MetricsModuleOptions = {}): ModuleType {
@@ -104,7 +106,15 @@ export class MetricsModule {
 
     const registryProvider: Provider = {
       provide: registryToken,
-      useFactory: () => MetricsModule.createRegistry(options),
+      inject: [RUNTIME_CONTAINER],
+      useFactory: async (container: unknown) => {
+        const runtimeContainer = assertRuntimeContainer(container);
+        const configuredRegistry = hasContainerToken(runtimeContainer, METRICS_REGISTRY)
+          ? assertPrometheusRegistry(await runtimeContainer.resolve(METRICS_REGISTRY))
+          : undefined;
+
+        return MetricsModule.createRegistry(options, configuredRegistry);
+      },
     };
     const imports: ModuleType[] = [];
     const validationProviders: Provider[] = [];
@@ -162,7 +172,7 @@ export class MetricsModule {
         useFactory: (registry: unknown, container: unknown) => new RuntimePlatformTelemetry(
           assertPrometheusRegistry(registry),
           assertRuntimeContainer(container),
-          options.registry ? 'shared' : 'isolated',
+          resolveRegistryMode(options, assertRuntimeContainer(container)),
           options.platformTelemetry,
         ),
       },
@@ -204,8 +214,8 @@ export class MetricsModule {
     return MetricsRuntimeModule;
   }
 
-  private static createRegistry(options: MetricsModuleOptions): Registry {
-    const registry = options.registry ?? new PrometheusRegistry();
+  private static createRegistry(options: MetricsModuleOptions, configuredRegistry?: Registry): Registry {
+    const registry = configuredRegistry ?? options.registry ?? new PrometheusRegistry();
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
       MetricsModule.registeredRegistries.add(registry);
@@ -299,6 +309,10 @@ function assertRuntimeContainer(value: unknown): Container {
   }
 
   return value;
+}
+
+function resolveRegistryMode(options: MetricsModuleOptions, container: Container): RegistryMode {
+  return options.registry || hasContainerToken(container, METRICS_REGISTRY) ? 'shared' : 'isolated';
 }
 
 function isRuntimeContainer(value: unknown): value is Container {

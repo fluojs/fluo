@@ -12,9 +12,9 @@ import {
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
-import { METER_PROVIDER } from './providers/meter-provider.js';
-import { MetricsModule } from './metrics-module.js';
+import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -782,7 +782,7 @@ describe('MetricsModule', () => {
     );
   });
 
-  it('uses shared registry when provided via options', async () => {
+  it('uses a shared registry configured by bootstrap providers', async () => {
     const sharedRegistry = new Registry();
 
     const customCounter = new Counter({
@@ -796,10 +796,11 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ registry: sharedRegistry, defaultMetrics: false })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       rootModule: AppModule,
     });
 

@@ -44,14 +44,15 @@ class AppModule {}
 
 `MetricsModule.forRoot()` exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. When HTTP instrumentation is enabled, the module records request totals, error counts, and request duration. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
-The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap unless you pass a `registry` option; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Pass a shared `Registry` only when framework metrics and application-defined metrics intentionally share one scrape surface.
+The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap unless the bootstrap configures `METRICS_REGISTRY` or the legacy `registry` option is supplied; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Configure a shared `Registry` at bootstrap only when framework metrics and application-defined metrics intentionally share one scrape surface.
 
 ## Public Responsibilities
 
 | Surface | Responsibility | Boundary |
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Wires the Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, and registry ownership. | `provider` currently accepts only `'prometheus'`; `path: false` disables the scrape route and route-scoped endpoint middleware. |
-| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `MetricsModule.forRoot({ registry })` directly. |
+| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `METRICS_REGISTRY` at bootstrap. |
+| `METRICS_REGISTRY` | Bootstrap provider token for a shared `prom-client` Registry. | A provider supplied to `bootstrapApplication()` takes ownership over the module's legacy `registry` option. |
 | `Registry` | Re-export of `prom-client`'s `Registry` constructor for shared-registry setups. | It is the same Prometheus registry implementation; duplicate metric names still fail according to Prometheus semantics. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` / meter types | Low-level meter bridge for first-party package integrations that need a provider token or backend-neutral counter/gauge/histogram facade. | Application code usually does not need this token unless it is composing package-level integrations; the only bundled provider backend today is Prometheus. |
 | `middleware` | Module-level middleware that participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware. | It is not route-scoped; use `endpointMiddleware` when only the scrape route should be protected. |
@@ -135,14 +136,15 @@ class OrdersService {
 
 Calling `MetricsService.counter(...)` again with the same name recreates the collector and follows Prometheus' duplicate-name failure behavior. Store and reuse the collector instead of creating it inside each request or command handler.
 
-`MetricsService.getRegistry()` returns the same active `prom-client` Registry used by the module scrape endpoint, built-in HTTP collectors, platform telemetry, and custom collectors created through the service. Prefer passing an explicit `registry` to `MetricsModule.forRoot({ registry })` when you own the bootstrap. Use `getRegistry()` for advanced integrations that receive `MetricsService` through DI and need to register a third-party Prometheus collector on the already active registry.
+`MetricsService.getRegistry()` returns the same active `prom-client` Registry used by the module scrape endpoint, built-in HTTP collectors, platform telemetry, and custom collectors created through the service. When you own the bootstrap, configure an explicit shared registry with the public `METRICS_REGISTRY` token. Use `getRegistry()` for advanced integrations that receive `MetricsService` through DI and need to register a third-party Prometheus collector on the already active registry.
 
 ### Share one registry for framework and app metrics
 
 ```ts
 import { Module } from '@fluojs/core';
 import { Counter, Registry } from 'prom-client';
-import { MetricsModule } from '@fluojs/metrics';
+import { METRICS_REGISTRY, MetricsModule } from '@fluojs/metrics';
+import { bootstrapApplication } from '@fluojs/runtime';
 
 const registry = new Registry();
 
@@ -153,9 +155,14 @@ new Counter({
 });
 
 @Module({
-  imports: [MetricsModule.forRoot({ http: true, registry })],
+  imports: [MetricsModule.forRoot({ http: true })],
 })
 class AppModule {}
+
+const app = await bootstrapApplication({
+  rootModule: AppModule,
+  providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
+});
 ```
 
 When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics only when their framework ownership, label schema, and effective path-label configuration match. The path-label compatibility check includes `pathLabelMode`, the exact `pathLabelNormalizer` function reference, and `unknownPathLabel` fallback semantics, so incompatible module instances fail fast instead of mixing different HTTP series policies into one collector set. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Platform telemetry state is tracked per reused registry, so a later scrape replaces stale module-owned component readiness and health series from an earlier module instance before metrics are returned. The registry scrape wrapper keeps using the latest active module registration and restores the Registry's original `metrics()` function after the last registration closes. Application-defined duplicate names still fail fast.
