@@ -22,7 +22,7 @@ pnpm add @fluojs/metrics
 
 ## Requirements
 
-`@fluojs/metrics` runs on Node.js 20 or newer; the package manifest declares `engines.node >=20.0.0`.
+`@fluojs/metrics` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency.
 
 ## When to Use
 
