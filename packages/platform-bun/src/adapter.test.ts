@@ -1564,6 +1564,7 @@ describe('@fluojs/platform-bun', () => {
     const mockBun = installMockBun();
     const requestAbort = new AbortController();
     const releaseServerStop = createDeferred<void>();
+    const serverStopStarted = createDeferred<void>();
     const streamClosed = createDeferred<void>();
     const order: string[] = [];
     let closeSettled = false;
@@ -1617,6 +1618,7 @@ describe('@fluojs/platform-bun', () => {
       }
 
       server.stop.mockImplementation(async () => {
+        serverStopStarted.resolve();
         await streamClosed.promise;
         await releaseServerStop.promise;
       });
@@ -1634,17 +1636,12 @@ describe('@fluojs/platform-bun', () => {
       );
 
       expect(server.stop).toHaveBeenCalledTimes(1);
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+      await serverStopStarted.promise;
       expect(closeSettled).toBe(false);
       expect(order).toEqual([]);
 
       requestAbort.abort(new Error('SSE client disconnected.'));
       await streamClosed.promise;
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
 
       expect(closeSettled).toBe(false);
       expect(order).toEqual(['stream-closed']);
@@ -1990,9 +1987,6 @@ describe('@fluojs/platform-bun', () => {
 
     serverTermination.reject(stopError);
     await stopRejected;
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(order).not.toContain('close-settled');
     expect(adapter.getServer()).toBe(server);
@@ -2297,9 +2291,6 @@ describe('@fluojs/platform-bun', () => {
         order.push('close-settled');
       },
     );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(mockBun.lastServer);
@@ -2433,9 +2424,6 @@ describe('@fluojs/platform-bun', () => {
           order.push('close-settled');
         },
       );
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
 
       expect(closeSettled).toBe(false);
       expect(adapter.getServer()).toBe(server);
@@ -2501,9 +2489,6 @@ describe('@fluojs/platform-bun', () => {
         order.push('close-settled');
       },
     );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(mockBun.lastServer);

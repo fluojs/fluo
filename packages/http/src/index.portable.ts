@@ -8,6 +8,7 @@ export type {
 } from './byte-range-response.js';
 export * from './context/request-context.js';
 export * from './context/sse.js';
+export * from './connection.js';
 export * from './cookie-helpers.js';
 export {
   All,

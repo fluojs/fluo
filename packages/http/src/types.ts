@@ -35,11 +35,30 @@ export interface FrameworkRequest {
   files?: readonly FrameworkRequestFile[];
   /** Adapter-snapshotted inbound request id used without forcing header normalization. */
   requestId?: string;
+  /**
+   * Adapter-snapshotted transport metadata available without platform-specific
+   * casts from middleware, guards, and request-scoped services.
+   */
+  connection?: FrameworkRequestConnection;
   rawBody?: Uint8Array;
   raw: unknown;
   /** Adapter-owned abort probe used by internal fast paths without forcing AbortSignal allocation. */
   isAborted?: () => boolean;
   signal?: AbortSignal;
+}
+
+/**
+ * Runtime-neutral transport metadata captured when an adapter receives a request.
+ *
+ * @remarks
+ * Fetch-only adapters may omit this value because the Web `Request` contract
+ * does not expose a peer address.
+ */
+export interface FrameworkRequestConnection {
+  /** Direct peer address supplied by the adapter transport, when available. */
+  readonly remoteAddress?: string;
+  /** Transport protocol supplied by the adapter when known. */
+  readonly protocol?: 'http' | 'https';
 }
 
 /** Runtime-neutral multipart file shape attached by adapters that parse uploads. */
@@ -309,7 +328,7 @@ export interface HandlerMetadata {
   controllerPath: string;
   effectivePath: string;
   effectiveVersion?: string;
-  moduleMiddleware: MiddlewareLike[];
+  moduleMiddleware: readonly MiddlewareSnapshotLike[];
   moduleType?: Constructor;
   pathParams: string[];
 }
@@ -417,6 +436,12 @@ export interface MiddlewareRouteConfig {
   routes: string[];
 }
 
+/** @internal Immutable route-binding view retained by handler mapping snapshots. */
+export interface MiddlewareRouteSnapshot {
+  readonly middleware: Constructor<Middleware>;
+  readonly routes: readonly string[];
+}
+
 /** Guard execution context for one matched handler invocation. */
 export interface GuardContext {
   handler: HandlerDescriptor;
@@ -484,6 +509,8 @@ export interface Converter {
 
 /** Middleware reference accepted by module/runtime configuration. */
 export type MiddlewareLike = Middleware | Token<Middleware> | MiddlewareRouteConfig;
+/** @internal Middleware reference retained by handler mapping snapshots. */
+export type MiddlewareSnapshotLike = Middleware | Token<Middleware> | MiddlewareRouteSnapshot;
 /** Guard reference accepted by route metadata and runtime configuration. */
 export type GuardLike = Guard | Token<Guard>;
 /** Interceptor reference accepted by route metadata and runtime configuration. */

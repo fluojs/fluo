@@ -23,6 +23,7 @@ import {
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
+import { SerializedScrapeQueue } from './serialized-scrape-queue.js';
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
@@ -245,7 +246,7 @@ type RuntimePlatformTelemetryRegistryState = {
   lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus>;
   originalMetrics?: Registry['metrics'];
   registrations: RuntimePlatformTelemetry[];
-  scrapeChain: Promise<unknown>;
+  scrapeQueue: SerializedScrapeQueue;
 };
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
@@ -401,7 +402,7 @@ function getRuntimePlatformTelemetryRegistryState(registry: Registry): RuntimePl
     lastHealthStatuses: new Map(),
     lastReadinessStatuses: new Map(),
     registrations: [],
-    scrapeChain: Promise.resolve(),
+    scrapeQueue: new SerializedScrapeQueue(),
   };
   PLATFORM_TELEMETRY_REGISTRY_STATES.set(registry, state);
   return state;
@@ -463,6 +464,14 @@ function assertGaugeLabelSchema(
   }
 }
 
+function removeFrameworkGauge(registry: Registry, gauge: Gauge<string>, metricName: string): void {
+  if (!FRAMEWORK_PLATFORM_GAUGES.has(gauge) || registry.getSingleMetric(metricName) !== gauge) {
+    return;
+  }
+
+  registry.removeSingleMetric(metricName);
+}
+
 class RuntimePlatformTelemetry implements OnModuleDestroy {
   private readonly readinessGauge: Gauge<string>;
   private readonly healthGauge: Gauge<string>;
@@ -500,7 +509,7 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     return registry.metrics();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     const registrationIndex = this.telemetryState.registrations.lastIndexOf(this);
     if (registrationIndex >= 0) {
       this.telemetryState.registrations.splice(registrationIndex, 1);
@@ -510,11 +519,21 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
       return;
     }
 
-    const originalMetrics = this.telemetryState.originalMetrics;
-    if (originalMetrics) {
-      this.registry.metrics = originalMetrics;
-      this.telemetryState.originalMetrics = undefined;
-    }
+    await this.telemetryState.scrapeQueue.drain(() => {
+      if (this.telemetryState.registrations.length > 0) {
+        return;
+      }
+
+      const originalMetrics = this.telemetryState.originalMetrics;
+      if (originalMetrics) {
+        this.clearPlatformTelemetry();
+        removeFrameworkGauge(this.registry, this.readinessGauge, 'fluo_component_ready');
+        removeFrameworkGauge(this.registry, this.healthGauge, 'fluo_component_health');
+        removeFrameworkGauge(this.registry, this.registryModeGauge, 'fluo_metrics_registry_mode');
+        this.registry.metrics = originalMetrics;
+        this.telemetryState.originalMetrics = undefined;
+      }
+    });
   }
 
   private installRegistryRefresh(): void {
@@ -527,31 +546,32 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     const telemetryState = this.telemetryState;
     const originalMetrics = registry.metrics;
     telemetryState.originalMetrics = originalMetrics;
-    registry.metrics = async () => {
-      const activeRegistration = telemetryState.registrations.at(-1);
-      await activeRegistration?.refresh();
-      return await originalMetrics.call(registry);
+    registry.metrics = () => {
+      return telemetryState.scrapeQueue.enqueue(async () => {
+        const activeRegistration = telemetryState.registrations.at(-1);
+        if (!activeRegistration) {
+          return originalMetrics.call(registry);
+        }
+
+        return activeRegistration.collectScrape(() => originalMetrics.call(registry));
+      });
     };
   }
 
-  async refresh(): Promise<void> {
-    const collect = this.telemetryState.scrapeChain.then(async () => {
-      const platformShell = await this.resolvePlatformShell();
-      if (!platformShell) {
-        this.clearPlatformTelemetry();
-        return;
-      }
+  private async collectScrape(render: () => Promise<string>): Promise<string> {
+    await this.refresh();
+    return await render();
+  }
 
-      const snapshot = await platformShell.snapshot();
-      this.syncSnapshot(snapshot);
-    });
+  private async refresh(): Promise<void> {
+    const platformShell = await this.resolvePlatformShell();
+    if (!platformShell) {
+      this.clearPlatformTelemetry();
+      return;
+    }
 
-    this.telemetryState.scrapeChain = collect.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    await collect;
+    const snapshot = await platformShell.snapshot();
+    this.syncSnapshot(snapshot);
   }
 
   private syncSnapshot(snapshot: PlatformShellSnapshot): void {

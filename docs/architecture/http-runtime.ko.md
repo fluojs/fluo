@@ -25,9 +25,10 @@ conditional-request 평가가 handler 실행을 허용한 뒤 response policy는
 11. `invokeControllerHandler(...)`는 request container에서 controller를 해석하고, binder로 선언된 DTO를 바인딩하며, route가 `request` metadata를 선언한 경우 `HttpDtoValidationAdapter`로 DTO 입력을 검증한다.
 12. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
 13. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, validator, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
-14. Module-level 및 application-level middleware가 `await next()` 이후의 작업까지 모두 settle하면 dispatcher는 handler 결과와 함께 `onRequestSuccess`를 호출한다.
-15. `next()` 반환 이후의 middleware 작업을 포함해 어느 단계에서든 예외가 발생하면 dispatcher는 앞선 success 알림 없이 `onRequestError`를 호출한 뒤, 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
-16. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
+14. Handler가 수동 `SseResponse`를 반환하면 명시적 close, request abort 또는 raw stream close까지 dispatch를 유지한다. 명시적 close 또는 raw stream close 뒤에는 middleware가 settle하고 request observer가 success를 받은 다음 finish를 받으며 request-scoped resource가 dispose된다. Request abort 뒤에는 dispatcher가 completion 후 cancellation을 다시 검사해 success를 건너뛰고 finish를 호출한 뒤 dispose한다.
+15. Module-level 및 application-level middleware가 `await next()` 이후의 작업까지 모두 settle하면 dispatcher는 handler 결과와 함께 `onRequestSuccess`를 호출한다.
+16. `next()` 반환 이후의 middleware 작업을 포함해 어느 단계에서든 예외가 발생하면 dispatcher는 앞선 success 알림 없이 `onRequestError`를 호출한 뒤, 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
+17. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
 
 ## Error Representation Boundary
 
@@ -54,6 +55,22 @@ conditional-request 평가가 handler 실행을 허용한 뒤 response policy는
 - Managed SSE는 request abort와 response-stream close notification을 iterator read뿐 아니라 adapter의 `waitForDrain()` backpressure wait에도 적용한다.
 - Drain promise가 settle되지 않은 동안 cancellation이 먼저 완료되면 dispatcher는 해당 promise를 더 기다리지 않고 response stream을 닫으며, source iterator의 `return()`을 정확히 한 번 호출하고 그 cleanup을 기다린 뒤 request-scope disposal을 수행한다.
 - Stream write가 throw하거나 drain promise가 reject하는 경우 cancellation으로 다시 분류하지 않는다. 원래 error가 committed-response observer 및 dispatcher logging boundary를 통해 그대로 전달된다.
+
+## Connection Identity
+
+adapter는 host가 제공할 때 direct peer address와 transport protocol을
+`FrameworkRequest.connection`에 snapshot합니다. Node, Express, Fastify는
+공유 Node request normalization path를 통해 이 portable seam을 채웁니다.
+Fetch-only adapter는 standard `Request`가 peer address를 노출하지 않으므로
+이를 생략할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가
+아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면
+`resolveHttpConnection(...)`은 peer, host, port를 보고하지 않으며 `Request`
+URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
+
+`resolveHttpConnection(request, { trustProxy })`는 immutable public connection
+model을 만듭니다. forwarding header는 direct peer가 명시적인 `trustProxy`
+policy를 만족한 뒤에만 client address, protocol, host에 영향을 줄 수 있습니다.
+malformed forwarding input은 부분 신뢰하지 않고 버립니다.
 
 ## Routing Rules
 

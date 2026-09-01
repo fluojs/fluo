@@ -25,9 +25,10 @@ After conditional-request evaluation permits handler execution, the response pol
 11. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
 12. The controller method receives `(input, requestContext)` and returns the handler result.
 13. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, validators, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
-14. After module-level and application-level middleware have fully settled, including their work after `await next()`, the dispatcher emits `onRequestSuccess` with the handler result.
-15. If any stage throws, including middleware work after `next()` returns, the dispatcher emits `onRequestError` without a preceding success notification, then runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
-16. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
+14. A handler that returns a manual `SseResponse` keeps its dispatch open until explicit close, request abort, or raw stream close. After explicit close or raw stream close, middleware settle, request observers receive success and then finish, and request-scoped resources dispose. After request abort, the dispatcher rechecks cancellation after completion, skips success, and emits finish before disposal.
+15. After module-level and application-level middleware have fully settled, including their work after `await next()`, the dispatcher emits `onRequestSuccess` with the handler result.
+16. If any stage throws, including middleware work after `next()` returns, the dispatcher emits `onRequestError` without a preceding success notification, then runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
+17. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
 
 ## Error Representation Boundary
 
@@ -54,6 +55,22 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 - Managed SSE applies request abort and response-stream close notifications to both iterator reads and adapter `waitForDrain()` backpressure waits.
 - If cancellation wins while a drain promise remains unsettled, the dispatcher stops waiting for that promise, closes the response stream, calls the source iterator's `return()` exactly once, and awaits that cleanup before request-scope disposal.
 - A stream write that throws or a drain promise that rejects is not reclassified as cancellation. The original error continues through the committed-response observer and dispatcher logging boundary.
+
+## Connection Identity
+
+Adapters snapshot a direct peer address and transport protocol into
+`FrameworkRequest.connection` when their host exposes them. Node, Express, and
+Fastify populate this portable seam through the shared Node request
+normalization path; Fetch-only adapters may omit it because standard `Request`
+objects expose no peer address. A fetch-style HTTPS `Request` is not Node
+transport parity: without an adapter-provided `connection` snapshot or explicit
+headers, `resolveHttpConnection(...)` reports no peer, host, or port and does
+not infer HTTPS, `secure`, host, or port from the `Request` URL.
+
+`resolveHttpConnection(request, { trustProxy })` derives the immutable public
+connection model. Forwarding headers can influence client address, protocol,
+and host only after the direct peer matches the explicit `trustProxy` policy.
+Malformed forwarding input is discarded rather than partially trusted.
 
 ## Routing Rules
 

@@ -51,7 +51,7 @@ The scrape endpoint returns the active `prom-client` registry output with that r
 | Surface | Responsibility | Boundary |
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Wires the Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, and registry ownership. | `provider` currently accepts only `'prometheus'`; `path: false` disables the scrape route and route-scoped endpoint middleware. |
-| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `METRICS_REGISTRY` at bootstrap. |
+| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | `MetricsService` is non-global: inject it from a module that directly imports a `MetricsModule.forRoot(...)` registration or imports a module that re-exports `MetricsService`; unrelated sibling modules do not receive it automatically. Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `METRICS_REGISTRY` at bootstrap. |
 | `METRICS_REGISTRY` | Bootstrap provider token for a shared `prom-client` Registry. | A provider supplied to `bootstrapApplication()` takes ownership over the module's legacy `registry` option. |
 | `Registry` | Re-export of `prom-client`'s `Registry` constructor for shared-registry setups. | It is the same Prometheus registry implementation; duplicate metric names still fail according to Prometheus semantics. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` / meter types | Low-level meter bridge for first-party package integrations that need a provider token or backend-neutral counter/gauge/histogram facade. | Application code usually does not need this token unless it is composing package-level integrations; the only bundled provider backend today is Prometheus. |
@@ -126,7 +126,7 @@ MetricsModule.forRoot({
 
 ### Create custom metrics once and reuse them
 
-`MetricsService.counter(...)`, `gauge(...)`, and `histogram(...)` create Prometheus collectors on the active registry. Create each custom metric once during provider construction or application startup, then reuse the returned collector when business actions occur.
+`MetricsService.counter(...)`, `gauge(...)`, and `histogram(...)` create Prometheus collectors on the active registry. `MetricsService` is non-global: the provider or controller that injects it must belong to a module that directly imports a `MetricsModule.forRoot(...)` registration or imports a module that re-exports `MetricsService`; unrelated sibling modules do not receive it automatically. Create each custom metric once during provider construction or application startup, then reuse the returned collector when business actions occur.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -155,15 +155,17 @@ Calling `MetricsService.counter(...)` again with the same name recreates the col
 
 ### Share one registry for framework and app metrics
 
-This example imports `Counter` and `Registry` directly from `prom-client`, so add
-`prom-client` to your application's dependencies:
+If your application chooses to import raw collectors such as `Counter` or
+`Registry` directly from `prom-client`, add it to your application's dependencies:
 
 ```bash
 pnpm add prom-client
 ```
 
 `@fluojs/metrics` uses `prom-client` internally, but its dependency does not make
-`prom-client` a supported transitive import for your application.
+`prom-client` a supported transitive import for your application. The setup below
+uses the `Registry` re-export from `@fluojs/metrics`, so it does not require that
+direct dependency.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -197,7 +199,7 @@ The module emits fluo-specific gauges that mirror the platform shell and registe
 
 - `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
 - `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
-- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when you pass a `registry` option. The label reports that module registration configuration; it does not infer registry sharing at scrape time.
+- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when bootstrap supplies `METRICS_REGISTRY` or the legacy `registry` option is supplied. The label reports the effective registry ownership configuration selected during bootstrap or module registration; it does not infer registry sharing at scrape time.
 
 The platform snapshot is refreshed during each registry scrape, including advanced `MetricsService.getRegistry().metrics()` scrape paths, and you can attach environment labels up front.
 

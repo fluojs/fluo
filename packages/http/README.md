@@ -318,7 +318,17 @@ complete phase and fallback contract.
 
 ### Rate limiting behind proxies
 
-`createRateLimitMiddleware(...)` resolves client identity from the raw socket `remoteAddress` by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true` only when your adapter sits behind a trusted proxy that overwrites those headers. If your adapter exposes neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
+`createRateLimitMiddleware(...)` resolves client identity from the adapter-snapshotted direct transport address by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, configure `trustProxy` with an explicit hop count, address/CIDR list, or predicate. Forwarded data is ignored unless the direct peer satisfies that policy; malformed `Forwarded` data fails closed to the direct transport identity.
+
+```ts
+import { resolveHttpConnection } from '@fluojs/http';
+
+const connection = resolveHttpConnection(context.request, {
+  trustProxy: ['10.0.0.0/8', '2001:db8:feed::/48'],
+});
+```
+
+`connection` is immutable and exposes the selected `clientAddress`, direct `remoteAddress`, trusted `proxyChain`, `protocol`, `secure`, `host`, `hostname`, and `port`. Fetch-only adapters may leave the direct address undefined because the Web `Request` contract does not expose it. A fetch-style HTTPS `Request` without an adapter-provided `connection` snapshot or explicit headers has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from its URL. The legacy `trustProxyHeaders: true` setting is broad compatibility only and is not recommended for new deployments; use `trustProxy` to describe the deployment boundary precisely. Only use either setting when you control the proxy that rewrites those headers. If an adapter provides neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
 
 ### Server-sent events
 
@@ -339,7 +349,7 @@ export class OrdersEventsController {
 }
 ```
 
-`@Sse(path)` registers a `GET` route and declares `text/event-stream` produced media type metadata. Handlers may either return `SseResponse` for manual stream control or return `AsyncIterable<SseMessage<T> | T>` for managed streaming. Managed async iterables are converted with the same `encodeSseMessage(...)` behavior as `SseResponse`: plain yielded values become `data:` frames, while yielded objects with a `data` field may also provide `event`, `id`, and `retry`. The dispatcher stops consuming the source when `RequestContext.request.signal` aborts or the response stream closes, calls `FrameworkResponseStream.waitForDrain()` when a write reports backpressure, and closes the stream on completion or source errors. The same cancellation boundary bounds an in-flight `waitForDrain()`: request abort or stream close wins over an unsettled drain promise, after which the dispatcher closes the source iterator exactly once and continues request-scope disposal. Stream write failures and rejected drain promises still propagate their original errors. On cancellation, the dispatcher closes the response stream promptly and awaits the source iterator's `return()` cleanup before disposing request-scoped resources. Cleanup failures are reported through the request observer and dispatcher logger seams without replacing the already-committed SSE response. Thrown source errors follow the same committed-response error/observer boundary. Observable values remain out of scope and no RxJS dependency is required.
+`@Sse(path)` registers a `GET` route and declares `text/event-stream` produced media type metadata. Handlers may either return `SseResponse` for manual stream control or return `AsyncIterable<SseMessage<T> | T>` for managed streaming. A manual `SseResponse` keeps its dispatch, request observers, and request-scoped resources active until explicit close, request abort, or raw stream close; those lifecycle stages then release exactly once. Managed async iterables are converted with the same `encodeSseMessage(...)` behavior as `SseResponse`: plain yielded values become `data:` frames, while yielded objects with a `data` field may also provide `event`, `id`, and `retry`. The dispatcher stops consuming the source when `RequestContext.request.signal` aborts or the response stream closes, calls `FrameworkResponseStream.waitForDrain()` when a write reports backpressure, and closes the stream on completion or source errors. The same cancellation boundary bounds an in-flight `waitForDrain()`: request abort or stream close wins over an unsettled drain promise, after which the dispatcher closes the source iterator exactly once and continues request-scope disposal. Stream write failures and rejected drain promises still propagate their original errors. On cancellation, the dispatcher closes the response stream promptly and awaits the source iterator's `return()` cleanup before disposing request-scoped resources. Cleanup failures are reported through the request observer and dispatcher logger seams without replacing the already-committed SSE response. Thrown source errors follow the same committed-response error/observer boundary. Observable values remain out of scope and no RxJS dependency is required.
 
 Managed SSE requires an adapter that exposes `FrameworkResponse.stream`. When the active adapter does not provide a response stream, the dispatcher rejects the managed async iterable before marking the response handled and surfaces the failure through the standard dispatch error path (request error observers and the configured error response writer) instead of silently reporting the stream as handled.
 
@@ -448,6 +458,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Trusted connection API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
 - **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Byte-range responses**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
