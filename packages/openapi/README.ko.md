@@ -152,6 +152,13 @@ Path는 `@fluojs/http` route grammar를 따르며 중복 slash와 trailing slash
 ### Async 등록과 옵션
 title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApiModule.forRootAsync(...)`를 사용합니다. 등록 시점의 `documentPath`와 `uiPath`는 `inject`, `useFactory` 옆에 두고, factory에서는 `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`를 반환합니다. `defaultErrorResponsesPolicy`는 기본적으로 표준 error response와 `ErrorResponse` schema를 주입하며, `documentTransform`은 문서 생성 뒤 제공되기 전에 실행됩니다.
 
+### NestJS 마이그레이션 계약 차이
+생성 문서는 NestJS Swagger와 일대일 호환 계층이 아닙니다. fluo는 기본적으로 명시적으로 선언한 응답을 대체하지 않으면서 `400`, `401`, `403`, `404`, `500` 응답과 공용 `ErrorResponse` schema를 추가합니다. 클라이언트를 다시 생성하기 전에 생성된 error contract를 검증하고, legacy 문서에 이 기본 응답이 들어가면 안 되는 경우 `defaultErrorResponsesPolicy: 'omit'`을 설정하세요.
+
+fluo는 controller tag, handler name, HTTP method, normalized path에서 각 `operationId`를 결정론적으로 만듭니다. 충돌에는 숫자 suffix가 붙습니다. 생성된 client가 legacy identifier에 의존한다면 문서를 제공하기 전에 `documentTransform`에서 생성된 operation ID를 변경하고, 변환된 문서를 client generator로 검증하세요.
+
+`forRootAsync(...)`에서는 `documentPath`와 `uiPath`의 route가 `useFactory(...)`가 resolve되기 전에 compile되므로 두 값은 바깥 registration option입니다. 이 path들은 `inject`와 `useFactory` 옆에 두고 factory에서는 document configuration만 반환하세요. factory가 반환한 path로는 이미 등록된 route를 다시 구성할 수 없습니다.
+
 ## 공개 API
 
 - `OpenApiModule`: OpenAPI 통합을 위한 메인 엔트리 포인트.

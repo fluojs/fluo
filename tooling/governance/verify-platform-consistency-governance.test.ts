@@ -111,6 +111,7 @@ async function loadGovernanceInternals() {
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
+    enforceOpenApiMigrationDocumentStructure: (readText?: (relativePath: string) => string) => void;
     enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforcePlatformNodejsEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
@@ -1140,6 +1141,54 @@ describe('enforceContractCompanionUpdates', () => {
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
+  });
+
+  it('rejects duplicate OpenAPI migration and learning-path sections', async () => {
+    // Given: the bilingual OpenAPI migration and learning-path documentation.
+    const { enforceOpenApiMigrationDocumentStructure } = await loadGovernanceInternals();
+
+    // When: either contract section is repeated consecutively.
+    // Then: governance rejects the duplicate heading before it can render twice.
+    expect(() => enforceOpenApiMigrationDocumentStructure()).not.toThrow();
+    expect(() => enforceOpenApiMigrationDocumentStructure((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace(
+          '## OpenAPI Contract Differences',
+          '## OpenAPI Contract Differences\n\n## OpenAPI Contract Differences',
+        )
+        : content;
+    })).toThrow(/migrate-from-nestjs\.md must contain exactly one OpenAPI Contract Differences heading/u);
+    expect(() => enforceOpenApiMigrationDocumentStructure((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'book/beginner/ch10-openapi.ko.md'
+        ? content.replace(
+          '### 기본 오류 계약',
+          '### 기본 오류 계약\n\n### 기본 오류 계약',
+        )
+        : content;
+    })).toThrow(/ch10-openapi\.ko\.md must contain exactly one 기본 오류 계약 heading/u);
+  });
+
+  it.each([
+    ['default error responses', 'defaultErrorResponsesPolicy'],
+    ['operation identifiers', 'operationId'],
+    ['document transforms', 'documentTransform'],
+  ])('requires the %s migration difference', async (_name, marker) => {
+    // Given: the English migration reference and its three machine-governed facts.
+    const { enforceOpenApiMigrationDocumentStructure } = await loadGovernanceInternals();
+
+    // When: a migration difference marker is removed.
+    // Then: governance rejects the incomplete contract.
+    expect(() => enforceOpenApiMigrationDocumentStructure((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace(marker, '')
+        : content;
+    })).toThrow(/must retain migration marker/u);
   });
 
   it('accepts GraphQL contract guidance when bilingual surfaces and regression enforcement change together', async () => {
