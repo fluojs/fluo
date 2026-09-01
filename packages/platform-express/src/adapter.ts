@@ -776,6 +776,9 @@ function createFrameworkResponseStream(response: ExpressResponse): FrameworkResp
     get closed() {
       return response.writableEnded;
     },
+    disableCompression() {
+      disableNativeCompression(response);
+    },
     flush() {
       response.flushHeaders?.();
     },

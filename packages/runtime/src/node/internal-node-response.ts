@@ -164,6 +164,9 @@ function createFrameworkResponseStream(response: ServerResponse): FrameworkRespo
     get closed() {
       return response.writableEnded;
     },
+    disableCompression() {
+      disableNativeCompression(response);
+    },
     flush() {
       response.flushHeaders?.();
     },
@@ -208,6 +211,15 @@ function createFrameworkResponseStream(response: ServerResponse): FrameworkRespo
       return response.write(chunk);
     },
   };
+}
+
+function disableNativeCompression(response: ServerResponse): void {
+  const cacheControl = response.getHeader('cache-control');
+  const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
+
+  if (!/\bno-transform\b/i.test(value)) {
+    response.setHeader('Cache-Control', value ? `${value}, no-transform` : 'no-transform');
+  }
 }
 
 /**

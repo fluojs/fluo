@@ -965,6 +965,9 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
     get closed() {
       return reply.raw.writableEnded;
     },
+    disableCompression() {
+      disableNativeCompression(reply);
+    },
     flush() {
       ensureHijacked();
       reply.raw.flushHeaders?.();

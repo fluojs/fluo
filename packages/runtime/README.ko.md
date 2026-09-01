@@ -273,7 +273,7 @@ class UsersModule {}
 
 ### Node 전용 서브경로 (`@fluojs/runtime/node`)
 
-로거 팩토리, Node/Express/Fastify 정적 에셋용 `createNodeFileSystemAssetSource(...)`, 지원되는 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
+로거 팩토리, eager immutable Node/Express/Fastify 정적 에셋 snapshot용 `createNodeFileSystemAssetSource({ root, precompressed })`, 지원되는 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
 
 ```typescript
 import {

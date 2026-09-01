@@ -8,7 +8,7 @@
 
 정적 에셋 제공은 catch-all route나 `FrameworkResponse.sendFile()` capability가 아니라 application middleware입니다. `createStaticAssetsMiddleware(...)`는 runtime-neutral `StaticAssetSource`를 요구하며 portable graph는 filesystem을 import하거나 emulation하지 않습니다. 미들웨어는 각 URL segment를 정확히 한 번 decode하고 source 해석 전에 traversal, encoded separator, backslash, NUL, 허용되지 않은 dotfile을 거부합니다. Directory index는 opt-in이며 trailing-slash path에만 적용됩니다.
 
-선택된 representation은 MIME type, 정확한 byte length, validator를 제공합니다. 미들웨어는 lazy stream을 열기 전에 conditional field를 평가하고 이어서 `Range`, `If-Range`, `HEAD`, cancellation, committed stream failure 처리를 공유 byte-range 계약에 위임합니다. Precompressed selection은 선택된 representation을 `Content-Encoding`과 `Vary: Accept-Encoding`으로 식별하며 range는 그 representation을 대상으로 동작합니다. Node filesystem 지원은 `@fluojs/runtime/node`에만 존재하고 configuration/resolution 중 root 또는 realpath escape를 거부합니다. Web과 edge host는 명시적 source를 제공해야 합니다.
+선택된 representation은 MIME type, 정확한 byte length, validator를 제공합니다. Node filesystem resolution은 안전하게 열린 representation을 immutable byte snapshot으로 즉시 고정하고 `FileHandle`을 닫은 뒤 정확히 그 bytes에서 strong ETag를 만듭니다. 이후 미들웨어가 conditional field를 평가하고 공유 byte-range 계약이 `Range`, `If-Range`, `HEAD`, cancellation, compression disablement, committed stream failure 처리를 소유합니다. Precompressed selection은 선택된 representation을 `Content-Encoding`과 `Vary: Accept-Encoding`으로 식별하며 range는 그 representation을 대상으로 동작합니다. Node filesystem 지원은 `@fluojs/runtime/node`에만 존재하고 configuration/resolution 중 root 또는 realpath escape를 거부합니다. Web과 edge host는 명시적 source를 제공해야 합니다.
 
 ## 바이트 범위 계약
 

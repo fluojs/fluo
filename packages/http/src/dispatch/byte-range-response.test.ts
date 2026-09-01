@@ -194,7 +194,7 @@ describe('single byte range response', () => {
   });
 
   it.each(['missing', 'throwing'] as const)(
-    'awaits rejected reader cancellation before releasing a %s stream capability',
+    'observes rejected reader cancellation without blocking a %s stream capability',
     async (capability) => {
       const cancellationFailure = new Error('reader cancellation failed');
       const cleanupOrder: string[] = [];
@@ -240,7 +240,7 @@ describe('single byte range response', () => {
         releaseLock.mockRestore();
       }
 
-      expect(cleanupOrder).toEqual(['cancel', 'cancel-settled', 'release']);
+      expect(cleanupOrder).toEqual(['cancel', 'release', 'cancel-settled']);
       expect(response.statusCode).toBe(500);
       expect(response.headers['Accept-Ranges']).toBeUndefined();
       expect(response.headers['Content-Range']).toBeUndefined();
@@ -736,6 +736,81 @@ describe('single byte range response', () => {
     expect(response.stream.chunks).toEqual([Uint8Array.from([0, 1, 2])]);
     expect(cancelCalls).toBe(1);
     expect(response.sentBodies).toEqual([]);
+  });
+
+  it('settles a completed range response when source cancellation never settles', async () => {
+    let cancelCalls = 0;
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return createByteRangeResponse(() => new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelCalls += 1;
+            return new Promise<void>(() => {});
+          },
+          start(controller) {
+            controller.enqueue(Uint8Array.from([0, 1, 2]));
+          },
+        }), { size: 3 });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createStreamingResponse();
+
+    await expect(dispatcher.dispatch(createRequest(), response)).resolves.toBeUndefined();
+
+    expect(cancelCalls).toBe(1);
+    expect(response.stream.chunks).toEqual([Uint8Array.from([0, 1, 2])]);
+    expect(response.stream.closed).toBe(true);
+  });
+
+  it('preserves an undefined transport error as a transport failure occurrence', async () => {
+    let cancelCalls = 0;
+    let errorListener: ((error: unknown) => void) | undefined;
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return createByteRangeResponse(() => new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelCalls += 1;
+          },
+          start(controller) {
+            controller.enqueue(Uint8Array.of(1));
+          },
+        }), { size: 1 });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createStreamingResponse();
+    const originalWrite = response.stream.write.bind(response.stream);
+    response.stream.onError = (listener) => {
+      errorListener = listener;
+      return () => {
+        errorListener = undefined;
+      };
+    };
+    response.stream.write = (chunk) => {
+      const accepted = originalWrite(chunk);
+      errorListener?.(undefined);
+      return accepted;
+    };
+
+    await expect(dispatcher.dispatch(createRequest(), response)).resolves.toBeUndefined();
+
+    expect(cancelCalls).toBe(1);
+    expect(response.stream.closed).toBe(false);
   });
 });
 

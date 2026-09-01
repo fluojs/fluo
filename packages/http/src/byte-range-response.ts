@@ -333,7 +333,7 @@ function openByteRangeStream(source: ByteRangeResponseSource): ReadableStream<Ui
 }
 
 async function cancelAndReleaseReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
-  await reader.cancel().catch(() => undefined);
+  void reader.cancel().catch(() => undefined);
   reader.releaseLock();
 }
 
@@ -347,6 +347,7 @@ async function writeReadableStream(
   let skip = start;
   let remaining = end - start + 1;
   let stopped = false;
+  let hasTransportFailure = false;
   let transportFailure: unknown;
   let resolveStop: () => void = () => {};
   let resolveTransportFailure: () => void = () => {};
@@ -358,7 +359,8 @@ async function writeReadableStream(
     resolveTransportFailure = resolve;
   });
   const cancel = (): Promise<void> => {
-    cancellation ??= reader.cancel().catch(() => undefined);
+    cancellation ??= reader.cancel();
+    void cancellation.catch(() => undefined);
     return cancellation;
   };
   const stop = (): void => {
@@ -370,7 +372,8 @@ async function writeReadableStream(
     void cancel();
   };
   const fail = (error: unknown): void => {
-    if (transportFailure === undefined) {
+    if (!hasTransportFailure) {
+      hasTransportFailure = true;
       transportFailure = error;
       resolveTransportFailure();
     }
@@ -379,6 +382,7 @@ async function writeReadableStream(
   };
   const removeCloseListener = stream.onClose?.(stop);
   const removeErrorListener = stream.onError?.(fail);
+  stream.disableCompression?.();
   request.signal?.addEventListener('abort', stop, { once: true });
 
   if (isByteRangeRequestAborted(request)) {
@@ -394,7 +398,7 @@ async function writeReadableStream(
 
       const result = await raceWithStop(reader.read(), stopPromise, transportFailurePromise);
 
-      if (!result || stopped || transportFailure !== undefined || isByteRangeRequestAborted(request)) {
+      if (!result || stopped || hasTransportFailure || isByteRangeRequestAborted(request)) {
         stop();
         break;
       }
@@ -433,20 +437,15 @@ async function writeReadableStream(
     removeCloseListener?.();
     removeErrorListener?.();
 
-    if (stopped) {
-      void cancel();
-    } else {
-      await cancel();
-    }
-
+    void cancel();
     reader.releaseLock();
 
-    if (!stream.closed && transportFailure === undefined) {
+    if (!stream.closed && !hasTransportFailure) {
       stream.close();
     }
   }
 
-  if (transportFailure !== undefined) {
+  if (hasTransportFailure) {
     throw transportFailure;
   }
 }

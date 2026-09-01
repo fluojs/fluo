@@ -273,7 +273,7 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 
 ### Node-Specific Subpath (`@fluojs/runtime/node`)
 
-Logger factories, `createNodeFileSystemAssetSource(...)` for Node/Express/Fastify static assets, and other supported Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
+Logger factories, `createNodeFileSystemAssetSource({ root, precompressed })` for eager immutable Node/Express/Fastify static asset snapshots, and other supported Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
 
 ```typescript
 import {

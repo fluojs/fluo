@@ -155,10 +155,15 @@ export interface FrameworkResponseCompressionWriteOptions {
 export interface FrameworkResponseStream {
   readonly closed: boolean;
   close(): void;
+  /** Disables adapter-owned dynamic compression before the first streamed byte. */
+  disableCompression?(): void;
   flush?(): void;
+  /** Subscribes to transport closure and returns an optional remover. */
   onClose?(listener: () => void): (() => void) | void;
+  /** Subscribes to transport failures, including an `undefined` failure value. */
   onError?(listener: (error: unknown) => void): (() => void) | void;
   waitForDrain?(): Promise<void>;
+  /** Writes one chunk; `false` requires callers to await `waitForDrain()`. */
   write(chunk: string | Uint8Array): boolean;
 }
 
