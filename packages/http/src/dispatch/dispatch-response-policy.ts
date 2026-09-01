@@ -17,7 +17,9 @@ import {
   resolveContentNegotiation,
   selectResponseFormatter,
 } from './dispatch-content-negotiation.js';
+import { applyResponseValidators } from './conditional-request-policy.js';
 import { writeErrorResponse } from './dispatch-error-policy.js';
+import type { ResponseValidators } from '../types.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -151,6 +153,7 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param value The value.
  * @param contentNegotiation The content negotiation.
  * @param requestContext The active request context passed to custom response writers.
+ * @param validators Validators resolved before the route handler executes.
  * @returns The write success response result.
  */
 export async function writeSuccessResponse(
@@ -160,6 +163,7 @@ export async function writeSuccessResponse(
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
+  validators?: ResponseValidators,
 ) {
   if (response.committed) {
     return;
@@ -167,6 +171,7 @@ export async function writeSuccessResponse(
 
   if (handler.route.redirect) {
     const { url, statusCode = 302 } = handler.route.redirect;
+    applyResponseValidators(response, validators);
     response.redirect(statusCode, url);
     return;
   }
@@ -178,6 +183,7 @@ export async function writeSuccessResponse(
   const responseWriter = readFrameworkResponseWriter(responseValue);
 
   if (responseWriter) {
+    applyResponseValidators(response, validators);
     let successResponseMetadataApplied = false;
     const applyWriterSuccessResponseMetadata = (): void => {
       if (successResponseMetadataApplied) {
@@ -186,6 +192,7 @@ export async function writeSuccessResponse(
 
       successResponseMetadataApplied = true;
       applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
+      applyResponseValidators(response, validators);
     };
 
     return responseWriter({
@@ -205,6 +212,7 @@ export async function writeSuccessResponse(
   if (formatter) {
     appendVaryHeader(response, 'Accept');
   }
+  applyResponseValidators(response, validators);
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);

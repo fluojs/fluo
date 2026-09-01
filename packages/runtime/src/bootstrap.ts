@@ -1465,6 +1465,9 @@ function createRuntimeDispatcherOptions(
     ...(options.contentNegotiation === undefined
       ? {}
       : { contentNegotiation: options.contentNegotiation }),
+    ...(options.conditionalRequest === undefined
+      ? {}
+      : { conditionalRequest: options.conditionalRequest }),
     ...(options.errorRepresentation === undefined
       ? {}
       : { errorRepresentation: options.errorRepresentation }),

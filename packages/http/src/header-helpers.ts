@@ -80,6 +80,85 @@ export function getRequestHeader(
 }
 
 /**
+ * Reads one response header without flattening multi-value arrays.
+ *
+ * @param response Adapter-normalized response carrying the outbound headers map.
+ * @param name Header name to resolve case-insensitively.
+ * @returns The original scalar, array, or `undefined` stored on the response.
+ */
+export function getResponseHeader(
+  response: FrameworkResponse,
+  name: string,
+): string | string[] | undefined {
+  return findCaseInsensitiveHeaderEntry(response.headers, name)?.[1];
+}
+
+/**
+ * Checks whether one response header is present without mutating the response.
+ *
+ * @param response Adapter-normalized response carrying the outbound headers map.
+ * @param name Header name to resolve case-insensitively.
+ * @returns `true` when a matching response header has a value.
+ */
+export function hasResponseHeader(
+  response: FrameworkResponse,
+  name: string,
+): boolean {
+  return getResponseHeader(response, name) !== undefined;
+}
+
+/**
+ * Creates a portable Content-Disposition value with ASCII and UTF-8 filename parameters.
+ *
+ * @param disposition Whether the response is an `attachment` or rendered `inline`.
+ * @param filename Original filename to encode for a response header.
+ * @returns A Content-Disposition field value with escaped ASCII and RFC 8187 UTF-8 parameters.
+ * @throws {TypeError} When the disposition is unsupported or the filename contains CR or LF.
+ */
+export function buildContentDisposition(
+  disposition: 'attachment' | 'inline',
+  filename: string,
+): string {
+  if (disposition !== 'attachment' && disposition !== 'inline') {
+    throw new TypeError('Content-Disposition disposition must be attachment or inline.');
+  }
+
+  if (filename.includes('\r') || filename.includes('\n')) {
+    throw new TypeError('Content-Disposition filenames cannot contain CR or LF characters.');
+  }
+
+  const asciiFilename = filename
+    .replace(/[^\x20-\x7E]/gu, '?')
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"');
+  const utf8Filename = Array.from(new TextEncoder().encode(filename), (byte) => {
+    const isAlphaNumeric =
+      (byte >= 0x30 && byte <= 0x39) ||
+      (byte >= 0x41 && byte <= 0x5a) ||
+      (byte >= 0x61 && byte <= 0x7a);
+    const isRfc8187Punctuation =
+      byte === 0x21 ||
+      byte === 0x23 ||
+      byte === 0x24 ||
+      byte === 0x26 ||
+      byte === 0x2b ||
+      byte === 0x2d ||
+      byte === 0x2e ||
+      byte === 0x5e ||
+      byte === 0x5f ||
+      byte === 0x60 ||
+      byte === 0x7c ||
+      byte === 0x7e;
+
+    return isAlphaNumeric || isRfc8187Punctuation
+      ? String.fromCharCode(byte)
+      : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
+  }).join('');
+
+  return `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`;
+}
+
+/**
  * Reads the first non-empty request header value across duplicate case variants.
  *
  * @param request Adapter-normalized request carrying the inbound headers map.

@@ -8,7 +8,9 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 
 ## Migration Reference
 
-For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `FluoFactory.create(...)`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
+For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `fluoFactory.create(AppModule, { middleware })`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
+
+For NestJS HTTP pipeline migration, portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`; keep Express `(req, res, next)` handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`.
 
 For NestJS migrations, `fluo migrate` rewrites default one-argument `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while unsupported bootstrap variants remain unchanged with a diagnostic and explicit adapter-independent transform selections leave bootstrap unchanged.
 
@@ -295,6 +297,10 @@ Chapter 14's executable JWT learning path imports `ConfigModule.forRoot()` and a
 ## GraphQL Field Resolver DTO Inputs
 
 `@fluojs/graphql` code-first object field resolvers can bind GraphQL arguments through `@FieldResolver({ input: InputDto })` and `@Args(index?)`. Each `@Arg(...)` field on `InputDto` becomes a GraphQL argument; the framework materializes and validates that DTO with the same `BAD_USER_INPUT` error contract used by root operations. `@Args()`, `@Parent()`, and `@Context()` bind distinct explicit zero-based method indexes, and a duplicate index fails immediately. `@FieldResolver({ input })` requires `@Args()`, while `@Args()` requires `input`; all three bindings are invalid on root operations. A request-scoped root resolver and its field resolvers share one operation container for HTTP and subscription execution, but schema-first field-resolver attachment remains unsupported.
+
+## HTTP Conditional Request Contract
+
+[`docs/architecture/http-runtime.md`](./architecture/http-runtime.md) is the canonical conditional-request lifecycle contract. It defines the explicit `ConditionalRequestResolver` representation-existence result, middleware-and-guard ordering before evaluation, RFC validator precedence, independent `@Head` routing, framework-managed `HEAD` body suppression, and custom-writer ownership. `packages/http/README.md`, `packages/runtime/README.md`, and `packages/testing/README.md` list the supported resolver, bootstrap, and real-listener conformance APIs.
 
 ## Anti-Patterns at a Glance
 

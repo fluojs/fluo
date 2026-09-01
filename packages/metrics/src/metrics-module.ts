@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
 import { Inject, type Token } from '@fluojs/core';
 import { type Container, ContainerResolutionError, type Provider } from '@fluojs/di';
 import { Controller, forRoutes, Get, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
@@ -20,6 +23,7 @@ import {
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
+import { SerializedScrapeQueue } from './serialized-scrape-queue.js';
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
@@ -197,8 +201,23 @@ export class MetricsModule {
     const registry = configuredRegistry ?? options.registry ?? new PrometheusRegistry();
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+      assertNoDefaultMetricCollisions(registry);
+
+      const existingMetricNames = new Set(registry.getMetricsAsArray().map((metric) => metric.name));
+
+      try {
+        collectDefaultMetrics({ register: registry });
+      } catch (error) {
+        for (const metric of registry.getMetricsAsArray()) {
+          if (!existingMetricNames.has(metric.name)) {
+            registry.removeSingleMetric(metric.name);
+          }
+        }
+
+        throw error;
+      }
+
       MetricsModule.registeredRegistries.add(registry);
-      collectDefaultMetrics({ register: registry });
     }
 
     return registry;
@@ -227,12 +246,25 @@ type RuntimePlatformTelemetryRegistryState = {
   lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus>;
   originalMetrics?: Registry['metrics'];
   registrations: RuntimePlatformTelemetry[];
-  scrapeChain: Promise<unknown>;
+  scrapeQueue: SerializedScrapeQueue;
 };
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
+const require = createRequire(import.meta.url);
+// prom-client exposes collector IDs publicly but not their metric names. This v15.1.3-only
+// private metadata seam keeps collision preflight side-effect-free; the exact package pin and
+// runtime-support regression must be updated together before changing prom-client.
+const DEFAULT_METRIC_COLLECTORS = collectDefaultMetrics.metricsList.map((collectorName) => {
+  const collector: unknown = require(`prom-client/lib/metrics/${collectorName}`);
+
+  if (!hasDefaultMetricNames(collector)) {
+    throw new Error(`prom-client default collector "${collectorName}" does not expose metricNames.`);
+  }
+
+  return { collectorName, metricNames: collector.metricNames };
+});
 const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
 const PLATFORM_TELEMETRY_REGISTRY_STATES = new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>();
 const HTTP_INSTRUMENTATION_OWNERS = new WeakMap<Container, WeakSet<Registry>>();
@@ -289,6 +321,53 @@ function assertPrometheusRegistry(value: unknown): Registry {
   return value;
 }
 
+function hasDefaultMetricNames(value: unknown): value is { metricNames: readonly string[] } {
+  return typeof value === 'function'
+    && 'metricNames' in value
+    && Array.isArray(value.metricNames)
+    && value.metricNames.every((metricName) => typeof metricName === 'string');
+}
+
+function assertNoDefaultMetricCollisions(registry: Registry): void {
+  for (const { collectorName, metricNames } of DEFAULT_METRIC_COLLECTORS) {
+    if (!isDefaultCollectorActive(collectorName)) {
+      continue;
+    }
+
+    for (const metricName of metricNames) {
+      if (registry.getSingleMetric(metricName)) {
+        throw new Error(`A metric with the name ${metricName} has already been registered.`);
+      }
+    }
+  }
+}
+
+function isDefaultCollectorActive(collectorName: string): boolean {
+  if (collectorName === 'processHandles') {
+    return typeof Reflect.get(process, '_getActiveHandles') === 'function';
+  }
+
+  if (collectorName === 'processRequests') {
+    return typeof Reflect.get(process, '_getActiveRequests') === 'function';
+  }
+
+  if (collectorName === 'processOpenFileDescriptors') {
+    return process.platform === 'linux';
+  }
+
+  if (collectorName === 'processMaxFileDescriptors') {
+    try {
+      return readFileSync('/proc/self/limits', 'utf8')
+        .split('\n')
+        .some((line) => line.startsWith('Max open files'));
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function assertRuntimeContainer(value: unknown): Container {
   if (!isRuntimeContainer(value)) {
     throw new Error('MetricsModule runtime container provider resolved an invalid container.');
@@ -323,7 +402,7 @@ function getRuntimePlatformTelemetryRegistryState(registry: Registry): RuntimePl
     lastHealthStatuses: new Map(),
     lastReadinessStatuses: new Map(),
     registrations: [],
-    scrapeChain: Promise.resolve(),
+    scrapeQueue: new SerializedScrapeQueue(),
   };
   PLATFORM_TELEMETRY_REGISTRY_STATES.set(registry, state);
   return state;
@@ -422,7 +501,7 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     return registry.metrics();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     const registrationIndex = this.telemetryState.registrations.lastIndexOf(this);
     if (registrationIndex >= 0) {
       this.telemetryState.registrations.splice(registrationIndex, 1);
@@ -432,11 +511,17 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
       return;
     }
 
-    const originalMetrics = this.telemetryState.originalMetrics;
-    if (originalMetrics) {
-      this.registry.metrics = originalMetrics;
-      this.telemetryState.originalMetrics = undefined;
-    }
+    await this.telemetryState.scrapeQueue.drain(() => {
+      if (this.telemetryState.registrations.length > 0) {
+        return;
+      }
+
+      const originalMetrics = this.telemetryState.originalMetrics;
+      if (originalMetrics) {
+        this.registry.metrics = originalMetrics;
+        this.telemetryState.originalMetrics = undefined;
+      }
+    });
   }
 
   private installRegistryRefresh(): void {
@@ -449,31 +534,32 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     const telemetryState = this.telemetryState;
     const originalMetrics = registry.metrics;
     telemetryState.originalMetrics = originalMetrics;
-    registry.metrics = async () => {
-      const activeRegistration = telemetryState.registrations.at(-1);
-      await activeRegistration?.refresh();
-      return await originalMetrics.call(registry);
+    registry.metrics = () => {
+      return telemetryState.scrapeQueue.enqueue(async () => {
+        const activeRegistration = telemetryState.registrations.at(-1);
+        if (!activeRegistration) {
+          return originalMetrics.call(registry);
+        }
+
+        return activeRegistration.collectScrape(() => originalMetrics.call(registry));
+      });
     };
   }
 
-  async refresh(): Promise<void> {
-    const collect = this.telemetryState.scrapeChain.then(async () => {
-      const platformShell = await this.resolvePlatformShell();
-      if (!platformShell) {
-        this.clearPlatformTelemetry();
-        return;
-      }
+  private async collectScrape(render: () => Promise<string>): Promise<string> {
+    await this.refresh();
+    return await render();
+  }
 
-      const snapshot = await platformShell.snapshot();
-      this.syncSnapshot(snapshot);
-    });
+  private async refresh(): Promise<void> {
+    const platformShell = await this.resolvePlatformShell();
+    if (!platformShell) {
+      this.clearPlatformTelemetry();
+      return;
+    }
 
-    this.telemetryState.scrapeChain = collect.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    await collect;
+    const snapshot = await platformShell.snapshot();
+    this.syncSnapshot(snapshot);
   }
 
   private syncSnapshot(snapshot: PlatformShellSnapshot): void {
