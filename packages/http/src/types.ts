@@ -252,7 +252,7 @@ export interface HandlerMetadata {
   controllerPath: string;
   effectivePath: string;
   effectiveVersion?: string;
-  moduleMiddleware: readonly MiddlewareLike[];
+  moduleMiddleware: readonly MiddlewareSnapshotLike[];
   moduleType?: Constructor;
   pathParams: string[];
 }
@@ -357,7 +357,13 @@ export interface Middleware {
 /** Declarative middleware binding for selected route patterns. */
 export interface MiddlewareRouteConfig {
   middleware: Constructor<Middleware>;
-  routes: readonly string[];
+  routes: string[];
+}
+
+/** @internal Immutable route-binding view retained by handler mapping snapshots. */
+export interface MiddlewareRouteSnapshot {
+  readonly middleware: Constructor<Middleware>;
+  readonly routes: readonly string[];
 }
 
 /** Guard execution context for one matched handler invocation. */
@@ -427,6 +433,8 @@ export interface Converter {
 
 /** Middleware reference accepted by module/runtime configuration. */
 export type MiddlewareLike = Middleware | Token<Middleware> | MiddlewareRouteConfig;
+/** @internal Middleware reference retained by handler mapping snapshots. */
+export type MiddlewareSnapshotLike = Middleware | Token<Middleware> | MiddlewareRouteSnapshot;
 /** Guard reference accepted by route metadata and runtime configuration. */
 export type GuardLike = Guard | Token<Guard>;
 /** Interceptor reference accepted by route metadata and runtime configuration. */

@@ -26,6 +26,7 @@ import type {
   InterceptorLike,
   MiddlewareContext,
   MiddlewareLike,
+  MiddlewareSnapshotLike,
   RequestContext,
   RequestObservationContext,
   RequestObserver,
@@ -104,7 +105,7 @@ type FrameworkRequestWithPrincipal = FrameworkRequest & {
 
 interface CompiledMiddlewareScopePlan {
   alwaysRequiresRequestScope: boolean;
-  conditionalDefinitions: MiddlewareLike[];
+  conditionalDefinitions: MiddlewareSnapshotLike[];
 }
 
 interface CompiledDispatchStartPlan {
@@ -300,7 +301,7 @@ function createRequestDispatchScope(rootContainer: Container): DispatchScope {
 }
 
 function activeMiddlewareMayRequireRequestScope(
-  definitions: readonly MiddlewareLike[],
+  definitions: readonly MiddlewareSnapshotLike[],
   request: FrameworkRequest,
 ): boolean {
   return definitions.some((definition) => {
@@ -312,8 +313,8 @@ function activeMiddlewareMayRequireRequestScope(
   });
 }
 
-function compileMiddlewareScopePlan(definitions: readonly MiddlewareLike[]): CompiledMiddlewareScopePlan {
-  const conditionalDefinitions: MiddlewareLike[] = [];
+function compileMiddlewareScopePlan(definitions: readonly MiddlewareSnapshotLike[]): CompiledMiddlewareScopePlan {
+  const conditionalDefinitions: MiddlewareSnapshotLike[] = [];
 
   for (const definition of definitions) {
     if (!isMiddlewareRouteConfig(definition) || definition.routes.length === 0) {

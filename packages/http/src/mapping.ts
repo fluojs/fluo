@@ -16,6 +16,7 @@ import type {
   HttpMethod,
   InterceptorLike,
   MiddlewareLike,
+  MiddlewareSnapshotLike,
   VersioningExtractor,
   VersioningOptions,
 } from './types.js';
@@ -484,7 +485,9 @@ function freezeDescriptorSnapshot(descriptors: readonly HandlerDescriptor[]): Ha
   return snapshot;
 }
 
-function freezeModuleMiddlewareSnapshot(definitions: readonly MiddlewareLike[]): readonly MiddlewareLike[] {
+function freezeModuleMiddlewareSnapshot(
+  definitions: readonly (MiddlewareLike | MiddlewareSnapshotLike)[],
+): readonly MiddlewareSnapshotLike[] {
   const snapshot = definitions.map((definition) => {
     if (!isMiddlewareRouteConfig(definition)) {
       return definition;
@@ -511,7 +514,7 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
   const descriptors = freezeDescriptorSnapshot(buildDescriptorList(sources, versioning));
   const descriptorIndex = buildDescriptorIndex(descriptors);
 
-  return Object.freeze({
+  const mapping = {
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase();
@@ -576,5 +579,12 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
 
       return undefined;
     },
+  };
+
+  Object.defineProperty(mapping, 'descriptors', {
+    configurable: false,
+    writable: false,
   });
+
+  return mapping;
 }

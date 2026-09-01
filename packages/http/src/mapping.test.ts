@@ -1,6 +1,6 @@
 import { defineControllerMetadata, defineRouteMetadata } from '@fluojs/core/internal';
 import { Container } from '@fluojs/di';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { All, Controller, Get, Query, Route, Version } from './decorators.js';
 import { InvalidRoutePathError, RouteConflictError } from './errors.js';
@@ -138,7 +138,7 @@ describe('handler mapping', () => {
     expect(match?.descriptor).toBe(descriptor);
   });
 
-  it('keeps matching bound to the exposed descriptor snapshot', () => {
+  it('keeps matching bound to an immutable exposed descriptor snapshot', () => {
     @Controller('/users')
     class UsersController {
       @Get('/:id')
@@ -149,12 +149,18 @@ describe('handler mapping', () => {
 
     const mapping = createHandlerMapping([{ controllerToken: UsersController }]);
     const descriptor = mapping.descriptors[0];
+    const descriptorsProperty = Object.getOwnPropertyDescriptor(mapping, 'descriptors');
 
     expect(Reflect.set(mapping, 'descriptors', [])).toBe(false);
     expect(mapping.descriptors).toContain(descriptor);
-    expect(Object.isFrozen(mapping)).toBe(true);
+    expect(descriptorsProperty).toMatchObject({
+      configurable: false,
+      writable: false,
+    });
+    expect(Object.isFrozen(mapping)).toBe(false);
+    const match = vi.spyOn(mapping, 'match');
 
-    const match = mapping.match({
+    const result = mapping.match({
       body: undefined,
       cookies: {},
       headers: {},
@@ -166,7 +172,8 @@ describe('handler mapping', () => {
       url: '/users/42',
     });
 
-    expect(match?.descriptor).toBe(descriptor);
+    expect(result?.descriptor).toBe(descriptor);
+    expect(match).toHaveBeenCalledOnce();
   });
 
   it('isolates route middleware matching from source input mutation', async () => {
