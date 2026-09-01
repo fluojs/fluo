@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Route,
 } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
@@ -80,6 +81,23 @@ describe('OpenAPI Path Item validation', () => {
 
     // Then
     expect(buildDocument).toThrow(`OpenAPI cannot document unsupported HTTP method "${method}" for path "/unsupported".`);
+  });
+
+  it('emits TRACE descriptors as standard OpenAPI operations', () => {
+    // Given
+    @Controller('/trace')
+    class TraceController {
+      @Route('TRACE', '/') trace() { return undefined; }
+    }
+    const descriptors = createHandlerMapping([{ controllerToken: TraceController }]).descriptors;
+
+    // When
+    const document = buildOpenApiDocument({ ...DOCUMENT_OPTIONS, descriptors });
+
+    // Then
+    expect(document.paths['/trace']?.trace).toEqual(expect.objectContaining({
+      operationId: 'TraceController_trace_trace_trace',
+    }));
   });
 
   it('emits every operation supported by Fluo descriptors', () => {
