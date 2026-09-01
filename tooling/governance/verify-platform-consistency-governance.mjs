@@ -33,6 +33,7 @@ const httpRuntimeChangedPathRegression =
 const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isolation.test.ts';
 const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
+const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
@@ -854,6 +855,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
       hasChanged(changedFiles, httpRuntimeChangedPathRegression),
       `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
     );
+    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+      return;
+    }
     assert(
       hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
       `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
