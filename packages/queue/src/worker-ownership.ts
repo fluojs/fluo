@@ -165,7 +165,10 @@ export function assertUniqueQueueWorkerOwnership(
 
     for (const descriptor of descriptors.values()) {
       const owners = ownersByJobName.get(descriptor.jobName) ?? [];
-      const existingOwner = owners.find((owner) => canShareBackend(ownershipNamespace, owner));
+      const compatibleOwners = owners.filter((owner) => canShareBackend(ownershipNamespace, owner));
+      const existingOwner =
+        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??
+        compatibleOwners[0];
 
       if (existingOwner) {
         const backendIdentity =

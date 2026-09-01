@@ -286,6 +286,90 @@ describe('queue worker ownership', () => {
     }
   });
 
+  it('rejects when an unconfigured registration collides with a later reject owner', async () => {
+    // Given
+    class FirstScopedJob {}
+    class SecondScopedJob {}
+    class ThirdScopedJob {}
+
+    @QueueWorker(FirstScopedJob, { jobName: 'shared-worker-queue' })
+    class FirstScopedWorker {
+      async handle(_job: FirstScopedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondScopedJob, { jobName: 'shared-worker-queue' })
+    class SecondScopedWorker {
+      async handle(_job: SecondScopedJob): Promise<void> {}
+    }
+
+    @QueueWorker(ThirdScopedJob, { jobName: 'shared-worker-queue' })
+    class ThirdScopedWorker {
+      async handle(_job: ThirdScopedJob): Promise<void> {}
+    }
+
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, {
+      imports: [
+        QueueModule.forRoot({
+          global: false,
+          ownershipNamespace: 'first-redis-db-0',
+          scope: 'first',
+        }),
+      ],
+      providers: [FirstScopedWorker],
+    });
+
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, {
+      imports: [
+        QueueModule.forRoot({
+          global: false,
+          ownershipEnforcement: 'reject',
+          ownershipNamespace: 'second-redis-db-0',
+          scope: 'second',
+        }),
+      ],
+      providers: [SecondScopedWorker],
+    });
+
+    class ThirdQueueFeatureModule {}
+    defineModule(ThirdQueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false, scope: 'third' })],
+      providers: [ThirdScopedWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstQueueFeatureModule, SecondQueueFeatureModule, ThirdQueueFeatureModule],
+    });
+
+    // When
+    const result = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+      rootModule: AppModule,
+    }).then(
+      (app) => ({ app, kind: 'started' } as const),
+      (error: unknown) => ({ error, kind: 'failed' } as const),
+    );
+
+    try {
+      // Then
+      expect(result.kind).toBe('failed');
+      if (result.kind === 'failed') {
+        expect(result.error).toMatchObject({
+          message:
+            'Cross-scope @fluojs/queue worker ownership collision for backend identity "(unconfigured)" and jobName "shared-worker-queue" between scopes "second" (SecondScopedWorker in SecondQueueFeatureModule) and "third" (ThirdScopedWorker in ThirdQueueFeatureModule). Configure distinct ownershipNamespace or @QueueWorker(..., { jobName }) values.',
+        });
+      }
+      expect(bullmqState.queueNames).toEqual([]);
+      expect(bullmqState.workerNames).toEqual([]);
+    } finally {
+      if (result.kind === 'started') {
+        await result.app.close();
+      }
+    }
+  });
+
   it('warns once for a lone unconfigured ownership namespace', async () => {
     // Given
     const warnings: string[] = [];
