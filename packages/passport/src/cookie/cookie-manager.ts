@@ -169,10 +169,9 @@ export class CookieManager {
 
     const updatedHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
     const writtenValues = toHeaderValues(response.headers['Set-Cookie'] ?? updatedHeader?.value);
-    const preservesExistingValues = existingValues.every(
-      (value, index) => writtenValues[index] === value,
-    );
-    const cookies = preservesExistingValues
+    const appendedExistingValues = writtenValues.length > existingValues.length
+      && existingValues.every((value, index) => writtenValues[index] === value);
+    const cookies = appendedExistingValues
       ? writtenValues
       : [...existingValues, ...writtenValues];
 

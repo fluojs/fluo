@@ -99,6 +99,20 @@ it('rejects invalid portable cookie attributes before mutating the response', ()
   expect(response.headers).toEqual({});
 });
 
+it('appends an identical cookie through a replacement-style response', () => {
+  // Given
+  const manager = new CookieManager();
+  const response = createResponse();
+  const cookie = 'access_token=token; Max-Age=300; Path=/; Secure; HttpOnly; SameSite=Strict';
+  response.headers['Set-Cookie'] = cookie;
+
+  // When
+  manager.setAccessTokenCookie(response, 'token', 300);
+
+  // Then
+  expect(response.headers['Set-Cookie']).toEqual([cookie, cookie]);
+});
+
 it('keeps CookieManager declarations available from the package root', () => {
   // Given
   const manager = new CookieManager();
