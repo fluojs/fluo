@@ -134,7 +134,7 @@ MetricsModule.forRoot({
 지연 시간 외에 응답 크기까지 보고 싶을 때가 많지만, 현재 기본 HTTP 메트릭 계약은 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds`에 한정됩니다. 응답 크기 분포를 추적하고 싶다면 애플리케이션 전용 커스텀 메트릭이나 별도 미들웨어 계층으로 추가하는 편이 맞습니다.
 
 ## 19.5 Custom Metrics
-`MetricsService`를 사용하여 비즈니스 전용 이벤트를 추적할 수 있습니다. 이 서비스는 의존성 주입을 통해 애플리케이션 어디에서나 사용할 수 있습니다. 커스텀 메트릭은 범용 서버 모니터링을 애플리케이션의 실제 가치 흐름과 연결하는 장치입니다.
+`MetricsService`를 사용하여 비즈니스 전용 이벤트를 추적할 수 있습니다. 이 서비스는 global injection 대상이 아닌 module-local service이므로, 해당 `MetricsModule.forRoot(...)` registration을 import한 module에서만 inject할 수 있습니다. 커스텀 메트릭은 범용 서버 모니터링을 애플리케이션의 실제 가치 흐름과 연결하는 장치입니다.
 
 ### Counter: Measuring Events
 값이 증가하기만 하는 지표(예: 총 게시물 생성 수, 이메일 발송 수, 결제 처리 수)에는 `Counter`를 사용하세요. 카운터는 PromQL에서 "비율(Rate)" 계산의 기본 구성 요소가 됩니다.

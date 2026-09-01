@@ -134,7 +134,7 @@ Histograms use buckets to count how many requests fall into different time range
 In addition to latency, you often want to see response size, but the current default HTTP metrics contract is limited to `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds`. If you want to track response size distribution, it is better to add it as an application-specific custom metric or through a separate Middleware layer.
 
 ## 19.5 Custom Metrics
-You can use `MetricsService` to track business-specific events. This service is available anywhere in the application through Dependency Injection. Custom metrics connect general-purpose server monitoring to the application's actual value flow.
+You can use `MetricsService` to track business-specific events. This service is module-local, not globally injectable: inject it only from a module that imports the corresponding `MetricsModule.forRoot(...)` registration. Custom metrics connect general-purpose server monitoring to the application's actual value flow.
 
 ### Counter: Measuring Events
 Use `Counter` for values that only increase, such as total posts created, emails sent, or payments processed. Counters become the basic building block for rate calculations in PromQL.
