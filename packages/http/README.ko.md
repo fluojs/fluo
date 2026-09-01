@@ -440,6 +440,7 @@ export class UploadController {
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Conditional request 타입**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
@@ -466,6 +467,30 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, `HttpApplicationAdapter`: 전체 HTTP root barrel을 instantiate하면 안 되는 edge/fetch-style platform package를 위한 내부 adapter seam.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: first-party response integration을 위한 typed response-entry branding seam.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: typed request-local response finalization seam. Finalizer는 registration 순서대로 compose되고 각각 이전에 resolve된 값을 받으며, dispatcher가 await하므로 throw와 rejection은 기존 error policy를 따릅니다.
+
+## Conditional Requests
+
+runtime bootstrap에서 `conditionalRequest`를 구성해 representation 존재 여부와 optional validator를 분리하여 해석합니다.
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        exists: true,
+        validators: {
+          etag: { opaqueValue: `${handler.route.method}:${request.path}:v1`, strength: 'strong' },
+          lastModified: new Date('2026-01-01T00:00:00Z'),
+        },
+      };
+    },
+  },
+});
+```
+
+representation이 없으면 `{ exists: false }`를, 존재하지만 validator가 의도적으로 없으면 `{ exists: true }`를 반환합니다. Dispatcher는 application/module middleware와 guard 뒤에 이 resolver를 평가하므로 conditional `304`와 `412`가 authorization 또는 audit logic을 우회하지 않습니다. 유효한 entity-tag list와 HTTP-date form만 받아들이며 malformed conditional field는 무시합니다.
+
+dispatcher는 RFC 9110 precedence와 comparison을 소유합니다. 성공한 `If-Match`는 `If-Unmodified-Since`만 건너뛰고, 이후에도 `If-None-Match`가 `If-Modified-Since`보다 우선합니다. `If-Match`는 strong comparison, `If-None-Match`는 weak comparison을 사용합니다. `304`와 `412`는 body 없이 `ETag`/`Last-Modified`를 유지하며 redirect와 지원되는 custom response-writer 경로에도 적용됩니다. 같은 selected representation에서는 `HEAD`와 `GET`이 같은 conditional 결과를 사용하고 framework-generated `HEAD` body는 억제됩니다. 명시적인 `@Head` route는 독립 route이며 custom response writer는 body emission을 소유하므로 직접 bodyless `HEAD` contract를 지켜야 합니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
 
 ## 관련 패키지
 

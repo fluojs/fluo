@@ -70,6 +70,10 @@ await app.listen();
 
 Runtime은 adapter가 소유하는 optional `context.response.earlyHints` capability를 보존하면서 이를 필수 response method surface로 만들지 않습니다. Node.js, Express, Fastify response는 writer를 제공하고 Web 표준 response factory는 이를 생략하므로 Bun, Deno, Workers, custom Fetch host가 unsupported임을 사용 전에 감지할 수 있습니다. Early write는 final status, header, body, commit ownership과 독립적입니다. 자세한 내용은 [`@fluojs/http` Early Hints 계약](../http/README.ko.md#early-hints)을 참고하세요.
 
+### Conditional request bootstrap
+
+Runtime bootstrap은 `@fluojs/http`의 `conditionalRequest` option을 받습니다. Resolver는 명시적인 representation 존재 여부와 optional validator를 반환하며 middleware와 guard 뒤, interceptor와 controller 호출 전에 실행됩니다. Resolver shape, RFC 9110 precedence, `HEAD` 규칙은 [`@fluojs/http` Conditional Requests 계약](../http/README.ko.md#conditional-requests)을 참고하세요.
+
 ### 애플리케이션 컨텍스트 (HTTP 제외)
 
 백그라운드 워커나 스크립트의 경우, `createApplicationContext`를 사용하여 HTTP 설정을 건너뛸 수 있습니다.
@@ -239,7 +243,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
-- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 같은 field를 노출합니다.
+- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하고 `BootstrapApplicationOptions.conditionalRequest`는 representation validation을 구성하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 두 field를 노출합니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, `createRuntimeInspectionSnapshot(...)`: HTTP route behavior를 변경하지 않고 platform snapshot에 effective compiled route diagnostics를 추가하는 runtime-owned immutable projection입니다.

@@ -937,6 +937,39 @@ describe('dispatcher runtime', () => {
     expect(response.simpleJsonBody).toEqual({ ok: true });
   });
 
+  it('reports conditional request routes as full-path execution in stats and diagnostics', async () => {
+    @Controller('/conditional-fast-path-diagnostics')
+    class ConditionalFastPathDiagnosticsController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(ConditionalFastPathDiagnosticsController);
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return { exists: false };
+        },
+      },
+      fastPathDebugHeaders: true,
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalFastPathDiagnosticsController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/conditional-fast-path-diagnostics'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.fastPathRoutes).toBe(0);
+    expect(stats?.fullPathRoutes).toBe(1);
+    expect(stats?.routes[0]?.executionPath).toBe('full');
+    expect(stats?.routes[0]?.fallbackReason).toContain('conditional requests');
+    expect(response.headers['X-Fluo-Path']).toContain('full; route=GET:/');
+    expect(response.headers['X-Fluo-Path']).toContain('conditional requests');
+  });
+
   it('dispatches OPTIONS and HEAD route decorators through the HTTP pipeline', async () => {
     @Controller('/metadata')
     class MetadataController {

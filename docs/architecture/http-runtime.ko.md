@@ -14,13 +14,14 @@
 6. 매칭된 route params는 `requestContext.request.params`로 복사되고, 이어서 observer가 `onHandlerMatched`를 받을 수 있다.
 7. 매칭된 handler에 연결된 module-level middleware는 global middleware 뒤, guard 실행 전에 실행된다.
 8. `runGuardChain(...)`는 request container에서 guard를 해석하고, 어느 guard라도 `false`를 반환하면 `ForbiddenException`을 던진다.
-9. interceptor chain은 global interceptor 다음 route interceptor 순서로 구성된다.
-10. `invokeControllerHandler(...)`는 request container에서 controller를 해석하고, binder로 선언된 DTO를 바인딩하며, route가 `request` metadata를 선언한 경우 `HttpDtoValidationAdapter`로 DTO 입력을 검증한다.
-11. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
-12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
-13. Module-level 및 application-level middleware가 `await next()` 이후의 작업까지 모두 settle하면 dispatcher는 handler 결과와 함께 `onRequestSuccess`를 호출한다.
-14. `next()` 반환 이후의 middleware 작업을 포함해 어느 단계에서든 예외가 발생하면 dispatcher는 앞선 success 알림 없이 `onRequestError`를 호출한 뒤, 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
-15. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
+9. 설정된 경우 `conditionalRequest.resolve(...)`는 application/module middleware와 guard 뒤, interceptor와 controller 호출 전에 실행된다. 따라서 `304` 또는 `412`는 authorization이나 middleware가 소유한 audit 작업을 우회하지 않는다.
+10. interceptor chain은 global interceptor 다음 route interceptor 순서로 구성된다.
+11. `invokeControllerHandler(...)`는 request container에서 controller를 해석하고, binder로 선언된 DTO를 바인딩하며, route가 `request` metadata를 선언한 경우 `HttpDtoValidationAdapter`로 DTO 입력을 검증한다.
+12. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
+13. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, validator, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
+14. Module-level 및 application-level middleware가 `await next()` 이후의 작업까지 모두 settle하면 dispatcher는 handler 결과와 함께 `onRequestSuccess`를 호출한다.
+15. `next()` 반환 이후의 middleware 작업을 포함해 어느 단계에서든 예외가 발생하면 dispatcher는 앞선 success 알림 없이 `onRequestError`를 호출한 뒤, 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
+16. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
 
 ## Error Representation Boundary
 
@@ -65,6 +66,14 @@
 | Handler lookup | `HandlerMapping.match(request)`는 descriptor와 추출된 params를 담은 하나의 `HandlerMatch`를 반환하거나, 매칭이 없으면 `undefined`를 반환한다. |
 | Missing route behavior | `matchHandlerOrThrow(...)`는 매칭되지 않은 method 와 path 조합에 대해 `HandlerNotFoundError`를 던진다. |
 | Response defaults | `writeSuccessResponse(...)`는 route metadata가 status를 덮어쓰지 않는 한, `POST`는 `201`, payload가 `undefined`인 `DELETE` 와 `OPTIONS`는 `204`, 그 외 성공 route는 `200`을 기본값으로 사용한다. |
+
+## Conditional Requests
+
+`BootstrapApplicationOptions.conditionalRequest`는 선택된 representation을 해석하는 resolver를 dispatcher에 제공합니다. Representation이 없으면 `{ exists: false }`를, 존재하면 optional `ETag` 및 `Last-Modified` validator와 함께 `{ exists: true, validators? }`를 반환합니다. Dispatcher는 route selection, application/module middleware, guard 뒤와 interceptor 또는 controller handler 전 사이에 resolver를 평가하므로 conditional outcome이 authorization이나 middleware-owned audit 작업을 우회하지 않습니다.
+
+정책은 RFC validator precedence를 따릅니다. `If-Match`는 `If-Unmodified-Since`보다 우선하고, `If-None-Match`는 `If-Modified-Since`보다 우선합니다. `If-Match`는 strong comparison을 사용하며 `If-None-Match`는 weak comparison을 사용합니다. unsafe precondition 실패는 body 없는 `412`를 만들고, fresh safe representation은 body 없는 `304`를 만듭니다. 두 응답 모두 해석된 validator를 유지합니다. `HEAD`는 `GET`과 같은 validator 및 status를 받으며 framework-managed response writing이 body를 suppress합니다. 명시적 `@Head` handler는 독립 route로 유지되고 custom response writer는 body emission을 소유하므로 body 없는 `HEAD` 계약도 직접 보존해야 합니다.
+
+Dispatcher는 portable `FrameworkResponse` facade를 통해 validator를 적용합니다. 따라서 Node.js, Express, Fastify, Bun, Deno, Cloudflare Workers는 동일한 conditional-response header와 body suppression을 제공합니다.
 
 ## Middleware Constraints
 

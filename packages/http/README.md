@@ -447,6 +447,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
@@ -473,6 +474,30 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, and `HttpApplicationAdapter`: internal adapter seams for edge/fetch-style platform packages that must avoid instantiating the full HTTP root barrel.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: Typed request-local response finalization seam. Finalizers compose in registration order, each receives the prior resolved value, and the dispatcher awaits them so throws and rejections follow its normal error policy.
+
+## Conditional Requests
+
+Configure `conditionalRequest` during runtime bootstrap to resolve representation existence separately from optional validators:
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        exists: true,
+        validators: {
+          etag: { opaqueValue: `${handler.route.method}:${request.path}:v1`, strength: 'strong' },
+          lastModified: new Date('2026-01-01T00:00:00Z'),
+        },
+      };
+    },
+  },
+});
+```
+
+Return `{ exists: false }` when no representation exists. Return `{ exists: true }` when it exists but intentionally has no validators. The dispatcher evaluates this resolver after application/module middleware and guards, so conditional `304` and `412` responses never bypass authorization or audit logic. It accepts only valid entity-tag lists and HTTP-date forms; malformed conditional fields are ignored.
+
+The dispatcher owns RFC 9110 precedence and comparison: a successful `If-Match` skips only `If-Unmodified-Since`, then `If-None-Match` still takes precedence over `If-Modified-Since`; `If-Match` uses strong comparison and `If-None-Match` weak comparison. `304` and `412` are bodyless and retain `ETag`/`Last-Modified`, including redirect and supported custom response-writer paths. For the same selected representation, `HEAD` and `GET` use the same conditional result and framework-generated `HEAD` bodies are suppressed. An explicit `@Head` route remains an independent route; custom response writers own their body emission and must preserve the `HEAD` bodyless contract themselves. See the [HTTP Runtime Contract](../../docs/architecture/http-runtime.md).
 
 ## Related Packages
 
