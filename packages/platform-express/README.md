@@ -174,6 +174,8 @@ Both helpers use the framework console logger by default for startup and shutdow
 
 Set `multipart: { strategy: 'stream' }` when bootstrapping Express to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. Express creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
 
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
+
 ## Related Packages
 
 - `@fluojs/runtime`: Core framework runtime.

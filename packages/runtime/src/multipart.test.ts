@@ -71,6 +71,67 @@ function createChunkedMultipartRequest(
 }
 
 describe('parseMultipart', () => {
+  it('keeps valid token-form Content-Disposition parameters compatible', async () => {
+    // Given
+    const boundary = 'fluo-token-disposition';
+    const request = new Request('http://localhost/uploads', {
+      body: createMultipartBody(boundary, [
+        {
+          headers: ['content-disposition: form-data; name=title'],
+          value: 'Portable upload',
+        },
+        {
+          headers: [
+            'content-disposition: form-data; name=payload; filename=note.txt',
+            'content-type: text/plain',
+          ],
+          value: 'hello',
+        },
+      ]),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    // When
+    const result = await parseMultipart(request);
+
+    // Then
+    expect(result.fields).toEqual({ title: 'Portable upload' });
+    expect(result.files).toEqual([{
+      buffer: TEXT_ENCODER.encode('hello'),
+      fieldname: 'payload',
+      mimetype: 'text/plain',
+      originalname: 'note.txt',
+      size: 5,
+    }]);
+  });
+
+  it('keeps escaped quoted Content-Disposition parameters compatible', async () => {
+    // Given
+    const boundary = 'fluo-escaped-disposition';
+    const request = new Request('http://localhost/uploads', {
+      body: createMultipartBody(boundary, [{
+        headers: [
+          'content-disposition: form-data; name="payload"; filename="notes\\\"final.txt"',
+          'content-type: text/plain',
+        ],
+        value: 'hello',
+      }]),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    // When
+    const result = await parseMultipart(request);
+
+    // Then
+    expect(result.files[0]?.originalname).toBe('notes"final.txt');
+  });
+
   it('parses Web multipart fields and files without Node Buffer conversion APIs', async () => {
     // Given
     const form = new FormData();

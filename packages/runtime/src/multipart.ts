@@ -104,9 +104,10 @@ const CONSUMED_MULTIPART_INPUTS = new WeakSet<object>();
  * Parses a multipart request into string fields and in-memory uploaded files.
  *
  * @param request - Web `Request` or request-like input carrying a multipart body.
- * @param options - Multipart limits for file size, file count, and total payload size.
+ * @param options - Multipart limits for file size, file count, total size, field count, field size, and header size.
  * @returns Parsed string fields plus uploaded files buffered in memory.
- * @throws {PayloadTooLargeException} When any configured field, file, header, or total-size limit is exceeded.
+ * @throws {PayloadTooLargeException} When any configured file-size, file-count, total-size, field-count, field-size,
+ * or header-size limit is exceeded.
  */
 export async function parseMultipart(
   request: Request | MultipartRequestLike,
@@ -685,20 +686,129 @@ function extractMultipartBoundary(contentType: string | null): string {
 }
 
 function parseContentDisposition(value: string | undefined): { filename?: string; name: string } {
-  if (!value?.toLowerCase().startsWith('form-data')) {
+  if (value === undefined) {
     throw new Error('Multipart parts require a form-data Content-Disposition header.');
   }
 
-  const name = value.match(/(?:^|;)\s*name="([^"]*)"/i)?.[1];
+  let index = skipWhitespace(value, 0);
+  const dispositionType = readToken(value, index);
+
+  if (!dispositionType || dispositionType.value.toLowerCase() !== 'form-data') {
+    throw new Error('Multipart parts require a form-data Content-Disposition header.');
+  }
+
+  index = dispositionType.end;
+  const parameters = new Map<string, string>();
+
+  while (index < value.length) {
+    index = skipWhitespace(value, index);
+
+    if (index === value.length) {
+      break;
+    }
+
+    if (value[index] !== ';') {
+      throw new Error('Multipart Content-Disposition parameters must be separated by semicolons.');
+    }
+
+    index = skipWhitespace(value, index + 1);
+    const parameterName = readToken(value, index);
+
+    if (!parameterName) {
+      throw new Error('Multipart Content-Disposition parameters require token names.');
+    }
+
+    index = skipWhitespace(value, parameterName.end);
+
+    if (value[index] !== '=') {
+      throw new Error('Multipart Content-Disposition parameters require values.');
+    }
+
+    index = skipWhitespace(value, index + 1);
+    const parameterValue = value[index] === '"'
+      ? readQuotedString(value, index)
+      : readToken(value, index);
+
+    if (!parameterValue) {
+      throw new Error('Multipart Content-Disposition parameters require token or quoted-string values.');
+    }
+
+    if (!parameters.has(parameterName.value.toLowerCase())) {
+      parameters.set(parameterName.value.toLowerCase(), parameterValue.value);
+    }
+
+    index = parameterValue.end;
+  }
+
+  const name = parameters.get('name');
 
   if (name === undefined) {
     throw new Error('Multipart parts require a name parameter.');
   }
 
   return {
-    filename: value.match(/(?:^|;)\s*filename="([^"]*)"/i)?.[1],
+    filename: parameters.get('filename'),
     name,
   };
+}
+
+function readQuotedString(value: string, start: number): { end: number; value: string } | undefined {
+  let index = start + 1;
+  let result = '';
+
+  while (index < value.length) {
+    const character = value[index];
+
+    if (character === '\r' || character === '\n') {
+      return undefined;
+    }
+
+    if (character === '"') {
+      return { end: index + 1, value: result };
+    }
+
+    if (character === '\\') {
+      index += 1;
+      const escaped = value[index];
+
+      if (escaped === undefined || escaped === '\r' || escaped === '\n') {
+        return undefined;
+      }
+
+      result += escaped;
+      index += 1;
+      continue;
+    }
+
+    result += character;
+    index += 1;
+  }
+
+  return undefined;
+}
+
+function readToken(value: string, start: number): { end: number; value: string } | undefined {
+  let end = start;
+
+  while (end < value.length && isTokenCharacter(value[end])) {
+    end += 1;
+  }
+
+  return end === start ? undefined : { end, value: value.slice(start, end) };
+}
+
+function isTokenCharacter(character: string): boolean {
+  return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]$/.test(character);
+}
+
+function skipWhitespace(value: string, start: number): number {
+  let index = start;
+
+  while (value[index] === ' ' || value[index] === '\t') {
+    index += 1;
+  }
+
+  return index;
 }
 
 function resolveMultipartStreamBody(request: Request | MultipartRequestLike): ReadableStream<Uint8Array> {

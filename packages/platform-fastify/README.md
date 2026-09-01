@@ -243,6 +243,8 @@ The same file also covers Fastify-specific native route registration with wildca
 
 Set `multipart: { strategy: 'stream' }` when bootstrapping Fastify to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. Fastify creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. In this mode file parts are not materialized as `UploadedFile` values in `request.files`. Buffered multipart parsing remains the default and cannot be combined with stream consumption for the same request body.
 
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
+
 ## Related Packages
 
 - `@fluojs/runtime`: Core framework runtime.

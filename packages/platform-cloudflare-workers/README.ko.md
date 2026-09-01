@@ -72,6 +72,18 @@ export default {
 
 Workers `Response` API는 final response 이전 informational response를 request handler에서 write하는 primitive를 제공하지 않으므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Early Hints를 생성할 수 있는 Cloudflare deployment/cache feature는 host configuration이며 Fluo response writer로 노출되지 않습니다.
 
+### 스트리밍 멀티파트 소비
+
+애플리케이션 bootstrap에서 `multipart: { strategy: 'stream' }`을 설정하면 멀티파트 데이터를 점진적으로
+받습니다. 멀티파트 route에서 `RequestContext.request.body`는 `AsyncIterableIterator<MultipartPart>`입니다.
+field part는 `kind: 'field'`, `name`, `value`, `headers`를, file part는 `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, 그리고 `stream`의 single-consumer `ReadableStream<Uint8Array>`를 제공합니다. 다음
+part를 요청하기 전에 각 file stream을 끝까지 소비하거나 cancel하세요.
+
+Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해
+active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접
+집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
+
 ### 바이트 범위와 캐시 검증
 
 Workers는 fetch dispatch를 통해 공유 `@fluojs/http` 단일 byte-range 및 `If-Range` contract를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 portable `206` identity-byte response를 만들고, `If-Range`는 선택된 validator를 재사용합니다. Malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만들며, `HEAD`는 stream을 소비하지 않고 GET metadata를 반영합니다.
