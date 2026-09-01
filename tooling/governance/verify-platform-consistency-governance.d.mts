@@ -85,4 +85,7 @@ export function enforceMicroservicesSafetyRuntimeEvidence(): void;
 export function enforceQueueWorkerOwnershipContract(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceQueueWorkerOwnershipContractFromSources(
+  sources: Readonly<Record<string, string>>,
+): void;
 export function main(): Promise<void>;
