@@ -421,6 +421,49 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
   return descriptors;
 }
 
+function freezeDescriptorSnapshot(descriptors: HandlerDescriptor[]): HandlerDescriptor[] {
+  for (const descriptor of descriptors) {
+    const { metadata, route } = descriptor;
+
+    if (route.headers) {
+      route.headers = route.headers.map((header) => ({ ...header }));
+
+      for (const header of route.headers) {
+        Object.freeze(header);
+      }
+
+      Object.freeze(route.headers);
+    }
+
+    if (route.redirect) {
+      route.redirect = { ...route.redirect };
+      Object.freeze(route.redirect);
+    }
+
+    if (route.guards) {
+      Object.freeze(route.guards);
+    }
+
+    if (route.interceptors) {
+      Object.freeze(route.interceptors);
+    }
+
+    if (route.produces) {
+      route.produces = [...route.produces];
+      Object.freeze(route.produces);
+    }
+
+    Object.freeze(route);
+    Object.freeze(metadata.moduleMiddleware);
+    Object.freeze(metadata.pathParams);
+    Object.freeze(metadata);
+    Object.freeze(descriptor);
+  }
+
+  Object.freeze(descriptors);
+  return descriptors;
+}
+
 /**
  * Create handler mapping.
  *
@@ -430,7 +473,7 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
  */
 export function createHandlerMapping(sources: HandlerSource[], options?: CreateHandlerMappingOptions): HandlerMapping {
   const versioning = resolveVersioning(options);
-  const descriptors = buildDescriptorList(sources, versioning);
+  const descriptors = freezeDescriptorSnapshot(buildDescriptorList(sources, versioning));
   const descriptorIndex = buildDescriptorIndex(descriptors);
 
   return {

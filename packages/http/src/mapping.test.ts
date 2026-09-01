@@ -49,6 +49,49 @@ describe('handler mapping', () => {
     });
   });
 
+  it('keeps route inspection synchronized with matching after descriptor mutation attempts', () => {
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    const mapping = createHandlerMapping([{ controllerToken: UsersController }]);
+    const descriptor = mapping.descriptors[0];
+
+    expect(() => {
+      mapping.descriptors.push(descriptor);
+    }).toThrow(TypeError);
+    expect(() => {
+      descriptor.route.path = '/users/:slug';
+    }).toThrow(TypeError);
+    expect(() => {
+      descriptor.metadata.pathParams.push('slug');
+    }).toThrow(TypeError);
+
+    const match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/42',
+      query: {},
+      raw: {},
+      url: '/users/42',
+    });
+
+    expect(match).toMatchObject({
+      descriptor: {
+        route: { path: '/users/:id' },
+      },
+      params: { id: '42' },
+    });
+    expect(match?.descriptor).toBe(descriptor);
+  });
+
   it('fails fast on duplicate normalized route registrations', () => {
     @Controller('/health')
     class HealthController {
