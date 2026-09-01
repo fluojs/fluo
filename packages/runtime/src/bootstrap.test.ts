@@ -21,6 +21,60 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
+function createBootstrapFailureComponent(
+  id: string,
+  events: string[],
+): PlatformComponent {
+  let currentState: PlatformState = 'created';
+
+  return {
+    async health() {
+      return { status: 'healthy' };
+    },
+    id,
+    kind: 'test',
+    async ready() {
+      return { critical: false, status: 'ready' };
+    },
+    snapshot() {
+      return {
+        dependencies: [],
+        details: {},
+        health: { status: 'healthy' },
+        id,
+        kind: 'test',
+        ownership: {
+          externallyManaged: false,
+          ownsResources: true,
+        },
+        readiness: {
+          critical: false,
+          status: 'ready',
+        },
+        state: currentState,
+        telemetry: {
+          namespace: 'fluo.test',
+          tags: {},
+        },
+      };
+    },
+    async start() {
+      currentState = 'ready';
+      events.push('platform:start');
+    },
+    state() {
+      return currentState;
+    },
+    async stop() {
+      currentState = 'stopped';
+      events.push('platform:stop');
+    },
+    async validate() {
+      return { issues: [], ok: true };
+    },
+  };
+}
+
 function createRequest(path: string, query: FrameworkRequest['query'] = {}): FrameworkRequest {
   return {
     body: undefined,
@@ -1082,6 +1136,110 @@ describe('FluoFactory.createApplicationContext', () => {
         '[fluo] ERROR [FluoFactory] Failed to clean up after application context bootstrap failure.',
       );
       expect(errorLog).toHaveBeenCalledWith(cleanupFailure);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it('continues bootstrapApplication() cleanup after a provider destroy failure', async () => {
+    const events: string[] = [];
+    const destroyFailure = new Error('provider destroy failed');
+    const shutdownFailure = new Error('provider shutdown failed');
+    const bootstrapFailure = new Error('readiness publication failed');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+    const platformComponent = createBootstrapFailureComponent('platform.bootstrap', events);
+
+    class FailingLifecycleProvider {
+      onApplicationShutdown(signal?: string) {
+        events.push(`provider:shutdown:${signal ?? 'none'}`);
+        throw shutdownFailure;
+      }
+
+      onModuleDestroy() {
+        events.push('provider:destroy');
+        throw destroyFailure;
+      }
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingLifecycleProvider],
+    });
+
+    await expect(
+      bootstrapApplication({
+        logger,
+        platform: { components: [platformComponent] },
+        rootModule: AppModule,
+      }),
+    ).rejects.toBe(bootstrapFailure);
+
+    expect(events).toEqual([
+      'platform:start',
+      'provider:destroy',
+      'platform:stop',
+      'provider:shutdown:bootstrap-failed',
+    ]);
+
+    const cleanupFailure = logger.error.mock.calls.find(
+      ([message]) => message === 'Failed to clean up after application bootstrap failure.',
+    )?.[1];
+
+    expect(cleanupFailure).toBeInstanceOf(AggregateError);
+    if (cleanupFailure instanceof AggregateError) {
+      expect(cleanupFailure.errors).toEqual([destroyFailure, shutdownFailure]);
+    }
+  });
+
+  it('continues application context cleanup after a provider destroy failure', async () => {
+    const events: string[] = [];
+    const destroyFailure = new Error('context provider destroy failed');
+    const bootstrapFailure = new Error('context readiness publication failed');
+    const platformComponent = createBootstrapFailureComponent('platform.context', events);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    class FailingLifecycleProvider {
+      onApplicationShutdown(signal?: string) {
+        events.push(`provider:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('provider:destroy');
+        throw destroyFailure;
+      }
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingLifecycleProvider],
+    });
+
+    try {
+      await expect(
+        FluoFactory.createApplicationContext(AppModule, {
+          platform: { components: [platformComponent] },
+        }),
+      ).rejects.toBe(bootstrapFailure);
+
+      expect(events).toEqual([
+        'platform:start',
+        'provider:destroy',
+        'platform:stop',
+        'provider:shutdown:bootstrap-failed',
+      ]);
+      expect(errorLog).toHaveBeenCalledWith(destroyFailure);
     } finally {
       errorLog.mockRestore();
     }
