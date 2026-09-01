@@ -255,7 +255,7 @@ function createDispatchContext(
 
   const getWrappedContainer = (): RequestScopeContainer => {
     if (!wrappedContainer) {
-      wrappedContainer = {
+      const wrapped = {
         async resolve<T>(token: Token<T>): Promise<T> {
           const targetContainer = ensurePromoted();
           return targetContainer.resolve(token);
@@ -270,6 +270,21 @@ function createDispatchContext(
           return activeContainer.dispose();
         },
       };
+
+      const presenceAwareContainer = activeContainer as RequestScopeContainer & {
+        has?<T>(token: Token<T>): boolean;
+      };
+
+      if (typeof presenceAwareContainer.has === 'function') {
+        Object.assign(wrapped, {
+          has<T>(token: Token<T>): boolean {
+            const targetContainer = activeContainer as typeof presenceAwareContainer;
+            return targetContainer.has?.(token) ?? false;
+          },
+        });
+      }
+
+      wrappedContainer = wrapped;
     }
     return wrappedContainer;
   };
