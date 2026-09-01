@@ -3,6 +3,7 @@ import { once } from 'node:events';
 
 const workerHost = '127.0.0.1';
 const startupTimeoutMs = 30_000;
+const processGroupGraceMs = 5_000;
 
 function isErrno(error, code) {
   return typeof error === 'object' && error !== null && error.code === code;
@@ -46,6 +47,18 @@ function assertProcessGroupExited(pid, kill) {
 
 function hasOpenInheritedStdio(child) {
   return child.stdio?.some((stream) => stream !== null && stream !== undefined && !stream.destroyed) ?? false;
+}
+
+function createProcessGroupGraceDeadline() {
+  let timeout;
+  const expired = new Promise((resolve) => {
+    timeout = setTimeout(resolve, processGroupGraceMs);
+  });
+
+  return {
+    expired,
+    cancel: () => clearTimeout(timeout),
+  };
 }
 
 export function startWorker(spawnWorker = spawn) {
@@ -97,7 +110,7 @@ export function startWorker(spawnWorker = spawn) {
   return { child, ready };
 }
 
-export async function stopProcessGroup(child, kill = process.kill) {
+export async function stopProcessGroup(child, kill = process.kill, createGraceDeadline = createProcessGroupGraceDeadline) {
   if (child.pid === undefined) {
     return;
   }
@@ -105,13 +118,21 @@ export async function stopProcessGroup(child, kill = process.kill) {
   const leaderExited = child.exitCode === null ? once(child, 'exit') : undefined;
   const stdioClosed = leaderExited !== undefined || hasOpenInheritedStdio(child) ? once(child, 'close') : undefined;
   const processGroupRunning = signalProcessGroup(child.pid, 'SIGTERM', kill);
+  const graceDeadline = leaderExited === undefined ? undefined : createGraceDeadline();
+  const leaderExitedBeforeGrace =
+    leaderExited === undefined ||
+    (await Promise.race([leaderExited.then(() => true), graceDeadline.expired.then(() => false)]));
 
-  await leaderExited;
+  graceDeadline?.cancel();
 
   const forceTerminationSent =
     processGroupRunning && processGroupExists(child.pid, kill)
       ? signalProcessGroup(child.pid, 'SIGKILL', kill)
       : false;
+
+  if (!leaderExitedBeforeGrace) {
+    await leaderExited;
+  }
 
   await stdioClosed;
 

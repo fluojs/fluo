@@ -177,10 +177,14 @@ test('waits for inherited stdio close after a startup exit before proving group 
   ]);
 });
 
-test('waits for the subscribed stdio close before proving group cleanup', async () => {
+test('accepts a graceful leader exit before the grace deadline and waits for stdio close', async () => {
   const child = createChild(1008);
   const childExited = once(child, 'exit');
   const calls = [];
+  let cancelGrace;
+  const graceCancelled = new Promise((resolve) => {
+    cancelGrace = resolve;
+  });
   const cleanup = stopProcessGroup(child, (pid, signal) => {
     calls.push([pid, signal]);
     if (signal === 'SIGTERM') {
@@ -191,14 +195,13 @@ test('waits for the subscribed stdio close before proving group cleanup', async 
       return true;
     }
     throw esrch();
-  });
+  }, () => ({ expired: new Promise(() => {}), cancel: cancelGrace }));
   let cleanupSettled = false;
   void cleanup.then(() => {
     cleanupSettled = true;
   });
 
-  await childExited;
-  await Promise.resolve();
+  await Promise.all([childExited, graceCancelled]);
   assert.equal(cleanupSettled, false);
   assert.deepEqual(calls, [
     [-1008, 'SIGTERM'],
@@ -246,6 +249,60 @@ test('escalates a stubborn descendant and proves final process-group disappearan
     [-1009, 0],
     [-1009, 'SIGKILL'],
     [-1009, 0],
+  ]);
+});
+
+test('escalates a SIGTERM-ignoring leader after the injected grace deadline', async () => {
+  const child = createChild(1010);
+  const calls = [];
+  let expireGrace;
+  let signalKill;
+  let processGroupExists = true;
+  const graceExpired = new Promise((resolve) => {
+    expireGrace = resolve;
+  });
+  const forcedTermination = new Promise((resolve) => {
+    signalKill = resolve;
+  });
+  const cleanup = stopProcessGroup(
+    child,
+    (pid, signal) => {
+      calls.push([pid, signal]);
+      if (signal === 'SIGTERM') {
+        return true;
+      }
+      if (signal === 'SIGKILL') {
+        processGroupExists = false;
+        signalKill();
+        return true;
+      }
+      if (signal === 0 && processGroupExists) {
+        return true;
+      }
+      throw esrch();
+    },
+    () => ({ expired: graceExpired, cancel: () => {} }),
+  );
+
+  expireGrace();
+  await forcedTermination;
+
+  assert.deepEqual(calls, [
+    [-1010, 'SIGTERM'],
+    [-1010, 0],
+    [-1010, 'SIGKILL'],
+  ]);
+
+  child.exitCode = 0;
+  child.emit('exit', 0, 'SIGKILL');
+  child.emit('close', 0, 'SIGKILL');
+  await cleanup;
+
+  assert.deepEqual(calls, [
+    [-1010, 'SIGTERM'],
+    [-1010, 0],
+    [-1010, 'SIGKILL'],
+    [-1010, 0],
   ]);
 });
 
