@@ -41,7 +41,7 @@ function getRuleValues(value: unknown): unknown[] {
 }
 
 function shouldSkipRuleForMissingValue(rule: DtoFieldValidationRule, value: unknown): boolean {
-  return (value === undefined || value === null) && rule.kind !== 'defined' && rule.kind !== 'notEmpty' && rule.kind !== 'empty';
+  return (value === undefined || value === null) && rule.kind !== 'defined' && rule.kind !== 'empty';
 }
 
 async function evaluateCustomRule(
@@ -180,11 +180,11 @@ async function applyPropertyRules(
   source: ValidationIssue['source'],
   context: NestedTraversalContext,
 ): Promise<ValidationIssue[]> {
-  const conditionallySkip = await shouldConditionallySkip(rules, dto, value);
-
   if (rules.some((rule) => rule.kind === 'optional') && (value === undefined || value === null)) {
     return [];
   }
+
+  const conditionallySkip = await shouldConditionallySkip(rules, dto, value);
 
   const issues: ValidationIssue[] = [];
 
