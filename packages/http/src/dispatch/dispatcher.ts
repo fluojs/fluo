@@ -827,7 +827,7 @@ async function dispatchNativeFastRoute(
   fastPathState: DispatcherFastPathState,
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
 ): Promise<boolean> {
-  if (options.conditionalRequest) {
+  if (options.conditionalRequest || (options.observers?.length ?? 0) > 0) {
     return false;
   }
 

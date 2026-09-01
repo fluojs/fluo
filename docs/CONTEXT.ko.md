@@ -50,7 +50,7 @@ NestJS codemod import-safety discoverability는 [`docs/getting-started/migrate-f
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
 | Core | 데코레이터, DI, 설정, i18n, 런타임 오케스트레이션 | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
-| HTTP | 요청 실행과 API 표면 | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
+| HTTP | 요청 실행, 공개 API 표면, 안전한 structured access logging | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | Auth | 인증과 인가 | `@fluojs/jwt`, `@fluojs/passport` |
 | Platform | 런타임 어댑터 | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
 | Realtime | 양방향 전송 | `@fluojs/websockets`, `@fluojs/socket.io` |

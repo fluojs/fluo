@@ -7,7 +7,7 @@
 | family | description | packages |
 | --- | --- | --- |
 | **Core** | Shared contracts and DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
-| **HTTP** | Web API execution and routing. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
+| **HTTP** | Web API execution, routing, and structured access logging. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | **Auth** | Authentication and authorization. | `@fluojs/jwt`, `@fluojs/passport` |
 | **Platform** | Runtime adapters. | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
 | **Realtime** | WebSocket and Socket.IO. | `@fluojs/websockets`, `@fluojs/socket.io` |

@@ -50,7 +50,7 @@ NestJS codemod import-safety discoverability is split across [`docs/getting-star
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
 | Core | Decorators, DI, config, i18n, runtime orchestration | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
-| HTTP | Request execution and API surface | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
+| HTTP | Request execution, public API surface, and safe structured access logging | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | Auth | Authentication and authorization | `@fluojs/jwt`, `@fluojs/passport` |
 | Platform | Runtime adapters | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
 | Realtime | Bidirectional transport | `@fluojs/websockets`, `@fluojs/socket.io` |

@@ -187,6 +187,33 @@ class AdminController {
 
 `onRequestSuccess` runs only after the matched handler and all module-level and application-level middleware have settled, including work after `await next()`. If middleware throws after `next()` returns, observers receive `onRequestError` without a preceding success notification. `onRequestFinish` still runs after either outcome.
 
+### Access logging
+
+`createAccessLogObserver(...)` turns the request-observer lifecycle into application-owned structured records. It emits a start record, an error record for each dispatch error, and exactly one terminal finish record with a monotonic duration, request ID, method, path, matched route, status, and outcome (`success`, `handled_error`, `unhandled_error`, `not_found`, or `aborted`). Native route dispatch falls back to this complete lifecycle when observers are configured.
+
+The sink is deliberately consumer-owned: route `AccessLogEvent` values to the structured logger, telemetry pipeline, or retention policy that owns your operational data. No headers are emitted unless they are allowlisted. `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, and `x-api-key` remain redacted even when allowlisted; add organization-specific names with `redact`.
+
+```ts
+import { createAccessLogObserver } from '@fluojs/http';
+
+const accessLogObserver = createAccessLogObserver({
+  clientIdentity: {
+    trustProxy: ['10.0.0.0/8'],
+  },
+  headers: {
+    allow: ['user-agent', 'set-cookie'],
+    redact: ['x-tenant-token'],
+  },
+  sink: {
+    emit(event) {
+      structuredLog.write(event);
+    },
+  },
+});
+```
+
+Omit `clientIdentity` unless you have an explicit `trustProxy` boundary. When supplied, it resolves the trusted client address through `resolveHttpConnection(...)`; it never trusts forwarded identity by default.
+
 ### Async request context
 
 ```ts

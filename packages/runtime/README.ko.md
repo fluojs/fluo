@@ -74,6 +74,10 @@ Runtime은 adapter가 소유하는 optional `context.response.earlyHints` capabi
 
 Runtime bootstrap은 `@fluojs/http`의 `conditionalRequest` option을 받습니다. Resolver는 명시적인 representation 존재 여부와 optional validator를 반환하며 middleware와 guard 뒤, interceptor와 controller 호출 전에 실행됩니다. Resolver shape, RFC 9110 precedence, `HEAD` 규칙은 [`@fluojs/http` Conditional Requests 계약](../http/README.ko.md#conditional-requests)을 참고하세요.
 
+### Access log observer
+
+`createAccessLogObserver(...)`를 bootstrap `observers` option으로 전달하면 portable request lifecycle record를 애플리케이션 소유 structured logging으로 라우팅할 수 있습니다. Observer는 native adapter에서도 complete fallback path를 선택해 dispatcher lifecycle을 보존합니다. Trusted client identity와 header allowlist 요구사항은 [`@fluojs/http` Access logging 계약](../http/README.ko.md#access-logging)을 참고하세요.
+
 ### 애플리케이션 컨텍스트 (HTTP 제외)
 
 백그라운드 워커나 스크립트의 경우, `createApplicationContext`를 사용하여 HTTP 설정을 건너뛸 수 있습니다.

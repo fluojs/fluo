@@ -74,6 +74,10 @@ The runtime preserves the adapter-owned optional `context.response.earlyHints` c
 
 Runtime bootstrap accepts the `conditionalRequest` option from `@fluojs/http`. Its resolver returns explicit representation existence plus optional validators; it runs after middleware and guards, before interceptors and controller invocation. See the [`@fluojs/http` Conditional Requests contract](../http/README.md#conditional-requests) for the resolver shape, RFC 9110 precedence, and `HEAD` rules.
 
+### Access log observers
+
+Pass `createAccessLogObserver(...)` through the bootstrap `observers` option to route portable request lifecycle records to application-owned structured logging. The observer preserves the dispatcher lifecycle for native adapters by selecting the complete fallback path; see the [`@fluojs/http` Access logging contract](../http/README.md#access-logging) for trusted client identity and header allowlist requirements.
+
 ### Application Context (No HTTP)
 
 For background workers or scripts, use `createApplicationContext` to skip HTTP setup.

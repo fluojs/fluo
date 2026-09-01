@@ -7,7 +7,7 @@
 | 패밀리 | 설명 | 패키지 |
 | --- | --- | --- |
 | **Core** | 공유 계약 및 DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
-| **HTTP** | 웹 API 실행 및 라우팅. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
+| **HTTP** | 웹 API 실행, 라우팅, structured access logging. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | **Auth** | 인증 및 인가. | `@fluojs/jwt`, `@fluojs/passport` |
 | **Platform** | 런타임 어댑터. | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
 | **Realtime** | WebSocket 및 Socket.IO. | `@fluojs/websockets`, `@fluojs/socket.io` |

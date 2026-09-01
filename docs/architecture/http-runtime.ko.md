@@ -8,7 +8,7 @@
 
 1. 어댑터는 정규화된 `FrameworkRequest`와 `FrameworkResponse`를 `Dispatcher.dispatch(...)`에 전달하며, host가 요청 취소를 노출한다면 `signal` 또는 `isAborted()`를 포함한다.
 2. dispatcher는 request params와 abort metadata를 복사하고 request metadata와 선택적 `x-request-id`를 포함하는 `RequestContext`를 생성한다. 시작 시에는 root container를 사용하고, 매칭된 graph, 활성 middleware, observer, DTO conversion, binder, guard, interceptor, controller dependency graph, 또는 수동 `RequestContext.container.resolve(...)` 접근이 request scope를 필요로 할 수 있을 때만 isolated request-scoped container로 승격한다.
-3. 등록된 request observer는 route matching 전에 `onRequestStart`를 받는다.
+3. 등록된 request observer는 route matching 전에 `onRequestStart`를 받는다. `createAccessLogObserver(...)`는 이 lifecycle에서 structured start, error, 정확히 하나의 terminal finish record를 emit한다. Finish duration은 monotonic clock을 사용하고 header는 명시적 allowlist가 필요하며 trusted client identity에는 명시적 `trustProxy` policy가 필요하다.
 4. 전역 application middleware가 `runMiddlewareChain(...)`을 통해 가장 먼저 실행된다.
 5. `matchHandlerOrThrow(...)`는 `HandlerMapping`에서 하나의 handler를 해석하거나 `HandlerNotFoundError`를 던진다.
 6. 매칭된 route params는 `requestContext.request.params`로 복사되고, 이어서 observer가 `onHandlerMatched`를 받을 수 있다.

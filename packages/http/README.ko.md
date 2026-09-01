@@ -185,6 +185,33 @@ class AdminController {
 
 `onRequestSuccess`는 매칭된 handler와 모든 module-level 및 application-level middleware가 완전히 settle된 뒤에만 호출되며, 여기에는 `await next()` 이후의 작업도 포함됩니다. Middleware가 `next()` 반환 뒤 예외를 던지면 observer는 앞선 success 알림 없이 `onRequestError`를 받습니다. `onRequestFinish`는 어느 outcome에서든 그 뒤에 호출됩니다.
 
+### Access logging
+
+`createAccessLogObserver(...)`는 request-observer lifecycle을 애플리케이션 소유의 structured record로 변환합니다. Start record, dispatch error마다 error record, 그리고 monotonic duration, request ID, method, path, matched route, status, outcome(`success`, `handled_error`, `unhandled_error`, `not_found`, `aborted`)을 가진 terminal finish record 하나를 정확히 emit합니다. Observer가 구성되면 native route dispatch는 이 complete lifecycle으로 fallback합니다.
+
+Sink는 의도적으로 consumer-owned입니다. `AccessLogEvent`를 애플리케이션의 structured logger, telemetry pipeline, 또는 운영 데이터 보존 정책으로 전달하세요. Allowlist에 없는 header는 emit하지 않습니다. Allowlist에 넣어도 `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`는 계속 redaction되며, 조직별 header 이름은 `redact`로 추가합니다.
+
+```ts
+import { createAccessLogObserver } from '@fluojs/http';
+
+const accessLogObserver = createAccessLogObserver({
+  clientIdentity: {
+    trustProxy: ['10.0.0.0/8'],
+  },
+  headers: {
+    allow: ['user-agent', 'set-cookie'],
+    redact: ['x-tenant-token'],
+  },
+  sink: {
+    emit(event) {
+      structuredLog.write(event);
+    },
+  },
+});
+```
+
+명시적인 `trustProxy` boundary가 없다면 `clientIdentity`를 생략하세요. 제공하면 `resolveHttpConnection(...)`으로 trusted client address를 해석하며, forwarded identity를 기본으로 신뢰하지 않습니다.
+
 ### 비동기 요청 컨텍스트
 
 ```ts

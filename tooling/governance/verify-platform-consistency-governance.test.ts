@@ -206,6 +206,24 @@ describe('enforceContractCompanionUpdates', () => {
     // Then: unrelated isolation and manual-SSE regressions are not required.
     expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
   });
+
+  it('accepts the access log observer regression for its HTTP runtime contract update', async () => {
+    // Given: a bilingual HTTP runtime update backed by the access log lifecycle regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'packages/http/src/access-log-observer.test.ts',
+    ];
+
+    // When: the access log contract and its focused lifecycle regression change together.
+    // Then: unrelated isolation and manual-SSE regressions are not required.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+  });
 });
 
 describe('collectDirectProcessEnvViolations', () => {

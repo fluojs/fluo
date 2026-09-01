@@ -8,7 +8,7 @@ This document defines the current request execution contract implemented by `@fl
 
 1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`, including `signal` or `isAborted()` when the host exposes request cancellation.
 2. The dispatcher clones request params and abort metadata, then builds a `RequestContext` with request metadata and an optional `x-request-id`. It starts on the root container and promotes to an isolated request-scoped container only when the matched graph, active middleware, observers, DTO conversion, binder, guard, interceptor, controller dependency graph, or manual `RequestContext.container.resolve(...)` access may need request scope.
-3. Registered request observers receive `onRequestStart` before route matching.
+3. Registered request observers receive `onRequestStart` before route matching. `createAccessLogObserver(...)` emits structured start, error, and exactly one terminal finish record from this lifecycle; its finish duration uses a monotonic clock, headers require explicit allowlisting, and trusted client identity requires an explicit `trustProxy` policy.
 4. Global application middleware runs first through `runMiddlewareChain(...)`.
 5. `matchHandlerOrThrow(...)` resolves one handler from the `HandlerMapping` or throws `HandlerNotFoundError`.
 6. Matched route params are copied into `requestContext.request.params`, then observers may receive `onHandlerMatched`.

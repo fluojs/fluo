@@ -173,6 +173,7 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createCorrelationMiddleware');
     expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
+    expect(httpPublicApi).toHaveProperty('createAccessLogObserver');
     expect(httpPublicApi).toHaveProperty('resolveHttpConnection');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
