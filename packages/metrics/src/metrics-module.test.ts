@@ -951,8 +951,18 @@ describe('MetricsModule', () => {
 
     defineModule(AppModule, {
       imports: [
-        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry }),
-        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry }),
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.001, 0.002] },
+          path: '/metrics-a',
+          registry: sharedRegistry,
+        }),
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.001, 0.002] },
+          path: '/metrics-b',
+          registry: sharedRegistry,
+        }),
       ],
     });
 
@@ -1071,7 +1081,46 @@ describe('MetricsModule', () => {
     });
 
     await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
-      'Metric name "http_requests_total" is already registered with framework HTTP path-label configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="FIRST_UNKNOWN". Built-in HTTP metrics require matching path-label configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="SECOND_UNKNOWN".',
+      'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="FIRST_UNKNOWN". Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="SECOND_UNKNOWN".',
+    );
+  });
+
+  it('rejects shared-registry HTTP collector reuse when only duration buckets differ', async () => {
+    const sharedRegistry = new Registry();
+
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.001, 0.002] },
+          path: '/metrics-a',
+          registry: sharedRegistry,
+        }),
+      ],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.002, 0.003] },
+          path: '/metrics-b',
+          registry: sharedRegistry,
+        }),
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
+      'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN", durationHistogramBuckets=[0.001,0.002]. Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN", durationHistogramBuckets=[0.002,0.003].',
     );
   });
 

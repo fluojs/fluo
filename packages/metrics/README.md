@@ -94,7 +94,8 @@ MetricsModule.forRoot({
 
 `durationHistogramBuckets` replaces the built-in HTTP request duration histogram's
 `prom-client` defaults. Values are measured in seconds and must fit the latency
-range you intend to alert on.
+range you intend to alert on. Each boundary must be finite and strictly increasing;
+invalid configuration is rejected during setup.
 
 ### Protect or disable the metrics endpoint
 

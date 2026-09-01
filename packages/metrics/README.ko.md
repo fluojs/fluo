@@ -94,7 +94,8 @@ MetricsModule.forRoot({
 
 `durationHistogramBuckets`는 내장 HTTP request duration histogram의
 `prom-client` 기본값을 대체합니다. 값의 단위는 초이며, alerting하려는
-latency 범위에 맞게 정해야 합니다.
+latency 범위에 맞게 정해야 합니다. 각 경계는 유한하고 엄격히 증가해야 하며,
+잘못된 구성은 setup 중 거부됩니다.
 
 ### 메트릭 엔드포인트 보호 또는 비활성화
 

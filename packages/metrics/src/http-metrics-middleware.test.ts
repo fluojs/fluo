@@ -118,6 +118,46 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain(
       'http_request_duration_seconds_bucket{le="0.002",method="GET",path="/orders",status="200"}',
     );
+    expect(metricsText).not.toContain(
+      'http_request_duration_seconds_bucket{le="0.005",method="GET",path="/orders",status="200"}',
+    );
+  });
+
+  it('retains prom-client default duration histogram buckets when omitted', async () => {
+    const registry = new Registry();
+    const middleware = new HttpMetricsMiddleware(registry);
+    const context = createContext('/orders');
+
+    await middleware.handle(context, async () => {
+      context.response.setStatus(200);
+    });
+
+    const metricsText = await registry.metrics();
+
+    expect(metricsText).toContain(
+      'http_request_duration_seconds_bucket{le="0.005",method="GET",path="/orders",status="200"}',
+    );
+    expect(metricsText).toContain(
+      'http_request_duration_seconds_bucket{le="10",method="GET",path="/orders",status="200"}',
+    );
+  });
+
+  it.each([
+    ['non-finite', [Number.NaN]],
+    ['duplicate', [0.1, 0.1]],
+    ['non-strictly-increasing', [0.2, 0.1]],
+  ])('rejects %s duration histogram bucket boundaries before collector registration', (_description, durationHistogramBuckets) => {
+    const registry = new Registry();
+
+    expect(() => {
+      new HttpMetricsMiddleware(registry, {
+        durationHistogramBuckets,
+      });
+    }).toThrow('HttpMetricsMiddleware durationHistogramBuckets must contain finite, strictly increasing boundaries.');
+
+    expect(registry.getSingleMetric('http_requests_total')).toBeUndefined();
+    expect(registry.getSingleMetric('http_errors_total')).toBeUndefined();
+    expect(registry.getSingleMetric('http_request_duration_seconds')).toBeUndefined();
   });
 
   it('rejects raw path labels unless explicitly allowed', () => {
@@ -164,7 +204,7 @@ describe('HttpMetricsMiddleware', () => {
         pathLabelMode: 'raw',
       });
     }).toThrow(
-      'Metric name "http_requests_total" is already registered with framework HTTP path-label configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN". Built-in HTTP metrics require matching path-label configuration before reuse; received pathLabelMode="raw", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN".',
+      'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN". Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="raw", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN".',
     );
   });
 
@@ -185,7 +225,7 @@ describe('HttpMetricsMiddleware', () => {
       new HttpMetricsMiddleware(registry, {
         pathLabelNormalizer: ({ path }) => (path.startsWith('/users/') ? '/users/:id' : '/other'),
       });
-    }).toThrow('Built-in HTTP metrics require matching path-label configuration before reuse');
+    }).toThrow('Built-in HTTP metrics require matching HTTP collector configuration before reuse');
   });
 
   it('records non-throwing 4xx and 5xx responses as request errors', async () => {

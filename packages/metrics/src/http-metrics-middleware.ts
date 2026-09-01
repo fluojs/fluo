@@ -272,6 +272,20 @@ function resolveHttpMetricsCollectorConfiguration(options: HttpMetricsMiddleware
     );
   }
 
+  let previousDurationHistogramBucket: number | undefined;
+  for (const durationHistogramBucket of options.durationHistogramBuckets ?? []) {
+    if (
+      !Number.isFinite(durationHistogramBucket)
+      || (previousDurationHistogramBucket !== undefined && durationHistogramBucket <= previousDurationHistogramBucket)
+    ) {
+      throw new Error(
+        'HttpMetricsMiddleware durationHistogramBuckets must contain finite, strictly increasing boundaries.',
+      );
+    }
+
+    previousDurationHistogramBucket = durationHistogramBucket;
+  }
+
   return {
     durationHistogramBuckets: options.durationHistogramBuckets ? [...options.durationHistogramBuckets] : undefined,
     pathLabelMode: options.pathLabelMode ?? 'template',
@@ -289,7 +303,7 @@ function assertHttpMetricConfiguration(
 
   if (!registered) {
     throw new Error(
-      `Metric name "${metricName}" is already registered as a framework-owned HTTP collector without path-label configuration metadata. Built-in HTTP metrics require matching path-label configuration before reuse.`,
+      `Metric name "${metricName}" is already registered as a framework-owned HTTP collector without HTTP instrumentation configuration metadata. Built-in HTTP metrics require matching HTTP collector configuration before reuse.`,
     );
   }
 
@@ -298,7 +312,7 @@ function assertHttpMetricConfiguration(
   }
 
   throw new Error(
-    `Metric name "${metricName}" is already registered with framework HTTP path-label configuration ${describeHttpMetricConfiguration(registered)}. Built-in HTTP metrics require matching path-label configuration before reuse; received ${describeHttpMetricConfiguration(expected)}.`,
+    `Metric name "${metricName}" is already registered with framework HTTP collector configuration ${describeHttpMetricConfiguration(registered)}. Built-in HTTP metrics require matching HTTP collector configuration before reuse; received ${describeHttpMetricConfiguration(expected)}.`,
   );
 }
 
