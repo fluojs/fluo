@@ -172,7 +172,7 @@ Prometheus 메트릭 이름은 하나의 Registry 안에서 고유해야 합니�
 
 - `fluo_component_ready`: 준비 완료 시 1, 아닐 시 0.
 - `fluo_component_health`: 정상 상태 시 1, 아닐 시 0.
-- `fluo_metrics_registry_mode`: active registry mode를 `mode="isolated"` 또는 `mode="shared"` label과 gauge value `1`로 나타냅니다.
+- `fluo_metrics_registry_mode`: `MetricsModule.forRoot()`가 Registry를 생성하면 `mode="isolated"`, `registry` option을 전달하면 `mode="shared"` label과 gauge value `1`을 노출합니다. 이 label은 module registration configuration을 나타내며 scrape 시점에 Registry 공유 여부를 추론하지 않습니다.
 
 이 데이터는 built-in `/metrics` controller와 `MetricsService.getRegistry().metrics()`를 사용하는 advanced custom scraper를 포함해 active Registry가 스크레이프될 때마다 `PLATFORM_SHELL`을 쿼리하여 갱신됩니다. 초기화 시 환경 라벨을 제공할 수 있습니다.
 
