@@ -1703,11 +1703,14 @@ describe('dispatcher runtime', () => {
   });
 
   it('returns 406 when Accept does not match available formatters', async () => {
+    let handlerCalls = 0;
+
     @Controller('/negotiation')
     class NegotiationController {
       @Produces('application/json')
       @Get('/json-only')
       getValue() {
+        handlerCalls += 1;
         return { ok: true };
       }
     }
@@ -1744,6 +1747,7 @@ describe('dispatcher runtime', () => {
     });
     expect(response.headers.Vary).toBe('Accept');
     expect(response.committed).toBe(true);
+    expect(handlerCalls).toBe(0);
 
     const deduplicatedResponse = createResponse();
     deduplicatedResponse.headers.Vary = 'Origin';
@@ -1756,6 +1760,7 @@ describe('dispatcher runtime', () => {
 
     expect(deduplicatedResponse.headers.Vary).toBe('Origin, accept');
     expect(deduplicatedResponse.headers.vary).toBeUndefined();
+    expect(handlerCalls).toBe(0);
   });
 
   it('returns 406 when Accept tokens are all q=0', async () => {

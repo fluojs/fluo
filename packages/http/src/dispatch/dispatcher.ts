@@ -42,6 +42,7 @@ import { isContentNegotiationNotAcceptableException } from './dispatch-content-n
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import {
   type ResolvedContentNegotiation,
+  resolveResponsePolicy,
   resolveContentNegotiation,
   writeErrorResponse,
   writeSuccessResponse,
@@ -187,6 +188,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
       return request.query;
     },
     body: request.body,
+    connection: request.connection,
     method: request.method,
     params: { ...request.params },
     path: request.path,
@@ -758,6 +760,15 @@ async function dispatchMatchedHandler(
 
   if (requestContext.response.committed) {
     return;
+  }
+
+  if (
+    contentNegotiation
+    && handler.route.produces?.length
+    && handler.route.redirect === undefined
+    && typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] !== 'function'
+  ) {
+    resolveResponsePolicy(handler, requestContext.request, contentNegotiation);
   }
 
   let conditionalOutcome: Exclude<ConditionalRequestOutcome, 'proceed'> | undefined;

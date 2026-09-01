@@ -9,6 +9,7 @@ import type {
   HandlerDescriptor,
   HandlerMapping,
   HandlerMetadata,
+  HttpConnection,
   MiddlewareRouteConfig,
   MiddlewareRouteSnapshot,
   ResponseFormatter,
@@ -135,6 +136,7 @@ describe('@fluojs/http public API surface', () => {
     expectTypeOf<CookieSameSite>().toEqualTypeOf<'lax' | 'none' | 'strict'>();
     expectTypeOf<keyof CookieOptions>().toEqualTypeOf<'domain' | 'expires' | 'httpOnly' | 'maxAgeSeconds' | 'path' | 'sameSite' | 'secure'>();
     expectTypeOf<keyof ClearCookieOptions>().toEqualTypeOf<'domain' | 'httpOnly' | 'path' | 'sameSite' | 'secure'>();
+    expectTypeOf<HttpConnection['proxyChain']>().toEqualTypeOf<readonly string[]>();
   });
 
   it('keeps documented supported root-barrel exports', () => {
@@ -180,6 +182,7 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createCorrelationMiddleware');
     expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
+    expect(httpPublicApi).toHaveProperty('resolveHttpConnection');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
     expect(httpPublicApi).toHaveProperty('buildContentDisposition');

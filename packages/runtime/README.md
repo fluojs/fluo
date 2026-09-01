@@ -21,7 +21,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 npm install @fluojs/runtime
 ```
 
-The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts.
+The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
 
 ## When to Use
 

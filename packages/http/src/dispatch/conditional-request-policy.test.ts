@@ -384,6 +384,7 @@ describe('conditional request policy', () => {
     'short-circuits %s after a failed %s before its handler while retaining 412 validators',
     async (method, _condition, headers) => {
       let handlerCalls = 0;
+      let interceptorCalls = 0;
 
       @Controller('/validators')
       class ValidatorsController {
@@ -424,6 +425,12 @@ describe('conditional request policy', () => {
           },
         },
         handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+        interceptors: [{
+          async intercept(_context, next) {
+            interceptorCalls += 1;
+            return next.handle();
+          },
+        }],
         rootContainer: new Container().register(ValidatorsController),
       });
       const response = createResponse();
@@ -437,6 +444,7 @@ describe('conditional request policy', () => {
       expect(response.sentBodies).toEqual([undefined]);
       expect(response.headers.ETag).toBe('"resource-v1"');
       expect(handlerCalls).toBe(0);
+      expect(interceptorCalls).toBe(0);
     },
   );
 

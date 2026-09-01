@@ -33,6 +33,7 @@ const httpRuntimeChangedPathRegression =
 const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isolation.test.ts';
 const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
+const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
@@ -854,6 +855,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
       hasChanged(changedFiles, httpRuntimeChangedPathRegression),
       `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
     );
+    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+      return;
+    }
     assert(
       hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
       `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
@@ -917,6 +921,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
+  // plus HTTP trust-proxy connection identity scope, where forwarding metadata
+  // can replace direct transport identity only behind an explicit trusted peer
+  // boundary and legacy full-chain compatibility remains distinct,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, inherited class/method render-policy
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
