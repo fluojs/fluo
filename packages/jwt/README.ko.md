@@ -163,19 +163,36 @@ JWKS key는 `jwksCacheTtl` 밀리초 동안 cache되며 기본값은 `600_000`�
 
 `JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
-호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
+호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. `keys[]`의 모든 entry는 비어 있지 않고 고유한 `kid`를 가져야 합니다. `DefaultJwtSigner`와 `DefaultJwtVerifier`는 key rotation 중 서명과 검증이 서로 다른 키를 선택하지 않도록 construction 시점에 빈 값 또는 중복 값을 `JwtConfigurationError`로 거부합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
 
 멀티테넌트 시스템에서는 발행된 토큰 header에 tenant-specific `kid`를 넣고 호환되는 key source를 미리 구성하는 방식을 권장합니다. `secretOrKeyProvider`는 decoded token header만 인자로 받으므로, request header, route param, 기타 request-context tenant hint는 JWT verifier 호출 전에 애플리케이션 수준 strategy/guard 코드에서 처리해야 합니다.
 
 ### 리프레시 토큰
 
-`RefreshTokenService`는 전용 HMAC refresh-token 경로를 사용합니다. `refreshToken.secret`은 access-token 서명 키와 별도로 설정하세요. Rotation은 `RefreshTokenStore.rotate(...)`를 사용해 현재 토큰을 소비 처리하고 대체 토큰을 같은 durable store 작업 안에서 저장할 수 있습니다. 따라서 성공한 rotation은 저장된 후속 토큰 없이 기존 토큰만 소비하지 않습니다. 기존 atomic `consume(...)` hook만 구현한 store도 계속 지원합니다. Consume이 성공하면 service가 `save(...)`로 대체 토큰을 저장하지만, 두 쓰기를 원자적으로 만드는 경로는 store 소유의 `rotate(...)`뿐입니다.
+`RefreshTokenService`는 전용 HMAC refresh-token 경로를 사용합니다. `refreshToken.secret`은 access-token 서명 키와 별도로 설정하세요. access-token `algorithms`가 비대칭 알고리즘만 허용할 때는 `refreshToken.algorithms`에 `['HS256']` 같은 명시적인 HMAC allowlist를 설정하세요. 그렇지 않으면 기존 구성과의 호환성을 위해 top-level HMAC algorithms에서 refresh policy를 파생합니다. 이 policy는 refresh-token 서명과 검증에만 적용되므로 access-token 검증 범위를 넓히지 않습니다.
+
+```typescript
+const options = {
+  algorithms: ['RS256'],
+  privateKey: '...private PEM...',
+  publicKey: '...public PEM...',
+  refreshToken: {
+    algorithms: ['HS256'],
+    secret: 'refresh-secret',
+    expiresInSeconds: 300,
+    rotation: false,
+    store,
+  },
+};
+```
+
+Rotation은 `RefreshTokenStore.rotate(...)`를 사용해 현재 토큰을 소비 처리하고 대체 토큰을 같은 durable store 작업 안에서 저장할 수 있습니다. 따라서 성공한 rotation은 저장된 후속 토큰 없이 기존 토큰만 소비하지 않습니다. 기존 atomic `consume(...)` hook만 구현한 store도 계속 지원합니다. Consume이 성공하면 service가 `save(...)`로 대체 토큰을 저장하지만, 두 쓰기를 원자적으로 만드는 경로는 store 소유의 `rotate(...)`뿐입니다.
 
 재사용을 감지하면 optional `revokeByFamily(family)` capability를 구현한 store는 침해된 token family만 revoke합니다. 기존 store는 source-compatible 상태를 유지합니다. `revokeByFamily(...)`가 없으면 `RefreshTokenService`는 보수적으로 `revokeBySubject(subject)`로 fallback하며, 이 경우 해당 subject의 독립적인 refresh-token family도 함께 revoke됩니다. 다른 family가 침해된 뒤에도 별도 device 또는 session family를 유지해야 하는 production store는 `revokeByFamily(...)`를 구현하세요.
 
 ## 설정 가드레일
 
-JWT 서명과 검증에는 `algorithms`에 지원되는 알고리즘이 하나 이상 필요합니다. 기본 signer는 `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`를 지원하며, 빈 알고리즘 목록은 모호한 토큰을 발행하거나 수락하지 않도록 즉시 실패합니다.
+JWT 서명과 access-token 검증에는 `algorithms`에 지원되는 알고리즘이 하나 이상 필요합니다. Refresh-token 서명과 검증은 `refreshToken.algorithms`가 설정되어 있으면 이를 사용하고, 설정되지 않으면 backward compatibility를 위해 top-level HMAC algorithms를 사용합니다. 기본 signer는 `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`를 지원하며, 빈 알고리즘 목록은 모호한 토큰을 발행하거나 수락하지 않도록 즉시 실패합니다.
 
 액세스 토큰 TTL도 양의 유한 숫자여야 합니다. `accessTokenTtlSeconds`를 생략하면 `DefaultJwtSigner`는 문서화된 기본값인 `3600`초를 사용합니다. 소수 초는 JWT NumericDate `exp` 클레임에 그대로 보존됩니다. `0`, 음수 또는 유한하지 않은 값이 제공되면 토큰을 발행하기 전에 `JwtConfigurationError`로 실패합니다.
 
@@ -214,7 +231,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 ### 에러와 diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: 타입이 지정된 JWT 실패입니다.
 - `createJwtPlatformStatusSnapshot(...)`, `createJwtPlatformDiagnosticIssues(...)`: status 및 diagnostic helper입니다.
-- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: 모듈과 검증 레이어에서 사용하는 export token/constant입니다.
+- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: 모듈과 검증 레이어에서 사용하는 export token/constant입니다. `HMAC_HASH`와 `ASYMMETRIC_HASH`는 readonly lookup 값이므로 변경하지 마세요.
 
 ### Deprecated compatibility helper
 - `normalizeRefreshTokenOptions(...)`: 기존 caller의 root import 호환성만을 위해 유지됩니다. package normalization 내부 helper를 직접 호출하기보다 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`와 `RefreshTokenService`를 사용하세요.

@@ -15,6 +15,7 @@
   - [Redis 저장소 사용](#redis-저장소-사용)
   - [쿼리 매개변수 기반 캐싱](#쿼리-매개변수-기반-캐싱)
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
+  - [비동기 설정](#비동기-설정)
   - [수동 모듈 조합](#수동-모듈-조합)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -25,6 +26,8 @@
 ```bash
 npm install @fluojs/cache-manager
 ```
+
+`@fluojs/cache-manager`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원하며 `engines.node`로 정확히 이 범위를 선언합니다. mandatory `@fluojs/runtime` dependency가 이 Node listener 경계를 소유하므로 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 이전 1.x 릴리스는 `engines.node >=20.0.0`을 광고했지만, 이는 실제 dependency floor와 일치한 적이 없습니다.
 
 root `@fluojs/cache-manager` import는 memory-only 설치에서도 안전합니다. Redis client는 Redis 저장소 경로를 명시적으로 선택할 때만 필요합니다.
 
@@ -205,6 +208,8 @@ HTTP 인터셉터는 나중에 재사용할 수 있는 값이 있는 성공한, 
 
 ### 캐시 소유권과 reset 범위
 
+일반적인 `get(...)`, `set(...)`, `del(...)` 호출은 설정된 store에 대해 동시에 실행되므로, 한 키의 느린 store 호출이 관련 없는 키를 지연시키지 않습니다.
+
 `CacheService.reset()`은 관련 없는 애플리케이션 상태가 아니라 설정된 store가 소유한 엔트리만 삭제합니다. 또한 reset 경계에서 store read/write를 직렬화하고 진행 중인 `remember(...)` loader를 무효화하므로, reset 전에 시작된 loader가 reset 완료 후 stale 엔트리를 다시 채우지 못합니다. 내장 메모리 저장소에서는 해당 store 인스턴스가 보유한 in-process 엔트리를 의미합니다. Redis에서는 설정된 `keyPrefix` namespace가 소유권 경계입니다. 공유 Redis 배포에서는 기본 `fluo:cache:`를 유지하거나 `myapp:cache:`처럼 전용 prefix를 선택하세요.
 
 ```typescript
@@ -219,6 +224,54 @@ Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(
 애플리케이션이 종료될 때 `CacheService`는 새 store read/write를 중단하고 이미 시작된 store 작업을 기다린 뒤, `close()` 또는 `dispose()`를 노출하는 custom store로 shutdown을 전달합니다. 동시에 또는 반복해서 호출된 `close()`와 lifecycle hook은 첫 teardown의 완료 및 실패를 공유하므로, store teardown은 한 번만 실행되고 모든 호출자가 같은 shutdown 경계를 관찰합니다. store가 socket, pool, timer 또는 기타 외부 리소스를 소유한다면 이 optional hook 중 하나를 사용하세요.
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
+
+Lifecycle diagnostic은 shutdown이 실제로 사용하는 teardown 소유자를 그대로 보고합니다. `createCacheManagerPlatformStatusSnapshot(...)`은 모든 non-memory store를 같게 취급하지 않고 lifecycle 책임에서 소유권을 해석합니다.
+
+- 내장 메모리 store는 프레임워크가 in-process로 생성하고 보유하므로 `framework` 소유입니다.
+- Custom store는 `CacheService.close()`가 optional `close()` 또는 `dispose()` hook으로 teardown을 전달할 책임을 가지므로 기본적으로 `framework` 소유입니다.
+- Redis store는 client를 닫지 않는 `CacheService`에 대해 `external`입니다. Cache module이 `@fluojs/redis`를 통해 client를 해석하면 해당 integration이 lifecycle을 소유하고, `redis.client`로 client를 직접 전달하면 애플리케이션이 lifecycle을 소유합니다.
+
+명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. 애플리케이션이 custom store의 lifecycle 책임을 의도적으로 유지하는 경우 `external`로 설정하세요.
+
+### 비동기 설정
+
+최종 store, TTL, `keyPrefix`, key strategy를 DI나 비동기 bootstrap 작업에서 결정해야 한다면 `CacheModule.forRootAsync(...)`를 사용합니다. 의존성 토큰을 `inject`에 나열하고 `useFactory`에서 일반 `CacheModuleOptions`를 반환하면, module이 `CacheModule.forRoot(...)`와 동일한 기본값으로 그 결과를 정규화합니다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+import { CacheSettingsService } from './cache-settings.service';
+
+@Module({
+  imports: [
+    CacheModule.forRootAsync({
+      inject: [CacheSettingsService],
+      useFactory: async (settings: CacheSettingsService) => ({
+        store: 'redis',
+        ttl: await settings.resolveTtlSeconds(),
+        keyPrefix: settings.keyPrefix,
+        redis: { clientName: 'cache' },
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Inject한 토큰은 cache module을 생성하는 container에 보여야 합니다. Cache options provider가 resolve되기 전에 bootstrap runtime provider로 제공하거나 globally visible한 imported module에서 export하세요. Import하는 parent module에만 local인 provider나 일반 sibling/parent export는 async cache module에 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되며, factory가 reject되면 부분적으로 설정된 cache를 등록하지 않고 bootstrap이 실패합니다.
+
+모듈 가시성은 등록 호출이 소유합니다. 전역으로 노출하려면 `CacheModule.forRootAsync({ global: true, ... })`처럼 전달하세요. `useFactory`는 `global` property를 포함한 준비된 `CacheModuleOptions` 값을 반환할 수 있으며, module metadata는 factory 실행 전에 확정되므로 반환된 `global`은 무시됩니다.
+
+```typescript
+CacheModule.forRootAsync({
+  global: true,
+  inject: [CacheSettingsService],
+  useFactory: (settings: CacheSettingsService) => ({ store: settings.store }),
+})
+```
+
+비동기 경로도 `forRoot(...)`와 동일한 store 선택을 지원합니다. `'memory'`, DI로 해석하거나 직접 전달한 client를 사용하는 `'redis'`, 그리고 모든 custom `CacheStore` instance를 사용할 수 있습니다.
 
 ### 수동 모듈 조합
 
@@ -270,9 +323,11 @@ class ProductController {
 ### 모듈
 - `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
   애플리케이션 모듈에서 사용하는 기본 패키지 진입점입니다.
+- `CacheModule.forRootAsync({ inject, useFactory, global? })`: cache 설정을 DI나 비동기 bootstrap 작업에서 만드는 애플리케이션을 위해 동일한 옵션을 injected factory로 해석합니다. `global`은 이 등록 호출이 소유하며, factory가 reject되면 bootstrap이 실패합니다.
 
 ### 공개 타입
 - `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정입니다.
+- `CacheAsyncModuleOptions`: `CacheModule.forRootAsync(...)`가 받는 injected-factory 설정입니다. `useFactory`는 `CacheModuleOptions`를 반환하며, module visibility는 등록 수준의 `global`만 따릅니다.
 - `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
 
 ### 서비스

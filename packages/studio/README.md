@@ -36,7 +36,8 @@ pnpm add @fluojs/studio
 The published package serves these caller-facing entrypoints:
 
 - `@fluojs/studio` / `@fluojs/studio/contracts` for canonical snapshot parsing, filtering, Mermaid graph rendering helpers, and runtime-connected Studio live event contracts.
-- `@fluojs/studio/viewer` for the packaged React browser viewer HTML entry file.
+- `fluo-studio-viewer` is the public launch path for the packaged React browser viewer.
+- `@fluojs/studio/viewer` is only the integration asset-resolution contract for callers that need the packaged HTML entry file.
 
 ## Release Policy
 
@@ -77,7 +78,7 @@ MVP request flow intentionally means route/handler and dependency-graph correlat
 
 Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics. New snapshots may include compiled `routes`; Studio validates `kind` and parameter-name-only `params`, displays `react-page` as **React page**, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics.
 
-This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and open them with the packaged viewer instead of expecting live sidecar events in the MVP. The packaged viewer is resolved through the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`), even when the inspected artifact came from a non-Node runtime fallback workflow.
+This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and launch them with `fluo-studio-viewer` instead of expecting live sidecar events in the MVP. Integrations that need the HTML asset path resolve the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`) even when the inspected artifact came from a non-Node runtime fallback workflow.
 
 1. **Export a snapshot**:
    ```bash
@@ -87,10 +88,10 @@ This file-first path is the compatibility and migration fallback for CI, support
 2. **Open the packaged Studio viewer**:
    ```bash
    pnpm add -D @fluojs/studio
-   node -p "require.resolve('@fluojs/studio/viewer')"
+   pnpm exec fluo-studio-viewer
    ```
 
-   Open the printed `dist/index.html` path in a browser. For repo-local Studio development, use:
+   The `fluo-studio-viewer` command serves the packaged viewer from `127.0.0.1` and prints its HTTP URL. Open that URL in a browser instead of opening `dist/index.html` directly. `@fluojs/studio/viewer` remains only the integration asset-resolution contract for callers that resolve the packaged HTML entry. For repo-local Studio development, use:
    ```bash
    pnpm --dir packages/studio dev
    ```
@@ -168,9 +169,10 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 
 - `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering and live contracts.
 - `@fluojs/studio/contracts`: explicit helper subpath for tooling that wants the contract helpers directly.
-- `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the React browser viewer bundle.
+- `fluo-studio-viewer`: public CLI launch path for the packaged React browser viewer bundle.
+- `@fluojs/studio/viewer`: integration asset-resolution subpath for the packaged `dist/index.html` file.
 
-`@fluojs/studio/viewer` is an asset-only manifest subpath: callers resolve the packaged HTML file path, not a JavaScript module or TypeScript declaration entrypoint.
+`@fluojs/studio/viewer` is only the integration asset-resolution contract: callers resolve the packaged HTML file path, not a JavaScript module or TypeScript declaration entrypoint.
 
 ## Future Direction
 

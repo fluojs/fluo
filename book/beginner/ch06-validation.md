@@ -198,6 +198,8 @@ This is a meaningful upgrade for FluoBlog. The create route now has explicit rul
 
 At first, it is easy to write similar DTOs by hand, and that works in the beginning. But it quickly becomes repetitive and prone to mistakes. Helpers such as `PartialType`, `PickType`, and `OmitType` reduce duplication while preserving field-level validation metadata, so derived contracts can stay tied to one base DTO safely. Class-level validators are not copied onto subset or partial DTOs because they may depend on fields that were intentionally omitted or made optional.
 
+When migrating these DTOs from NestJS, review the explicit import rewrites and the different class-level rule semantics for subset, partial, and intersection helpers in the [NestJS migration map](../../docs/getting-started/migrate-from-nestjs.md#nested-dto-and-mapped-type-rewrites).
+
 ### Creating Specific DTO Variations
 
 For example, if you need a DTO that includes only the title, you can write this.

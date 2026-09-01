@@ -9,6 +9,7 @@ import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -20,11 +21,14 @@ import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-poli
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
+const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -183,6 +187,7 @@ const ssotPairs = [
   ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md'],
   ['docs/contracts/release-governance.md', 'docs/contracts/release-governance.ko.md'],
   ['docs/contracts/platform-conformance-authoring-checklist.md', 'docs/contracts/platform-conformance-authoring-checklist.ko.md'],
+  ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
   ['docs/reference/package-folder-structure.md', 'docs/reference/package-folder-structure.ko.md'],
   ['docs/reference/package-surface.md', 'docs/reference/package-surface.ko.md'],
 ];
@@ -214,6 +219,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/http-runtime.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
+  // These shared files intentionally use only the generic contract gate; topic-specific prose
+  // must not impose unrelated companion-document requirements.
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
   // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
@@ -223,6 +230,8 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/realtime.ko.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  'apps/docs/content/docs/guides/auth.mdx',
+  'apps/docs/content/docs/guides/auth.ko.mdx',
   // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
@@ -437,6 +446,35 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceCliMigrationTransformDocs(readText = read) {
+  const transformSource = readText('packages/cli/src/transforms/nestjs-migrate.ts');
+  const transformList = /export const MIGRATION_TRANSFORMS = \[([\s\S]*?)\] as const;/u.exec(transformSource);
+  assert(transformList?.[1], 'unable to read the CLI migration transform declarations.');
+
+  const supportedTransforms = new Set([...transformList[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]));
+  assert(supportedTransforms.size > 0, 'CLI migration transform declarations must not be empty.');
+
+  const migrationDocs = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/cli/README.md',
+    'packages/cli/README.ko.md',
+  ];
+
+  for (const relativePath of migrationDocs) {
+    const markdown = readText(relativePath);
+    const selections = [...markdown.matchAll(/--(?:only|skip)\s+([a-z]+(?:,[a-z]+)*)/gu)];
+    for (const selection of selections) {
+      for (const transform of selection[1].split(',')) {
+        assert(
+          supportedTransforms.has(transform),
+          `documented migration transform "${transform}" in ${relativePath} is not supported by the CLI.`,
+        );
+      }
+    }
+  }
 }
 
 function hasOneArgumentGuardContextContract(markdown) {
@@ -870,10 +908,11 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus @nestjs/config migration call-shape and bootstrap ownership boundaries
   // where ConfigModule never reads external secret Providers itself and
   // ConfigService.get/getOrThrow accept a single key with no NestJS
-  // default-value or options overload.
+  // default-value or options overload, plus JWT refresh-token-specific HMAC
+  // algorithm policy separation from narrow access-token algorithm allowlists.
 
   assert(
-    hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
+    contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
     'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
   );
   assert(
@@ -1857,16 +1896,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
   );
   assert(
-    packageSurface.includes('NormalizedCacheModuleOptions') &&
-      docsContext.includes('NormalizedCacheModuleOptions') &&
-      cacheManagerReadme.includes('NormalizedCacheModuleOptions'),
-    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+    packageSurface.includes('NormalizedCacheModuleOptions') && packageSurface.includes('CacheModule.forRootAsync') &&
+      docsContext.includes('NormalizedCacheModuleOptions') && docsContext.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadme.includes('NormalizedCacheModuleOptions') && cacheManagerReadme.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
-    packageSurfaceKo.includes('NormalizedCacheModuleOptions') &&
-      docsContextKo.includes('NormalizedCacheModuleOptions') &&
-      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions'),
-    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+    packageSurfaceKo.includes('NormalizedCacheModuleOptions') && packageSurfaceKo.includes('CacheModule.forRootAsync') &&
+      docsContextKo.includes('NormalizedCacheModuleOptions') && docsContextKo.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions') && cacheManagerReadmeKo.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
     packageSurface.includes('createPassportJsStrategyBridge(...)') &&
@@ -2639,6 +2678,104 @@ export function enforceHttpCustomMethodContract() {
   );
 }
 
+export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
+  const assertionOrder = [
+    'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsHttpErrorRepresentations()',
+    'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+    'assertPreservesMalformedCookieValues()',
+    'assertPreservesRawBodyForJsonAndText()',
+    'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+    'assertExcludesRawBodyForMultipart()',
+    'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+    'assertSupportsSseStreaming()',
+    'assertSettlesStreamDrainWaitOnClose()',
+    'assertReportsConfiguredHostInStartupLogs()',
+    'assertReportsHttpsStartupUrl',
+    'assertRemovesShutdownSignalListenersAfterClose()',
+  ];
+  const discoverabilityPaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/advanced/ch14-portability-testing.md',
+    'book/advanced/ch14-portability-testing.ko.md',
+  ];
+
+  for (const documentationPath of discoverabilityPaths) {
+    const documentation = readText(documentationPath);
+    const suiteStartMarker = documentationPath.startsWith('docs/')
+      ? '## HTTP Portability Harness Contract'
+      : "describe('MyCustomAdapter Portability', () => {";
+    const suiteStart = documentation.indexOf(suiteStartMarker);
+    assert(
+      suiteStart >= 0,
+      `${documentationPath} must keep the complete HTTP portability suite section discoverable.`,
+    );
+    const suite = documentation.slice(suiteStart);
+    let previousPosition = -1;
+
+    for (const assertion of assertionOrder) {
+      const position = suite.indexOf(assertion);
+      assert(
+        position >= 0,
+        `${documentationPath} must keep ${assertion} discoverable.`,
+      );
+      assert(
+        position > previousPosition,
+        `${documentationPath} must keep the complete HTTP portability suite in canonical assertion order.`,
+      );
+      previousPosition = position;
+    }
+
+    for (const supportingIdentifier of [
+      'createHttpAdapterPortabilityHarness',
+      'createErrorRepresentationBootstrapOptions',
+      'TEST_TLS_CERTIFICATE',
+      'TEST_TLS_PRIVATE_KEY',
+    ]) {
+      assert(
+        documentation.includes(supportingIdentifier),
+        `${documentationPath} must keep ${supportingIdentifier} discoverable.`,
+      );
+    }
+  }
+
+  for (const contractPath of [
+    'docs/contracts/platform-conformance-authoring-checklist.md',
+    'docs/contracts/platform-conformance-authoring-checklist.ko.md',
+  ]) {
+    const contract = readText(contractPath);
+
+    for (const marker of [
+      '## Adapter Portability Requirements',
+      'createHttpAdapterPortabilityHarness(...)',
+      'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsHttpErrorRepresentations()',
+      'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+      'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+      'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+      'assertSettlesStreamDrainWaitOnClose()',
+      'assertReportsConfiguredHostInStartupLogs()',
+      'assertReportsHttpsStartupUrl(...)',
+      'assertRemovesShutdownSignalListenersAfterClose()',
+    ]) {
+      assert(
+        contract.includes(marker),
+        `${contractPath} must keep the HTTP portability companion contract marker ${marker}.`,
+      );
+    }
+  }
+
+  const networkHarness = readText('packages/testing/src/portability/http-adapter-portability.ts');
+  for (const assertion of assertionOrder) {
+    const identifier = assertion.replace(/\([^)]*\)$/, '');
+    assert(
+      networkHarness.includes(identifier),
+      `packages/testing/src/portability/http-adapter-portability.ts must retain ${identifier}.`,
+    );
+  }
+}
+
 export function enforceOpenApiNullableNormalizationContract() {
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -2830,7 +2967,7 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
-export function main() {
+export async function main() {
   const changedFiles = changedFilesFromGit();
 
   enforceSsotMirrorStructure();
@@ -2847,7 +2984,9 @@ export function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
+  enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
+  await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
@@ -2866,6 +3005,7 @@ export function main() {
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCustomMethodContract();
+  enforceHttpAdapterPortabilityDocumentationContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();
@@ -2883,5 +3023,5 @@ export function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }

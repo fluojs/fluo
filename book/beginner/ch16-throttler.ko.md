@@ -137,6 +137,15 @@ ThrottlerModule.forRoot({
 
 데코레이터는 클래스(컨트롤러)와 메서드 모두에 적용할 수 있습니다. 클래스에 적용하면 해당 클래스 내의 모든 메서드에 영향을 미칩니다. 이는 특정 속도 제한 정책을 공유해야 하는 관련 엔드포인트들을 그룹화할 때 유용합니다. 만약 메서드에도 `@Throttle()` 데코레이터가 있다면, 클래스 수준의 데코레이터보다 우선순위를 가집니다. 이러한 계층적 재정의를 통해 트래픽 제어 전략을 매우 정밀하게 구성할 수 있습니다.
 
+### 16.3.5 @nestjs/throttler에서 마이그레이션하기
+`@fluojs/throttler`는 `@nestjs/throttler`의 일대일 대체제가 아닙니다. NestJS 설정을 그대로 복사하지 말고 Fluo의 계약을 유지하세요.
+
+- **TTL 단위를 변환합니다.** NestJS는 밀리초를 사용하고 Fluo는 초를 사용합니다. NestJS의 `ttl: 60_000`은 `ttl: 60`이 됩니다. 값을 그대로 복사하면 window가 1,000배 길어집니다.
+- **필요하면 skipped controller를 재구성합니다.** NestJS named skip metadata는 skipped class 아래 method-level `false`로 throttling을 다시 활성화할 수 있습니다. Fluo의 인자 없는 `@SkipThrottle()`은 class와 method skip을 additive하게 결합하므로, 보호할 method를 skip하지 않은 controller로 옮기거나 application-owned guard wrapper에서 해당 예외를 집행하세요.
+- **등록 전에 비동기 입력을 준비합니다.** Fluo는 NestJS `forRootAsync(...)`가 아니라 동기 `ThrottlerModule.forRoot(...)`를 제공합니다. Secret, configuration, store 생성은 application bootstrap boundary에서 해결한 뒤 최종 option을 등록하세요.
+- **정책을 transport 경계에 둡니다.** Fluo의 `ThrottlerGuard`와 `keyGenerator`는 HTTP context에서 동작합니다. WebSocket message, GraphQL operation, RPC call, queue worker에는 transport-owned guard 또는 middleware를 사용하세요.
+- **counter 연속성을 명시적으로 계획합니다.** NestJS와 Fluo는 서로 다른 bucket key와 storage call contract를 사용합니다. Migration은 기본적으로 새 window에서 시작합니다. 기존 counter를 계속 유지해야 할 때만 application-owned compatibility store 또는 bounded cutover를 사용하세요.
+
 ## 16.4 Storage Providers: Memory vs. Redis
 스로틀러는 각 트래커의 요청 횟수를 저장할 공간이 필요합니다. 적절한 저장소 프로바이더를 선택하는 것은 속도 제한의 성능과 정확성 모두에 영향을 미치는 중요한 결정입니다.
 

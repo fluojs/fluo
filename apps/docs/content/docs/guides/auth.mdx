@@ -234,6 +234,7 @@ Use refresh tokens when clients need long-lived sessions without extending acces
 ```ts
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -241,18 +242,6 @@ import {
   RefreshTokenStrategy,
   UseAuth,
 } from '@fluojs/passport';
-
-@Module({
-  imports: [
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
-    PassportModule.forRoot(
-      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
-      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
-    ),
-  ],
-  providers: [MyRefreshTokenService],
-})
-export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -262,7 +251,26 @@ export class AuthController {
     return ctx.principal;
   }
 }
+
+@Module({
+  controllers: [AuthController],
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-access-token-secret',
+    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
 ```
+
+`RefreshTokenModule` owns a class passed to `forRoot(...)`. When that class has constructor dependencies, define an application-owned module that provides and exports those dependencies, then pass it through `imports` with `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`. Do not also register `MyRefreshTokenService` in `AuthModule.providers`; that duplicates the provider and fails with `duplicateProviderPolicy: 'throw'`. `JwtModule` is a sibling import, so keep `global: true` to expose `DefaultJwtVerifier` to `RefreshTokenStrategy`.
 
 For production, refresh-token rotation needs an atomic `RefreshTokenStore.consume(...)` implementation so replayed tokens are detected reliably. In-memory stores are only appropriate for development and single-instance deployments.
 
