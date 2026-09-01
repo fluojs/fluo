@@ -52,6 +52,7 @@ Provider는 business behavior를 소유해야 합니다. Controller는 transport
 ## 3. HTTP boundary 정의
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
 import { UsersService } from './users.service';
@@ -67,6 +68,7 @@ class FindUserParamsDto {
 }
 
 @Controller('/users')
+@Inject(UsersService)
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 

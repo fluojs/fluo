@@ -52,6 +52,7 @@ Providers should own business behavior. Controllers should only translate transp
 ## 3. Define the HTTP boundary
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
 import { UsersService } from './users.service';
@@ -67,6 +68,7 @@ class FindUserParamsDto {
 }
 
 @Controller('/users')
+@Inject(UsersService)
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 

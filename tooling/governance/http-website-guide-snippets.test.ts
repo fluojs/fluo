@@ -3,23 +3,21 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  canHaveDecorators,
   createSourceFile,
-  forEachChild,
-  getDecorators,
-  isCallExpression,
-  isExportDeclaration,
-  isIdentifier,
   isImportDeclaration,
-  isNamedExports,
   isNamedImports,
   isStringLiteral,
-  ModuleKind,
   ScriptKind,
   ScriptTarget,
-  transpileModule,
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
+
+import {
+  classDecoratorArguments,
+  exportedHttpNames,
+  routeBindings,
+  semanticDiagnostics,
+} from './http-website-guide-snippets.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const guidePaths = [
@@ -29,152 +27,108 @@ const guidePaths = [
   'apps/docs/content/docs/guides/first-feature.ko.mdx',
 ] as const;
 
-interface Snippet {
-  readonly file: string;
-  readonly source: string;
-}
-
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
-function codeSnippets(relativePath: string): readonly Snippet[] {
+function codeSnippets(relativePath: string): readonly string[] {
   return [...read(relativePath).matchAll(/```ts\n([\s\S]*?)```/gu)]
     .map((match) => match[1])
     .filter((source): source is string => source !== undefined)
-    .filter((source) => source.includes("from '@fluojs/http'"))
-    .map((source) => ({ file: relativePath, source }));
-}
-
-function exportedHttpNames(): ReadonlySet<string> {
-  const source = createSourceFile(
-    'packages/http/src/index.portable.ts',
-    read('packages/http/src/index.portable.ts'),
-    ScriptTarget.ES2022,
-    true,
-    ScriptKind.TS,
-  );
-  const names = new Set<string>();
-
-  for (const statement of source.statements) {
-    if (!isExportDeclaration(statement) || !statement.exportClause || !isNamedExports(statement.exportClause)) {
-      continue;
-    }
-
-    for (const element of statement.exportClause.elements) {
-      names.add(element.name.text);
-    }
-  }
-
-  return names;
+    .filter((source) => source.includes("from '@fluojs/http'"));
 }
 
 function importedHttpNames(source: string): readonly string[] {
   const file = createSourceFile('snippet.ts', source, ScriptTarget.ES2022, true, ScriptKind.TS);
-  const names: string[] = [];
 
-  for (const statement of file.statements) {
-    if (!isImportDeclaration(statement) || !isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== '@fluojs/http') {
-      continue;
-    }
+  return file.statements
+    .filter(isImportDeclaration)
+    .filter((statement) => isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === '@fluojs/http')
+    .flatMap((statement) => {
+      const bindings = statement.importClause?.namedBindings;
 
-    const bindings = statement.importClause?.namedBindings;
-
-    if (!bindings || !isNamedImports(bindings)) {
-      continue;
-    }
-
-    for (const element of bindings.elements) {
-      names.push(element.propertyName?.text ?? element.name.text);
-    }
-  }
-
-  return names;
-}
-
-function decoratorNames(source: string): ReadonlySet<string> {
-  const file = createSourceFile('snippet.ts', source, ScriptTarget.ES2022, true, ScriptKind.TS);
-  const names = new Set<string>();
-
-  const visit = (node: Parameters<typeof forEachChild>[0]): void => {
-    if (canHaveDecorators(node)) {
-      for (const decorator of getDecorators(node) ?? []) {
-        if (isCallExpression(decorator.expression) && isIdentifier(decorator.expression.expression)) {
-          names.add(decorator.expression.expression.text);
-        }
-      }
-    }
-
-    forEachChild(node, visit);
-  };
-
-  visit(file);
-  return names;
-}
-
-function routePaths(source: string): readonly string[] {
-  const file = createSourceFile('snippet.ts', source, ScriptTarget.ES2022, true, ScriptKind.TS);
-  const paths: string[] = [];
-
-  const visit = (node: Parameters<typeof forEachChild>[0]): void => {
-    if (canHaveDecorators(node)) {
-      for (const decorator of getDecorators(node) ?? []) {
-        if (
-          !isCallExpression(decorator.expression) ||
-          !isIdentifier(decorator.expression.expression) ||
-          !['Get', 'Post'].includes(decorator.expression.expression.text)
-        ) {
-          continue;
-        }
-
-        const [path] = decorator.expression.arguments;
-        paths.push(path && isStringLiteral(path) ? path.text : '');
-      }
-    }
-
-    forEachChild(node, visit);
-  };
-
-  visit(file);
-  return paths;
+      return bindings && isNamedImports(bindings)
+        ? bindings.elements.map((element) => element.propertyName?.text ?? element.name.text)
+        : [];
+    });
 }
 
 describe('HTTP website guide snippets', () => {
-  it('compile with shipped HTTP exports and explicit DTO route bindings', () => {
+  it.each(guidePaths)('%s compiles against real public package types', (relativePath) => {
     // Given
-    const snippets = guidePaths.flatMap(codeSnippets);
-    const exportedNames = exportedHttpNames();
-    const controllerSnippets = snippets.filter((snippet) => snippet.source.includes('@Controller'));
+    const snippets = codeSnippets(relativePath);
 
     // When
-    const diagnostics = snippets.flatMap((snippet) =>
-      transpileModule(snippet.source, {
-        compilerOptions: {
-          experimentalDecorators: true,
-          module: ModuleKind.ESNext,
-          target: ScriptTarget.ES2022,
-        },
-        reportDiagnostics: true,
-      }).diagnostics ?? [],
+    const diagnostics = snippets.flatMap((source) => semanticDiagnostics(relativePath, source));
+
+    // Then
+    expect(diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ['unresolved HTTP imports', "import { Missing } from '@fluojs/http';\nMissing;\n"],
+    ['invalid route decorator arguments', "import { Controller, Get } from '@fluojs/http';\n@Controller('/')\nclass Example { @Get() handler() {} }\n"],
+    ['invalid DTO member access', "import { Controller, FromBody, Post, RequestDto } from '@fluojs/http';\nclass Input { @FromBody() name!: string; }\n@Controller('/')\nclass Example { @Post('/') @RequestDto(Input) create(input: Input) { return input.missing; } }\n"],
+  ])('%s produce semantic diagnostics', (relativePath, source) => {
+    // Given
+    const fixturePath = `tooling/governance/fixtures/${relativePath}.ts`;
+
+    // When
+    const diagnostics = semanticDiagnostics(fixturePath, source);
+
+    // Then
+    expect(diagnostics).not.toEqual([]);
+  });
+
+  it('imports only symbols resolved from the public HTTP entry point', () => {
+    // Given
+    const exportedNames = exportedHttpNames();
+    const snippets = guidePaths.flatMap((relativePath) => codeSnippets(relativePath));
+
+    // When
+    const importedNames = snippets.flatMap(importedHttpNames);
+
+    // Then
+    for (const name of importedNames) {
+      expect(exportedNames).toContain(name);
+    }
+  });
+
+  it('declares the First Feature controller injection token explicitly', () => {
+    // Given
+    const firstFeatureGuides = guidePaths.filter((path) => path.includes('first-feature'));
+
+    // When
+    const injectionArguments = firstFeatureGuides.map((relativePath) =>
+      classDecoratorArguments(codeSnippets(relativePath)[0] ?? '', 'UsersController', 'Inject'),
     );
 
     // Then
-    expect(controllerSnippets).toHaveLength(4);
-    expect(diagnostics).toEqual([]);
+    expect(injectionArguments).toEqual([['UsersService'], ['UsersService']]);
+  });
 
-    for (const snippet of snippets) {
-      for (const name of importedHttpNames(snippet.source)) {
-        expect(exportedNames, `${snippet.file} imports ${name} from @fluojs/http`).toContain(name);
+  it('binds every Get and Post handler to its own request DTO source', () => {
+    // Given
+    const routes = guidePaths.flatMap((relativePath) =>
+      codeSnippets(relativePath).flatMap((source) => routeBindings(source)),
+    );
+
+    // When
+    const expectedSources = new Map([
+      ['Get', 'FromPath'],
+      ['Post', 'FromBody'],
+    ]);
+
+    // Then
+    expect(routes).toHaveLength(8);
+
+    for (const route of routes) {
+      expect(route.requestDto).toBe(route.parameterDto);
+      expect(route.bindings.length).toBeGreaterThan(0);
+
+      for (const binding of route.bindings) {
+        expect(binding.source, `${route.method} ${route.name} binds ${binding.member}`).toBe(expectedSources.get(route.method));
       }
-    }
-
-    for (const snippet of controllerSnippets) {
-      const decorators = decoratorNames(snippet.source);
-      const paths = routePaths(snippet.source);
-
-      expect([...decorators]).toEqual(expect.arrayContaining(['FromBody', 'FromPath', 'RequestDto']));
-      expect(paths).toEqual(expect.arrayContaining(['/']));
-      expect(paths.every((path) => path.startsWith('/'))).toBe(true);
     }
   });
 });
