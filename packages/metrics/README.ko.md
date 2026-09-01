@@ -83,6 +83,21 @@ MetricsModule.forRoot({
 });
 ```
 
+### HTTP duration histogram bucket 구성
+
+```ts
+MetricsModule.forRoot({
+  http: {
+    durationHistogramBuckets: [0.01, 0.05, 0.1, 0.5, 1, 5],
+  },
+});
+```
+
+`durationHistogramBuckets`는 내장 HTTP request duration histogram의
+`prom-client` 기본값을 대체합니다. 값의 단위는 초이며, alerting하려는
+latency 범위에 맞게 정해야 합니다. 각 경계는 유한하고 엄격히 증가해야 하며,
+잘못된 구성은 setup 중 거부됩니다.
+
 ### 메트릭 엔드포인트 보호 또는 비활성화
 
 ```ts
@@ -140,6 +155,16 @@ class OrdersService {
 
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 
+이 예제는 `Counter`와 `Registry`를 `prom-client`에서 직접 import하므로, 애플리케이션 의존성에
+`prom-client`를 추가하세요.
+
+```bash
+pnpm add prom-client
+```
+
+`@fluojs/metrics`는 내부적으로 `prom-client`를 사용하지만, 그 의존성만으로 애플리케이션에서
+`prom-client`를 지원되는 transitive import로 사용할 수 있는 것은 아닙니다.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
@@ -160,7 +185,7 @@ const app = await bootstrapApplication({
 
 `Registry`는 `@fluojs/metrics`가 re-export하므로 이 setup에는 `prom-client` 직접 dependency가 필요하지 않습니다. application collector는 위의 `MetricsService` pattern으로 생성하세요.
 
-여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 framework ownership, label schema, effective path-label configuration이 모두 일치할 때만 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. Path-label compatibility 검사는 `pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 함수 참조, `unknownPathLabel` fallback 의미론을 포함하므로 서로 다른 HTTP series policy를 하나의 collector set에 섞는 module instance는 빠르게 실패합니다. 내장 플랫폼 텔레메트리 Gauge도 같은 ownership 규칙을 따릅니다. 모듈이 만든 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode` Gauge는 framework ownership과 label schema가 일치할 때만 재사용합니다. 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 스크레이프는 이전 module instance가 남긴 stale component readiness/health series를 제거한 뒤 메트릭을 반환합니다. Registry scrape wrapper는 최신 active module registration을 사용하며 마지막 registration이 종료되면 Registry의 원래 `metrics()` 함수를 복원합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
+여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 framework ownership, label schema, effective HTTP instrumentation configuration이 모두 일치할 때만 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. Compatibility 검사는 `pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 함수 참조, `unknownPathLabel` fallback 의미론, 순서가 있는 `durationHistogramBuckets` 값을 포함하므로 서로 다른 HTTP series policy를 하나의 collector set에 섞는 module instance는 빠르게 실패합니다. 내장 플랫폼 텔레메트리 Gauge도 같은 ownership 규칙을 따릅니다. 모듈이 만든 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode` Gauge는 framework ownership과 label schema가 일치할 때만 재사용합니다. 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 스크레이프는 이전 module instance가 남긴 stale component readiness/health series를 제거한 뒤 메트릭을 반환합니다. Registry scrape wrapper는 최신 active module registration을 사용하며 마지막 registration이 종료되면 Registry의 원래 `metrics()` 함수를 복원합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
 
 ### 중복 메트릭 이름은 계속 빠르게 실패합니다
 
@@ -172,7 +197,7 @@ Prometheus 메트릭 이름은 하나의 Registry 안에서 고유해야 합니�
 
 - `fluo_component_ready`: 준비 완료 시 1, 아닐 시 0.
 - `fluo_component_health`: 정상 상태 시 1, 아닐 시 0.
-- `fluo_metrics_registry_mode`: active registry mode를 `mode="isolated"` 또는 `mode="shared"` label과 gauge value `1`로 나타냅니다.
+- `fluo_metrics_registry_mode`: `MetricsModule.forRoot()`가 Registry를 생성하면 `mode="isolated"`, `registry` option을 전달하면 `mode="shared"` label과 gauge value `1`을 노출합니다. 이 label은 module registration configuration을 나타내며 scrape 시점에 Registry 공유 여부를 추론하지 않습니다.
 
 이 데이터는 built-in `/metrics` controller와 `MetricsService.getRegistry().metrics()`를 사용하는 advanced custom scraper를 포함해 active Registry가 스크레이프될 때마다 `PLATFORM_SHELL`을 쿼리하여 갱신됩니다. 초기화 시 환경 라벨을 제공할 수 있습니다.
 
@@ -224,7 +249,8 @@ MetricsModule.forRoot({
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
 - `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다. HTTP 계측이 활성화된 경우 endpoint middleware 실패는 내장 HTTP collector에 집계됩니다.
 - HTTP 메트릭은 `http: true` 또는 `http` 옵션 객체를 전달한 경우에만 설치되며, 설치된 뒤에는 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
-- 내장 HTTP collector는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 framework-owned이고 예상 label schema 및 일치하는 path-label configuration을 가진 경우에만 재사용됩니다. 플랫폼 텔레메트리 Gauge는 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
+- `http.durationHistogramBuckets`는 내장 HTTP request duration histogram bucket을 명시적인 초 단위 경계로 대체합니다.
+- 내장 HTTP collector는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 framework-owned이고 예상 label schema 및 일치하는 HTTP instrumentation configuration을 가진 경우에만 재사용됩니다. 플랫폼 텔레메트리 Gauge는 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
 - Shared Registry 텔레메트리 refresh는 소유 metrics module이 하나라도 active인 동안 유지되고 마지막 module이 종료되면 원래 `metrics()` 함수를 복원합니다.
 - raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.
 - 플랫폼 텔레메트리는 `PLATFORM_SHELL`이 실제로 누락된 경우에만 생략되며, 그 외 resolve 실패는 스크레이프를 실패시킵니다.

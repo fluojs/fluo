@@ -18,6 +18,7 @@ type MetricHistogramLike = {
 };
 
 type HttpMetricsCollectorConfiguration = {
+  durationHistogramBuckets?: readonly number[];
   pathLabelMode: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel: string;
@@ -43,6 +44,8 @@ export type HttpMetricsPathLabelNormalizer = (context: HttpMetricsPathLabelConte
 
 /** Options that tune HTTP request metric label generation. */
 export interface HttpMetricsMiddlewareOptions {
+  /** Duration buckets in seconds for the built-in HTTP request histogram. */
+  durationHistogramBuckets?: readonly number[];
   pathLabelMode?: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel?: string;
@@ -236,6 +239,9 @@ function getOrCreateHttpHistogram(
     help: config.help,
     labelNames: [...config.labelNames],
     name: config.name,
+    ...(collectorConfiguration.durationHistogramBuckets
+      ? { buckets: [...collectorConfiguration.durationHistogramBuckets] }
+      : {}),
   });
   FRAMEWORK_HTTP_HISTOGRAMS.add(histogram);
   FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION.set(histogram, collectorConfiguration);
@@ -266,7 +272,22 @@ function resolveHttpMetricsCollectorConfiguration(options: HttpMetricsMiddleware
     );
   }
 
+  let previousDurationHistogramBucket: number | undefined;
+  for (const durationHistogramBucket of options.durationHistogramBuckets ?? []) {
+    if (
+      !Number.isFinite(durationHistogramBucket)
+      || (previousDurationHistogramBucket !== undefined && durationHistogramBucket <= previousDurationHistogramBucket)
+    ) {
+      throw new Error(
+        'HttpMetricsMiddleware durationHistogramBuckets must contain finite, strictly increasing boundaries.',
+      );
+    }
+
+    previousDurationHistogramBucket = durationHistogramBucket;
+  }
+
   return {
+    durationHistogramBuckets: options.durationHistogramBuckets ? [...options.durationHistogramBuckets] : undefined,
     pathLabelMode: options.pathLabelMode ?? 'template',
     pathLabelNormalizer: options.pathLabelNormalizer,
     unknownPathLabel: options.unknownPathLabel ?? 'UNKNOWN',
@@ -282,7 +303,7 @@ function assertHttpMetricConfiguration(
 
   if (!registered) {
     throw new Error(
-      `Metric name "${metricName}" is already registered as a framework-owned HTTP collector without path-label configuration metadata. Built-in HTTP metrics require matching path-label configuration before reuse.`,
+      `Metric name "${metricName}" is already registered as a framework-owned HTTP collector without HTTP instrumentation configuration metadata. Built-in HTTP metrics require matching HTTP collector configuration before reuse.`,
     );
   }
 
@@ -291,7 +312,7 @@ function assertHttpMetricConfiguration(
   }
 
   throw new Error(
-    `Metric name "${metricName}" is already registered with framework HTTP path-label configuration ${describeHttpMetricConfiguration(registered)}. Built-in HTTP metrics require matching path-label configuration before reuse; received ${describeHttpMetricConfiguration(expected)}.`,
+    `Metric name "${metricName}" is already registered with framework HTTP collector configuration ${describeHttpMetricConfiguration(registered)}. Built-in HTTP metrics require matching HTTP collector configuration before reuse; received ${describeHttpMetricConfiguration(expected)}.`,
   );
 }
 
@@ -299,13 +320,29 @@ function hasSameHttpMetricConfiguration(
   left: HttpMetricsCollectorConfiguration,
   right: HttpMetricsCollectorConfiguration,
 ): boolean {
-  return left.pathLabelMode === right.pathLabelMode
+  return hasSameDurationHistogramBuckets(left.durationHistogramBuckets, right.durationHistogramBuckets)
+    && left.pathLabelMode === right.pathLabelMode
     && left.pathLabelNormalizer === right.pathLabelNormalizer
     && left.unknownPathLabel === right.unknownPathLabel;
 }
 
+function hasSameDurationHistogramBuckets(
+  left: readonly number[] | undefined,
+  right: readonly number[] | undefined,
+): boolean {
+  return left === right
+    || (left !== undefined
+      && right !== undefined
+      && left.length === right.length
+      && left.every((bucket, index) => bucket === right[index]));
+}
+
 function describeHttpMetricConfiguration(configuration: HttpMetricsCollectorConfiguration): string {
-  return `pathLabelMode="${configuration.pathLabelMode}", pathLabelNormalizer=${configuration.pathLabelNormalizer ? 'custom' : 'none'}, unknownPathLabel="${configuration.unknownPathLabel}"`;
+  const durationHistogramBuckets = configuration.durationHistogramBuckets
+    ? `, durationHistogramBuckets=[${configuration.durationHistogramBuckets.join(',')}]`
+    : '';
+
+  return `pathLabelMode="${configuration.pathLabelMode}", pathLabelNormalizer=${configuration.pathLabelNormalizer ? 'custom' : 'none'}, unknownPathLabel="${configuration.unknownPathLabel}"${durationHistogramBuckets}`;
 }
 
 function normalizePathToTemplate(path: string, params: Readonly<Record<string, string>>): string {

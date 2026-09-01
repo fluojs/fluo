@@ -83,6 +83,21 @@ MetricsModule.forRoot({
 });
 ```
 
+### Configure HTTP duration histogram buckets
+
+```ts
+MetricsModule.forRoot({
+  http: {
+    durationHistogramBuckets: [0.01, 0.05, 0.1, 0.5, 1, 5],
+  },
+});
+```
+
+`durationHistogramBuckets` replaces the built-in HTTP request duration histogram's
+`prom-client` defaults. Values are measured in seconds and must fit the latency
+range you intend to alert on. Each boundary must be finite and strictly increasing;
+invalid configuration is rejected during setup.
+
 ### Protect or disable the metrics endpoint
 
 ```ts
@@ -140,6 +155,16 @@ Calling `MetricsService.counter(...)` again with the same name recreates the col
 
 ### Share one registry for framework and app metrics
 
+This example imports `Counter` and `Registry` directly from `prom-client`, so add
+`prom-client` to your application's dependencies:
+
+```bash
+pnpm add prom-client
+```
+
+`@fluojs/metrics` uses `prom-client` internally, but its dependency does not make
+`prom-client` a supported transitive import for your application.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
@@ -160,7 +185,7 @@ const app = await bootstrapApplication({
 
 `Registry` is re-exported by `@fluojs/metrics`, so this setup needs no direct `prom-client` dependency. Create application collectors through the `MetricsService` pattern above.
 
-When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics only when their framework ownership, label schema, and effective path-label configuration match. The path-label compatibility check includes `pathLabelMode`, the exact `pathLabelNormalizer` function reference, and `unknownPathLabel` fallback semantics, so incompatible module instances fail fast instead of mixing different HTTP series policies into one collector set. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Platform telemetry state is tracked per reused registry, so a later scrape replaces stale module-owned component readiness and health series from an earlier module instance before metrics are returned. The registry scrape wrapper keeps using the latest active module registration and restores the Registry's original `metrics()` function after the last registration closes. Application-defined duplicate names still fail fast.
+When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics only when their framework ownership, label schema, and effective HTTP instrumentation configuration match. Compatibility includes `pathLabelMode`, the exact `pathLabelNormalizer` function reference, `unknownPathLabel` fallback semantics, and ordered `durationHistogramBuckets` values, so incompatible module instances fail fast instead of mixing different HTTP series policies into one collector set. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Platform telemetry state is tracked per reused registry, so a later scrape replaces stale module-owned component readiness and health series from an earlier module instance before metrics are returned. The registry scrape wrapper keeps using the latest active module registration and restores the Registry's original `metrics()` function after the last registration closes. Application-defined duplicate names still fail fast.
 
 ### Duplicate metric names still fail fast
 
@@ -172,7 +197,7 @@ The module emits fluo-specific gauges that mirror the platform shell and registe
 
 - `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
 - `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
-- `fluo_metrics_registry_mode`: gauge value `1` with a `mode="isolated"` or `mode="shared"` label for the active registry mode.
+- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when you pass a `registry` option. The label reports that module registration configuration; it does not infer registry sharing at scrape time.
 
 The platform snapshot is refreshed during each registry scrape, including advanced `MetricsService.getRegistry().metrics()` scrape paths, and you can attach environment labels up front.
 
@@ -224,7 +249,8 @@ MetricsModule.forRoot({
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint; with HTTP instrumentation enabled, endpoint middleware failures are counted by the built-in HTTP collectors.
 - HTTP metrics are installed only when `http: true` or an `http` options object is provided, and then default to template-normalized path labels.
-- Built-in HTTP collectors are reused when module instances share one registry only if they are framework-owned, have the expected label schema, and use matching path-label configuration; platform telemetry gauges are reused only if they are framework-owned and have the expected label schema; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
+- `http.durationHistogramBuckets` replaces the built-in HTTP request duration histogram buckets with explicit second-based boundaries.
+- Built-in HTTP collectors are reused when module instances share one registry only if they are framework-owned, have the expected label schema, and use matching HTTP instrumentation configuration; platform telemetry gauges are reused only if they are framework-owned and have the expected label schema; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
 - Shared Registry telemetry refresh remains installed while any owning metrics module is active and restores the original `metrics()` function after the last module closes.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
 - Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.

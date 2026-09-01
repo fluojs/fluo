@@ -23,6 +23,8 @@ import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.j
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
+  /** Duration buckets in seconds for the built-in HTTP request histogram. */
+  durationHistogramBuckets?: readonly number[];
   /** How request paths are converted into Prometheus label values. Defaults to route templates. */
   pathLabelMode?: HttpMetricsPathLabelMode;
   /** Custom path-label normalizer for bounded application-specific label values. */
@@ -710,6 +712,7 @@ function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMidd
 
   return {
     allowUnsafeRawPathLabelMode: http.allowUnsafeRawPathLabelMode,
+    durationHistogramBuckets: http.durationHistogramBuckets,
     pathLabelMode: http.pathLabelMode,
     pathLabelNormalizer: http.pathLabelNormalizer,
     unknownPathLabel: http.unknownPathLabel,
