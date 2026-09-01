@@ -591,7 +591,9 @@ describe('MetricsModule', () => {
       imports: [
         MetricsModule.forRoot({
           defaultMetrics: false,
-          http: true,
+          http: {
+            durationHistogramBuckets: [0.001, 0.002],
+          },
           path: '/metrics/:resourceId',
         }),
       ],
@@ -613,6 +615,9 @@ describe('MetricsModule', () => {
 
       expect(secondResponse.statusCode).toBe(200);
       expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics/:resourceId",status="200"} 1');
+      expect(metricsText).toContain(
+        'http_request_duration_seconds_bucket{le="0.001",method="GET",path="/metrics/:resourceId",status="200"}',
+      );
     } finally {
       await app.close();
     }

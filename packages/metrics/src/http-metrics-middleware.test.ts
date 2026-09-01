@@ -99,6 +99,27 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:id",status="200"} 1');
   });
 
+  it('uses configured duration histogram buckets', async () => {
+    const registry = new Registry();
+    const middleware = new HttpMetricsMiddleware(registry, {
+      durationHistogramBuckets: [0.001, 0.002],
+    });
+    const context = createContext('/orders');
+
+    await middleware.handle(context, async () => {
+      context.response.setStatus(200);
+    });
+
+    const metricsText = await registry.metrics();
+
+    expect(metricsText).toContain(
+      'http_request_duration_seconds_bucket{le="0.001",method="GET",path="/orders",status="200"}',
+    );
+    expect(metricsText).toContain(
+      'http_request_duration_seconds_bucket{le="0.002",method="GET",path="/orders",status="200"}',
+    );
+  });
+
   it('rejects raw path labels unless explicitly allowed', () => {
     const registry = new Registry();
 

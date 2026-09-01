@@ -18,6 +18,7 @@ type MetricHistogramLike = {
 };
 
 type HttpMetricsCollectorConfiguration = {
+  durationHistogramBuckets?: readonly number[];
   pathLabelMode: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel: string;
@@ -43,6 +44,8 @@ export type HttpMetricsPathLabelNormalizer = (context: HttpMetricsPathLabelConte
 
 /** Options that tune HTTP request metric label generation. */
 export interface HttpMetricsMiddlewareOptions {
+  /** Duration buckets in seconds for the built-in HTTP request histogram. */
+  durationHistogramBuckets?: readonly number[];
   pathLabelMode?: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel?: string;
@@ -236,6 +239,9 @@ function getOrCreateHttpHistogram(
     help: config.help,
     labelNames: [...config.labelNames],
     name: config.name,
+    ...(collectorConfiguration.durationHistogramBuckets
+      ? { buckets: [...collectorConfiguration.durationHistogramBuckets] }
+      : {}),
   });
   FRAMEWORK_HTTP_HISTOGRAMS.add(histogram);
   FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION.set(histogram, collectorConfiguration);
@@ -267,6 +273,7 @@ function resolveHttpMetricsCollectorConfiguration(options: HttpMetricsMiddleware
   }
 
   return {
+    durationHistogramBuckets: options.durationHistogramBuckets ? [...options.durationHistogramBuckets] : undefined,
     pathLabelMode: options.pathLabelMode ?? 'template',
     pathLabelNormalizer: options.pathLabelNormalizer,
     unknownPathLabel: options.unknownPathLabel ?? 'UNKNOWN',
@@ -299,13 +306,29 @@ function hasSameHttpMetricConfiguration(
   left: HttpMetricsCollectorConfiguration,
   right: HttpMetricsCollectorConfiguration,
 ): boolean {
-  return left.pathLabelMode === right.pathLabelMode
+  return hasSameDurationHistogramBuckets(left.durationHistogramBuckets, right.durationHistogramBuckets)
+    && left.pathLabelMode === right.pathLabelMode
     && left.pathLabelNormalizer === right.pathLabelNormalizer
     && left.unknownPathLabel === right.unknownPathLabel;
 }
 
+function hasSameDurationHistogramBuckets(
+  left: readonly number[] | undefined,
+  right: readonly number[] | undefined,
+): boolean {
+  return left === right
+    || (left !== undefined
+      && right !== undefined
+      && left.length === right.length
+      && left.every((bucket, index) => bucket === right[index]));
+}
+
 function describeHttpMetricConfiguration(configuration: HttpMetricsCollectorConfiguration): string {
-  return `pathLabelMode="${configuration.pathLabelMode}", pathLabelNormalizer=${configuration.pathLabelNormalizer ? 'custom' : 'none'}, unknownPathLabel="${configuration.unknownPathLabel}"`;
+  const durationHistogramBuckets = configuration.durationHistogramBuckets
+    ? `, durationHistogramBuckets=[${configuration.durationHistogramBuckets.join(',')}]`
+    : '';
+
+  return `pathLabelMode="${configuration.pathLabelMode}", pathLabelNormalizer=${configuration.pathLabelNormalizer ? 'custom' : 'none'}, unknownPathLabel="${configuration.unknownPathLabel}"${durationHistogramBuckets}`;
 }
 
 function normalizePathToTemplate(path: string, params: Readonly<Record<string, string>>): string {
