@@ -32,7 +32,10 @@
 
 The normal runtime dispatch pipeline retains buffered multipart materialization so its existing
 `FrameworkRequest.body` and `files` contract stays stable. Applications select streaming explicitly
-through `@fluojs/runtime/web` and must not consume the same body through both modes.
+with `multipart: { strategy: 'stream' }`; supported adapters then expose
+`RequestContext.request.body` as an `AsyncIterable<MultipartPart>` without pre-reading or buffering
+the iterator. File bytes are pulled only while its file stream is consumed, and one request body
+cannot be consumed through both modes.
 
 | adapter family | portable input to `parseMultipartStream(...)` | buffered mode | streaming mode |
 | --- | --- | --- | --- |

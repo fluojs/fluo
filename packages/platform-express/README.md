@@ -170,6 +170,10 @@ If the same adapter instance is listened again after close, its native route des
 
 Both helpers use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when `logger` is provided.
 
+## Multipart streaming
+
+Set `multipart: { strategy: 'stream' }` when bootstrapping Express to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. Express creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
+
 ## Related Packages
 
 - `@fluojs/runtime`: Core framework runtime.

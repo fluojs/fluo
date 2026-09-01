@@ -31,8 +31,10 @@
 ## portable multipart capability matrix
 
 기존 `FrameworkRequest.body`와 `files` 계약을 안정적으로 유지하기 위해 일반 runtime dispatch pipeline은
-buffered multipart materialization을 유지합니다. 애플리케이션은 `@fluojs/runtime/web`을 통해 streaming을
-명시적으로 선택하며 같은 body를 두 mode로 소비하면 안 됩니다.
+buffered multipart materialization을 유지합니다. 애플리케이션은 `multipart: { strategy: 'stream' }`으로
+streaming을 명시적으로 선택하며, 지원되는 adapter는 iterator를 미리 읽거나 버퍼링하지 않고
+`RequestContext.request.body`를 `AsyncIterable<MultipartPart>`로 노출합니다. File byte는 file stream을
+소비할 때만 가져오며, 하나의 request body를 두 mode로 소비할 수 없습니다.
 
 | adapter family | `parseMultipartStream(...)`용 portable input | buffered mode | streaming mode |
 | --- | --- | --- | --- |

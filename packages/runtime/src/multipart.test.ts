@@ -343,6 +343,35 @@ describe('parseMultipart', () => {
       fields: { title: oversizedField },
     });
   });
+
+  it('keeps more than one hundred small fields within the total-size limit', async () => {
+    // Given
+    const boundary = 'fluo-buffered-field-count';
+    const request = new Request('http://localhost/uploads', {
+      body: createMultipartBody(
+        boundary,
+        Array.from({ length: 101 }, (_, index) => ({
+          headers: [`content-disposition: form-data; name="field-${String(index)}"`],
+          value: 'ok',
+        })),
+      ),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    // When
+    const result = parseMultipart(request);
+
+    // Then
+    await expect(result).resolves.toMatchObject({
+      fields: {
+        'field-0': 'ok',
+        'field-100': 'ok',
+      },
+    });
+  });
 });
 
 describe('parseMultipartStream', () => {
@@ -518,6 +547,98 @@ describe('parseMultipartStream', () => {
     ).rejects.toBeInstanceOf(PayloadTooLargeException);
   });
 
+  it('enforces maxFiles while streaming without buffering earlier files', async () => {
+    // Given
+    const boundary = 'fluo-streaming-file-count';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      createMultipartBody(boundary, [
+        {
+          headers: ['content-disposition: form-data; name="first"; filename="first.txt"'],
+          value: 'first',
+        },
+        {
+          headers: ['content-disposition: form-data; name="second"; filename="second.txt"'],
+          value: 'second',
+        },
+      ]),
+    ]).request, { maxFiles: 1 });
+    const first = await parts.next();
+
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected the first multipart file.');
+    }
+
+    // When
+    await new Response(first.value.stream).arrayBuffer();
+
+    // Then
+    await expect(parts.next()).rejects.toBeInstanceOf(PayloadTooLargeException);
+  });
+
+  it('rejects a pre-aborted streaming request and releases its body lock', async () => {
+    // Given
+    const boundary = 'fluo-pre-aborted';
+    const controller = new AbortController();
+    const abortReason = new Error('client disconnected before parsing');
+    controller.abort(abortReason);
+    const body = new ReadableStream<Uint8Array>();
+
+    // When
+    const parts = parseMultipartStream({
+      body,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      signal: controller.signal,
+      url: 'http://localhost/uploads',
+    });
+
+    // Then
+    await expect(parts.next()).rejects.toBe(abortReason);
+    expect(body.locked).toBe(false);
+  });
+
+  it('does not pull an active file source again until its stream is read', async () => {
+    // Given
+    const boundary = 'fluo-file-pull-gate';
+    const chunks = [
+      TEXT_ENCODER.encode(
+        `--${boundary}\r\ncontent-disposition: form-data; name="upload"; filename="payload.txt"\r\n\r\n`,
+      ),
+      TEXT_ENCODER.encode(`payload\r\n--${boundary}--\r\n`),
+    ];
+    const next = vi.fn<() => Promise<IteratorResult<Uint8Array>>>(async () => {
+      const value = chunks.shift();
+      return value
+        ? { done: false as const, value }
+        : { done: true as const, value: undefined };
+    });
+    const parts = parseMultipartStream({
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      [Symbol.asyncIterator]() {
+        return {
+          next,
+          async return() {
+            return { done: true, value: undefined };
+          },
+        };
+      },
+      url: 'http://localhost/uploads',
+    });
+
+    // When
+    const first = await parts.next();
+
+    // Then
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected an active multipart file.');
+    }
+
+    expect(next).toHaveBeenCalledTimes(1);
+
+    await expect(new Response(first.value.stream).text()).resolves.toBe('payload');
+  });
+
   it('cancels and unlocks the source when a field exceeds its limit', async () => {
     // Given
     const boundary = 'fluo-field-limit';
@@ -601,6 +722,41 @@ describe('parseMultipartStream', () => {
     expect(cancellationReason).toBe('consumer stopped');
     expect(source.body.locked).toBe(false);
     await expect(parts.next()).rejects.toThrow('consumer stopped');
+  });
+
+  it('preserves a source read rejection while releasing an active file stream', async () => {
+    // Given
+    const boundary = 'fluo-read-rejection';
+    const sourceFailure = new Error('upstream reader failed');
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(sourceFailure);
+      },
+      start(controller) {
+        controller.enqueue(TEXT_ENCODER.encode(
+          `--${boundary}\r\ncontent-disposition: form-data; name="upload"; filename="payload.txt"\r\n\r\n`,
+        ));
+      },
+    });
+    const parts = parseMultipartStream({
+      body,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    });
+    const first = await parts.next();
+
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected a file multipart part.');
+    }
+
+    // When
+    const fileReader = first.value.stream.getReader();
+
+    // Then
+    await expect(fileReader.read()).rejects.toBe(sourceFailure);
+    await expect(parts.next()).rejects.toBe(sourceFailure);
+    expect(body.locked).toBe(false);
   });
 
   it('propagates aborts to active file streams and rejects double body consumption', async () => {

@@ -259,7 +259,8 @@ class MultipartStreamParser {
     this.maxTotalSize = options.maxTotalSize ?? DEFAULT_MAX_TOTAL_SIZE;
     this.maxFieldSize = options.maxFieldSize
       ?? (useStreamingDefaults ? DEFAULT_MAX_FIELD_SIZE : this.maxTotalSize);
-    this.maxFields = options.maxFields ?? DEFAULT_MAX_FIELDS;
+    this.maxFields = options.maxFields
+      ?? (useStreamingDefaults ? DEFAULT_MAX_FIELDS : Number.MAX_SAFE_INTEGER);
     this.maxFileSize = options.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
     this.maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
     this.maxHeaderSize = options.maxHeaderSize
@@ -267,6 +268,10 @@ class MultipartStreamParser {
     this.signal = request instanceof Request ? request.signal : request.signal;
     this.reader = resolveMultipartStreamBody(request).getReader();
     this.signal?.addEventListener('abort', this.handleAbort, { once: true });
+
+    if (this.signal?.aborted) {
+      this.handleAbort();
+    }
 
     const contentLengthError = getContentLengthError(headers, this.maxTotalSize);
 
@@ -567,6 +572,9 @@ class MultipartStreamParser {
 
     try {
       result = await this.reader.read();
+    } catch (error: unknown) {
+      this.fail(error);
+      throw error;
     } finally {
       this.readerReadPending = false;
       if (this.failure) {

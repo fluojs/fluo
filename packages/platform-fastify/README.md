@@ -235,6 +235,10 @@ The same file also covers Fastify-specific native route registration with wildca
 - **HTTPS startup**: Use Node.js `>=20.19.3 <21 || >=22.2.0 <27` and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
 - **Startup and shutdown failures**: When startup and Fastify `onClose` both fail, callers receive the original startup rejection with the close failure in `cause` only when `cause` can be read, written, and read back. Otherwise, callers receive a startup-first `AggregateError` whose `errors[0]` is the startup rejection and whose `errors[1]` is the close failure.
 
+## Multipart streaming
+
+Set `multipart: { strategy: 'stream' }` when bootstrapping Fastify to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. Fastify creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. In this mode file parts are not materialized as `UploadedFile` values in `request.files`. Buffered multipart parsing remains the default and cannot be combined with stream consumption for the same request body.
+
 ## Related Packages
 
 - `@fluojs/runtime`: Core framework runtime.

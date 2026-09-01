@@ -129,7 +129,13 @@ export function createDeferredFrameworkRequest(
       };
 
       if (multipartOptions?.strategy === 'stream') {
-        frameworkRequest.body = parseMultipartStream(request, resolvedMultipartOptions);
+        frameworkRequest.body = parseMultipartStream({
+          body: request,
+          headers,
+          method: request.method,
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
         return;
       }
 

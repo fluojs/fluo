@@ -200,4 +200,119 @@ describe('dispatchWithRequestResponseFactory', () => {
     expect(frameworkResponse.committed).toBe(true);
     expect(events).toEqual(['response', 'signal', 'request', 'dispatch:/fast-path', 'send']);
   });
+
+  it('returns a route-owned multipart iterator when dispatch rejects before reading the body', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartIterator();
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch() {
+          throw new Error('guard rejected request');
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.return).toHaveBeenCalledOnce();
+  });
+
+  it('returns a route-owned multipart iterator when a handler ignores the body', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartIterator();
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch() {},
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.return).toHaveBeenCalledOnce();
+  });
+
+  it('returns a route-owned multipart iterator after a handler breaks its for-await loop', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartIterator();
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch(request) {
+          for await (const _part of request.body as AsyncIterable<unknown>) {
+            break;
+          }
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.return).toHaveBeenCalledTimes(2);
+  });
 });
+
+function createRouteOwnedMultipartIterator(): AsyncIterableIterator<unknown> {
+  let yielded = false;
+
+  return {
+    async next() {
+      if (yielded) {
+        return { done: true, value: undefined };
+      }
+
+      yielded = true;
+      return { done: false, value: { kind: 'field', name: 'title', value: 'Ada' } };
+    },
+    return: vi.fn(async () => ({ done: true, value: undefined })),
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
+function createFactoryWithMultipart(
+  multipart: AsyncIterableIterator<unknown>,
+): RequestResponseFactory<undefined, undefined> {
+  const request = { body: multipart } as FrameworkRequest;
+  const response: FrameworkResponse = {
+    committed: false,
+    headers: {},
+    redirect() {},
+    async send() {
+      response.committed = true;
+    },
+    setHeader() {},
+    setStatus() {},
+    statusSet: false,
+  };
+
+  return {
+    async createRequest() {
+      return request;
+    },
+    createRequestSignal() {
+      return new AbortController().signal;
+    },
+    createResponse() {
+      return response;
+    },
+    resolveRequestId() {
+      return undefined;
+    },
+    async writeErrorResponse() {},
+  };
+}

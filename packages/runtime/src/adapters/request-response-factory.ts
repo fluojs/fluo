@@ -46,9 +46,10 @@ export async function dispatchWithRequestResponseFactory<
 }: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): Promise<Response> {
   const frameworkResponse = factory.createResponse(rawResponse, rawRequest);
   const signal = factory.createRequestSignal(rawResponse);
+  let frameworkRequest: FrameworkRequest | undefined;
 
   try {
-    const frameworkRequest = await factory.createRequest(rawRequest, signal);
+    frameworkRequest = await factory.createRequest(rawRequest, signal);
     const materializeRequest = factory.materializeRequest;
 
     if (materializeRequest) {
@@ -73,5 +74,30 @@ export async function dispatchWithRequestResponseFactory<
 
     await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(rawRequest));
     return frameworkResponse;
+  } finally {
+    await finalizeRouteOwnedMultipartBody(frameworkRequest);
   }
+}
+
+async function finalizeRouteOwnedMultipartBody(request: FrameworkRequest | undefined): Promise<void> {
+  const body = request?.body;
+
+  if (!isAsyncIterable(body)) {
+    return;
+  }
+
+  const iterator = body[Symbol.asyncIterator]();
+
+  if (iterator.return) {
+    await iterator.return();
+  }
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    value !== null
+    && (typeof value === 'object' || typeof value === 'function')
+    && Symbol.asyncIterator in value
+    && typeof value[Symbol.asyncIterator] === 'function'
+  );
 }

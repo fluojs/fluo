@@ -235,6 +235,10 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js `>=20.19.3 <21 || >=22.2.0 <27`에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
 - **시작 및 종료 실패**: startup과 Fastify `onClose`가 모두 실패하면, `cause`를 읽고 쓰고 다시 읽을 수 있는 경우에만 caller는 원래 startup rejection과 `cause`의 close failure를 받습니다. 그 외에는 caller가 startup rejection을 `errors[0]`, close failure를 `errors[1]`로 갖는 startup-first `AggregateError`를 받습니다.
 
+## Multipart 스트리밍
+
+Fastify를 bootstrap할 때 `multipart: { strategy: 'stream' }`을 설정하면 multipart part가 `RequestContext.request.body`의 `AsyncIterable`로 노출됩니다. Fastify는 iterator를 미리 읽거나 버퍼링하지 않으며, file part를 소비할 때만 바이트를 가져옵니다. 이 mode에서는 file part가 `request.files`의 `UploadedFile` 값으로 materialize되지 않습니다. 버퍼링 multipart parsing은 기본값이며 하나의 request body에서 stream 소비와 함께 사용할 수 없습니다.
+
 ## 관련 패키지
 
 - `@fluojs/runtime`: 핵심 런타임입니다.

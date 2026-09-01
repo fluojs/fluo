@@ -170,6 +170,10 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 
 두 helper는 startup/shutdown diagnostics에 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
 
+## Multipart 스트리밍
+
+Express를 bootstrap할 때 `multipart: { strategy: 'stream' }`을 설정하면 multipart part가 `RequestContext.request.body`의 `AsyncIterable`로 노출됩니다. Express는 iterator를 미리 읽거나 버퍼링하지 않으며, file part를 소비할 때만 바이트를 가져옵니다. 버퍼링 multipart parsing은 기본값이며 fields와 `request.files`를 노출하고, 하나의 request body에서 stream 소비와 함께 사용할 수 없습니다.
+
 ## 관련 패키지
 
 - `@fluojs/runtime`: 핵심 프레임워크 런타임입니다.

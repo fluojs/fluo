@@ -526,6 +526,35 @@ describe('@fluojs/platform-bun', () => {
     expect(response.status).toBe(204);
   });
 
+  it('forwards multipart stream strategy through the Bun fetch handler', async () => {
+    const fetch = createBunFetchHandler({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const iterator = parts[Symbol.asyncIterator]();
+          const first = await iterator.next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await iterator.return?.();
+          response.setStatus(204);
+        },
+      },
+      multipart: { strategy: 'stream' },
+    });
+    const form = new FormData();
+    form.set('title', 'Ada');
+
+    const response = await fetch(new Request('https://runtime.test/hooks/stream', {
+      body: form,
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
+
   it('enforces multipart.maxTotalSize for custom fetch handlers', async () => {
     const dispatch = vi.fn(async () => undefined);
     const fetch = createBunFetchHandler({

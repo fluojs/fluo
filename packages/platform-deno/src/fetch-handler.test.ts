@@ -117,4 +117,33 @@ describe('createDenoFetchHandler', () => {
       maxBodySize: Number.NaN,
     })).toThrow(/maxBodySize/i);
   });
+
+  it('forwards multipart stream strategy through the Deno fetch handler', async () => {
+    const handler = createDenoFetchHandler({
+      dispatcher: {
+        async dispatch(request, response) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const iterator = parts[Symbol.asyncIterator]();
+          const first = await iterator.next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await iterator.return?.();
+          response.setStatus(204);
+        },
+      },
+      multipart: { strategy: 'stream' },
+    });
+    const form = new FormData();
+    form.set('title', 'Ada');
+
+    const response = await handler(new Request('https://runtime.test/hooks/stream', {
+      body: form,
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
 });
