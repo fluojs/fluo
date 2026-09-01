@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { getModuleMetadata, Inject } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
 import {
@@ -11,7 +13,7 @@ import {
 } from '@fluojs/http';
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
@@ -20,6 +22,8 @@ import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.j
 type TestResponse = FrameworkResponse & { body?: unknown };
 type TestPlatformHealthStatus = 'healthy' | 'unhealthy' | 'degraded';
 type TestPlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
+
+const perfHooks = createRequire(import.meta.url)('node:perf_hooks');
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
@@ -466,6 +470,207 @@ describe('MetricsModule', () => {
       expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
     } finally {
       await app.close();
+    }
+  });
+
+  it('preserves application-owned collectors on a default collector collision so a cleaned registry can retry', async () => {
+    const sharedRegistry = new Registry();
+
+    const conflictingCollector = new Counter({
+      help: 'Application-owned collector that forces a prom-client collision.',
+      name: 'process_cpu_seconds_total',
+      registers: [sharedRegistry],
+    });
+    const unrelatedCollector = new Gauge({
+      help: 'Application-owned collector unrelated to the default metric collision.',
+      name: 'app_unrelated_metric',
+      registers: [sharedRegistry],
+    });
+
+    class FailedAppModule {}
+
+    defineModule(FailedAppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: FailedAppModule })).rejects.toThrow(
+      'A metric with the name process_cpu_seconds_total has already been registered.',
+    );
+
+    expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBe(conflictingCollector);
+    expect(sharedRegistry.getSingleMetric('app_unrelated_metric')).toBe(unrelatedCollector);
+    expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeUndefined();
+    expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeUndefined();
+
+    sharedRegistry.removeSingleMetric('process_cpu_seconds_total');
+
+    class CleanAppModule {}
+
+    defineModule(CleanAppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: CleanAppModule });
+
+    try {
+      expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeDefined();
+      expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeDefined();
+      expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preflights a late default collector collision before enabling its event-loop monitor', async () => {
+    const sharedRegistry = new Registry();
+    const eventLoopMonitor = { enable: vi.fn() };
+    const monitorEventLoopDelay = vi.spyOn(perfHooks, 'monitorEventLoopDelay').mockReturnValue(eventLoopMonitor);
+
+    new Gauge({
+      help: 'Application-owned collector that collides after prom-client enables the event-loop monitor.',
+      name: 'nodejs_eventloop_lag_seconds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+        'A metric with the name nodejs_eventloop_lag_seconds has already been registered.',
+      );
+
+      expect(monitorEventLoopDelay).not.toHaveBeenCalled();
+      expect(eventLoopMonitor.enable).not.toHaveBeenCalled();
+    } finally {
+      monitorEventLoopDelay.mockRestore();
+    }
+  });
+
+  it('does not reject an inactive Darwin-only default collector name', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'process_open_fds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('process_open_fds')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
+    }
+  });
+
+  it('does not reject an inactive process handles collector name', async () => {
+    const activeHandlesDescriptor = Object.getOwnPropertyDescriptor(process, '_getActiveHandles');
+    Reflect.deleteProperty(process, '_getActiveHandles');
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'nodejs_active_handles',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('nodejs_active_handles')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (activeHandlesDescriptor) {
+        Object.defineProperty(process, '_getActiveHandles', activeHandlesDescriptor);
+      }
+    }
+  });
+
+  it('does not reject an inactive process requests collector name', async () => {
+    const activeRequestsDescriptor = Object.getOwnPropertyDescriptor(process, '_getActiveRequests');
+    Reflect.deleteProperty(process, '_getActiveRequests');
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'nodejs_active_requests',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('nodejs_active_requests')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (activeRequestsDescriptor) {
+        Object.defineProperty(process, '_getActiveRequests', activeRequestsDescriptor);
+      }
+    }
+  });
+
+  it('rejects a Linux-active default collector name', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+
+    const sharedRegistry = new Registry();
+    new Gauge({
+      help: 'Application metric with a Linux-active default collector name.',
+      name: 'process_open_fds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+        'A metric with the name process_open_fds has already been registered.',
+      );
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
     }
   });
 
