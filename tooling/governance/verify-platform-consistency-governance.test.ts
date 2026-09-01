@@ -3263,3 +3263,16 @@ describe('Studio public docs and migration expectations', () => {
     }
   });
 });
+
+describe('Auth & JWT contract gate triggers', () => {
+  it.each([
+    'docs/architecture/auth-and-jwt.md',
+    'docs/architecture/auth-and-jwt.ko.md',
+  ])('requires context companions when %s changes', async (changedPath) => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() => enforceContractCompanionUpdates([changedPath])).toThrow(
+      'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+  });
+});

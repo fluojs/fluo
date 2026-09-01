@@ -23,7 +23,7 @@ Bearer token, cookie auth, scope 기반 route protection, refresh token, login t
 | 관심사 | 패키지 | 사용 목적 |
 | --- | --- | --- |
 | Token core | `@fluojs/jwt` | Access token signing, verification, JWKS, refresh-token primitive |
-| Strategy execution | `@fluojs/passport` | `AuthStrategy`, `AuthGuard`, `@UseAuth`, `@RequireScopes`, cookie/refresh preset |
+| Strategy execution | `@fluojs/passport` | `AuthStrategy`, `AuthGuard`, `@UseAuth`, `@RequireScopes`, bearer, cookie, refresh preset |
 | Rate limiting | `@fluojs/throttler` | Login protection, API quota, Redis-backed distributed bucket |
 | HTTP boundary | `@fluojs/http` | Controller, guard, request context, route metadata |
 | Runnable example | `examples/auth-jwt-passport` | Token route, protected profile route, e2e-style tests |
@@ -109,29 +109,17 @@ export class AuthModule {}
 
 ## `@fluojs/passport`로 route 보호하기
 
-fluo의 Passport 계층은 strategy-agnostic입니다. Strategy는 `AuthStrategy`를 구현하고 request를 인증한 뒤 principal을 반환합니다. `AuthGuard`는 protected route에서 해당 strategy를 실행합니다.
+fluo의 Passport 계층은 strategy-agnostic입니다. `BearerJwtStrategy`는 표준 `Authorization: Bearer <token>` 경로를 위한 built-in preset으로 credential을 추출하고 `DefaultJwtVerifier`에 검증을 위임한 뒤 normalized principal을 반환합니다. `AuthGuard`는 protected route에서 등록된 strategy를 실행합니다.
 
 ```ts
-import { Inject, Module } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
-import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
-
-@Inject(DefaultJwtVerifier)
-export class BearerJwtStrategy implements AuthStrategy {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
-
-  async authenticate(context: GuardContext) {
-    const authorization = context.requestContext.request.headers.authorization;
-    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
-
-    if (scheme !== 'Bearer' || !token) {
-      throw new AuthenticationRequiredError('Bearer access token is required.');
-    }
-
-    return this.verifier.verifyAccessToken(token);
-  }
-}
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 @Module({
   imports: [
@@ -142,8 +130,8 @@ export class BearerJwtStrategy implements AuthStrategy {
       secret: 'your-secure-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [BearerJwtStrategy],
@@ -151,7 +139,7 @@ export class BearerJwtStrategy implements AuthStrategy {
 export class AuthModule {}
 ```
 
-JWT 기반 passport auth에는 두 module registration이 모두 필요합니다. `JwtModule`은 verifier를 제공하고, `PassportModule`은 `@UseAuth('jwt')`가 resolve할 named strategy를 등록합니다.
+JWT 기반 passport auth에는 두 module registration이 모두 필요합니다. `JwtModule`은 verifier를 제공하고, `PassportModule`은 `@UseAuth(BEARER_JWT_STRATEGY_NAME)`가 resolve할 built-in strategy name을 등록합니다. Token revocation, account-state check, alternate credential extraction처럼 preset 범위를 넘는 policy가 필요할 때만 custom `AuthStrategy`를 작성하세요.
 
 ### Scope와 protected handler
 
@@ -164,7 +152,7 @@ import { RequireScopes, UseAuth } from '@fluojs/passport';
 @Controller('/profile')
 export class ProfileController {
   @Get('/')
-  @UseAuth('jwt')
+  @UseAuth(BEARER_JWT_STRATEGY_NAME)
   @RequireScopes('profile:read')
   async getProfile(input: never, ctx: RequestContext) {
     return { user: ctx.principal };
@@ -347,7 +335,7 @@ ThrottlerModule.forRoot({
 | 패키지 | Public API |
 | --- | --- |
 | `@fluojs/jwt` | `JwtModule`, `DefaultJwtSigner`, `DefaultJwtVerifier`, `JwtService`, `JwksClient`, `RefreshTokenService`, `JwtPrincipal`, JWT error classes, status helpers |
-| `@fluojs/passport` | `PassportModule`, `AuthGuard`, `AuthStrategy`, `UseAuth`, `UseOptionalAuth`, `RequireScopes`, `CookieAuthModule`, `RefreshTokenModule`, Passport.js bridge helpers, diagnostics helpers |
+| `@fluojs/passport` | `PassportModule`, `AuthGuard`, `AuthStrategy`, `UseAuth`, `UseOptionalAuth`, `RequireScopes`, `BearerJwtStrategy`, `BEARER_JWT_STRATEGY_NAME`, `createBearerJwtStrategyRegistration`, `CookieAuthModule`, `RefreshTokenModule`, Passport.js bridge helpers, diagnostics helpers |
 | `@fluojs/throttler` | `ThrottlerModule`, `ThrottlerGuard`, `Throttle`, `SkipThrottle`, `RedisThrottlerStore`, `createMemoryThrottlerStore`, `ThrottlerStore`, diagnostics helpers |
 
 ## Runnable example
@@ -368,9 +356,9 @@ pnpm vitest run examples/auth-jwt-passport
 
 1. `src/auth/login.dto.ts` — request boundary
 2. `src/auth/auth.service.ts` — token issuance
-3. `src/auth/bearer.strategy.ts` — bearer verification
+3. `src/auth/bearer.strategy.ts` — built-in bearer preset re-export
 4. `src/auth/auth.controller.ts` — open/protected routes
-5. `src/auth/auth.module.ts` — module registration
+5. `src/auth/auth.module.ts` — preset strategy registration
 6. `src/app.test.ts` — service, strategy, e2e-style checks
 
 ## 흔한 실수

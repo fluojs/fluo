@@ -31,29 +31,17 @@ npm install @fluojs/passport
 
 ### 1. 모듈 등록
 
-사용할 전략을 정의하고 `PassportModule.forRoot(...)`를 통해 등록합니다.
+내장 bearer JWT preset을 사용하고 `PassportModule.forRoot(...)`로 등록합니다.
 
 ```typescript
-import { Inject, Module } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
-import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
-
-@Inject(DefaultJwtVerifier)
-export class BearerJwtStrategy implements AuthStrategy {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
-
-  async authenticate(context: GuardContext) {
-    const authorization = context.requestContext.request.headers.authorization;
-    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
-
-    if (scheme !== 'Bearer' || !token) {
-      throw new AuthenticationRequiredError('Bearer access token is required.');
-    }
-
-    return this.verifier.verifyAccessToken(token);
-  }
-}
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 @Module({
   imports: [
@@ -64,8 +52,8 @@ export class BearerJwtStrategy implements AuthStrategy {
       secret: 'your-secure-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [BearerJwtStrategy],
@@ -73,7 +61,7 @@ export class BearerJwtStrategy implements AuthStrategy {
 export class AuthModule {}
 ```
 
-JWT 기반 passport 전략에는 두 가지 module wiring이 모두 필요합니다. `JwtModule.forRoot(...)`는 `DefaultJwtVerifier`를 등록하고, `PassportModule.forRoot(...)`는 `@UseAuth('jwt')`가 resolve할 named strategy를 등록합니다. `DefaultJwtVerifier.verifyAccessToken(...)` 결과를 반환하면 `AuthGuard`가 `requestContext.principal`에 기록하는 정규화 principal 계약(`subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`)이 보존됩니다.
+`BearerJwtStrategy`는 `Authorization: Bearer <token>` credential을 위한 first-party strategy preset입니다. JWT 기반 passport 전략에는 두 가지 module wiring이 모두 필요합니다. `JwtModule.forRoot(...)`는 `DefaultJwtVerifier`를 등록하고, `providers` 항목은 `BearerJwtStrategy`를 DI를 통해 해당 verifier에 연결하며, `PassportModule.forRoot(...)`는 `@UseAuth('jwt')`가 resolve할 named strategy를 등록합니다. `DefaultJwtVerifier.verifyAccessToken(...)` 결과를 변경 없이 반환하면 `AuthGuard`가 `requestContext.principal`에 기록하는 정규화 principal 계약(`subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`)이 보존됩니다.
 
 ### 2. 라우트 보호
 
@@ -95,6 +83,46 @@ export class ProfileController {
 ```
 
 ## 일반적인 패턴
+
+### Bearer JWT 프리셋
+
+애플리케이션이 `Authorization: Bearer <token>` 요청을 인증한다면 내장 `BearerJwtStrategy`를 사용하세요. 애플리케이션이 직접 parsing 코드를 소유할 필요가 없습니다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
+    PassportModule.forRoot(
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
+    ),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class AuthModule {}
+```
+
+`BearerJwtStrategy`는 `PassportModule`과 `JwtModule`을 import하는 같은 애플리케이션 모듈에 provider로 등록하세요. 검증 설정의 소유자는 계속 `JwtModule`이며, preset은 결합된 JWT/Passport module facade를 도입하지 않습니다. Preset은 안정적인 전략 이름 `BEARER_JWT_STRATEGY_NAME`(`'jwt'`)으로 등록되므로 보호된 라우트는 계속 `@UseAuth('jwt')`를 사용하고, `createBearerJwtStrategyRegistration()`이 대응하는 `AuthStrategyRegistration`을 반환합니다.
+
+Credential extraction은 엄격합니다. Credential은 RFC 6750 `b64token`을 따라 ASCII 문자, 숫자, `-`, `.`, `_`, `~`, `+`, `/`가 하나 이상 있고 뒤에만 optional `=` padding이 올 수 있습니다. `?`, 내부 `=`, Unicode, whitespace, control character는 검증 전에 거부합니다. `Authorization` header가 없거나 비어 있으면 `AuthenticationRequiredError`가 발생하고, adapter가 array-valued `Authorization` header를 전달하면 첫 번째 entry만 읽습니다. 잘못된 scheme이거나 malformed인 header는 `AuthenticationFailedError`를 발생시키며, scheme 비교는 대소문자를 구분하지 않고 ASCII space를 하나 이상 사용합니다. 누락되거나 malformed인 credential은 bare `WWW-Authenticate: Bearer` challenge를 직렬화합니다. 검증 실패는 `DefaultJwtVerifier`의 error causality를 유지합니다. 만료된 credential은 `AuthenticationExpiredError`, `JwtInvalidTokenError` credential은 `AuthenticationFailedError`를 발생시키며, 둘 다 원본 JWT error를 `cause`로 보존하고 `WWW-Authenticate: Bearer error="invalid_token"`을 직렬화합니다. `JwtConfigurationError`와 verifier-provider infrastructure failure는 credential failure로 바꾸지 않고 변경 없이 전파합니다. `AuthGuard`는 credential failure만 canonical `401 Unauthorized` response로 변환하고, scope 불일치는 여전히 `403 Forbidden`을 만듭니다.
+
+`BearerJwtStrategy`는 `DefaultJwtVerifier.verifyAccessToken(...)`이 반환한 정규화 `JwtPrincipal`을 변경 없이 반환하여 `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 보존합니다.
+
+커스텀 `AuthStrategy`는 token revocation, 계정 상태 확인, 대체 extraction, 애플리케이션 소유 정책을 위한 extension point로 남아 있습니다.
 
 ### Passport.js 브릿지 (Bridge)
 
@@ -268,6 +296,10 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `defineAuthRequirement(...)`, `getOwnAuthRequirement(...)`, `getAuthRequirement(...)`: Custom decorator나 tooling을 `AuthGuard`와 통합할 때 auth requirement metadata를 읽고 쓰는 공개 helper입니다.
 - Scope requirement는 일반적으로 `@RequireScopes(...)`로 작성합니다. 더 낮은 수준의 scope normalization helper는 internal로 남아 있으며 package root export의 일부가 아닙니다.
 
+### Bearer JWT preset
+- `BearerJwtStrategy`, `BEARER_JWT_STRATEGY_NAME`: 내장 bearer credential strategy와 안정적인 등록 이름(`'jwt'`)입니다.
+- Bearer helper: `createBearerJwtStrategyRegistration`.
+
 ### Cookie auth preset
 - `CookieAuthModule`: 내장 cookie-auth preset의 모듈 진입점입니다.
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring token, preset 기본값, response-cookie 기본값입니다.
@@ -309,4 +341,4 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 
 - `packages/passport/src/guard.test.ts`: 가드 실행 및 권한 강제 패턴 예제.
 - `packages/passport/src/adapters/passport-js.ts`: Passport.js 브릿지 구현체.
-- `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`: 표준 JWT 전략 구현 예제.
+- `packages/passport/src/bearer/bearer-jwt.ts`: 내장 bearer JWT strategy preset.
