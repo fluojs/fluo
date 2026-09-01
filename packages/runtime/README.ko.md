@@ -26,7 +26,7 @@ npm install @fluojs/runtime
 
 ## Node 정적 에셋 source
 
-`@fluojs/runtime/node`는 `@fluojs/http` static middleware가 소비하는 명시적 `StaticAssetSource`용 `createNodeFileSystemAssetSource(...)`를 export합니다. 이 helper는 configuration 단계에서 root directory를 검증하고 symlink 검사를 포함한 lexical 및 realpath 해석을 root 내부로 제한하며 regular file을 lazy stream으로 제공하고 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. 이 Node 전용 helper는 의도적으로 `@fluojs/runtime/web`에 없으며 Web 및 edge deployment는 애플리케이션이 소유한 source를 제공해야 합니다.
+`@fluojs/http`는 portable static middleware와 representation-selection contract를 소유합니다. `@fluojs/runtime/node`는 Node filesystem `StaticAssetSource` 구현인 `createNodeFileSystemAssetSource(...)`를 export합니다. 이 helper는 configuration 단계에서 root directory를 검증하고 symlink 검사를 포함한 lexical 및 realpath 해석을 root 내부로 제한하며 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. 선택된 각 regular-file representation은 검증된 파일을 열어 전체 파일을 immutable byte snapshot으로 즉시 복사하고 response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열거나 lazy stream하지 않습니다. 따라서 애플리케이션 owner는 선택된 전체 파일 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 byte를 설명합니다. Raw Node, Express, Fastify adapter는 이 portable middleware/source seam을 공유하고 adapter-specific re-encoding 대신 선택된 representation boundary를 보존합니다. 이 Node 전용 helper는 의도적으로 `@fluojs/runtime/web`에 없으며 Web 및 edge deployment는 애플리케이션이 소유한 source를 제공해야 합니다.
 
 ## 사용 시점
 

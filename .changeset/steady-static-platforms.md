@@ -3,4 +3,4 @@
 '@fluojs/platform-fastify': patch
 ---
 
-Preserve exact static representation bytes and response boundaries when adapter compression is enabled.
+Preserve the public static-response compression boundary: Express and Fastify leave the `@fluojs/http`-selected representation bytes intact instead of adapter-specific re-encoding when compression is enabled.
