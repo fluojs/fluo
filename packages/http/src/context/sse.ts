@@ -1,4 +1,5 @@
 import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
+import { markRequestContextAborted } from '../dispatch/request-abort.js';
 
 /** Options that customize the fields emitted for one server-sent event frame. */
 export interface SseSendOptions {
@@ -127,6 +128,7 @@ export class SseResponse {
   private removeCloseListener?: () => void;
 
   private readonly onAbort = (): void => {
+    markRequestContextAborted(this.context);
     this.close();
   };
 
@@ -161,6 +163,7 @@ export class SseResponse {
     this.removeCloseListener = removeCloseListener;
 
     if (this.stream.closed) {
+      markRequestContextAborted(this.context);
       this.close();
     }
   }
@@ -218,6 +221,7 @@ export class SseResponse {
     }
 
     if (this.stream.closed) {
+      markRequestContextAborted(this.context);
       this.close();
       return false;
     }
@@ -226,7 +230,13 @@ export class SseResponse {
   }
 }
 
-/** @internal Resolves after a manual SSE stream closes through any supported termination path. */
+/**
+ * Resolves after a manual SSE stream closes through any supported termination path.
+ *
+ * @internal
+ * @param response Manual SSE response to observe.
+ * @returns A promise that settles after the stream has closed.
+ */
 export function waitForSseResponseCompletion(response: SseResponse): Promise<void> {
   return response.completion;
 }

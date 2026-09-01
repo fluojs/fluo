@@ -85,7 +85,7 @@ await import('./bootstrap.js');
 | `@nestjs/throttler` 전역 throttler 설정 | `@fluojs/throttler` / `@fluojs/http`의 `ThrottlerModule.forRoot(...)`와 명시적 `@UseGuards(ThrottlerGuard)` | Module registration은 정책과 guard provider를 제공한다. Route enforcement는 guard를 붙인 위치에서만 시작된다. |
 | `@WebSocketGateway()`와 `@SubscribeMessage()` 및 parameter decorator | `@fluojs/websockets`의 `@WebSocketGateway()`와 `@OnMessage(event?)`, positional handler argument, 선택적 `WebSocketRoomService` | fluo websocket handler는 `(payload, socket, request, socketId)`를 직접 받습니다. 안정적인 `socketId`는 `WebSocketRoomService`에 전달할 수 있습니다. Nest-style `@MessageBody()`, `@ConnectedSocket()`, `@SubscribeMessage()` parameter/decorator rewrite는 없습니다. |
 | NestJS Socket.IO gateway return value, gateway `path`, scoped provider 또는 `@WebSocketServer()` | `@fluojs/socket.io`와 `@fluojs/websockets` decorator, `@OnMessage(...)`, 명시적 acknowledgement callback, singleton gateway 등록, `@Inject(SOCKETIO_SERVER)` | Socket.IO handler 반환값은 암묵적인 emit 또는 ACK reply가 되지 않습니다. fluo의 `@WebSocketGateway({ path: '/chat' })`는 Socket.IO namespace `/chat`에 매핑되고 Engine.IO request path는 `/socket.io/`로 유지되므로 NestJS Engine.IO `path` 가정을 옮기지 마세요. Migration한 gateway는 singleton provider/controller로 등록해야 하며 request/transient gateway는 warning 후 skip됩니다. Socket.IO gateway에서 `serverBacked`는 지원하지 않습니다. Decorator에는 websockets companion을 설치/import하고 gateway server 접근, multi-room emit, volatile delivery를 마이그레이션할 때 `SOCKETIO_SERVER`를 주입하세요. |
-| `@nestjs/cache-manager` / `CacheModule.register(...)` / `registerAsync(...)` | `@fluojs/cache-manager`의 `CacheModule.forRoot(...)`, `CacheModule.forRootAsync({ inject, useFactory, global? })`, `CacheService`, cache decorators | 최종 store, TTL, namespace, key strategy가 DI나 bootstrap 작업에 의존하면 injected-factory async registration을 사용한다. 의존성은 bootstrap runtime provider 또는 globally visible export에서 와야 하며 NestJS `imports`, `useClass`, `useExisting`은 지원하지 않는다. |
+| `@nestjs/cache-manager` / `CacheModule.register(...)` / `registerAsync(...)` | `@fluojs/cache-manager`의 `CacheModule.forRoot(...)`, `CacheModule.forRootAsync({ inject, useFactory, global? })`, `CacheService`, cache decorators | 최종 Redis/custom store를 준비한 뒤 동기 registration을 사용하거나, 최종 store, TTL, namespace, key strategy가 DI나 bootstrap 작업에 의존하면 injected-factory async registration을 사용한다. Async 의존성은 bootstrap runtime provider 또는 globally visible export에서 와야 하며 NestJS `imports`, `useClass`, `useExisting`은 지원하지 않는다. Manual cache operation에는 `CacheService`를 주입하고, request-aware key에는 `httpKeyStrategy` 또는 `@CacheKey(...)`를 사용하며, `ttl`은 초 단위이고 `isGlobal`은 module-local `global`로 바뀌며 NestJS store adapter는 fluo `CacheStore` 값으로 다시 표현해야 한다. |
 | `@nestjs/event-emitter` / `@OnEvent()` handler | `@fluojs/event-bus`의 `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent(EventClass)` | Event routing은 class 기반이고, `static eventKey`는 distributed transport channel을 안정적으로 유지하며, handler는 singleton provider/controller에서만 discovery되고 awaited/background publish 작업은 shutdown drain tracking에 남는다. Throw하거나 reject한 listener 실패는 local 및 inbound transport dispatch에서 log되고 격리되므로 다른 matching listener는 계속 실행되며, 그 listener 실패만으로 `publish(...)`가 reject되거나 inbound callback completion을 통해 실패가 외부로 드러나지는 않는다. |
 | `@nestjs/cqrs` command/query/event handler와 saga | `@fluojs/cqrs`의 `CqrsModule.forRoot(...)`, 표준 `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)` | CQRS discovery는 controller나 emitted design metadata가 아니라 singleton provider만 scan합니다. Command와 Query는 point-to-point이고, Event handler와 saga는 위임 `@fluojs/event-bus` 발행 전에 provider token 기준으로 fan-out됩니다. |
 | `ClientsModule.register(...)`, 주입된 `ClientProxy`, NestJS broker transport option | `MicroservicesModule.forRoot({ transport })`, `Microservice` 타입의 `MICROSERVICE`, `@fluojs/microservices/<transport>`의 transport adapter | Registration과 programmatic facade는 root `@fluojs/microservices`에 남습니다. NATS, Kafka, RabbitMQ collaborator는 application-owned 상태를 유지하며, `send()`, `emit()`, `close()`는 아래에 설명한 서로 다른 완료 경계를 가집니다. |
@@ -170,6 +170,10 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - Cache-manager migration은 NestJS dynamic-module 형태를 그대로 복제하지 않고 injected-factory 경로인 `CacheModule.forRootAsync({ inject, useFactory, global? })`를 지원한다. 의존성은 bootstrap runtime provider 또는 globally visible module export여야 하며 parent-local provider와 일반 sibling/parent export는 보이지 않는다. `useFactory`에서 `store`, `ttl`, `keyPrefix`, `redis.clientName`, `httpKeyStrategy` 같은 최종 option을 반환한다. Outer `global?`이 module visibility를 제어하며 `imports`, `useClass`, `useExisting`은 지원하지 않는다.
 - NestJS-style cache-key customization은 interceptor subclassing 대신 fluo가 문서화한 key seam으로 옮겨야 한다. 애플리케이션 전역 request-aware 정책에는 function-valued `httpKeyStrategy`를 사용하고, handler-local 동작에는 literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용한다.
 - Custom cache tooling은 private metadata key를 다시 구현하지 말고 `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, `getCacheEvictMetadata(...)` 같은 exported cache metadata helper를 읽어야 한다.
+- Cache TTL 값은 millisecond가 아니라 초 단위이며, `@CacheTTL(ttlSeconds: number)`은 정적 숫자만 받는다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누고, 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮긴다.
+- 기본 HTTP cache key는 path만 사용한다. `httpKeyStrategy`의 기본값이 `'route'`이므로 `'route+query'`, function strategy, `@CacheKey(...)` 중 하나를 선택하기 전까지 query 값은 무시된다.
+- NestJS `isGlobal`은 fluo `global`이 되며 기본값은 `false`다. Migration이 `global: true`를 설정하거나 소비하는 모든 module에 `CacheModule.forRoot(...)`를 import하지 않으면 cache provider는 module-local로 남는다.
+- `cache-manager-redis-store` 같은 NestJS store adapter는 fluo `CacheStore` 값이 아니다. 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 구현한 객체를 전달하고, teardown 소유권을 명시적으로 유지한다. fluo는 store의 optional `close()`/`dispose()`에만 shutdown을 전달하므로 직접 전달한 `redis.client`는 애플리케이션 소유로 남는다.
 - Event-bus migration은 string pattern 기반이 아니라 class 기반이다. `@OnEvent(EventClass)`를 사용하고, retry 가능하거나 느린 side effect는 idempotent하게 유지하며, 오래 실행되거나 retry가 중요한 작업은 awaited event handler 안에 숨기지 말고 명시적인 queue handoff로 옮겨야 한다.
 - Event-bus publisher completion을 모든 listener의 성공을 확인하는 acknowledgement로 해석하면 안 된다. 일치하는 local listener 실패는 log되고 격리되며, 다른 matching listener는 계속 실행된다. Local listener 실패만으로 `publish(...)`를 reject하지 않는다. Inbound transport listener에는 같은 isolation 규칙이 적용되므로 inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않는다. Publisher completion은 모든 listener가 성공했음을 증명하지 않는다. Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있다. 해당 실패는 각각 별도로 문서화된 동작을 유지한다.
 - Distributed routing이 class rename이나 minification 이후에도 유지되어야 하면 직접 선언한 `static eventKey`를 사용한다. Transport publish는 concrete event와 inherited event channel 전체로 fan-out하며, 상속받은 `eventKey`가 subclass channel name을 암묵적으로 대체하지 않는다.
@@ -630,6 +634,48 @@ class OrdersMicroserviceModule {}
 
 Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할 때까지 inbound consumer callback을 pending 상태로 유지하므로 broker adapter가 acknowledgement 또는 retry를 선택할 수 있습니다. 이 consumer-side boundary는 producer-side `emit()` promise와 분리되어 있습니다. Shutdown 시에는 먼저 `Microservice` facade를 닫고, caller-owned broker resource는 application bootstrap layer에서 close 또는 drain하세요.
 
+### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션
+
+`@nestjs/cache-manager`와 `@fluojs/cache-manager`는 cache 개념이 일부 겹치지만 option 이름, 단위, 기본값, 소유권이 모두 그대로 유지되지는 않습니다. NestJS cache 설정을 재사용하기 전에 다음 항목을 각각 변환하세요.
+
+- **TTL 단위와 기본값.** fluo `ttl`은 초 단위입니다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누며, 이 값을 그대로 옮기면 만료 시간이 1000배로 늘어납니다. `ttl`을 생략하면 `CacheModule.forRoot(...)`는 기본 memory 경로에 `300`초를, `redis` 및 custom-store 경로에는 `0`을 적용합니다.
+- **TTL `0`과 잘못된 값.** `ttl: 0`은 "캐싱하지 않음"이 아니라 "만료 없음"을 뜻합니다. 음수이거나 유한하지 않은 TTL은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고, `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뛰므로 요청마다 handler로 그대로 내려갑니다.
+- **정적 `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)`은 정적 숫자 하나를 route metadata로 저장하며 factory, context 인자, 비동기 값을 받지 않습니다. 요청마다 lifetime을 계산하던 NestJS handler는 `CacheService.set(key, value, ttlSeconds)`를 명시적으로 호출해야 합니다.
+- **Query 민감 key.** `httpKeyStrategy`의 기본값 `'route'`는 구체적인 요청 path만으로 key를 만들고 query 값을 무시하므로 `/search?q=a`와 `/search?q=b`가 하나의 엔트리를 공유하게 됩니다. 응답이 query parameter에 따라 달라진다면 `httpKeyStrategy: 'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요.
+- **`isGlobal`에서 `global`로.** `isGlobal`을 `global`로 바꾸세요. NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로 두 cache module은 module-local로 유지됩니다. `global: true`를 설정하거나 cache provider를 resolve하는 각 module에 반환된 module을 import하세요. 그렇지 않으면 bootstrap이 해당 provider를 resolve하지 못하고 실패합니다.
+- **Custom store 적응.** `store`는 `'memory'`, `'redis'`, 또는 `CacheStore` 객체를 받습니다. `cache-manager-redis-store` 같은 NestJS store adapter는 이 계약을 만족하지 않으므로 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 노출하는 객체로 adapter를 감싸세요. callback/options 완료는 `CacheStore`가 기대하는 Promise 결과로 변환하고, Fluo `ttlSeconds`는 legacy adapter TTL의 초 단위로 매핑하며, `reset()`은 cache namespace만 삭제하게 하세요. 애플리케이션이 소유한 configured cache namespace 밖의 데이터를 삭제할 수 있으므로 `CacheService.reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다.
+- **Teardown 소유권.** 애플리케이션 shutdown은 `CacheService`를 닫고, teardown은 store의 optional `close()` 또는 `dispose()` hook에만 전달됩니다. Socket, pool, timer를 소유하는 custom store에는 이 hook 중 하나를 구현하세요. `redis.client`로 직접 전달한 raw client는 module이 닫지 않으므로 애플리케이션 lifecycle에서 닫아야 하고, `@fluojs/redis`로 resolve한 client는 해당 패키지의 lifecycle 소유권을 유지합니다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import Redis from 'ioredis';
+
+// Application-owned client: fluo never closes this instance.
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      // 설치된 underlying cache-manager generation이 milliseconds를 사용할 때
+      // NestJS `ttl: 60_000`은 60초가 됩니다.
+      ttl: 60,
+      // NestJS `isGlobal: true` becomes `global: true`.
+      global: true,
+      // Opt in explicitly when responses vary by query parameters.
+      httpKeyStrategy: 'route+query',
+      store: 'redis',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+class AppModule {}
+
+async function shutdown() {
+  await cacheClient.quit();
+}
+```
+
 ## Removed Concepts
 
 - 기본 프로바이더 마커로서의 `@Injectable()`. 프로바이더 등록은 모듈의 `providers` 배열에서 수행된다.
@@ -642,7 +688,8 @@ Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할
 - 문서화된 모든 플랫폼이 `fluo new`에 포함된다고 가정하는 방식. 스타터 범위는 별도 지원 매트릭스에서 정의된다.
 - `@nestjs/terminus` controller decorator나 별도 default liveness route가 Terminus의 일대일 마이그레이션 대상이라고 가정하는 방식.
 - `@nestjs/throttler`의 named definition, global guard registration, proxy header trust가 명시적인 Fluo wiring 없이 그대로 유지된다고 가정하는 방식.
-- `@nestjs/cache-manager`의 async dynamic-module `imports`, `useClass`, `useExisting`, implicit global cache enforcement, interceptor subclassing이 그대로 유지된다고 가정하는 방식. fluo는 injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, 명시적 `CacheInterceptor` placement, 문서화된 key strategy hook을 지원한다.
+- `@nestjs/cache-manager`의 async dynamic-module `imports`, `useClass`, `useExisting`, implicit global cache enforcement, interceptor subclassing이 그대로 유지된다고 가정하는 방식. fluo는 동기 `CacheModule.forRoot(...)`와 injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, 명시적 `CacheInterceptor` placement, 문서화된 key strategy hook을 지원한다.
+- NestJS cache option의 단위, 기본값, 소유권이 그대로 유지된다고 가정하는 방식. fluo `ttl`은 초 단위이고 memory 경로 기본값은 `300`이며, `@CacheTTL(...)`은 정적 숫자만 받고, 설치한 underlying `cache-manager` dependency generation이 millisecond를 정의할 때에만 NestJS TTL을 `1000`으로 나누어 변환하며, `httpKeyStrategy` 기본값은 path만 사용하는 `'route'`이고, `global`이 `isGlobal`을 대체하며 기본값은 module-local인 `false`다. NestJS store adapter는 먼저 Fluo `CacheStore` 계약에 맞게 적응해야 하고 adapted custom store의 shutdown은 `close()` 또는 `dispose()`를 통해서만 전달되며, 직접 전달한 Redis client는 애플리케이션 소유로 남는다.
 - Deprecated Mongoose 호환성 interceptor나 암묵적 connection ownership을 주요 migration 대상으로 가정하는 방식. fluo는 connection ownership을 애플리케이션 쪽에 두고 서비스 `@Transaction()`과 명시적 `requestTransaction(...)` 경계를 우선 사용한다.
 - NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, 또는 암묵적 gateway server injection이 fluo websocket gateway에도 있다고 가정하는 방식.
 - Socket.IO gateway return value가 암묵적인 client reply가 된다고 가정하는 방식. fluo에서는 명시적 ACK callback 또는 raw `SOCKETIO_SERVER` emit이 필요합니다.

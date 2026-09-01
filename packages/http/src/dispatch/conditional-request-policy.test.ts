@@ -6,11 +6,15 @@ import {
   createByteRangeResponse,
   createDispatcher,
   createHandlerMapping,
-  Get,
-  Head,
-  Post,
+  Delete,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
+  Head,
+  Patch,
+  Post,
+  Produces,
+  Put,
 } from '../index.js';
 
 type RecordedResponse = FrameworkResponse & {
@@ -20,6 +24,7 @@ type RecordedResponse = FrameworkResponse & {
 function createRequest(
   method: string,
   headers: FrameworkRequest['headers'] = {},
+  path = '/validators/resource',
 ): FrameworkRequest {
   return {
     body: undefined,
@@ -27,10 +32,10 @@ function createRequest(
     headers,
     method,
     params: {},
-    path: '/validators/resource',
+    path,
     query: {},
     raw: {},
-    url: '/validators/resource',
+    url: path,
   };
 }
 
@@ -63,12 +68,12 @@ function createResponse(): RecordedResponse {
 }
 
 describe('conditional request policy', () => {
-  it('gives If-Match precedence over If-Unmodified-Since before invoking a handler', async () => {
+  it('gives If-Match precedence over If-Unmodified-Since before invoking an unsafe handler', async () => {
     let handlerCalls = 0;
 
     @Controller('/validators')
     class ValidatorsController {
-      @Get('/resource')
+      @Post('/resource')
       getResource() {
         handlerCalls += 1;
         return { id: 'resource' };
@@ -93,13 +98,13 @@ describe('conditional request policy', () => {
     const response = createResponse();
 
     // Given: a stale strong If-Match and a later If-Unmodified-Since date.
-    // When: the dispatcher receives the GET request.
-    await dispatcher.dispatch(createRequest('GET', {
+    // When: the dispatcher receives the POST request.
+    await dispatcher.dispatch(createRequest('POST', {
       'if-match': '"different-resource"',
       'if-unmodified-since': 'Thu, 01 Jan 2026 01:00:00 GMT',
     }), response);
 
-    // Then: RFC validator precedence rejects before executing the route.
+    // Then: RFC validator precedence rejects the formatter-managed response before mutation.
     expect(response.statusCode).toBe(412);
     expect(handlerCalls).toBe(0);
   });
@@ -313,11 +318,23 @@ describe('conditional request policy', () => {
     expect(response.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
   });
 
-  it('suppresses the body while retaining validators for a 412 response', async () => {
+  it('negotiates before conditional short-circuits and preserves representation metadata', async () => {
+    let getResourceCalls = 0;
+    let headResourceCalls = 0;
+
     @Controller('/validators')
     class ValidatorsController {
-      @Post('/resource')
-      updateResource() {
+      @Produces('application/json')
+      @Get('/negotiated')
+      getResource() {
+        getResourceCalls += 1;
+        return { id: 'resource' };
+      }
+
+      @Produces('application/json')
+      @Head('/negotiated')
+      headResource() {
+        headResourceCalls += 1;
         return { id: 'resource' };
       }
     }
@@ -329,23 +346,150 @@ describe('conditional request policy', () => {
             exists: true,
             validators: {
               etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
             },
           };
         },
       },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
       handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
       rootContainer: new Container().register(ValidatorsController),
     });
-    const response = createResponse();
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+    const nonmatchingResponse = createResponse();
+    const unacceptableResponse = createResponse();
+    getResponse.headers.Vary = 'Origin, accept';
+    getResponse.headers.vary = 'ACCEPT, User-Agent';
+    headResponse.headers.Vary = 'Origin, accept';
+    headResponse.headers.vary = 'ACCEPT, User-Agent';
 
-    // Given: an unsafe request with a non-matching strong precondition.
-    // When: the dispatcher evaluates If-Match.
-    await dispatcher.dispatch(createRequest('POST', { 'if-match': '"different-resource"' }), response);
+    // Given: validator matches are scoped to an application/json representation.
+    // When: GET and HEAD select it, a validator misses it, and Accept selects no representation.
+    await Promise.all([
+      dispatcher.dispatch(createRequest('GET', {
+        accept: 'application/json',
+        'if-none-match': '"resource-v1"',
+      }, '/validators/negotiated'), getResponse),
+      dispatcher.dispatch(createRequest('HEAD', {
+        accept: 'application/json',
+        'if-none-match': '"resource-v1"',
+      }, '/validators/negotiated'), headResponse),
+      dispatcher.dispatch(createRequest('GET', {
+        accept: 'application/json',
+        'if-none-match': '"different-resource"',
+      }, '/validators/negotiated'), nonmatchingResponse),
+      dispatcher.dispatch(createRequest('GET', {
+        accept: 'text/plain',
+        'if-none-match': '"resource-v1"',
+      }, '/validators/negotiated'), unacceptableResponse),
+    ]);
 
-    // Then: the portable adapter facade receives an empty precondition response and ETag.
-    expect(response.sentBodies).toEqual([undefined]);
-    expect(response.headers.ETag).toBe('"resource-v1"');
+    // Then: negotiation wins over 304, while negotiated 304s retain canonical cache metadata.
+    expect(getResponse.statusCode).toBe(304);
+    expect(getResponse.sentBodies).toEqual([undefined]);
+    expect(getResponse.headers.ETag).toBe('"resource-v1"');
+    expect(getResponse.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+    expect(getResponse.headers.Vary).toBe('Origin, accept, User-Agent');
+    expect(getResponse.headers.vary).toBeUndefined();
+    expect(headResponse.statusCode).toBe(304);
+    expect(headResponse.sentBodies).toEqual([undefined]);
+    expect(headResponse.headers.ETag).toBe(getResponse.headers.ETag);
+    expect(headResponse.headers['Last-Modified']).toBe(getResponse.headers['Last-Modified']);
+    expect(headResponse.headers.Vary).toBe(getResponse.headers.Vary);
+    expect(nonmatchingResponse.statusCode).toBe(200);
+    expect(nonmatchingResponse.headers['Content-Type']).toBe('application/json');
+    expect(nonmatchingResponse.headers.Vary).toBe('Accept');
+    expect(nonmatchingResponse.sentBodies).toEqual(['{"id":"resource"}']);
+    expect(unacceptableResponse.statusCode).toBe(406);
+    expect(unacceptableResponse.headers.Vary).toBe('Accept');
+    expect(getResourceCalls).toBe(1);
+    expect(headResourceCalls).toBe(0);
   });
+
+  it.each([
+    ['POST', 'If-Match', { 'if-match': '"different-resource"' }],
+    ['PUT', 'If-Match', { 'if-match': '"different-resource"' }],
+    ['PATCH', 'If-Match', { 'if-match': '"different-resource"' }],
+    ['DELETE', 'If-Match', { 'if-match': '"different-resource"' }],
+    ['POST', 'If-None-Match', { 'if-none-match': '"resource-v1"' }],
+    ['PUT', 'If-None-Match', { 'if-none-match': '"resource-v1"' }],
+    ['PATCH', 'If-None-Match', { 'if-none-match': '"resource-v1"' }],
+    ['DELETE', 'If-None-Match', { 'if-none-match': '"resource-v1"' }],
+  ])(
+    'short-circuits %s after a failed %s before its handler while retaining 412 validators',
+    async (method, _condition, headers) => {
+      let handlerCalls = 0;
+      let interceptorCalls = 0;
+
+      @Controller('/validators')
+      class ValidatorsController {
+        @Post('/resource')
+        createResource() {
+          handlerCalls += 1;
+          return { id: 'resource' };
+        }
+
+        @Put('/resource')
+        replaceResource() {
+          handlerCalls += 1;
+          return { id: 'resource' };
+        }
+
+        @Patch('/resource')
+        updateResource() {
+          handlerCalls += 1;
+          return { id: 'resource' };
+        }
+
+        @Delete('/resource')
+        deleteResource() {
+          handlerCalls += 1;
+          return { id: 'resource' };
+        }
+      }
+
+      const dispatcher = createDispatcher({
+        conditionalRequest: {
+          resolve() {
+            return {
+              exists: true,
+              validators: {
+                etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              },
+            };
+          },
+        },
+        handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+        interceptors: [{
+          async intercept(_context, next) {
+            interceptorCalls += 1;
+            return next.handle();
+          },
+        }],
+        rootContainer: new Container().register(ValidatorsController),
+      });
+      const response = createResponse();
+
+      // Given: an unsafe request with a failed entity-tag precondition.
+      // When: the dispatcher evaluates the conditional headers.
+      await dispatcher.dispatch(createRequest(method, headers), response);
+
+      // Then: the portable adapter facade receives an empty precondition response and ETag.
+      expect(response.statusCode).toBe(412);
+      expect(response.sentBodies).toEqual([undefined]);
+      expect(response.headers.ETag).toBe('"resource-v1"');
+      expect(handlerCalls).toBe(0);
+      expect(interceptorCalls).toBe(0);
+    },
+  );
 
   it('gives HEAD the same validators and status as GET without writing a body', async () => {
     @Controller('/validators')

@@ -74,6 +74,10 @@ The runtime preserves the adapter-owned optional `context.response.earlyHints` c
 
 Runtime bootstrap accepts the `conditionalRequest` option from `@fluojs/http`. Its resolver returns explicit representation existence plus optional validators; it runs after middleware and guards, before interceptors and controller invocation. See the [`@fluojs/http` Conditional Requests contract](../http/README.md#conditional-requests) for the resolver shape, RFC 9110 precedence, and `HEAD` rules.
 
+### Access log observers
+
+Pass `createAccessLogObserver(...)` through the bootstrap `observers` option to route portable request lifecycle records to application-owned structured logging. The observer preserves the dispatcher lifecycle for native adapters by selecting the complete fallback path; see the [`@fluojs/http` Access logging contract](../http/README.md#access-logging) for trusted client identity and header allowlist requirements.
+
 ### Application Context (No HTTP)
 
 For background workers or scripts, use `createApplicationContext` to skip HTTP setup.
@@ -129,6 +133,42 @@ const app = await fluoFactory.create(AppModule, {
   filters: [new GlobalErrorFilter()],
 });
 ```
+
+### Content negotiation
+
+`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `contentNegotiation` and forward
+it unchanged to the HTTP dispatcher. Configure formatters once at the application boundary and use
+`@Produces(...)` on routes to select their allowed representations:
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+import { fluoFactory } from '@fluojs/runtime';
+
+@Controller('/reports')
+class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      { mediaType: 'application/json', format: JSON.stringify },
+      { mediaType: 'text/plain', format: (value) => `plain:${JSON.stringify(value)}` },
+    ],
+  },
+});
+```
+
+Runtime does not parse `Accept` or own response policy. `@fluojs/http` applies the documented
+quality, wildcard, suffix, default, malformed-input, and 406 semantics and emits canonical
+`Vary: Accept` for every successful formatter selection. Standalone application contexts do not
+create an HTTP dispatcher, so they do not use this option. See the
+[HTTP package contract](../http#content-negotiation).
 
 ### Optional HTML Error Representations
 

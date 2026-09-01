@@ -18,6 +18,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Observing Cache Operations](#observing-cache-operations)
   - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
+  - [NestJS Cache Migration](#nestjs-cache-migration)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -319,6 +320,33 @@ defineModule(ManualCacheModule, {
   exports: [CacheService, CacheInterceptor],
   imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
 });
+```
+
+### NestJS Cache Migration
+
+`@nestjs/cache-manager` and `@fluojs/cache-manager` expose overlapping cache concepts, but their option names, units, defaults, and ownership do not all carry over. Convert each of the following, and see [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.md) for the full migration contract.
+
+| NestJS option or decorator | fluo equivalent | Conversion rule |
+| --- | --- | --- |
+| `ttl` when the installed underlying `cache-manager` generation uses milliseconds | `ttl` in seconds | Inspect the installed underlying `cache-manager` dependency/version. Divide by 1000 only when that generation defines TTLs in milliseconds. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
+| `ttl: 0` | `ttl: 0` | Means no expiry, not "do not cache". Negative or non-finite values are invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and write for that handler. |
+| `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | Accepts one static number only. Move per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`. |
+| implicit query-sensitive keys | `httpKeyStrategy` | Defaults to path-only `'route'`. Select `'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` when a response varies by query parameters. |
+| `isGlobal: true` | `global: true` | Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules are module-local unless you opt in or import the module everywhere it is resolved. |
+| NestJS store adapters such as `cache-manager-redis-store` | `store: 'redis'` or a `CacheStore` object | NestJS adapters do not satisfy the `CacheStore` contract; use the built-in Redis path or wrap the adapter so callback/options completion becomes a Promise, `ttlSeconds` maps to the legacy TTL in seconds, and `reset()` clears only the cache namespace. Never forward `reset()` blindly to a whole-database `flushDb`. |
+| adapter-owned client teardown | `close()` / `dispose()` on the store | Application shutdown forwards teardown only to those optional hooks. A raw client passed through `redis.client` stays application-owned and must be closed from the application lifecycle. |
+
+```typescript
+CacheModule.forRoot({
+  // If the installed underlying cache-manager generation uses milliseconds,
+  // NestJS `ttl: 60_000` becomes 60 seconds.
+  ttl: 60,
+  // NestJS `isGlobal: true` becomes `global: true`.
+  global: true,
+  // Opt in explicitly when responses vary by query parameters.
+  httpKeyStrategy: 'route+query',
+  store: 'redis',
+})
 ```
 
 ### Memory Store Operational Limits

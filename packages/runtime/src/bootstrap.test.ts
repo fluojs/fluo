@@ -1,5 +1,5 @@
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, RequestDto } from '@fluojs/http';
+import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, Produces, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
@@ -1827,6 +1827,59 @@ describe('FluoFactory.create HTTP dispatch request scopes', () => {
     expect(secondResponse.body).toEqual({ id: 'second:2' });
 
     await app.close();
+  });
+});
+
+describe('FluoFactory.create content negotiation', () => {
+  it('forwards bootstrap formatters through @Produces selection', async () => {
+    @Controller('/bootstrap-negotiation')
+    class NegotiationController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [NegotiationController],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.create(AppModule, {
+      contentNegotiation: {
+        defaultMediaType: 'application/json',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+    });
+
+    try {
+      const request = createRequest('/bootstrap-negotiation');
+      request.headers = { accept: 'text/plain' };
+      const response = createResponse();
+
+      await app.dispatch(request, response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['Content-Type']).toBe('text/plain');
+      expect(response.headers.Vary).toBe('Accept');
+      expect(response.body).toBe('plain:{"ok":true}');
+    } finally {
+      await app.close();
+    }
   });
 });
 

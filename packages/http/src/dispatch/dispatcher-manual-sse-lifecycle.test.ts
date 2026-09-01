@@ -2,6 +2,7 @@ import { Container, Scope } from '@fluojs/di';
 import { describe, expect, it } from 'vitest';
 
 import type {
+  AccessLogEvent,
   FrameworkRequest,
   FrameworkResponse,
   FrameworkResponseStream,
@@ -9,6 +10,7 @@ import type {
 } from '../index.js';
 import {
   Controller,
+  createAccessLogObserver,
   createDispatcher,
   createHandlerMapping,
   Sse,
@@ -17,10 +19,12 @@ import {
 
 interface ManualSseStream extends FrameworkResponseStream {
   closeCalls: number;
+  disconnect(): void;
   removeCloseListenerCalls: number;
 }
 
 interface ManualSseFixture {
+  readonly accessRecords: AccessLogEvent[];
   readonly abortController: AbortController;
   readonly dispatch: Promise<void>;
   readonly dispatcherWaiting: Promise<void>;
@@ -38,6 +42,11 @@ interface CloseCase {
   readonly close: (fixture: ManualSseFixture) => Promise<void>;
   readonly events: readonly string[];
   readonly label: string;
+}
+
+interface ManualSseFixtureOptions {
+  readonly closeError?: Error;
+  readonly streamStartsClosed?: boolean;
 }
 
 function createDeferred<T>(): Deferred<T> {
@@ -121,8 +130,8 @@ function createResponse(stream: ManualSseStream): FrameworkResponse {
   };
 }
 
-function createStream(closeError?: Error): ManualSseStream {
-  let closed = false;
+function createStream(closeError?: Error, streamStartsClosed = false): ManualSseStream {
+  let closed = streamStartsClosed;
   let closeListener: (() => void) | undefined;
 
   return {
@@ -140,6 +149,9 @@ function createStream(closeError?: Error): ManualSseStream {
       }
     },
     closeCalls: 0,
+    disconnect() {
+      closed = true;
+    },
     get closed() {
       return closed;
     },
@@ -158,10 +170,11 @@ function createStream(closeError?: Error): ManualSseStream {
   };
 }
 
-function createFixture(closeError?: Error): ManualSseFixture {
+function createFixture(options: ManualSseFixtureOptions = {}): ManualSseFixture {
   const abortController = new AbortController();
+  const accessRecords: AccessLogEvent[] = [];
   const events: string[] = [];
-  const stream = createStream(closeError);
+  const stream = createStream(options.closeError, options.streamStartsClosed);
   const response = createResponse(stream);
   const dispatcherWaiting = createDeferred<void>();
   let resolveSse: (sse: SseResponse) => void = () => undefined;
@@ -202,6 +215,13 @@ function createFixture(closeError?: Error): ManualSseFixture {
   const dispatcher = createDispatcher({
     handlerMapping: createHandlerMapping([{ controllerToken: ManualSseController }]),
     observers: [
+      createAccessLogObserver({
+        sink: {
+          emit(record) {
+            accessRecords.push(record);
+          },
+        },
+      }),
       {
         onRequestFinish() {
           events.push('finish');
@@ -215,6 +235,7 @@ function createFixture(closeError?: Error): ManualSseFixture {
   });
 
   return {
+    accessRecords,
     abortController,
     dispatch: dispatcher.dispatch(createRequest(abortController.signal), response),
     dispatcherWaiting: dispatcherWaiting.promise,
@@ -248,7 +269,7 @@ describe('manual SSE lifecycle', () => {
   );
 
   it('finishes the full request scope after a manual stream close throws', async () => {
-    const fixture = createFixture(new Error('stream close failed'));
+    const fixture = createFixture({ closeError: new Error('stream close failed') });
     const sse = await fixture.sse;
     await fixture.dispatcherWaiting;
 
@@ -258,5 +279,66 @@ describe('manual SSE lifecycle', () => {
     expect(fixture.events).toEqual(['handler', 'success', 'finish', 'destroy']);
     expect(fixture.stream.closeCalls).toBe(1);
     expect(fixture.stream.removeCloseListenerCalls).toBe(1);
+  });
+
+  it.each([
+    {
+      close(fixture: ManualSseFixture): void {
+        fixture.abortController.abort(new Error('client disconnected'));
+      },
+      label: 'the request signal aborts',
+    },
+    {
+      close(fixture: ManualSseFixture): void {
+        fixture.stream.close();
+      },
+      label: 'the raw response stream closes',
+    },
+  ])('emits one aborted access-log terminal record when $label', async ({ close }) => {
+    // Given
+    const fixture = createFixture();
+
+    // When
+    await fixture.sse;
+    await fixture.dispatcherWaiting;
+    close(fixture);
+    await fixture.dispatch;
+
+    // Then
+    expect(fixture.accessRecords.filter((record) => record.event === 'http.access.finish')).toEqual([
+      expect.objectContaining({ outcome: 'aborted', status: 200 }),
+    ]);
+  });
+
+  it('emits one aborted access-log terminal record when raw disconnect precedes writeFrame', async () => {
+    // Given
+    const fixture = createFixture();
+    const sse = await fixture.sse;
+    await fixture.dispatcherWaiting;
+    fixture.stream.disconnect();
+
+    // When
+    expect(sse.send('after raw disconnect')).toBe(false);
+    await fixture.dispatch;
+
+    // Then
+    expect(fixture.accessRecords.filter((record) => record.event === 'http.access.finish')).toEqual([
+      expect.objectContaining({ outcome: 'aborted', status: 200 }),
+    ]);
+  });
+
+  it('emits one aborted access-log terminal record when the stream is already closed', async () => {
+    // Given
+    const fixture = createFixture({ streamStartsClosed: true });
+
+    // When
+    await fixture.sse;
+    await fixture.dispatcherWaiting;
+    await fixture.dispatch;
+
+    // Then
+    expect(fixture.accessRecords.filter((record) => record.event === 'http.access.finish')).toEqual([
+      expect.objectContaining({ outcome: 'aborted', status: 200 }),
+    ]);
   });
 });
