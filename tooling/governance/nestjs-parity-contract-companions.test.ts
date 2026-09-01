@@ -4,10 +4,12 @@ import { enforceContractCompanionUpdates } from './verify-platform-consistency-g
 
 describe('NestJS parity contract companions', () => {
   it('requires bilingual context and governance companions for a parity correction', () => {
-    // Given: a bilingual NestJS DI migration correction.
+    // Given: the bilingual NestJS metrics migration and parity-gap contract set.
     const changedFiles = [
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
     ];
 
     // When: the correction omits or includes its machine-governed companions.
