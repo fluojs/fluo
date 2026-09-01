@@ -218,8 +218,11 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     };
     const sharedResponse = new Response(null, { status: 202 });
     const dispatchSpy = vi
-      .spyOn(runtimeWeb, 'dispatchWebRequest')
-      .mockResolvedValue(sharedResponse);
+      .spyOn(runtimeWeb, 'startWebRequestDispatch')
+      .mockReturnValue({
+        completion: Promise.resolve(),
+        response: Promise.resolve(sharedResponse),
+      });
 
     await adapter.listen(dispatcher);
 
@@ -573,8 +576,11 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       headers: { 'content-type': 'text/event-stream' },
     });
     const dispatchSpy = vi
-      .spyOn(runtimeWeb, 'dispatchWebRequest')
-      .mockResolvedValue(streamingResponse);
+      .spyOn(runtimeWeb, 'startWebRequestDispatch')
+      .mockReturnValue({
+        completion: Promise.resolve(),
+        response: Promise.resolve(streamingResponse),
+      });
 
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {

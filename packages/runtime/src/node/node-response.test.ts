@@ -251,6 +251,23 @@ describe('createFrameworkResponse', () => {
     expect(frameworkResponse.committed).toBe(true);
   });
 
+  it('preserves identity bytes for a partial-content response', async () => {
+    const rawResponse = createMockServerResponse();
+    const endSpy = vi.fn();
+    rawResponse.end = endSpy as typeof rawResponse.end;
+    const compression = { write: vi.fn().mockResolvedValue(true) };
+    const compressionFactory = vi.fn(() => compression);
+    const frameworkResponse = createFrameworkResponse(rawResponse, compressionFactory);
+
+    frameworkResponse.setStatus(206);
+    frameworkResponse.setHeader('Content-Range', 'bytes 2-4/6');
+    await frameworkResponse.send(Uint8Array.from([2, 3, 4]));
+
+    expect(compressionFactory).not.toHaveBeenCalled();
+    expect(compression.write).not.toHaveBeenCalled();
+    expect(endSpy).toHaveBeenCalledWith(Buffer.from([2, 3, 4]));
+  });
+
   it('defers compression helper creation until send is called', async () => {
     const rawResponse = createMockServerResponse();
     const endSpy = vi.fn();

@@ -105,7 +105,7 @@ await app.listen();
 
 ## Conformance 커버리지
 
-`packages/platform-nodejs/src/index.test.ts`와 `packages/platform-nodejs/src/lifecycle.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. Adapter portability suite는 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
+`packages/platform-nodejs/src/index.test.ts`와 `packages/platform-nodejs/src/lifecycle.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. Adapter portability suite는 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, 단일 byte-range status/header/body semantic, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
 
 이 패키지는 `HttpApplicationAdapter`를 노출하며 `platform.components`에 등록되는 runtime-managed `PlatformComponent`가 아닙니다. 따라서 generic `createPlatformConformanceHarness(...)` component lifecycle 검사는 이 패키지의 지원 계약 범위에 포함되지 않고, `createHttpAdapterPortabilityHarness(...)`가 적용되는 공유 harness입니다.
 

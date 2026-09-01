@@ -880,6 +880,70 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('directly constructs unregistered global converter classes through runNodeApplication()', async () => {
+    let converterInstances = 0;
+
+    class QueryNumberConverter implements Converter {
+      constructor() {
+        converterInstances += 1;
+      }
+
+      convert(value: unknown, target: { source: string }) {
+        if (target.source === 'query' && typeof value === 'string') {
+          return Number(value);
+        }
+
+        return value;
+      }
+    }
+
+    class SearchRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @RequestDto(SearchRequest)
+      @Get('/')
+      list(input: SearchRequest) {
+        return { id: input.id, type: typeof input.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SearchController],
+    });
+
+    const app = await runNodeApplication(AppModule, {
+      converters: [QueryNumberConverter],
+      cors: false,
+      port: 0,
+      shutdownSignals: false,
+    });
+
+    try {
+      const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+      if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+        throw new Error('Expected the runtime Node HTTP application adapter.');
+      }
+
+      const address: AddressInfo | string | null = adapter.getServer().address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Failed to resolve the bound test port.');
+      }
+
+      const response = await fetchForTest(`http://127.0.0.1:${String(address.port)}/search?id=42`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
+      expect(converterInstances).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('provides getServer() on the Node HTTP adapter before listen()', async () => {
     const adapter = createNodeHttpAdapter({ port: 0 }) as { getServer?: () => unknown };
 

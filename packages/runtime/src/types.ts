@@ -2,6 +2,7 @@ import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
   ConverterLike,
+  ConditionalRequestOptions,
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
@@ -140,6 +141,8 @@ export interface ExceptionFilterHandler {
 /** High-level bootstrap options for creating an HTTP application shell. */
 export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
+  /** Dispatcher-owned policy for HTTP validators and conditional requests. */
+  conditionalRequest?: ConditionalRequestOptions;
   /** Application-owned HTML provider for HTTP-classified error and not-found outcomes. */
   errorRepresentation?: HttpErrorRepresentationOptions;
   /**

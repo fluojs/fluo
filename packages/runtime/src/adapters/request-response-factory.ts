@@ -27,6 +27,67 @@ export interface DispatchWithRequestResponseFactoryOptions<
   rawResponse: RawResponse;
 }
 
+/** An in-progress factory dispatch with its response shell available immediately. */
+export interface StartedRequestResponseFactoryDispatch<Response extends FrameworkResponse> {
+  readonly completion: Promise<Response>;
+  readonly response: Response;
+}
+
+/**
+ * Starts one raw platform request dispatch while exposing its mutable response shell.
+ *
+ * @param options - Factory, dispatcher, and raw platform request/response values for one dispatch.
+ * @returns The response shell and its independently settling dispatch lifecycle.
+ */
+export function startDispatchWithRequestResponseFactory<
+  RawRequest,
+  RawResponse,
+  Response extends FrameworkResponse = FrameworkResponse,
+>({
+  dispatcher,
+  dispatcherNotReadyMessage,
+  factory,
+  rawRequest,
+  rawResponse,
+}: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): StartedRequestResponseFactoryDispatch<Response> {
+  const response = factory.createResponse(rawResponse, rawRequest);
+  const signal = factory.createRequestSignal(rawResponse);
+  let frameworkRequest: FrameworkRequest | undefined;
+  const completion = (async (): Promise<Response> => {
+    try {
+      frameworkRequest = await factory.createRequest(rawRequest, signal);
+      const materializeRequest = factory.materializeRequest;
+
+      if (materializeRequest) {
+        await materializeRequest(frameworkRequest);
+      }
+
+      if (!dispatcher) {
+        throw new Error(dispatcherNotReadyMessage);
+      }
+
+      await dispatcher.dispatch(frameworkRequest, response);
+
+      if (!response.committed) {
+        await response.send(undefined);
+      }
+
+      return response;
+    } catch (error: unknown) {
+      if (signal.aborted || response.committed) {
+        return response;
+      }
+
+      await factory.writeErrorResponse(error, response, factory.resolveRequestId(rawRequest));
+      return response;
+    } finally {
+      await finalizeRouteOwnedMultipartBody(frameworkRequest);
+    }
+  })();
+
+  return { completion, response };
+}
+
 /**
  * Dispatches one raw platform request through the shared request/response factory lifecycle.
  *
@@ -44,39 +105,13 @@ export async function dispatchWithRequestResponseFactory<
   rawRequest,
   rawResponse,
 }: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): Promise<Response> {
-  const frameworkResponse = factory.createResponse(rawResponse, rawRequest);
-  const signal = factory.createRequestSignal(rawResponse);
-  let frameworkRequest: FrameworkRequest | undefined;
-
-  try {
-    frameworkRequest = await factory.createRequest(rawRequest, signal);
-    const materializeRequest = factory.materializeRequest;
-
-    if (materializeRequest) {
-      await materializeRequest(frameworkRequest);
-    }
-
-    if (!dispatcher) {
-      throw new Error(dispatcherNotReadyMessage);
-    }
-
-    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-    if (!frameworkResponse.committed) {
-      await frameworkResponse.send(undefined);
-    }
-
-    return frameworkResponse;
-  } catch (error: unknown) {
-    if (signal.aborted || frameworkResponse.committed) {
-      return frameworkResponse;
-    }
-
-    await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(rawRequest));
-    return frameworkResponse;
-  } finally {
-    await finalizeRouteOwnedMultipartBody(frameworkRequest);
-  }
+  return await startDispatchWithRequestResponseFactory({
+    dispatcher,
+    dispatcherNotReadyMessage,
+    factory,
+    rawRequest,
+    rawResponse,
+  }).completion;
 }
 
 /**

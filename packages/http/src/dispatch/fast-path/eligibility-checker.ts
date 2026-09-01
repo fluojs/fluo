@@ -95,6 +95,7 @@ export function compileFastPathEligibility(
   const hasRequestScopedDI = determineRequestScopeRequirement(handler, options);
   const hasMiddleware = determineMiddlewareRequirement(handler, options.appMiddleware ?? []);
   const hasContentNegotiation = options.contentNegotiation?.formatters !== undefined && options.contentNegotiation.formatters.length > 0;
+  const hasConditionalRequest = options.conditionalRequest !== undefined;
   const isSseRoute = handler.route.produces?.some((mediaType) => mediaType.toLowerCase().startsWith('text/event-stream')) === true;
 
   const eligibilityBase = {
@@ -136,6 +137,9 @@ export function compileFastPathEligibility(
   }
   if (hasContentNegotiation) {
     blockingReasons.push('content negotiation');
+  }
+  if (hasConditionalRequest) {
+    blockingReasons.push('conditional requests');
   }
   if (isSseRoute) {
     blockingReasons.push('SSE streaming');

@@ -1,5 +1,5 @@
 declare module '@fluojs/testing/http-adapter-portability' {
-  import type { HttpErrorRepresentationOptions, Middleware, RequestObserver } from '@fluojs/http';
+  import type { ConditionalRequestOptions, HttpErrorRepresentationOptions, Middleware, RequestObserver } from '@fluojs/http';
   import type { ModuleType } from '@fluojs/runtime';
 
   type AppLike = {
@@ -18,6 +18,11 @@ declare module '@fluojs/testing/http-adapter-portability' {
       readonly errorRepresentation: HttpErrorRepresentationOptions;
       readonly middleware: Middleware[];
       readonly observers: RequestObserver[];
+      readonly port: 0;
+    }) => TBootstrapOptions;
+    createConditionalRequestBootstrapOptions?: (options: {
+      readonly conditionalRequest: ConditionalRequestOptions;
+      readonly cors: false;
       readonly port: 0;
     }) => TBootstrapOptions;
     exactRawBodyByteContentType?: string;
@@ -42,8 +47,10 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
     assertSettlesStreamDrainWaitOnClose(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
+    assertSupportsConditionalRequests(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsPortableResponseCookies(): Promise<void>;
+    assertSupportsSingleByteRanges(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
 

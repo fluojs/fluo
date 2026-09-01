@@ -164,7 +164,7 @@ const response = await app.request({
 
 `cookies`는 `FrameworkRequest.cookies`에 직접 할당됩니다. `Cookie` header를 parse하거나 adapter별 cookie 의미를 도입하지 않습니다. `TestingModuleRef.dispatch(...)`도 같은 정규화된 cookie record를 받습니다.
 
-`createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
+`createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `conditionalRequest`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, conditional `304`/`412`, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
 
 ### 명시적 서브패스의 mock 헬퍼
 
@@ -250,7 +250,7 @@ synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 �
 
 - **루트 패키지**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, 모듈 introspection 헬퍼, `DeepMocked<T>`를 포함한 공용 app/module 테스트 타입
 - **서브패스**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`DeepMocked<T>` 포함), `@fluojs/testing/types` (`DeepMocked<T>` 포함), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **하니스 서브패스**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertSupportsPortableResponseCookies()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
+- **하니스 서브패스**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsConditionalRequests()`, `assertSupportsCustomHttpRouteMethods()`, `assertSupportsSingleByteRanges()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertSupportsPortableResponseCookies()`, `createConditionalRequestBootstrapOptions`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
 - **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
 
 Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 Node listener window와 일치하도록 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 정확한 Node.js engine 범위를 따릅니다.

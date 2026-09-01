@@ -22,6 +22,30 @@ import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+const httpLifecycleContractDocs = new Set([
+  'docs/architecture/http-runtime.md',
+  'docs/architecture/http-runtime.ko.md',
+]);
+const httpRuntimeGovernanceImplementation =
+  'tooling/governance/verify-platform-consistency-governance.mjs';
+const httpRuntimeChangedPathRegression =
+  'tooling/governance/verify-platform-consistency-governance.test.ts';
+const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isolation.test.ts';
+const manualSseLifecycleRegressionTest =
+  'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
+const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
+const httpByteRangeRuntimeSourcePaths = new Set([
+  'packages/http/src/byte-range-response.ts',
+  'packages/http/src/dispatch/byte-range-response.ts',
+  'packages/http/src/dispatch/conditional-request-policy.ts',
+  'packages/http/src/dispatch/dispatch-response-policy.ts',
+]);
+const httpByteRangeRegressionEvidence = [
+  'packages/http/src/dispatch/conditional-request-policy.test.ts',
+  'packages/http/src/dispatch/byte-range-response.test.ts',
+  'packages/testing/src/portability/http-adapter-portability.ts',
+  'packages/testing/src/portability/http-adapter-portability.test.ts',
+];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
@@ -820,8 +844,47 @@ function enforceSsotMirrorStructure() {
 
 export function enforceContractCompanionUpdates(changedFiles) {
   const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
+  const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
 
   if (!touchedContractGate) {
+    return;
+  }
+
+  if (touchedHttpLifecycleContract) {
+    assert(
+      [...httpLifecycleContractDocs].every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/architecture/http-runtime.md and docs/architecture/http-runtime.ko.md.',
+    );
+    assert(
+      contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeGovernanceImplementation),
+      `HTTP runtime contract updates must include ${httpRuntimeGovernanceImplementation}.`,
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeChangedPathRegression),
+      `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
+    );
+    if (includesAny(changedFiles, (path) => httpByteRangeRuntimeSourcePaths.has(path))) {
+      assert(
+        httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `HTTP byte-range runtime contract changes must include ${httpByteRangeRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
+    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+      return;
+    }
+    assert(
+      hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
+      `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
+    );
+    assert(
+      hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+      `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
+    );
     return;
   }
 
@@ -877,6 +940,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
+  // plus HTTP trust-proxy connection identity scope, where forwarding metadata
+  // can replace direct transport identity only behind an explicit trusted peer
+  // boundary and legacy full-chain compatibility remains distinct,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, inherited class/method render-policy
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
@@ -911,7 +977,12 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // where ConfigModule never reads external secret Providers itself and
   // ConfigService.get/getOrThrow accept a single key with no NestJS
   // default-value or options overload, plus JWT refresh-token-specific HMAC
-  // algorithm policy separation from narrow access-token algorithm allowlists.
+  // algorithm policy separation from narrow access-token algorithm allowlists,
+  // plus HTTP conditional-request middleware/guard ordering, representation
+  // existence, conditional/HEAD response ownership, single-range 206 and
+  // bodyless 416 partial responses, If-Range reuse of selected validators,
+  // identity-encoded representation-byte metadata, and cross-adapter
+  // conformance.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
@@ -925,6 +996,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   assert(
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
+  );
+  assert(
+    !touchedHttpLifecycleContract || hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+    `HTTP lifecycle contract docs must include ${manualSseLifecycleRegressionTest}.`,
   );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
@@ -2405,6 +2480,13 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const sseBackpressureRegression = read(
     'packages/http/src/dispatch/dispatcher-sse-backpressure-cancellation.test.ts',
   );
+  const byteRangeRegression = read('packages/http/src/dispatch/byte-range-response.test.ts');
+  const httpAdapterPortabilityHarness = read(
+    'packages/testing/src/portability/http-adapter-portability.ts',
+  );
+  const httpAdapterPortabilityRegression = read(
+    'packages/testing/src/portability/http-adapter-portability.test.ts',
+  );
 
   assert(
     abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
@@ -2472,6 +2554,17 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
       sseBackpressureRegression.includes('writeFailure') &&
       sseBackpressureRegression.includes('drainFailure'),
     'Managed SSE regressions must cover blocked-drain cancellation, exactly-once iterator cleanup, request-scope disposal, and original stream errors.',
+  );
+  assert(
+    byteRangeRegression.includes('if-range') &&
+      byteRangeRegression.includes('uses the complete representation when If-Range does not match') &&
+      byteRangeRegression.includes('writes a satisfiable byte range from a byte representation'),
+    'HTTP byte-range regressions must cover satisfiable range selection and If-Range fallback.',
+  );
+  assert(
+    httpAdapterPortabilityHarness.includes('assertSupportsSingleByteRanges') &&
+      httpAdapterPortabilityRegression.includes('await harness.assertSupportsSingleByteRanges()'),
+    'HTTP byte-range regressions must retain canonical listener-harness coverage.',
   );
 
   for (const documentationPath of [
@@ -2683,6 +2776,7 @@ export function enforceHttpCustomMethodContract() {
 export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
   const assertionOrder = [
     'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsSingleByteRanges()',
     'assertSupportsHttpErrorRepresentations()',
     'assertDoesNotCommitAbortedHttpErrorRepresentations()',
     'assertPreservesMalformedCookieValues()',
@@ -2754,6 +2848,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
       'createHttpAdapterPortabilityHarness(...)',
       'assertSupportsPortableResponseCookies()',
       'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsSingleByteRanges()',
       'assertSupportsHttpErrorRepresentations()',
       'assertDoesNotCommitAbortedHttpErrorRepresentations()',
       'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',

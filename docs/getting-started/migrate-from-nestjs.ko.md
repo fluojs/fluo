@@ -81,6 +81,7 @@ await import('./bootstrap.js');
 | NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | `PrismaTransactionInterceptor`와 `MongooseTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다. 새 코드는 비즈니스 transaction을 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용하며 가능한 경우 `RequestContext.request.signal`을 전달한다. Drizzle은 호환성 interceptor export를 제공하지 않는다. |
 | `HealthCheckService.check([...])`를 호출하는 `@HealthCheck()` 컨트롤러 메서드 | `@fluojs/terminus`의 `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` | Module-level registration이 기본 API이므로 runtime `/health`와 `/ready` route가 indicator 및 platform diagnostics를 일관되게 포함한다. |
 | NestJS Terminus memory/disk 또는 Redis check | `@fluojs/terminus/node`와 `@fluojs/terminus/redis` | Node.js memory/disk helper와 Redis helper는 전용 subpath에 있다. Root package는 Redis peer나 Node filesystem access를 기본 import 경계에 포함하지 않는다. |
+| NestJS Prometheus module registration 또는 shared `prom-client` Registry | `@fluojs/metrics`의 `MetricsModule.forRoot(...)`, `MetricsService`, `Registry` | 이는 NestJS Dynamic Module 호환 계층이 아니라 fluo 고유의 Prometheus integration입니다. 최종 option은 module composition 전에 동기적으로 구성하세요. 기본 scrape route는 `GET /metrics`이고 HTTP collector는 `http`로 opt-in하며, `registry`를 생략하면 application bootstrap마다 격리된 Registry를 만듭니다. Framework metric과 application metric이 하나의 scrape surface를 의도적으로 공유할 때만 `Registry`를 명시적으로 전달하세요. |
 | `@nestjs/throttler` 전역 throttler 설정 | `@fluojs/throttler` / `@fluojs/http`의 `ThrottlerModule.forRoot(...)`와 명시적 `@UseGuards(ThrottlerGuard)` | Module registration은 정책과 guard provider를 제공한다. Route enforcement는 guard를 붙인 위치에서만 시작된다. |
 | `@WebSocketGateway()`와 `@SubscribeMessage()` 및 parameter decorator | `@fluojs/websockets`의 `@WebSocketGateway()`와 `@OnMessage(event?)`, positional handler argument, 선택적 `WebSocketRoomService` | fluo websocket handler는 `(payload, socket, request, socketId)`를 직접 받습니다. 안정적인 `socketId`는 `WebSocketRoomService`에 전달할 수 있습니다. Nest-style `@MessageBody()`, `@ConnectedSocket()`, `@SubscribeMessage()` parameter/decorator rewrite는 없습니다. |
 | NestJS Socket.IO gateway return value, gateway `path`, scoped provider 또는 `@WebSocketServer()` | `@fluojs/socket.io`와 `@fluojs/websockets` decorator, `@OnMessage(...)`, 명시적 acknowledgement callback, singleton gateway 등록, `@Inject(SOCKETIO_SERVER)` | Socket.IO handler 반환값은 암묵적인 emit 또는 ACK reply가 되지 않습니다. fluo의 `@WebSocketGateway({ path: '/chat' })`는 Socket.IO namespace `/chat`에 매핑되고 Engine.IO request path는 `/socket.io/`로 유지되므로 NestJS Engine.IO `path` 가정을 옮기지 마세요. Migration한 gateway는 singleton provider/controller로 등록해야 하며 request/transient gateway는 warning 후 skip됩니다. Socket.IO gateway에서 `serverBacked`는 지원하지 않습니다. Decorator에는 websockets companion을 설치/import하고 gateway server 접근, multi-room emit, volatile delivery를 마이그레이션할 때 `SOCKETIO_SERVER`를 주입하세요. |
@@ -150,6 +151,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - Testing migration에서는 fluo의 명시적 `rootModule` 가정, authored module identity, request-level guard/interceptor/filter assertion, metadata-free boundary를 테스트 안에 드러내야 한다. NestJS spec을 옮길 때 design metadata, 암묵적 provider discovery, 모든 request-path 테스트의 cleanup을 소유하는 singleton application fixture를 가정하지 않는다.
 - NestJS Terminus의 controller-level `@HealthCheck()` handler는 `TerminusModule.forRoot(...)` 기반 indicator 및 readiness registration으로 옮기는 것이 좋다. 직접 `TerminusHealthService.check()` 호출은 test나 custom code에서 사용할 수 있지만, 기본 endpoint registration API는 아니다.
 - `@fluojs/terminus`는 별도의 process-only liveness route를 기본으로 만들지 않는다. 기본 `GET /health` aggregated health route와 `GET /ready` readiness gate를 유지하고, 더 좁은 process probe가 필요하면 애플리케이션 또는 배포 계층에서 정의한다.
+- NestJS Prometheus migration은 async Dynamic Module 또는 implicit global Registry replacement가 아니다. `MetricsModule.forRoot(...)`는 최종 동기 option만 받으므로 environment-specific configuration은 application module을 구성하기 전에 해석하세요. `registry`를 명시적으로 전달하지 않으면 application bootstrap마다 새 `Registry`를 만들며 NestJS 또는 `prom-client` global Registry를 채택한다고 가정하면 안 됩니다. 기본으로 `GET /metrics`가 활성화되고 `path: false`는 이 scrape route를 비활성화하며, 내장 HTTP request collector는 `http: true` 또는 `http` option object를 전달할 때만 설치됩니다.
 - Throttler migration은 global module을 global enforcement로 치환하는 방식이 아니다. `ThrottlerModule.forRoot(...)`는 default를 등록하고, `ThrottlerGuard`는 보호할 controller나 handler의 guard metadata로 활성화해야 한다.
 - `@fluojs/throttler`는 하나의 module default와 class/method `@Throttle({ ttl, limit })` override를 제공한다. burst와 sustained limit 같은 multi-window 정책은 HTTP middleware, custom `ThrottlerStore`, 또는 애플리케이션이 소유한 guard wrapper로 명시적으로 구현해야 한다.
 - `@nestjs/throttler`의 TTL 값은 밀리초 단위지만 `@fluojs/throttler`의 `ttl` 값은 초 단위다. 단위를 명시적으로 변환하세요. NestJS의 `ttl: 60_000`은 fluo에서 `ttl: 60`이 된다. 값을 그대로 복사하면 1분 window가 1,000분 window로 바뀐다.
@@ -158,8 +160,10 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - `ThrottlerGuard`와 `keyGenerator`는 HTTP `GuardContext`와 `MiddlewareContext`를 소비하므로 WebSocket, GraphQL, RPC, queue transport 정책이 아니다. 각 transport 경계에서 transport-owned guard 또는 middleware로 동등한 제한을 구현하세요.
 - NestJS의 persisted throttle window가 fluo에서 계속된다고 가정하면 안 된다. 두 패키지는 서로 다른 bucket key와 storage call contract를 사용하므로 기본 migration은 새 window로 시작한다. 연속성이 필요하면 application-owned compatibility store를 제공하거나 기존 window가 만료되는 것을 허용하는 bounded cutover를 사용하세요.
 - `@fluojs/platform-express`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요하며 Express를 host engine으로만 보존한다. 이 bounded range는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 listener-level RFC `QUERY` ingress를 정확하게 유지한다. NestJS HTTP adapter를 교체하기 전에 controller와 provider를 TC39 표준 데코레이터로 마이그레이션하고, class-level `@Inject(...)`로 constructor token을 선언하며, 명시적 module/provider registration을 사용한다. `experimentalDecorators`와 `emitDecoratorMetadata`는 비활성화한 상태로 유지해야 하며, HTTP host 변경은 NestJS decorator, reflection metadata, implicit dependency-discovery semantics를 보존하지 않는다.
-- `@fluojs/platform-express`는 implicit middleware translation layer로 동작하지 않는다. Adapter가 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않는다. NestJS 또는 Express migration에서 가져온 native Express/Connect `(req, res, next)` middleware는 Express routing과 fluo dispatch보다 먼저 배열 순서대로 실행되는 adapter의 명시적 `nativeMiddleware` 옵션으로 construction-time에 제공해야 한다. bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않는다. Handler가 `next()`를 호출하면 fluo로 계속 진행하고 response를 끝내면 진행하지 않는다. Native failure는 Express error chain에 남고 native middleware resource는 애플리케이션이 소유한다. 이식 가능한 동작은 fluo `Middleware`로 재작성한 뒤 `fluoFactory.create({ middleware })`에 넣는 방식을 우선한다.
-- Forwarded client IP header는 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서 `trustProxyHeaders: true`를 설정한 경우에만 사용된다.
+- `@fluojs/platform-express`는 implicit middleware translation layer로 동작하지 않는다. Adapter가 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않는다. NestJS 또는 Express migration에서 가져온 native Express/Connect `(req, res, next)` middleware는 Express routing과 fluo dispatch보다 먼저 배열 순서대로 실행되는 adapter의 명시적 `nativeMiddleware` 옵션으로 construction-time에 제공해야 한다. bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않는다. Handler가 `next()`를 호출하면 fluo로 계속 진행하고 response를 끝내면 진행하지 않는다. Native failure는 Express error chain에 남고 native middleware resource는 애플리케이션이 소유한다. 이식 가능한 동작은 fluo `Middleware`로 재작성한 뒤 `fluoFactory.create(AppModule, { middleware })`에 넣는 방식을 우선한다.
+- Proxy 배포를 마이그레이션할 때는 `trustProxy`를 우선 사용하세요. 알려진 proxy 경계를 hop count, CIDR 목록, predicate로 선언하면 그 신뢰된 suffix만 `Forwarded`, `X-Forwarded-For`, host, protocol metadata를 제공할 수 있습니다.
+- `trustProxyHeaders: true`는 전체 forwarding chain을 의도적으로 신뢰하는 애플리케이션을 위한 광범위한 legacy compatibility mode입니다. direct-peer-only trust가 아니며 새 배포에는 권장하지 않습니다.
+- Malformed forwarding data는 direct transport identity로 fail closed하며 `Forwarded` 또는 `X-Forwarded-For`에서 더 낮은 precedence의 client-IP header로 fall through하지 않습니다.
 - Throttling된 응답에서 보장되는 metadata는 HTTP `429`와 `Retry-After`다. 추가 rate-limit header나 body shape는 애플리케이션 경계에서 더한다.
 - WebSocket migration은 decorator-for-decorator 치환이 아닙니다. `@fluojs/websockets`의 `@OnMessage(event?)`를 사용하고, handler 입력은 `(payload, socket, request, socketId)` positional argument로 읽으며, room membership 또는 broadcast에는 NestJS gateway server injection이나 parameter decorator가 그대로 이어진다고 가정하지 말고 `WebSocketRoomService`를 사용합니다. `WebSocketRoomService`는 runtime lifecycle service가 구현하는 type-only contract이며, `@Inject(...)`로 lifecycle service token(root entrypoint: `WebSocketGatewayLifecycleService`; 명시적 Node subpath: `NodeWebSocketGatewayLifecycleService`; 다른 runtime subpath: 해당 `*WebSocketGatewayLifecycleService`)을 주입하고 constructor parameter를 `WebSocketRoomService`로 type 지정하세요. Root `@fluojs/websockets`와 `@fluojs/websockets/node` module path는 Node.js default이며 upgrade guard가 `IncomingMessage`를 받습니다. Bun, Deno, Cloudflare Workers migration은 guard/request type과 runtime lifecycle service가 올바른 subpath boundary에 머물도록 `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`에서 import해야 합니다. Room broadcast backpressure는 Node.js 기반 adapter만 적용하며, fetch-style runtime은 room broadcast에 backpressure policy를 적용하지 않습니다. Raw WebSocket gateway 반환값은 기본적으로 await된 뒤 무시됩니다. Reply는 runtime socket argument로 명시적으로 보내거나 `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`로 올바른 `{ event, data? }` return reply를 opt-in하세요.
 - Socket.IO migration도 같은 명시적 websocket handler 모델을 유지합니다. `@fluojs/socket.io`는 `@fluojs/websockets`의 `@WebSocketGateway`, `@OnMessage`, lifecycle decorator를 재사용하므로 companion 패키지를 설치하세요. Handler return value는 await된 뒤 무시됩니다. Client가 acknowledgement를 기대하면 제공된 ACK callback을 호출하고, native Socket.IO emit, multi-room fan-out, `.volatile`, `@WebSocketServer()` 대체 코드에는 `@fluojs/socket.io`의 `SOCKETIO_SERVER`를 주입하세요. 이 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed adapter와 공식 Bun engine path를 대상으로 하며 Deno와 Workers는 지원하지 않습니다. Bun은 static CORS shape를 요구하고 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. `@WebSocketGateway({ path })`는 고정된 `/socket.io/` Engine.IO request path가 아니라 Socket.IO namespace를 선택하며 migration한 gateway는 singleton provider/controller여야 합니다. Request/transient registration은 warning 후 skip됩니다.
@@ -717,6 +721,50 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 
 `@Injectable()`을 제거할 때 codemod는 필요한 `import type` binding을 유지하고 obsolete `@Injectable` import binding만 제거합니다. 다른 NestJS runtime value import는 제거하지 않습니다. `Optional`처럼 변환되지 않는 value는 수동 검토를 위해 남습니다. 남아 있는 모든 `@nestjs/common` import를 수동으로 검증한 뒤 NestJS dependency를 제거하기 전에 마이그레이션하거나 제거하세요.
 
+## HTTP 마이그레이션 경계
+
+### route grammar는 NestJS보다 좁다
+
+| NestJS route 선언 | fluo 마이그레이션 |
+| --- | --- |
+| `assets/*`, `:path*`, `(.*)` 같은 wildcard 및 catch-all | 명시적인 route를 정의하세요. fluo는 literal segment와 segment 전체를 차지하는 `:param` placeholder만 지원하며, 넓은 matching은 middleware-only입니다. |
+| `:id(\\d+)`, `:id?`, `report-:id` 같은 regex-like, optional, mixed-segment parameter | 동작을 명시적인 route로 나누고 바인딩된 값을 application code에서 검증하세요. `*`, `?`, `+`, grouping token, bracket, brace, backslash, 그리고 완전한 `:param` segment 밖의 `:`는 거부됩니다. |
+
+NestJS router가 제공하는 HTTP wildcard 지원을 fluo에서 추론하면 안 됩니다. fluo의 `ALL` method는 하나의 명시적인 path에서 모든 HTTP method를 선택할 수 있지만 path grammar를 넓히지는 않습니다. catch-all 마이그레이션을 설계하기 전에 [HTTP Catch-All Route Grammar Decision](../architecture/http-catch-all-route-grammar.ko.md)을 확인하세요.
+
+### 전역 pipeline 등록은 bootstrap에 둔다
+
+NestJS의 application-wide pipeline 호출은 DI provider token이 아니라 `FluoFactory.create(...)` option으로 매핑됩니다:
+
+```ts
+const application = await FluoFactory.create(AppModule, {
+  middleware: [new RequestLogMiddleware()],
+  interceptors: [new EnvelopeInterceptor()],
+  filters: [new ApiExceptionFilter()],
+});
+```
+
+| NestJS 등록 | fluo 마이그레이션 |
+| --- | --- |
+| `app.use(...)` | bootstrap에서 portable `middleware`를 제공하세요. NestJS/Express `(req, res, next)` middleware를 `FluoFactory.create(AppModule, { middleware })`로 그대로 옮기면 안 됩니다. portable contract는 `handle(MiddlewareContext, next)`이며, Express 전용 handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 두세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
+| `app.useGlobalInterceptors(...)` | bootstrap에서 `interceptors`를 제공하세요. |
+| `app.useGlobalFilters(...)` | bootstrap에서 `filters`를 제공하세요. 이것이 shipped filter registration의 전부입니다. filter는 선언 순서대로 fluo 내장 error writer보다 먼저 실행되며, `true`를 반환한 첫 filter가 chain을 멈춥니다. |
+| `app.useGlobalGuards(...)` 또는 `APP_GUARD` | application-wide guard array는 없습니다. 필요한 각 controller 또는 handler에 `@UseGuards(...)`를 명시적으로 두고, 이 반복이 의도적이라면 application-owned shared decorator 또는 base-controller convention을 사용하세요. |
+
+`APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, `APP_PIPE`는 NestJS 전용 provider token입니다. 이를 fluo `providers` entry로 등록하면 injectable이 될 뿐 전역 HTTP pipeline을 구성하지는 않습니다. `APP_*` discovery에 의존하지 말고 앞의 bootstrap array, 명시적인 guard metadata, fluo의 binding/validation contract를 사용하세요.
+
+### multipart file은 portable request seam을 사용한다
+
+`FileInterceptor`, `FilesInterceptor`, `@UploadedFile()`, `@UploadedFiles()`, Multer 전용 request object를 fluo로 그대로 옮기면 안 됩니다. host adapter가 `RequestContext.request.files`에 portable multipart value를 제공하므로 active request context에서 그 array를 읽고, array가 없을 수 있음을 의도적으로 처리하세요:
+
+```ts
+import { assertRequestContext } from '@fluojs/http';
+
+const files = assertRequestContext().request.files ?? [];
+```
+
+각 file은 `fieldname`, `originalname`, `mimetype`, `buffer`, `size`를 가진 portable `FrameworkRequestFile`입니다. storage, validation, application policy는 adapter-specific upload interceptor 밖에 두세요.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.ko.md)
@@ -725,3 +773,7 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 - [CQRS Contract](../architecture/cqrs.ko.md)
 - [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.ko.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.ko.md)
+- [Book Chapter 5: Routing and Controllers](../../book/beginner/ch05-routing-controllers.ko.md)
+- [Book Chapter 9: Guards and Interceptors](../../book/beginner/ch09-guards-interceptors.ko.md)
+- [Book Chapter 11: Request Pipeline Anatomy](../../book/advanced/ch11-request-pipeline.ko.md)
+- [Book Chapter 12: Execution Chain and Exception Chain](../../book/advanced/ch12-execution-chain.ko.md)

@@ -1,4 +1,12 @@
-import { appendVaryHeader, Controller, Get, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  Controller,
+  Get,
+  getRequestHeader,
+  Head,
+  Post,
+  type RequestContext,
+} from '@fluojs/http';
 import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
 import {
   bootstrapFastifyApplication,
@@ -60,6 +68,7 @@ JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
 interface PortabilityAssertions {
+  assertSupportsConditionalRequests(): Promise<void>;
   assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
   assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
   assertExcludesRawBodyForMultipart(): Promise<void>;
@@ -70,6 +79,7 @@ interface PortabilityAssertions {
   assertReportsConfiguredHostInStartupLogs(): Promise<void>;
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+  assertSupportsSingleByteRanges(): Promise<void>;
   assertSupportsHttpErrorRepresentations(): Promise<void>;
   assertSupportsCustomHttpRouteMethods(): Promise<void>;
   assertSupportsPortableResponseCookies(): Promise<void>;
@@ -81,17 +91,12 @@ interface CleanupTrackedApp {
   listen(): Promise<void>;
 }
 
-type BootstrapHttpAdapterApp = {
-  close(): Promise<void>;
-  listen(): Promise<void>;
-};
-
 type BootstrapHttpAdapter = (
   rootModule: ModuleType,
   options: { cors: false; port: number },
-) => Promise<BootstrapHttpAdapterApp>;
+) => Promise<CleanupTrackedApp>;
 
-function resolveListeningUrl(app: BootstrapHttpAdapterApp): string {
+function resolveListeningUrl(app: CleanupTrackedApp): string {
   const adapter = Reflect.get(app, 'adapter');
 
   if (
@@ -164,8 +169,16 @@ function registerPortabilitySuite(
   options: { exactByteCoverage?: boolean; streamDrainCloseEdge?: boolean } = {},
 ): void {
   describe(`${name} adapter portability`, () => {
+    it('preserves conditional response semantics through the real listener', async () => {
+      await harness.assertSupportsConditionalRequests();
+    });
+
     it('executes QUERY and extension methods through the real listener fallback', async () => {
       await harness.assertSupportsCustomHttpRouteMethods();
+    });
+
+    it('preserves single byte range metadata and body slicing', async () => {
+      await harness.assertSupportsSingleByteRanges();
     });
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {
@@ -481,6 +494,7 @@ registerPortabilitySuite(
   'node',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapNodeApplication,
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'node',
     run: runNodeApplication,
@@ -495,6 +509,7 @@ registerPortabilitySuite(
   'nodejs-platform',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapNodejsApplication,
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'nodejs-platform',
     run: runNodejsApplication,
@@ -509,6 +524,7 @@ registerPortabilitySuite(
   'express',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapExpressApplication,
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'express',
     run: runExpressApplication,
@@ -521,6 +537,7 @@ registerHeaderHelperPortabilitySuite('express', bootstrapExpressApplication);
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapFastifyApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   exactRawBodyByteContentType: 'application/octet-stream',
   name: 'fastify',

@@ -1,6 +1,14 @@
 export * from './adapter.js';
+export {
+  createByteRangeResponse,
+} from './byte-range-response.js';
+export type {
+  ByteRangeResponseOptions,
+  ByteRangeResponseSource,
+} from './byte-range-response.js';
 export * from './context/request-context.js';
 export * from './context/sse.js';
+export * from './connection.js';
 export * from './cookie-helpers.js';
 export {
   All,
@@ -9,6 +17,7 @@ export {
   Delete,
   FromBody,
   FromCookie,
+  FromFiles,
   FromHeader,
   FromPath,
   FromQuery,
@@ -41,7 +50,13 @@ export {
 export type { FastPathEligibility, FastPathStats } from './dispatch/fast-path/index.js';
 export * from './errors.js';
 export * from './exceptions.js';
-export { appendVaryHeader, getRequestHeader } from './header-helpers.js';
+export {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+} from './header-helpers.js';
 export * from './mapping.js';
 export * from './middleware/correlation.js';
 export * from './middleware/cors.js';

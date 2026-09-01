@@ -8,7 +8,12 @@ import type {
 import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogram } from './providers/prometheus-metrics-factory.js';
 
 /**
- * Small facade for creating custom Prometheus metrics on the module registry.
+ * Small facade for creating custom Prometheus metrics on its `MetricsModule` registry.
+ *
+ * @remarks
+ * `MetricsService` is non-global: a module can inject it when it directly imports a
+ * `MetricsModule.forRoot(...)` registration or imports a module that re-exports
+ * `MetricsService`; unrelated sibling modules do not receive it automatically.
  */
 export class MetricsService {
   constructor(private readonly registry: Registry) {}

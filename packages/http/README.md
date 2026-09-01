@@ -13,6 +13,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [Response Cookies](#response-cookies)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
+- [Byte Range Responses](#byte-range-responses)
 - [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
 - [Public API](#public-api)
@@ -122,8 +123,24 @@ Use `appendVaryHeader(response, ...fields)` when response negotiation or caching
 `Vary` fields without duplicating case variants, re-parsing comma lists by hand, or accidentally
 expanding an existing wildcard `Vary: *` contract.
 
+Use `getResponseHeader(response, name)` and `hasResponseHeader(response, name)` for the same
+case-insensitive lookup over adapter-provided response headers. They preserve the original
+`string | string[]` shape and do not write headers, body, status, or commit state.
+
+Use `buildContentDisposition(disposition, filename)` to create an `attachment` or `inline`
+Content-Disposition field value. It emits an escaped printable-ASCII `filename` fallback and a
+deterministic RFC 8187 UTF-8 `filename*` value. Carriage return and line feed filenames reject
+before a header value is returned.
+
 ```ts
-import { appendVaryHeader, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+  type RequestContext,
+} from '@fluojs/http';
 
 export function readLanguage(context: RequestContext): string | undefined {
   const acceptLanguage = getRequestHeader(context.request, 'accept-language');
@@ -132,6 +149,20 @@ export function readLanguage(context: RequestContext): string | undefined {
 
 export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
+  context.response.setHeader(
+    'Content-Disposition',
+    buildContentDisposition('attachment', 'résumé.pdf'),
+  );
+}
+
+export function readResponseEtag(
+  context: RequestContext,
+): string | string[] | undefined {
+  return getResponseHeader(context.response, 'etag');
+}
+
+export function shouldSetResponseEtag(context: RequestContext): boolean {
+  return !hasResponseHeader(context.response, 'etag');
 }
 ```
 
@@ -287,7 +318,17 @@ complete phase and fallback contract.
 
 ### Rate limiting behind proxies
 
-`createRateLimitMiddleware(...)` resolves client identity from the raw socket `remoteAddress` by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true` only when your adapter sits behind a trusted proxy that overwrites those headers. If your adapter exposes neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
+`createRateLimitMiddleware(...)` resolves client identity from the adapter-snapshotted direct transport address by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, configure `trustProxy` with an explicit hop count, address/CIDR list, or predicate. Forwarded data is ignored unless the direct peer satisfies that policy; malformed `Forwarded` data fails closed to the direct transport identity.
+
+```ts
+import { resolveHttpConnection } from '@fluojs/http';
+
+const connection = resolveHttpConnection(context.request, {
+  trustProxy: ['10.0.0.0/8', '2001:db8:feed::/48'],
+});
+```
+
+`connection` is immutable and exposes the selected `clientAddress`, direct `remoteAddress`, trusted `proxyChain`, `protocol`, `secure`, `host`, `hostname`, and `port`. Fetch-only adapters may leave the direct address undefined because the Web `Request` contract does not expose it. A fetch-style HTTPS `Request` without an adapter-provided `connection` snapshot or explicit headers has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from its URL. The legacy `trustProxyHeaders: true` setting is broad compatibility only and is not recommended for new deployments; use `trustProxy` to describe the deployment boundary precisely. Only use either setting when you control the proxy that rewrites those headers. If an adapter provides neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
 
 ### Server-sent events
 
@@ -308,7 +349,7 @@ export class OrdersEventsController {
 }
 ```
 
-`@Sse(path)` registers a `GET` route and declares `text/event-stream` produced media type metadata. Handlers may either return `SseResponse` for manual stream control or return `AsyncIterable<SseMessage<T> | T>` for managed streaming. Managed async iterables are converted with the same `encodeSseMessage(...)` behavior as `SseResponse`: plain yielded values become `data:` frames, while yielded objects with a `data` field may also provide `event`, `id`, and `retry`. The dispatcher stops consuming the source when `RequestContext.request.signal` aborts or the response stream closes, calls `FrameworkResponseStream.waitForDrain()` when a write reports backpressure, and closes the stream on completion or source errors. The same cancellation boundary bounds an in-flight `waitForDrain()`: request abort or stream close wins over an unsettled drain promise, after which the dispatcher closes the source iterator exactly once and continues request-scope disposal. Stream write failures and rejected drain promises still propagate their original errors. On cancellation, the dispatcher closes the response stream promptly and awaits the source iterator's `return()` cleanup before disposing request-scoped resources. Cleanup failures are reported through the request observer and dispatcher logger seams without replacing the already-committed SSE response. Thrown source errors follow the same committed-response error/observer boundary. Observable values remain out of scope and no RxJS dependency is required.
+`@Sse(path)` registers a `GET` route and declares `text/event-stream` produced media type metadata. Handlers may either return `SseResponse` for manual stream control or return `AsyncIterable<SseMessage<T> | T>` for managed streaming. A manual `SseResponse` keeps its dispatch, request observers, and request-scoped resources active until explicit close, request abort, or raw stream close; those lifecycle stages then release exactly once. Managed async iterables are converted with the same `encodeSseMessage(...)` behavior as `SseResponse`: plain yielded values become `data:` frames, while yielded objects with a `data` field may also provide `event`, `id`, and `retry`. The dispatcher stops consuming the source when `RequestContext.request.signal` aborts or the response stream closes, calls `FrameworkResponseStream.waitForDrain()` when a write reports backpressure, and closes the stream on completion or source errors. The same cancellation boundary bounds an in-flight `waitForDrain()`: request abort or stream close wins over an unsettled drain promise, after which the dispatcher closes the source iterator exactly once and continues request-scope disposal. Stream write failures and rejected drain promises still propagate their original errors. On cancellation, the dispatcher closes the response stream promptly and awaits the source iterator's `return()` cleanup before disposing request-scoped resources. Cleanup failures are reported through the request observer and dispatcher logger seams without replacing the already-committed SSE response. Thrown source errors follow the same committed-response error/observer boundary. Observable values remain out of scope and no RxJS dependency is required.
 
 Managed SSE requires an adapter that exposes `FrameworkResponse.stream`. When the active adapter does not provide a response stream, the dispatcher rejects the managed async iterable before marking the response handled and surfaces the failure through the standard dispatch error path (request error observers and the configured error response writer) instead of silently reporting the stream as handled.
 
@@ -373,21 +414,59 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 
 Adapters that parse multipart uploads should attach runtime-neutral `FrameworkRequestFile` values to `FrameworkRequest.files` rather than augmenting the shared HTTP contract with adapter-specific file types. The seam intentionally models the portable fields every HTTP adapter can provide (`fieldname`, `originalname`, `mimetype`, `buffer`, and `size`); platform packages may keep richer native file objects on their raw request surfaces, but guards, binders, middleware, interceptors, and controllers should read files through `RequestContext.request.files` when they need cross-runtime behavior.
 
+### Multipart DTO fields
+
+Use `@FromFiles(fieldname?)` with `@RequestDto(...)` when multipart files are part of a handler's input contract:
+
+```ts
+import {
+  Controller,
+  FromFiles,
+  Optional,
+  Post,
+  RequestDto,
+  type FrameworkRequestFile,
+} from '@fluojs/http';
+
+class UploadAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+
+  @FromFiles('cover')
+  @Optional()
+  cover?: readonly FrameworkRequestFile[];
+}
+
+@Controller('/uploads')
+export class UploadController {
+  @Post('/')
+  @RequestDto(UploadAssetsDto)
+  upload(input: UploadAssetsDto) {
+    return input.attachments.map((file) => file.originalname);
+  }
+}
+```
+
+`@FromFiles(...)` is array-only: when `FrameworkRequest.files` exists, it returns a readonly array filtered by `fieldname` in adapter arrival order; a present collection without matches becomes `[]`. When the collection is absent, required fields produce the standard missing-field error and `@Optional()` leaves the field `undefined`. Converters and validation receive that same portable array. The DTO binder projects only the five `FrameworkRequestFile` fields, so adapter-native file properties cannot leak through the DTO boundary. Direct `RequestContext.request.files` access remains supported for controllers and pipeline stages that need the entire request collection.
+
 Response content negotiation formatters must return `string` or `Uint8Array` from `ResponseFormatter.format(...)`. Node.js `Buffer` values remain assignable because `Buffer` implements `Uint8Array`, but formatter contracts should rely only on runtime-neutral byte behavior.
 
 ## Public API
 
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
-- **Header helpers**: `getRequestHeader`, `appendVaryHeader`
+- **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Trusted connection API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
+- **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
+- **Byte-range responses**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Portable Subpath (`@fluojs/http/portable`)
@@ -408,6 +487,47 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, and `HttpApplicationAdapter`: internal adapter seams for edge/fetch-style platform packages that must avoid instantiating the full HTTP root barrel.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: Typed request-local response finalization seam. Finalizers compose in registration order, each receives the prior resolved value, and the dispatcher awaits them so throws and rejections follow its normal error policy.
+
+## Conditional Requests
+
+Configure `conditionalRequest` during runtime bootstrap to resolve representation existence separately from optional validators:
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        exists: true,
+        validators: {
+          etag: { opaqueValue: `${handler.route.method}:${request.path}:v1`, strength: 'strong' },
+          lastModified: new Date('2026-01-01T00:00:00Z'),
+        },
+      };
+    },
+  },
+});
+```
+
+Return `{ exists: false }` when no representation exists. Return `{ exists: true }` when it exists but intentionally has no validators. The dispatcher evaluates this resolver after application/module middleware and guards, so conditional `304` and `412` responses never bypass authorization or audit logic. It accepts only valid entity-tag lists and HTTP-date forms; malformed conditional fields are ignored.
+
+The dispatcher owns RFC 9110 precedence and comparison: a successful `If-Match` skips only `If-Unmodified-Since`, then `If-None-Match` still takes precedence over `If-Modified-Since`; `If-Match` uses strong comparison and `If-None-Match` weak comparison. `304` and `412` are bodyless and retain `ETag`/`Last-Modified`, including redirect and supported custom response-writer paths. For the same selected representation, `HEAD` and `GET` use the same conditional result and framework-generated `HEAD` bodies are suppressed. An explicit `@Head` route remains an independent route; custom response writers own their body emission and must preserve the `HEAD` bodyless contract themselves. See the [HTTP Runtime Contract](../../docs/architecture/http-runtime.md).
+
+## Byte Range Responses
+
+Returning a `Uint8Array` or `ArrayBuffer` enables RFC single-range `bytes` responses automatically for `GET` and the `HEAD` metadata mirror. A valid range produces `206`, `Accept-Ranges: bytes`, `Content-Range`, and the exact identity-byte `Content-Length`; malformed or multi-range fields fall back to the complete representation, while unsatisfiable ranges return bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, and `Content-Length: 0`. `POST`, unsafe, and custom methods ignore `Range` and retain their ordinary full status, body, and metadata.
+
+Use `createByteRangeResponse(...)` for a portable `ReadableStream` and provide its exact full size. Pass a factory when `HEAD` must not construct the stream:
+
+```ts
+import { createByteRangeResponse } from '@fluojs/http';
+
+return createByteRangeResponse(
+  () => file.stream(),
+  { contentType: 'image/png', size: file.size },
+);
+```
+
+The dispatcher evaluates normal conditional requests first. `If-Range` then permits a partial response only for an exact strong `ETag` or a current `Last-Modified` date; otherwise it sends the complete representation. Partial responses preserve identity bytes and bypass Node compression so range offsets and lengths remain meaningful. `HEAD` preserves GET status and metadata without opening the stream. The application owns its bytes, exact size, and any filesystem resource: `createByteRangeResponse(...)` never opens, stats, seeks, sizes, or closes files, and it intentionally does not construct multi-range responses.
 
 ## Related Packages
 

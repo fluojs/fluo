@@ -3,13 +3,21 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type {
+  ByteRangeResponseOptions,
+  ByteRangeResponseSource,
   ClearCookieOptions,
   CookieOptions,
   CookieSameSite,
+  HttpConnection,
   ResponseFormatter,
 } from './index.js';
 import * as httpPublicApi from './index.js';
 import * as httpInternalApi from './internal.js';
+import type {
+  ByteRangeResponseOptions as PortableByteRangeResponseOptions,
+  ByteRangeResponseSource as PortableByteRangeResponseSource,
+} from './index.portable.js';
+import * as portableHttpPublicApi from './index.portable.js';
 
 type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends (<Value>() => Value extends Right ? 1 : 2)
   ? (<Value>() => Value extends Right ? 1 : 2) extends (<Value>() => Value extends Left ? 1 : 2)
@@ -126,6 +134,18 @@ describe('@fluojs/http public API surface', () => {
     expectTypeOf<CookieSameSite>().toEqualTypeOf<'lax' | 'none' | 'strict'>();
     expectTypeOf<keyof CookieOptions>().toEqualTypeOf<'domain' | 'expires' | 'httpOnly' | 'maxAgeSeconds' | 'path' | 'sameSite' | 'secure'>();
     expectTypeOf<keyof ClearCookieOptions>().toEqualTypeOf<'domain' | 'httpOnly' | 'path' | 'sameSite' | 'secure'>();
+    expectTypeOf<HttpConnection['proxyChain']>().toEqualTypeOf<readonly string[]>();
+  });
+
+  it('exports only documented byte range APIs from root and portable barrels', () => {
+    expectTypeOf<ByteRangeResponseOptions>().toEqualTypeOf<PortableByteRangeResponseOptions>();
+    expectTypeOf<ByteRangeResponseSource>().toEqualTypeOf<PortableByteRangeResponseSource>();
+    expect(httpPublicApi).toHaveProperty('createByteRangeResponse');
+    expect(portableHttpPublicApi).toHaveProperty('createByteRangeResponse');
+    expect(httpPublicApi).not.toHaveProperty('isByteRangeByteSource');
+    expect(httpPublicApi).not.toHaveProperty('shouldApplyByteRange');
+    expect(portableHttpPublicApi).not.toHaveProperty('isByteRangeByteSource');
+    expect(portableHttpPublicApi).not.toHaveProperty('shouldApplyByteRange');
   });
 
   it('keeps documented supported root-barrel exports', () => {
@@ -171,9 +191,13 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createCorrelationMiddleware');
     expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
+    expect(httpPublicApi).toHaveProperty('resolveHttpConnection');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
+    expect(httpPublicApi).toHaveProperty('buildContentDisposition');
     expect(httpPublicApi).toHaveProperty('getRequestHeader');
+    expect(httpPublicApi).toHaveProperty('getResponseHeader');
+    expect(httpPublicApi).toHaveProperty('hasResponseHeader');
     expect(httpPublicApi).not.toHaveProperty('readFirstNonEmptyRequestHeaderValue');
     expect(httpPublicApi).toHaveProperty('SseResponse');
     expect(httpPublicApi).toHaveProperty('encodeSseComment');

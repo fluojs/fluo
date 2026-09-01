@@ -119,6 +119,10 @@ export function encodeSseMessage(data: unknown, options: SseSendOptions = {}): s
  */
 export class SseResponse {
   private closed = false;
+  private resolveCompletion: () => void = () => undefined;
+  private readonly completionPromise = new Promise<void>((resolve) => {
+    this.resolveCompletion = resolve;
+  });
   private readonly stream: FrameworkResponseStream;
   private removeCloseListener?: () => void;
 
@@ -182,6 +186,11 @@ export class SseResponse {
     return this.writeFrame(encodeSseComment(comment));
   }
 
+  /** @internal Completion signal consumed by the dispatcher for manual SSE responses. */
+  get completion(): Promise<void> {
+    return this.completionPromise;
+  }
+
   /** Closes the SSE stream and removes registered abort/close listeners exactly once. */
   close(): void {
     if (this.closed) {
@@ -189,15 +198,18 @@ export class SseResponse {
     }
 
     this.closed = true;
-    this.context.request.signal?.removeEventListener('abort', this.onAbort);
-    this.removeCloseListener?.();
-    this.removeCloseListener = undefined;
+    try {
+      this.context.request.signal?.removeEventListener('abort', this.onAbort);
+      this.removeCloseListener?.();
+      this.removeCloseListener = undefined;
 
-    if (!this.stream.closed) {
-      this.stream.close();
+      if (!this.stream.closed) {
+        this.stream.close();
+      }
+    } finally {
+      this.context.response.committed = true;
+      this.resolveCompletion();
     }
-
-    this.context.response.committed = true;
   }
 
   private writeFrame(frame: string): boolean {
@@ -212,4 +224,16 @@ export class SseResponse {
 
     return this.stream.write(frame);
   }
+}
+
+/**
+ * Waits for a manual SSE response to close through any supported termination path.
+ *
+ * @param response Manual SSE response whose lifecycle is observed.
+ * @returns A promise that resolves after the response closes.
+ *
+ * @internal
+ */
+export function waitForSseResponseCompletion(response: SseResponse): Promise<void> {
+  return response.completion;
 }
