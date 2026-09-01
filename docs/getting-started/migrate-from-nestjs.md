@@ -744,9 +744,9 @@ const application = await FluoFactory.create(AppModule, {
 
 | NestJS registration | fluo migration |
 | --- | --- |
-| `app.use(...)` | Supply `middleware` at bootstrap. This application-wide chain runs in addition to module middleware. |
+| `app.use(...)` | Supply portable `middleware` at bootstrap. Do not move NestJS/Express `(req, res, next)` middleware unchanged into `FluoFactory.create(AppModule, { middleware })`: the portable contract is `handle(MiddlewareContext, next)`. Keep Express-specific handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`. This application-wide chain runs in addition to module middleware. |
 | `app.useGlobalInterceptors(...)` | Supply `interceptors` at bootstrap. |
-| `app.useGlobalFilters(...)` | Supply `filters` at bootstrap. Global filters run before module, controller, and handler-scoped filters; the first filter that handles an error stops the chain. |
+| `app.useGlobalFilters(...)` | Supply `filters` at bootstrap. This is the only shipped filter registration: filters run in declared order before fluo's built-in error writer, and the first filter that returns `true` stops the chain. |
 | `app.useGlobalGuards(...)` or `APP_GUARD` | No application-wide guard array exists. Put `@UseGuards(...)` explicitly on each controller or handler that requires it, and use an application-owned shared decorator or base-controller convention when that repetition is intentional. |
 
 `APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, and `APP_PIPE` are NestJS-specific provider tokens. Registering one as a fluo `providers` entry only makes it injectable; it does not configure a global HTTP pipeline. Use the bootstrap arrays above, explicit guard metadata, and fluo's binding/validation contracts instead of relying on `APP_*` discovery.

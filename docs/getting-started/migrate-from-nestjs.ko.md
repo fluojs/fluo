@@ -744,9 +744,9 @@ const application = await FluoFactory.create(AppModule, {
 
 | NestJS 등록 | fluo 마이그레이션 |
 | --- | --- |
-| `app.use(...)` | bootstrap에서 `middleware`를 제공하세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
+| `app.use(...)` | bootstrap에서 portable `middleware`를 제공하세요. NestJS/Express `(req, res, next)` middleware를 `FluoFactory.create(AppModule, { middleware })`로 그대로 옮기면 안 됩니다. portable contract는 `handle(MiddlewareContext, next)`이며, Express 전용 handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 두세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
 | `app.useGlobalInterceptors(...)` | bootstrap에서 `interceptors`를 제공하세요. |
-| `app.useGlobalFilters(...)` | bootstrap에서 `filters`를 제공하세요. 전역 filter는 module, controller, handler-scoped filter보다 먼저 실행되며, error를 처리한 첫 filter가 chain을 멈춥니다. |
+| `app.useGlobalFilters(...)` | bootstrap에서 `filters`를 제공하세요. 이것이 shipped filter registration의 전부입니다. filter는 선언 순서대로 fluo 내장 error writer보다 먼저 실행되며, `true`를 반환한 첫 filter가 chain을 멈춥니다. |
 | `app.useGlobalGuards(...)` 또는 `APP_GUARD` | application-wide guard array는 없습니다. 필요한 각 controller 또는 handler에 `@UseGuards(...)`를 명시적으로 두고, 이 반복이 의도적이라면 application-owned shared decorator 또는 base-controller convention을 사용하세요. |
 
 `APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, `APP_PIPE`는 NestJS 전용 provider token입니다. 이를 fluo `providers` entry로 등록하면 injectable이 될 뿐 전역 HTTP pipeline을 구성하지는 않습니다. `APP_*` discovery에 의존하지 말고 앞의 bootstrap array, 명시적인 guard metadata, fluo의 binding/validation contract를 사용하세요.
