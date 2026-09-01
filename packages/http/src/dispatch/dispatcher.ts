@@ -10,6 +10,7 @@ import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
 import type {
   Binder,
+  ConditionalRequestOptions,
   ContentNegotiationOptions,
   ConverterLike,
   Dispatcher,
@@ -30,8 +31,13 @@ import type {
   RequestObservationContext,
   RequestObserver,
   RequestObserverLike,
+  ResponseValidators,
 } from '../types.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
+import {
+  resolveConditionalRequest,
+  writeConditionalResponse,
+} from './conditional-request-policy.js';
 import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import {
@@ -60,6 +66,8 @@ export interface CreateDispatcherOptions {
   binder?: Binder;
   /** Optional content negotiation configuration. */
   contentNegotiation?: ContentNegotiationOptions;
+  /** Optional dispatcher-owned HTTP conditional request policy. */
+  conditionalRequest?: ConditionalRequestOptions;
   /** Mapping of routes to their respective handlers. */
   handlerMapping: HandlerMapping;
   /** Global interceptors applied to all matched handlers. */
@@ -713,6 +721,7 @@ async function dispatchMatchedHandler(
   controllerContainer: RequestScopeContainer,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
+  conditionalValidators?: ResponseValidators,
 ): Promise<{ readonly result: unknown } | undefined> {
   const routeGuards = executionPlan.routeGuards;
   if (routeGuards.length > 0) {
@@ -744,7 +753,15 @@ async function dispatchMatchedHandler(
   if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!(result instanceof SseResponse) && !requestContext.response.committed) {
-    await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation, requestContext);
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      result,
+      contentNegotiation,
+      requestContext,
+      conditionalValidators,
+    );
   }
 
   return { result };
@@ -775,6 +792,10 @@ async function dispatchNativeFastRoute(
   fastPathState: DispatcherFastPathState,
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
 ): Promise<boolean> {
+  if (options.conditionalRequest) {
+    return false;
+  }
+
   const eligibility = fastPathState.getEligibility(match.descriptor);
 
   if (!shouldUseFastPathForRequest(eligibility, request)) {
@@ -960,6 +981,7 @@ async function tryFastPathExecution(
 async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void> {
   ensureRequestNotAborted(context.requestContext.request);
   let handlerResult: { readonly result: unknown } | undefined;
+  let conditionalValidators: ResponseValidators | undefined;
 
   const appMiddlewareContext: MiddlewareContext = {
     request: context.requestContext.request,
@@ -985,7 +1007,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
       addPathDebugHeader(context.response.setHeader.bind(context.response), debugInfo);
     }
 
-    if (shouldUseFastPathForRequest(eligibility, appMiddlewareContext.request)) {
+    if (!context.options.conditionalRequest && shouldUseFastPathForRequest(eligibility, appMiddlewareContext.request)) {
       const fastPathSuccess = await tryFastPathExecution(match.descriptor, context);
 
       if (fastPathSuccess) {
@@ -1001,6 +1023,19 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
 
     await notifyHandlerMatched(context, match.descriptor);
 
+    if (context.options.conditionalRequest) {
+      const conditionalRequest = await resolveConditionalRequest(context.options.conditionalRequest, {
+        handler: match.descriptor,
+        request: context.requestContext.request,
+      });
+      conditionalValidators = conditionalRequest.validators;
+
+      if (conditionalRequest.outcome !== 'proceed') {
+        await writeConditionalResponse(context.response, conditionalRequest.outcome, conditionalRequest.validators);
+        return;
+      }
+    }
+
     const moduleMiddlewareContext: MiddlewareContext = {
       request: context.requestContext.request,
       requestContext: context.requestContext,
@@ -1015,6 +1050,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.dispatchScope.container,
         context.contentNegotiation,
         context.options.binder,
+        conditionalValidators,
       );
     });
   };

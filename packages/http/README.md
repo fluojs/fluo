@@ -409,6 +409,44 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: Typed request-local response finalization seam. Finalizers compose in registration order, each receives the prior resolved value, and the dispatcher awaits them so throws and rejections follow its normal error policy.
 
+## Conditional Requests
+
+Configure `conditionalRequest` during runtime bootstrap to resolve the selected representation's validators before its route handler runs:
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        etag: { opaqueValue: `${handler.method}:${request.path}:v1`, strength: 'strong' },
+        lastModified: new Date('2026-01-01T00:00:00Z'),
+      };
+    },
+  },
+});
+```
+
+The dispatcher owns RFC validator precedence and comparison: `If-Match` is strong and precedes `If-Unmodified-Since`; `If-None-Match` is weak and precedes `If-Modified-Since`. It sends bodyless `304` or `412` responses with `ETag` and `Last-Modified` preserved. `HEAD` has `GET` validator/status parity and no body. See the [HTTP Runtime Contract](../../docs/architecture/http-runtime.md) for the complete execution contract.
+
+## Conditional Requests
+
+Configure `conditionalRequest` during runtime bootstrap to resolve the selected representation's validators before its route handler runs:
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        etag: { opaqueValue: `${handler.method}:${request.path}:v1`, strength: 'strong' },
+        lastModified: new Date('2026-01-01T00:00:00Z'),
+      };
+    },
+  },
+});
+```
+
+The dispatcher owns RFC validator precedence and comparison: `If-Match` is strong and precedes `If-Unmodified-Since`; `If-None-Match` is weak and precedes `If-Modified-Since`. It sends bodyless `304` or `412` responses with `ETag` and `Last-Modified` preserved. `HEAD` has `GET` validator/status parity and no body. See the [HTTP Runtime Contract](../../docs/architecture/http-runtime.md) for the complete execution contract.
+
 ## Related Packages
 
 - `@fluojs/core`: stores controller, route, and DTO metadata

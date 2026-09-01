@@ -148,6 +148,44 @@ export interface ContentNegotiationOptions {
   formatters?: ResponseFormatter[];
 }
 
+/** Strength used when serializing one generated HTTP entity tag. */
+export type EntityTagStrength = 'strong' | 'weak';
+
+/** Portable entity tag generated for one selected resource representation. */
+export interface EntityTag {
+  /** Opaque validator value without surrounding quotes or a weak prefix. */
+  readonly opaqueValue: string;
+  /** Comparison strength emitted in the `ETag` response field. */
+  readonly strength: EntityTagStrength;
+}
+
+/** Validators that describe the current selected resource representation. */
+export interface ResponseValidators {
+  /** Optional entity tag emitted as the `ETag` response field. */
+  readonly etag?: EntityTag;
+  /** Optional modification instant normalized to whole seconds for `Last-Modified`. */
+  readonly lastModified?: Date;
+}
+
+/** Route and request information supplied when resolving response validators. */
+export interface ConditionalRequestContext {
+  /** Matched route descriptor selected for the request. */
+  readonly handler: HandlerDescriptor;
+  /** Adapter-normalized request carrying conditional request fields. */
+  readonly request: FrameworkRequest;
+}
+
+/** Resolves the current response validators before a route handler executes. */
+export type ConditionalRequestResolver = (
+  context: ConditionalRequestContext,
+) => MaybePromise<ResponseValidators | undefined>;
+
+/** Dispatcher-owned HTTP conditional request configuration. */
+export interface ConditionalRequestOptions {
+  /** Resolves the current validators for each matched resource request. */
+  readonly resolve: ConditionalRequestResolver;
+}
+
 /**
  * HTTP-classified failure data passed to an application HTML representation provider.
  *

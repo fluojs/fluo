@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Query, type RequestContext, Route, SseResponse } from '@fluojs/http';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  type ConditionalRequestOptions,
+  type RequestContext,
+  Route,
+  SseResponse,
+} from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { assertWebHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
@@ -28,6 +37,10 @@ export interface WebRuntimeHttpAdapterPortabilityHarnessOptions<
   /** Adapts the shared error-representation fixture fields to this runtime's bootstrap options. */
   createErrorRepresentationBootstrapOptions?: (
     options: WebHttpErrorRepresentationBootstrapOptions,
+  ) => TBootstrapOptions;
+  /** Adapts shared conditional-request policy options to one web runtime bootstrap API. */
+  createConditionalRequestBootstrapOptions?: (
+    options: { readonly conditionalRequest: ConditionalRequestOptions; readonly cors: false },
   ) => TBootstrapOptions;
   name: string;
 }
@@ -120,6 +133,65 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         await app.dispatch(new Request('https://runtime.test/response-cookies')),
         this.options.name,
       );
+    });
+  }
+
+  /** Verifies 304/412 metadata and body suppression through fetch-style adapters. */
+  async assertSupportsConditionalRequests(): Promise<void> {
+    const createBootstrapOptions = this.options.createConditionalRequestBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createConditionalRequestBootstrapOptions.`);
+    }
+
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        return { id: 'resource' };
+      }
+
+      @Post('/resource')
+      updateResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ValidatorsController] });
+
+    const app = await this.options.bootstrap(AppModule, createBootstrapOptions({
+      conditionalRequest: {
+        resolve() {
+          return {
+            etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+            lastModified: new Date('2026-01-01T00:00:00.750Z'),
+          };
+        },
+      },
+      cors: false,
+    }));
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const [notModified, preconditionFailed] = await Promise.all([
+        app.dispatch(new Request('https://runtime.test/validators/resource', {
+          headers: { 'if-none-match': '"resource-v1"' },
+        })),
+        app.dispatch(new Request('https://runtime.test/validators/resource', {
+          headers: { 'if-match': '"different-resource"' },
+          method: 'POST',
+        })),
+      ]);
+
+      if (
+        notModified.status !== 304
+        || preconditionFailed.status !== 412
+        || await notModified.text() !== ''
+        || await preconditionFailed.text() !== ''
+        || notModified.headers.get('etag') !== '"resource-v1"'
+        || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+      ) {
+        throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
+      }
     });
   }
 

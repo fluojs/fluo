@@ -402,6 +402,44 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: first-party response integration을 위한 typed response-entry branding seam.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: typed request-local response finalization seam. Finalizer는 registration 순서대로 compose되고 각각 이전에 resolve된 값을 받으며, dispatcher가 await하므로 throw와 rejection은 기존 error policy를 따릅니다.
 
+## Conditional Requests
+
+runtime bootstrap에서 `conditionalRequest`를 구성하면 route handler가 실행되기 전에 선택된 representation의 validator를 해석할 수 있습니다.
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        etag: { opaqueValue: `${handler.method}:${request.path}:v1`, strength: 'strong' },
+        lastModified: new Date('2026-01-01T00:00:00Z'),
+      };
+    },
+  },
+});
+```
+
+dispatcher는 RFC validator precedence와 comparison을 소유합니다. `If-Match`는 strong이며 `If-Unmodified-Since`보다 우선하고, `If-None-Match`는 weak이며 `If-Modified-Since`보다 우선합니다. dispatcher는 `ETag` 및 `Last-Modified`를 보존한 body 없는 `304` 또는 `412` 응답을 보냅니다. `HEAD`는 `GET`과 validator/status가 같고 body는 없습니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
+
+## Conditional Requests
+
+runtime bootstrap에서 `conditionalRequest`를 구성하면 route handler가 실행되기 전에 선택된 representation의 validator를 해석할 수 있습니다.
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        etag: { opaqueValue: `${handler.method}:${request.path}:v1`, strength: 'strong' },
+        lastModified: new Date('2026-01-01T00:00:00Z'),
+      };
+    },
+  },
+});
+```
+
+dispatcher는 RFC validator precedence와 comparison을 소유합니다. `If-Match`는 strong이며 `If-Unmodified-Since`보다 우선하고, `If-None-Match`는 weak이며 `If-Modified-Since`보다 우선합니다. dispatcher는 `ETag` 및 `Last-Modified`를 보존한 body 없는 `304` 또는 `412` 응답을 보냅니다. `HEAD`는 `GET`과 validator/status가 같고 body는 없습니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
+
 ## 관련 패키지
 
 - `@fluojs/core`: 컨트롤러, 라우트, DTO 메타데이터를 저장합니다.

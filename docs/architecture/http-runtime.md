@@ -66,6 +66,14 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 | Missing route behavior | `matchHandlerOrThrow(...)` throws `HandlerNotFoundError` for unmatched method and path combinations. |
 | Response defaults | `writeSuccessResponse(...)` defaults `POST` to `201`, `DELETE` and `OPTIONS` with `undefined` payload to `204`, and other successful routes to `200` unless route metadata overrides the status. |
 
+## Conditional Requests
+
+`BootstrapApplicationOptions.conditionalRequest` gives the dispatcher a resolver for the current representation's `ETag` and `Last-Modified` values. The dispatcher evaluates it after route selection and before route middleware, guards, interceptors, or the controller handler run.
+
+The policy follows RFC validator precedence: `If-Match` takes precedence over `If-Unmodified-Since`; `If-None-Match` takes precedence over `If-Modified-Since`. `If-Match` uses strong comparison, while `If-None-Match` uses weak comparison. A failed unsafe precondition produces a bodyless `412`; a fresh safe representation produces a bodyless `304`. Both responses retain resolved validators. `HEAD` receives the same validators and status as `GET`, but no representation body.
+
+The dispatcher applies validators through the portable `FrameworkResponse` facade. Node.js, Express, Fastify, Bun, Deno, and Cloudflare Workers therefore expose identical conditional-response headers and body suppression.
+
 ## Middleware Constraints
 
 - Middleware MUST implement `handle(context, next)` and run through `runMiddlewareChain(...)`.

@@ -66,6 +66,14 @@
 | Missing route behavior | `matchHandlerOrThrow(...)`는 매칭되지 않은 method 와 path 조합에 대해 `HandlerNotFoundError`를 던진다. |
 | Response defaults | `writeSuccessResponse(...)`는 route metadata가 status를 덮어쓰지 않는 한, `POST`는 `201`, payload가 `undefined`인 `DELETE` 와 `OPTIONS`는 `204`, 그 외 성공 route는 `200`을 기본값으로 사용한다. |
 
+## Conditional Requests
+
+`BootstrapApplicationOptions.conditionalRequest`는 현재 representation의 `ETag` 및 `Last-Modified` 값을 해석하는 resolver를 dispatcher에 제공합니다. dispatcher는 route를 선택한 뒤 route middleware, guard, interceptor, controller handler를 실행하기 전에 이를 평가합니다.
+
+정책은 RFC validator precedence를 따릅니다. `If-Match`는 `If-Unmodified-Since`보다 우선하고, `If-None-Match`는 `If-Modified-Since`보다 우선합니다. `If-Match`는 strong comparison을 사용하며 `If-None-Match`는 weak comparison을 사용합니다. unsafe precondition 실패는 body 없는 `412`를 만들고, fresh safe representation은 body 없는 `304`를 만듭니다. 두 응답 모두 해석된 validator를 유지합니다. `HEAD`는 `GET`과 같은 validator 및 status를 받지만 representation body는 쓰지 않습니다.
+
+dispatcher는 portable `FrameworkResponse` facade를 통해 validator를 적용합니다. 따라서 Node.js, Express, Fastify, Bun, Deno, Cloudflare Workers는 동일한 conditional-response header와 body suppression을 제공합니다.
+
 ## Middleware Constraints
 
 - Middleware는 `handle(context, next)`를 구현해야 하며 `runMiddlewareChain(...)`을 통해 실행된다.
