@@ -36,6 +36,7 @@ function registerHostOwnedDenoPortabilitySuite(): void {
         },
       };
     },
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'host-owned Deno fetch handler',
   });
