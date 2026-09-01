@@ -2862,6 +2862,72 @@ describe('Queue lifecycle and migration discoverability', () => {
     );
   });
 
+  it('rejects a duplicate English Queue package-surface bullet even when the first decoy is compliant', () => {
+    const anchor = '- **`@fluojs/queue`**:';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.md',
+      (source) => {
+        const queueBullet = source.split('\n').find((line) => line.startsWith(anchor));
+        if (queueBullet === undefined) {
+          throw new TypeError('Expected the English Queue package-surface bullet.');
+        }
+
+        return source.replace(
+          queueBullet,
+          `${queueBullet}\n${queueBullet.replace('2.x compatibility diagnostics by default, ', '')}`,
+        );
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.md Queue package-surface bullet anchor must occur exactly once; observed 2.',
+    );
+  });
+
+  it('rejects a duplicate Korean Queue package-surface bullet even when the first decoy is compliant', () => {
+    const anchor = '- **`@fluojs/queue`**:';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.ko.md',
+      (source) => {
+        const queueBullet = source.split('\n').find((line) => line.startsWith(anchor));
+        if (queueBullet === undefined) {
+          throw new TypeError('Expected the Korean Queue package-surface bullet.');
+        }
+
+        return source.replace(
+          queueBullet,
+          `${queueBullet}\n${queueBullet.replace('기본 2.x compatibility diagnostic, ', '')}`,
+        );
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.ko.md Queue package-surface bullet anchor must occur exactly once; observed 2.',
+    );
+  });
+
+  it('rejects a duplicate regression declaration even when the first decoy keeps the pre-resource assertion', () => {
+    const regressionTitle =
+      'rejects when an unconfigured registration collides with a later reject owner';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.test.ts',
+      (source) => {
+        const testStart = source.indexOf(`it('${regressionTitle}',`);
+        const nextTestStart = source.indexOf("\n  it('", testStart + 1);
+        const testSource = source.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+        return `${source.slice(0, testStart)}${testSource}\n  ${testSource.replace(
+          '      expect(bullmqState.queueNames).toEqual([]);\n',
+          '',
+        )}${source.slice(nextTestStart === -1 ? source.length : nextTestStart)}`;
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership regression "rejects when an unconfigured registration collides with a later reject owner" test declaration must occur exactly once; observed 2.',
+    );
+  });
+
   it('keeps explicit NestJS worker migration and persisted-job cutover limits in Queue-specific regions', () => {
     const englishQueueMigrationRegions = [
       extractMarkdownLine(englishContext, 'Queue lifecycle'),

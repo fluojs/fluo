@@ -2950,12 +2950,18 @@ export function enforceQueueWorkerOwnershipContractFromSources(sources) {
 
   for (const [contractPath, requirements] of queuePackageSurfaceBulletRequirements) {
     const contract = readSource(contractPath);
-    const bulletStart = contract.indexOf('- **`@fluojs/queue`**:');
-    const bulletEnd = contract.indexOf('\n', bulletStart);
-    const queueBullet = contract.slice(bulletStart, bulletEnd === -1 ? undefined : bulletEnd);
+    const queueBulletAnchor = '- **`@fluojs/queue`**:';
+    const queueBullets = contract.split('\n').filter((line) => line.startsWith(queueBulletAnchor));
 
     assert(
-      bulletStart !== -1 && requirements.every((requirement) => queueBullet.includes(requirement)),
+      queueBullets.length === 1,
+      `${contractPath} Queue package-surface bullet anchor must occur exactly once; observed ${queueBullets.length}.`,
+    );
+
+    const [queueBullet] = queueBullets;
+
+    assert(
+      requirements.every((requirement) => queueBullet.includes(requirement)),
       `${contractPath} Queue package-surface bullet must document application ownershipNamespace identity independent of DI clientName, pre-resource collision validation, default 2.x diagnostics, and opt-in reject failure.`,
     );
   }
@@ -3040,12 +3046,22 @@ export function enforceQueueWorkerOwnershipContractFromSources(sources) {
     'rejects when an unconfigured registration collides with a later reject owner',
     'rejects the same jobName for different Redis clients with one ownership namespace',
   ]) {
-    const testStart = regressionSource.indexOf(`it('${regressionTitle}',`);
+    const testDeclaration = `  it('${regressionTitle}',`;
+    const matchingDeclarations = regressionSource
+      .split('\n')
+      .filter((line) => line.startsWith(testDeclaration));
+
+    assert(
+      matchingDeclarations.length === 1,
+      `Queue ownership regression "${regressionTitle}" test declaration must occur exactly once; observed ${matchingDeclarations.length}.`,
+    );
+
+    const testStart = regressionSource.indexOf(testDeclaration);
     const nextTestStart = regressionSource.indexOf("\n  it('", testStart + 1);
     const testSource = regressionSource.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
 
     assert(
-      testStart !== -1 && testSource.includes('expect(bullmqState.queueNames).toEqual([])'),
+      testSource.includes('expect(bullmqState.queueNames).toEqual([])'),
       `Queue ownership regression "${regressionTitle}" must assert no BullMQ queues are created before rejection.`,
     );
   }
