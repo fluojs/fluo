@@ -17,6 +17,7 @@
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
   - [비동기 설정](#비동기-설정)
   - [수동 모듈 조합](#수동-모듈-조합)
+  - [NestJS 캐시 마이그레이션](#nestjs-캐시-마이그레이션)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -287,6 +288,33 @@ defineModule(ManualCacheModule, {
   exports: [CacheService, CacheInterceptor],
   imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
 });
+```
+
+### NestJS 캐시 마이그레이션
+
+`@nestjs/cache-manager`와 `@fluojs/cache-manager`는 cache 개념이 일부 겹치지만 option 이름, 단위, 기본값, 소유권이 모두 그대로 유지되지는 않습니다. 아래 항목을 각각 변환하고, 전체 마이그레이션 계약은 [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.ko.md)을 참고하세요.
+
+| NestJS option 또는 decorator | fluo 대응 | 변환 규칙 |
+| --- | --- | --- |
+| 설치된 underlying `cache-manager` generation이 millisecond를 사용하는 경우의 `ttl` | 초 단위 `ttl` | 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 generation이 TTL을 millisecond로 정의할 때에만 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
+| `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
+| `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
+| 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 path만 사용하는 `'route'`입니다. 응답이 query parameter에 따라 달라지면 `'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요. |
+| `isGlobal: true` | `global: true` | NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로, 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 두 cache module 모두 module-local로 유지됩니다. |
+| `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 callback/options 완료를 Promise로 변환하고, `ttlSeconds`를 legacy TTL 초 단위로 매핑하며, `reset()`이 cache namespace만 비우도록 adapter를 감싸세요. `reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다. |
+| adapter가 소유하던 client teardown | store의 `close()` / `dispose()` | 애플리케이션 shutdown은 이 optional hook에만 teardown을 전달합니다. `redis.client`로 전달한 raw client는 애플리케이션 소유로 남아 애플리케이션 lifecycle에서 닫아야 합니다. |
+
+```typescript
+CacheModule.forRoot({
+  // 설치된 underlying cache-manager generation이 milliseconds를 사용할 때
+  // NestJS `ttl: 60_000`은 60초가 됩니다.
+  ttl: 60,
+  // NestJS `isGlobal: true` becomes `global: true`.
+  global: true,
+  // Opt in explicitly when responses vary by query parameters.
+  httpKeyStrategy: 'route+query',
+  store: 'redis',
+})
 ```
 
 ### 메모리 저장소 운영 한계
