@@ -216,6 +216,7 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness<
   Application
 >({
   bootstrap: bootstrapFastifyApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'fastify',
   run: runFastifyApplication,
@@ -291,6 +292,10 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   describe('adapter portability', () => {
+    it('preserves conditional response semantics through the real listener', async () => {
+      await fastifyPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

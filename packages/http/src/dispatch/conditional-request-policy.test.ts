@@ -144,6 +144,96 @@ describe('conditional request policy', () => {
     expect(matchResponse.statusCode).toBe(412);
   });
 
+  it('rejects a strong If-Match against a weak current validator', async () => {
+    @Controller('/validators')
+    class ValidatorsController {
+      @Post('/resource')
+      updateResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: { etag: { opaqueValue: 'resource-v1', strength: 'weak' } },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('POST', { 'if-match': '"resource-v1"' }), response);
+
+    expect(response.statusCode).toBe(412);
+  });
+
+  it('weak-compares a strong If-None-Match against a weak current validator', async () => {
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: { etag: { opaqueValue: 'resource-v1', strength: 'weak' } },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('GET', { 'if-none-match': '"resource-v1"' }), response);
+
+    expect(response.statusCode).toBe(304);
+  });
+
+  it('gives a nonmatching If-None-Match precedence over a date that would produce 304', async () => {
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('GET', {
+      'if-modified-since': 'Thu, 01 Jan 2026 01:00:00 GMT',
+      'if-none-match': '"different-resource"',
+    }), response);
+
+    expect(response.statusCode).toBe(200);
+  });
+
   it('suppresses the body while retaining validators for a 304 response', async () => {
     @Controller('/validators')
     class ValidatorsController {

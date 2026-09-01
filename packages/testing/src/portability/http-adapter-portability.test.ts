@@ -5,7 +5,6 @@ import {
   getRequestHeader,
   Head,
   Post,
-  type ConditionalRequestOptions,
   type RequestContext,
 } from '@fluojs/http';
 import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
@@ -69,6 +68,7 @@ JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
 interface PortabilityAssertions {
+  assertSupportsConditionalRequests(): Promise<void>;
   assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
   assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
   assertExcludesRawBodyForMultipart(): Promise<void>;
@@ -90,17 +90,12 @@ interface CleanupTrackedApp {
   listen(): Promise<void>;
 }
 
-type BootstrapHttpAdapterApp = {
-  close(): Promise<void>;
-  listen(): Promise<void>;
-};
-
 type BootstrapHttpAdapter = (
   rootModule: ModuleType,
-  options: { conditionalRequest?: ConditionalRequestOptions; cors: false; port: number },
-) => Promise<BootstrapHttpAdapterApp>;
+  options: { cors: false; port: number },
+) => Promise<CleanupTrackedApp>;
 
-function resolveListeningUrl(app: BootstrapHttpAdapterApp): string {
+function resolveListeningUrl(app: CleanupTrackedApp): string {
   const adapter = Reflect.get(app, 'adapter');
 
   if (
@@ -167,89 +162,16 @@ function registerHeaderHelperPortabilitySuite(
   });
 }
 
-function registerConditionalRequestPortabilitySuite(
-  name: string,
-  bootstrap: BootstrapHttpAdapter,
-): void {
-  describe(`${name} conditional request portability`, () => {
-    it('preserves validators and body suppression through the real listener', async () => {
-      @Controller('/validators')
-      class ValidatorsController {
-        @Get('/resource')
-        getResource() {
-          return { id: 'resource' };
-        }
-
-        @Head('/resource')
-        headResource() {
-          return { id: 'resource' };
-        }
-
-        @Post('/resource')
-        updateResource() {
-          return { id: 'resource' };
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [ValidatorsController] });
-
-      const app = await bootstrap(AppModule, {
-        conditionalRequest: {
-          resolve() {
-            return {
-              exists: true,
-              validators: {
-                etag: { opaqueValue: 'resource-v1', strength: 'strong' },
-                lastModified: new Date('2026-01-01T00:00:00.750Z'),
-              },
-            };
-          },
-        },
-        cors: false,
-        port: 0,
-      });
-
-      try {
-        await app.listen();
-        const baseUrl = resolveListeningUrl(app);
-        const [notModified, preconditionFailed, head] = await Promise.all([
-          fetch(`${baseUrl}/validators/resource`, { headers: { 'if-none-match': '"resource-v1"' } }),
-          fetch(`${baseUrl}/validators/resource`, {
-            headers: { 'if-match': '"different-resource"' },
-            method: 'POST',
-          }),
-          fetch(`${baseUrl}/validators/resource`, {
-            headers: { 'if-none-match': '"resource-v1"' },
-            method: 'HEAD',
-          }),
-        ]);
-
-        expect(notModified.status).toBe(304);
-        expect(preconditionFailed.status).toBe(412);
-        expect(head.status).toBe(304);
-        expect(await notModified.text()).toBe('');
-        expect(await preconditionFailed.text()).toBe('');
-        expect(await head.text()).toBe('');
-        expect(notModified.headers.get('etag')).toBe('"resource-v1"');
-        expect(notModified.headers.get('last-modified')).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
-        expect(preconditionFailed.headers.get('etag')).toBe('"resource-v1"');
-        expect(preconditionFailed.headers.get('last-modified')).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
-        expect(head.headers.get('etag')).toBe('"resource-v1"');
-        expect(head.headers.get('last-modified')).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
-      } finally {
-        await app.close();
-      }
-    });
-  });
-}
-
 function registerPortabilitySuite(
   name: string,
   harness: PortabilityAssertions,
   options: { exactByteCoverage?: boolean; streamDrainCloseEdge?: boolean } = {},
 ): void {
   describe(`${name} adapter portability`, () => {
+    it('preserves conditional response semantics through the real listener', async () => {
+      await harness.assertSupportsConditionalRequests();
+    });
+
     it('executes QUERY and extension methods through the real listener fallback', async () => {
       await harness.assertSupportsCustomHttpRouteMethods();
     });
@@ -567,6 +489,7 @@ registerPortabilitySuite(
   'node',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapNodeApplication,
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'node',
     run: runNodeApplication,
@@ -576,12 +499,12 @@ registerPortabilitySuite(
   },
 );
 registerHeaderHelperPortabilitySuite('node', bootstrapNodeApplication);
-registerConditionalRequestPortabilitySuite('node', bootstrapNodeApplication);
 
 registerPortabilitySuite(
   'nodejs-platform',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapNodejsApplication,
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'nodejs-platform',
     run: runNodejsApplication,
@@ -591,12 +514,12 @@ registerPortabilitySuite(
   },
 );
 registerHeaderHelperPortabilitySuite('nodejs-platform', bootstrapNodejsApplication);
-registerConditionalRequestPortabilitySuite('nodejs-platform', bootstrapNodejsApplication);
 
 registerPortabilitySuite(
   'express',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapExpressApplication,
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'express',
     run: runExpressApplication,
@@ -606,10 +529,10 @@ registerPortabilitySuite(
   },
 );
 registerHeaderHelperPortabilitySuite('express', bootstrapExpressApplication);
-registerConditionalRequestPortabilitySuite('express', bootstrapExpressApplication);
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapFastifyApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   exactRawBodyByteContentType: 'application/octet-stream',
   name: 'fastify',
@@ -634,4 +557,3 @@ registerPortabilitySuite('fastify', fastifyPortabilityHarness, {
   streamDrainCloseEdge: true,
 });
 registerHeaderHelperPortabilitySuite('fastify', bootstrapFastifyApplication);
-registerConditionalRequestPortabilitySuite('fastify', bootstrapFastifyApplication);

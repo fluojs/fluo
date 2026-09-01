@@ -117,6 +117,7 @@ const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
   RunNodejsApplicationOptions
 >({
   bootstrap: bootstrapNodejsApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'nodejs',
   run: runNodejsApplication,
@@ -130,6 +131,10 @@ describe('@fluojs/platform-nodejs', () => {
 
     it('preserves ordered independent response cookies through the real Node listener', async () => {
       await nodejsPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
+    it('preserves conditional response semantics through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsConditionalRequests();
     });
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {

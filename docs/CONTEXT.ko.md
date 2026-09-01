@@ -293,6 +293,10 @@ Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)
 
 `@fluojs/graphql`의 code-first object field resolver는 `@FieldResolver({ input: InputDto })`와 `@Args(index?)`로 GraphQL argument를 바인딩할 수 있다. `InputDto`의 각 `@Arg(...)` field는 GraphQL argument가 되고, framework는 root operation과 동일한 `BAD_USER_INPUT` error contract로 DTO를 materialize 및 validate한다. `@Args()`, `@Parent()`, `@Context()`는 서로 다른 explicit zero-based method index를 바인딩하며, index 충돌은 즉시 실패한다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고 `@Args()`에는 `input`이 필요하며, 세 binding 모두 root operation에서는 유효하지 않다. Request-scoped root resolver와 field resolver는 HTTP 및 subscription execution에서 하나의 operation container를 공유하지만 schema-first field-resolver attachment는 계속 지원하지 않는다.
 
+## HTTP Conditional Request Contract
+
+[`docs/architecture/http-runtime.ko.md`](./architecture/http-runtime.ko.md)는 canonical conditional-request lifecycle contract이다. 이 문서는 명시적인 `ConditionalRequestResolver` representation-existence result, 평가 전 application/module middleware와 guard ordering, RFC validator precedence, 독립적인 `@Head` routing, framework-managed `HEAD` body suppression, custom-writer ownership을 정의한다. `packages/http/README.ko.md`, `packages/runtime/README.ko.md`, `packages/testing/README.ko.md`는 지원하는 resolver, bootstrap, real-listener conformance API를 나열한다.
+
 ## Anti-Patterns at a Glance
 
 - `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하는 것, fluo의 표준 데코레이터 기준을 깨뜨린다.

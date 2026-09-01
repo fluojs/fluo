@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Query, type RequestContext, Route, SseResponse } from '@fluojs/http';
+import {
+  Controller,
+  Get,
+  Head,
+  Post,
+  Query,
+  type ConditionalRequestOptions,
+  type RequestContext,
+  Route,
+  SseResponse,
+} from '@fluojs/http';
 import { type ApplicationLogger, defineModule, type ModuleType } from '@fluojs/runtime';
 import { assertNetworkHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
@@ -53,6 +63,15 @@ export interface HttpAdapterPortabilityHarnessOptions<
   /** Adapts the shared error-representation fixture fields to this adapter's bootstrap options. */
   createErrorRepresentationBootstrapOptions?: (
     options: NetworkHttpErrorRepresentationBootstrapOptions,
+  ) => TBootstrapOptions;
+
+  /** Adapts shared conditional-request policy options to one listener bootstrap API. */
+  createConditionalRequestBootstrapOptions?: (
+    options: {
+      readonly conditionalRequest: ConditionalRequestOptions;
+      readonly cors: false;
+      readonly port: 0;
+    },
   ) => TBootstrapOptions;
 
   /**
@@ -354,6 +373,86 @@ export class HttpAdapterPortabilityHarness<
         await fetch(`${url}/response-cookies`),
         this.options.name,
       );
+    });
+  }
+
+  /** Verifies 304/412 metadata and body suppression through a real network listener. */
+  async assertSupportsConditionalRequests(): Promise<void> {
+    const createBootstrapOptions = this.options.createConditionalRequestBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createConditionalRequestBootstrapOptions.`);
+    }
+
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        return { id: 'resource' };
+      }
+
+      @Head('/resource')
+      headResource() {
+        return { id: 'resource' };
+      }
+
+      @Post('/resource')
+      updateResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ValidatorsController] });
+
+    const app = await this.options.bootstrap(AppModule, createBootstrapOptions({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
+          };
+        },
+      },
+      cors: false,
+      port: 0,
+    }));
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const [notModified, preconditionFailed, head] = await Promise.all([
+        fetch(`${baseUrl}/validators/resource`, {
+          headers: { 'if-none-match': '"resource-v1"' },
+        }),
+        fetch(`${baseUrl}/validators/resource`, {
+          headers: { 'if-match': '"different-resource"' },
+          method: 'POST',
+        }),
+        fetch(`${baseUrl}/validators/resource`, {
+          headers: { 'if-none-match': '"resource-v1"' },
+          method: 'HEAD',
+        }),
+      ]);
+
+      if (
+        notModified.status !== 304
+        || preconditionFailed.status !== 412
+        || head.status !== 304
+        || await notModified.text() !== ''
+        || await preconditionFailed.text() !== ''
+        || await head.text() !== ''
+        || notModified.headers.get('etag') !== '"resource-v1"'
+        || notModified.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || preconditionFailed.headers.get('etag') !== '"resource-v1"'
+        || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || head.headers.get('etag') !== '"resource-v1"'
+        || head.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+      ) {
+        throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
+      }
     });
   }
 

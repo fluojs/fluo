@@ -208,7 +208,18 @@ function createHttpDateTimestamp(
   return date.getTime();
 }
 
-function parseHttpDate(header: string | undefined): number | undefined {
+/**
+ * Parses one RFC HTTP-date value using the supplied RFC850 reference year.
+ *
+ * @internal This seam keeps two-digit RFC850 year tests deterministic.
+ * @param header Raw HTTP-date header value.
+ * @param referenceYear Year used to expand an RFC850 two-digit year.
+ * @returns Parsed UTC timestamp in milliseconds, or `undefined` for invalid input.
+ */
+export function parseHttpDate(
+  header: string | undefined,
+  referenceYear = new Date().getUTCFullYear(),
+): number | undefined {
   if (!header) {
     return undefined;
   }
@@ -237,10 +248,9 @@ function parseHttpDate(header: string | undefined): number | undefined {
       return undefined;
     }
 
-    let year = 2_000 + twoDigitYear;
-    const currentYear = new Date().getUTCFullYear();
+    let year = Math.floor(referenceYear / 100) * 100 + twoDigitYear;
 
-    if (year > currentYear + 50) {
+    if (year > referenceYear + 50) {
       year -= 100;
     }
 

@@ -294,6 +294,10 @@ Chapter 14's executable JWT learning path imports `ConfigModule.forRoot()` and a
 
 `@fluojs/graphql` code-first object field resolvers can bind GraphQL arguments through `@FieldResolver({ input: InputDto })` and `@Args(index?)`. Each `@Arg(...)` field on `InputDto` becomes a GraphQL argument; the framework materializes and validates that DTO with the same `BAD_USER_INPUT` error contract used by root operations. `@Args()`, `@Parent()`, and `@Context()` bind distinct explicit zero-based method indexes, and a duplicate index fails immediately. `@FieldResolver({ input })` requires `@Args()`, while `@Args()` requires `input`; all three bindings are invalid on root operations. A request-scoped root resolver and its field resolvers share one operation container for HTTP and subscription execution, but schema-first field-resolver attachment remains unsupported.
 
+## HTTP Conditional Request Contract
+
+[`docs/architecture/http-runtime.md`](./architecture/http-runtime.md) is the canonical conditional-request lifecycle contract. It defines the explicit `ConditionalRequestResolver` representation-existence result, middleware-and-guard ordering before evaluation, RFC validator precedence, independent `@Head` routing, framework-managed `HEAD` body suppression, and custom-writer ownership. `packages/http/README.md`, `packages/runtime/README.md`, and `packages/testing/README.md` list the supported resolver, bootstrap, and real-listener conformance APIs.
+
 ## Anti-Patterns at a Glance
 
 - Enabling `experimentalDecorators` or `emitDecoratorMetadata`, this violates fluo's standard-decorator baseline.

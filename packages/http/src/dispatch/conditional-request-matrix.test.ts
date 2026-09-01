@@ -130,4 +130,33 @@ describe('conditional request comparison matrix', () => {
 
     expect(response.statusCode).toBe(200);
   });
+
+  it.each([
+    ['returns 304 for an existing GET resource', 'GET', true, 304],
+    ['returns 412 for an existing unsafe resource', 'POST', true, 412],
+    ['continues to an absent resource handler', 'GET', false, 200],
+  ])('If-None-Match wildcard %s', async (_name, method, exists, expectedStatus) => {
+    const response = createResponse();
+
+    await createValidatorsDispatcher(exists).dispatch(createRequest(method, { 'if-none-match': '*' }), response);
+
+    expect(response.statusCode).toBe(expectedStatus);
+  });
+
+  it('permits If-Match wildcard for an existing resource without validators', async () => {
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return { exists: true };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('GET', { 'if-match': '*' }), response);
+
+    expect(response.statusCode).toBe(200);
+  });
 });

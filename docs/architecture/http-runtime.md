@@ -69,9 +69,9 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 
 ## Conditional Requests
 
-`BootstrapApplicationOptions.conditionalRequest` gives the dispatcher a resolver for the current representation's `ETag` and `Last-Modified` values. The dispatcher evaluates it after route selection and before route middleware, guards, interceptors, or the controller handler run.
+`BootstrapApplicationOptions.conditionalRequest` gives the dispatcher a resolver for the selected representation. It returns either `{ exists: false }` when no representation exists or `{ exists: true, validators? }` when one exists, with optional `ETag` and `Last-Modified` validators. The dispatcher evaluates the resolver after route selection, application/module middleware, and guards, but before interceptors or the controller handler, so conditional outcomes never bypass authorization or middleware-owned audit work.
 
-The policy follows RFC validator precedence: `If-Match` takes precedence over `If-Unmodified-Since`; `If-None-Match` takes precedence over `If-Modified-Since`. `If-Match` uses strong comparison, while `If-None-Match` uses weak comparison. A failed unsafe precondition produces a bodyless `412`; a fresh safe representation produces a bodyless `304`. Both responses retain resolved validators. `HEAD` receives the same validators and status as `GET`, but no representation body.
+The policy follows RFC validator precedence: `If-Match` takes precedence over `If-Unmodified-Since`; `If-None-Match` takes precedence over `If-Modified-Since`. `If-Match` uses strong comparison, while `If-None-Match` uses weak comparison. A failed unsafe precondition produces a bodyless `412`; a fresh safe representation produces a bodyless `304`. Both responses retain resolved validators. `HEAD` receives the same validators and status as `GET`; framework-managed response writing suppresses its body. An explicit `@Head` handler remains an independent route, and custom response writers own body emission, including preserving the bodyless `HEAD` contract.
 
 The dispatcher applies validators through the portable `FrameworkResponse` facade. Node.js, Express, Fastify, Bun, Deno, and Cloudflare Workers therefore expose identical conditional-response headers and body suppression.
 

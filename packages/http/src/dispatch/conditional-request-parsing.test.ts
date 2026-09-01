@@ -9,6 +9,7 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '../index.js';
+import { parseHttpDate } from './conditional-request-policy.js';
 
 function createRequest(headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
@@ -141,6 +142,24 @@ describe('conditional request parsing', () => {
     await createParsingDispatcher().dispatch(createRequest({ 'if-modified-since': header }), response);
 
     expect(response.statusCode).toBe(304);
+  });
+
+  it('parses RFC850 years against an explicit reference year and century', () => {
+    expect(parseHttpDate('Sunday, 06-Nov-94 08:49:37 GMT', 2026)).toBe(
+      Date.UTC(1994, 10, 6, 8, 49, 37),
+    );
+    expect(parseHttpDate('Saturday, 06-Nov-94 08:49:37 GMT', 2044)).toBe(
+      Date.UTC(2094, 10, 6, 8, 49, 37),
+    );
+    expect(parseHttpDate('Monday, 06-Nov-02 08:49:37 GMT', 2101)).toBe(
+      Date.UTC(2102, 10, 6, 8, 49, 37),
+    );
+    expect(parseHttpDate('Friday, 06-Nov-50 08:49:37 GMT', 2100)).toBe(
+      Date.UTC(2150, 10, 6, 8, 49, 37),
+    );
+    expect(parseHttpDate('Monday, 06-Nov-51 08:49:37 GMT', 2100)).toBe(
+      Date.UTC(2051, 10, 6, 8, 49, 37),
+    );
   });
 
   it.each([
