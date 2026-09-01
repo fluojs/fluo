@@ -8,8 +8,14 @@ import type {
   ClearCookieOptions,
   CookieOptions,
   CookieSameSite,
+  HandlerDescriptor,
+  HandlerMapping,
+  HandlerMetadata,
   HttpConnection,
+  MiddlewareRouteConfig,
+  MiddlewareRouteSnapshot,
   ResponseFormatter,
+  RouteDefinition,
 } from './index.js';
 import * as httpPublicApi from './index.js';
 import * as httpInternalApi from './internal.js';
@@ -26,6 +32,9 @@ type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends
   : false;
 
 type AssertTrue<Condition extends true> = Condition;
+
+type MutableHeader = { name: string; value: string };
+type MutableRedirect = { statusCode?: number; url: string };
 
 const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 const runtimeDynamicModuleSpecifierPattern = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
@@ -191,6 +200,7 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createCorrelationMiddleware');
     expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
+    expect(httpPublicApi).toHaveProperty('createAccessLogObserver');
     expect(httpPublicApi).toHaveProperty('resolveHttpConnection');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
@@ -211,6 +221,45 @@ describe('@fluojs/http public API surface', () => {
     > = true;
 
     expect(formatterReturnTypeContract).toBe(true);
+  });
+
+  it('exposes HandlerMapping snapshots as deeply readonly while preserving mutable source routes', () => {
+    expectTypeOf<HandlerMapping['descriptors']>().not.toEqualTypeOf<HandlerDescriptor[]>([]);
+    expectTypeOf<HandlerDescriptor>().not.toEqualTypeOf<{
+      controllerToken: HandlerDescriptor['controllerToken'];
+      metadata: HandlerMetadata;
+      methodName: string;
+      route: RouteDefinition;
+    }>({
+      controllerToken: class {},
+      metadata: {
+        controllerPath: '',
+        effectivePath: '',
+        moduleMiddleware: [],
+        pathParams: [],
+      },
+      methodName: '',
+      route: { method: 'GET', path: '' },
+    });
+    expectTypeOf<HandlerMetadata['pathParams']>().not.toEqualTypeOf<string[]>([]);
+    expectTypeOf<HandlerMetadata['moduleMiddleware']>().not.toEqualTypeOf<MiddlewareRouteSnapshot[]>([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['produces']>>().not.toEqualTypeOf<string[]>([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['guards']>>().not.toEqualTypeOf<
+      NonNullable<RouteDefinition['guards']>
+    >([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['interceptors']>>().not.toEqualTypeOf<
+      NonNullable<RouteDefinition['interceptors']>
+    >([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['headers']>>().not.toEqualTypeOf<MutableHeader[]>([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['headers']>[number]>().not.toEqualTypeOf<MutableHeader>({
+      name: '',
+      value: '',
+    });
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['redirect']>>().not.toEqualTypeOf<MutableRedirect>({
+      url: '',
+    });
+    expectTypeOf<MiddlewareRouteSnapshot['routes']>().not.toEqualTypeOf<string[]>([]);
+    expectTypeOf<MiddlewareRouteConfig['routes']>().toMatchTypeOf<string[]>();
   });
 
   it('does not expose internal pipeline runners or implementation classes', () => {

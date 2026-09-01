@@ -1,35 +1,47 @@
-import { getRequestHeader } from '../header-helpers.js';
-import type { Middleware } from '../types.js';
+import { resolveRequestId } from '../context/request-id.js';
+import type { FrameworkRequest, Middleware, MiddlewareLike, RequestContext } from '../types.js';
 
 const REQUEST_ID_HEADER = 'x-request-id';
-const CORRELATION_ID_HEADER = 'x-correlation-id';
+const CORRELATION_REQUEST_CONTEXT_INITIALIZER = Symbol('fluo.http.correlationRequestContextInitializer');
 
-function readInboundHeaderValue(
-  request: { headers: Readonly<Record<string, string | string[] | undefined>> },
-  headerName: string,
-): string | undefined {
-  const rawHeaderValue = getRequestHeader(request as never, headerName);
-  const value = Array.isArray(rawHeaderValue) ? rawHeaderValue[0] : rawHeaderValue;
-  const normalized = value?.trim();
-
-  return normalized ? normalized : undefined;
+interface CorrelationMiddleware extends Middleware {
+  readonly [CORRELATION_REQUEST_CONTEXT_INITIALIZER]: (context: RequestContext) => void;
 }
 
-function resolveInboundRequestId(request: { headers: Readonly<Record<string, string | string[] | undefined>> }): string {
-  const requestId = readInboundHeaderValue(request, REQUEST_ID_HEADER);
-  const correlationId = readInboundHeaderValue(request, CORRELATION_ID_HEADER);
+function initializeCorrelationRequestContext(
+  context: RequestContext,
+  request: FrameworkRequest = context.request,
+): string {
+  const requestId = context.requestId ?? resolveRequestId(request);
 
-  return requestId ?? correlationId ?? createRequestId();
-}
-
-function createRequestId(): string {
-  const randomUUID = globalThis.crypto?.randomUUID;
-
-  if (randomUUID) {
-    return randomUUID.call(globalThis.crypto);
+  if (requestId === undefined) {
+    throw new Error('Correlation request ID generation unexpectedly returned undefined.');
   }
 
-  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  context.requestId = requestId;
+  return requestId;
+}
+
+/**
+ * Initializes correlation-aware request contexts before lifecycle observers run.
+ *
+ * @internal
+ * @param middleware Global middleware definitions registered with the dispatcher.
+ * @param context Request context to initialize.
+ */
+export function initializeCorrelationMiddlewareRequestContext(
+  middleware: readonly MiddlewareLike[],
+  context: RequestContext,
+): void {
+  for (const definition of middleware) {
+    if (
+      typeof definition === 'object'
+      && definition !== null
+      && CORRELATION_REQUEST_CONTEXT_INITIALIZER in definition
+    ) {
+      (definition as CorrelationMiddleware)[CORRELATION_REQUEST_CONTEXT_INITIALIZER](context);
+    }
+  }
 }
 
 /**
@@ -39,14 +51,13 @@ function createRequestId(): string {
  */
 export function createCorrelationMiddleware(): Middleware {
   return {
+    [CORRELATION_REQUEST_CONTEXT_INITIALIZER]: initializeCorrelationRequestContext,
     async handle(context, next) {
-      if (!context.requestContext.requestId) {
-        context.requestContext.requestId = resolveInboundRequestId(context.request);
-      }
+      const requestId = initializeCorrelationRequestContext(context.requestContext, context.request);
 
-      context.response.setHeader(REQUEST_ID_HEADER, context.requestContext.requestId);
+      context.response.setHeader(REQUEST_ID_HEADER, requestId);
 
       await next();
     },
-  };
+  } as CorrelationMiddleware;
 }

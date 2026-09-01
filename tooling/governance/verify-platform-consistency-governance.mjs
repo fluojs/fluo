@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
@@ -34,6 +35,7 @@ const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isol
 const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
+const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
 const httpByteRangeRuntimeSourcePaths = new Set([
   'packages/http/src/byte-range-response.ts',
   'packages/http/src/dispatch/byte-range-response.ts',
@@ -48,6 +50,7 @@ const httpByteRangeRegressionEvidence = [
 ];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -874,7 +877,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
       );
       return;
     }
-    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+    if (
+      hasChanged(changedFiles, httpConnectionIdentityRegressionTest)
+      || hasChanged(changedFiles, accessLogObserverLifecycleRegressionTest)
+    ) {
       return;
     }
     assert(
@@ -3261,6 +3267,7 @@ export async function main() {
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
+  enforceCacheManagerNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();

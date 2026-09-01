@@ -5,10 +5,10 @@ import {
   Controller,
   createDispatcher,
   createHandlerMapping,
-  Get,
-  UseGuards,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
+  UseGuards,
 } from '../index.js';
 
 function createRequest(headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
@@ -50,7 +50,7 @@ function createResponse(): FrameworkResponse {
 }
 
 describe('conditional request lifecycle', () => {
-  it('runs application and module middleware plus guards before conditional evaluation', async () => {
+  it('runs application and module middleware plus guards before classifying a conditional response', async () => {
     const events: string[] = [];
 
     class AuditGuard {
@@ -114,7 +114,7 @@ describe('conditional request lifecycle', () => {
     ]);
   });
 
-  it('continues from a successful If-Match to If-None-Match evaluation', async () => {
+  it('continues from a successful If-Match to If-None-Match before conditionally writing the handler result', async () => {
     let handlerCalls = 0;
 
     @Controller('/validators')

@@ -166,6 +166,39 @@ export function shouldSetResponseEtag(context: RequestContext): boolean {
 }
 ```
 
+### Content negotiation
+
+Configure `ContentNegotiationOptions` with response formatters, then use `@Produces(...)` to
+limit each route to the representations it can return. The dispatcher owns formatter selection,
+response commit, `Content-Type`, canonical 406 responses, and `Vary: Accept`; handlers only return
+their values.
+
+```ts
+import { Controller, Get, Produces } from '@fluojs/http';
+
+@Controller('/reports')
+export class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+```
+
+The configured default formatter is used when `Accept` is absent, blank, or `*/*`; if that
+formatter is not allowed by `@Produces(...)`, the first declared allowed formatter is used instead.
+For a supplied header, exact ranges, `type/*`, `*/*`, and structured suffix ranges such as
+`application/*+json` are matched case-insensitively. Higher `q` wins, then the more specific range,
+then the configured default (or formatter declaration order). A more-specific `q=0` range excludes
+that representation even when a broader wildcard is positive.
+
+Each `q` value must be between `0` and `1` with at most three fractional digits. Malformed media
+ranges or qualities are ignored; if no valid acceptable representation remains, or no formatter is
+allowed or matched, the dispatcher returns its canonical `406 Not Acceptable` response. Every
+successful formatter selection emits one canonical, deduplicated `Vary: Accept` while preserving
+any existing `Vary` fields.
+
 ## Common Patterns
 
 ### Guards and interceptors
@@ -187,6 +220,33 @@ class AdminController {
 ### Request observers
 
 `onRequestSuccess` runs only after the matched handler and all module-level and application-level middleware have settled, including work after `await next()`. If middleware throws after `next()` returns, observers receive `onRequestError` without a preceding success notification. `onRequestFinish` still runs after either outcome.
+
+### Access logging
+
+`createAccessLogObserver(...)` turns the request-observer lifecycle into application-owned structured records. It emits a start record, an error record for each dispatch error, and exactly one terminal finish record with a monotonic duration, optional request ID, method, path, matched route, status, and outcome (`success`, `handled_error`, `unhandled_error`, `not_found`, or `aborted`). Native route dispatch falls back to this complete lifecycle when observers are configured.
+
+The sink is deliberately consumer-owned: route `AccessLogEvent` values to the structured logger, telemetry pipeline, or retention policy that owns your operational data. No headers are emitted unless they are allowlisted. `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, and `x-api-key` remain redacted even when allowlisted; add organization-specific names with `redact`.
+
+```ts
+import { createAccessLogObserver } from '@fluojs/http';
+
+const accessLogObserver = createAccessLogObserver({
+  clientIdentity: {},
+  headers: {
+    allow: ['user-agent', 'set-cookie'],
+    redact: ['x-tenant-token'],
+  },
+  sink: {
+    emit(event) {
+      structuredLog.write(event);
+    },
+  },
+});
+```
+
+Omit `clientIdentity` when no client address is needed. `clientIdentity: {}` explicitly opts into the adapter's direct transport peer and ignores forwarding fields. Use `clientIdentity: { trustProxy: ['10.0.0.0/8'] }` only when a trusted proxy boundary should supply forwarded identity.
+
+Request IDs are optional. An observer alone does not create one, so observer-only records can omit `requestId`. When `createCorrelationMiddleware()` is installed, the dispatcher adopts an incoming `x-request-id` or legacy `x-correlation-id`, or generates an ID before the access-log start record.
 
 ### Async request context
 
@@ -459,6 +519,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Trusted connection API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
+- **Structured access logging**: `createAccessLogObserver`, `CreateAccessLogObserverOptions`, `AccessLogSink`, `AccessLogEvent`, `AccessLogStartEvent`, `AccessLogErrorEvent`, `AccessLogFinishEvent`, `AccessLogOutcome`, `AccessLogHeaderOptions`, `AccessLogRequestFields`
 - **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Byte-range responses**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
