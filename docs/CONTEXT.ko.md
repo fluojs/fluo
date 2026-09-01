@@ -264,6 +264,7 @@ input alias가 이 report contract를 바꾸지 않습니다.
 
 | Need | Read first | Follow with |
 | --- | --- | --- |
+| Passport refresh-token module 소유권과 alias visibility | `packages/passport/README.ko.md` | `apps/docs/content/docs/guides/auth.ko.mdx` 및 `packages/passport/src/refresh/refresh-token.ts` |
 | 저장소 정체성과 위반 불가 규칙 확인 | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | 아키텍처 모델, 요청 흐름, 런타임 경계 확인 | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar 결정과 재검토 gate 확인 | `docs/architecture/http-catch-all-route-grammar.ko.md` | 활성 explicit-route contract는 `packages/http/README.ko.md` 및 `packages/react/README.ko.md` |

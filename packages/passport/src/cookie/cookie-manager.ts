@@ -15,7 +15,13 @@ export interface CookieOptions {
 }
 
 /**
- * Describes the set cookie options contract.
+ * Describes the set cookie options contract accepted by {@link CookieManagerConfig}.
+ *
+ * @remarks
+ * `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` become the default `Max-Age`
+ * for the matching token cookie when the positional TTL argument of
+ * `CookieManager.setAccessTokenCookie(...)` / `setRefreshTokenCookie(...)` is omitted.
+ * An explicit positional TTL always wins over these defaults.
  */
 export interface SetCookieOptions extends CookieOptions {
   accessTokenTtlSeconds?: number;
@@ -26,7 +32,10 @@ export interface SetCookieOptions extends CookieOptions {
  * Describes the cookie manager config contract.
  */
 export interface CookieManagerConfig extends CookieAuthOptions {
-  cookieOptions?: CookieOptions;
+  /**
+   * Response-cookie defaults, including optional per-token TTL defaults.
+   */
+  cookieOptions?: SetCookieOptions;
 }
 
 type NormalizedCookieOptions = Omit<Required<CookieOptions>, 'domain' | 'maxAge'> &
@@ -108,6 +117,8 @@ function toHeaderValues(value: string | string[] | undefined): string[] {
 export class CookieManager {
   private readonly options: Required<CookieAuthOptions>;
   private readonly cookieOptions: NormalizedCookieOptions;
+  private readonly accessTokenTtlSeconds: number | undefined;
+  private readonly refreshTokenTtlSeconds: number | undefined;
 
   constructor(config?: CookieManagerConfig) {
     this.options = normalizeCookieAuthOptions(config);
@@ -119,6 +130,8 @@ export class CookieManager {
       domain: config?.cookieOptions?.domain ?? DEFAULT_COOKIE_OPTIONS.domain,
       maxAge: config?.cookieOptions?.maxAge ?? DEFAULT_COOKIE_OPTIONS.maxAge,
     };
+    this.accessTokenTtlSeconds = config?.cookieOptions?.accessTokenTtlSeconds;
+    this.refreshTokenTtlSeconds = config?.cookieOptions?.refreshTokenTtlSeconds;
   }
 
   setAccessTokenCookie(response: FrameworkResponse, token: string, ttlSeconds?: number): void {
@@ -127,7 +140,7 @@ export class CookieManager {
       token,
       {
         ...this.cookieOptions,
-        maxAge: ttlSeconds ?? this.cookieOptions.maxAge,
+        maxAge: ttlSeconds ?? this.accessTokenTtlSeconds ?? this.cookieOptions.maxAge,
       },
     );
 
@@ -140,7 +153,7 @@ export class CookieManager {
       token,
       {
         ...this.cookieOptions,
-        maxAge: ttlSeconds ?? this.cookieOptions.maxAge,
+        maxAge: ttlSeconds ?? this.refreshTokenTtlSeconds ?? this.cookieOptions.maxAge,
       },
     );
 

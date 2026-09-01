@@ -4,11 +4,16 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 
 import type { GuardContext, RequestContext } from '@fluojs/http';
 import type { DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import { COOKIE_AUTH_OPTIONS, CookieAuthStrategy, normalizeCookieAuthOptions } from './cookie-auth.js';
 import { CookieAuthModule } from './cookie-auth-module.js';
 import { CookieManager } from './cookie-manager.js';
-import { AuthenticationRequiredError } from '../errors.js';
+import {
+  AuthenticationExpiredError,
+  AuthenticationFailedError,
+  AuthenticationRequiredError,
+} from '../errors.js';
 
 function createMockVerifier(overrides: Partial<DefaultJwtVerifier> = {}): DefaultJwtVerifier {
   return {
@@ -128,6 +133,40 @@ describe('CookieAuthStrategy', () => {
       const context = createGuardContext({ access_token: 'expired-token' });
 
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
+    });
+
+    it('throws AuthenticationExpiredError for expired access token cookies', async () => {
+      const originalError = new JwtExpiredTokenError('Access token has expired.');
+      const verifier = createMockVerifier({
+        verifyAccessToken: vi.fn().mockRejectedValue(originalError),
+      });
+      const strategy = new CookieAuthStrategy(verifier);
+      const context = createGuardContext({ access_token: 'expired-token' });
+
+      try {
+        await strategy.authenticate(context);
+        expect.unreachable('Expected authenticate() to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthenticationExpiredError);
+        expect((error as Error).cause).toBe(originalError);
+      }
+    });
+
+    it('throws AuthenticationFailedError for invalid access token cookies', async () => {
+      const originalError = new JwtInvalidTokenError('Access token is invalid.');
+      const verifier = createMockVerifier({
+        verifyAccessToken: vi.fn().mockRejectedValue(originalError),
+      });
+      const strategy = new CookieAuthStrategy(verifier);
+      const context = createGuardContext({ access_token: 'invalid-token' });
+
+      try {
+        await strategy.authenticate(context);
+        expect.unreachable('Expected authenticate() to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthenticationFailedError);
+        expect((error as Error).cause).toBe(originalError);
+      }
     });
 
     it('throws AuthenticationRequiredError for malformed non-string access token cookies', async () => {
@@ -393,6 +432,48 @@ describe('CookieManager', () => {
     expect(cookies).toHaveLength(2);
     expect(cookies[0]).toContain('access_token=; Max-Age=0');
     expect(cookies[1]).toContain('refresh_token=; Max-Age=0');
+  });
+
+  it('applies configured access and refresh token TTL defaults from SetCookieOptions', () => {
+    const manager = new CookieManager({
+      cookieOptions: {
+        accessTokenTtlSeconds: 900,
+        refreshTokenTtlSeconds: 86_400,
+      },
+    });
+    const response = createMockResponse();
+
+    manager.setAuthCookies(response, 'access-jwt', undefined, 'refresh-jwt');
+
+    const cookies = response.headers['Set-Cookie'] as string[];
+    expect(cookies[0]).toContain('access_token=access-jwt; Max-Age=900');
+    expect(cookies[1]).toContain('refresh_token=refresh-jwt; Max-Age=86400');
+  });
+
+  it('lets positional TTL arguments override configured SetCookieOptions defaults', () => {
+    const manager = new CookieManager({
+      cookieOptions: {
+        accessTokenTtlSeconds: 900,
+      },
+    });
+    const response = createMockResponse();
+
+    manager.setAccessTokenCookie(response, 'access-jwt', 3_600);
+
+    expect(response.headers['Set-Cookie']).toContain('Max-Age=3600');
+  });
+
+  it('lets positional refresh token TTL override configured SetCookieOptions defaults', () => {
+    const manager = new CookieManager({
+      cookieOptions: {
+        refreshTokenTtlSeconds: 86_400,
+      },
+    });
+    const response = createMockResponse();
+
+    manager.setRefreshTokenCookie(response, 'refresh-jwt', 3_600);
+
+    expect(response.headers['Set-Cookie']).toContain('Max-Age=3600');
   });
 });
 
