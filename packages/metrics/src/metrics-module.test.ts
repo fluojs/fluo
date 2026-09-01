@@ -1367,6 +1367,184 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('drains active and appended scrapes before clearing final shared registry telemetry', async () => {
+    const sharedRegistry = new Registry();
+    const applicationCounter = new Counter({
+      help: 'Application metric that must outlive framework telemetry teardown.',
+      name: 'app_lifecycle_requests_total',
+      registers: [sharedRegistry],
+    });
+    applicationCounter.inc();
+    const firstRenderStarted = createDeferred<void>();
+    const renderReleased = createDeferred<void>();
+    const drainEntered = createDeferred<void>();
+    const registryMetrics = sharedRegistry.metrics;
+    const originalDrain = SerializedScrapeQueue.prototype.drain;
+    let firstRender = true;
+
+    const originalMetrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        firstRenderStarted.resolve();
+      }
+
+      await renderReleased.promise;
+      return registryMetrics.call(sharedRegistry);
+    };
+    sharedRegistry.metrics = originalMetrics;
+
+    const drain = vi.spyOn(SerializedScrapeQueue.prototype, 'drain');
+    drain.mockImplementation(async function drainQueue(
+      this: SerializedScrapeQueue,
+      finalizer: () => void,
+    ): Promise<void> {
+      drainEntered.resolve();
+      await originalDrain.call(this, finalizer);
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: {
+        components: [createPlatformComponent({ id: 'cache.draining', kind: 'cache' })],
+      },
+      rootModule: AppModule,
+    });
+    const wrapper = sharedRegistry.metrics;
+    const cleanupRenderers: Array<Registry['metrics']> = [];
+    const frameworkMetricNames = new Set([
+      'fluo_component_ready',
+      'fluo_component_health',
+      'fluo_metrics_registry_mode',
+    ]);
+    const originalRemoveSingleMetric = sharedRegistry.removeSingleMetric.bind(sharedRegistry);
+    const removeSingleMetric = vi.spyOn(sharedRegistry, 'removeSingleMetric').mockImplementation((metricName: string) => {
+      if (frameworkMetricNames.has(metricName)) {
+        cleanupRenderers.push(sharedRegistry.metrics);
+      }
+
+      originalRemoveSingleMetric(metricName);
+    });
+
+    try {
+      const activeScrape = sharedRegistry.metrics();
+      await firstRenderStarted.promise;
+      const queuedScrape = sharedRegistry.metrics();
+
+      const closing = app.close();
+      await drainEntered.promise;
+      const appendedScrape = sharedRegistry.metrics();
+
+      expect(sharedRegistry.metrics).toBe(wrapper);
+      expect(cleanupRenderers).toHaveLength(0);
+
+      renderReleased.resolve();
+      await Promise.all([activeScrape, queuedScrape, appendedScrape, closing]);
+
+      const metricsText = await sharedRegistry.metrics();
+
+      expect(cleanupRenderers).not.toHaveLength(0);
+      expect(cleanupRenderers.every((renderer) => renderer === wrapper)).toBe(true);
+      expect(sharedRegistry.metrics).toBe(originalMetrics);
+      expect(metricsText).toContain('app_lifecycle_requests_total 1');
+      expect(sharedRegistry.getSingleMetric('fluo_component_ready')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_component_health')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_metrics_registry_mode')).toBeUndefined();
+      expect(metricsText).not.toContain('fluo_component_ready{');
+      expect(metricsText).not.toContain('fluo_component_health{');
+      expect(metricsText).not.toContain('fluo_metrics_registry_mode{');
+    } finally {
+      removeSingleMetric.mockRestore();
+      drain.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('keeps shared telemetry for an active registration and reboots without stale series', async () => {
+    const sharedRegistry = new Registry();
+    const applicationCounter = new Counter({
+      help: 'Application metric that survives framework telemetry lifecycle changes.',
+      name: 'app_shared_registry_lifecycle_total',
+      registers: [sharedRegistry],
+    });
+    applicationCounter.inc();
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+    class RebootedAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(RebootedAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      platform: {
+        components: [createPlatformComponent({ id: 'cache.closed', kind: 'cache' })],
+      },
+      rootModule: FirstAppModule,
+    });
+
+    try {
+      const secondApp = await bootstrapApplication({
+        platform: {
+          components: [createPlatformComponent({ id: 'queue.active', kind: 'queue' })],
+        },
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        await sharedRegistry.metrics();
+        await firstApp.close();
+
+        const activeMetrics = await sharedRegistry.metrics();
+
+        expect(activeMetrics).toContain('app_shared_registry_lifecycle_total 1');
+        expect(activeMetrics).toContain('component_id="queue.active"');
+        expect(activeMetrics).not.toContain('component_id="cache.closed"');
+
+        await secondApp.close();
+
+        const clearedMetrics = await sharedRegistry.metrics();
+
+        expect(clearedMetrics).toContain('app_shared_registry_lifecycle_total 1');
+        expect(clearedMetrics).not.toContain('fluo_component_ready{');
+        expect(clearedMetrics).not.toContain('fluo_component_health{');
+        expect(clearedMetrics).not.toContain('fluo_metrics_registry_mode{');
+
+        const rebootedApp = await bootstrapApplication({
+          platform: {
+            components: [createPlatformComponent({ id: 'worker.rebooted', kind: 'worker' })],
+          },
+          rootModule: RebootedAppModule,
+        });
+
+        try {
+          const rebootedMetrics = await sharedRegistry.metrics();
+
+          expect(rebootedMetrics).toContain('app_shared_registry_lifecycle_total 1');
+          expect(rebootedMetrics).toContain('component_id="worker.rebooted"');
+          expect(rebootedMetrics).not.toContain('component_id="queue.active"');
+        } finally {
+          await rebootedApp.close();
+        }
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
+  });
+
   it('reuses built-in HTTP metrics when multiple module instances share one registry', async () => {
     const sharedRegistry = new Registry();
 
@@ -1668,20 +1846,23 @@ describe('MetricsModule', () => {
     const firstApp = await bootstrapApplication({
       rootModule: FirstAppModule,
     });
-    const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
-    readinessGauge.labelNames = ['component_id'];
 
-    await firstApp.close();
+    try {
+      const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
+      readinessGauge.labelNames = ['component_id'];
 
-    class SecondAppModule {}
+      class SecondAppModule {}
 
-    defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })],
-    });
+      defineModule(SecondAppModule, {
+        imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })],
+      });
 
-    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
-      'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
-    );
+      await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
+        'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
+      );
+    } finally {
+      await firstApp.close();
+    }
   });
 
   it('exports runtime component readiness and health metrics with shared labels', async () => {

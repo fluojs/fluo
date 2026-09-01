@@ -464,6 +464,14 @@ function assertGaugeLabelSchema(
   }
 }
 
+function removeFrameworkGauge(registry: Registry, gauge: Gauge<string>, metricName: string): void {
+  if (!FRAMEWORK_PLATFORM_GAUGES.has(gauge) || registry.getSingleMetric(metricName) !== gauge) {
+    return;
+  }
+
+  registry.removeSingleMetric(metricName);
+}
+
 class RuntimePlatformTelemetry implements OnModuleDestroy {
   private readonly readinessGauge: Gauge<string>;
   private readonly healthGauge: Gauge<string>;
@@ -518,6 +526,10 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
 
       const originalMetrics = this.telemetryState.originalMetrics;
       if (originalMetrics) {
+        this.clearPlatformTelemetry();
+        removeFrameworkGauge(this.registry, this.readinessGauge, 'fluo_component_ready');
+        removeFrameworkGauge(this.registry, this.healthGauge, 'fluo_component_health');
+        removeFrameworkGauge(this.registry, this.registryModeGauge, 'fluo_metrics_registry_mode');
         this.registry.metrics = originalMetrics;
         this.telemetryState.originalMetrics = undefined;
       }
