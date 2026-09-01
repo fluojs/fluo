@@ -26,6 +26,7 @@ function createRequestId(): string {
  * Resolves the request identity before dispatcher observers begin.
  *
  * @param request Adapter-normalized request carrying inbound correlation headers.
+ * @param generate Whether to generate an ID when neither supported inbound header is present.
  * @returns The adopted request or legacy correlation ID, or a newly generated ID.
  */
 export function resolveRequestId(request: FrameworkRequest, generate = true): string | undefined {
