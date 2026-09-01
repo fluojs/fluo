@@ -2,7 +2,7 @@ import type { Token } from '@fluojs/core';
 import type { Container, RequestScopeContainer } from '@fluojs/di';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
-import { isSseMessage, SseResponse, type SseSendOptions } from '../context/sse.js';
+import { isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { getRequestHeader } from '../header-helpers.js';
@@ -741,9 +741,11 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
+  if (result instanceof SseResponse) {
+    await waitForSseResponseCompletion(result);
+  } else if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
-  } else if (!(result instanceof SseResponse) && !requestContext.response.committed) {
+  } else if (!requestContext.response.committed) {
     await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation, requestContext);
   }
 

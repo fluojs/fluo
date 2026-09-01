@@ -4,7 +4,7 @@ import type { RequestScopeContainer } from '@fluojs/di';
 import { DefaultBinder } from '../../adapters/binding.js';
 import { getCompiledDtoBindingPlan } from '../../adapters/dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from '../../adapters/dto-validation-adapter.js';
-import { SseResponse } from '../../context/sse.js';
+import { SseResponse, waitForSseResponseCompletion } from '../../context/sse.js';
 import { RequestAbortedError } from '../../errors.js';
 import type {
   Binder,
@@ -84,7 +84,9 @@ export async function executeFastPath(
       throw new RequestAbortedError();
     }
 
-    if (!(result instanceof SseResponse) && !response.committed) {
+    if (result instanceof SseResponse) {
+      await waitForSseResponseCompletion(result);
+    } else if (!response.committed) {
       const writeResult = writeSuccessResponse(handler, request, response, result, contentNegotiation, requestContext);
 
       if (isThenable(writeResult)) {
