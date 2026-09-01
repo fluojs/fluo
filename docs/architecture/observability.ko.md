@@ -29,6 +29,8 @@
 - `AccessLogSink.emit(...)`는 비동기일 수 있다. 요청 라이프사이클은 각 emission을 await하며 observer failure는 dispatcher logger로 격리·보고되므로 실패한 observer가 뒤 observer나 terminal record를 막지 못한다.
 - 접근 로그 request ID는 adapter request snapshot만 보지 않고 `x-request-id`의 dispatcher 정규화를 포함한 `RequestContext.requestId`를 사용한다.
 - `clientIdentity`를 명시적으로 구성하기 전에는 client address가 없다. `clientIdentity: {}`는 direct transport peer를 기록하고 위조된 forwarding field를 무시한다. Forwarded identity는 명시적 정책에 matching `trustProxy` boundary가 있을 때만 사용된다.
+- `status`는 response가 commit되기 전에 admission abort된 경우에만 생략된다. Commit된 response는 adapter가 명시적으로 설정하지 않았으면 기본값 `200`을 사용해 final status를 기록한다.
+- `status`는 response가 commit되기 전에 admission abort된 경우에만 생략된다. Commit된 response는 adapter가 명시적으로 설정하지 않았으면 기본값 `200`을 사용해 final status를 기록한다.
 
 ## Health Checks (헬스 체크)
 

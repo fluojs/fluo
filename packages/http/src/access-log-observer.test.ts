@@ -7,6 +7,7 @@ import {
   Controller,
   createDispatcher,
   createHandlerMapping,
+  createCorrelationMiddleware,
   Get,
   type AccessLogEvent,
   type FrameworkRequest,
@@ -68,6 +69,47 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 }
 
 describe('createAccessLogObserver', () => {
+  it('uses correlation middleware IDs in coherent start error and finish events', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+    const observer = http.createAccessLogObserver({
+      sink: {
+        emit(record) {
+          records.push(record);
+        },
+      },
+    });
+
+    @Controller('/access-log-correlation')
+    class CorrelationController {
+      @Get('/')
+      fail() {
+        throw new Error('expected correlation failure');
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      appMiddleware: [createCorrelationMiddleware()],
+      handlerMapping: createHandlerMapping([{ controllerToken: CorrelationController }]),
+      observers: [observer],
+      rootContainer: new Container().register(CorrelationController),
+    });
+    const response = createResponse();
+
+    // When
+    await dispatcher.dispatch(createRequest('/access-log-correlation', {
+      headers: { 'X-Correlation-Id': 'legacy-correlation-42' },
+    }), response);
+
+    // Then
+    expect(response.headers['x-request-id']).toBe('legacy-correlation-42');
+    expect(records.map((record) => record.requestId)).toEqual([
+      'legacy-correlation-42',
+      'legacy-correlation-42',
+      'legacy-correlation-42',
+    ]);
+  });
+
   it('emits redacted start and terminal records with monotonic duration and a trusted client', async () => {
     // Given
     const records: AccessLogEvent[] = [];
@@ -160,6 +202,11 @@ describe('createAccessLogObserver', () => {
         status: 200,
       },
     ]);
+    expect(Object.isFrozen(records[0])).toBe(true);
+    expect(Object.isFrozen(records[1])).toBe(true);
+    expect(Object.isFrozen(records[1]?.requestHeaders)).toBe(true);
+    const finish = records.find((record) => record.event === 'http.access.finish');
+    expect(Object.isFrozen(finish?.responseHeaders)).toBe(true);
   });
 
   it('emits one terminal outcome for handled, unhandled, not-found, and aborted requests', async () => {

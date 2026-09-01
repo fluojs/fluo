@@ -29,6 +29,8 @@
 - `AccessLogSink.emit(...)` may be asynchronous; the request lifecycle awaits each emission while observer failures are isolated and reported through the dispatcher logger so a failing observer cannot suppress later observers or terminal records.
 - Access-log request IDs use `RequestContext.requestId`, including dispatcher normalization of `x-request-id`, rather than relying only on an adapter request snapshot.
 - Client addresses are absent unless `clientIdentity` is explicitly configured. `clientIdentity: {}` records the direct transport peer and ignores forged forwarding fields. Forwarded identity is used only when that explicit policy includes a matching `trustProxy` boundary.
+- `status` is omitted only when admission aborts before a response is committed; committed responses record their final status, defaulting to `200` when the adapter did not explicitly set one.
+- `status` is omitted only when admission aborts before a response is committed; committed responses record their final status, defaulting to `200` when the adapter did not explicitly set one.
 
 ## Health Checks
 

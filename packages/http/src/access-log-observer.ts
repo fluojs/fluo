@@ -147,6 +147,10 @@ function collectAllowedHeaders(
   return Object.keys(selected).length === 0 ? undefined : Object.freeze(selected);
 }
 
+function freezeAccessLogEvent<T extends AccessLogEvent>(event: T): T {
+  return Object.freeze(event);
+}
+
 function requestFields(state: AccessLogState): AccessLogRequestFields {
   return {
     ...(state.clientAddress === undefined ? {} : { clientAddress: state.clientAddress }),
@@ -224,11 +228,11 @@ export function createAccessLogObserver(options: CreateAccessLogObserverOptions)
       }
 
       state.hasError = true;
-      await options.sink.emit({
+      await options.sink.emit(freezeAccessLogEvent({
         ...requestFields(state),
         errorName: readErrorName(error),
         event: 'http.access.error',
-      });
+      }));
     },
     async onRequestFinish(context) {
       const state = states.get(context.requestContext);
@@ -241,7 +245,7 @@ export function createAccessLogObserver(options: CreateAccessLogObserverOptions)
       const responseHeaders = collectAllowedHeaders(context.requestContext.response.headers, headerPolicy);
       const status = resolveFinalStatus(context.requestContext.response);
 
-      await options.sink.emit({
+      await options.sink.emit(freezeAccessLogEvent({
         ...requestFields(state),
         durationMs: Math.max(0, clock() - state.startedAt),
         event: 'http.access.finish',
@@ -250,7 +254,7 @@ export function createAccessLogObserver(options: CreateAccessLogObserverOptions)
         ...(status === undefined
           ? {}
           : { status }),
-      });
+      }));
     },
     async onRequestStart(context) {
       const requestHeaders = collectAllowedHeaders(context.requestContext.request.headers, headerPolicy);
@@ -269,10 +273,10 @@ export function createAccessLogObserver(options: CreateAccessLogObserverOptions)
       };
 
       states.set(context.requestContext, state);
-      await options.sink.emit({
+      await options.sink.emit(freezeAccessLogEvent({
         ...requestFields(state),
         event: 'http.access.start',
-      });
+      }));
     },
   };
 }

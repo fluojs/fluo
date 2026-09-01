@@ -6,6 +6,10 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.
 
+## Observability and HTTP Discoverability
+
+For structured HTTP access logging, start at `@fluojs/http` with `createAccessLogObserver(...)`: records are immutable application-owned values, use the dispatcher-established request/correlation ID, and use an application-owned `AccessLogSink`. `clientIdentity` opts into the direct transport peer only; forwarded identity is available only through an explicit `trustProxy` policy. Bun registers eligible native routes but routes their handoff through the observer-compatible dispatcher fallback.
+
 ## Migration Reference
 
 For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `fluoFactory.create(AppModule, { middleware })`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.

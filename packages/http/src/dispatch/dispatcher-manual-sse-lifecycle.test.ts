@@ -19,6 +19,7 @@ import {
 
 interface ManualSseStream extends FrameworkResponseStream {
   closeCalls: number;
+  disconnect(): void;
   removeCloseListenerCalls: number;
 }
 
@@ -143,6 +144,9 @@ function createStream(closeError?: Error): ManualSseStream {
       }
     },
     closeCalls: 0,
+    disconnect() {
+      closed = true;
+    },
     get closed() {
       return closed;
     },
@@ -293,6 +297,23 @@ describe('manual SSE lifecycle', () => {
     await fixture.sse;
     await fixture.dispatcherWaiting;
     close(fixture);
+    await fixture.dispatch;
+
+    // Then
+    expect(fixture.accessRecords.filter((record) => record.event === 'http.access.finish')).toEqual([
+      expect.objectContaining({ outcome: 'aborted', status: 200 }),
+    ]);
+  });
+
+  it('emits one aborted access-log terminal record when raw disconnect precedes writeFrame', async () => {
+    // Given
+    const fixture = createFixture();
+    const sse = await fixture.sse;
+    await fixture.dispatcherWaiting;
+    fixture.stream.disconnect();
+
+    // When
+    expect(sse.send('after raw disconnect')).toBe(false);
     await fixture.dispatch;
 
     // Then

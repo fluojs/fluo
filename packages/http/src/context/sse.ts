@@ -163,6 +163,7 @@ export class SseResponse {
     this.removeCloseListener = removeCloseListener;
 
     if (this.stream.closed) {
+      markRequestContextAborted(this.context);
       this.close();
     }
   }
@@ -220,6 +221,7 @@ export class SseResponse {
     }
 
     if (this.stream.closed) {
+      markRequestContextAborted(this.context);
       this.close();
       return false;
     }

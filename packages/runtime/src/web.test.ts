@@ -5,6 +5,7 @@ import {
   assertRequestContext,
   Controller,
   createAccessLogObserver,
+  createCorrelationMiddleware,
   createDispatcher,
   createHandlerMapping,
   Get,
@@ -52,6 +53,7 @@ describe('dispatchWebRequest', () => {
     }
 
     const dispatcher = createDispatcher({
+      appMiddleware: [createCorrelationMiddleware()],
       handlerMapping: createHandlerMapping([{ controllerToken: WebAccessLogController }]),
       observers: [createAccessLogObserver({
         sink: {
@@ -66,7 +68,9 @@ describe('dispatchWebRequest', () => {
     // When
     const response = await dispatchWebRequest({
       dispatcher,
-      request: new Request('https://runtime.test/web-access-log'),
+      request: new Request('https://runtime.test/web-access-log', {
+        headers: { 'x-correlation-id': 'web-correlation-42' },
+      }),
     });
 
     // Then
@@ -74,6 +78,7 @@ describe('dispatchWebRequest', () => {
     expect(records).toContainEqual(expect.objectContaining({
       event: 'http.access.finish',
       outcome: 'success',
+      requestId: 'web-correlation-42',
       status: 200,
     }));
   });

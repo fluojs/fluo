@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createAccessLogObserver, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createAccessLogObserver, createCorrelationMiddleware, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
@@ -416,6 +416,7 @@ describe('@fluojs/platform-bun', () => {
 
     const app = await runBunApplication(AppModule, {
       hostname: '127.0.0.1',
+      middleware: [createCorrelationMiddleware()],
       port: 0,
       shutdownSignals: false,
     });
@@ -784,9 +785,15 @@ describe('@fluojs/platform-bun', () => {
 
     // When
     try {
-      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4315/native-access-log/42', {
-        headers: { 'x-request-id': 'req-bun-access-log' },
-      }));
+      const nativeRoutes = mockBun.lastOptions?.routes;
+      const nativeRoute = nativeRoutes?.['/native-access-log/:id'] as {
+        GET?: (request: Request & { params: { id: string } }, server: never) => Response | Promise<Response | undefined> | undefined;
+      } | undefined;
+      expect(nativeRoute).toMatchObject({ GET: expect.any(Function) });
+      const nativeRequest = Object.assign(new Request('http://127.0.0.1:4315/native-access-log/42', {
+        headers: { 'x-correlation-id': 'bun-correlation-42' },
+      }), { params: { id: '42' } });
+      const response = await nativeRoute?.GET?.(nativeRequest, mockBun.lastServer as never);
 
       // Then
       expect(response?.status).toBe(200);
@@ -794,7 +801,7 @@ describe('@fluojs/platform-bun', () => {
       expect(records).toContainEqual(expect.objectContaining({
         event: 'http.access.finish',
         outcome: 'success',
-        requestId: 'req-bun-access-log',
+        requestId: 'bun-correlation-42',
       }));
     } finally {
       await app.close();
