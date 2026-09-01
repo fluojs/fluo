@@ -841,7 +841,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking, fail-open manual transaction drain, plus runtime-boundary docs,
   // raw Node.js adapter type/runtime-floor and retry/body-limit/shutdown
-  // regression coverage, Cloudflare Workers adapter public seam and lifecycle
+  // regression coverage, streaming multipart parser scope, Cloudflare Workers adapter public seam and lifecycle
   // shutdown docs, metrics shared-registry HTTP collector or platform telemetry
   // stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
