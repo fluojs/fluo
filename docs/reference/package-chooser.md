@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | Need the base application stack | `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime` | Start here for any Node.js web API. |
 | Need HTTP routing | `@fluojs/http` | Required for controller and route execution. |
+| Need portable static assets | `@fluojs/http` + `@fluojs/runtime/node` | `@fluojs/http` owns `createStaticAssetsMiddleware(...)`; only the Node subpath owns `createNodeFileSystemAssetSource(...)`. Web, Bun, Deno, and Workers applications provide their own `StaticAssetSource`. |
 | Need GraphQL endpoints | `@fluojs/graphql` | Add on top of the HTTP stack. |
 | Need the default Node.js adapter | `@fluojs/platform-fastify` | Recommended starter path for projects on Node.js `>=20.19.3 <21 || >=22.2.0 <27`; the package declares that exact `engines.node` range so listener-level RFC `QUERY` reaches fluo dispatch. |
 | Need Fastify-owned HTTPS/TLS startup | `@fluojs/platform-fastify` | Pass Node.js `https` server options on the adapter/bootstrap startup surface when the process owns TLS directly. If TLS terminates at a load balancer, ingress, or gateway, keep the adapter on plain HTTP behind that boundary. |

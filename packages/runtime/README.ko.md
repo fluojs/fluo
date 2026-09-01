@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [퀵 스타트](#퀵-스타트)
 - [주요 패턴](#주요-패턴)
+- [Node 정적 에셋 source](#node-정적-에셋-source)
 - [동작 계약](#동작-계약)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -22,6 +23,10 @@ npm install @fluojs/runtime
 ```
 
 배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가 아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면 peer, host, port가 없고 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
+
+## Node 정적 에셋 source
+
+`@fluojs/http`는 portable static middleware와 representation-selection contract를 소유합니다. `@fluojs/runtime/node`는 Node filesystem `StaticAssetSource` 구현인 `createNodeFileSystemAssetSource(...)`를 export합니다. 이 helper는 configuration 단계에서 root directory를 검증하고 symlink 검사를 포함한 lexical 및 realpath 해석을 root 내부로 제한하며 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. 선택된 각 regular-file representation은 검증된 파일을 열어 전체 파일을 immutable byte snapshot으로 즉시 복사하고 response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열거나 lazy stream하지 않습니다. 따라서 애플리케이션 owner는 선택된 전체 파일 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 byte를 설명합니다. Raw Node, Express, Fastify adapter는 이 portable middleware/source seam을 공유하고 adapter-specific re-encoding 대신 선택된 representation boundary를 보존합니다. 이 Node 전용 helper는 의도적으로 `@fluojs/runtime/web`에 없으며 Web 및 edge deployment는 애플리케이션이 소유한 source를 제공해야 합니다.
 
 ## 사용 시점
 
@@ -392,15 +397,18 @@ class UsersModule {}
 
 ### Node 전용 서브경로 (`@fluojs/runtime/node`)
 
-로거 팩토리와 지원되는 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
+로거 팩토리, eager immutable Node/Express/Fastify 정적 에셋 snapshot용 `createNodeFileSystemAssetSource({ root, precompressed })`, 지원되는 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
 
 ```typescript
 import {
   bootstrapNodeApplication,
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
+  createNodeFileSystemAssetSource,
   createNodeHttpAdapter,
   runNodeApplication,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
 } from '@fluojs/runtime/node';
 ```
 
@@ -415,6 +423,7 @@ const adapter = createNodeHttpAdapter({
 
 - `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거입니다. 기본값은 pretty 형식입니다. 더 간결한 `[fluo] LEVEL [context] message` 줄을 원하면 `{ mode: 'minimal' }`, 런타임 로거 출력을 숨기려면 `{ mode: 'silent' }`, 낮은 심각도 메시지를 걸러내려면 `{ level: 'warn' }` 같은 threshold, 결정적인 비컬러 출력을 원하면 `{ color: false }`를 전달하세요.
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
+- `createNodeFileSystemAssetSource(options)`: `@fluojs/http`의 `StaticAssetSource` contract를 구현하는 Node 전용 filesystem source입니다. `NodeFileSystemAssetSourceOptions`는 `{ root, precompressed }` 경계를 이름 붙이고 `NodeFileSystemAssetPrecompression`은 `.br` / `.gz` sibling 선택을 제어합니다. 허용된 각 representation은 안전하게 열어 immutable in-memory byte snapshot으로 즉시 복사하고 middleware response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열지 않습니다. 따라서 애플리케이션 owner는 선택된 asset 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 snapshot byte를 설명합니다.
 - `createNodeHttpAdapter()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`는 0 이상의 정수만 받습니다.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: 직접 Node runtime flow에서 사용하는 Node 전용 부트스트랩 헬퍼.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.

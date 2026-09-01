@@ -48,6 +48,15 @@ const httpByteRangeRegressionEvidence = [
   'packages/testing/src/portability/http-adapter-portability.ts',
   'packages/testing/src/portability/http-adapter-portability.test.ts',
 ];
+const staticAssetRuntimeSourcePaths = new Set([
+  'packages/http/src/static-assets.ts',
+  'packages/runtime/src/node/node-static-assets.ts',
+]);
+const staticAssetRegressionEvidence = [
+  'packages/http/src/static-assets.test.ts',
+  'packages/runtime/src/node/node-static-assets.test.ts',
+  'packages/testing/src/static-assets-portability.test.ts',
+];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
@@ -870,6 +879,13 @@ export function enforceContractCompanionUpdates(changedFiles) {
       hasChanged(changedFiles, httpRuntimeChangedPathRegression),
       `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
     );
+    if (includesAny(changedFiles, (path) => staticAssetRuntimeSourcePaths.has(path))) {
+      assert(
+        staticAssetRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `HTTP static asset contract changes must include ${staticAssetRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
     if (includesAny(changedFiles, (path) => httpByteRangeRuntimeSourcePaths.has(path))) {
       assert(
         httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),

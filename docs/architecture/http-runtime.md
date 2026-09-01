@@ -4,6 +4,12 @@
 
 This document defines the current request execution contract implemented by `@fluojs/http` and assembled by `@fluojs/runtime`.
 
+## Static Asset Contract
+
+Static asset delivery is application middleware, not a catch-all route or `FrameworkResponse.sendFile()` capability. `createStaticAssetsMiddleware(...)` requires a runtime-neutral `StaticAssetSource`; the portable graph never imports or emulates a filesystem. The middleware decodes each URL segment exactly once and rejects traversal, encoded separators, backslashes, NUL, and disallowed dotfiles before source resolution. Directory indexes are opt-in and apply only to trailing-slash paths.
+
+The selected representation supplies its MIME type, exact byte length, and validators. Node filesystem resolution eagerly snapshots the safely opened representation into immutable bytes, closes its `FileHandle`, and derives its strong ETag from those exact bytes before middleware evaluates conditional fields. The shared byte-range contract then owns `Range`, `If-Range`, `HEAD`, cancellation, compression disablement, and committed stream-failure handling. Precompressed selections identify their selected representation with `Content-Encoding` and `Vary: Accept-Encoding`; ranges operate on that selected representation. Node filesystem support lives only at `@fluojs/runtime/node` and rejects roots or realpath escapes during configuration/resolution; Web and edge hosts must provide an explicit source.
+
 ## Byte Range Contract
 
 After conditional-request evaluation permits handler execution, the response policy applies one `Range: bytes=` member only to `GET` representations and the documented `HEAD` metadata mirror. Valid bounded, suffix, and open-ended members produce `206`; malformed and multi-range fields retain the full response; unsatisfiable members produce bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */size`, and `Content-Length: 0`. `POST`, unsafe, and custom methods ignore `Range` and retain their ordinary full status, body, and metadata. `If-Range` reuses the selected representation validators and never re-runs conditional resolution. `HEAD` uses the same range status and headers as GET without consuming a portable stream. Partial Node responses are identity encoded so `Content-Range` and `Content-Length` describe the transmitted representation bytes.

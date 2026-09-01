@@ -104,7 +104,13 @@ export interface FrameworkResponse {
    */
   setHeader(name: string, value: string | string[]): void;
   redirect(status: number, location: string): void;
-  send(body: unknown): MaybePromise<void>;
+  send(body: unknown, options?: FrameworkResponseSendOptions): MaybePromise<void>;
+}
+
+/** Per-response write controls owned by response policies. */
+export interface FrameworkResponseSendOptions {
+  /** Whether adapter-owned dynamic compression may transform this body. */
+  readonly compression?: boolean;
 }
 
 /**
@@ -149,9 +155,21 @@ export interface FrameworkResponseCompressionWriteOptions {
 export interface FrameworkResponseStream {
   readonly closed: boolean;
   close(): void;
+  /** Disables adapter-owned dynamic compression before the first streamed byte. */
+  disableCompression?(): void;
   flush?(): void;
+  /** Subscribes to transport closure and returns an optional remover. */
   onClose?(listener: () => void): (() => void) | void;
+  /**
+   * Subscribes to one transport failure, including an `undefined` failure value.
+   *
+   * The optional remover stops future delivery and should be called when the
+   * streaming operation settles. A reported failure is an occurrence, not a
+   * truthiness check: consumers must propagate even an `undefined` value.
+   */
+  onError?(listener: (error: unknown) => void): (() => void) | void;
   waitForDrain?(): Promise<void>;
+  /** Writes one chunk; `false` requires callers to await `waitForDrain()`. */
   write(chunk: string | Uint8Array): boolean;
 }
 

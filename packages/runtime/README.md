@@ -10,6 +10,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Node Static Asset Source](#node-static-asset-source)
 - [Behavioral Contracts](#behavioral-contracts)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -22,6 +23,10 @@ npm install @fluojs/runtime
 ```
 
 The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
+
+## Node Static Asset Source
+
+`@fluojs/http` owns portable static middleware and representation-selection contracts. `@fluojs/runtime/node` exports `createNodeFileSystemAssetSource(...)`, its Node filesystem `StaticAssetSource` implementation: it validates the root directory during configuration, keeps lexical and realpath resolution inside that root (including symlink checks), and can select `.br` or `.gz` siblings. For each selected regular-file representation, it opens the verified file, eagerly copies the entire file into an immutable byte snapshot, and closes its `FileHandle` before response writing. Its returned `source()` replays only that snapshot and never reopens or lazily streams the pathname; application owners therefore bound memory by the selected whole-file size, and `size` plus the strong `ETag` describe those exact bytes. Raw Node, Express, and Fastify adapters share this portable middleware/source seam and preserve the selected representation boundary rather than applying adapter-specific re-encoding. This Node-only helper is intentionally absent from `@fluojs/runtime/web`; Web and edge deployments must provide an application-owned source.
 
 ## When to Use
 
@@ -393,15 +398,18 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 
 ### Node-Specific Subpath (`@fluojs/runtime/node`)
 
-Logger factories and other supported Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
+Logger factories, `createNodeFileSystemAssetSource({ root, precompressed })` for eager immutable Node/Express/Fastify static asset snapshots, and other supported Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
 
 ```typescript
 import {
   bootstrapNodeApplication,
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
+  createNodeFileSystemAssetSource,
   createNodeHttpAdapter,
   runNodeApplication,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
 } from '@fluojs/runtime/node';
 ```
 
@@ -416,6 +424,7 @@ For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`
 
 - `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
+- `createNodeFileSystemAssetSource(options)`: Node-only filesystem implementation of the `@fluojs/http` `StaticAssetSource` contract. `NodeFileSystemAssetSourceOptions` names its `{ root, precompressed }` boundary and `NodeFileSystemAssetPrecompression` selects `.br` / `.gz` siblings. Each accepted representation is securely opened, eagerly copied into an immutable in-memory byte snapshot, and its `FileHandle` is closed before middleware response writing. The returned `source()` only replays that snapshot; it never reopens the pathname. Application owners therefore bound memory by the selected asset size, while `size` and the strong `ETag` describe those exact snapshot bytes.
 - `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.

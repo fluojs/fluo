@@ -4,6 +4,7 @@ import type {
   ConditionalRequestOptions,
   EntityTag,
   FrameworkResponse,
+  FrameworkResponseSendOptions,
   ResponseValidators,
 } from '../types.js';
 
@@ -347,9 +348,23 @@ export async function resolveConditionalRequest(
   context: ConditionalRequestContext,
 ): Promise<ConditionalRequestResult> {
   const resolution = await options.resolve(context);
+  return resolveConditionalRequestRepresentation(context.request, resolution);
+}
+
+/**
+ * Evaluates conditional request fields against an already selected representation.
+ *
+ * @param request Adapter-normalized request carrying conditional request fields.
+ * @param resolution Current representation existence and validators.
+ * @returns The selected conditional outcome and validators.
+ */
+export function resolveConditionalRequestRepresentation(
+  request: ConditionalRequestContext['request'],
+  resolution: Awaited<ReturnType<ConditionalRequestOptions['resolve']>>,
+): ConditionalRequestResult {
   const validators = resolution.exists ? resolution.validators : undefined;
   const ifMatch = parseEntityTagList(
-    readFirstNonEmptyRequestHeaderValue(context.request, 'if-match') ?? '',
+    readFirstNonEmptyRequestHeaderValue(request, 'if-match') ?? '',
   );
 
   if (ifMatch.kind !== 'invalid') {
@@ -359,7 +374,7 @@ export async function resolveConditionalRequest(
   } else {
     const lastModified = normalizeLastModified(validators?.lastModified);
     const ifUnmodifiedSince = parseHttpDate(
-      readFirstNonEmptyRequestHeaderValue(context.request, 'if-unmodified-since'),
+      readFirstNonEmptyRequestHeaderValue(request, 'if-unmodified-since'),
     );
 
     if (ifUnmodifiedSince !== undefined && lastModified !== undefined && lastModified > ifUnmodifiedSince) {
@@ -368,24 +383,24 @@ export async function resolveConditionalRequest(
   }
 
   const ifNoneMatch = parseEntityTagList(
-    readFirstNonEmptyRequestHeaderValue(context.request, 'if-none-match') ?? '',
+    readFirstNonEmptyRequestHeaderValue(request, 'if-none-match') ?? '',
   );
 
   if (ifNoneMatch.kind !== 'invalid') {
     if (matchesEntityTag(ifNoneMatch, validators?.etag, 'weak', resolution.exists)) {
       return {
-        outcome: isSafeMethod(context.request.method) ? 'not-modified' : 'precondition-failed',
+        outcome: isSafeMethod(request.method) ? 'not-modified' : 'precondition-failed',
         validators,
       };
     }
   } else {
     const lastModified = normalizeLastModified(validators?.lastModified);
     const ifModifiedSince = parseHttpDate(
-      readFirstNonEmptyRequestHeaderValue(context.request, 'if-modified-since'),
+      readFirstNonEmptyRequestHeaderValue(request, 'if-modified-since'),
     );
 
     if (
-      isSafeMethod(context.request.method)
+      isSafeMethod(request.method)
       && ifModifiedSince !== undefined
       && lastModified !== undefined
       && lastModified <= ifModifiedSince
@@ -417,4 +432,23 @@ export function applyResponseValidators(
   if (lastModified !== undefined) {
     response.setHeader('Last-Modified', new Date(lastModified).toUTCString());
   }
+}
+/**
+ * Writes a bodyless conditional response through every supported adapter facade.
+ *
+ * @param response Mutable adapter-normalized response.
+ * @param outcome Selected non-proceed conditional request outcome.
+ * @param validators Current representation validators.
+ * @param options Optional adapter response-write controls.
+ * @returns A promise that settles after the adapter accepts the bodyless response.
+ */
+export async function writeConditionalResponse(
+  response: FrameworkResponse,
+  outcome: Exclude<ConditionalRequestOutcome, 'proceed'>,
+  validators: ResponseValidators | undefined,
+  options?: FrameworkResponseSendOptions,
+): Promise<void> {
+  applyResponseValidators(response, validators);
+  response.setStatus(outcome === 'not-modified' ? 304 : 412);
+  await response.send(undefined, options);
 }

@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [정적 에셋 제공](#정적-에셋-제공)
 - [응답 쿠키](#응답-쿠키)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
@@ -25,6 +26,29 @@
 ```bash
 npm install @fluojs/http
 ```
+
+## 정적 에셋 제공
+
+`createStaticAssetsMiddleware(...)`는 애플리케이션이 소유한 명시적 `StaticAssetSource`를 통해 `GET` 및 `HEAD` 요청만 제공합니다. portable HTTP 패키지는 filesystem 접근을 가정하지 않으므로 Web 및 edge 애플리케이션은 암묵적 Node fallback 대신 자체 source를 제공해야 합니다.
+
+미들웨어는 각 URL segment를 한 번만 decode하고 source 해석 전에 traversal, encoded separator, backslash, NUL을 거부합니다. Dotfile은 명시적 policy를 사용합니다. `allow`는 해석하고, `ignore`는 이후 middleware/route에 요청을 넘기며, `deny`는 설정한 dotfile index를 포함해 `403`을 commit합니다. Directory index는 기본적으로 비활성화되며 trailing slash URL에서만 고려됩니다.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+
+const assets = createStaticAssetsMiddleware({
+  cacheControl: 'public, max-age=3600',
+  index: ['index.html'],
+  prefix: '/assets',
+  source: createNodeFileSystemAssetSource({
+    precompressed: true,
+    root: './public',
+  }),
+});
+```
+
+Runtime bootstrap의 `middleware`에 `assets`를 등록하세요. 선택된 representation은 MIME type, 정확한 byte와 length, `ETag`, `Last-Modified`, 선택적 `Content-Encoding`을 소유합니다. static write는 adapter의 dynamic compression을 우회하므로 full `GET`, `HEAD`, conditional field, `Range`, `If-Range`에서도 이 값이 일관됩니다. Source는 request가 허용한 `br`, `gzip`, identity byte만 선택하고, 허용되는 representation이 없으면 bodyless `406`을 명시적으로 반환하며, 선택이 달라질 수 있을 때 `Vary: Accept-Encoding`을 사용합니다. Byte range는 선택된 encoded representation을 대상으로 합니다.
 
 ## 사용 시점
 
@@ -511,6 +535,8 @@ export class UploadController {
 - **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Conditional request 타입**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **바이트 범위 응답**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
+- **정적 에셋**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. 이 패키지는 middleware와 source-selection contract를 소유하며 선택적인 Node filesystem source는 `@fluojs/runtime/node`가 소유합니다.
+- **응답 transport 제어**: `FrameworkResponseSendOptions`, `FrameworkResponseStream` (`onError`는 `undefined`를 포함한 모든 transport failure 발생을 보고하고, stream이 settle된 뒤 caller가 호출할 optional remover를 반환함)
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **신뢰된 연결 API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
 - **구조화된 접근 로깅**: `createAccessLogObserver`, `CreateAccessLogObserverOptions`, `AccessLogSink`, `AccessLogEvent`, `AccessLogStartEvent`, `AccessLogErrorEvent`, `AccessLogFinishEvent`, `AccessLogOutcome`, `AccessLogHeaderOptions`, `AccessLogRequestFields`

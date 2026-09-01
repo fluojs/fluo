@@ -37,6 +37,24 @@ export interface ByteRangeResponseOptions {
   readonly size?: number;
 }
 
+/** Internal byte-representation data shared by response writers. */
+export interface ByteRangeResponseEntry {
+  readonly contentType: string;
+  readonly size: number;
+  readonly source: ByteRangeResponseSource;
+}
+
+/** Inputs for writing a byte representation through a portable response facade. */
+export interface ByteRangeResponseWriteOptions {
+  readonly applySuccessResponseMetadata: () => void;
+  /** Whether adapter-owned dynamic compression may transform byte-backed responses. */
+  readonly compression?: boolean;
+  readonly entry: ByteRangeResponseEntry;
+  readonly request: FrameworkRequest;
+  readonly response: FrameworkResponse;
+  readonly validators: ResponseValidators | undefined;
+}
+
 /**
  * Creates a response entry with RFC single-byte-range semantics.
  *
@@ -58,10 +76,21 @@ export function createByteRangeResponse(
     throw new TypeError('A readable byte-range response requires a non-negative integer size.');
   }
 
-  return registerFrameworkResponseWriter(
-    { source, contentType: options.contentType ?? DEFAULT_CONTENT_TYPE, size },
-    writeByteRangeResponse,
-  );
+  const entry: ByteRangeResponseEntry = {
+    source,
+    contentType: options.contentType ?? DEFAULT_CONTENT_TYPE,
+    size,
+  };
+
+  return registerFrameworkResponseWriter(entry, async (context) => {
+    await writeByteRangeResponse({
+      applySuccessResponseMetadata: context.applySuccessResponseMetadata,
+      entry,
+      request: context.request,
+      response: context.response,
+      validators: context.validators,
+    });
+  });
 }
 
 /**
@@ -151,33 +180,34 @@ function parseByteRangeHeader(rangeHeader: string | undefined): RegExpExecArray 
     : undefined;
 }
 
-async function writeByteRangeResponse(
-  context: FrameworkResponseWriterContext,
+/**
+ * Writes one byte representation while preserving range and cancellation semantics.
+ *
+ * @param options Request, response, validators, and representation metadata.
+ * @returns A promise that settles after the representation completes or fails.
+ */
+export async function writeByteRangeResponse(
+  options: ByteRangeResponseWriteOptions,
 ): Promise<void> {
-  const entry = context.value as {
-    readonly contentType: string;
-    readonly size: number;
-    readonly source: ByteRangeResponseSource;
-  };
-  const response = context.response;
+  const { entry, request, response, validators } = options;
 
   if (response.committed) {
     return;
   }
 
-  const acceptsByteRange = isByteRangeRequestMethod(context.request.method);
+  const acceptsByteRange = isByteRangeRequestMethod(request.method);
   const range = resolveByteRange(
     acceptsByteRange
-      ? readFirstNonEmptyRequestHeaderValue(context.request, 'range')
+      ? readFirstNonEmptyRequestHeaderValue(request, 'range')
       : undefined,
     entry.size,
-    acceptsByteRange && matchesIfRange(context.request, context.validators),
+    acceptsByteRange && matchesIfRange(request, validators),
   );
-  const isHead = context.request.method.toUpperCase() === 'HEAD';
+  const isHead = request.method.toUpperCase() === 'HEAD';
   const bytes = toBytes(entry.source);
 
   if (range.kind === 'unsatisfiable') {
-    context.applySuccessResponseMetadata();
+    options.applySuccessResponseMetadata();
 
     if (acceptsByteRange) {
       response.setHeader('Accept-Ranges', 'bytes');
@@ -190,7 +220,7 @@ async function writeByteRangeResponse(
     response.setStatus(416);
     response.setHeader('Content-Length', '0');
     response.setHeader('Content-Range', `bytes */${entry.size}`);
-    await response.send(undefined);
+    await response.send(undefined, sendOptions(options.compression));
     return;
   }
 
@@ -219,7 +249,7 @@ async function writeByteRangeResponse(
     }
   }
 
-  context.applySuccessResponseMetadata();
+  options.applySuccessResponseMetadata();
 
   if (acceptsByteRange) {
     response.setHeader('Accept-Ranges', 'bytes');
@@ -238,12 +268,15 @@ async function writeByteRangeResponse(
   }
 
   if (isHead) {
-    await response.send(undefined);
+    await response.send(undefined, sendOptions(options.compression));
     return;
   }
 
   if (bytes) {
-    await response.send(range.kind === 'partial' ? bytes.slice(range.start, range.end + 1) : bytes);
+    await response.send(
+      range.kind === 'partial' ? bytes.slice(range.start, range.end + 1) : bytes,
+      sendOptions(options.compression),
+    );
     return;
   }
 
@@ -256,9 +289,13 @@ async function writeByteRangeResponse(
     reader,
     range.kind === 'partial' ? range.start : 0,
     range.kind === 'partial' ? range.end : entry.size - 1,
-    context.request,
+    request,
     stream,
   );
+}
+
+function sendOptions(compression: boolean | undefined): { readonly compression: false } | undefined {
+  return compression === false ? { compression: false } : undefined;
 }
 
 function hasHeader(response: FrameworkResponse, name: string): boolean {
@@ -296,7 +333,7 @@ function openByteRangeStream(source: ByteRangeResponseSource): ReadableStream<Ui
 }
 
 async function cancelAndReleaseReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
-  await reader.cancel().catch(() => undefined);
+  void reader.cancel().catch(() => undefined);
   reader.releaseLock();
 }
 
@@ -310,13 +347,20 @@ async function writeReadableStream(
   let skip = start;
   let remaining = end - start + 1;
   let stopped = false;
+  let hasTransportFailure = false;
+  let transportFailure: unknown;
   let resolveStop: () => void = () => {};
+  let resolveTransportFailure: () => void = () => {};
   let cancellation: Promise<void> | undefined;
   const stopPromise = new Promise<void>((resolve) => {
     resolveStop = resolve;
   });
+  const transportFailurePromise = new Promise<void>((resolve) => {
+    resolveTransportFailure = resolve;
+  });
   const cancel = (): Promise<void> => {
-    cancellation ??= reader.cancel().catch(() => undefined);
+    cancellation ??= reader.cancel();
+    void cancellation.catch(() => undefined);
     return cancellation;
   };
   const stop = (): void => {
@@ -327,7 +371,18 @@ async function writeReadableStream(
 
     void cancel();
   };
+  const fail = (error: unknown): void => {
+    if (!hasTransportFailure) {
+      hasTransportFailure = true;
+      transportFailure = error;
+      resolveTransportFailure();
+    }
+
+    stop();
+  };
   const removeCloseListener = stream.onClose?.(stop);
+  const removeErrorListener = stream.onError?.(fail);
+  stream.disableCompression?.();
   request.signal?.addEventListener('abort', stop, { once: true });
 
   if (isByteRangeRequestAborted(request)) {
@@ -341,9 +396,9 @@ async function writeReadableStream(
         break;
       }
 
-      const result = await raceWithStop(reader.read(), stopPromise);
+      const result = await raceWithStop(reader.read(), stopPromise, transportFailurePromise);
 
-      if (!result || stopped || isByteRangeRequestAborted(request)) {
+      if (!result || stopped || hasTransportFailure || isByteRangeRequestAborted(request)) {
         stop();
         break;
       }
@@ -369,7 +424,7 @@ async function writeReadableStream(
         const drain = stream.waitForDrain?.();
 
         if (drain) {
-          await raceWithStop(drain, stopPromise);
+          await raceWithStop(drain, stopPromise, transportFailurePromise);
         }
 
         if (isByteRangeRequestAborted(request)) {
@@ -380,12 +435,18 @@ async function writeReadableStream(
   } finally {
     request.signal?.removeEventListener('abort', stop);
     removeCloseListener?.();
-    await cancel();
+    removeErrorListener?.();
+
+    void cancel();
     reader.releaseLock();
 
-    if (!stream.closed) {
+    if (!stream.closed && !hasTransportFailure) {
       stream.close();
     }
+  }
+
+  if (hasTransportFailure) {
+    throw transportFailure;
   }
 }
 
@@ -396,9 +457,18 @@ function isByteRangeRequestAborted(request: FrameworkRequest): boolean {
 async function raceWithStop<T>(
   operation: Promise<T>,
   stop: Promise<void>,
+  transportFailure?: Promise<void>,
 ): Promise<T | undefined> {
-  return await Promise.race([
+  const terminalSignals: Promise<T | undefined>[] = [
     operation,
     stop.then(() => undefined),
+  ];
+
+  if (transportFailure) {
+    terminalSignals.push(transportFailure.then(() => undefined));
+  }
+
+  return await Promise.race([
+    ...terminalSignals,
   ]);
 }

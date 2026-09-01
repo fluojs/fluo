@@ -17,6 +17,7 @@ import {
   collectNodeGlobalBufferViolations,
   enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
+  enforceContractCompanionUpdates,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
@@ -41,6 +42,31 @@ type RunCommand = (command: string, args: string[], options?: { allowFailure?: b
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const nodeListenerEngineRange = '>=20.19.3 <21 || >=22.2.0 <27';
+const staticAssetContractCompanions = [
+  'docs/architecture/http-runtime.md',
+  'docs/architecture/http-runtime.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+  'packages/http/src/static-assets.ts',
+  'packages/http/src/static-assets.test.ts',
+  'packages/runtime/src/node/node-static-assets.ts',
+  'packages/runtime/src/node/node-static-assets.test.ts',
+];
+
+describe('static asset contract companions', () => {
+  it('requires focused portable, Node, and real-listener regressions', () => {
+    expect(() => enforceContractCompanionUpdates(staticAssetContractCompanions)).toThrow(
+      'HTTP static asset contract changes must include',
+    );
+    expect(() => enforceContractCompanionUpdates([
+      ...staticAssetContractCompanions,
+      'packages/testing/src/static-assets-portability.test.ts',
+    ])).not.toThrow();
+  });
+});
+
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
   'createCqrsModule',

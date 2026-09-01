@@ -1166,7 +1166,7 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
-  it('settles stream drain waits when the response stream errors before drain', async () => {
+  it('subscribes to a transport error before rejecting a stream drain wait', async () => {
     const drainSettled = createDeferred<void>();
 
     @Controller('/events')
@@ -1176,7 +1176,7 @@ describe('@fluojs/platform-express', () => {
         const stream = new SseResponse(context);
         const responseStream = context.response.stream;
 
-        if (!responseStream?.waitForDrain) {
+        if (!responseStream?.onError || !responseStream.waitForDrain) {
           throw new Error('Express response stream did not expose waitForDrain().');
         }
 
@@ -1186,13 +1186,29 @@ describe('@fluojs/platform-express', () => {
           throw new Error('Express response stream did not expose the raw response object.');
         }
 
-        const drainWait = responseStream.waitForDrain();
-
-        queueMicrotask(() => {
-          rawResponse.emit('error', new Error('synthetic stream failure'));
+        const failure = new Error('synthetic stream failure');
+        const observedError = createDeferred<unknown>();
+        const removeErrorListener = responseStream.onError((error) => {
+          observedError.resolve(error);
         });
+        const drainWait = responseStream.waitForDrain();
+        rawResponse.emit('error', failure);
 
-        await drainWait;
+        try {
+          await drainWait;
+          throw new Error('Express response stream drain unexpectedly resolved after transport error.');
+        } catch (error) {
+          if (error !== failure) {
+            throw error;
+          }
+        } finally {
+          removeErrorListener?.();
+        }
+
+        if (await observedError.promise !== failure) {
+          throw new Error('Express response stream lost the transport error.');
+        }
+
         drainSettled.resolve();
         stream.close();
 
@@ -2192,13 +2208,16 @@ describe('@fluojs/platform-express', () => {
       controllers: [MatchesController, CatchAllController],
     });
 
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
     const app = await fluoFactory.create(AppModule, { adapter });
 
     await app.listen();
 
     try {
+      const listenTarget = adapter.getListenTarget();
       const router = Reflect.get(adapter, 'router');
       const nativeRoutes = (Reflect.get(router, '__fluoNativeRoutes') as Array<{ methods: string[]; path: string }>)
         .flatMap((route) => route.methods.map((method) => `${method}:${route.path}`));
@@ -2208,40 +2227,34 @@ describe('@fluojs/platform-express', () => {
       expect(nativeRoutes).not.toContain('PATCH:/catch-all/:slug');
 
       const [shapeConflictResponse, fallbackResponse, optionsFallbackResponse] = await Promise.all([
-        requestHttp({
+        fetch(new URL('/matches/42', listenTarget.url), {
           method: 'GET',
-          path: '/matches/42',
-          port,
         }),
-        requestHttp({
+        fetch(new URL('/catch-all/fallback-check', listenTarget.url), {
           method: 'PATCH',
-          path: '/catch-all/fallback-check',
-          port,
         }),
-        requestHttp({
+        fetch(new URL('/catch-all/fallback-check', listenTarget.url), {
           method: 'OPTIONS',
-          path: '/catch-all/fallback-check',
-          port,
         }),
       ]);
 
-      expect(shapeConflictResponse.statusCode).toBe(200);
-      expect(JSON.parse(shapeConflictResponse.body)).toEqual({
+      expect(shapeConflictResponse.status).toBe(200);
+      expect(await shapeConflictResponse.json()).toEqual({
         paramName: 'id',
         route: 'first',
         value: '42',
       });
 
-      expect(fallbackResponse.statusCode).toBe(200);
-      expect(JSON.parse(fallbackResponse.body)).toEqual({
+      expect(fallbackResponse.status).toBe(200);
+      expect(await fallbackResponse.json()).toEqual({
         method: 'PATCH',
         route: 'all',
         slug: 'fallback-check',
       });
 
-      expect(optionsFallbackResponse.statusCode).toBe(200);
+      expect(optionsFallbackResponse.status).toBe(200);
       expect(optionsFallbackResponse.headers.get('allow')).toBeNull();
-      expect(JSON.parse(optionsFallbackResponse.body)).toEqual({
+      expect(await optionsFallbackResponse.json()).toEqual({
         method: 'OPTIONS',
         route: 'all',
         slug: 'fallback-check',

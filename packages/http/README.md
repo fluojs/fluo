@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Static Asset Delivery](#static-asset-delivery)
 - [Response Cookies](#response-cookies)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
@@ -25,6 +26,29 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 ```bash
 npm install @fluojs/http
 ```
+
+## Static Asset Delivery
+
+`createStaticAssetsMiddleware(...)` serves only `GET` and `HEAD` requests through an explicit application-owned `StaticAssetSource`. The portable HTTP package never assumes filesystem access, so Web and edge applications must provide their own source instead of receiving an implicit Node fallback.
+
+The middleware decodes each URL segment once and rejects traversal, encoded separators, backslashes, and NUL before it asks the source to resolve anything. Dotfiles use an explicit policy: `allow` resolves them, `ignore` leaves the request to later middleware/routes, and `deny` commits `403`, including a configured dotfile index. Directory indexes are disabled by default and are considered only for a trailing-slash URL.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+
+const assets = createStaticAssetsMiddleware({
+  cacheControl: 'public, max-age=3600',
+  index: ['index.html'],
+  prefix: '/assets',
+  source: createNodeFileSystemAssetSource({
+    precompressed: true,
+    root: './public',
+  }),
+});
+```
+
+Register `assets` in runtime bootstrap `middleware`. The selected representation owns MIME type, exact bytes and length, `ETag`, `Last-Modified`, and optional `Content-Encoding`; static writes bypass adapter dynamic compression so those values remain coherent for full `GET`, `HEAD`, conditional fields, `Range`, and `If-Range`. A source selects only request-acceptable `br`, `gzip`, or identity bytes, returns an explicit no-representation outcome for bodyless `406`, and uses `Vary: Accept-Encoding` whenever selection can vary. Byte ranges address the selected encoded representation.
 
 ## When to Use
 
@@ -522,6 +546,8 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Structured access logging**: `createAccessLogObserver`, `CreateAccessLogObserverOptions`, `AccessLogSink`, `AccessLogEvent`, `AccessLogStartEvent`, `AccessLogErrorEvent`, `AccessLogFinishEvent`, `AccessLogOutcome`, `AccessLogHeaderOptions`, `AccessLogRequestFields`
 - **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Byte-range responses**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
+- **Static assets**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. This package owns middleware and source-selection contracts; `@fluojs/runtime/node` owns the optional Node filesystem source.
+- **Response transport controls**: `FrameworkResponseSendOptions`, `FrameworkResponseStream` (`onError` reports every transport failure occurrence, including `undefined`, and returns an optional remover that callers invoke after their stream settles)
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`

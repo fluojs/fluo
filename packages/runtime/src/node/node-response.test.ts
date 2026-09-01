@@ -317,13 +317,13 @@ describe('createFrameworkResponse', () => {
     await expect(waitForDrain).resolves.toBeUndefined();
   });
 
-  it('settles waitForDrain when the response errors before drain', async () => {
+  it('rejects waitForDrain when the response errors before drain', async () => {
     const rawResponse = createMockServerResponse();
     const frameworkResponse = createFrameworkResponse(rawResponse);
 
     const waitForDrain = frameworkResponse.stream?.waitForDrain?.();
     rawResponse.emit('error', new Error('socket failed'));
 
-    await expect(waitForDrain).resolves.toBeUndefined();
+    await expect(waitForDrain).rejects.toThrow('socket failed');
   });
 });

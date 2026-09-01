@@ -864,10 +864,14 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     this.reply.redirect(location, status);
   }
 
-  send(body: unknown): ReturnType<FrameworkResponse['send']> {
+  send(body: unknown, options?: Parameters<FrameworkResponse['send']>[1]): ReturnType<FrameworkResponse['send']> {
     if (this.reply.sent) {
       this.committed = true;
       return;
+    }
+
+    if (options?.compression === false) {
+      disableNativeCompression(this.reply);
     }
 
     const existingContentType = this.reply.getHeader('content-type');
@@ -915,6 +919,15 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
   }
 }
 
+function disableNativeCompression(reply: FastifyReply): void {
+  const cacheControl = reply.getHeader('cache-control');
+  const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
+
+  if (!/\bno-transform\b/i.test(value)) {
+    reply.header('Cache-Control', value ? `${value}, no-transform` : 'no-transform');
+  }
+}
+
 function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse {
   return new MutableFastifyFrameworkResponse(reply);
 }
@@ -948,6 +961,9 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
     get closed() {
       return reply.raw.writableEnded;
     },
+    disableCompression() {
+      disableNativeCompression(reply);
+    },
     flush() {
       ensureHijacked();
       reply.raw.flushHeaders?.();
@@ -958,6 +974,12 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
         reply.raw.removeListener('close', listener);
       };
     },
+    onError(listener: (error: unknown) => void) {
+      reply.raw.on('error', listener);
+      return () => {
+        reply.raw.removeListener('error', listener);
+      };
+    },
     waitForDrain() {
       ensureHijacked();
 
@@ -965,17 +987,24 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
         return Promise.resolve();
       }
 
-      return new Promise<void>((resolve) => {
-        const settle = () => {
-          reply.raw.removeListener('drain', settle);
-          reply.raw.removeListener('close', settle);
-          reply.raw.removeListener('error', settle);
+      return new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          reply.raw.removeListener('drain', resolveDrain);
+          reply.raw.removeListener('close', resolveDrain);
+          reply.raw.removeListener('error', rejectError);
+        };
+        const rejectError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const resolveDrain = () => {
+          cleanup();
           resolve();
         };
 
-        reply.raw.once('drain', settle);
-        reply.raw.once('close', settle);
-        reply.raw.once('error', settle);
+        reply.raw.once('drain', resolveDrain);
+        reply.raw.once('close', resolveDrain);
+        reply.raw.once('error', rejectError);
       });
     },
     write(chunk: string | Uint8Array) {
