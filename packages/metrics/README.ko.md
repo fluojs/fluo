@@ -51,7 +51,7 @@ Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Pr
 | 표면 | 책임 | 경계 |
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, registry ownership을 wiring합니다. | `provider`는 현재 `'prometheus'`만 받습니다. `path: false`는 scrape route와 route-scoped endpoint middleware를 비활성화합니다. |
-| `MetricsService` | Active Registry 위에서 custom `Counter`, `Gauge`, `Histogram`을 만드는 application-facing facade이며, 고급 Registry 공유를 위한 `getRegistry()`도 제공합니다. | `MetricsService`는 global이 아닌 module-local service입니다. 해당 `MetricsModule.forRoot(...)` registration을 import한 module에서만 inject하세요. 비즈니스/application metric은 collector helper를 사용하세요. `getRegistry()`는 active `prom-client` Registry를 `MetricsModule.forRoot({ registry })`로 직접 받을 수 없는 integration에 넘겨야 할 때만 사용하세요. |
+| `MetricsService` | Active Registry 위에서 custom `Counter`, `Gauge`, `Histogram`을 만드는 application-facing facade이며, 고급 Registry 공유를 위한 `getRegistry()`도 제공합니다. | `MetricsService`는 non-global service입니다. `MetricsModule.forRoot(...)` registration을 직접 import한 module 또는 `MetricsService`를 re-export하는 module을 import한 module에서 inject하세요. 관련 없는 sibling module에는 자동으로 제공되지 않습니다. 비즈니스/application metric은 collector helper를 사용하세요. `getRegistry()`는 active `prom-client` Registry를 `MetricsModule.forRoot({ registry })`로 직접 받을 수 없는 integration에 넘겨야 할 때만 사용하세요. |
 | `Registry` | Shared-registry setup을 위한 `prom-client` `Registry` constructor re-export입니다. | 같은 Prometheus Registry 구현체이므로 중복 metric name은 Prometheus semantics에 따라 계속 실패합니다. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` / meter type | Provider token 또는 backend-neutral counter/gauge/histogram facade가 필요한 first-party package integration용 low-level meter bridge입니다. | Application code는 package-level integration을 직접 조합하는 경우가 아니면 보통 이 token이 필요하지 않습니다. 현재 bundled provider backend는 Prometheus뿐입니다. |
 | `middleware` | Framework HTTP metrics와 endpoint-scoped middleware 뒤의 module middleware chain에 참여하는 module-level middleware입니다. | Route-scoped가 아니므로 scrape route만 보호하려면 `endpointMiddleware`를 사용하세요. |
@@ -110,7 +110,7 @@ MetricsModule.forRoot({
 
 ### Custom metric은 한 번 생성하고 재사용하기
 
-`MetricsService.counter(...)`, `gauge(...)`, `histogram(...)`은 active Registry에 Prometheus collector를 생성합니다. `MetricsService`는 global injection 대상이 아니라 module-local service이므로, 이를 inject하는 provider 또는 controller는 해당 `MetricsModule.forRoot(...)` registration을 import한 module에 속해야 합니다. 각 custom metric은 provider construction 또는 application startup 중 한 번만 만들고, business action이 발생할 때는 반환된 collector를 재사용하세요.
+`MetricsService.counter(...)`, `gauge(...)`, `histogram(...)`은 active Registry에 Prometheus collector를 생성합니다. `MetricsService`는 non-global service이므로, 이를 inject하는 provider 또는 controller는 `MetricsModule.forRoot(...)` registration을 직접 import하거나 `MetricsService`를 re-export하는 module을 import한 module에 속해야 합니다. 관련 없는 sibling module에는 자동으로 제공되지 않습니다. 각 custom metric은 provider construction 또는 application startup 중 한 번만 만들고, business action이 발생할 때는 반환된 collector를 재사용하세요.
 
 ```ts
 import { Inject } from '@fluojs/core';

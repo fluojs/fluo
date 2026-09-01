@@ -11,9 +11,9 @@ import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogr
  * Small facade for creating custom Prometheus metrics on its `MetricsModule` registry.
  *
  * @remarks
- * `MetricsService` is module-local: it is injectable only from the module that imports
- * the corresponding `MetricsModule.forRoot(...)` registration. It is not globally
- * available to sibling modules.
+ * `MetricsService` is non-global: a module can inject it when it directly imports a
+ * `MetricsModule.forRoot(...)` registration or imports a module that re-exports
+ * `MetricsService`; unrelated sibling modules do not receive it automatically.
  */
 export class MetricsService {
   constructor(private readonly registry: Registry) {}
