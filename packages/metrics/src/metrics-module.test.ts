@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { getModuleMetadata, Inject } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
 import {
@@ -11,7 +13,7 @@ import {
 } from '@fluojs/http';
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
@@ -20,6 +22,8 @@ import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.j
 type TestResponse = FrameworkResponse & { body?: unknown };
 type TestPlatformHealthStatus = 'healthy' | 'unhealthy' | 'degraded';
 type TestPlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
+
+const perfHooks = createRequire(import.meta.url)('node:perf_hooks');
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
@@ -469,12 +473,17 @@ describe('MetricsModule', () => {
     }
   });
 
-  it('rolls back partial default collector registration so a cleaned registry can retry', async () => {
+  it('preserves application-owned collectors on a default collector collision so a cleaned registry can retry', async () => {
     const sharedRegistry = new Registry();
 
-    new Counter({
+    const conflictingCollector = new Counter({
       help: 'Application-owned collector that forces a prom-client collision.',
       name: 'process_cpu_seconds_total',
+      registers: [sharedRegistry],
+    });
+    const unrelatedCollector = new Gauge({
+      help: 'Application-owned collector unrelated to the default metric collision.',
+      name: 'app_unrelated_metric',
       registers: [sharedRegistry],
     });
 
@@ -484,12 +493,12 @@ describe('MetricsModule', () => {
       imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
     });
 
-    // Given: prom-client registers the CPU user and system collectors before its total collector collides.
     await expect(bootstrapApplication({ rootModule: FailedAppModule })).rejects.toThrow(
       'A metric with the name process_cpu_seconds_total has already been registered.',
     );
 
-    // Then: failed framework registration preserves only the application-owned conflict.
+    expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBe(conflictingCollector);
+    expect(sharedRegistry.getSingleMetric('app_unrelated_metric')).toBe(unrelatedCollector);
     expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeUndefined();
     expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeUndefined();
 
@@ -501,16 +510,75 @@ describe('MetricsModule', () => {
       imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
     });
 
-    // When: a clean bootstrap retries the same registry.
     const app = await bootstrapApplication({ rootModule: CleanAppModule });
 
     try {
-      // Then: all default CPU collectors register without stale framework ownership.
       expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeDefined();
       expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeDefined();
       expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBeDefined();
     } finally {
       await app.close();
+    }
+  });
+
+  it('preflights a late default collector collision before enabling its event-loop monitor', async () => {
+    const sharedRegistry = new Registry();
+    const eventLoopMonitor = { enable: vi.fn() };
+    const monitorEventLoopDelay = vi.spyOn(perfHooks, 'monitorEventLoopDelay').mockReturnValue(eventLoopMonitor);
+
+    new Gauge({
+      help: 'Application-owned collector that collides after prom-client enables the event-loop monitor.',
+      name: 'nodejs_eventloop_lag_seconds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+        'A metric with the name nodejs_eventloop_lag_seconds has already been registered.',
+      );
+
+      expect(monitorEventLoopDelay).not.toHaveBeenCalled();
+      expect(eventLoopMonitor.enable).not.toHaveBeenCalled();
+    } finally {
+      monitorEventLoopDelay.mockRestore();
+    }
+  });
+
+  it('does not reject an inactive Darwin-only default collector name', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'process_open_fds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('process_open_fds')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
     }
   });
 

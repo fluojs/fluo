@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
 import { Inject, type Token } from '@fluojs/core';
 import { type Container, ContainerResolutionError, type Provider } from '@fluojs/di';
 import { Controller, forRoutes, Get, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
@@ -195,6 +198,8 @@ export class MetricsModule {
     const registry = configuredRegistry ?? options.registry ?? new PrometheusRegistry();
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+      assertNoDefaultMetricCollisions(registry);
+
       const existingMetricNames = new Set(registry.getMetricsAsArray().map((metric) => metric.name));
 
       try {
@@ -244,6 +249,16 @@ type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Toke
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
+const require = createRequire(import.meta.url);
+const DEFAULT_METRIC_COLLECTORS = collectDefaultMetrics.metricsList.map((collectorName) => {
+  const collector: unknown = require(`prom-client/lib/metrics/${collectorName}`);
+
+  if (!hasDefaultMetricNames(collector)) {
+    throw new Error(`prom-client default collector "${collectorName}" does not expose metricNames.`);
+  }
+
+  return { collectorName, metricNames: collector.metricNames };
+});
 const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
 const PLATFORM_TELEMETRY_REGISTRY_STATES = new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>();
 const HTTP_INSTRUMENTATION_OWNERS = new WeakMap<Container, WeakSet<Registry>>();
@@ -298,6 +313,45 @@ function assertPrometheusRegistry(value: unknown): Registry {
   }
 
   return value;
+}
+
+function hasDefaultMetricNames(value: unknown): value is { metricNames: readonly string[] } {
+  return typeof value === 'function'
+    && 'metricNames' in value
+    && Array.isArray(value.metricNames)
+    && value.metricNames.every((metricName) => typeof metricName === 'string');
+}
+
+function assertNoDefaultMetricCollisions(registry: Registry): void {
+  for (const { collectorName, metricNames } of DEFAULT_METRIC_COLLECTORS) {
+    if (!isDefaultCollectorActive(collectorName)) {
+      continue;
+    }
+
+    for (const metricName of metricNames) {
+      if (registry.getSingleMetric(metricName)) {
+        throw new Error(`A metric with the name ${metricName} has already been registered.`);
+      }
+    }
+  }
+}
+
+function isDefaultCollectorActive(collectorName: string): boolean {
+  if (collectorName === 'processOpenFileDescriptors') {
+    return process.platform === 'linux';
+  }
+
+  if (collectorName === 'processMaxFileDescriptors') {
+    try {
+      return readFileSync('/proc/self/limits', 'utf8')
+        .split('\n')
+        .some((line) => line.startsWith('Max open files'));
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function assertRuntimeContainer(value: unknown): Container {
