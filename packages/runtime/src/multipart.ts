@@ -346,7 +346,7 @@ class MultipartStreamParser {
   }
 
   closeIfIncomplete(): void {
-    if (!this.done && !this.failure) {
+    if (!this.failure && (this.activeFile || !this.terminalDrained)) {
       this.fail(new Error('Multipart parser has been cancelled.'));
     }
   }

@@ -664,6 +664,44 @@ describe('parseMultipartStream', () => {
     await expect(new Response(first.value.stream).text()).resolves.toBe('payload');
   });
 
+  it('cancels and releases an undrained final file after yielding its final bytes', async () => {
+    // Given
+    const boundary = 'fluo-final-file-return';
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(TEXT_ENCODER.encode(
+          `--${boundary}\r\ncontent-disposition: form-data; name="upload"; filename="payload.txt"\r\n\r\nfinal bytes\r\n--${boundary}--\r\n`,
+        ));
+      },
+    });
+    const parts = parseMultipartStream({
+      body,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    });
+    const first = await parts.next();
+
+    if (first.done || first.value.kind !== 'file') {
+      throw new TypeError('Expected a file multipart part.');
+    }
+
+    const reader = first.value.stream.getReader();
+
+    // When
+    await expect(reader.read()).resolves.toEqual({
+      done: false,
+      value: TEXT_ENCODER.encode('final bytes'),
+    });
+    await parts.return?.(undefined);
+
+    // Then
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
+  });
+
   it('cancels and unlocks the source when a field exceeds its limit', async () => {
     // Given
     const boundary = 'fluo-field-limit';

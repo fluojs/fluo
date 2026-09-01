@@ -266,6 +266,41 @@ describe('dispatchWithRequestResponseFactory', () => {
     // Then
     expect(multipart.source.return).toHaveBeenCalledOnce();
   });
+
+  it('cancels a route-owned multipart source after a handler reads only its final file chunk', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartParser(
+      '--fluo-route-owned\r\ncontent-disposition: form-data; name="file"; filename="note.txt"\r\n\r\nfinal bytes\r\n--fluo-route-owned--\r\n',
+    );
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch(request) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const first = await parts[Symbol.asyncIterator]().next();
+
+          if (first.done || !isMultipartFilePart(first.value)) {
+            throw new TypeError('Expected a route-owned multipart file.');
+          }
+
+          const reader = first.value.stream.getReader();
+
+          await expect(reader.read()).resolves.toEqual({
+            done: false,
+            value: new TextEncoder().encode('final bytes'),
+          });
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart.multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.source.return).toHaveBeenCalledOnce();
+  });
 });
 
 function createRouteOwnedMultipartParser(chunk?: string): {
@@ -330,4 +365,13 @@ function createFactoryWithMultipart(
     },
     async writeErrorResponse() {},
   };
+}
+
+function isMultipartFilePart(value: unknown): value is { stream: ReadableStream<Uint8Array> } {
+  return value !== null
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'file'
+    && 'stream' in value
+    && value.stream instanceof ReadableStream;
 }
