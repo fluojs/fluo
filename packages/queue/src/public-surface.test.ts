@@ -12,6 +12,13 @@ describe('@fluojs/queue root barrel public surface', () => {
     expect(packageManifest).toContain('"bullmq": "^5.81.1"');
   });
 
+  it('matches the engine boundary of its mandatory runtime dependency', () => {
+    const queueManifest = JSON.parse(readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'));
+    const runtimeManifest = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../runtime/package.json'), 'utf8'));
+
+    expect(queueManifest.engines.node).toBe(runtimeManifest.engines.node);
+  });
+
   it('keeps the documented root exports stable for 0.x governance', () => {
     expect(queue).toHaveProperty('QueueModule');
     expect(queue).not.toHaveProperty('createQueueModule');
