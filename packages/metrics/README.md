@@ -139,6 +139,16 @@ Calling `MetricsService.counter(...)` again with the same name recreates the col
 
 ### Share one registry for framework and app metrics
 
+This example imports `Counter` and `Registry` directly from `prom-client`, so add
+`prom-client` to your application's dependencies:
+
+```bash
+pnpm add prom-client
+```
+
+`@fluojs/metrics` uses `prom-client` internally, but its dependency does not make
+`prom-client` a supported transitive import for your application.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { Counter, Registry } from 'prom-client';
