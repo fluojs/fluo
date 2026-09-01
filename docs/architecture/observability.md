@@ -23,13 +23,12 @@
 
 | Surface | Source | Default contract | Configurable behavior |
 | --- | --- | --- | --- |
-| Structured access lifecycle records | `createAccessLogObserver(...)` in `@fluojs/http` | Emits one `http.access.finish` record per admitted request, with request ID, method, path, matched route, final status, duration, and success/error/abort outcome. It emits no request or response headers by default. | Applications install the observer through dispatcher or runtime bootstrap `observers` and own the `AccessLogSink`. Header fields require an explicit allowlist; authorization, cookie, and configured sensitive fields remain redacted. |
+| Structured access lifecycle records | `createAccessLogObserver(...)` in `@fluojs/http` | Emits one `http.access.finish` record per admitted request, with an optional request ID, method, path, matched route, final status, duration, and success/error/abort outcome. It emits no request or response headers by default. | Applications install the observer through dispatcher or runtime bootstrap `observers` and own the `AccessLogSink`. Header fields require an explicit allowlist; authorization, cookie, and configured sensitive fields remain redacted. |
 
 - Access logging is application-owned structured output, not a replacement for the runtime `ApplicationLogger` and not an adapter-native logger stored on `FrameworkRequest`.
 - `AccessLogSink.emit(...)` may be asynchronous; the request lifecycle awaits each emission while observer failures are isolated and reported through the dispatcher logger so a failing observer cannot suppress later observers or terminal records.
-- Access-log request IDs use `RequestContext.requestId`, including dispatcher normalization of `x-request-id`, rather than relying only on an adapter request snapshot.
+- Access-log request IDs are optional and use `RequestContext.requestId` when present. `createCorrelationMiddleware()` adopts `x-request-id` or legacy `x-correlation-id`, and generates an ID before access-log start when neither header is present; an observer alone does not generate one.
 - Client addresses are absent unless `clientIdentity` is explicitly configured. `clientIdentity: {}` records the direct transport peer and ignores forged forwarding fields. Forwarded identity is used only when that explicit policy includes a matching `trustProxy` boundary.
-- `status` is omitted only when admission aborts before a response is committed; committed responses record their final status, defaulting to `200` when the adapter did not explicitly set one.
 - `status` is omitted only when admission aborts before a response is committed; committed responses record their final status, defaulting to `200` when the adapter did not explicitly set one.
 
 ## Health Checks

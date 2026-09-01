@@ -110,6 +110,51 @@ describe('createAccessLogObserver', () => {
     ]);
   });
 
+  it('keeps a generated correlation ID coherent across real dispatch error lifecycle events', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+    const observer = http.createAccessLogObserver({
+      sink: {
+        emit(record) {
+          records.push(record);
+        },
+      },
+    });
+
+    @Controller('/access-log-generated-correlation')
+    class GeneratedCorrelationController {
+      @Get('/')
+      fail() {
+        throw new Error('expected generated correlation failure');
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      appMiddleware: [createCorrelationMiddleware()],
+      handlerMapping: createHandlerMapping([{ controllerToken: GeneratedCorrelationController }]),
+      observers: [observer],
+      rootContainer: new Container().register(GeneratedCorrelationController),
+    });
+    const response = createResponse();
+
+    // When
+    await dispatcher.dispatch(createRequest('/access-log-generated-correlation'), response);
+
+    // Then
+    expect(records.map((record) => record.event)).toEqual([
+      'http.access.start',
+      'http.access.error',
+      'http.access.finish',
+    ]);
+    expect(records.map((record) => record.requestId)).toEqual([
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+    ]);
+    expect([...new Set(records.map((record) => record.requestId))]).toHaveLength(1);
+    expect(response.headers['x-request-id']).toBe(records[0]?.requestId);
+  });
+
   it('emits redacted start and terminal records with monotonic duration and a trusted client', async () => {
     // Given
     const records: AccessLogEvent[] = [];

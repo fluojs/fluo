@@ -189,7 +189,7 @@ class AdminController {
 
 ### Access logging
 
-`createAccessLogObserver(...)` turns the request-observer lifecycle into application-owned structured records. It emits a start record, an error record for each dispatch error, and exactly one terminal finish record with a monotonic duration, request ID, method, path, matched route, status, and outcome (`success`, `handled_error`, `unhandled_error`, `not_found`, or `aborted`). Native route dispatch falls back to this complete lifecycle when observers are configured.
+`createAccessLogObserver(...)` turns the request-observer lifecycle into application-owned structured records. It emits a start record, an error record for each dispatch error, and exactly one terminal finish record with a monotonic duration, optional request ID, method, path, matched route, status, and outcome (`success`, `handled_error`, `unhandled_error`, `not_found`, or `aborted`). Native route dispatch falls back to this complete lifecycle when observers are configured.
 
 The sink is deliberately consumer-owned: route `AccessLogEvent` values to the structured logger, telemetry pipeline, or retention policy that owns your operational data. No headers are emitted unless they are allowlisted. `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, and `x-api-key` remain redacted even when allowlisted; add organization-specific names with `redact`.
 
@@ -197,9 +197,7 @@ The sink is deliberately consumer-owned: route `AccessLogEvent` values to the st
 import { createAccessLogObserver } from '@fluojs/http';
 
 const accessLogObserver = createAccessLogObserver({
-  clientIdentity: {
-    trustProxy: ['10.0.0.0/8'],
-  },
+  clientIdentity: {},
   headers: {
     allow: ['user-agent', 'set-cookie'],
     redact: ['x-tenant-token'],
@@ -212,7 +210,9 @@ const accessLogObserver = createAccessLogObserver({
 });
 ```
 
-Omit `clientIdentity` unless you have an explicit `trustProxy` boundary. When supplied, it resolves the trusted client address through `resolveHttpConnection(...)`; it never trusts forwarded identity by default.
+Omit `clientIdentity` when no client address is needed. `clientIdentity: {}` explicitly opts into the adapter's direct transport peer and ignores forwarding fields. Use `clientIdentity: { trustProxy: ['10.0.0.0/8'] }` only when a trusted proxy boundary should supply forwarded identity.
+
+Request IDs are optional. An observer alone does not create one, so observer-only records can omit `requestId`. When `createCorrelationMiddleware()` is installed, the dispatcher adopts an incoming `x-request-id` or legacy `x-correlation-id`, or generates an ID before the access-log start record.
 
 ### Async request context
 

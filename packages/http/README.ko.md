@@ -187,7 +187,7 @@ class AdminController {
 
 ### Access logging
 
-`createAccessLogObserver(...)`는 request-observer lifecycle을 애플리케이션 소유의 structured record로 변환합니다. Start record, dispatch error마다 error record, 그리고 monotonic duration, request ID, method, path, matched route, status, outcome(`success`, `handled_error`, `unhandled_error`, `not_found`, `aborted`)을 가진 terminal finish record 하나를 정확히 emit합니다. Observer가 구성되면 native route dispatch는 이 complete lifecycle으로 fallback합니다.
+`createAccessLogObserver(...)`는 request-observer lifecycle을 애플리케이션 소유의 structured record로 변환합니다. Start record, dispatch error마다 error record, 그리고 monotonic duration, optional request ID, method, path, matched route, status, outcome(`success`, `handled_error`, `unhandled_error`, `not_found`, `aborted`)을 가진 terminal finish record 하나를 정확히 emit합니다. Observer가 구성되면 native route dispatch는 이 complete lifecycle으로 fallback합니다.
 
 Sink는 의도적으로 consumer-owned입니다. `AccessLogEvent`를 애플리케이션의 structured logger, telemetry pipeline, 또는 운영 데이터 보존 정책으로 전달하세요. Allowlist에 없는 header는 emit하지 않습니다. Allowlist에 넣어도 `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`는 계속 redaction되며, 조직별 header 이름은 `redact`로 추가합니다.
 
@@ -195,9 +195,7 @@ Sink는 의도적으로 consumer-owned입니다. `AccessLogEvent`를 애플리�
 import { createAccessLogObserver } from '@fluojs/http';
 
 const accessLogObserver = createAccessLogObserver({
-  clientIdentity: {
-    trustProxy: ['10.0.0.0/8'],
-  },
+  clientIdentity: {},
   headers: {
     allow: ['user-agent', 'set-cookie'],
     redact: ['x-tenant-token'],
@@ -210,7 +208,9 @@ const accessLogObserver = createAccessLogObserver({
 });
 ```
 
-명시적인 `trustProxy` boundary가 없다면 `clientIdentity`를 생략하세요. 제공하면 `resolveHttpConnection(...)`으로 trusted client address를 해석하며, forwarded identity를 기본으로 신뢰하지 않습니다.
+클라이언트 주소가 필요하지 않으면 `clientIdentity`를 생략하세요. `clientIdentity: {}`는 adapter의 direct transport peer를 명시적으로 opt-in하고 forwarding field를 무시합니다. 신뢰한 proxy boundary를 통해 forwarded identity를 사용해야 할 때만 `clientIdentity: { trustProxy: ['10.0.0.0/8'] }`를 사용하세요.
+
+Request ID는 optional입니다. Observer만 설치하면 ID를 만들지 않으므로 observer-only record에는 `requestId`가 없을 수 있습니다. `createCorrelationMiddleware()`를 설치하면 dispatcher가 incoming `x-request-id` 또는 legacy `x-correlation-id`를 채택하고, 둘 다 없을 때 access-log start record 전에 ID를 생성합니다.
 
 ### 비동기 요청 컨텍스트
 

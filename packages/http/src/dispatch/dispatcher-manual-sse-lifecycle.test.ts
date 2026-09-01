@@ -44,6 +44,11 @@ interface CloseCase {
   readonly label: string;
 }
 
+interface ManualSseFixtureOptions {
+  readonly closeError?: Error;
+  readonly streamStartsClosed?: boolean;
+}
+
 function createDeferred<T>(): Deferred<T> {
   let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
   const promise = new Promise<T>((resolvePromise) => {
@@ -125,8 +130,8 @@ function createResponse(stream: ManualSseStream): FrameworkResponse {
   };
 }
 
-function createStream(closeError?: Error): ManualSseStream {
-  let closed = false;
+function createStream(closeError?: Error, streamStartsClosed = false): ManualSseStream {
+  let closed = streamStartsClosed;
   let closeListener: (() => void) | undefined;
 
   return {
@@ -165,11 +170,11 @@ function createStream(closeError?: Error): ManualSseStream {
   };
 }
 
-function createFixture(closeError?: Error): ManualSseFixture {
+function createFixture(options: ManualSseFixtureOptions = {}): ManualSseFixture {
   const abortController = new AbortController();
   const accessRecords: AccessLogEvent[] = [];
   const events: string[] = [];
-  const stream = createStream(closeError);
+  const stream = createStream(options.closeError, options.streamStartsClosed);
   const response = createResponse(stream);
   const dispatcherWaiting = createDeferred<void>();
   let resolveSse: (sse: SseResponse) => void = () => undefined;
@@ -264,7 +269,7 @@ describe('manual SSE lifecycle', () => {
   );
 
   it('finishes the full request scope after a manual stream close throws', async () => {
-    const fixture = createFixture(new Error('stream close failed'));
+    const fixture = createFixture({ closeError: new Error('stream close failed') });
     const sse = await fixture.sse;
     await fixture.dispatcherWaiting;
 
@@ -314,6 +319,21 @@ describe('manual SSE lifecycle', () => {
 
     // When
     expect(sse.send('after raw disconnect')).toBe(false);
+    await fixture.dispatch;
+
+    // Then
+    expect(fixture.accessRecords.filter((record) => record.event === 'http.access.finish')).toEqual([
+      expect.objectContaining({ outcome: 'aborted', status: 200 }),
+    ]);
+  });
+
+  it('emits one aborted access-log terminal record when the stream is already closed', async () => {
+    // Given
+    const fixture = createFixture({ streamStartsClosed: true });
+
+    // When
+    await fixture.sse;
+    await fixture.dispatcherWaiting;
     await fixture.dispatch;
 
     // Then
