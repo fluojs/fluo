@@ -123,6 +123,31 @@ const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
 });
 
 describe('@fluojs/platform-nodejs', () => {
+  it('captures connection metadata through a real public Node listener', async () => {
+    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    let connection: RequestContext['request']['connection'];
+    const dispatcher: Dispatcher = {
+      async dispatch(request, response) {
+        connection = request.connection;
+        await response.send({ ok: true });
+      },
+    };
+
+    try {
+      await adapter.listen(dispatcher);
+      const response = await fetch(`${adapter.getListenTarget().url}/connection`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(connection).toEqual({
+        protocol: 'http',
+        remoteAddress: '127.0.0.1',
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   describe('adapter portability', () => {
     it('executes QUERY and extension methods through the real Node listener', async () => {
       await nodejsPortabilityHarness.assertSupportsCustomHttpRouteMethods();

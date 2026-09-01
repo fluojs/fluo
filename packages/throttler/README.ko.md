@@ -137,7 +137,7 @@ ThrottlerModule.forRoot({
 - 비동기 secret, configuration, store 생성은 동기 `ThrottlerModule.forRoot(...)` 등록 전에 해결하세요. fluo는 NestJS `forRootAsync(...)` shape을 제공하지 않습니다.
 - `ThrottlerGuard`와 `keyGenerator`는 HTTP 전용입니다. WebSocket, GraphQL, RPC, queue 정책에는 별도 transport-owned guard 또는 middleware를 적용하세요.
 - Bucket key와 storage call contract가 다르므로 persisted NestJS window는 기본적으로 이어지지 않습니다. 연속성이 필요하면 application-owned compatibility store 또는 bounded cutover를 사용하세요.
-- Forwarded client IP header는 기본적으로 무시됩니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서만 `trustProxyHeaders: true`를 활성화하세요.
+- Forwarded client IP header는 기본적으로 무시됩니다. 신뢰할 proxy 경계를 hop count, CIDR 목록, predicate로 선언하는 `trustProxy`를 우선 사용하세요. `trustProxyHeaders: true`는 direct peer만 신뢰하는 설정이 아니라 전체 forwarding chain을 신뢰하는 광범위한 legacy compatibility mode입니다.
 - 제한 초과 시 보장되는 응답 계약은 HTTP `429`와 `Retry-After`입니다. 추가 rate-limit header나 response body는 exception filter 같은 애플리케이션 경계에서 더하세요.
 
 마이그레이션 예제와 전체 호환성 맵은 [NestJS → fluo Migration Map](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.ko.md)을 참고하세요.
@@ -149,7 +149,7 @@ ThrottlerModule.forRoot({
 - `ThrottlerModuleOptions`: `ThrottlerModule.forRoot(...)`가 받는 공개 options shape입니다.
 - 패키지 수준 등록은 `ThrottlerModule.forRoot(options)`를 통해 지원합니다. 내부 프로바이더 조합 헬퍼와 DI 토큰은 공개 계약에 포함되지 않습니다.
 
-`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있으며, `keyGenerator`를 제공할 때는 함수여야 합니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
+`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxy`는 `@fluojs/http`의 `TrustProxyPolicy`를 사용하는 권장 명시적 경계이고, `trustProxyHeaders`는 광범위한 legacy compatibility 대안입니다. `keyGenerator`를 제공할 때는 함수여야 합니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
 
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.

@@ -5,9 +5,25 @@ type ParsedAddress =
   | { readonly kind: 'ipv6'; readonly value: bigint };
 
 type ForwardedElement = {
-  readonly address?: string;
+  readonly address: string;
   readonly host?: string;
   readonly protocol?: string;
+};
+
+type ForwardingSource =
+  | {
+      readonly addresses: readonly string[];
+      readonly elements: readonly ForwardedElement[];
+      readonly kind: 'forwarded';
+    }
+  | {
+      readonly addresses: readonly string[];
+      readonly kind: 'x-forwarded-for' | 'x-real-ip';
+    };
+
+type HeaderValue = {
+  readonly present: boolean;
+  readonly value: string | undefined;
 };
 
 /**
@@ -66,16 +82,19 @@ export interface HttpConnection {
   readonly secure: boolean;
 }
 
-function readHeaderValue(
+function readHeader(
   headers: FrameworkRequest['headers'],
   name: string,
-): string | undefined {
+): HeaderValue {
   const values: string[] = [];
+  let present = false;
 
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() !== name) {
       continue;
     }
+
+    present = true;
 
     if (typeof value === 'string') {
       values.push(value);
@@ -85,7 +104,7 @@ function readHeaderValue(
   }
 
   const joined = values.join(',').trim();
-  return joined || undefined;
+  return { present, value: joined || undefined };
 }
 
 function normalizeAddress(value: string | undefined): string | undefined {
@@ -99,18 +118,44 @@ function normalizeAddress(value: string | undefined): string | undefined {
     return undefined;
   }
 
-  if (trimmed.startsWith('[')) {
-    const closingBracket = trimmed.indexOf(']');
+  let address = trimmed;
 
-    if (closingBracket === -1) {
+  if (trimmed.startsWith('[')) {
+    const bracketed = trimmed.match(/^\[([^\]]+)\](?::(\d+))?$/);
+
+    if (!bracketed) {
       return undefined;
     }
 
-    return trimmed.slice(1, closingBracket).trim() || undefined;
+    if (bracketed[2] !== undefined && !isValidPort(bracketed[2])) {
+      return undefined;
+    }
+
+    address = bracketed[1]!;
+  } else {
+    const ipv4WithPort = trimmed.match(/^((?:\d{1,3}\.){3}\d{1,3}):(\d+)$/);
+
+    if (ipv4WithPort) {
+      if (!isValidPort(ipv4WithPort[2]!)) {
+        return undefined;
+      }
+
+      address = ipv4WithPort[1]!;
+    }
   }
 
-  const ipv4WithPort = trimmed.match(/^((?:\d{1,3}\.){3}\d{1,3}):\d+$/);
-  return ipv4WithPort?.[1] ?? trimmed;
+  const parsed = parseAddress(address);
+
+  if (!parsed) {
+    return undefined;
+  }
+
+  if (parsed.kind === 'ipv4') {
+    return formatIpv4(parsed.value);
+  }
+
+  const mappedIpv4 = ipv4FromMappedIpv6(parsed.value);
+  return mappedIpv4 === undefined ? address.toLowerCase() : formatIpv4(mappedIpv4);
 }
 
 function splitOutsideQuotes(value: string, separator: string): string[] | undefined {
@@ -210,6 +255,7 @@ function parseForwarded(value: string | undefined): readonly ForwardedElement[] 
     let address: string | undefined;
     let host: string | undefined;
     let protocol: string | undefined;
+    const keys = new Set<string>();
 
     for (const parameter of parameters) {
       const separator = parameter.indexOf('=');
@@ -219,19 +265,31 @@ function parseForwarded(value: string | undefined): readonly ForwardedElement[] 
       }
 
       const key = parameter.slice(0, separator).trim().toLowerCase();
-      const parameterValue = unquoteForwardedValue(parameter.slice(separator + 1));
+      const rawParameterValue = parameter.slice(separator + 1);
+      const parameterValue = unquoteForwardedValue(rawParameterValue);
 
-      if (!parameterValue) {
+      if (!key || !parameterValue || keys.has(key)) {
         return undefined;
       }
 
+      keys.add(key);
+
       if (key === 'for') {
+        const isUnquotedIpv4WithPort = /^(?:\d{1,3}\.){3}\d{1,3}:\d+$/.test(parameterValue);
+
+        if (!rawParameterValue.trim().startsWith('"') && parameterValue.includes(':') && !isUnquotedIpv4WithPort) {
+          return undefined;
+        }
         address = normalizeAddress(parameterValue);
       } else if (key === 'host') {
         host = parameterValue.trim() || undefined;
       } else if (key === 'proto') {
         protocol = parameterValue.trim().toLowerCase();
       }
+    }
+
+    if (!address) {
+      return undefined;
     }
 
     parsed.push({ address, host, protocol });
@@ -297,7 +355,7 @@ function parseIpv6(value: string): bigint | undefined {
   const ipv4Separator = normalized.lastIndexOf(':');
   const ipv4Candidate = ipv4Separator === -1 ? undefined : normalized.slice(ipv4Separator + 1);
   const ipv4 = ipv4Candidate?.includes('.') ? parseIpv4(ipv4Candidate) : undefined;
-  const ipv6Value = ipv4
+  const ipv6Value = ipv4 !== undefined
     ? `${normalized.slice(0, ipv4Separator)}:${((ipv4 >> 16n) & 0xffffn).toString(16)}:${(ipv4 & 0xffffn).toString(16)}`
     : normalized;
   const doubleColon = ipv6Value.indexOf('::');
@@ -344,6 +402,28 @@ function parseAddress(value: string): ParsedAddress | undefined {
   return ipv6 === undefined ? undefined : { kind: 'ipv6', value: ipv6 };
 }
 
+function formatIpv4(value: bigint): string {
+  return [
+    Number((value >> 24n) & 0xffn),
+    Number((value >> 16n) & 0xffn),
+    Number((value >> 8n) & 0xffn),
+    Number(value & 0xffn),
+  ].join('.');
+}
+
+function ipv4FromMappedIpv6(value: bigint): bigint | undefined {
+  return value >> 32n === 0xffffn ? value & 0xffffffffn : undefined;
+}
+
+function isValidPort(value: string): boolean {
+  if (!/^\d+$/.test(value)) {
+    return false;
+  }
+
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 0 && port <= 65_535;
+}
+
 function matchesAddressOrCidr(address: string, rule: string): boolean {
   const [network, prefixText, ...extra] = rule.trim().split('/');
 
@@ -352,26 +432,45 @@ function matchesAddressOrCidr(address: string, rule: string): boolean {
   }
 
   const candidate = parseAddress(address);
-  const target = parseAddress(network);
+  let target = parseAddress(network);
 
-  if (!candidate || !target || candidate.kind !== target.kind) {
+  if (!candidate || !target) {
     return false;
   }
 
-  if (prefixText === undefined) {
+  if (prefixText !== undefined && !/^\d+$/.test(prefixText)) {
+    return false;
+  }
+
+  let prefix = prefixText === undefined ? undefined : Number(prefixText);
+  const targetBits = target.kind === 'ipv4' ? 32 : 128;
+
+  if (prefix !== undefined && (prefix < 0 || prefix > targetBits)) {
+    return false;
+  }
+
+  if (target.kind === 'ipv6') {
+    const mappedIpv4 = ipv4FromMappedIpv6(target.value);
+
+    if (mappedIpv4 !== undefined) {
+      if (prefix !== undefined && prefix < 96) {
+        return false;
+      }
+
+      target = { kind: 'ipv4', value: mappedIpv4 };
+      prefix = prefix === undefined ? undefined : prefix - 96;
+    }
+  }
+
+  if (candidate.kind !== target.kind) {
+    return false;
+  }
+
+  if (prefix === undefined) {
     return candidate.value === target.value;
   }
 
-  if (!/^\d+$/.test(prefixText)) {
-    return false;
-  }
-
   const bits = candidate.kind === 'ipv4' ? 32 : 128;
-  const prefix = Number(prefixText);
-
-  if (prefix < 0 || prefix > bits) {
-    return false;
-  }
 
   if (prefix === 0) {
     return true;
@@ -432,33 +531,79 @@ function parseHost(value: string | undefined): {
   readonly hostname: string | undefined;
   readonly port: number | undefined;
 } {
-  const host = value?.split(',')[0]?.trim() || undefined;
+  const host = value?.trim() || undefined;
 
-  if (!host) {
+  if (!host || host.includes(',')) {
     return { host: undefined, hostname: undefined, port: undefined };
   }
 
   if (host.startsWith('[')) {
-    const closingBracket = host.indexOf(']');
-    const hostname = closingBracket === -1 ? host : host.slice(1, closingBracket);
-    const portText = closingBracket === -1 ? undefined : host.slice(closingBracket + 1).replace(/^:/, '');
-    const port = portText && /^\d+$/.test(portText) ? Number(portText) : undefined;
+    const bracketed = host.match(/^\[([^\]]+)\](?::(\d+))?$/);
+
+    if (!bracketed || parseAddress(bracketed[1]!)?.kind !== 'ipv6' ||
+      (bracketed[2] !== undefined && !isValidPort(bracketed[2]))) {
+      return { host: undefined, hostname: undefined, port: undefined };
+    }
+
+    const hostname = bracketed[1]!.toLowerCase();
+    const port = bracketed[2] === undefined ? undefined : Number(bracketed[2]);
     return { host, hostname, port };
   }
 
-  const separator = host.lastIndexOf(':');
+  const authority = host.match(/^([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d+))?$/);
 
-  if (separator === -1 || host.indexOf(':') !== separator) {
-    return { host, hostname: host, port: undefined };
+  if (!authority || (authority[2] !== undefined && !isValidPort(authority[2]))) {
+    return { host: undefined, hostname: undefined, port: undefined };
   }
 
-  const portText = host.slice(separator + 1);
-  const port = /^\d+$/.test(portText) ? Number(portText) : undefined;
   return {
     host,
-    hostname: port === undefined ? host : host.slice(0, separator),
-    port,
+    hostname: authority[1]!.toLowerCase(),
+    port: authority[2] === undefined ? undefined : Number(authority[2]),
   };
+}
+
+function resolveForwardingSource(headers: FrameworkRequest['headers']): ForwardingSource | undefined {
+  const forwardedHeader = readHeader(headers, 'forwarded');
+
+  if (forwardedHeader.present) {
+    const elements = parseForwarded(forwardedHeader.value);
+    return elements
+      ? { addresses: elements.map((element) => element.address), elements, kind: 'forwarded' }
+      : undefined;
+  }
+
+  const xForwardedForHeader = readHeader(headers, 'x-forwarded-for');
+
+  if (xForwardedForHeader.present) {
+    const addresses = parseForwardedFor(xForwardedForHeader.value);
+    return addresses ? { addresses, kind: 'x-forwarded-for' } : undefined;
+  }
+
+  const xRealIpHeader = readHeader(headers, 'x-real-ip');
+
+  if (!xRealIpHeader.present) {
+    return undefined;
+  }
+
+  const address = normalizeAddress(xRealIpHeader.value);
+  return address ? { addresses: [address], kind: 'x-real-ip' } : undefined;
+}
+
+function readIndexedForwardingMetadata(
+  headers: FrameworkRequest['headers'],
+  name: string,
+  index: number,
+  expectedLength: number,
+): string | undefined {
+  const header = readHeader(headers, name);
+
+  if (!header.value) {
+    return undefined;
+  }
+
+  const values = header.value.split(',').map((value) => value.trim());
+  return values.length === expectedLength && !values.some((value) => !value) ? values[index] : undefined;
 }
 
 /**
@@ -479,20 +624,8 @@ export function resolveHttpConnection(
 ): HttpConnection {
   const remoteAddress = resolveRemoteAddress(request);
   const trustProxy = options.trustProxy ?? false;
-  const forwardedHeader = readHeaderValue(request.headers, 'forwarded');
-  const forwarded = parseForwarded(forwardedHeader);
-  const forwardedAddresses = forwarded?.map((element) => element.address).filter(
-    (address): address is string => address !== undefined,
-  );
-  const xForwardedFor = forwardedHeader === undefined
-    ? parseForwardedFor(readHeaderValue(request.headers, 'x-forwarded-for'))
-    : undefined;
-  const xRealIp = forwardedHeader === undefined && xForwardedFor === undefined
-    ? normalizeAddress(readHeaderValue(request.headers, 'x-real-ip'))
-    : undefined;
-  const headerAddresses = forwardedAddresses && forwardedAddresses.length > 0
-    ? forwardedAddresses
-    : xForwardedFor ?? (xRealIp ? [xRealIp] : undefined);
+  const forwarding = resolveForwardingSource(request.headers);
+  const headerAddresses = forwarding?.addresses;
   const chain = remoteAddress && headerAddresses && trustProxy !== false
     ? [...headerAddresses, remoteAddress]
     : !remoteAddress && options.allowForwardedWithoutPeer && headerAddresses && trustProxy !== false
@@ -507,24 +640,27 @@ export function resolveHttpConnection(
   }
 
   const proxyChain = Object.freeze(chain.slice(clientIndex + 1));
-  const usesTrustedForwarding = proxyChain.length > 0 ||
-    (options.allowForwardedWithoutPeer === true && headerAddresses !== undefined);
-  const forwardedFirst = usesTrustedForwarding ? forwarded?.[0] : undefined;
-  const forwardedHost = forwardedFirst?.host;
-  const forwardedProtocol = forwardedFirst?.protocol;
-  const xForwardedHost = usesTrustedForwarding
-    ? readHeaderValue(request.headers, 'x-forwarded-host')
+  const usesTrustedForwarding = forwarding !== undefined && clientIndex < forwarding.addresses.length &&
+    (proxyChain.length > 0 || (!remoteAddress && options.allowForwardedWithoutPeer === true));
+  const forwardedElement = usesTrustedForwarding && forwarding?.kind === 'forwarded'
+    ? forwarding.elements[clientIndex]
     : undefined;
-  const xForwardedProtocol = usesTrustedForwarding
-    ? readHeaderValue(request.headers, 'x-forwarded-proto')
+  const legacyHost = usesTrustedForwarding && forwarding?.kind !== 'forwarded'
+    ? readIndexedForwardingMetadata(request.headers, 'x-forwarded-host', clientIndex, forwarding.addresses.length)
     : undefined;
-  const protocolCandidate = forwardedProtocol ?? xForwardedProtocol?.split(',')[0]?.trim().toLowerCase();
+  const legacyProtocol = usesTrustedForwarding && forwarding?.kind !== 'forwarded'
+    ? readIndexedForwardingMetadata(request.headers, 'x-forwarded-proto', clientIndex, forwarding.addresses.length)
+    : undefined;
+  const protocolCandidate = forwardedElement?.protocol ?? legacyProtocol?.toLowerCase();
   const protocol = protocolCandidate === 'https'
     ? 'https'
     : protocolCandidate === 'http'
       ? 'http'
       : resolveTransportProtocol(request);
-  const host = parseHost(forwardedHost ?? xForwardedHost ?? readHeaderValue(request.headers, 'host'));
+  const forwardingHost = parseHost(forwardedElement?.host ?? legacyHost);
+  const host = forwardingHost.host
+    ? forwardingHost
+    : parseHost(readHeader(request.headers, 'host').value);
 
   return Object.freeze({
     clientAddress: chain[clientIndex],

@@ -24,16 +24,18 @@ export interface RateLimitOptions {
   keyResolver?: (ctx: MiddlewareContext) => string;
   store?: RateLimitStore;
   /**
-   * Trust `Forwarded`, `X-Forwarded-For`, and `X-Real-IP` before the raw socket address.
-   * Enable this only when the adapter sits behind a trusted proxy that overwrites spoofable headers.
+   * Broad legacy compatibility mode for forwarding headers.
+   *
+   * This trusts the complete `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`
+   * chain and is not limited to the direct peer. Use `trustProxy` instead for
+   * new deployments with a known proxy boundary.
    */
   trustProxyHeaders?: boolean;
   /**
    * Explicit proxy boundary used for default client identity resolution.
    *
    * @remarks
-   * Prefer this policy over `trustProxyHeaders`; the legacy boolean trusts
-   * only the direct peer when enabled.
+   * Prefer this policy over the broad legacy `trustProxyHeaders` mode.
    */
   trustProxy?: TrustProxyPolicy;
 }

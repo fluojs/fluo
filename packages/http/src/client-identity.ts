@@ -10,10 +10,12 @@ interface ClientIdentityResolutionOptions {
  * Resolve one stable client identity from the normalized request contract.
  *
  * By default, resolution uses only the raw socket's `remoteAddress`. When
- * `trustProxyHeaders` is enabled, resolution order becomes `Forwarded`,
- * `X-Forwarded-For`, `X-Real-IP`, then the raw socket fallback. If none are
- * available, callers must provide an explicit resolver because falling back to
- * a shared `unknown` bucket is not safe in proxied or serverless environments.
+ * `trustProxyHeaders` enables the broad legacy compatibility path: it accepts
+ * the complete forwarding chain from `Forwarded`, `X-Forwarded-For`, or
+ * `X-Real-IP` without a deployment-specific peer boundary. Prefer
+ * `trustProxy` for new deployments. If no trusted identity is available,
+ * callers must provide an explicit resolver because falling back to a shared
+ * `unknown` bucket is not safe in proxied or serverless environments.
  *
  * @param request Adapter-normalized request whose headers/raw transport state should be inspected.
  * @param options Client-identity trust settings for proxy-header handling.

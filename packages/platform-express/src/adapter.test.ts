@@ -275,6 +275,35 @@ const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
 });
 
 describe('@fluojs/platform-express', () => {
+  it('snapshots connection metadata on a real loopback request', async () => {
+    @Controller('/connection')
+    class ConnectionController {
+      @Get('/')
+      read(_input: undefined, context: RequestContext) {
+        return context.request.connection;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ConnectionController] });
+
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await fetch(`http://127.0.0.1:${String(getBoundPort((adapter as { getServer(): unknown }).getServer()))}/connection`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        protocol: 'http',
+        remoteAddress: '127.0.0.1',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('emits multiple Early Hints before an independent final response on a real listener', async () => {
     @Controller('/early-hints')
     class EarlyHintsController {
