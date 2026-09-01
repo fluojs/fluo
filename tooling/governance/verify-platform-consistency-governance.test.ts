@@ -1081,13 +1081,14 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates([
       ...byteRangeRuntimeChange,
       'packages/http/src/byte-range-response.ts',
+      'packages/http/src/dispatch/conditional-request-policy.test.ts',
       'packages/http/src/dispatch/byte-range-response.test.ts',
       'packages/testing/src/portability/http-adapter-portability.ts',
       'packages/testing/src/portability/http-adapter-portability.test.ts',
     ])).not.toThrow();
   });
 
-  it('invokes HTTP runtime content enforcement from central governance', () => {
+  it('invokes HTTP lifecycle routing and content enforcement from central governance', () => {
     // Given
     const source = createSourceFile(
       'verify-platform-consistency-governance.mjs',
@@ -1096,7 +1097,7 @@ describe('enforceContractCompanionUpdates', () => {
       true,
       ScriptKind.JS,
     );
-    let mainCallsHttpRuntimeContentGate = false;
+    const mainGateCalls = new Set<string>();
 
     // When
     for (const statement of source.statements) {
@@ -1104,16 +1105,18 @@ describe('enforceContractCompanionUpdates', () => {
         continue;
       }
       forEachChild(statement.body, function visit(node): void {
-        if (isCallExpression(node) && isIdentifier(node.expression)
-          && node.expression.text === 'enforceHttpRuntimeCancellationAndContextIsolation') {
-          mainCallsHttpRuntimeContentGate = true;
+        if (isCallExpression(node) && isIdentifier(node.expression)) {
+          mainGateCalls.add(node.expression.text);
         }
         forEachChild(node, visit);
       });
     }
 
     // Then
-    expect(mainCallsHttpRuntimeContentGate).toBe(true);
+    expect([...mainGateCalls]).toEqual(expect.arrayContaining([
+      'enforceContractCompanionUpdates',
+      'enforceHttpRuntimeCancellationAndContextIsolation',
+    ]));
   });
 
   it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {

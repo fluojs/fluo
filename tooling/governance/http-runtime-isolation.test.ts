@@ -13,7 +13,10 @@ import {
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-import { enforceHttpRuntimeCancellationAndContextIsolation } from './verify-platform-consistency-governance.mjs';
+import {
+  enforceContractCompanionUpdates,
+  enforceHttpRuntimeCancellationAndContextIsolation,
+} from './verify-platform-consistency-governance.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -26,7 +29,7 @@ describe('HTTP runtime isolation governance', () => {
     expect(verifyContract).not.toThrow();
   });
 
-  it('invokes the HTTP runtime content gate from central governance', () => {
+  it('invokes HTTP lifecycle routing and content gates from central governance', () => {
     // Given
     const source = createSourceFile(
       'verify-platform-consistency-governance.mjs',
@@ -35,7 +38,7 @@ describe('HTTP runtime isolation governance', () => {
       true,
       ScriptKind.JS,
     );
-    let mainCallsHttpRuntimeContentGate = false;
+    const mainGateCalls = new Set<string>();
 
     // When
     for (const statement of source.statements) {
@@ -43,37 +46,126 @@ describe('HTTP runtime isolation governance', () => {
         continue;
       }
       forEachChild(statement.body, function visit(node): void {
-        if (isCallExpression(node) && isIdentifier(node.expression)
-          && node.expression.text === 'enforceHttpRuntimeCancellationAndContextIsolation') {
-          mainCallsHttpRuntimeContentGate = true;
+        if (isCallExpression(node) && isIdentifier(node.expression)) {
+          mainGateCalls.add(node.expression.text);
         }
         forEachChild(node, visit);
       });
     }
 
     // Then
-    expect(mainCallsHttpRuntimeContentGate).toBe(true);
+    expect([...mainGateCalls]).toEqual(expect.arrayContaining([
+      'enforceContractCompanionUpdates',
+      'enforceHttpRuntimeCancellationAndContextIsolation',
+    ]));
   });
 
-  it('keeps byte-range and If-Range evidence wired through executable regressions', () => {
+  it('routes byte-range lifecycle changes to policy, dispatcher, and canonical harness evidence', () => {
     // Given
-    const source = readFileSync(
-      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
-      'utf8',
-    );
-
-    // When
-    const requiredEvidencePaths = [
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'tooling/governance/http-runtime-isolation.test.ts',
+      'packages/http/src/byte-range-response.ts',
+      'packages/http/src/dispatch/conditional-request-policy.ts',
+      'packages/http/src/dispatch/conditional-request-policy.test.ts',
       'packages/http/src/dispatch/byte-range-response.test.ts',
       'packages/testing/src/portability/http-adapter-portability.ts',
       'packages/testing/src/portability/http-adapter-portability.test.ts',
     ];
 
+    // When
+    const enforceChange = () => enforceContractCompanionUpdates(changedFiles);
+
+    // Then: byte-range evidence is sufficient without an unrelated SSE regression.
+    expect(enforceChange).not.toThrow();
+  });
+
+  it.each([
+    'packages/http/src/dispatch/conditional-request-policy.test.ts',
+    'packages/http/src/dispatch/byte-range-response.test.ts',
+    'packages/testing/src/portability/http-adapter-portability.ts',
+    'packages/testing/src/portability/http-adapter-portability.test.ts',
+  ])('rejects byte-range lifecycle changes missing %s', (missingEvidence) => {
+    // Given
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'tooling/governance/http-runtime-isolation.test.ts',
+      'packages/http/src/byte-range-response.ts',
+      'packages/http/src/dispatch/conditional-request-policy.ts',
+      'packages/http/src/dispatch/conditional-request-policy.test.ts',
+      'packages/http/src/dispatch/byte-range-response.test.ts',
+      'packages/testing/src/portability/http-adapter-portability.ts',
+      'packages/testing/src/portability/http-adapter-portability.test.ts',
+    ].filter((path) => path !== missingEvidence);
+
+    // When / Then
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(missingEvidence);
+  });
+
+  it('keeps manual-SSE evidence required for non-range lifecycle changes', () => {
+    // Given
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'tooling/governance/http-runtime-isolation.test.ts',
+    ];
+
+    // When / Then
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /dispatcher-manual-sse-lifecycle\.test\.ts/u,
+    );
+  });
+
+  it('admits manual-SSE lifecycle changes with their executable regression', () => {
+    // Given
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'tooling/governance/http-runtime-isolation.test.ts',
+      'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts',
+    ];
+
+    // When
+    const enforceChange = () => enforceContractCompanionUpdates(changedFiles);
+
     // Then
-    for (const evidencePath of requiredEvidencePaths) {
-      expect(source).toContain(evidencePath);
-    }
-    expect(source).toContain("if-range");
-    expect(source).toContain('assertSupportsSingleByteRanges');
+    expect(enforceChange).not.toThrow();
+  });
+
+  it('keeps the #3309 connection regression route exempt from manual-SSE evidence', () => {
+    // Given
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'packages/http/src/connection.test.ts',
+    ];
+
+    // When
+    const enforceChange = () => enforceContractCompanionUpdates(changedFiles);
+
+    // Then
+    expect(enforceChange).not.toThrow();
   });
 });

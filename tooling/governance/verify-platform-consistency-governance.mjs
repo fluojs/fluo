@@ -41,6 +41,7 @@ const httpByteRangeRuntimeSourcePaths = new Set([
   'packages/http/src/dispatch/dispatch-response-policy.ts',
 ]);
 const httpByteRangeRegressionEvidence = [
+  'packages/http/src/dispatch/conditional-request-policy.test.ts',
   'packages/http/src/dispatch/byte-range-response.test.ts',
   'packages/testing/src/portability/http-adapter-portability.ts',
   'packages/testing/src/portability/http-adapter-portability.test.ts',
@@ -871,6 +872,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
         httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
         `HTTP byte-range runtime contract changes must include ${httpByteRangeRegressionEvidence.join(', ')}.`,
       );
+      return;
     }
     if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
       return;
