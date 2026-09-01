@@ -18,12 +18,33 @@ import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
+import { SerializedScrapeQueue } from './serialized-scrape-queue.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 type TestPlatformHealthStatus = 'healthy' | 'unhealthy' | 'degraded';
 type TestPlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve(value: T): void;
+};
 
 const perfHooks = createRequire(import.meta.url)('node:perf_hooks');
+
+function createDeferred<T>(): Deferred<T> {
+  let resolvePromise: (value: T | PromiseLike<T>) => void = () => {
+    throw new Error('Deferred resolution was not initialized.');
+  };
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return {
+    promise,
+    resolve(value: T) {
+      resolvePromise(value);
+    },
+  };
+}
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
@@ -1150,6 +1171,202 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('selects the remaining latest registration when a queued scrape outlives the removed registration', async () => {
+    const sharedRegistry = new Registry();
+    const firstProbeStarted = createDeferred<void>();
+    const firstProbeReleased = createDeferred<void>();
+    let firstProbe = true;
+    const firstComponent = createPlatformComponent({
+      id: 'queue.first',
+      kind: 'queue',
+    });
+    const secondComponent = createPlatformComponent({
+      id: 'cache.second',
+      kind: 'cache',
+    });
+    const originalSecondHealth = secondComponent.health;
+
+    secondComponent.health = async () => {
+      if (firstProbe) {
+        firstProbe = false;
+        firstProbeStarted.resolve();
+        await firstProbeReleased.promise;
+      }
+
+      return originalSecondHealth();
+    };
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      platform: { components: [firstComponent] },
+      rootModule: FirstAppModule,
+    });
+
+    try {
+      const secondApp = await bootstrapApplication({
+        platform: { components: [secondComponent] },
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        const activeScrape = sharedRegistry.metrics();
+        await firstProbeStarted.promise;
+
+        const queuedScrape = sharedRegistry.metrics();
+        await secondApp.close();
+        firstProbeReleased.resolve();
+
+        await activeScrape;
+        const metricsText = await queuedScrape;
+
+        expect(metricsText).toContain('component_id="queue.first"');
+        expect(metricsText).not.toContain('component_id="cache.second"');
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
+  });
+
+  it('keeps the real registry renderer inside the serialized queue', async () => {
+    const sharedRegistry = new Registry();
+    const firstRenderStarted = createDeferred<void>();
+    const renderReleased = createDeferred<void>();
+    const originalMetrics = sharedRegistry.metrics;
+    let firstRender = true;
+    let queue: SerializedScrapeQueue | undefined;
+
+    sharedRegistry.metrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        firstRenderStarted.resolve();
+      }
+
+      await renderReleased.promise;
+      return originalMetrics.call(sharedRegistry);
+    };
+
+    const originalEnqueue = SerializedScrapeQueue.prototype.enqueue;
+    const enqueue = vi.spyOn(SerializedScrapeQueue.prototype, 'enqueue');
+    enqueue.mockImplementation(function enqueueTask<T>(
+      this: SerializedScrapeQueue,
+      task: () => Promise<T>,
+    ): Promise<T> {
+      queue = this;
+      return originalEnqueue.bind(this)(task);
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const firstScrape = sharedRegistry.metrics();
+      await firstRenderStarted.promise;
+
+      const secondScrape = sharedRegistry.metrics();
+
+      expect(queue?.state).toEqual({ isRunning: true, queued: 1 });
+
+      renderReleased.resolve();
+      await Promise.all([firstScrape, secondScrape]);
+    } finally {
+      enqueue.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('drains queued scrapes before restoration and retains a registration added during teardown', async () => {
+    const sharedRegistry = new Registry();
+    const firstRenderStarted = createDeferred<void>();
+    const renderReleased = createDeferred<void>();
+    const drainEntered = createDeferred<void>();
+    const registryMetrics = sharedRegistry.metrics;
+    const originalDrain = SerializedScrapeQueue.prototype.drain;
+    let firstRender = true;
+
+    const originalMetrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        firstRenderStarted.resolve();
+      }
+
+      await renderReleased.promise;
+      return registryMetrics.call(sharedRegistry);
+    };
+    sharedRegistry.metrics = originalMetrics;
+
+    const drain = vi.spyOn(SerializedScrapeQueue.prototype, 'drain');
+    drain.mockImplementation(async function drainQueue(
+      this: SerializedScrapeQueue,
+      finalizer: () => void,
+    ): Promise<void> {
+      drainEntered.resolve();
+      await originalDrain.call(this, finalizer);
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
+    const wrapper = sharedRegistry.metrics;
+
+    try {
+      const activeScrape = sharedRegistry.metrics();
+      await firstRenderStarted.promise;
+      const queuedScrape = sharedRegistry.metrics();
+
+      const closing = firstApp.close();
+      await drainEntered.promise;
+      expect(sharedRegistry.metrics).toBe(wrapper);
+
+      const drainingScrape = sharedRegistry.metrics();
+      const secondApp = await bootstrapApplication({
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        renderReleased.resolve();
+        await Promise.all([activeScrape, queuedScrape, drainingScrape, closing]);
+
+        expect(sharedRegistry.metrics).toBe(wrapper);
+        await sharedRegistry.metrics();
+      } finally {
+        await secondApp.close();
+      }
+
+      expect(sharedRegistry.metrics).toBe(originalMetrics);
+    } finally {
+      drain.mockRestore();
+      await firstApp.close();
+    }
+  });
+
   it('reuses built-in HTTP metrics when multiple module instances share one registry', async () => {
     const sharedRegistry = new Registry();
 
@@ -1790,6 +2007,30 @@ describe('MetricsModule', () => {
       expect(secondMetrics).not.toContain('result="ready"');
       expect(secondMetrics).not.toContain('result="healthy"');
     } finally {
+      await app.close();
+    }
+  });
+
+  it('routes concurrent registry scrapes through SerializedScrapeQueue', async () => {
+    const enqueue = vi.spyOn(SerializedScrapeQueue.prototype, 'enqueue');
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const registry = (await app.container.resolve(MetricsService)).getRegistry();
+      await Promise.all([registry.metrics(), registry.metrics()]);
+
+      expect(enqueue).toHaveBeenCalledTimes(2);
+    } finally {
+      enqueue.mockRestore();
       await app.close();
     }
   });
