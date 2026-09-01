@@ -347,10 +347,15 @@ async function writeReadableStream(
   let skip = start;
   let remaining = end - start + 1;
   let stopped = false;
+  let transportFailure: unknown;
   let resolveStop: () => void = () => {};
+  let resolveTransportFailure: () => void = () => {};
   let cancellation: Promise<void> | undefined;
   const stopPromise = new Promise<void>((resolve) => {
     resolveStop = resolve;
+  });
+  const transportFailurePromise = new Promise<void>((resolve) => {
+    resolveTransportFailure = resolve;
   });
   const cancel = (): Promise<void> => {
     cancellation ??= reader.cancel().catch(() => undefined);
@@ -364,7 +369,16 @@ async function writeReadableStream(
 
     void cancel();
   };
+  const fail = (error: unknown): void => {
+    if (transportFailure === undefined) {
+      transportFailure = error;
+      resolveTransportFailure();
+    }
+
+    stop();
+  };
   const removeCloseListener = stream.onClose?.(stop);
+  const removeErrorListener = stream.onError?.(fail);
   request.signal?.addEventListener('abort', stop, { once: true });
 
   if (isByteRangeRequestAborted(request)) {
@@ -378,9 +392,9 @@ async function writeReadableStream(
         break;
       }
 
-      const result = await raceWithStop(reader.read(), stopPromise);
+      const result = await raceWithStop(reader.read(), stopPromise, transportFailurePromise);
 
-      if (!result || stopped || isByteRangeRequestAborted(request)) {
+      if (!result || stopped || transportFailure !== undefined || isByteRangeRequestAborted(request)) {
         stop();
         break;
       }
@@ -406,7 +420,7 @@ async function writeReadableStream(
         const drain = stream.waitForDrain?.();
 
         if (drain) {
-          await raceWithStop(drain, stopPromise);
+          await raceWithStop(drain, stopPromise, transportFailurePromise);
         }
 
         if (isByteRangeRequestAborted(request)) {
@@ -417,12 +431,23 @@ async function writeReadableStream(
   } finally {
     request.signal?.removeEventListener('abort', stop);
     removeCloseListener?.();
-    await cancel();
+    removeErrorListener?.();
+
+    if (stopped) {
+      void cancel();
+    } else {
+      await cancel();
+    }
+
     reader.releaseLock();
 
-    if (!stream.closed) {
+    if (!stream.closed && transportFailure === undefined) {
       stream.close();
     }
+  }
+
+  if (transportFailure !== undefined) {
+    throw transportFailure;
   }
 }
 
@@ -433,9 +458,18 @@ function isByteRangeRequestAborted(request: FrameworkRequest): boolean {
 async function raceWithStop<T>(
   operation: Promise<T>,
   stop: Promise<void>,
+  transportFailure?: Promise<void>,
 ): Promise<T | undefined> {
-  return await Promise.race([
+  const terminalSignals: Promise<T | undefined>[] = [
     operation,
     stop.then(() => undefined),
+  ];
+
+  if (transportFailure) {
+    terminalSignals.push(transportFailure.then(() => undefined));
+  }
+
+  return await Promise.race([
+    ...terminalSignals,
   ]);
 }

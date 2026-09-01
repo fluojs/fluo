@@ -1,10 +1,26 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createNodeFileSystemAssetSource } from '../node.js';
+
+const containmentTestState = vi.hoisted(() => ({
+  onOpen: undefined as undefined | ((path: string) => Promise<void>),
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+
+  return {
+    ...actual,
+    async open(...args: Parameters<typeof actual.open>) {
+      await containmentTestState.onOpen?.(String(args[0]));
+      return await actual.open(...args);
+    },
+  };
+});
 
 const temporaryDirectories: string[] = [];
 
@@ -51,6 +67,14 @@ function requireStaticAsset(asset: Awaited<ReturnType<ReturnType<typeof createNo
   }
 
   return asset;
+}
+
+function openAssetSource(asset: ReturnType<typeof requireStaticAsset>): ReadableStream<Uint8Array> {
+  if (typeof asset.source !== 'function') {
+    throw new Error('Expected a lazy static asset stream source.');
+  }
+
+  return asset.source();
 }
 
 afterEach(async () => {
@@ -132,6 +156,62 @@ describe('Node filesystem static asset source', () => {
 
     await expect(readBytes(selected.source())).resolves.toEqual(Uint8Array.from([1, 2, 3]));
     await selected.dispose?.();
+  });
+
+  it('never escapes its opened directory when an intermediate component becomes an outside symlink', async () => {
+    const root = await createAssetDirectory();
+    const outside = await createAssetDirectory();
+    const assets = join(root, 'assets');
+    const movedAssets = join(root, 'assets-original');
+    await mkdir(assets);
+    await writeFile(join(assets, 'app.js'), Uint8Array.from([1, 2, 3]));
+    await writeFile(join(outside, 'app.js'), Uint8Array.from([9, 9, 9]));
+    let swapped = false;
+    containmentTestState.onOpen = async (path) => {
+      if (!swapped && typeof path === 'string' && path.endsWith('/app.js')) {
+        swapped = true;
+        await rename(assets, movedAssets);
+        await symlink(outside, assets);
+      }
+    };
+
+    try {
+      const source = createNodeFileSystemAssetSource({ root });
+      const asset = await source.resolve('assets/app.js', {
+        acceptedEncodings: ['identity'],
+      });
+
+      expect(swapped).toBe(true);
+      expect(asset).toBeUndefined();
+    } finally {
+      containmentTestState.onOpen = undefined;
+    }
+  });
+
+  it('hashes an immutable opened representation after an in-place same-size rewrite', async () => {
+    const root = await createAssetDirectory();
+    const path = join(root, 'app.js');
+    const originalBytes = Uint8Array.from([1, 2, 3]);
+    const replacementBytes = Uint8Array.from([4, 5, 6]);
+    await writeFile(path, originalBytes);
+    const timestamps = await stat(path);
+    const source = createNodeFileSystemAssetSource({ root });
+    const original = requireStaticAsset(await source.resolve('app.js', {
+      acceptedEncodings: ['identity'],
+    }));
+
+    await writeFile(path, replacementBytes);
+    await utimes(path, timestamps.atime, timestamps.mtime);
+
+    const replacement = requireStaticAsset(await source.resolve('app.js', {
+      acceptedEncodings: ['identity'],
+    }));
+
+    expect(replacement.validators?.etag?.opaqueValue).not.toBe(original.validators?.etag?.opaqueValue);
+    expect(await readBytes(openAssetSource(original))).toEqual(originalBytes);
+    expect(await readBytes(openAssetSource(replacement))).toEqual(replacementBytes);
+
+    await Promise.all([original.dispose?.(), replacement.dispose?.()]);
   });
 
   it('changes the ETag when a same-size file is replaced without a second boundary', async () => {

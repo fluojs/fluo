@@ -239,6 +239,31 @@ describe('static asset middleware', () => {
     });
   });
 
+  it('disposes a selected representation rejected by unacceptable encoding', async () => {
+    const dispose = vi.fn(async () => undefined);
+    const middleware = createStaticAssetsMiddleware({
+      prefix: '/assets',
+      source: {
+        async resolve() {
+          return {
+            contentEncoding: 'br',
+            contentType: 'application/javascript',
+            dispose,
+            size: 1,
+            source: Uint8Array.of(1),
+          };
+        },
+      },
+    });
+
+    const { response } = await invokeStaticMiddleware(middleware, createRequest('/assets/app.js', {
+      'accept-encoding': 'identity',
+    }));
+
+    expect(response.statusCode).toBe(406);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it('disposes a selected asset after conditional and bodyless responses', async () => {
     const dispose = vi.fn(async () => undefined);
     const middleware = createStaticAssetsMiddleware({

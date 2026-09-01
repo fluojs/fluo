@@ -70,6 +70,7 @@ function getListeningUrl(app: Application): string {
 
 async function assertStaticAssetsOverRealListener(
   bootstrap: BootstrapStaticAssetsApplication,
+  expectsNativeCompressionGuard = false,
 ): Promise<void> {
   const app = await bootstrap(StaticAssetsModule, {
     compression: true,
@@ -98,13 +99,20 @@ async function assertStaticAssetsOverRealListener(
     const head = await fetch(`${url}/assets/app.js`, { method: 'HEAD' });
 
     expect(full.status).toBe(200);
-    expect(full.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(full.headers.get('cache-control')).toContain('public, max-age=300');
     expect(full.headers.get('content-type')).toContain('application/javascript');
     expect(full.headers.get('content-encoding')).toBeNull();
     expect(full.headers.get('content-length')).toBe('2048');
+    expect(full.headers.get('etag')).toBe('"asset-v1"');
+
+    if (expectsNativeCompressionGuard) {
+      expect(full.headers.get('cache-control')).toContain('no-transform');
+    }
     await expect(full.bytes()).resolves.toEqual(Uint8Array.from({ length: 2048 }, (_, index) => index % 251));
     expect(ranged.status).toBe(206);
     expect(ranged.headers.get('content-range')).toBe('bytes 2-4/2048');
+    expect(ranged.headers.get('content-length')).toBe('3');
+    expect(ranged.headers.get('etag')).toBe('"asset-v1"');
     await expect(ranged.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
     expect(notModified.status).toBe(304);
     expect(notModified.headers.get('etag')).toBe('"asset-v1"');
@@ -122,10 +130,12 @@ describe('static asset real-listener portability', () => {
     const root = await mkdtemp(join(tmpdir(), 'fluo-static-listener-'));
     await writeFile(join(root, 'app.js'), Uint8Array.from({ length: 64 }, (_, index) => index));
     await writeFile(join(root, 'app.js.br'), Uint8Array.from([1, 2, 3, 4]));
+    await writeFile(join(root, '.well-known.js'), Uint8Array.from([7]));
     const app = await bootstrapNodejsApplication(StaticAssetsModule, {
       compression: true,
       cors: false,
       middleware: [createStaticAssetsMiddleware({
+        dotfiles: 'allow',
         prefix: '/assets',
         source: createNodeFileSystemAssetSource({ precompressed: true, root }),
       })],
@@ -147,6 +157,19 @@ describe('static asset real-listener portability', () => {
         method: 'HEAD',
         headers: { 'accept-encoding': 'br' },
       });
+      const compressedRange = await fetch(`${url}/assets/app.js`, {
+        headers: { 'accept-encoding': 'br', Range: 'bytes=1-2' },
+        method: 'HEAD',
+      });
+      const malformedRange = await fetch(`${url}/assets/app.js`, {
+        headers: { 'accept-encoding': 'identity', Range: 'bytes=0-1,3-4' },
+      });
+      const unacceptable = await fetch(`${url}/assets/app.js`, {
+        headers: { 'accept-encoding': '*;q=0' },
+      });
+      const dotfile = await fetch(`${url}/assets/.well-known.js`, {
+        headers: { 'accept-encoding': 'identity' },
+      });
       const missing = await fetch(`${url}/assets/missing.js`);
 
       expect(full.status).toBe(200);
@@ -160,6 +183,15 @@ describe('static asset real-listener portability', () => {
       expect(notModified.status).toBe(304);
       expect(compressedHead.headers.get('content-encoding')).toBe('br');
       expect(compressedHead.headers.get('vary')).toContain('Accept-Encoding');
+      expect(compressedRange.status).toBe(206);
+      expect(compressedRange.headers.get('content-encoding')).toBe('br');
+      expect(compressedRange.headers.get('content-range')).toBe('bytes 1-2/4');
+      expect(compressedRange.headers.get('content-length')).toBe('2');
+      expect(malformedRange.status).toBe(200);
+      await expect(malformedRange.bytes()).resolves.toEqual(Uint8Array.from({ length: 64 }, (_, index) => index));
+      expect(unacceptable.status).toBe(406);
+      expect(dotfile.status).toBe(200);
+      await expect(dotfile.bytes()).resolves.toEqual(Uint8Array.from([7]));
       expect(missing.status).toBe(404);
     } finally {
       await app.close();
@@ -172,10 +204,10 @@ describe('static asset real-listener portability', () => {
   });
 
   it('serves static assets through the Express listener', async () => {
-    await assertStaticAssetsOverRealListener(bootstrapExpressApplication);
+    await assertStaticAssetsOverRealListener(bootstrapExpressApplication, true);
   });
 
   it('serves static assets through the Fastify listener', async () => {
-    await assertStaticAssetsOverRealListener(bootstrapFastifyApplication);
+    await assertStaticAssetsOverRealListener(bootstrapFastifyApplication, true);
   });
 });

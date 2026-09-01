@@ -157,6 +157,7 @@ export interface FrameworkResponseStream {
   close(): void;
   flush?(): void;
   onClose?(listener: () => void): (() => void) | void;
+  onError?(listener: (error: unknown) => void): (() => void) | void;
   waitForDrain?(): Promise<void>;
   write(chunk: string | Uint8Array): boolean;
 }

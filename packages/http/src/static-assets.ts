@@ -142,10 +142,7 @@ export function createStaticAssetsMiddleware(
         return;
       }
 
-      if (
-        isStaticAssetNotAcceptable(resolution)
-        || !isStaticAssetEncodingAccepted(resolution, sourceContext.acceptedEncodings)
-      ) {
+      if (isStaticAssetNotAcceptable(resolution)) {
         appendVaryHeader(context.response, 'Accept-Encoding');
         context.response.setHeader('Content-Length', '0');
         context.response.setStatus(406);
@@ -154,6 +151,14 @@ export function createStaticAssetsMiddleware(
       }
 
       try {
+        if (!isStaticAssetEncodingAccepted(resolution, sourceContext.acceptedEncodings)) {
+          appendVaryHeader(context.response, 'Accept-Encoding');
+          context.response.setHeader('Content-Length', '0');
+          context.response.setStatus(406);
+          await context.response.send(undefined, { compression: false });
+          return;
+        }
+
         if (configuration.cacheControl !== false) {
           context.response.setHeader('Cache-Control', configuration.cacheControl);
         }

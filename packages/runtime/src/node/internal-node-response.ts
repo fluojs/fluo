@@ -173,22 +173,35 @@ function createFrameworkResponseStream(response: ServerResponse): FrameworkRespo
         response.removeListener('close', listener);
       };
     },
+    onError(listener: (error: unknown) => void) {
+      response.on('error', listener);
+      return () => {
+        response.removeListener('error', listener);
+      };
+    },
     waitForDrain() {
       if (response.writableEnded || response.destroyed) {
         return Promise.resolve();
       }
 
-      return new Promise<void>((resolve) => {
-        const settle = () => {
-          response.removeListener('drain', settle);
-          response.removeListener('close', settle);
-          response.removeListener('error', settle);
+      return new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          response.removeListener('drain', resolveDrain);
+          response.removeListener('close', resolveDrain);
+          response.removeListener('error', rejectError);
+        };
+        const rejectError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const resolveDrain = () => {
+          cleanup();
           resolve();
         };
 
-        response.once('drain', settle);
-        response.once('close', settle);
-        response.once('error', settle);
+        response.once('drain', resolveDrain);
+        response.once('close', resolveDrain);
+        response.once('error', rejectError);
       });
     },
     write(chunk: string | Uint8Array) {

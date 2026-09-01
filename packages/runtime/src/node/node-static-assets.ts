@@ -1,7 +1,7 @@
 import { constants, realpathSync, statSync } from 'node:fs';
-import { open, realpath, type FileHandle } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { open, realpath, stat, type FileHandle } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve } from 'node:path';
-import { Readable } from 'node:stream';
 
 import type {
   StaticAsset,
@@ -84,12 +84,11 @@ export function createNodeFileSystemAssetSource(
       return {
         contentEncoding: selected.representation.encoding,
         contentType: mimeTypes[extname(logicalPath)] ?? 'application/octet-stream',
-        dispose: selected.dispose,
-        source: () => Readable.toWeb(selected.handle.createReadStream({ autoClose: false })) as ReadableStream<Uint8Array>,
+        source: () => createSnapshotStream(selected.bytes),
         size: selected.metadata.size,
         validators: {
           etag: {
-            opaqueValue: createAssetEtag(selected.metadata),
+            opaqueValue: createAssetEtag(selected.bytes),
             strength: 'strong',
           },
           lastModified: selected.metadata.lastModified,
@@ -105,14 +104,19 @@ type ResolvedPrecompression = {
   readonly gzip: boolean;
 };
 
+type ResolvedRoot = {
+  readonly device: bigint;
+  readonly inode: bigint;
+  readonly path: string;
+};
+
 type SelectedRepresentation = {
   readonly encoding?: StaticAssetContentEncoding;
   readonly path: string;
 };
 
 type OpenedAsset = {
-  readonly dispose: () => Promise<void>;
-  readonly handle: FileHandle;
+  readonly bytes: Uint8Array;
   readonly metadata: AssetMetadata;
 };
 
@@ -120,19 +124,17 @@ type AssetMetadata = {
   readonly device: bigint;
   readonly inode: bigint;
   readonly lastModified: Date;
-  readonly lastModifiedNanoseconds: bigint;
   readonly size: number;
 };
 
 type SelectedOpenedRepresentation = {
-  readonly dispose: () => Promise<void>;
-  readonly handle: FileHandle;
+  readonly bytes: Uint8Array;
   readonly metadata: AssetMetadata;
   readonly representation: SelectedRepresentation;
   readonly variesByEncoding: boolean;
 };
 
-function resolveNodeAssetRoot(options: NodeFileSystemAssetSourceOptions): string {
+function resolveNodeAssetRoot(options: NodeFileSystemAssetSourceOptions): ResolvedRoot {
   if (!options || typeof options !== 'object' || typeof options.root !== 'string' || options.root.trim() === '') {
     throw new TypeError('Node filesystem static asset root must be a non-empty string.');
   }
@@ -144,11 +146,17 @@ function resolveNodeAssetRoot(options: NodeFileSystemAssetSourceOptions): string
     throw new TypeError('Node filesystem static asset root must be an existing directory.');
   }
 
-  if (!statSync(root).isDirectory()) {
+  const metadata = statSync(root, { bigint: true });
+
+  if (!metadata.isDirectory()) {
     throw new TypeError('Node filesystem static asset root must be a directory.');
   }
 
-  return root;
+  return {
+    device: metadata.dev,
+    inode: metadata.ino,
+    path: root,
+  };
 }
 
 function resolvePrecompression(
@@ -172,7 +180,7 @@ function resolvePrecompression(
   };
 }
 
-function resolveRelativeAssetPath(root: string, path: string): string | undefined {
+function resolveRelativeAssetPath(root: ResolvedRoot, path: string): string | undefined {
   if (
     typeof path !== 'string'
     || path === ''
@@ -183,12 +191,12 @@ function resolveRelativeAssetPath(root: string, path: string): string | undefine
     return undefined;
   }
 
-  const candidate = resolve(root, ...path.split('/'));
-  return isWithinRoot(root, candidate) ? candidate : undefined;
+  const candidate = resolve(root.path, ...path.split('/'));
+  return isWithinRoot(root.path, candidate) ? path : undefined;
 }
 
 async function selectRepresentation(
-  root: string,
+  root: ResolvedRoot,
   logicalPath: string,
   acceptedEncodings: readonly StaticAssetAcceptedEncoding[],
   precompressed: ResolvedPrecompression,
@@ -220,7 +228,7 @@ async function selectRepresentation(
 }
 
 async function hasExistingRepresentation(
-  root: string,
+  root: ResolvedRoot,
   logicalPath: string,
   precompressed: ResolvedPrecompression,
 ): Promise<boolean> {
@@ -228,7 +236,6 @@ async function hasExistingRepresentation(
     const opened = await openContainedAsset(root, representation.path);
 
     if (opened) {
-      await opened.dispose();
       return true;
     }
   }
@@ -237,7 +244,7 @@ async function hasExistingRepresentation(
 }
 
 async function hasPrecompressedRepresentation(
-  root: string,
+  root: ResolvedRoot,
   logicalPath: string,
   precompressed: ResolvedPrecompression,
 ): Promise<boolean> {
@@ -261,40 +268,48 @@ function supportedRepresentations(
   ];
 }
 
-async function representationExists(root: string, logicalPath: string): Promise<boolean> {
+async function representationExists(root: ResolvedRoot, logicalPath: string): Promise<boolean> {
   const opened = await openContainedAsset(root, logicalPath);
 
-  if (!opened) {
-    return false;
-  }
-
-  await opened.dispose();
-  return true;
+  return opened !== undefined;
 }
 
-async function openContainedAsset(root: string, path: string): Promise<OpenedAsset | undefined> {
+async function openContainedAsset(root: ResolvedRoot, path: string): Promise<OpenedAsset | undefined> {
   try {
-    const resolvedPath = await realpath(path);
+    const resolvedPath = await realpath(resolve(root.path, path));
 
-    if (!isWithinRoot(root, resolvedPath)) {
+    if (!isWithinRoot(root.path, resolvedPath)) {
+      return undefined;
+    }
+
+    const expected = await stat(resolvedPath, { bigint: true });
+
+    if (!expected.isFile()) {
       return undefined;
     }
 
     const handle = await open(resolvedPath, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const dispose = createHandleDisposer(handle);
 
     try {
       const metadata = await readAssetMetadata(handle);
-
-      if (!metadata) {
-        await dispose();
+      if (
+        !metadata
+        || metadata.device !== expected.dev
+        || metadata.inode !== expected.ino
+      ) {
         return undefined;
       }
 
-      return { dispose, handle, metadata };
-    } catch (error) {
-      await dispose();
-      throw error;
+      const bytes = new Uint8Array(await handle.readFile());
+      return {
+        bytes,
+        metadata: {
+          ...metadata,
+          size: bytes.byteLength,
+        },
+      };
+    } finally {
+      await handle.close();
     }
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -316,27 +331,21 @@ async function readAssetMetadata(handle: FileHandle): Promise<AssetMetadata | un
     device: metadata.dev,
     inode: metadata.ino,
     lastModified: new Date(Number(metadata.mtimeMs)),
-    lastModifiedNanoseconds: metadata.mtimeNs,
     size: Number(metadata.size),
   };
 }
 
-function createAssetEtag(metadata: AssetMetadata): string {
-  return [
-    metadata.device,
-    metadata.inode,
-    BigInt(metadata.size),
-    metadata.lastModifiedNanoseconds,
-  ].map((value) => value.toString(16)).join('-');
+function createSnapshotStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
 }
 
-function createHandleDisposer(handle: FileHandle): () => Promise<void> {
-  let closing: Promise<void> | undefined;
-
-  return () => {
-    closing ??= handle.close();
-    return closing;
-  };
+function createAssetEtag(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('base64url');
 }
 
 function isWithinRoot(root: string, target: string): boolean {
@@ -347,5 +356,5 @@ function isWithinRoot(root: string, target: string): boolean {
 function isMissingFileError(error: unknown): boolean {
   return error instanceof Error
     && 'code' in error
-    && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
+    && (error.code === 'ELOOP' || error.code === 'ENOENT' || error.code === 'ENOTDIR');
 }
