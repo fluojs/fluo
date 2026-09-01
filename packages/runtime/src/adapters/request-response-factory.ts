@@ -52,9 +52,10 @@ export function startDispatchWithRequestResponseFactory<
 }: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): StartedRequestResponseFactoryDispatch<Response> {
   const response = factory.createResponse(rawResponse, rawRequest);
   const signal = factory.createRequestSignal(rawResponse);
+  let frameworkRequest: FrameworkRequest | undefined;
   const completion = (async (): Promise<Response> => {
     try {
-      const frameworkRequest = await factory.createRequest(rawRequest, signal);
+      frameworkRequest = await factory.createRequest(rawRequest, signal);
       const materializeRequest = factory.materializeRequest;
 
       if (materializeRequest) {
@@ -79,6 +80,8 @@ export function startDispatchWithRequestResponseFactory<
 
       await factory.writeErrorResponse(error, response, factory.resolveRequestId(rawRequest));
       return response;
+    } finally {
+      await finalizeRouteOwnedMultipartBody(frameworkRequest);
     }
   })();
 
@@ -109,4 +112,33 @@ export async function dispatchWithRequestResponseFactory<
     rawRequest,
     rawResponse,
   }).completion;
+}
+
+/**
+ * Finalizes a route-owned multipart body iterator after dispatch completes.
+ *
+ * @param request Framework request whose multipart body may need finalization.
+ * @returns A promise that resolves after the iterator has been returned when applicable.
+ */
+export async function finalizeRouteOwnedMultipartBody(request: FrameworkRequest | undefined): Promise<void> {
+  const body = request?.body;
+
+  if (!isAsyncIterable(body)) {
+    return;
+  }
+
+  const iterator = body[Symbol.asyncIterator]();
+
+  if (iterator.return) {
+    await iterator.return();
+  }
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    value !== null
+    && (typeof value === 'object' || typeof value === 'function')
+    && Symbol.asyncIterator in value
+    && typeof value[Symbol.asyncIterator] === 'function'
+  );
 }

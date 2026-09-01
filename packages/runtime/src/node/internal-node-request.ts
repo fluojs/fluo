@@ -3,7 +3,6 @@ import type {
   IncomingMessage,
   ServerResponse,
 } from 'node:http';
-import { Readable } from 'node:stream';
 import { URL } from 'node:url';
 
 import {
@@ -15,6 +14,7 @@ import {
 
 import {
   parseMultipart,
+  parseMultipartStream,
   type MultipartOptions,
   type UploadedFile,
 } from '../multipart.js';
@@ -147,18 +147,23 @@ export function createDeferredFrameworkRequest(
   let frameworkRequest!: NodeFrameworkRequest;
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const result = await parseMultipart(
-        {
-          body: Readable.toWeb(request),
+      const resolvedMultipartOptions = {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      };
+
+      if (multipartOptions?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream({
+          body: request,
           headers,
           method: request.method,
-          url: resolveAbsoluteRequestUrl(rawUrl),
-        },
-        {
-          ...multipartOptions,
-          maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-        },
-      );
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
+        return;
+      }
+
+      const result = await parseMultipart(request, resolvedMultipartOptions);
       frameworkRequest.body = result.fields;
       frameworkRequest.files = result.files.map((file) => ({ ...file, buffer: Buffer.from(file.buffer) }));
       return;

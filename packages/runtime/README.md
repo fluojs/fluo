@@ -71,6 +71,73 @@ await app.listen();
 
 ## Common Patterns
 
+### Streaming multipart consumption
+
+Use `parseMultipartStream(...)` from `@fluojs/runtime/web` for a standalone raw `Request` or
+request-like body when large uploaded files must not be materialized as `Uint8Array` values. The
+existing `parseMultipart(...)` API remains the explicit buffered mode. Select exactly one mode for
+a request: buffered and streaming parsing of the same body reject with
+`MultipartBodyConsumedError`.
+
+```typescript
+import {
+  parseMultipartStream,
+  type MultipartFilePart,
+} from '@fluojs/runtime/web';
+
+for await (const part of parseMultipartStream(request, {
+  maxFieldSize: 1 * 1024 * 1024,
+  maxFields: 20,
+  maxFiles: 4,
+  maxFileSize: 20 * 1024 * 1024,
+  maxHeaderSize: 8 * 1024,
+  maxTotalSize: 25 * 1024 * 1024,
+})) {
+  if (part.kind === 'field') {
+    continue; // part.name and part.value
+  }
+
+  const file: MultipartFilePart = part;
+  await store(file.stream); // finish or cancel before reading the next part
+}
+```
+
+For Node.js, Express, Fastify, and Web application dispatch, opt in at application bootstrap with
+`multipart.strategy: 'stream'`. The route receives the same `AsyncIterable<MultipartPart>` through
+`RequestContext.request.body`; adapter dispatch creates the iterator but does not pull or buffer it
+before the route consumes it.
+
+```typescript
+const app = await bootstrapNodejsApplication(AppModule, {
+  multipart: {
+    strategy: 'stream',
+    maxTotalSize: 25 * 1024 * 1024,
+  },
+});
+
+@Controller('/uploads')
+class UploadController {
+  @Post('/')
+  async upload(_input: undefined, context: RequestContext) {
+    for await (const part of context.request.body as AsyncIterable<MultipartPart>) {
+      // Consume each file stream before advancing to the next part.
+    }
+  }
+}
+```
+
+Streaming mode applies bounded field and header defaults. Buffered `parseMultipart(...)` preserves
+its prior acceptance behavior for fields and headers unless `maxFieldSize`, `maxFields`, or
+`maxHeaderSize` is explicitly configured.
+
+`MultipartFilePart.stream` is a Web `ReadableStream<Uint8Array>` with parser-driven
+backpressure: a file body is yielded before the complete request arrives, and the next request
+chunk is read only when the active file stream needs it. File-stream cancellation, request abort,
+parser failures, and every size/count/header limit cancel the active source and release the parser.
+The parser accepts native Fetch `Request` values plus native async-iterable Node/Express/Fastify
+request streams (directly or as `MultipartRequestLike` wrappers); it never exposes adapter-native
+multipart objects or temporary-file APIs.
+
 ### Optional Early Hints capability
 
 The runtime preserves the adapter-owned optional `context.response.earlyHints` capability without making it part of the required response method surface. Node.js, Express, and Fastify responses provide the writer; Web-standard response factories omit it so Bun, Deno, Workers, and custom Fetch hosts are detectable as unsupported before use. Early writes remain independent from final status, headers, body, and commit ownership. See the [`@fluojs/http` Early Hints contract](../http/README.md#early-hints).
@@ -78,6 +145,10 @@ The runtime preserves the adapter-owned optional `context.response.earlyHints` c
 ### Conditional request bootstrap
 
 Runtime bootstrap accepts the `conditionalRequest` option from `@fluojs/http`. Its resolver returns explicit representation existence plus optional validators; it runs after middleware and guards, before interceptors and controller invocation. See the [`@fluojs/http` Conditional Requests contract](../http/README.md#conditional-requests) for the resolver shape, RFC 9110 precedence, and `HEAD` rules.
+
+### Access log observers
+
+Pass `createAccessLogObserver(...)` through the bootstrap `observers` option to route portable request lifecycle records to application-owned structured logging. The observer preserves the dispatcher lifecycle for native adapters by selecting the complete fallback path; see the [`@fluojs/http` Access logging contract](../http/README.md#access-logging) for trusted client identity and header allowlist requirements.
 
 ### Application Context (No HTTP)
 
@@ -109,9 +180,24 @@ Move shutdown preparation into the documented phase that owns it. Use `onModuleD
 
 ### Studio Devtools Bridge
 
-`@fluojs/runtime` can publish live Studio snapshots and request traces, but it does not read `process.env` directly. `fluo dev --studio` is the application boundary that starts the sidecar, creates the tokenized Studio config, and injects that explicit config into the Node app child before the app imports runtime. Runtime reads each injected field once when it creates the Studio bridge, validates the complete config and its HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the writable process-global injection cannot change instrumentation inputs. If that CLI-provided config is absent, malformed, or missing a tokenized endpoint, Studio instrumentation is a no-op and bootstrap behavior remains unchanged.
+`@fluojs/runtime` can publish live Studio snapshots and request traces without reading `process.env` directly. `fluo dev --studio` remains the default Node path: the CLI starts the sidecar, creates tokenized Studio config, and injects it before the app imports runtime. Runtime reads those injected fields once, validates the HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the legacy process-global cannot change instrumentation inputs.
 
-For this MVP, Node dev runner projects are the full support target. Bun, Deno, and Cloudflare Workers remain unsupported for live Studio until a dedicated bridge is implemented and verified; their runtime bootstraps still no-op when Studio config is absent. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history.
+Package integrations can instead import `StudioDevtoolsRuntime` and its transport contracts from `@fluojs/runtime/devtools`, then pass a host-owned bridge through `studioDevtools` to `bootstrapApplication(...)`, `fluoFactory.create(...)`, or `fluoFactory.createApplicationContext(...)`. An explicit bridge takes precedence over CLI injection and needs no process-global mutation:
+
+```typescript
+import { fluoFactory } from '@fluojs/runtime';
+import { StudioDevtoolsRuntime } from '@fluojs/runtime/devtools';
+
+const studioDevtools = new StudioDevtoolsRuntime({
+  appId: 'my-bun-app',
+  runtime: 'bun',
+  transport: { publish: (event) => hostStudioTransport.send(event) },
+});
+
+const app = await fluoFactory.create(AppModule, { studioDevtools });
+```
+
+This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history. Failed-request events use only the fixed `Request failed` message and never include raw exception text, names, stacks, causes, or stringified values.
 
 ### Global Exception Filters
 
@@ -134,6 +220,42 @@ const app = await fluoFactory.create(AppModule, {
   filters: [new GlobalErrorFilter()],
 });
 ```
+
+### Content negotiation
+
+`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `contentNegotiation` and forward
+it unchanged to the HTTP dispatcher. Configure formatters once at the application boundary and use
+`@Produces(...)` on routes to select their allowed representations:
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+import { fluoFactory } from '@fluojs/runtime';
+
+@Controller('/reports')
+class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      { mediaType: 'application/json', format: JSON.stringify },
+      { mediaType: 'text/plain', format: (value) => `plain:${JSON.stringify(value)}` },
+    ],
+  },
+});
+```
+
+Runtime does not parse `Accept` or own response policy. `@fluojs/http` applies the documented
+quality, wildcard, suffix, default, malformed-input, and 406 semantics and emits canonical
+`Vary: Accept` for every successful formatter selection. Standalone application contexts do not
+create an HTTP dispatcher, so they do not use this option. See the
+[HTTP package contract](../http#content-negotiation).
 
 ### Optional HTML Error Representations
 
@@ -217,6 +339,7 @@ class UsersModule {}
 - Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
+- `@fluojs/runtime/web` exposes two mutually exclusive multipart consumption modes: `parseMultipart(...)` buffers fields and files, while `parseMultipartStream(...)` yields discriminated field/file parts and never materializes complete file payloads. Streaming mode enforces per-field, per-file, total-size, field-count, file-count, and header limits while bytes are read; abort, cancellation, and parser failures cancel the active source. A body selected by either mode rejects a second buffered or streaming selection with `MultipartBodyConsumedError`.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - HTTP application bootstrap passes an optional application-owned `errorRepresentation.html` provider to the dispatcher without taking representation ownership. Canonical JSON remains the default; HTTP keeps classification, negotiation, status/header, `HEAD`, abort, commit, and fallback semantics.
@@ -226,7 +349,7 @@ class UsersModule {}
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
 - Platform snapshot and diagnostic issue production stay in runtime; graph viewing, filtering presentation, and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
 - Compiled route inspection is a one-way projection from `HandlerDescriptor` values. Effective method, path, version, params, module, controller, and handler fields are copied into frozen entries; ordinary routes use `kind: 'http'`, while runtime-aware integrations can publish a more specific marker such as `react-page`. Route inspection never participates in matching, conflict detection, or dispatch and does not retain request body, cookie, header, query-value, or other request-private data.
-- Runtime-connected Studio instrumentation is activated only by explicit CLI-injected Studio config, never by direct `process.env` reads inside runtime package source. Bridge creation captures each known field once into a validated, frozen private snapshot and accepts only an HTTP(S) tokenized endpoint, so later global-object mutation cannot retarget or reauthorize instrumentation. Without valid config and tokenized endpoint, runtime bootstrap is a no-op for Studio, including non-Node runtimes.
+- Runtime-connected Studio instrumentation accepts either an explicit host-owned `studioDevtools` bridge or the default CLI-injected Node config, never direct `process.env` reads. The documented `@fluojs/runtime/devtools` subpath exposes transport-neutral bridge contracts so package integrations do not need private imports or process-global mutation. Explicit bridges take precedence; CLI config is captured once into a validated, frozen private snapshot and remains the no-op fallback when neither bridge nor valid config is present.
 - Studio request traces omit request/response bodies, cookies, and full headers; the trace `url` is sanitized to path-only form before publish so query tokens and fragments are not retained in local Studio event history.
 - Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
 - Runtime retains distinct lifecycle diagnostics from validation, start, rollback, and stop. Failures produced by repeatable `ready()`, `health()`, and `snapshot()` probes are bounded to the latest failure for each component and probe phase, so long-running polling cannot grow `PlatformShellSnapshot.diagnostics` without bound while the latest cause remains visible.
@@ -249,6 +372,7 @@ class UsersModule {}
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider and `BootstrapApplicationOptions.conditionalRequest` configures representation validation; `CreateApplicationOptions` exposes both fields through `FluoFactory.create(...)`.
+- `@fluojs/runtime/devtools`: Package-integration subpath for `StudioDevtoolsRuntime`, its transport contracts, and live Studio event contracts. Pass the created bridge as `studioDevtools` during application or context bootstrap.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, and `createRuntimeInspectionSnapshot(...)`: Runtime-owned immutable projections that add effective compiled route diagnostics to platform snapshots without changing HTTP route behavior.
@@ -257,6 +381,7 @@ class UsersModule {}
 - `PlatformLifecycleOperation`, `PlatformLifecycleConflictError`: Root-exported lifecycle conflict contracts. The error uses code `PLATFORM_LIFECYCLE_CONFLICT` and exposes matching `activeOperation` / `requestedOperation` fields and structured metadata.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
 - `UploadedFile`: Runtime-neutral multipart file descriptor whose in-memory `buffer` payload is a Web-standard `Uint8Array`.
+- `MultipartFieldPart`, `MultipartFilePart`, `MultipartPart`, and `MultipartBodyConsumedError`: Typed streaming multipart contracts. `MultipartFilePart.stream` is single-consumer and must settle before iteration requests the following part.
 
 ## Platform-Specific Subpaths
 
@@ -265,7 +390,7 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 | Subpath | Purpose |
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
-| `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, and `parseMultipart`. |
+| `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, and streaming `parseMultipartStream`. |
 | `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens, runtime-owned metadata and route-inspection helpers, plus `defineModule(...)` and `createRuntimeRouteInspection(...)` for first-party runtime-neutral integrations that must align with compiled runtime descriptors. |
 | `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
 | `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |

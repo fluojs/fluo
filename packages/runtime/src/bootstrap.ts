@@ -6,6 +6,7 @@ import {
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
+  type HandlerDescriptor,
   type HandlerSource,
   type HttpApplicationAdapter,
 } from '@fluojs/http';
@@ -1317,7 +1318,7 @@ function logRouteMappings(
   logger: ApplicationLogger,
   descriptors: ReturnType<typeof createHandlerMapping>['descriptors'],
 ): void {
-  const byController = new Map<string, { controllerPath: string; descriptors: typeof descriptors }>();
+  const byController = new Map<string, { controllerPath: string; descriptors: HandlerDescriptor[] }>();
 
   for (const descriptor of descriptors) {
     const key = descriptor.controllerToken.name;
@@ -1476,6 +1477,9 @@ function createRuntimeDispatcherOptions(
   const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    ...(options.contentNegotiation === undefined
+      ? {}
+      : { contentNegotiation: options.contentNegotiation }),
     ...(options.conditionalRequest === undefined
       ? {}
       : { conditionalRequest: options.conditionalRequest }),
@@ -1534,7 +1538,7 @@ function createRuntimeDispatcher(
  * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
+  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
   const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
   const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
@@ -1711,7 +1715,7 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
+    const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
     const effectiveOptions = applyStudioDevtoolsContextOptions(options, studioDevtools);
     const logger = createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];

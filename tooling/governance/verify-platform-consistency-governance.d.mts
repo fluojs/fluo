@@ -61,6 +61,9 @@ export function enforcePlatformNodejsEngineDocumentation(
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceCacheManagerNestjsMigrationDocs(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceSerializerResponseOwnershipDocsSync(
   readText?: (relativePath: string) => string,
 ): void;

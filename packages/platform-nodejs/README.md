@@ -122,6 +122,12 @@ The same regression targets also cover the package-specific public surface, type
 - `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/runtime/node`.
 - `RunNodejsApplicationOptions`: Options for one-call bootstrap, listen, and graceful shutdown wiring.
 
+## Multipart streaming
+
+Set `multipart: { strategy: 'stream' }` when creating the application to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. The Node listener creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
+
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
+
 ## Related Packages
 
 - `@fluojs/runtime`: The core runtime facade.

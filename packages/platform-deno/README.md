@@ -57,6 +57,18 @@ Signal listener registration does not require a separate Deno permission. The ad
 
 Deno's Fetch `Response` cannot represent an informational response before the final response, so `context.response.earlyHints` is absent. Check for capability presence before use. The adapter never turns a requested `103` into a silent no-op or a final-response header.
 
+### Streaming multipart consumption
+
+Set `multipart: { strategy: 'stream' }` at application bootstrap to receive multipart data incrementally. For
+multipart routes, `RequestContext.request.body` is an `AsyncIterableIterator<MultipartPart>`: field parts expose
+`kind: 'field'`, `name`, `value`, and `headers`; file parts expose `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, and a single-consumer `ReadableStream<Uint8Array>` at `stream`. Finish or cancel each file
+stream before requesting the next part.
+
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler
+finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that
+responsibility: consume the iterator to completion or call `return()` when ending early.
+
 ### Host-Owned Deno.serve
 If your application owns `Deno.serve(...)`, bootstrap the fluo application without calling `app.listen()` and create a request handler from its public dispatcher. `createDenoFetchHandler(...)` only translates and dispatches requests; it never starts a server or owns shutdown, signals, or websocket upgrades.
 

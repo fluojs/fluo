@@ -10,7 +10,6 @@ import {
   type ServerOptions as HttpsServerOptions,
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
-import { Readable } from 'node:stream';
 import {
   BadRequestException,
   type CorsOptions,
@@ -48,6 +47,7 @@ import {
 } from '@fluojs/runtime/internal/http-adapter';
 import {
   dispatchWithRequestResponseFactory,
+  finalizeRouteOwnedMultipartBody,
   type RequestResponseFactory,
 } from '@fluojs/runtime/internal/request-response-factory';
 import {
@@ -58,7 +58,6 @@ import {
   createRequestSignal,
   normalizePrimaryContentType,
   parseQueryParamsFromSearch,
-  resolveAbsoluteRequestUrl,
   resolveRequestIdFromHeaders,
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
@@ -68,7 +67,7 @@ import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
-import { parseMultipart } from '@fluojs/runtime/web';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import express, {
   type ErrorRequestHandler,
   type Express,
@@ -83,6 +82,7 @@ import express, {
  * @remarks Native middleware remains platform-specific and follows Express response and error-chain semantics.
  */
 export type ExpressNativeMiddleware = RequestHandler | ErrorRequestHandler;
+type StreamingMultipartOptions = MultipartOptions & { strategy?: 'stream' };
 
 /**
  * Describes the express adapter options contract.
@@ -444,9 +444,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     const factory = this.requestResponseFactory;
     const frameworkResponse = factory.createResponse(response, request);
     const signal = factory.createRequestSignal(response);
+    let frameworkRequest: FrameworkRequest | undefined;
 
     try {
-      const frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
+      frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
         await factory.createRequest(request, signal),
         { descriptor, params },
       );
@@ -468,6 +469,8 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       }
 
       await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(request));
+    } finally {
+      await finalizeRouteOwnedMultipartBody(frameworkRequest);
     }
   }
 }
@@ -845,10 +848,23 @@ async function createFrameworkRequest(
   };
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const parsed = await parseMultipartRequest(request, {
+      const resolvedMultipartOptions = {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
+      };
+
+      if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream({
+          body: request,
+          headers,
+          method: request.method,
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
+        return;
+      }
+
+      const parsed = await parseMultipartRequest(request, resolvedMultipartOptions);
       frameworkRequest.body = parsed.fields;
       frameworkRequest.files = parsed.files;
       return;
@@ -933,12 +949,7 @@ async function parseMultipartRequest(
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
   try {
     const result = await parseMultipart(
-      {
-        body: Readable.toWeb(request),
-        headers: normalizeHeaders(request.headers),
-        method: request.method,
-        url: resolveAbsoluteRequestUrl(request.url),
-      },
+      request,
       options,
     );
 

@@ -2,12 +2,13 @@ import type { Token } from '@fluojs/core';
 import type { Container, RequestScopeContainer } from '@fluojs/di';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
+import { resolveRequestId } from '../context/request-id.js';
 import { isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
-import { getRequestHeader } from '../header-helpers.js';
 import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
+import { initializeCorrelationMiddlewareRequestContext } from '../middleware/correlation.js';
 import type {
   Binder,
   ConditionalRequestOptions,
@@ -35,11 +36,18 @@ import type {
   ResponseValidators,
 } from '../types.js';
 import {
+  type ConditionalRequestOutcome,
   resolveConditionalRequest,
-  writeConditionalResponse,
 } from './conditional-request-policy.js';
+import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
-import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveResponsePolicy,
+  resolveContentNegotiation,
+  writeErrorResponse,
+  writeSuccessResponse,
+} from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import {
@@ -52,6 +60,7 @@ import {
 } from './fast-path/index.js';
 import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
+import { FRAMEWORK_RESPONSE_VALUE_FINALIZER } from './response-integration.js';
 
 export type { FastPathEligibility, FastPathStats } from './fast-path/index.js';
 export { FAST_PATH_ELIGIBILITY_SYMBOL, FAST_PATH_STATS_SYMBOL } from './fast-path/index.js';
@@ -125,7 +134,7 @@ interface CompiledHandlerExecutionPlan {
   mergedInterceptors: InterceptorLike[];
   requestScope: CompiledMiddlewareScopePlan;
   requiresRequestScope: boolean;
-  routeGuards: GuardLike[];
+  routeGuards: readonly GuardLike[];
 }
 
 interface FastPathHandlerRuntimeCache {
@@ -215,11 +224,7 @@ function readRequestId(request: FrameworkRequest): string | undefined {
     return request.requestId;
   }
 
-  const raw = getRequestHeader(request, 'x-request-id');
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const normalized = value?.trim();
-
-  return normalized ? normalized : undefined;
+  return resolveRequestId(request, false);
 }
 
 function createDispatchContext(
@@ -681,23 +686,6 @@ async function resolveRequestObserver(
   return requestContext.container.resolve(definition as Token<RequestObserver>);
 }
 
-async function notifyObservers(
-  observers: RequestObserverLike[],
-  requestContext: RequestContext,
-  callback: (observer: RequestObserver, context: RequestObservationContext) => Promise<void> | void,
-  handler?: HandlerDescriptor,
-): Promise<void> {
-  const context: RequestObservationContext = {
-    handler,
-    requestContext,
-  };
-
-  for (const definition of observers) {
-    const observer = await resolveRequestObserver(definition, requestContext);
-    await callback(observer, context);
-  }
-}
-
 async function notifyObserversSafely(
   observers: RequestObserverLike[],
   requestContext: RequestContext,
@@ -709,10 +697,18 @@ async function notifyObserversSafely(
     return;
   }
 
-  try {
-    await notifyObservers(observers, requestContext, callback, handler);
-  } catch (error) {
-    logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+  const context: RequestObservationContext = {
+    handler,
+    requestContext,
+  };
+
+  for (const definition of observers) {
+    try {
+      const observer = await resolveRequestObserver(definition, requestContext);
+      await callback(observer, context);
+    } catch (error) {
+      logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+    }
   }
 }
 
@@ -754,6 +750,16 @@ async function dispatchMatchedHandler(
     return;
   }
 
+  if (
+    contentNegotiation
+    && handler.route.produces?.length
+    && handler.route.redirect === undefined
+    && typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] !== 'function'
+  ) {
+    resolveResponsePolicy(handler, requestContext.request, contentNegotiation);
+  }
+
+  let conditionalOutcome: Exclude<ConditionalRequestOutcome, 'proceed'> | undefined;
   let conditionalValidators: ResponseValidators | undefined;
 
   if (conditionalRequest) {
@@ -764,9 +770,25 @@ async function dispatchMatchedHandler(
     conditionalValidators = resolved.validators;
 
     if (resolved.outcome !== 'proceed') {
-      await writeConditionalResponse(requestContext.response, resolved.outcome, resolved.validators);
-      return;
+      conditionalOutcome = resolved.outcome;
     }
+  }
+
+  if (
+    conditionalOutcome !== undefined
+    && !requiresResultFirstConditionalClassification(handler, requestContext)
+  ) {
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      undefined,
+      contentNegotiation,
+      requestContext,
+      conditionalValidators,
+      conditionalOutcome,
+    );
+    return { result: undefined };
   }
 
   const result = executionPlan.mergedInterceptors.length === 0
@@ -782,10 +804,14 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (result instanceof SseResponse) {
+  if (conditionalOutcome === undefined && result instanceof SseResponse) {
     await waitForSseResponseCompletion(result);
     ensureRequestNotAborted(requestContext.request);
-  } else if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
+  } else if (
+    conditionalOutcome === undefined
+    && isAsyncIterable(result)
+    && await writeManagedSseIterable(handler, requestContext, result)
+  ) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!requestContext.response.committed) {
     await writeSuccessResponse(
@@ -796,10 +822,24 @@ async function dispatchMatchedHandler(
       contentNegotiation,
       requestContext,
       conditionalValidators,
+      conditionalOutcome,
     );
   }
 
   return { result };
+}
+
+function requiresResultFirstConditionalClassification(
+  handler: HandlerDescriptor,
+  requestContext: RequestContext,
+): boolean {
+  const method = requestContext.request.method.toUpperCase();
+
+  return (method === 'GET' || method === 'HEAD')
+    && (
+      handler.route.redirect !== undefined
+      || typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] === 'function'
+    );
 }
 
 function resolveHandlerExecutionPlan(
@@ -827,7 +867,7 @@ async function dispatchNativeFastRoute(
   fastPathState: DispatcherFastPathState,
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
 ): Promise<boolean> {
-  if (options.conditionalRequest) {
+  if (options.conditionalRequest || (options.observers?.length ?? 0) > 0) {
     return false;
   }
 
@@ -1129,6 +1169,7 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
     ...(context.options.errorRepresentation === undefined
       ? {}
       : { representation: context.options.errorRepresentation }),
+    ...(isContentNegotiationNotAcceptableException(dispatchError) ? { varyAccept: true } : {}),
   });
 }
 
@@ -1194,6 +1235,8 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         requestContext,
         response,
       };
+
+      initializeCorrelationMiddlewareRequestContext(options.appMiddleware ?? [], requestContext);
 
       await runWithRequestContext(phaseContext.requestContext, async () => {
         try {

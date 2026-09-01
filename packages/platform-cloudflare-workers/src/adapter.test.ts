@@ -470,6 +470,49 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
+  it('forwards multipart stream strategy through managed Worker bootstrap routes', async () => {
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<unknown>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : first.value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
+      cors: false,
+      multipart: { strategy: 'stream' },
+    });
+
+    try {
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await worker.fetch(
+        new Request('https://worker.test/streaming-upload', {
+          body: form,
+          method: 'POST',
+        }),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toMatchObject({
+        kind: 'field',
+        name: 'title',
+        value: 'Ada',
+      });
+    } finally {
+      await worker.close();
+    }
+  });
+
   it('registers request lifecycle work with executionContext.waitUntil', async () => {
     const adapter = createCloudflareWorkerAdapter();
     const deferred = createDeferred<Response>();

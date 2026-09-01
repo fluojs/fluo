@@ -18,7 +18,6 @@ export interface ConditionalRequestResult {
   /** Current representation validators that must remain visible to adapters. */
   readonly validators: ResponseValidators | undefined;
 }
-
 function formatEntityTag(tag: EntityTag): string {
   return `${tag.strength === 'weak' ? 'W/' : ''}"${tag.opaqueValue}"`;
 }
@@ -434,7 +433,6 @@ export function applyResponseValidators(
     response.setHeader('Last-Modified', new Date(lastModified).toUTCString());
   }
 }
-
 /**
  * Writes a bodyless conditional response through every supported adapter facade.
  *

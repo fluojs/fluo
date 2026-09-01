@@ -57,6 +57,18 @@ Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니
 
 Deno의 Fetch `Response`는 final response 이전 informational response를 표현할 수 없으므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Adapter는 요청된 `103`을 silent no-op 또는 final-response header로 바꾸지 않습니다.
 
+### 스트리밍 멀티파트 소비
+
+애플리케이션 bootstrap에서 `multipart: { strategy: 'stream' }`을 설정하면 멀티파트 데이터를 점진적으로
+받습니다. 멀티파트 route에서 `RequestContext.request.body`는 `AsyncIterableIterator<MultipartPart>`입니다.
+field part는 `kind: 'field'`, `name`, `value`, `headers`를, file part는 `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, 그리고 `stream`의 single-consumer `ReadableStream<Uint8Array>`를 제공합니다. 다음
+part를 요청하기 전에 각 file stream을 끝까지 소비하거나 cancel하세요.
+
+Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해
+active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접
+집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
+
 ### Host-Owned Deno.serve
 애플리케이션이 `Deno.serve(...)`를 소유한다면 `app.listen()`을 호출하지 않고 fluo 애플리케이션을 bootstrap한 뒤 public dispatcher로 request handler를 만드세요. `createDenoFetchHandler(...)`는 request 변환과 dispatch만 수행하며 server를 시작하거나 shutdown, signal, websocket upgrade를 소유하지 않습니다.
 

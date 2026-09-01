@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
@@ -34,6 +35,7 @@ const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isol
 const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
+const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
 const httpByteRangeRuntimeSourcePaths = new Set([
   'packages/http/src/byte-range-response.ts',
   'packages/http/src/dispatch/byte-range-response.ts',
@@ -57,6 +59,7 @@ const staticAssetRegressionEvidence = [
 ];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -890,7 +893,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
       );
       return;
     }
-    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+    if (
+      hasChanged(changedFiles, httpConnectionIdentityRegressionTest)
+      || hasChanged(changedFiles, accessLogObserverLifecycleRegressionTest)
+    ) {
       return;
     }
     assert(
@@ -920,7 +926,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking, fail-open manual transaction drain, plus runtime-boundary docs,
   // raw Node.js adapter type/runtime-floor and retry/body-limit/shutdown
-  // regression coverage, Cloudflare Workers adapter public seam and lifecycle
+  // regression coverage, streaming multipart parser scope, Cloudflare Workers adapter public seam and lifecycle
   // shutdown docs, metrics shared-registry HTTP collector or platform telemetry
   // stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
@@ -3261,6 +3267,26 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
+export function enforceStudioRuntimeBridgeDiscoverability(readText = read) {
+  const requirements = [
+    '@fluojs/runtime/devtools',
+    'StudioDevtoolsRuntime',
+    'StudioDevtoolsRuntimeTransport',
+    'studioDevtools',
+    'host-owned',
+    'observational',
+    'CLI-injected',
+  ];
+
+  for (const documentationPath of ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md']) {
+    const documentation = readText(documentationPath);
+    assert(
+      requirements.every((requirement) => documentation.includes(requirement)),
+      `${documentationPath} must document the host-owned @fluojs/runtime/devtools bridge, its bootstrap seam, and its observational precedence over CLI injection.`,
+    );
+  }
+}
+
 export async function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -3277,6 +3303,7 @@ export async function main() {
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
+  enforceCacheManagerNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
@@ -3286,6 +3313,7 @@ export async function main() {
   enforceExpressApplicationOwnershipDocs();
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
+  enforceStudioRuntimeBridgeDiscoverability();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();

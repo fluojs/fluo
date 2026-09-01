@@ -47,7 +47,7 @@ describe('React page catalog', () => {
     const catalog = createReactPageCatalog(mapping.descriptors);
     const runtimeRoutes = createRuntimeRouteCatalog(mapping.descriptors);
     expect(() => {
-      mapping.descriptors[0]?.metadata.pathParams.push('mutated-after-projection');
+      (mapping.descriptors[0]?.metadata.pathParams as unknown as string[]).push('mutated-after-projection');
     }).toThrow(TypeError);
     const matchAfterProjection = mapping.match(createGetRequest('/v2/products/sku-42'));
 

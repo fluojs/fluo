@@ -50,6 +50,18 @@ await app.listen();
 
 Bun uses Fluo's Web-standard response facade, so `context.response.earlyHints` is absent. Check for capability presence before use. The adapter does not silently ignore Early Hints and does not copy early fields into the final `Response`; use a Node.js, Express, or Fastify adapter when application code must emit observable HTTP `103` responses.
 
+### Streaming multipart consumption
+
+Set `multipart: { strategy: 'stream' }` at application bootstrap to receive multipart data incrementally. For
+multipart routes, `RequestContext.request.body` is an `AsyncIterableIterator<MultipartPart>`: field parts expose
+`kind: 'field'`, `name`, `value`, and `headers`; file parts expose `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, and a single-consumer `ReadableStream<Uint8Array>` at `stream`. Finish or cancel each file
+stream before requesting the next part.
+
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler
+finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that
+responsibility: consume the iterator to completion or call `return()` when ending early.
+
 ### Byte Ranges and Cache Validation
 
 Bun preserves the shared `@fluojs/http` single-byte-range and `If-Range` contract through its fetch dispatch. After conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields the portable `206` identity-byte response; `If-Range` reuses those selected validators, while malformed or multi-range fields retain the full response and an unsatisfiable range yields bodyless `416`. `HEAD` mirrors GET metadata without consuming a stream.

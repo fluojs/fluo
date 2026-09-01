@@ -13,10 +13,13 @@
   - [애플리케이션 레벨 캐싱](#애플리케이션-레벨-캐싱)
 - [공통 패턴](#공통-패턴)
   - [Redis 저장소 사용](#redis-저장소-사용)
+  - [TTL 지터](#ttl-지터)
   - [쿼리 매개변수 기반 캐싱](#쿼리-매개변수-기반-캐싱)
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
+  - [캐시 작업 관찰](#캐시-작업-관찰)
   - [비동기 설정](#비동기-설정)
   - [수동 모듈 조합](#수동-모듈-조합)
+  - [NestJS 캐시 마이그레이션](#nestjs-캐시-마이그레이션)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -162,8 +165,30 @@ class AppModule {}
 내장 `RedisStore`는 엔트리를 `JSON.stringify(...)`로 저장합니다. 따라서 캐시 값은 JSON 호환 형태여야 합니다. 일반 객체, 배열, 문자열, 숫자, 불리언, `null`은 안정적으로 round-trip 되지만, `Date`는 JSON 결과(예: ISO 문자열)로 돌아오고, 함수/`undefined`/`symbol`은 유지되지 않으며, `bigint`나 순환 그래프처럼 직렬화 불가능한 값은 캐싱 전에 정규화해야 합니다.
 
 양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요.
+예외적으로 큰 유한 TTL 값은 두 내장 store 모두에서 가장 큰 안전한 JavaScript 만료 timestamp로 제한되므로 Redis JSON metadata는 유한하게 유지되고 memory 경로와 일치합니다.
 
 Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 비어 있지 않은 prefix의 Redis glob metacharacter(`*`, `?`, `[`, `]`, `\`)는 `SCAN` 전에 escape되므로 설정한 prefix가 reset 소유권을 넓히지 않고 literal namespace로 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
+
+### TTL 지터
+
+함께 기록된 인기 키는 같은 시점에 만료되어 origin 부하를 동기화할 수 있습니다. `ttlJitter`를 사용하면 양수 TTL 지터를 중앙에서 opt-in할 수 있습니다. `CacheService`는 memory, Redis 또는 custom store에 쓰기를 넘기기 전에 유효 TTL을 한 번 계산합니다.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  ttl: 600,
+  ttlJitter: {
+    ratio: 0.1,
+    mode: 'symmetric',
+  },
+});
+```
+
+`ratio`는 `0`보다 크고 `1` 이하여야 합니다. 기본 `symmetric` mode는 `ttl ± (ttl * ratio)` 범위에서 값을 뽑고, `shorten`은 TTL을 줄이기만 하며 `lengthen`은 늘리기만 합니다. `CacheService.set(...)` 또는 `remember(...)`의 per-call TTL override가 있으면 module 기본값 대신 해당 값에 지터를 적용합니다. `ttl: 0`은 계속 만료 없음 쓰기이며, 음수 또는 유한하지 않은 TTL 값은 여전히 쓰기를 건너뜁니다.
+
+`ttlJitter`를 생략하거나 `undefined`로 설정한 경우에만 지터가 비활성화됩니다. `null`, primitive, array 및 invalid option field는 module 등록 중 거부됩니다. Optional `random` 함수는 deterministic test seam이며 `[0, 1]` 범위의 유한한 값을 반환해야 합니다. Invalid sample은 coercion하지 않고 write를 거부합니다. Production code에서는 일반적으로 기본 `Math.random`을 유지하세요.
+
+지터가 적용된 모든 양수 TTL은 선택한 방향 범위 안에서 양수이자 유한한 값으로 유지됩니다. 완전히 단축된 TTL은 no-expiry sentinel이 되지 않고 JavaScript의 가장 작은 양수 유한값을 사용하며, 표현 가능한 범위를 넘는 증가 결과는 `Number.MAX_VALUE`에서 포화됩니다. TTL 지터는 만료 시점을 분산할 뿐입니다. Distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 쿼리 매개변수 기반 캐싱
 
@@ -225,6 +250,37 @@ Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
 
+### 캐시 작업 관찰
+
+플랫폼 status helper는 캐시 가용성만 보고합니다. hit rate, latency, error outcome을 측정하려면 `CacheModule.forRoot(...)`에 opt-in `observer`를 전달하세요. 이 observer는 `@fluojs/metrics`와 독립적이므로, 애플리케이션이 이미 사용하는 metrics backend에 자유롭게 연결할 수 있습니다.
+
+```typescript
+import { CacheModule, type CacheObservation } from '@fluojs/cache-manager';
+
+CacheModule.forRoot({
+  store: 'memory',
+  observer: {
+    onCacheOperation(observation: CacheObservation) {
+      cacheOperationCounter.inc({
+        operation: observation.operation,
+        outcome: observation.outcome,
+      });
+      cacheOperationLatency.observe(observation.durationMs);
+    },
+  },
+});
+```
+
+이 계약은 의도적으로 좁게 정의되어 있습니다.
+
+- **프라이버시**: observation은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않으므로 계측이 애플리케이션 데이터를 유출할 수 없습니다.
+- **operation taxonomy**: `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며, 내부 read는 별도의 `get`으로 보고되지 않습니다.
+- **outcome**: `CacheObservation`은 discriminated union입니다. read 작업(`get`, `remember`)은 `hit`, `miss`, `error`만 보고할 수 있고, write, invalidation, lifecycle 작업은 `success`, `error`만 보고할 수 있습니다. 같은 key의 in-flight load에 합류한 `remember` 호출은 캐시된 값을 읽지 않았으므로 `miss`를 보고합니다.
+- **timing**: `durationMs`는 런타임의 monotonic `performance.now()` clock을 사용하여 store queue 직렬화를 포함한 전체 `CacheService` 작업 시간을 측정합니다.
+- **실패 격리**: observer 오류는 삼켜집니다. throw된 error나 rejected promise는 caller가 받는 값을 바꾸지 않고 unhandled rejection으로도 노출되지 않습니다. observer 작업은 cache 작업이 await하지 않습니다.
+- **HTTP fail-soft 상호작용**: `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 문제가 정상 핸들러를 실패시키지 않도록 합니다. observer는 그 실패를 `error` observation으로 확인하므로, 요청 처리를 유지하면서 저하된 캐시를 알림하는 지원 경로가 됩니다.
+
+`observer`를 설정하지 않으면 캐시는 관찰 작업 없이 기존 코드 경로 그대로 동작합니다.
 Lifecycle diagnostic은 shutdown이 실제로 사용하는 teardown 소유자를 그대로 보고합니다. `createCacheManagerPlatformStatusSnapshot(...)`은 모든 non-memory store를 같게 취급하지 않고 lifecycle 책임에서 소유권을 해석합니다.
 
 - 내장 메모리 store는 프레임워크가 in-process로 생성하고 보유하므로 `framework` 소유입니다.
@@ -289,6 +345,33 @@ defineModule(ManualCacheModule, {
 });
 ```
 
+### NestJS 캐시 마이그레이션
+
+`@nestjs/cache-manager`와 `@fluojs/cache-manager`는 cache 개념이 일부 겹치지만 option 이름, 단위, 기본값, 소유권이 모두 그대로 유지되지는 않습니다. 아래 항목을 각각 변환하고, 전체 마이그레이션 계약은 [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.ko.md)을 참고하세요.
+
+| NestJS option 또는 decorator | fluo 대응 | 변환 규칙 |
+| --- | --- | --- |
+| 설치된 underlying `cache-manager` generation이 millisecond를 사용하는 경우의 `ttl` | 초 단위 `ttl` | 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 generation이 TTL을 millisecond로 정의할 때에만 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
+| `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
+| `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
+| 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 path만 사용하는 `'route'`입니다. 응답이 query parameter에 따라 달라지면 `'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요. |
+| `isGlobal: true` | `global: true` | NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로, 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 두 cache module 모두 module-local로 유지됩니다. |
+| `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 callback/options 완료를 Promise로 변환하고, `ttlSeconds`를 legacy TTL 초 단위로 매핑하며, `reset()`이 cache namespace만 비우도록 adapter를 감싸세요. `reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다. |
+| adapter가 소유하던 client teardown | store의 `close()` / `dispose()` | 애플리케이션 shutdown은 이 optional hook에만 teardown을 전달합니다. `redis.client`로 전달한 raw client는 애플리케이션 소유로 남아 애플리케이션 lifecycle에서 닫아야 합니다. |
+
+```typescript
+CacheModule.forRoot({
+  // 설치된 underlying cache-manager generation이 milliseconds를 사용할 때
+  // NestJS `ttl: 60_000`은 60초가 됩니다.
+  ttl: 60,
+  // NestJS `isGlobal: true` becomes `global: true`.
+  global: true,
+  // Opt in explicitly when responses vary by query parameters.
+  httpKeyStrategy: 'route+query',
+  store: 'redis',
+})
+```
+
 ### 메모리 저장소 운영 한계
 
 내장 메모리 저장소는 단일 프로세스의 bounded cache 용도로 설계되어 있습니다.
@@ -321,12 +404,16 @@ class ProductController {
 ## 공개 API 개요
 
 ### 모듈
-- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
+- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, opt-in `ttlJitter`, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
   애플리케이션 모듈에서 사용하는 기본 패키지 진입점입니다.
 - `CacheModule.forRootAsync({ inject, useFactory, global? })`: cache 설정을 DI나 비동기 bootstrap 작업에서 만드는 애플리케이션을 위해 동일한 옵션을 injected factory로 해석합니다. `global`은 이 등록 호출이 소유하며, factory가 reject되면 bootstrap이 실패합니다.
 
 ### 공개 타입
-- `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정입니다.
+- `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `ttlJitter`와 `observer`를 포함합니다.
+- `CacheTtlJitterOptions`, `CacheTtlJitterMode`: Opt-in 양수 TTL 지터의 범위, 방향, deterministic randomness seam을 정의합니다.
+- `NormalizedCacheTtlJitterOptions`: 기본값이 적용된 정규화 TTL 지터 설정입니다.
+- `CacheObserver`: 단일 `onCacheOperation(observation)` 메서드를 가지는 opt-in 관찰 hook입니다.
+- `CacheObservation`: 각 operation category를 유효한 outcome과 결합하고 `durationMs`를 전달하는 privacy-safe discriminated union입니다.
 - `CacheAsyncModuleOptions`: `CacheModule.forRootAsync(...)`가 받는 injected-factory 설정입니다. `useFactory`는 `CacheModuleOptions`를 반환하며, module visibility는 등록 수준의 `global`만 따릅니다.
 - `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
 
@@ -358,3 +445,4 @@ class ProductController {
 - `packages/cache-manager/src/interceptor.test.ts`: HTTP 캐싱 및 삭제 테스트.
 - `packages/cache-manager/src/service.ts`: 코어 `CacheService` 구현.
 - `packages/cache-manager/src/status.test.ts`: status 및 diagnostic helper 테스트.
+- `packages/cache-manager/src/cache-observer.test.ts`: 캐시 관찰 계약 테스트.

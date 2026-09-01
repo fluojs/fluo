@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createAccessLogObserver, createCorrelationMiddleware, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
@@ -425,6 +425,7 @@ describe('@fluojs/platform-bun', () => {
 
     const app = await runBunApplication(AppModule, {
       hostname: '127.0.0.1',
+      middleware: [createCorrelationMiddleware()],
       port: 0,
       shutdownSignals: false,
     });
@@ -608,6 +609,77 @@ describe('@fluojs/platform-bun', () => {
     }));
 
     expect(response.status).toBe(204);
+  });
+
+  it('forwards multipart stream strategy through the Bun fetch handler', async () => {
+    const fetch = createBunFetchHandler({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const iterator = parts[Symbol.asyncIterator]();
+          const first = await iterator.next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await iterator.return?.();
+          response.setStatus(204);
+        },
+      },
+      multipart: { strategy: 'stream' },
+    });
+    const form = new FormData();
+    form.set('title', 'Ada');
+
+    const response = await fetch(new Request('https://runtime.test/hooks/stream', {
+      body: form,
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
+
+  it('forwards multipart stream strategy through managed Bun bootstrap routes', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<unknown>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : first.value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      multipart: { strategy: 'stream' },
+      port: 4313,
+    });
+
+    try {
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4313/streaming-upload', {
+        body: form,
+        method: 'POST',
+      }));
+
+      expect(response?.status).toBe(201);
+      await expect(response?.json()).resolves.toMatchObject({
+        kind: 'field',
+        name: 'title',
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('enforces multipart.maxTotalSize for custom fetch handlers', async () => {
@@ -834,6 +906,58 @@ describe('@fluojs/platform-bun', () => {
 
       expect(response?.status).toBe(200);
       await expect(response?.json()).resolves.toEqual({ userId: 'a%2Fb' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('installs access observers through Bun bootstrap while native route handoff falls back', async () => {
+    // Given
+    const mockBun = installMockBun();
+    const records: Array<{ readonly event: string; readonly outcome?: string; readonly requestId?: string }> = [];
+
+    @Controller('/native-access-log')
+    class NativeAccessLogController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NativeAccessLogController] });
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      observers: [createAccessLogObserver({
+        sink: {
+          emit(record) {
+            records.push(record);
+          },
+        },
+      })],
+      port: 4315,
+    });
+
+    // When
+    try {
+      const nativeRoutes = mockBun.lastOptions?.routes;
+      const nativeRoute = nativeRoutes?.['/native-access-log/:id'] as {
+        GET?: (request: Request & { params: { id: string } }, server: never) => Response | Promise<Response | undefined> | undefined;
+      } | undefined;
+      expect(nativeRoute).toMatchObject({ GET: expect.any(Function) });
+      const nativeRequest = Object.assign(new Request('http://127.0.0.1:4315/native-access-log/42', {
+        headers: { 'x-correlation-id': 'bun-correlation-42' },
+      }), { params: { id: '42' } });
+      const response = await nativeRoute?.GET?.(nativeRequest, mockBun.lastServer as never);
+
+      // Then
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ id: '42' });
+      expect(records).toContainEqual(expect.objectContaining({
+        event: 'http.access.finish',
+        outcome: 'success',
+        requestId: 'bun-correlation-42',
+      }));
     } finally {
       await app.close();
     }

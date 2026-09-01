@@ -52,12 +52,12 @@ function normalizeScanResponse(result: [string | number, string[]]): { cursor: s
   };
 }
 
-function normalizePositiveTtlMilliseconds(ttlSeconds: number): number {
-  return Math.max(1, Math.ceil(ttlSeconds * 1000));
+function normalizePositiveTtlMilliseconds(ttlSeconds: number, maximumTtlMilliseconds: number): number {
+  return Math.min(maximumTtlMilliseconds, Math.max(1, Math.ceil(ttlSeconds * 1000)));
 }
 
-function normalizeRedisExpirySeconds(ttlSeconds: number): number {
-  return Math.max(1, Math.ceil(ttlSeconds));
+function normalizeRedisExpirySeconds(ttlSeconds: number, maximumTtlSeconds: number): number {
+  return Math.min(maximumTtlSeconds, Math.max(1, Math.ceil(ttlSeconds)));
 }
 
 function escapeRedisGlobPattern(value: string): string {
@@ -113,9 +113,11 @@ export class RedisStore implements CacheStore {
     };
 
     if (ttlSeconds > 0) {
-      const ttlMilliseconds = normalizePositiveTtlMilliseconds(ttlSeconds);
+      const maximumTtlMilliseconds = Number.MAX_SAFE_INTEGER - now;
+      const ttlMilliseconds = normalizePositiveTtlMilliseconds(ttlSeconds, maximumTtlMilliseconds);
       entry.expiresAt = now + ttlMilliseconds;
-      const ttlSecondsRounded = normalizeRedisExpirySeconds(ttlSeconds);
+      const maximumTtlSeconds = Math.floor(maximumTtlMilliseconds / 1000);
+      const ttlSecondsRounded = normalizeRedisExpirySeconds(ttlSeconds, maximumTtlSeconds);
       await this.client.set(redisKey, JSON.stringify(entry), 'EX', ttlSecondsRounded);
       this.trackOwnedKey(redisKey);
       return;
