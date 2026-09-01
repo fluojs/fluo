@@ -170,6 +170,14 @@ class RestrictedUserDto {
 
 `ValidateClass(...)` also accepts custom class-level validators. `Validate(...)` attaches custom field-level validators when built-in decorators are not enough, and `ValidateIf(...)` short-circuits dependent validators when its predicate returns false.
 
+### Custom field validation
+
+`Validate(callback)` invokes `callback(value, context)`. `context.dto` is the
+containing DTO, and `context.propertyKey` is the decorated field key.
+
+`@IsObject()` accepts only plain objects, including null-prototype records. It
+rejects class instances, `Date`, `Map`, and `Set` values.
+
 ### Network validators
 
 `@IsIP()` validates IPv4 and IPv6 strings by default. Pass `@IsIP('4')` or
