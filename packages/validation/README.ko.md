@@ -186,6 +186,9 @@ Array, `Set`, `Map` member는 자동으로 검증되고 실체화되므로 neste
 `materialize()`는 의도적으로 엄격합니다. Transport가 `'42'`를 넘기고 DTO가 `number`를 기대한다면, transport나 binding layer가 먼저 변환해야 합니다.
 `@IsLatitude()`, `@IsLongitude()`를 포함한 numeric validator는 numeric string을 이미 변환된 number처럼 취급하지 않고 DTO의 numeric 값을 검증합니다.
 
+`@IsEnum(...)`은 선언된 enum 값만 허용합니다. 숫자형 TypeScript enum에서 생성된
+reverse-map 멤버 이름은 값이 아니므로 거부됩니다.
+
 ## 공개 API
 
 - **검증 엔진**: `DefaultValidator`, `DtoValidationError`, `MaterializeOptions`, `ValidationIssue`, `Validator`

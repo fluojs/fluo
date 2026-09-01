@@ -15,6 +15,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Redis Storage](#redis-storage)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
+  - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -25,6 +26,8 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
 ```bash
 npm install @fluojs/cache-manager
 ```
+
+`@fluojs/cache-manager` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. Its mandatory `@fluojs/runtime` dependency owns that Node listener boundary, so Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Earlier 1.x releases advertised `engines.node >=20.0.0`, which never matched the effective dependency floor.
 
 The root `@fluojs/cache-manager` import stays safe for memory-only installs. You only need a Redis client when you explicitly select the Redis-backed store path.
 
@@ -205,6 +208,8 @@ The HTTP interceptor caches only successful, uncommitted GET handler results wit
 
 ### Cache Ownership and Reset Scope
 
+Ordinary `get(...)`, `set(...)`, and `del(...)` calls run concurrently against the configured store, so a slow store call for one key does not delay unrelated keys.
+
 `CacheService.reset()` clears entries owned by the configured store, not unrelated application state. It also serializes store reads/writes across the reset boundary and invalidates in-flight `remember(...)` loaders so loaders that started before the reset cannot repopulate stale entries after the reset completes. For the built-in memory store that means the in-process entries held by that store instance. For Redis, ownership is the configured `keyPrefix` namespace; keep the default `fluo:cache:` or choose a dedicated prefix such as `myapp:cache:` for shared Redis deployments.
 
 ```typescript
@@ -219,6 +224,54 @@ Avoid sharing a Redis cache prefix with non-cache data. `del(key)` removes the e
 When the application closes, `CacheService` stops new store reads/writes, waits for already-started store operations, and then forwards shutdown to custom stores that expose `close()` or `dispose()`. Concurrent and repeated `close()` or lifecycle-hook calls share that first teardown completion and failure, so every caller observes the same shutdown boundary while store teardown runs once. Use one of those optional hooks when a store owns sockets, pools, timers, or other external resources.
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
+
+Lifecycle diagnostics report the same teardown owner that shutdown actually uses. `createCacheManagerPlatformStatusSnapshot(...)` resolves ownership from lifecycle responsibility rather than treating every non-memory store alike:
+
+- The built-in memory store is `framework`-owned because the framework creates and holds it in-process.
+- A custom store is `framework`-owned by default because `CacheService.close()` owns teardown dispatch to its optional `close()` or `dispose()` hook.
+- The Redis store is `external` to `CacheService`, which never closes the client. When the cache module resolves a client through `@fluojs/redis`, that integration owns its lifecycle; when `redis.client` supplies a client directly, the application owns its lifecycle.
+
+An explicit `storeOwnershipMode` still wins over the store default. Set it to `external` when the application intentionally retains lifecycle responsibility for a custom store.
+
+### Async Configuration
+
+Use `CacheModule.forRootAsync(...)` when the final store, TTL, `keyPrefix`, or key strategy must come from DI or asynchronous bootstrap work. List the dependency tokens in `inject`, return ordinary `CacheModuleOptions` from `useFactory`, and the module normalizes that result with the same defaults as `CacheModule.forRoot(...)`.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+import { CacheSettingsService } from './cache-settings.service';
+
+@Module({
+  imports: [
+    CacheModule.forRootAsync({
+      inject: [CacheSettingsService],
+      useFactory: async (settings: CacheSettingsService) => ({
+        store: 'redis',
+        ttl: await settings.resolveTtlSeconds(),
+        keyPrefix: settings.keyPrefix,
+        redis: { clientName: 'cache' },
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Injected tokens must be visible to the container that instantiates the cache module. Provide them as bootstrap runtime providers or export them from a globally visible imported module before the cache options provider resolves. A provider local only to the importing parent module, or an ordinary sibling/parent export, is not visible to the async cache module. The factory runs once per registration when cache providers are first resolved, and a rejected factory fails bootstrap instead of registering a partially configured cache.
+
+Module visibility stays on the registration call: pass `global: true` to `CacheModule.forRootAsync({ global: true, ... })`. `useFactory` may return a prepared `CacheModuleOptions` value, including its `global` property; any returned `global` is ignored because module metadata is fixed before the factory runs.
+
+```typescript
+CacheModule.forRootAsync({
+  global: true,
+  inject: [CacheSettingsService],
+  useFactory: (settings: CacheSettingsService) => ({ store: settings.store }),
+})
+```
+
+The async path supports the same store selection as `forRoot(...)`: `'memory'`, `'redis'` with a DI-resolved or directly supplied client, and any custom `CacheStore` instance.
 
 ### Manual Module Composition
 
@@ -270,9 +323,11 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 ### Modules
 - `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
+- `CacheModule.forRootAsync({ inject, useFactory, global? })`: Resolves the same options through an injected factory for applications that build cache configuration from DI or asynchronous bootstrap work. `global` belongs to this registration call, and a rejected factory fails bootstrap.
 
 ### Public types
 - `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
+- `CacheAsyncModuleOptions`: Injected-factory configuration accepted by `CacheModule.forRootAsync(...)`. `useFactory` returns `CacheModuleOptions`; registration-level `global` alone controls module visibility.
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services

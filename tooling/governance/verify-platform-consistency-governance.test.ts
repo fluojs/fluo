@@ -15,9 +15,11 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
+  enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
@@ -44,6 +46,23 @@ const removedRuntimeModuleFactoryNames = [
   'createEventBusModule',
   'createRedisModule',
 ] as const;
+
+describe('enforceCliMigrationTransformDocs', () => {
+  it('accepts documented migration transform selections', () => {
+    expect(() => enforceCliMigrationTransformDocs()).not.toThrow();
+  });
+
+  it('rejects a documented transform that the CLI does not support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace('--only imports,injectable', '--only imports,unsupported')
+        : content;
+    };
+
+    expect(() => enforceCliMigrationTransformDocs(readText)).toThrow(/unsupported/u);
+  });
+});
 
 function collectMarkdownFiles(relativeRoot: string): string[] {
   const absoluteRoot = resolve(repoRoot, relativeRoot);
@@ -435,6 +454,25 @@ describe('enforceHttpCustomMethodContract', () => {
     for (const version of ['20.19.2', '21.7.3', '22.0.0', '22.1.0', '27.0.0']) {
       expect(isSupportedNodeListenerVersion(version)).toBe(false);
     }
+  });
+});
+
+describe('enforceHttpAdapterPortabilityDocumentationContract', () => {
+  it('keeps the complete HTTP portability suite and companion contract discoverable', () => {
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract()).not.toThrow();
+  });
+
+  it('rejects a discoverability document missing a required suite identifier', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('assertReportsHttpsStartupUrl(...)', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /docs\/CONTEXT\.md must keep assertReportsHttpsStartupUrl discoverable/u,
+    );
   });
 });
 
@@ -916,39 +954,43 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
-  it('requires discoverability, tooling or CI, and regression test updates for contract-governing docs', async () => {
+  it.each([
+    ['English context companion', 'docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['Korean context companion', 'docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['workflow enforcement companion', '.github/workflows/ci.yml', /CI\/tooling enforcement updates/u],
+    ['package regression test companion', 'packages/core/src/module.test.ts', /regression test updates/u],
+  ] as const)(
+    'rejects removal of the required %s from an otherwise complete contract change',
+    async (_companion, removedPath, expectedError) => {
+      // Given: a contract update with every required companion present.
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const completeChangedFiles = [
+        'docs/reference/package-surface.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        '.github/workflows/ci.yml',
+        'packages/core/src/module.test.ts',
+      ];
+
+      // When: exactly one enforcement companion is absent.
+      const changedFiles = completeChangedFiles.filter((path) => path !== removedPath);
+
+      // Then: its own enforcement category rejects the incomplete change.
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrowError(expectedError);
+    },
+  );
+
+  it('accepts a complete contract change with all required companion categories', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const completeChangedFiles = [
+      'docs/reference/package-surface.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      '.github/workflows/ci.yml',
+      'packages/core/src/module.test.ts',
+    ];
 
-    expect(() => enforceContractCompanionUpdates(['docs/reference/package-surface.md'])).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
-    );
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).toThrowError(/CI\/tooling enforcement updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-      ]),
-    ).toThrowError(/regression test updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-      ]),
-    ).not.toThrow();
+    expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
   });
 
   it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
@@ -1198,6 +1240,21 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/getting-started/migrate-from-nestjs.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts NestJS import migration guidance with context and executable evidence updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/transforms/nestjs-migrate.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1473,6 +1530,28 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('accepts serialization migration contracts with metadata regressions and governance coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/serialization/README.md',
+        'packages/serialization/README.ko.md',
+        'packages/serialization/src/serialize.test.ts',
+        'packages/runtime/src/application.test.ts',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/beginner/ch07-serialization.md',
+        'book/beginner/ch07-serialization.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats the React render policy decision pairs as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const renderPolicyDecisionTriggers = [
@@ -1551,6 +1630,23 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/vite/src/index.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts CLI migration transform guidance when context and token regression evidence change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/cli/README.md',
+        'packages/cli/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/commands/migration-transform-tokens.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1928,6 +2024,23 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toContain('build-and-typecheck:');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
+    expect(ciWorkflow).toMatch(
+      /studio-browser:\n\s+name: Studio browser\n\s+runs-on: ubuntu-latest\n\s+needs:\n\s+- resolve-pr-verification-scope\n\n\s+steps:/u,
+    );
+    const studioVerificationCondition = "if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
+    const studioNoopCondition = "if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
+    const studioBrowserStart = ciWorkflow.indexOf('  studio-browser:');
+    const nextJobStart = ciWorkflow.indexOf('\n  official-web-runtime-adapter-portability:', studioBrowserStart);
+    const studioBrowserJob = ciWorkflow.slice(studioBrowserStart, nextJobStart);
+
+    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(5);
+    expect(studioBrowserJob).toContain(studioNoopCondition);
+
+    const requiresStudioBrowser = (mode: string, packageNames: readonly string[]): boolean =>
+      mode !== 'scoped' || packageNames.includes('@fluojs/studio');
+    expect(requiresStudioBrowser('scoped', ['@fluojs/studio'])).toBe(true);
+    expect(requiresStudioBrowser('scoped', ['@fluojs/cache-manager'])).toBe(false);
+    expect(ciWorkflow).toContain('- studio-browser');
     expect(ciWorkflow).toMatch(/resolve-pr-verification-scope:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
     expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
   });

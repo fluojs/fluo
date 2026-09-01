@@ -120,11 +120,13 @@ export class AuthModule {}
 
 This bridge helper is the official exception to the module-facade rule for Passport.js adapters because third-party strategy instances must be bound as providers before `AuthGuard` can execute them. It does not replace `PassportModule`, `@UseAuth(...)`, or `AuthGuard` as the application-facing authentication surface.
 
-The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. Any `AuthStrategyResult` with `handled: true` is fully terminal after the strategy commits a response, even if it also includes a `principal`; `AuthGuard` skips principal validation, scope checks, `requestContext.principal` assignment, and the protected handler. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
+The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. The bridge never consumes an `authenticate()` return value: only a bound action settles the request. Any `AuthStrategyResult` with `handled: true` is fully terminal after the strategy commits a response, even if it also includes a `principal`; `AuthGuard` skips principal validation, scope checks, `requestContext.principal` assignment, and the protected handler. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
+
+The bridge calls `authenticate(request, options)` with the active platform adapter's raw host request when one exists, and with the normalized fluo request otherwise. It never creates a Passport-initialized host request, so strategies that depend on Passport middleware augmentation (`request.logIn`, `request.user`, session state) or on adapter-specific request fields need the compatibility checklist in [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.md#passportjs-bridge-migration) before cutover.
 
 `actionTimeoutMs` defaults to `30_000` milliseconds and must be a non-negative finite number. Set it to `0` to schedule timeout settlement on the next timer turn. Negative, `NaN`, and infinite values throw `RangeError` when the bridge strategy is constructed instead of disabling the settlement bound.
 
-Application shutdown cancels every in-flight bridge execution, clears its action timeout, and rejects the pending authentication instead of retaining request state through the configured timeout.
+Application shutdown cancels every in-flight bridge execution, clears its action timeout, and rejects the pending authentication instead of retaining request state through the configured timeout. The bridge participates in the ordinary application lifecycle, so this cancellation runs when the application or application context is closed.
 
 ### Cookie Auth Preset
 
@@ -164,6 +166,10 @@ Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportM
 `CookieAuthStrategy` preserves the normalized JWT principal contract from `@fluojs/jwt`, including `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
 
 Cookie access tokens must be non-empty strings. Missing cookies can resolve to `{ authenticated: false }` only when `requireAccessToken: false`; malformed present cookie values always fail authentication before JWT verification.
+
+Cookie verification failures keep their documented classification: expired access tokens raise `AuthenticationExpiredError`, invalid access tokens raise `AuthenticationFailedError`, and missing or malformed access-token cookies raise `AuthenticationRequiredError`. The originating `@fluojs/jwt` error is preserved as the `cause`, while `AuthGuard` still answers HTTP `401` for every variant.
+
+`CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`. Its `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` fields supply the default `Max-Age` for the matching token cookie when the positional TTL argument is omitted; an explicit positional TTL always wins.
 
 `CookieManager` appends access-token and refresh-token `Set-Cookie` values without overwriting cookies that were already placed on the response, even when the underlying adapter stores the existing header with different casing such as `set-cookie`.
 
@@ -224,12 +230,13 @@ export class AuthController {
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
     ),
   ],
-  providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
 ```
 
-Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule` provides the strategy and shared `REFRESH_TOKEN_SERVICE` alias, `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`, and the application module must register `AuthController` for the refresh route to exist.
+Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule.forRoot(MyRefreshTokenService)` registers the service class inside the refresh module and exports it through the shared `REFRESH_TOKEN_SERVICE` alias. When that class has constructor dependencies, place those dependencies in an application-owned module that exports them, then pass that module through `imports`. String and symbol service tokens must be visible to `RefreshTokenModule`: export them through an imported module, a global module, or bootstrap runtime providers. Do not also list `MyRefreshTokenService` in the application module's `providers`; that duplicates a provider registration, which bootstrap warns about by default and can reject under `duplicateProviderPolicy: 'throw'`. Inject the exported `REFRESH_TOKEN_SERVICE` alias where application code needs the service, and register `AuthController` in the application module so the refresh route exists. `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`.
+
+A successful exchange resolves `ctx.principal` to the `RefreshTokenPrincipal` shape: the rotated pair is nested under `claims.accessToken` and `claims.refreshToken`, with the verified `subject` at the top level. The separate exported `RefreshTokenAuthResult` type describes the application-facing exchange payload a refresh endpoint returns to clients.
 
 `RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it trusts the normalized access-token principal subject returned by `@fluojs/jwt`. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only, and rotation detects reuse through the store consume contract.
 
@@ -264,14 +271,14 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 ### Cookie Auth Preset
 - `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring tokens, preset defaults, and response-cookie defaults.
-- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types.
+- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types. `CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`, whose per-token TTL fields become default cookie `Max-Age` values.
 - `CookieManager`: Utility for setting and clearing HttpOnly access/refresh token cookies.
 - Cookie helpers: `createCookieAuthPreset` (compatibility-only manual provider bundle), `createCookieAuthStrategyRegistration` (low-level registration helper), `createCookieManager`, `normalizeCookieAuthOptions`.
 
 ### Refresh Token Preset
 - `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
 - `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy and service alias wiring.
-- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`: Application service contract and exchange payload shapes.
+- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Application service contract, exchange payload shapes, and the principal shape resolved onto `ctx.principal` after a successful exchange.
 - `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
 - `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions`: JWT-backed refresh-token adapter configuration token and options, including the required `secret` and `store` contract.
 - Refresh helpers: `createRefreshTokenStrategyRegistration`.

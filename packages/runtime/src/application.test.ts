@@ -2408,6 +2408,7 @@ describe('bootstrapApplication', () => {
       raw: {},
       url: '/streams/owned',
     };
+    let sendCount = 0;
     const response: FrameworkResponse & { body?: unknown } = {
       committed: false,
       headers: {},
@@ -2417,6 +2418,7 @@ describe('bootstrapApplication', () => {
         this.committed = true;
       },
       send(body) {
+        sendCount += 1;
         this.body = body;
         this.committed = true;
       },
@@ -2433,6 +2435,7 @@ describe('bootstrapApplication', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toBe(owner);
+    expect(sendCount).toBe(1);
     expect(observedSuccess).toBe(owner);
   });
 

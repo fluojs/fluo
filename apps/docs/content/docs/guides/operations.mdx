@@ -168,10 +168,10 @@ Studio consumes raw snapshots, timing diagnostics, snapshot-plus-timing envelope
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-Open the printed `dist/index.html` path and drag a snapshot file into the viewer. Studio owns snapshot parsing, filtering, and Mermaid rendering through `parseStudioPayload(...)`, `applyFilters(...)`, and `renderMermaid(...)`.
+Open the printed `http://127.0.0.1:<port>/` URL and drag a snapshot file into the viewer; do not open `dist/index.html` directly. `@fluojs/studio/viewer` remains available for integrations that resolve the packaged HTML entry. Studio owns snapshot parsing, filtering, and Mermaid rendering through `parseStudioPayload(...)`, `applyFilters(...)`, and `renderMermaid(...)`.
 
 ## Runnable operations example
 

@@ -234,6 +234,7 @@ Access-token lifetime을 늘리지 않으면서 long-lived session이 필요할 
 ```ts
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -241,18 +242,6 @@ import {
   RefreshTokenStrategy,
   UseAuth,
 } from '@fluojs/passport';
-
-@Module({
-  imports: [
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
-    PassportModule.forRoot(
-      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
-      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
-    ),
-  ],
-  providers: [MyRefreshTokenService],
-})
-export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -262,7 +251,26 @@ export class AuthController {
     return ctx.principal;
   }
 }
+
+@Module({
+  controllers: [AuthController],
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-access-token-secret',
+    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
 ```
+
+`RefreshTokenModule`은 `forRoot(...)`로 전달한 class를 소유합니다. 해당 class에 constructor dependency가 있으면 application-owned module에서 dependency를 제공하고 export한 뒤, `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`로 `imports`에 전달하세요. `MyRefreshTokenService`를 `AuthModule.providers`에 다시 등록하지 마세요. provider가 중복되고 `duplicateProviderPolicy: 'throw'`에서 실패합니다. `JwtModule`은 sibling import이므로 `DefaultJwtVerifier`를 `RefreshTokenStrategy`에 노출하려면 `global: true`를 유지하세요.
 
 Production에서는 refresh-token rotation에 atomic `RefreshTokenStore.consume(...)` 구현이 필요합니다. 그래야 replayed token을 안정적으로 감지할 수 있습니다. Memory store는 development 또는 single-instance deployment에만 적합합니다.
 
