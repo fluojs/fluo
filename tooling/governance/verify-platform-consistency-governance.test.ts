@@ -992,71 +992,74 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
+  const httpRuntimeContractChangedFiles = [
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+    'tooling/governance/http-runtime-isolation.test.ts',
+    'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts',
+  ] as const;
+
   it.each([
+    ['English architecture contract', 'docs/architecture/http-runtime.md', /http-runtime\.md and docs\/architecture\/http-runtime\.ko\.md/u],
+    ['Korean architecture contract', 'docs/architecture/http-runtime.ko.md', /http-runtime\.md and docs\/architecture\/http-runtime\.ko\.md/u],
     ['English context companion', 'docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
     ['Korean context companion', 'docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
-    ['workflow enforcement companion', '.github/workflows/ci.yml', /CI\/tooling enforcement updates/u],
-    ['package regression test companion', 'packages/core/src/module.test.ts', /regression test updates/u],
+    ['governance implementation', 'tooling/governance/verify-platform-consistency-governance.mjs', /verify-platform-consistency-governance\.mjs/u],
+    ['changed-path regression', 'tooling/governance/verify-platform-consistency-governance.test.ts', /verify-platform-consistency-governance\.test\.ts/u],
+    ['canonical HTTP isolation regression', 'tooling/governance/http-runtime-isolation.test.ts', /http-runtime-isolation\.test\.ts/u],
+    ['manual SSE lifecycle regression', 'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts', /dispatcher-manual-sse-lifecycle\.test\.ts/u],
   ] as const)(
-    'rejects removal of the required %s from an otherwise complete contract change',
+    'rejects removal of the required %s from an HTTP runtime contract change',
     async (_companion, removedPath, expectedError) => {
-      // Given: a contract update with every required companion present.
+      // Given: an HTTP runtime contract update with every exact companion present.
       const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-      const completeChangedFiles = [
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-        'packages/core/src/module.test.ts',
-      ];
 
       // When: exactly one enforcement companion is absent.
-      const changedFiles = completeChangedFiles.filter((path) => path !== removedPath);
+      const changedFiles = httpRuntimeContractChangedFiles.filter((path) => path !== removedPath);
 
       // Then: its own enforcement category rejects the incomplete change.
       expect(() => enforceContractCompanionUpdates(changedFiles)).toThrowError(expectedError);
     },
   );
 
-  it('accepts a complete contract change with all required companion categories', async () => {
+  it('accepts a complete HTTP runtime contract changed-file fixture', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-    const completeChangedFiles = [
-      'docs/reference/package-surface.md',
-      'docs/CONTEXT.md',
-      'docs/CONTEXT.ko.md',
-      '.github/workflows/ci.yml',
-      'packages/core/src/module.test.ts',
-    ];
 
-    expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
+    expect(() => enforceContractCompanionUpdates([...httpRuntimeContractChangedFiles])).not.toThrow();
   });
 
-  it.each([
-    ['docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
-    ['docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
-    ['tooling/governance/verify-platform-consistency-governance.test.ts', /CI\/tooling enforcement updates/u],
-    ['packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts', /manual-sse-lifecycle\.test\.ts/u],
-  ] as const)(
-    'requires %s for HTTP lifecycle contract changes',
-    async (removedPath, expectedError) => {
-      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-      const completeChangedFiles = [
-        'docs/architecture/http-runtime.md',
-        'docs/architecture/http-runtime.ko.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-        'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts',
-      ];
+  it('invokes HTTP runtime content enforcement from central governance', () => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    let mainCallsHttpRuntimeContentGate = false;
 
-      expect(() =>
-        enforceContractCompanionUpdates(
-          completeChangedFiles.filter((path) => path !== removedPath),
-        ),
-      ).toThrowError(expectedError);
-      expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
-    },
-  );
+    // When
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)
+          && node.expression.text === 'enforceHttpRuntimeCancellationAndContextIsolation') {
+          mainCallsHttpRuntimeContentGate = true;
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    // Then
+    expect(mainCallsHttpRuntimeContentGate).toBe(true);
+  });
 
   it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
     // Given

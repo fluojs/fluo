@@ -26,6 +26,11 @@ const httpLifecycleContractDocs = new Set([
   'docs/architecture/http-runtime.md',
   'docs/architecture/http-runtime.ko.md',
 ]);
+const httpRuntimeGovernanceImplementation =
+  'tooling/governance/verify-platform-consistency-governance.mjs';
+const httpRuntimeChangedPathRegression =
+  'tooling/governance/verify-platform-consistency-governance.test.ts';
+const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isolation.test.ts';
 const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 
@@ -829,6 +834,34 @@ export function enforceContractCompanionUpdates(changedFiles) {
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
 
   if (!touchedContractGate) {
+    return;
+  }
+
+  if (touchedHttpLifecycleContract) {
+    assert(
+      [...httpLifecycleContractDocs].every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/architecture/http-runtime.md and docs/architecture/http-runtime.ko.md.',
+    );
+    assert(
+      contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeGovernanceImplementation),
+      `HTTP runtime contract updates must include ${httpRuntimeGovernanceImplementation}.`,
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeChangedPathRegression),
+      `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
+      `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
+    );
+    assert(
+      hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+      `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
+    );
     return;
   }
 
