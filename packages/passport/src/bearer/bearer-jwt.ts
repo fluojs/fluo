@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
+import { getRequestHeader, type GuardContext } from '@fluojs/http';
 import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import {
@@ -63,7 +63,7 @@ function addBearerChallenge(context: GuardContext): void {
 }
 
 function readAuthorizationHeader(context: GuardContext): string | undefined {
-  const value = context.requestContext.request.headers.authorization;
+  const value = getRequestHeader(context.requestContext.request, 'Authorization');
 
   if (isNonEmptyString(value)) {
     return value;

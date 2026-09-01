@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
 import { createTestApp, createTestingModule } from '@fluojs/testing';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
@@ -144,6 +146,30 @@ describe('BearerJwtStrategy', () => {
 });
 
 describe('AppModule e2e', () => {
+  it('boots the runnable Fastify application', async () => {
+    const adapter = createFastifyAdapter({ port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+
+      const server = adapter.getServer?.();
+      if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+        throw new Error('Failed to resolve the runnable Fastify server.');
+      }
+
+      const address = (server as { address(): { port: number } | string | null }).address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Failed to resolve the runnable Fastify port.');
+      }
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/health`);
+      expect(response.status).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 

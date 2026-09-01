@@ -186,6 +186,36 @@ describe('BearerJwtStrategy AuthGuard integration', () => {
     expect(response.body).toEqual({ subject: 'user-1' });
   });
 
+  it.each([
+    ['Authorization', { Authorization: ['Bearer first-token', 'Bearer second-token'] }],
+    ['aUtHoRiZaTiOn', { aUtHoRiZaTiOn: ['Bearer first-token', 'Bearer second-token'] }],
+  ])('reads the first Bearer credential from a %s request header', async (_headerName, headers) => {
+    const verifier = createMockVerifier();
+    const dispatcher = createGuardedDispatcher(verifier);
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile', headers), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ subject: 'user-1' });
+    expect(verifier.verifyAccessToken).toHaveBeenCalledWith('first-token');
+  });
+
+  it('does not fall back from an empty uppercase Authorization array entry', async () => {
+    const verifier = createMockVerifier();
+    const dispatcher = createGuardedDispatcher(verifier);
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/profile', { Authorization: ['', 'Bearer second-token'] }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.headers['WWW-Authenticate']).toBe('Bearer');
+    expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
+  });
+
   it('rejects scope mismatches with 403 after authentication succeeds', async () => {
     const dispatcher = createGuardedDispatcher(
       createMockVerifier({
