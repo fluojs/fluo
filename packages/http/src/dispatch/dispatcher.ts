@@ -681,23 +681,6 @@ async function resolveRequestObserver(
   return requestContext.container.resolve(definition as Token<RequestObserver>);
 }
 
-async function notifyObservers(
-  observers: RequestObserverLike[],
-  requestContext: RequestContext,
-  callback: (observer: RequestObserver, context: RequestObservationContext) => Promise<void> | void,
-  handler?: HandlerDescriptor,
-): Promise<void> {
-  const context: RequestObservationContext = {
-    handler,
-    requestContext,
-  };
-
-  for (const definition of observers) {
-    const observer = await resolveRequestObserver(definition, requestContext);
-    await callback(observer, context);
-  }
-}
-
 async function notifyObserversSafely(
   observers: RequestObserverLike[],
   requestContext: RequestContext,
@@ -709,10 +692,18 @@ async function notifyObserversSafely(
     return;
   }
 
-  try {
-    await notifyObservers(observers, requestContext, callback, handler);
-  } catch (error) {
-    logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+  const context: RequestObservationContext = {
+    handler,
+    requestContext,
+  };
+
+  for (const definition of observers) {
+    try {
+      const observer = await resolveRequestObserver(definition, requestContext);
+      await callback(observer, context);
+    } catch (error) {
+      logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+    }
   }
 }
 

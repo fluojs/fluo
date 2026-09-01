@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createAccessLogObserver, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
@@ -750,6 +750,52 @@ describe('@fluojs/platform-bun', () => {
 
       expect(response?.status).toBe(200);
       await expect(response?.json()).resolves.toEqual({ userId: 'a%2Fb' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('installs access observers through Bun bootstrap while native route handoff falls back', async () => {
+    // Given
+    const mockBun = installMockBun();
+    const records: Array<{ readonly event: string; readonly outcome?: string; readonly requestId?: string }> = [];
+
+    @Controller('/native-access-log')
+    class NativeAccessLogController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NativeAccessLogController] });
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      observers: [createAccessLogObserver({
+        sink: {
+          emit(record) {
+            records.push(record);
+          },
+        },
+      })],
+      port: 4315,
+    });
+
+    // When
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4315/native-access-log/42', {
+        headers: { 'x-request-id': 'req-bun-access-log' },
+      }));
+
+      // Then
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ id: '42' });
+      expect(records).toContainEqual(expect.objectContaining({
+        event: 'http.access.finish',
+        outcome: 'success',
+        requestId: 'req-bun-access-log',
+      }));
     } finally {
       await app.close();
     }

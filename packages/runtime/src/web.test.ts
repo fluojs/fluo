@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { Container } from '@fluojs/di';
+import {
+  assertRequestContext,
+  Controller,
+  createAccessLogObserver,
+  createDispatcher,
+  createHandlerMapping,
+  Get,
+  SseResponse,
+  type AccessLogEvent,
+  type FrameworkRequest,
+  type FrameworkResponse,
+} from '@fluojs/http';
 
 import type { RequestResponseFactory } from './adapters/request-response-factory.js';
 
@@ -27,6 +39,45 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
+  it('logs the final default status for a manual Web response', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+
+    @Controller('/web-access-log')
+    class WebAccessLogController {
+      @Get('/')
+      async sendManually() {
+        await assertRequestContext().response.send({ committed: true });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: WebAccessLogController }]),
+      observers: [createAccessLogObserver({
+        sink: {
+          emit(record) {
+            records.push(record);
+          },
+        },
+      })],
+      rootContainer: new Container().register(WebAccessLogController),
+    });
+
+    // When
+    const response = await dispatchWebRequest({
+      dispatcher,
+      request: new Request('https://runtime.test/web-access-log'),
+    });
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(records).toContainEqual(expect.objectContaining({
+      event: 'http.access.finish',
+      outcome: 'success',
+      status: 200,
+    }));
+  });
+
   it('supports custom response factories without responseReady', async () => {
     type LegacyWebFrameworkResponse = FrameworkResponse & {
       toResponse(): Response;

@@ -1,4 +1,7 @@
+import type { MaybePromise } from '@fluojs/core';
+
 import { resolveHttpConnection, type ResolveHttpConnectionOptions } from './connection.js';
+import { isRequestContextAborted } from './dispatch/request-abort.js';
 import type {
   FrameworkRequest,
   RequestContext,
@@ -66,7 +69,7 @@ export interface AccessLogSink {
    *
    * @param event Structured request lifecycle data with only allowlisted headers.
    */
-  emit(event: AccessLogEvent): void;
+  emit(event: AccessLogEvent): MaybePromise<void>;
 }
 
 /** Header policy applied independently to request and response access log fields. */
@@ -95,10 +98,11 @@ export interface CreateAccessLogObserverOptions {
 
 interface AccessLogState {
   readonly clientAddress?: string;
-  error?: unknown;
+  hasError: boolean;
   matchedRoute?: string;
   readonly request: FrameworkRequest;
   readonly requestHeaders?: Readonly<Record<string, string | readonly string[]>>;
+  readonly requestId?: string;
   readonly startedAt: number;
 }
 
@@ -150,7 +154,7 @@ function requestFields(state: AccessLogState): AccessLogRequestFields {
     method: state.request.method,
     path: state.request.path,
     ...(state.requestHeaders === undefined ? {} : { requestHeaders: state.requestHeaders }),
-    ...(state.request.requestId === undefined ? {} : { requestId: state.request.requestId }),
+    ...(state.requestId === undefined ? {} : { requestId: state.requestId }),
   };
 }
 
@@ -162,20 +166,28 @@ function isRequestAborted(request: FrameworkRequest): boolean {
   return request.signal?.aborted === true || request.isAborted?.() === true;
 }
 
-function resolveOutcome(state: AccessLogState, context: RequestObservationContext): AccessLogOutcome {
-  if (isRequestAborted(state.request)) {
+function resolveFinalStatus(response: RequestContext['response']): number | undefined {
+  return response.statusCode ?? (response.committed ? 200 : undefined);
+}
+
+function resolveOutcome(
+  state: AccessLogState,
+  context: RequestObservationContext,
+  status: number | undefined,
+): AccessLogOutcome {
+  if (isRequestContextAborted(context.requestContext)) {
     return 'aborted';
   }
 
-  if (state.error === undefined) {
+  if (!state.hasError) {
     return 'success';
   }
 
-  if (state.matchedRoute === undefined && context.requestContext.response.statusCode === 404) {
+  if (state.matchedRoute === undefined && status === 404) {
     return 'not_found';
   }
 
-  return (context.requestContext.response.statusCode ?? 500) < 500
+  return (status ?? 500) < 500
     ? 'handled_error'
     : 'unhandled_error';
 }
@@ -204,21 +216,21 @@ export function createAccessLogObserver(options: CreateAccessLogObserverOptions)
         state.matchedRoute = context.handler?.route.path;
       }
     },
-    onRequestError(context, error) {
+    async onRequestError(context, error) {
       const state = states.get(context.requestContext);
 
       if (!state) {
         return;
       }
 
-      state.error = error;
-      options.sink.emit({
+      state.hasError = true;
+      await options.sink.emit({
         ...requestFields(state),
         errorName: readErrorName(error),
         event: 'http.access.error',
       });
     },
-    onRequestFinish(context) {
+    async onRequestFinish(context) {
       const state = states.get(context.requestContext);
 
       if (!state) {
@@ -227,32 +239,37 @@ export function createAccessLogObserver(options: CreateAccessLogObserverOptions)
 
       states.delete(context.requestContext);
       const responseHeaders = collectAllowedHeaders(context.requestContext.response.headers, headerPolicy);
+      const status = resolveFinalStatus(context.requestContext.response);
 
-      options.sink.emit({
+      await options.sink.emit({
         ...requestFields(state),
         durationMs: Math.max(0, clock() - state.startedAt),
         event: 'http.access.finish',
-        outcome: resolveOutcome(state, context),
+        outcome: resolveOutcome(state, context, status),
         ...(responseHeaders === undefined ? {} : { responseHeaders }),
-        ...(context.requestContext.response.statusCode === undefined
+        ...(status === undefined
           ? {}
-          : { status: context.requestContext.response.statusCode }),
+          : { status }),
       });
     },
-    onRequestStart(context) {
+    async onRequestStart(context) {
       const requestHeaders = collectAllowedHeaders(context.requestContext.request.headers, headerPolicy);
       const clientAddress = options.clientIdentity === undefined
         ? undefined
         : resolveHttpConnection(context.requestContext.request, options.clientIdentity).clientAddress;
       const state: AccessLogState = {
         ...(clientAddress === undefined ? {} : { clientAddress }),
+        hasError: false,
         request: context.requestContext.request,
         ...(requestHeaders === undefined ? {} : { requestHeaders }),
+        ...(context.requestContext.requestId === undefined
+          ? {}
+          : { requestId: context.requestContext.requestId }),
         startedAt: clock(),
       };
 
       states.set(context.requestContext, state);
-      options.sink.emit({
+      await options.sink.emit({
         ...requestFields(state),
         event: 'http.access.start',
       });

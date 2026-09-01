@@ -18,6 +18,7 @@ function createRequest(
   path: string,
   options: {
     readonly headers?: FrameworkRequest['headers'];
+    readonly isAborted?: FrameworkRequest['isAborted'];
     readonly requestId?: string;
     readonly signal?: AbortSignal;
   } = {},
@@ -29,6 +30,7 @@ function createRequest(
     },
     cookies: {},
     headers: options.headers ?? {},
+    isAborted: options.isAborted,
     method: 'GET',
     params: {},
     path,
@@ -115,9 +117,9 @@ describe('createAccessLogObserver', () => {
           Accept: 'application/json',
           Authorization: 'Bearer secret',
           Cookie: 'session=top-secret',
+          'X-Request-Id': 'request-42',
           'X-Api-Token': 'secret-token',
         },
-        requestId: 'request-42',
       }),
       createResponse(),
     );
@@ -229,5 +231,235 @@ describe('createAccessLogObserver', () => {
       expect.objectContaining({ outcome: 'aborted' }),
     ]);
     expect(records.filter((record) => record.event === 'http.access.finish')).toHaveLength(4);
+  });
+
+  it('records the final default status for manually committed responses', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+    const observer = http.createAccessLogObserver({
+      sink: {
+        emit(record) {
+          records.push(record);
+        },
+      },
+    });
+
+    @Controller('/access-log-manual')
+    class ManualResponseController {
+      @Get('/')
+      async sendManually() {
+        await assertRequestContext().response.send({ committed: true });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManualResponseController }]),
+      observers: [observer],
+      rootContainer: new Container().register(ManualResponseController),
+    });
+
+    // When
+    await dispatcher.dispatch(createRequest('/access-log-manual'), createResponse());
+
+    // Then
+    expect(records).toContainEqual(expect.objectContaining({
+      event: 'http.access.finish',
+      outcome: 'success',
+      status: 200,
+    }));
+  });
+
+  it('records aborted terminal outcomes for signal and adapter-probe cancellation during dispatch', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+    const signalAbortController = new AbortController();
+    let probeAborted = false;
+    const observer = http.createAccessLogObserver({
+      sink: {
+        emit(record) {
+          records.push(record);
+        },
+      },
+    });
+
+    @Controller('/access-log-cancellation')
+    class CancellationController {
+      @Get('/signal')
+      abortSignal() {
+        signalAbortController.abort();
+        return { ignored: true };
+      }
+
+      @Get('/probe')
+      abortProbe() {
+        probeAborted = true;
+        return { ignored: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: CancellationController }]),
+      observers: [observer],
+      rootContainer: new Container().register(CancellationController),
+    });
+
+    // When
+    await dispatcher.dispatch(
+      createRequest('/access-log-cancellation/signal', { signal: signalAbortController.signal }),
+      createResponse(),
+    );
+    await dispatcher.dispatch(
+      createRequest('/access-log-cancellation/probe', { isAborted: () => probeAborted }),
+      createResponse(),
+    );
+
+    // Then
+    expect(records.filter((record) => record.event === 'http.access.error')).toHaveLength(0);
+    expect(records.filter((record) => record.event === 'http.access.finish')).toEqual([
+      expect.objectContaining({ outcome: 'aborted' }),
+      expect.objectContaining({ outcome: 'aborted' }),
+    ]);
+  });
+
+  it('records thrown undefined as an error outcome', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+    const observer = http.createAccessLogObserver({
+      sink: {
+        emit(record) {
+          records.push(record);
+        },
+      },
+    });
+
+    @Controller('/access-log-undefined-error')
+    class UndefinedErrorController {
+      @Get('/')
+      throwUndefined() {
+        throw undefined;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: UndefinedErrorController }]),
+      observers: [observer],
+      rootContainer: new Container().register(UndefinedErrorController),
+    });
+
+    // When
+    await dispatcher.dispatch(createRequest('/access-log-undefined-error'), createResponse());
+
+    // Then
+    expect(records).toContainEqual(expect.objectContaining({
+      errorName: 'UnknownError',
+      event: 'http.access.error',
+    }));
+    expect(records).toContainEqual(expect.objectContaining({
+      event: 'http.access.finish',
+      outcome: 'unhandled_error',
+      status: 500,
+    }));
+  });
+
+  it('awaits asynchronous sink emission through the terminal lifecycle', async () => {
+    // Given
+    let finishEmissionSettled = false;
+    let releaseFinishEmission: () => void = () => undefined;
+    const finishEmission = new Promise<void>((resolve) => {
+      releaseFinishEmission = resolve;
+    });
+    let signalFinishEmission: () => void = () => undefined;
+    const finishEmissionStarted = new Promise<void>((resolve) => {
+      signalFinishEmission = resolve;
+    });
+    const observer = http.createAccessLogObserver({
+      sink: {
+        async emit(record) {
+          if (record.event === 'http.access.finish') {
+            signalFinishEmission();
+            await finishEmission;
+            finishEmissionSettled = true;
+          }
+        },
+      },
+    });
+
+    @Controller('/access-log-async-sink')
+    class AsyncSinkController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AsyncSinkController }]),
+      observers: [observer],
+      rootContainer: new Container().register(AsyncSinkController),
+    });
+
+    // When
+    const dispatch = dispatcher.dispatch(createRequest('/access-log-async-sink'), createResponse());
+    await finishEmissionStarted;
+
+    // Then
+    expect(finishEmissionSettled).toBe(false);
+    releaseFinishEmission();
+    await dispatch;
+    expect(finishEmissionSettled).toBe(true);
+  });
+
+  it('keeps direct identity opt-in and trusts forwarding only through trustProxy', async () => {
+    // Given
+    const directRecords: AccessLogEvent[] = [];
+    const forwardedRecords: AccessLogEvent[] = [];
+    const omittedRecords: AccessLogEvent[] = [];
+    const createObserver = (records: AccessLogEvent[], clientIdentity?: http.ResolveHttpConnectionOptions) => (
+      http.createAccessLogObserver({
+        ...(clientIdentity === undefined ? {} : { clientIdentity }),
+        sink: {
+          emit(record) {
+            records.push(record);
+          },
+        },
+      })
+    );
+
+    @Controller('/access-log-identity')
+    class IdentityController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const mapping = createHandlerMapping([{ controllerToken: IdentityController }]);
+    const request = createRequest('/access-log-identity', {
+      headers: {
+        'X-Forwarded-For': '198.51.100.9',
+      },
+    });
+
+    // When
+    await createDispatcher({
+      handlerMapping: mapping,
+      observers: [createObserver(omittedRecords)],
+      rootContainer: new Container().register(IdentityController),
+    }).dispatch(request, createResponse());
+    await createDispatcher({
+      handlerMapping: mapping,
+      observers: [createObserver(directRecords, {})],
+      rootContainer: new Container().register(IdentityController),
+    }).dispatch(request, createResponse());
+    await createDispatcher({
+      handlerMapping: mapping,
+      observers: [createObserver(forwardedRecords, { trustProxy: 1 })],
+      rootContainer: new Container().register(IdentityController),
+    }).dispatch(request, createResponse());
+
+    // Then
+    expect(omittedRecords).not.toContainEqual(expect.objectContaining({ clientAddress: expect.any(String) }));
+    expect(directRecords).toContainEqual(expect.objectContaining({ clientAddress: '203.0.113.42' }));
+    expect(forwardedRecords).toContainEqual(expect.objectContaining({ clientAddress: '198.51.100.9' }));
   });
 });
