@@ -82,6 +82,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0),
     httpKeyStrategy: options.httpKeyStrategy ?? 'route',
     principalScopeResolver: options.principalScopeResolver,
+    observer: options.observer,
   };
 }
 

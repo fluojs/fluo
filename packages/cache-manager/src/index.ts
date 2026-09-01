@@ -31,6 +31,8 @@ export type {
   CacheKeyFactory,
   CacheKeyStrategy,
   CacheModuleOptions,
+  CacheObservation,
+  CacheObserver,
   CacheStore,
   NormalizedCacheModuleOptions,
   PrincipalScopeResolver,

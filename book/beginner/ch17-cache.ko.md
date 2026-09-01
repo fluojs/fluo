@@ -349,7 +349,22 @@ export class PostsController {
 ### 17.7.7 Monitoring Cache Health: Hit Rates and Latency
 마지막으로, 캐싱 전략은 그 성능을 측정할 수 있을 때만 효과적입니다. **캐시 적중률(Cache Hit Rate)**(캐시에서 처리된 요청의 비율)과 **캐시 지연 시간(Cache Latency)**(캐시에서 데이터를 가져오는 데 걸리는 시간)을 반드시 모니터링해야 합니다. 낮은 적중률은 TTL이 너무 짧거나 제거 정책이 최적화되지 않았음을 나타낼 수 있습니다. 높은 지연 시간은 캐시 저장소가 과부하 상태이거나 네트워크 연결이 느림을 시사할 수 있습니다.
 
-Fluo의 `@fluojs/metrics` 모듈은 더 넓은 관측성 스택의 일부가 될 수 있지만, 적중률이나 지연 시간 같은 캐시 전용 메트릭은 직접 연결하지 않는 한 애플리케이션이 소유하는 커스텀 계측으로 남습니다. 이 데이터를 대시보드(예: Grafana)에서 시각화함으로써 캐싱 전략의 실시간 영향을 확인하고 최적화가 필요한 영역을 식별할 수 있습니다. 캐싱은 한 번 설정하고 잊어버리는 기능이 아니라는 점을 기억하십시오. 애플리케이션과 트래픽 패턴이 변화함에 따라 최대 효율을 보장하기 위해 지속적인 모니터링과 튜닝이 필요합니다.
+Fluo cache module은 애플리케이션이 소유하는 이 계측을 위해 opt-in 방식이며 metrics backend에 독립적인 observation seam을 제공합니다. `CacheModule.forRoot({ observer })`를 설정하고 각 `CacheObservation`을 기존 metrics backend에 연결하세요. 각 observation은 operation(`get`, `set`, `del`, `remember`, `reset`, `close`), outcome, `durationMs`를 보고합니다. read operation은 `hit`과 `miss`를 구분하고 실패는 `error`를 보고합니다.
+
+```typescript
+CacheModule.forRoot({
+  observer: {
+    onCacheOperation({ operation, outcome, durationMs }) {
+      cacheOperationCounter.inc({ operation, outcome });
+      cacheOperationLatency.observe(durationMs);
+    },
+  },
+});
+```
+
+Payload는 cache key, value, loader result, error object를 의도적으로 제외하므로 cardinality가 높거나 민감한 label을 만들지 않습니다. Observer 실패는 격리되어 cache 결과를 바꾸지 않습니다. Store가 실패해도 `CacheInterceptor`는 계속 fail-soft로 동작하며, 그 service call은 `error` observation을 내보냅니다. 따라서 optional cache를 request failure로 만들지 않고도 성능 저하를 측정할 수 있습니다.
+
+`@fluojs/metrics`는 더 넓은 관측성 스택의 일부로 계속 사용할 수 있으며, observer는 cache package가 해당 패키지에 의존하지 않도록 할 뿐입니다. 이 측정값을 Grafana 같은 dashboard에서 시각화하면 tuning이 필요한 지점을 식별할 수 있습니다. 캐싱은 한 번 설정하고 잊는 기능이 아니므로 애플리케이션과 트래픽 변화에 맞춰 지속적으로 모니터링해야 합니다.
 
 ## 17.8 Summary
 캐싱은 고성능 백엔드 시스템의 초석입니다. 자주 액세스되는 데이터를 데이터베이스에서 빠른 저장 계층으로 옮김으로써, FluoBlog가 과부하 상태에서도 뛰어난 응답성을 유지하도록 보장합니다.
