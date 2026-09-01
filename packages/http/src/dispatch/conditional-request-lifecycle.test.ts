@@ -5,10 +5,10 @@ import {
   Controller,
   createDispatcher,
   createHandlerMapping,
-  Get,
-  UseGuards,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
+  UseGuards,
 } from '../index.js';
 
 function createRequest(headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
@@ -109,7 +109,6 @@ describe('conditional request lifecycle', () => {
       'module-before',
       'guard',
       'resolver',
-      'handler',
       'module-after',
       'app-after',
     ]);
@@ -150,6 +149,6 @@ describe('conditional request lifecycle', () => {
     }), response);
 
     expect(response.statusCode).toBe(304);
-    expect(handlerCalls).toBe(1);
+    expect(handlerCalls).toBe(0);
   });
 });

@@ -358,17 +358,21 @@ describe('dispatch response policy', () => {
     ['GET'],
     ['HEAD'],
   ])('keeps %s redirects unconditional when a matching condition cannot negotiate a formatter', async (method) => {
+    let handlerCalls = 0;
+
     @Controller('/conditional-redirect-bypass')
     class ConditionalRedirectBypassController {
       @Get('/')
       @Redirect('/destination', 302)
       getValue() {
+        handlerCalls += 1;
         return { redirected: true };
       }
 
       @Head('/')
       @Redirect('/destination', 302)
       headValue() {
+        handlerCalls += 1;
         return { redirected: true };
       }
     }
@@ -407,6 +411,7 @@ describe('dispatch response policy', () => {
     expect(response.headers.Location).toBe('/destination');
     expect(response.headers.ETag).toBe('"redirect-v1"');
     expect(response.headers.Vary).toBeUndefined();
+    expect(handlerCalls).toBe(1);
   });
 
   it.each([
@@ -414,6 +419,7 @@ describe('dispatch response policy', () => {
     ['HEAD'],
   ])('keeps %s custom writers unconditional when a matching condition cannot negotiate a formatter', async (method) => {
     const htmlEntry = { html: '<main>Conditional writer</main>' };
+    let handlerCalls = 0;
 
     registerFrameworkResponseWriter(htmlEntry, (context) => {
       context.applySuccessResponseMetadata();
@@ -425,16 +431,24 @@ describe('dispatch response policy', () => {
     class ConditionalWriterBypassController {
       @Get('/')
       getValue() {
+        handlerCalls += 1;
         return htmlEntry;
       }
 
       @Head('/')
       headValue() {
+        handlerCalls += 1;
         return htmlEntry;
       }
     }
 
     const dispatcher = createDispatcher({
+      appMiddleware: [{
+        async handle(context: MiddlewareContext, next: Next) {
+          registerFrameworkResponseValueFinalizer(context.requestContext, ({ value }) => value);
+          await next();
+        },
+      }],
       conditionalRequest: {
         resolve() {
           return {
@@ -469,5 +483,6 @@ describe('dispatch response policy', () => {
     expect(response.headers.ETag).toBe('"writer-v1"');
     expect(response.headers.Vary).toBeUndefined();
     expect(response.body).toBe('<main>Conditional writer</main>');
+    expect(handlerCalls).toBe(1);
   });
 });

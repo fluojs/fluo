@@ -34,12 +34,12 @@ import type {
   RequestObserverLike,
   ResponseValidators,
 } from '../types.js';
-import { invokeControllerHandler } from './dispatch-handler-policy.js';
-import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import {
   type ConditionalRequestOutcome,
   resolveConditionalRequest,
 } from './conditional-request-policy.js';
+import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
+import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import {
   type ResolvedContentNegotiation,
   resolveContentNegotiation,
@@ -58,6 +58,7 @@ import {
 } from './fast-path/index.js';
 import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
+import { FRAMEWORK_RESPONSE_VALUE_FINALIZER } from './response-integration.js';
 
 export type { FastPathEligibility, FastPathStats } from './fast-path/index.js';
 export { FAST_PATH_ELIGIBILITY_SYMBOL, FAST_PATH_STATS_SYMBOL } from './fast-path/index.js';
@@ -774,6 +775,23 @@ async function dispatchMatchedHandler(
     }
   }
 
+  if (
+    conditionalOutcome !== undefined
+    && !requiresResultFirstConditionalClassification(handler, requestContext)
+  ) {
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      undefined,
+      contentNegotiation,
+      requestContext,
+      conditionalValidators,
+      conditionalOutcome,
+    );
+    return { result: undefined };
+  }
+
   const result = executionPlan.mergedInterceptors.length === 0
     ? await invokeControllerHandler(handler, requestContext, binder, controllerContainer)
     : await runInterceptorChain(
@@ -810,6 +828,19 @@ async function dispatchMatchedHandler(
   }
 
   return { result };
+}
+
+function requiresResultFirstConditionalClassification(
+  handler: HandlerDescriptor,
+  requestContext: RequestContext,
+): boolean {
+  const method = requestContext.request.method.toUpperCase();
+
+  return (method === 'GET' || method === 'HEAD')
+    && (
+      handler.route.redirect !== undefined
+      || typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] === 'function'
+    );
 }
 
 function resolveHandlerExecutionPlan(
