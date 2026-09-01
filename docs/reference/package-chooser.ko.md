@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | 기본 애플리케이션 스택이 필요함 | `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime` | 모든 Node.js 웹 API의 시작점입니다. |
 | HTTP 라우팅이 필요함 | `@fluojs/http` | 컨트롤러와 라우트 실행에 필요합니다. |
+| portable 정적 에셋이 필요함 | `@fluojs/http` + `@fluojs/runtime/node` | `@fluojs/http`는 `createStaticAssetsMiddleware(...)`를 소유하고, Node subpath만 `createNodeFileSystemAssetSource(...)`를 소유합니다. Web, Bun, Deno, Workers 애플리케이션은 자체 `StaticAssetSource`를 제공합니다. |
 | GraphQL 엔드포인트가 필요함 | `@fluojs/graphql` | HTTP 스택 위에 추가합니다. |
 | 기본 Node.js 어댑터가 필요함 | `@fluojs/platform-fastify` | Node.js `>=20.19.3 <21 || >=22.2.0 <27` 프로젝트에 권장되는 시작 경로이며, listener-level RFC `QUERY`가 fluo dispatch에 도달하도록 package는 이 정확한 `engines.node` 범위를 선언합니다. |
 | Fastify가 HTTPS/TLS 시작을 직접 소유해야 함 | `@fluojs/platform-fastify` | 프로세스가 TLS를 직접 소유할 때 adapter/bootstrap startup surface에 Node.js `https` server option을 전달하세요. Load balancer, ingress, gateway가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요. |

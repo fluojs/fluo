@@ -133,6 +133,136 @@ describe('static asset middleware', () => {
     expect(dotfile.next).toHaveBeenCalledOnce();
   });
 
+  it('orders accepted encodings by quality while retaining the identity fallback', async () => {
+    const asset: StaticAsset = {
+      contentType: 'application/javascript',
+      size: 1,
+      source: Uint8Array.of(1),
+    };
+    const resolve = vi.fn<StaticAssetSource['resolve']>(async (_path, context) => {
+      expect(context.acceptedEncodings).toEqual(['br', 'identity', 'gzip']);
+      return asset;
+    });
+    const middleware = createStaticAssetsMiddleware({
+      prefix: '/assets',
+      source: { resolve },
+    });
+
+    const { response } = await invokeStaticMiddleware(middleware, createRequest('/assets/app.js', {
+      'accept-encoding': 'gzip;q=0.5, br, *;q=0.25',
+    }));
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it.each([
+    ['*;q=1, gzip;q=0', ['br', 'identity']],
+    ['identity;q=0, br;q=0.4, gzip;q=0.8', ['gzip', 'br']],
+    ['*;q=0', []],
+    ['br;q=1.0000, gzip;q=banana', ['identity']],
+  ])('applies RFC encoding acceptance for %s', async (acceptEncoding, expected) => {
+    const resolve = vi.fn<StaticAssetSource['resolve']>(async (_path, context) => {
+      expect(context.acceptedEncodings).toEqual(expected);
+      return {
+        contentType: 'application/javascript',
+        size: 1,
+        source: Uint8Array.of(1),
+      };
+    });
+    const middleware = createStaticAssetsMiddleware({
+      prefix: '/assets',
+      source: { resolve },
+    });
+
+    await invokeStaticMiddleware(middleware, createRequest('/assets/app.js', {
+      'accept-encoding': acceptEncoding,
+    }));
+  });
+
+  it('returns an explicit denial for dotfiles while ignore falls through', async () => {
+    const resolve = vi.fn<StaticAssetSource['resolve']>();
+    const deny = createStaticAssetsMiddleware({
+      dotfiles: 'deny',
+      prefix: '/assets',
+      source: { resolve },
+    });
+    const ignore = createStaticAssetsMiddleware({
+      dotfiles: 'ignore',
+      prefix: '/assets',
+      source: { resolve },
+    });
+
+    const denied = await invokeStaticMiddleware(deny, createRequest('/assets/.env'));
+    const ignored = await invokeStaticMiddleware(ignore, createRequest('/assets/.env'));
+
+    expect(denied.next).not.toHaveBeenCalled();
+    expect(denied.response.statusCode).toBe(403);
+    expect(denied.response.committed).toBe(true);
+    expect(ignored.next).toHaveBeenCalledOnce();
+    expect(ignored.response.committed).toBe(false);
+  });
+
+  it('denies a configured dotfile index without resolving it', async () => {
+    const resolve = vi.fn<StaticAssetSource['resolve']>();
+    const middleware = createStaticAssetsMiddleware({
+      dotfiles: 'deny',
+      index: ['.index.html'],
+      prefix: '/assets',
+      source: { resolve },
+    });
+
+    const { next, response } = await invokeStaticMiddleware(middleware, createRequest('/assets/'));
+
+    expect(next).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('returns 406 when an existing static resource has no acceptable representation', async () => {
+    const middleware = createStaticAssetsMiddleware({
+      prefix: '/assets',
+      source: {
+        async resolve() {
+          return { notAcceptable: true };
+        },
+      },
+    });
+
+    const { next, response } = await invokeStaticMiddleware(middleware, createRequest('/assets/app.js'));
+
+    expect(next).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(406);
+    expect(response.committed).toBe(true);
+    expect(response.headers).toMatchObject({
+      'Content-Length': '0',
+      Vary: 'Accept-Encoding',
+    });
+  });
+
+  it('disposes a selected asset after conditional and bodyless responses', async () => {
+    const dispose = vi.fn(async () => undefined);
+    const middleware = createStaticAssetsMiddleware({
+      prefix: '/assets',
+      source: {
+        async resolve() {
+          return {
+            contentType: 'application/javascript',
+            dispose,
+            size: 1,
+            source: Uint8Array.of(1),
+            validators: { etag: { opaqueValue: 'asset-v1', strength: 'strong' } },
+          };
+        },
+      },
+    });
+
+    await invokeStaticMiddleware(middleware, createRequest('/assets/app.js', {
+      'if-none-match': '"asset-v1"',
+    }));
+
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it('shares validators, conditional requests, ranges, and HEAD metadata', async () => {
     const asset: StaticAsset = {
       contentType: 'application/javascript',

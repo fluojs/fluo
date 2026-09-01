@@ -4,6 +4,7 @@ import type {
   ConditionalRequestOptions,
   EntityTag,
   FrameworkResponse,
+  FrameworkResponseSendOptions,
   ResponseValidators,
 } from '../types.js';
 
@@ -440,14 +441,16 @@ export function applyResponseValidators(
  * @param response Mutable adapter-normalized response.
  * @param outcome Selected non-proceed conditional request outcome.
  * @param validators Current representation validators.
+ * @param options Optional adapter response-write controls.
  * @returns A promise that settles after the adapter accepts the bodyless response.
  */
 export async function writeConditionalResponse(
   response: FrameworkResponse,
   outcome: Exclude<ConditionalRequestOutcome, 'proceed'>,
   validators: ResponseValidators | undefined,
+  options?: FrameworkResponseSendOptions,
 ): Promise<void> {
   applyResponseValidators(response, validators);
   response.setStatus(outcome === 'not-modified' ? 304 : 412);
-  await response.send(undefined);
+  await response.send(undefined, options);
 }

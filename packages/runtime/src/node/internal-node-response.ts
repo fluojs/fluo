@@ -261,7 +261,7 @@ export function createFrameworkResponse(
       this.setHeader('Location', location);
       void this.send(undefined);
     },
-    send(body: unknown) {
+    send(body: unknown, options?: { readonly compression?: boolean }) {
       if (response.writableEnded) {
         this.committed = true;
         return;
@@ -282,7 +282,12 @@ export function createFrameworkResponse(
         ? Buffer.from(serialized.payload, 'utf8')
         : serialized.payload;
 
-      if (response.statusCode !== 206 && !response.hasHeader('Content-Range')) {
+      if (
+        options?.compression !== false
+        &&
+        response.statusCode !== 206
+        && !response.hasHeader('Content-Range')
+      ) {
         const activeCompression = resolveCompression();
 
         if (activeCompression) {

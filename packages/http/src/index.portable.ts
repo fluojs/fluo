@@ -11,8 +11,11 @@ export {
 } from './static-assets.js';
 export type {
   StaticAsset,
+  StaticAssetAcceptedEncoding,
   StaticAssetContentEncoding,
+  StaticAssetNotAcceptable,
   StaticAssetResolveContext,
+  StaticAssetResolution,
   StaticAssetSource,
   StaticAssetsMiddleware,
   StaticAssetsMiddlewareOptions,

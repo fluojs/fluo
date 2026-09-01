@@ -47,6 +47,8 @@ export interface ByteRangeResponseEntry {
 /** Inputs for writing a byte representation through a portable response facade. */
 export interface ByteRangeResponseWriteOptions {
   readonly applySuccessResponseMetadata: () => void;
+  /** Whether adapter-owned dynamic compression may transform byte-backed responses. */
+  readonly compression?: boolean;
   readonly entry: ByteRangeResponseEntry;
   readonly request: FrameworkRequest;
   readonly response: FrameworkResponse;
@@ -218,7 +220,7 @@ export async function writeByteRangeResponse(
     response.setStatus(416);
     response.setHeader('Content-Length', '0');
     response.setHeader('Content-Range', `bytes */${entry.size}`);
-    await response.send(undefined);
+    await response.send(undefined, sendOptions(options.compression));
     return;
   }
 
@@ -266,12 +268,15 @@ export async function writeByteRangeResponse(
   }
 
   if (isHead) {
-    await response.send(undefined);
+    await response.send(undefined, sendOptions(options.compression));
     return;
   }
 
   if (bytes) {
-    await response.send(range.kind === 'partial' ? bytes.slice(range.start, range.end + 1) : bytes);
+    await response.send(
+      range.kind === 'partial' ? bytes.slice(range.start, range.end + 1) : bytes,
+      sendOptions(options.compression),
+    );
     return;
   }
 
@@ -287,6 +292,10 @@ export async function writeByteRangeResponse(
     request,
     stream,
   );
+}
+
+function sendOptions(compression: boolean | undefined): { readonly compression: false } | undefined {
+  return compression === false ? { compression: false } : undefined;
 }
 
 function hasHeader(response: FrameworkResponse, name: string): boolean {

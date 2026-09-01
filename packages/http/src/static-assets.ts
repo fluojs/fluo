@@ -22,6 +22,9 @@ const defaultDotfiles = 'ignore';
 /** Content encodings that a static asset source may select. */
 export type StaticAssetContentEncoding = 'br' | 'gzip';
 
+/** Request encoding names considered while selecting a static representation. */
+export type StaticAssetAcceptedEncoding = StaticAssetContentEncoding | 'identity';
+
 /** Metadata for one selected static representation. */
 export interface StaticAsset {
   /** Media type for the logical asset path. */
@@ -34,31 +37,42 @@ export interface StaticAsset {
   readonly size: number;
   /** Validators emitted and evaluated for the selected representation. */
   readonly validators?: ResponseValidators;
-  /** Whether the source selected this representation from request encodings. */
+  /** Whether selection can vary by `Accept-Encoding`, including an identity fallback. */
   readonly variesByEncoding?: boolean;
+  /** Releases source-owned resources after the response settles. */
+  readonly dispose?: () => MaybePromise<void>;
 }
 
 /** Context supplied to an application-owned static asset source. */
 export interface StaticAssetResolveContext {
   /** Ordered encodings accepted by the request. */
-  readonly acceptedEncodings: readonly StaticAssetContentEncoding[];
+  readonly acceptedEncodings: readonly StaticAssetAcceptedEncoding[];
   /** Request cancellation signal when the adapter exposes one. */
   readonly signal?: AbortSignal;
 }
+
+/** Resolution outcome for an existing asset without an acceptable representation. */
+export interface StaticAssetNotAcceptable {
+  /** Signals that the requested asset exists but no representation is acceptable. */
+  readonly notAcceptable: true;
+}
+
+/** Result returned by an application-owned static asset source. */
+export type StaticAssetResolution = StaticAsset | StaticAssetNotAcceptable | undefined;
 
 /** Runtime-neutral source for static asset representations. */
 export interface StaticAssetSource {
   /**
    * Resolves a normalized relative asset path.
    *
-   * Paths never begin with `/`, contain dot segments, path separators, backslashes,
-   * NUL, or decoded URL separators.
+   * Paths never begin with `/`; every `/`-separated segment is non-empty, is not
+   * `.` or `..`, and contains no backslash or NUL.
    *
    * @param path Normalized relative asset path.
    * @param context Request capabilities relevant to source selection.
-   * @returns The selected representation, or `undefined` when no asset exists.
+   * @returns The selected representation, an explicit unacceptable outcome, or `undefined` when no asset exists.
    */
-  resolve(path: string, context: StaticAssetResolveContext): MaybePromise<StaticAsset | undefined>;
+  resolve(path: string, context: StaticAssetResolveContext): MaybePromise<StaticAssetResolution>;
 }
 
 /** Static asset middleware configuration. */
@@ -67,7 +81,7 @@ export interface StaticAssetsMiddlewareOptions {
   readonly source: StaticAssetSource;
   /** URL prefix owned by this middleware. Defaults to `/`. */
   readonly prefix?: string;
-  /** Dotfile policy. Defaults to `ignore`, which leaves the request to later middleware/routes. */
+  /** Dotfile policy. `deny` writes 403; `ignore` leaves the request to later middleware/routes. */
   readonly dotfiles?: 'allow' | 'deny' | 'ignore';
   /** Directory indexes resolved only for paths ending in `/`. Defaults to `false`. */
   readonly index?: false | string | readonly string[];
@@ -94,58 +108,97 @@ export function createStaticAssetsMiddleware(
     async handle(context, next): Promise<void> {
       const assetPath = resolveStaticAssetPath(context.request.path, configuration.prefix, configuration.dotfiles);
 
-      if (!assetPath || !isStaticAssetMethod(context.request.method)) {
+      if (!isStaticAssetMethod(context.request.method)) {
         await next();
         return;
       }
 
-      const asset = await resolveStaticAsset(
+      if (assetPath === 'denied') {
+        context.response.setStatus(403);
+        await context.response.send(undefined);
+        return;
+      }
+
+      if (!assetPath) {
+        await next();
+        return;
+      }
+
+      const sourceContext = createStaticAssetResolveContext(context);
+      const resolution = await resolveStaticAsset(
         configuration,
         assetPath,
-        createStaticAssetResolveContext(context),
+        sourceContext,
       );
 
-      if (!asset) {
+      if (resolution === 'denied') {
+        context.response.setStatus(403);
+        await context.response.send(undefined);
+        return;
+      }
+
+      if (!resolution) {
         await next();
         return;
       }
 
-      if (configuration.cacheControl !== false) {
-        context.response.setHeader('Cache-Control', configuration.cacheControl);
-      }
-
-      if (asset.contentEncoding) {
-        context.response.setHeader('Content-Encoding', asset.contentEncoding);
-      }
-
-      if (asset.variesByEncoding) {
+      if (
+        isStaticAssetNotAcceptable(resolution)
+        || !isStaticAssetEncodingAccepted(resolution, sourceContext.acceptedEncodings)
+      ) {
         appendVaryHeader(context.response, 'Accept-Encoding');
-      }
-
-      const conditional = resolveConditionalRequestRepresentation(context.request, {
-        exists: true,
-        validators: asset.validators,
-      });
-
-      if (conditional.outcome !== 'proceed') {
-        await writeConditionalResponse(context.response, conditional.outcome, conditional.validators);
+        context.response.setHeader('Content-Length', '0');
+        context.response.setStatus(406);
+        await context.response.send(undefined, { compression: false });
         return;
       }
 
-      context.response.setStatus(200);
-      await writeByteRangeResponse({
-        applySuccessResponseMetadata: () => {
-          applyResponseValidators(context.response, conditional.validators);
-        },
-        entry: {
-          contentType: asset.contentType,
-          size: asset.size,
-          source: asset.source,
-        },
-        request: context.request,
-        response: context.response,
-        validators: conditional.validators,
-      });
+      try {
+        if (configuration.cacheControl !== false) {
+          context.response.setHeader('Cache-Control', configuration.cacheControl);
+        }
+
+        if (resolution.contentEncoding) {
+          context.response.setHeader('Content-Encoding', resolution.contentEncoding);
+        }
+
+        if (resolution.contentEncoding || resolution.variesByEncoding) {
+          appendVaryHeader(context.response, 'Accept-Encoding');
+        }
+
+        const conditional = resolveConditionalRequestRepresentation(context.request, {
+          exists: true,
+          validators: resolution.validators,
+        });
+
+        if (conditional.outcome !== 'proceed') {
+          await writeConditionalResponse(
+            context.response,
+            conditional.outcome,
+            conditional.validators,
+            { compression: false },
+          );
+          return;
+        }
+
+        context.response.setStatus(200);
+        await writeByteRangeResponse({
+          applySuccessResponseMetadata: () => {
+            applyResponseValidators(context.response, conditional.validators);
+          },
+          compression: false,
+          entry: {
+            contentType: resolution.contentType,
+            size: resolution.size,
+            source: resolution.source,
+          },
+          request: context.request,
+          response: context.response,
+          validators: conditional.validators,
+        });
+      } finally {
+        await resolution.dispose?.();
+      }
     },
   };
 }
@@ -233,7 +286,7 @@ function resolveStaticAssetPath(
   requestPath: string,
   prefix: string,
   dotfiles: StaticAssetsConfiguration['dotfiles'],
-): StaticAssetPath | undefined {
+): StaticAssetPath | 'denied' | undefined {
   if (!matchesStaticPrefix(requestPath, prefix)) {
     return undefined;
   }
@@ -265,7 +318,7 @@ function resolveStaticAssetPath(
     }
 
     if (segment.startsWith('.') && dotfiles !== 'allow') {
-      return undefined;
+      return dotfiles === 'deny' ? 'denied' : undefined;
     }
 
     segments.push(segment);
@@ -292,39 +345,84 @@ function createStaticAssetResolveContext(context: MiddlewareContext): StaticAsse
   };
 }
 
-function parseAcceptedEncodings(context: MiddlewareContext): readonly StaticAssetContentEncoding[] {
+function parseAcceptedEncodings(context: MiddlewareContext): readonly StaticAssetAcceptedEncoding[] {
   const value = readFirstNonEmptyRequestHeaderValue(context.request, 'accept-encoding');
 
   if (!value) {
-    return [];
+    return ['identity'];
   }
 
-  const selected: StaticAssetContentEncoding[] = [];
+  const qualities = new Map<string, number>();
 
   for (const candidate of value.split(',')) {
     const [name, ...parameters] = candidate.trim().toLowerCase().split(';');
     const quality = parameters.find((parameter) => parameter.trim().startsWith('q='));
-    const parsedQuality = quality ? Number(quality.trim().slice(2)) : 1;
+    const parsedQuality = parseAcceptEncodingQuality(quality?.trim().slice(2));
 
-    if (parsedQuality <= 0 || !Number.isFinite(parsedQuality)) {
+    if (!name || parsedQuality === undefined) {
       continue;
     }
 
-    if ((name === 'br' || name === 'gzip') && !selected.includes(name)) {
-      selected.push(name);
-    }
+    qualities.set(name, parsedQuality);
   }
 
-  return selected;
+  return (['br', 'gzip', 'identity'] as const)
+    .map((encoding) => ({
+      encoding,
+      quality: resolveAcceptEncodingQuality(encoding, qualities),
+    }))
+    .filter((candidate) => candidate.quality > 0)
+    .sort((left, right) => right.quality - left.quality || encodingPriority(left.encoding) - encodingPriority(right.encoding))
+    .map((candidate) => candidate.encoding);
+}
+
+function parseAcceptEncodingQuality(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return 1;
+  }
+
+  if (!/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(value)) {
+    return undefined;
+  }
+
+  return Number(value);
+}
+
+function resolveAcceptEncodingQuality(
+  encoding: StaticAssetAcceptedEncoding,
+  qualities: ReadonlyMap<string, number>,
+): number {
+  const explicit = qualities.get(encoding);
+
+  if (explicit !== undefined) {
+    return explicit;
+  }
+
+  const wildcard = qualities.get('*');
+  return encoding === 'identity'
+    ? wildcard === 0 ? 0 : 1
+    : wildcard ?? 0;
+}
+
+function encodingPriority(encoding: StaticAssetAcceptedEncoding): number {
+  return encoding === 'br' ? 0 : encoding === 'gzip' ? 1 : 2;
 }
 
 async function resolveStaticAsset(
   configuration: StaticAssetsConfiguration,
   assetPath: StaticAssetPath,
   context: StaticAssetResolveContext,
-): Promise<StaticAsset | undefined> {
+): Promise<StaticAssetResolution | 'denied'> {
   if (assetPath.directory) {
     for (const indexName of configuration.index) {
+      if (indexName.startsWith('.') && configuration.dotfiles !== 'allow') {
+        if (configuration.dotfiles === 'deny') {
+          return 'denied';
+        }
+
+        continue;
+      }
+
       const asset = await configuration.source.resolve(
         assetPath.path === '' ? indexName : `${assetPath.path}/${indexName}`,
         context,
@@ -343,4 +441,17 @@ async function resolveStaticAsset(
   }
 
   return await configuration.source.resolve(assetPath.path, context);
+}
+
+function isStaticAssetNotAcceptable(
+  resolution: StaticAssetResolution,
+): resolution is StaticAssetNotAcceptable {
+  return resolution !== undefined && 'notAcceptable' in resolution && resolution.notAcceptable;
+}
+
+function isStaticAssetEncodingAccepted(
+  asset: StaticAsset,
+  acceptedEncodings: readonly StaticAssetAcceptedEncoding[],
+): boolean {
+  return acceptedEncodings.includes(asset.contentEncoding ?? 'identity');
 }

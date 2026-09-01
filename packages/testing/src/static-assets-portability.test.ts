@@ -2,15 +2,20 @@ import {
   createStaticAssetsMiddleware,
   type StaticAssetSource,
 } from '@fluojs/http';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
 import { bootstrapNodejsApplication } from '@fluojs/platform-nodejs';
 import { defineModule, type Application, type ModuleType } from '@fluojs/runtime';
+import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
 import { describe, expect, it } from 'vitest';
 
 type BootstrapStaticAssetsApplication = (
   rootModule: ModuleType,
   options: {
+    compression: true;
     cors: false;
     middleware: [ReturnType<typeof createStaticAssetsMiddleware>];
     port: 0;
@@ -21,6 +26,8 @@ class StaticAssetsModule {}
 defineModule(StaticAssetsModule, {});
 
 function createAssetSource(): StaticAssetSource {
+  const bytes = Uint8Array.from({ length: 2048 }, (_, index) => index % 251);
+
   return {
     async resolve(path) {
       if (path !== 'app.js') {
@@ -29,8 +36,8 @@ function createAssetSource(): StaticAssetSource {
 
       return {
         contentType: 'application/javascript',
-        size: 6,
-        source: Uint8Array.from([0, 1, 2, 3, 4, 5]),
+        size: bytes.byteLength,
+        source: bytes,
         validators: {
           etag: { opaqueValue: 'asset-v1', strength: 'strong' },
           lastModified: new Date('2026-01-01T00:00:00Z'),
@@ -65,6 +72,7 @@ async function assertStaticAssetsOverRealListener(
   bootstrap: BootstrapStaticAssetsApplication,
 ): Promise<void> {
   const app = await bootstrap(StaticAssetsModule, {
+    compression: true,
     cors: false,
     middleware: [createStaticAssetsMiddleware({
       cacheControl: 'public, max-age=300',
@@ -92,15 +100,17 @@ async function assertStaticAssetsOverRealListener(
     expect(full.status).toBe(200);
     expect(full.headers.get('cache-control')).toBe('public, max-age=300');
     expect(full.headers.get('content-type')).toContain('application/javascript');
-    await expect(full.bytes()).resolves.toEqual(Uint8Array.from([0, 1, 2, 3, 4, 5]));
+    expect(full.headers.get('content-encoding')).toBeNull();
+    expect(full.headers.get('content-length')).toBe('2048');
+    await expect(full.bytes()).resolves.toEqual(Uint8Array.from({ length: 2048 }, (_, index) => index % 251));
     expect(ranged.status).toBe(206);
-    expect(ranged.headers.get('content-range')).toBe('bytes 2-4/6');
+    expect(ranged.headers.get('content-range')).toBe('bytes 2-4/2048');
     await expect(ranged.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
     expect(notModified.status).toBe(304);
     expect(notModified.headers.get('etag')).toBe('"asset-v1"');
     expect(await notModified.text()).toBe('');
     expect(head.status).toBe(200);
-    expect(head.headers.get('content-length')).toBe('6');
+    expect(head.headers.get('content-length')).toBe('2048');
     expect(await head.text()).toBe('');
   } finally {
     await app.close();
@@ -108,6 +118,55 @@ async function assertStaticAssetsOverRealListener(
 }
 
 describe('static asset real-listener portability', () => {
+  it('serves a shipped Node filesystem source through GET, HEAD, 304, range, precompression, and missing paths', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fluo-static-listener-'));
+    await writeFile(join(root, 'app.js'), Uint8Array.from({ length: 64 }, (_, index) => index));
+    await writeFile(join(root, 'app.js.br'), Uint8Array.from([1, 2, 3, 4]));
+    const app = await bootstrapNodejsApplication(StaticAssetsModule, {
+      compression: true,
+      cors: false,
+      middleware: [createStaticAssetsMiddleware({
+        prefix: '/assets',
+        source: createNodeFileSystemAssetSource({ precompressed: true, root }),
+      })],
+      port: 0,
+    });
+
+    try {
+      await app.listen();
+      const url = getListeningUrl(app);
+      const full = await fetch(`${url}/assets/app.js`, { headers: { 'accept-encoding': 'identity' } });
+      const head = await fetch(`${url}/assets/app.js`, { method: 'HEAD', headers: { 'accept-encoding': 'identity' } });
+      const range = await fetch(`${url}/assets/app.js`, {
+        headers: { 'accept-encoding': 'identity', Range: 'bytes=2-4' },
+      });
+      const notModified = await fetch(`${url}/assets/app.js`, {
+        headers: { 'accept-encoding': 'identity', 'if-none-match': full.headers.get('etag') ?? '' },
+      });
+      const compressedHead = await fetch(`${url}/assets/app.js`, {
+        method: 'HEAD',
+        headers: { 'accept-encoding': 'br' },
+      });
+      const missing = await fetch(`${url}/assets/missing.js`);
+
+      expect(full.status).toBe(200);
+      expect(full.headers.get('content-length')).toBe('64');
+      await expect(full.bytes()).resolves.toEqual(Uint8Array.from({ length: 64 }, (_, index) => index));
+      expect(head.status).toBe(200);
+      expect(head.headers.get('content-length')).toBe('64');
+      expect(range.status).toBe(206);
+      expect(range.headers.get('content-range')).toBe('bytes 2-4/64');
+      await expect(range.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+      expect(notModified.status).toBe(304);
+      expect(compressedHead.headers.get('content-encoding')).toBe('br');
+      expect(compressedHead.headers.get('vary')).toContain('Accept-Encoding');
+      expect(missing.status).toBe(404);
+    } finally {
+      await app.close();
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it('serves static assets through the Node listener', async () => {
     await assertStaticAssetsOverRealListener(bootstrapNodejsApplication);
   });
