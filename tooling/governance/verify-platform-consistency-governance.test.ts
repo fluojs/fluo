@@ -26,6 +26,7 @@ import {
   enforcePassportJsBridgeNestjsMigration,
   enforcePlatformShellLifecycleContract,
   enforceQueueWorkerOwnershipContract,
+  enforceQueueWorkerOwnershipContractFromSources,
   enforceReactClientSubpathContract,
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
@@ -2685,6 +2686,38 @@ describe('Queue lifecycle and migration discoverability', () => {
     'utf8',
   );
   const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
+  const queueWorkerOwnershipContractSources = {
+    'packages/queue/README.md': englishReadme,
+    'packages/queue/README.ko.md': koreanReadme,
+    'docs/CONTEXT.md': englishContext,
+    'docs/CONTEXT.ko.md': koreanContext,
+    'docs/getting-started/migrate-from-nestjs.md': englishMigration,
+    'docs/getting-started/migrate-from-nestjs.ko.md': koreanMigration,
+    'docs/reference/package-surface.md': englishSurface,
+    'docs/reference/package-surface.ko.md': koreanSurface,
+    'book/intermediate/ch11-queue.md': englishChapter,
+    'book/intermediate/ch11-queue.ko.md': koreanChapter,
+    'packages/queue/src/worker-ownership.ts': readFileSync(
+      join(repoRoot, 'packages/queue/src/worker-ownership.ts'),
+      'utf8',
+    ),
+    'packages/queue/src/module.ts': readFileSync(join(repoRoot, 'packages/queue/src/module.ts'), 'utf8'),
+    'packages/queue/src/worker-ownership.test.ts': readFileSync(
+      join(repoRoot, 'packages/queue/src/worker-ownership.test.ts'),
+      'utf8',
+    ),
+  };
+
+  function withQueueWorkerOwnershipSourceMutation(
+    path: keyof typeof queueWorkerOwnershipContractSources,
+    mutate: (source: string) => string,
+  ): typeof queueWorkerOwnershipContractSources {
+    const original = queueWorkerOwnershipContractSources[path];
+    const mutated = mutate(original);
+    expect(mutated).not.toBe(original);
+
+    return { ...queueWorkerOwnershipContractSources, [path]: mutated };
+  }
 
   it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
     const nodeEngineRange = extractNodeEngineRange(packageManifest);
@@ -2711,8 +2744,188 @@ describe('Queue lifecycle and migration discoverability', () => {
     }
   });
 
-  it('keeps cross-scope Redis and jobName ownership rejection aligned across source, regressions, and docs', () => {
+  it('keeps cross-scope ownership namespace and jobName rejection aligned across source, regressions, and docs', () => {
     expect(() => enforceQueueWorkerOwnershipContract()).not.toThrow();
+  });
+
+  it('rejects a source mutation that stops preferring compatible reject owners', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source.replace(
+          [
+            'const existingOwner =',
+            "        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??",
+            '        compatibleOwners[0];',
+          ].join('\n'),
+          'const existingOwner = compatibleOwners[0];',
+        ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership validation must prefer a compatible owner that enforces rejection before falling back to the first compatible owner.',
+    );
+  });
+
+  it('rejects a source mutation that removes the missing-namespace logger warning', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source.replace(
+          [
+            '    if (ownershipNamespace === undefined) {',
+            '      logger.warn(',
+            '        `Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.`,',
+            "        'QueueLifecycleService',",
+            '      );',
+            '    }',
+            '',
+          ].join('\n'),
+          '',
+        ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
+    );
+  });
+
+  it('rejects a source mutation that moves the missing-namespace logger warning into descriptor iteration', () => {
+    const diagnosticBlock = [
+      '    if (ownershipNamespace === undefined) {',
+      '      logger.warn(',
+      '        `Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.`,',
+      "        'QueueLifecycleService',",
+      '      );',
+      '    }',
+    ].join('\n');
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source
+          .replace(`${diagnosticBlock}\n\n`, '')
+          .replace(
+            '    for (const descriptor of descriptors.values()) {\n',
+            `    for (const descriptor of descriptors.values()) {\n${diagnosticBlock}\n`,
+          ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
+    );
+  });
+
+  it('rejects a source mutation that derives ownership identity from DI clientName', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source.replace(
+          'const ownershipNamespace = moduleContext.options.ownershipNamespace;',
+          'const ownershipNamespace = moduleContext.options.clientName;',
+        ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership identity must use application-supplied ownershipNamespace, treating an absent namespace as compatible and only explicitly different namespaces as isolated.',
+    );
+  });
+
+  it('rejects a source mutation that removes the later-owner pre-resource assertion', () => {
+    const laterOwnerTitle = 'rejects when an unconfigured registration collides with a later reject owner';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.test.ts',
+      (source) => {
+        const testStart = source.indexOf(`it('${laterOwnerTitle}',`);
+        const nextTestStart = source.indexOf("\n  it('", testStart + 1);
+        const testSource = source.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+        return `${source.slice(0, testStart)}${testSource.replace(
+          '      expect(bullmqState.queueNames).toEqual([]);\n',
+          '',
+        )}${source.slice(nextTestStart === -1 ? source.length : nextTestStart)}`;
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership regression "rejects when an unconfigured registration collides with a later reject owner" must assert no BullMQ queues are created before rejection.',
+    );
+  });
+
+  it('rejects a source mutation that strips Queue ownership meaning from the English package-surface bullet', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.md',
+      (source) => source.replace('2.x compatibility diagnostics by default, ', ''),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.md Queue package-surface bullet must document application ownershipNamespace identity independent of DI clientName, pre-resource collision validation, default 2.x diagnostics, and opt-in reject failure.',
+    );
+  });
+
+  it('rejects a duplicate English Queue package-surface bullet even when the first decoy is compliant', () => {
+    const anchor = '- **`@fluojs/queue`**:';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.md',
+      (source) => {
+        const queueBullet = source.split('\n').find((line) => line.startsWith(anchor));
+        if (queueBullet === undefined) {
+          throw new TypeError('Expected the English Queue package-surface bullet.');
+        }
+
+        return source.replace(
+          queueBullet,
+          `${queueBullet}\n${queueBullet.replace('2.x compatibility diagnostics by default, ', '')}`,
+        );
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.md Queue package-surface bullet anchor must occur exactly once; observed 2.',
+    );
+  });
+
+  it('rejects a duplicate Korean Queue package-surface bullet even when the first decoy is compliant', () => {
+    const anchor = '- **`@fluojs/queue`**:';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.ko.md',
+      (source) => {
+        const queueBullet = source.split('\n').find((line) => line.startsWith(anchor));
+        if (queueBullet === undefined) {
+          throw new TypeError('Expected the Korean Queue package-surface bullet.');
+        }
+
+        return source.replace(
+          queueBullet,
+          `${queueBullet}\n${queueBullet.replace('기본 2.x compatibility diagnostic, ', '')}`,
+        );
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.ko.md Queue package-surface bullet anchor must occur exactly once; observed 2.',
+    );
+  });
+
+  it('rejects a duplicate regression declaration even when the first decoy keeps the pre-resource assertion', () => {
+    const regressionTitle =
+      'rejects when an unconfigured registration collides with a later reject owner';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.test.ts',
+      (source) => {
+        const testStart = source.indexOf(`it('${regressionTitle}',`);
+        const nextTestStart = source.indexOf("\n  it('", testStart + 1);
+        const testSource = source.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+        return `${source.slice(0, testStart)}${testSource}\n  ${testSource.replace(
+          '      expect(bullmqState.queueNames).toEqual([]);\n',
+          '',
+        )}${source.slice(nextTestStart === -1 ? source.length : nextTestStart)}`;
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership regression "rejects when an unconfigured registration collides with a later reject owner" test declaration must occur exactly once; observed 2.',
+    );
   });
 
   it('keeps explicit NestJS worker migration and persisted-job cutover limits in Queue-specific regions', () => {
