@@ -19,6 +19,7 @@
 | Starter scaffolding for maintained baselines | 정확한 `fluo new` starter recipe로 구현되어 있습니다. Node.js HTTP는 Fastify/Express/raw Node.js, Bun/Deno/Cloudflare Workers는 HTTP, Node.js microservice는 TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC, mixed는 Fastify HTTP + attached TCP starter 하나를 제공합니다. | `packages/cli/README.md`, `docs/reference/fluo-new-support-matrix.md`, `docs/getting-started/migrate-from-nestjs.md` |
 | Cache manager module, service, decorators, and metadata helpers | `@fluojs/cache-manager`의 동기 `CacheModule.forRoot(...)`, injected-factory `CacheModule.forRootAsync({ inject, useFactory, global? })`, 주입 가능한 `CacheService`, response-cache decorator, function-valued `httpKeyStrategy`, `@CacheKey(...)`, exported cache metadata helper function으로 구현되어 있습니다. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 | Cron scheduling decorators and runtime registry | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, Redis distributed lock, bounded shutdown, `SCHEDULING_REGISTRY` descriptor snapshot으로 구현되어 있습니다. | `packages/cron/README.md`, `book/intermediate/ch12-cron.md`, `docs/getting-started/migrate-from-nestjs.md` |
+| Prometheus metrics, HTTP instrumentation, and runtime telemetry | 동기 `MetricsModule.forRoot(...)`, `MetricsService`, 선택적 HTTP instrumentation, 명시적 `Registry` 공유, 설정 가능한 scrape endpoint를 갖춘 `@fluojs/metrics`로 구현되어 있습니다. | `packages/metrics/README.md`, `docs/getting-started/migrate-from-nestjs.md` |
 
 ## Not Implemented
 
