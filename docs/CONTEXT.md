@@ -8,7 +8,9 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 
 ## Migration Reference
 
-For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `FluoFactory.create(...)`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
+For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `fluoFactory.create(AppModule, { middleware })`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
+
+For NestJS HTTP pipeline migration, portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`; keep Express `(req, res, next)` handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`.
 
 For NestJS migrations, `fluo migrate` rewrites default one-argument `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while unsupported bootstrap variants remain unchanged with a diagnostic and explicit adapter-independent transform selections leave bootstrap unchanged.
 
