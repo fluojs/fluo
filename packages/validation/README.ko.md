@@ -168,6 +168,14 @@ class RestrictedUserDto {
 
 `ValidateClass(...)`는 custom class-level validator도 받을 수 있습니다. `Validate(...)`는 built-in decorator만으로 부족할 때 custom field-level validator를 붙이고, `ValidateIf(...)`는 predicate가 false를 반환하면 dependent validator를 short-circuit합니다.
 
+### Custom field 검증
+
+`Validate(callback)`는 callback을 `(value, context)`로 호출합니다. `context.dto`는
+포함하는 DTO이고, `context.propertyKey`는 decorator가 적용된 field key입니다.
+
+`@IsObject()`는 null-prototype record를 포함한 plain object만 허용합니다. Class
+instance, `Date`, `Map`, `Set` 값은 거부합니다.
+
 ### 네트워크 검증기
 
 `@IsIP()`는 기본적으로 IPv4와 IPv6 문자열을 모두 검증합니다. 한 IP 버전으로
