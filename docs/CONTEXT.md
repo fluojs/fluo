@@ -12,7 +12,7 @@ For a NestJS migration, start with the [NestJS migration map](./getting-started/
 
 For NestJS migrations, `fluo migrate` rewrites default one-argument `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while unsupported bootstrap variants remain unchanged with a diagnostic and explicit adapter-independent transform selections leave bootstrap unchanged.
 
-NestJS metrics migration boundaries are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md); the [NestJS parity gaps](./contracts/nestjs-parity-gaps.md) record intentionally unsupported Prometheus conveniences.
+NestJS metrics migration boundaries are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md); the [NestJS parity map](./contracts/nestjs-parity-gaps.md) records implemented metrics coverage and migration boundaries.
 
 The NestJS OpenAPI migration map preserves three generated-document differences: fluo adds `400`, `401`, `403`, `404`, and `500` responses plus `ErrorResponse` unless explicitly declared, with `defaultErrorResponsesPolicy: 'omit'` for legacy clients; generated `operationId` values require `documentTransform` when clients need legacy names; and `OpenApiModule.forRootAsync(...)` keeps `documentPath` and `uiPath` beside `inject` and `useFactory(...)`, because factory-returned paths cannot reconfigure already-registered routes.
 
