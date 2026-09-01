@@ -1746,6 +1746,192 @@ describe('dispatcher runtime', () => {
     expect(response.body).toBe('plain:{"ok":true}');
   });
 
+  it('excludes q=0 representations even when a wildcard accepts alternatives', async () => {
+    @Controller('/negotiation-q-zero')
+    class NegotiationQZeroController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationQZeroController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationQZeroController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-q-zero', 'GET', { accept: 'text/plain;q=0, */*;q=1' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/json');
+    expect(response.body).toBe('{"ok":true}');
+  });
+
+  it('selects structured syntax suffix formatters deterministically', async () => {
+    @Controller('/negotiation-suffix')
+    class NegotiationSuffixController {
+      @Produces('application/problem+json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationSuffixController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return `problem:${JSON.stringify(body)}`;
+            },
+            mediaType: 'application/problem+json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationSuffixController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-suffix', 'GET', { accept: 'application/*+json' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/problem+json');
+    expect(response.body).toBe('problem:{"ok":true}');
+  });
+
+  it('returns canonical 406 for malformed Accept quality values', async () => {
+    @Controller('/negotiation-malformed')
+    class NegotiationMalformedController {
+      @Produces('application/json')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationMalformedController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationMalformedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-malformed', 'GET', { accept: 'application/json;q=2' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toEqual({
+      error: {
+        code: 'NOT_ACCEPTABLE',
+        details: undefined,
+        message: 'No acceptable response representation found.',
+        meta: undefined,
+        requestId: undefined,
+        status: 406,
+      },
+    });
+  });
+
+  it('adds canonical deduplicated Vary: Accept after native negotiation falls back', async () => {
+    @Controller('/negotiation-native-fallback')
+    class NegotiationNativeFallbackController {
+      @Header('Vary', 'Origin, Accept')
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationNativeFallbackController);
+    const handlerMapping = createHandlerMapping([{ controllerToken: NegotiationNativeFallbackController }]);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping,
+      rootContainer: root,
+    });
+    const request = createRequest('/negotiation-native-fallback', 'GET', { accept: 'text/plain' });
+    const nativeMatch = handlerMapping.match(request);
+
+    if (!nativeMatch || !dispatcher.dispatchNativeRoute) {
+      throw new Error('Expected native route dispatch support.');
+    }
+
+    const response = createResponse();
+    const handled = await dispatcher.dispatchNativeRoute(nativeMatch, request, response);
+
+    expect(handled).toBe(false);
+
+    await dispatcher.dispatch(request, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.headers.Vary).toBe('Origin, Accept');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
   describe('runMiddlewareChain with forRoutes filtering', () => {
     it('runs middleware with matching forRoutes path', async () => {
       const events: string[] = [];

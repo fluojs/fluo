@@ -135,6 +135,39 @@ export function markLanguageVariance(context: RequestContext): void {
 }
 ```
 
+### Content negotiation
+
+Configure `ContentNegotiationOptions` with response formatters, then use `@Produces(...)` to
+limit each route to the representations it can return. The dispatcher owns formatter selection,
+response commit, `Content-Type`, canonical 406 responses, and `Vary: Accept`; handlers only return
+their values.
+
+```ts
+import { Controller, Get, Produces } from '@fluojs/http';
+
+@Controller('/reports')
+export class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+```
+
+The configured default formatter is used when `Accept` is absent, blank, or `*/*`; if that
+formatter is not allowed by `@Produces(...)`, the first declared allowed formatter is used instead.
+For a supplied header, exact ranges, `type/*`, `*/*`, and structured suffix ranges such as
+`application/*+json` are matched case-insensitively. Higher `q` wins, then the more specific range,
+then the configured default (or formatter declaration order). A more-specific `q=0` range excludes
+that representation even when a broader wildcard is positive.
+
+Each `q` value must be between `0` and `1` with at most three fractional digits. Malformed media
+ranges or qualities are ignored; if no valid acceptable representation remains, or no formatter is
+allowed or matched, the dispatcher returns its canonical `406 Not Acceptable` response. Every
+successful formatter selection emits one canonical, deduplicated `Vary: Accept` while preserving
+any existing `Vary` fields.
+
 ## Common Patterns
 
 ### Guards and interceptors

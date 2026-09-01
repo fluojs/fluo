@@ -5,6 +5,7 @@ import type {
   RequestContext,
   ResponseFormatter,
 } from '../types.js';
+import { appendVaryHeader } from '../header-helpers.js';
 import {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
   FRAMEWORK_RESPONSE_WRITER,
@@ -201,6 +202,9 @@ export async function writeSuccessResponse(
     : undefined;
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+  if (formatter) {
+    appendVaryHeader(response, 'Accept');
+  }
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);

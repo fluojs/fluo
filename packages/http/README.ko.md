@@ -133,6 +133,37 @@ export function markLanguageVariance(context: RequestContext): void {
 }
 ```
 
+### Content negotiation
+
+응답 formatter로 `ContentNegotiationOptions`를 구성한 다음, 각 route가 반환할 수 있는
+representation은 `@Produces(...)`로 제한하세요. Dispatcher가 formatter 선택, response commit,
+`Content-Type`, canonical 406 response, `Vary: Accept`를 소유하며 handler는 값만 반환합니다.
+
+```ts
+import { Controller, Get, Produces } from '@fluojs/http';
+
+@Controller('/reports')
+export class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+```
+
+`Accept`가 없거나, blank이거나, `*/*`이면 구성한 default formatter를 사용합니다. 해당 formatter가
+`@Produces(...)`에서 허용되지 않으면 선언 순서상 첫 번째 허용 formatter를 대신 사용합니다. Header가
+있으면 exact range, `type/*`, `*/*`, `application/*+json` 같은 structured suffix range를
+case-insensitive로 매칭합니다. 더 높은 `q`가 먼저이고, 다음은 더 specific한 range이며, 그 다음은
+구성한 default(또는 formatter 선언 순서)입니다. 더 specific한 `q=0` range는 더 넓은 wildcard가
+positive여도 해당 representation을 제외합니다.
+
+각 `q` 값은 소수점 이하 세 자리 이하로 `0`과 `1` 사이여야 합니다. 잘못된 media range 또는 quality는
+무시하며, 유효하고 허용되는 representation이 없거나 formatter가 허용·매칭되지 않으면 dispatcher는
+canonical `406 Not Acceptable` response를 반환합니다. 성공한 모든 formatter 선택은 기존 `Vary` field를
+보존하면서 canonical하고 중복 없는 `Vary: Accept` 하나를 작성합니다.
+
 ## 주요 패턴
 
 ### 가드와 인터셉터

@@ -1,6 +1,7 @@
 import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
+  ContentNegotiationOptions,
   ConverterLike,
   Dispatcher,
   FrameworkRequest,
@@ -142,6 +143,13 @@ export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
   /** Application-owned HTML provider for HTTP-classified error and not-found outcomes. */
   errorRepresentation?: HttpErrorRepresentationOptions;
+  /**
+   * Response formatter selection owned by the HTTP dispatcher.
+   *
+   * The runtime forwards this contract unchanged; `@Produces(...)`, `Accept`,
+   * success response headers, and 406 handling remain HTTP-owned.
+   */
+  contentNegotiation?: ContentNegotiationOptions;
   /**
    * Enables the opt-in process-local module graph compile result cache for this
    * bootstrap. The default is `false`, so each bootstrap compiles a fresh graph

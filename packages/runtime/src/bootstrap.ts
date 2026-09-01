@@ -1462,6 +1462,9 @@ function createRuntimeDispatcherOptions(
   const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    ...(options.contentNegotiation === undefined
+      ? {}
+      : { contentNegotiation: options.contentNegotiation }),
     ...(options.errorRepresentation === undefined
       ? {}
       : { errorRepresentation: options.errorRepresentation }),

@@ -126,6 +126,42 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### Content negotiation
+
+`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `contentNegotiation`을 받아 HTTP
+dispatcher에 변경 없이 전달합니다. Application boundary에서 formatter를 한 번 구성하고 route의 허용
+representation은 `@Produces(...)`로 선택하세요.
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+import { fluoFactory } from '@fluojs/runtime';
+
+@Controller('/reports')
+class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      { mediaType: 'application/json', format: JSON.stringify },
+      { mediaType: 'text/plain', format: (value) => `plain:${JSON.stringify(value)}` },
+    ],
+  },
+});
+```
+
+Runtime은 `Accept`를 parse하거나 response policy를 소유하지 않습니다. `@fluojs/http`가 문서화된
+quality, wildcard, suffix, default, malformed-input, 406 의미를 적용하고 성공한 모든 formatter 선택에
+canonical `Vary: Accept`를 작성합니다. Standalone application context는 HTTP dispatcher를 만들지
+않으므로 이 option을 사용하지 않습니다. 자세한 내용은
+[HTTP package contract](../http/README.ko.md#content-negotiation)를 참고하세요.
+
 ### Optional HTML Error Representations
 
 `FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `errorRepresentation`을 받아 HTTP dispatcher에

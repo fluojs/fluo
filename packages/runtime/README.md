@@ -126,6 +126,42 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### Content negotiation
+
+`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `contentNegotiation` and forward
+it unchanged to the HTTP dispatcher. Configure formatters once at the application boundary and use
+`@Produces(...)` on routes to select their allowed representations:
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+import { fluoFactory } from '@fluojs/runtime';
+
+@Controller('/reports')
+class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      { mediaType: 'application/json', format: JSON.stringify },
+      { mediaType: 'text/plain', format: (value) => `plain:${JSON.stringify(value)}` },
+    ],
+  },
+});
+```
+
+Runtime does not parse `Accept` or own response policy. `@fluojs/http` applies the documented
+quality, wildcard, suffix, default, malformed-input, and 406 semantics and emits canonical
+`Vary: Accept` for every successful formatter selection. Standalone application contexts do not
+create an HTTP dispatcher, so they do not use this option. See the
+[HTTP package contract](../http#content-negotiation).
+
 ### Optional HTML Error Representations
 
 `FluoFactory.create(...)` and `bootstrapApplication(...)` accept `errorRepresentation` and pass it
