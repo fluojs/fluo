@@ -122,8 +122,24 @@ Use `appendVaryHeader(response, ...fields)` when response negotiation or caching
 `Vary` fields without duplicating case variants, re-parsing comma lists by hand, or accidentally
 expanding an existing wildcard `Vary: *` contract.
 
+Use `getResponseHeader(response, name)` and `hasResponseHeader(response, name)` for the same
+case-insensitive lookup over adapter-provided response headers. They preserve the original
+`string | string[]` shape and do not write headers, body, status, or commit state.
+
+Use `buildContentDisposition(disposition, filename)` to create an `attachment` or `inline`
+Content-Disposition field value. It emits an escaped printable-ASCII `filename` fallback and a
+deterministic RFC 8187 UTF-8 `filename*` value. Carriage return and line feed filenames reject
+before a header value is returned.
+
 ```ts
-import { appendVaryHeader, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+  type RequestContext,
+} from '@fluojs/http';
 
 export function readLanguage(context: RequestContext): string | undefined {
   const acceptLanguage = getRequestHeader(context.request, 'accept-language');
@@ -132,6 +148,20 @@ export function readLanguage(context: RequestContext): string | undefined {
 
 export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
+  context.response.setHeader(
+    'Content-Disposition',
+    buildContentDisposition('attachment', 'résumé.pdf'),
+  );
+}
+
+export function readResponseEtag(
+  context: RequestContext,
+): string | string[] | undefined {
+  return getResponseHeader(context.response, 'etag');
+}
+
+export function shouldSetResponseEtag(context: RequestContext): boolean {
+  return !hasResponseHeader(context.response, 'etag');
 }
 ```
 
@@ -380,14 +410,14 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
-- **Header helpers**: `getRequestHeader`, `appendVaryHeader`
+- **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Portable Subpath (`@fluojs/http/portable`)

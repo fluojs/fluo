@@ -120,8 +120,24 @@ header 값을 납작하게 만들지 않으면서 case-insensitive lookup을 해
 comma list를 매번 수동으로 파싱하고 싶지 않거나, 기존 `Vary: *` contract를 실수로 확장하면 안
 될 때는 `appendVaryHeader(response, ...fields)`를 사용하세요.
 
+Adapter가 제공한 응답 header를 같은 방식으로 case-insensitive lookup하려면
+`getResponseHeader(response, name)`와 `hasResponseHeader(response, name)`를 사용하세요. 두 helper는
+원래의 `string | string[]` shape을 보존하고 header, body, status, commit state를 쓰지 않습니다.
+
+`attachment` 또는 `inline` Content-Disposition field value는
+`buildContentDisposition(disposition, filename)`으로 만드세요. 이 helper는 escape한 printable-ASCII
+`filename` fallback과 deterministic RFC 8187 UTF-8 `filename*` 값을 함께 만들고, carriage return 또는
+line feed가 있는 filename은 header value를 반환하기 전에 reject합니다.
+
 ```ts
-import { appendVaryHeader, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+  type RequestContext,
+} from '@fluojs/http';
 
 export function readLanguage(context: RequestContext): string | undefined {
   const acceptLanguage = getRequestHeader(context.request, 'accept-language');
@@ -130,6 +146,20 @@ export function readLanguage(context: RequestContext): string | undefined {
 
 export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
+  context.response.setHeader(
+    'Content-Disposition',
+    buildContentDisposition('attachment', 'résumé.pdf'),
+  );
+}
+
+export function readResponseEtag(
+  context: RequestContext,
+): string | string[] | undefined {
+  return getResponseHeader(context.response, 'etag');
+}
+
+export function shouldSetResponseEtag(context: RequestContext): boolean {
+  return !hasResponseHeader(context.response, 'etag');
 }
 ```
 
@@ -380,7 +410,7 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Portable 서브경로 (`@fluojs/http/portable`)
