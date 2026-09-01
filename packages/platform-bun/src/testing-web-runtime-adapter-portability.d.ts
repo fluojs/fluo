@@ -1,11 +1,20 @@
 declare module '@fluojs/testing/web-runtime-adapter-portability' {
-  import type { HttpErrorRepresentationOptions, Middleware } from '@fluojs/http';
+  import type {
+    ConditionalRequestOptions,
+    HttpErrorRepresentationOptions,
+    Middleware,
+  } from '@fluojs/http';
   import type { ModuleType } from '@fluojs/runtime';
 
   export type WebHttpErrorRepresentationBootstrapOptions = {
     readonly cors: false;
     readonly errorRepresentation: HttpErrorRepresentationOptions;
     readonly middleware: Middleware[];
+  };
+
+  export type WebConditionalRequestBootstrapOptions = {
+    readonly conditionalRequest: ConditionalRequestOptions;
+    readonly cors: false;
   };
 
   type WebRuntimePortabilityAppLike = {
@@ -21,6 +30,9 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     createErrorRepresentationBootstrapOptions?: (
       options: WebHttpErrorRepresentationBootstrapOptions,
     ) => TBootstrapOptions;
+    createConditionalRequestBootstrapOptions?: (
+      options: WebConditionalRequestBootstrapOptions,
+    ) => TBootstrapOptions;
     name: string;
   }
 
@@ -34,8 +46,10 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertSupportsConditionalRequests(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsPortableResponseCookies(): Promise<void>;
+    assertSupportsSingleByteRanges(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
 

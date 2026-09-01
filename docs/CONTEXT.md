@@ -278,6 +278,7 @@ transform tokens (`injectable` and `testing`) in `transforms` and per-file
 | Architecture model, request flow, and runtime boundaries | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |
 | HTTP JSON/HTML error representation ownership and negotiation | `docs/architecture/http-error-representations.md` | `docs/architecture/error-responses.md`, `packages/http/README.md`, and `packages/react/README.md` |
+| HTTP conditional cache validators and byte-range behavior | `docs/architecture/http-runtime.md` | `docs/contracts/testing-guide.md`, `packages/http/README.md`, and `packages/testing/README.md` |
 | NestJS response-cookie migration and portable adapter contract | `docs/getting-started/migrate-from-nestjs.md` | `packages/http/README.md` for `setCookie` and `clearCookie` semantics |
 | Package family lookup or runtime coverage | `docs/reference/package-surface.md` | `docs/reference/package-chooser.md` when selection logic is needed |
 | Serialization decorator metadata, inheritance, or NestJS `class-transformer` migration | `packages/serialization/README.md` | `docs/getting-started/migrate-from-nestjs.md` and `docs/contracts/nestjs-parity-gaps.md` |

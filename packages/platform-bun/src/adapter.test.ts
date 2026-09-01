@@ -322,6 +322,7 @@ function registerBunWebRuntimePortabilitySuite(): void {
         },
       };
     },
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'Bun',
   });
@@ -337,6 +338,14 @@ function registerBunWebRuntimePortabilitySuite(): void {
 
     it('does not commit an error representation after request abort', async () => {
       await bunPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
+    it('preserves conditional response semantics through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range semantics through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsSingleByteRanges();
     });
 
     it('preserves malformed cookie values through the shared web-runtime harness', async () => {
