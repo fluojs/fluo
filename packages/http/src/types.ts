@@ -431,7 +431,11 @@ export interface MiddlewareRouteConfig {
   routes: string[];
 }
 
-/** @internal Immutable route-binding view retained by handler mapping snapshots. */
+/**
+ * Immutable route-binding view retained by handler mapping snapshots.
+ *
+ * @internal
+ */
 export interface MiddlewareRouteSnapshot {
   readonly middleware: Constructor<Middleware>;
   readonly routes: readonly string[];
@@ -504,7 +508,11 @@ export interface Converter {
 
 /** Middleware reference accepted by module/runtime configuration. */
 export type MiddlewareLike = Middleware | Token<Middleware> | MiddlewareRouteConfig;
-/** @internal Middleware reference retained by handler mapping snapshots. */
+/**
+ * Middleware reference retained by handler mapping snapshots.
+ *
+ * @internal
+ */
 export type MiddlewareSnapshotLike = Middleware | Token<Middleware> | MiddlewareRouteSnapshot;
 /** Guard reference accepted by route metadata and runtime configuration. */
 export type GuardLike = Guard | Token<Guard>;
