@@ -198,6 +198,22 @@ describe('verifyChangesetReleaseLane', () => {
     expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
   });
 
+  it('accepts indented migration guidance generated inside a major changelog item', () => {
+    // Given: Changesets has indented the migration paragraph under its generated list item.
+    const directory = createChangesetDirectory();
+    const changelog =
+      '# @fluojs/generated\n\n## 2.0.0\n\n### Major Changes\n\n- Preserve shutdown behavior.\n\n  Migration: Make failed cleanup hooks retry-safe.\n';
+
+    // When: the consumed generated major is verified.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      consumedGeneratedMajorDependencies(changelog),
+    );
+
+    // Then: normal Markdown continuation indentation preserves the migration evidence.
+    expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
+  });
+
   it('rejects a consumed generated major without changelog provenance', () => {
     // Given: generated major metadata without its generated changelog evidence.
     const directory = createChangesetDirectory();

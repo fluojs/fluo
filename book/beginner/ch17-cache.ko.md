@@ -105,10 +105,22 @@ export class AppModule {}
 
 Top-level `keyPrefix`는 nested `redis` connection option이 아니라 Redis 소유권 경계입니다. 기본값은 `fluo:cache:`이며, 모든 cache entry에 prefix를 붙이고 `CacheService.reset()`을 해당 namespace로 제한합니다. 설정된 prefix의 Redis glob metacharacter는 reset scan 전에 escape되므로 `*`, `?`, bracket, backslash를 포함한 prefix도 literal 소유권 경계로 유지됩니다. 여러 애플리케이션이 Redis를 공유한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요. 빈 prefix는 의도적으로 `*` scan을 피하고 store instance가 직접 쓰고 계속 추적하는 key만 reset하므로, 재시작이나 여러 process를 가로지르는 reset 소유권을 제공할 수 없습니다.
 
-### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
-실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서 `CacheModule.forRoot(options)`는 동기 모듈 진입점입니다. Lifecycle-managed 경로에서는 기본 또는 named raw client를 `@fluojs/redis`로 준비한 뒤, `store: 'redis'`와 선택적 `redis.clientName`으로 해당 등록을 가리키는 일반 cache option을 전달합니다. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
+### 17.3.2 Injected Async Configuration and Secret Management: Best Practices
+실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. 최종 store, TTL, namespace, key strategy가 DI 또는 비동기 bootstrap 작업에 의존하면 `CacheModule.forRootAsync({ inject, useFactory, global? })`를 사용하세요. Factory는 준비된 `CacheModuleOptions` 값을 반환할 수 있지만 module visibility는 outer `global?` option만 소유하므로, 반환된 `global`은 무시됩니다. Inject한 의존성은 bootstrap runtime provider 또는 globally visible module의 export여야 하며, import하는 parent module에만 local인 provider는 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되고, reject되면 부분 설정된 cache 없이 bootstrap이 실패합니다.
 
-애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
+```typescript
+CacheModule.forRootAsync({
+  inject: [CacheSettingsService],
+  useFactory: async (settings: CacheSettingsService) => ({
+    store: await settings.resolveStore(),
+    ttl: settings.ttlSeconds,
+    keyPrefix: settings.keyPrefix,
+    httpKeyStrategy: 'route+query',
+  }),
+})
+```
+
+Option이 이미 준비된 경우에는 동기 `CacheModule.forRoot(options)` 경로가 적합합니다. Lifecycle-managed Redis 경로는 `store: 'redis'`와 선택적 `redis.clientName`을 통해 `@fluojs/redis`의 기본 또는 named raw client를 해석할 수 있습니다. 애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
 
 ```typescript
 import Redis from 'ioredis';
@@ -129,7 +141,7 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
 export class AppModule {}
 ```
 
-이 명시적 설정 방식에서도 **환경 인식 저장소 선택(Environment-Aware Store Selection)**은 가능합니다. 애플리케이션 경계에서 필요한 설정을 읽고, 모듈 등록 전에 캐시 옵션을 선택한 뒤, 최종 객체를 `CacheModule.forRoot(...)`에 전달합니다. 예를 들어 프로덕션에서는 고성능 Redis 클러스터를 선택하고, CI/CD 파이프라인에서는 빌드 환경을 가볍고 빠르게 유지하기 위해 `store: 'memory'`를 전달할 수 있습니다. 중요한 경계는 현재 공개 API가 async factory가 아니라 이미 준비된 options 객체를 받는다는 점입니다.
+두 registration 경로 모두 **환경 인식 저장소 선택(Environment-Aware Store Selection)**을 지원합니다. DI나 bootstrap 작업이 최종 선택을 결정하면 `forRootAsync(...)`를 사용하고, 그렇지 않으면 application boundary에서 객체를 준비해 `forRoot(...)`에 전달하세요. 예를 들어 production에서는 고성능 Redis cluster를 선택하고 CI에서는 `store: 'memory'`를 사용할 수 있습니다. Async registration은 request-time configuration lookup을 추가하지 않고 등록마다 하나의 최종 options 객체를 resolve하고 normalize합니다.
 
 ### 17.3.3 Custom Store Options Beyond the Built-ins
 현재 공개 계약이 기본 제공하는 저장소는 메모리와 Redis뿐입니다. 둘 중 하나로 시작한 뒤, 요구 사항이 더 특수하다면 `CacheStore` 계약을 구현한 커스텀 저장소를 연결하는 방식으로 확장합니다. 즉, `CacheModule`이 여러 내장 백엔드를 전환해 주는 모델이 아니라, 검증된 기본 저장소 두 가지와 사용자 구현 저장소를 조합하는 모델로 이해하는 편이 정확합니다.
@@ -276,7 +288,7 @@ export class PostsController {
 ### 17.6.2 The "Thundering Herd" (Cache Stampede)
 매우 인기 있는 캐시 키가 만료되면 수천 개의 요청이 동시에 데이터베이스로 몰려들어 이를 갱신하려 할 수 있습니다. 이는 데이터베이스를 마비시킬 수 있으며, 이를 "Thundering Herd" 또는 "Cache Stampede" 현상이라고 합니다. 현재 배포된 캐시 계약에는 리스 기반 잠금, 확률적 조기 재계산, 자동 다중 노드 스탬피드 방지가 내장되어 있지 않습니다. 오늘 기본 제공되는 것은 `CacheService.remember(...)`를 통한 프로세스 내부 중복 완화 정도이며, 이는 하나의 `CacheService` 인스턴스 안에서만 동작합니다.
 
-이를 완화하는 일반적인 기술은 **지터링(Jittering)**입니다. 모든 키에 정확히 3600초의 TTL을 부여하는 대신, 작은 랜덤 "지터"(예: 3600 ± 60초)를 추가합니다. 이를 통해 동시에 생성된 키들이 정확히 같은 순간에 만료되지 않도록 보장하여, 데이터베이스 갱신 부하를 시간에 따라 더 고르게 분산시킵니다. Fluo에서는 현재 이 지터를 애플리케이션 로직이나 커스텀 저장소 래퍼에서 직접 적용해야 하며, `CacheModule`에 자동 지터 토글은 없습니다.
+이를 완화하는 일반적인 기술은 **지터링(Jittering)**입니다. 모든 키에 정확히 3600초의 TTL을 부여하는 대신, 작은 랜덤 "지터"(예: 3600 ± 60초)를 추가합니다. 이를 통해 동시에 생성된 키들이 정확히 같은 순간에 만료되지 않도록 보장하여, 데이터베이스 갱신 부하를 시간에 따라 더 고르게 분산시킵니다. Fluo는 opt-in `CacheModule.forRoot({ ttlJitter: { ratio: 0.1 } })`로 이 정책을 중앙화합니다. `CacheService`는 per-call TTL override를 포함해 resolved TTL이 양수일 때 store handoff 전에 한 번 지터를 적용하고, `ttl: 0`과 invalid TTL 의미는 보존합니다. 기본 `symmetric` mode는 TTL을 줄이거나 늘릴 수 있고, `shorten`과 `lengthen`은 방향을 제한합니다. 이는 만료 시점만 분산하며 distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 17.6.3 Write-Through vs. Write-Back Caching: Choosing the Right Trade-off
 "Write-Through" 캐싱에서는 애플리케이션이 캐시와 데이터베이스에 동시에 씁니다. 이는 캐시가 항상 최신 상태임을 보장합니다. "Write-Back" 캐싱에서는 애플리케이션이 캐시에만 쓰고, 백그라운드 프로세스가 주기적으로 변경 사항을 데이터베이스에 반영합니다. "Write-Back"은 쓰기 작업이 많은 부하 상황에서 매우 빠르지만, 캐시 서버가 다운될 경우 데이터 손실 위험이 있습니다. Fluo는 애플리케이션의 신뢰성 요구 사항에 따라 두 전략 중 하나를 구현할 수 있게 해줍니다.
@@ -337,7 +349,22 @@ export class PostsController {
 ### 17.7.7 Monitoring Cache Health: Hit Rates and Latency
 마지막으로, 캐싱 전략은 그 성능을 측정할 수 있을 때만 효과적입니다. **캐시 적중률(Cache Hit Rate)**(캐시에서 처리된 요청의 비율)과 **캐시 지연 시간(Cache Latency)**(캐시에서 데이터를 가져오는 데 걸리는 시간)을 반드시 모니터링해야 합니다. 낮은 적중률은 TTL이 너무 짧거나 제거 정책이 최적화되지 않았음을 나타낼 수 있습니다. 높은 지연 시간은 캐시 저장소가 과부하 상태이거나 네트워크 연결이 느림을 시사할 수 있습니다.
 
-Fluo의 `@fluojs/metrics` 모듈은 더 넓은 관측성 스택의 일부가 될 수 있지만, 적중률이나 지연 시간 같은 캐시 전용 메트릭은 직접 연결하지 않는 한 애플리케이션이 소유하는 커스텀 계측으로 남습니다. 이 데이터를 대시보드(예: Grafana)에서 시각화함으로써 캐싱 전략의 실시간 영향을 확인하고 최적화가 필요한 영역을 식별할 수 있습니다. 캐싱은 한 번 설정하고 잊어버리는 기능이 아니라는 점을 기억하십시오. 애플리케이션과 트래픽 패턴이 변화함에 따라 최대 효율을 보장하기 위해 지속적인 모니터링과 튜닝이 필요합니다.
+Fluo cache module은 애플리케이션이 소유하는 이 계측을 위해 opt-in 방식이며 metrics backend에 독립적인 observation seam을 제공합니다. `CacheModule.forRoot({ observer })`를 설정하고 각 `CacheObservation`을 기존 metrics backend에 연결하세요. 각 observation은 operation(`get`, `set`, `del`, `remember`, `reset`, `close`), outcome, `durationMs`를 보고합니다. read operation은 `hit`과 `miss`를 구분하고 실패는 `error`를 보고합니다.
+
+```typescript
+CacheModule.forRoot({
+  observer: {
+    onCacheOperation({ operation, outcome, durationMs }) {
+      cacheOperationCounter.inc({ operation, outcome });
+      cacheOperationLatency.observe(durationMs);
+    },
+  },
+});
+```
+
+Payload는 cache key, value, loader result, error object를 의도적으로 제외하므로 cardinality가 높거나 민감한 label을 만들지 않습니다. Observer 실패는 격리되어 cache 결과를 바꾸지 않습니다. Store가 실패해도 `CacheInterceptor`는 계속 fail-soft로 동작하며, 그 service call은 `error` observation을 내보냅니다. 따라서 optional cache를 request failure로 만들지 않고도 성능 저하를 측정할 수 있습니다.
+
+`@fluojs/metrics`는 더 넓은 관측성 스택의 일부로 계속 사용할 수 있으며, observer는 cache package가 해당 패키지에 의존하지 않도록 할 뿐입니다. 이 측정값을 Grafana 같은 dashboard에서 시각화하면 tuning이 필요한 지점을 식별할 수 있습니다. 캐싱은 한 번 설정하고 잊는 기능이 아니므로 애플리케이션과 트래픽 변화에 맞춰 지속적으로 모니터링해야 합니다.
 
 ## 17.8 Summary
 캐싱은 고성능 백엔드 시스템의 초석입니다. 자주 액세스되는 데이터를 데이터베이스에서 빠른 저장 계층으로 옮김으로써, FluoBlog가 과부하 상태에서도 뛰어난 응답성을 유지하도록 보장합니다.

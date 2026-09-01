@@ -105,10 +105,22 @@ export class AppModule {}
 
 The top-level `keyPrefix` is the Redis ownership boundary, not a nested `redis` connection option. It defaults to `fluo:cache:`, prefixes every cache entry, and limits `CacheService.reset()` to that namespace. Redis glob metacharacters in the configured prefix are escaped before reset scanning, so even prefixes containing `*`, `?`, brackets, or backslashes remain literal ownership boundaries. Use an application-specific non-empty prefix when multiple applications share Redis. An empty prefix intentionally avoids scanning `*` and lets a store instance reset only the keys it wrote and still tracks, so it cannot provide cross-restart or cross-process reset ownership.
 
-### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
-In real applications, you should not hardcode cache credentials. In fluo, `CacheModule.forRoot(options)` is the synchronous module entrypoint. The lifecycle-managed path prepares a default or named raw client with `@fluojs/redis`, then passes ordinary cache options that point to that registration through `store: 'redis'` and optional `redis.clientName`. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
+### 17.3.2 Injected Async Configuration and Secret Management: Best Practices
+In real applications, you should not hardcode cache credentials. Use `CacheModule.forRootAsync({ inject, useFactory, global? })` when the final store, TTL, namespace, or key strategy depends on DI or asynchronous bootstrap work. The factory may return a prepared `CacheModuleOptions` value; module visibility belongs only to the outer `global?` option, so any returned `global` is ignored. Injected dependencies must be bootstrap runtime providers or exports from globally visible modules; a provider local only to the importing parent module is not visible. The factory runs once per registration when cache providers are first resolved, and rejection fails bootstrap without a partially configured cache.
 
-If the application already owns a compatible Redis client, pass it directly through `redis.client`. This path does not require `@fluojs/redis`: the object only needs the exported `RedisCompatibleClient` operations (`get`, `set`, `del`, and tuple-returning `scan`). A directly supplied client takes precedence over `redis.clientName`, and the application remains responsible for connecting and closing it.
+```typescript
+CacheModule.forRootAsync({
+  inject: [CacheSettingsService],
+  useFactory: async (settings: CacheSettingsService) => ({
+    store: await settings.resolveStore(),
+    ttl: settings.ttlSeconds,
+    keyPrefix: settings.keyPrefix,
+    httpKeyStrategy: 'route+query',
+  }),
+})
+```
+
+The synchronous `CacheModule.forRoot(options)` path remains appropriate when options are already prepared. The lifecycle-managed Redis path can resolve a default or named raw client from `@fluojs/redis` through `store: 'redis'` and optional `redis.clientName`. If the application already owns a compatible Redis client, pass it directly through `redis.client`. This path does not require `@fluojs/redis`: the object only needs the exported `RedisCompatibleClient` operations (`get`, `set`, `del`, and tuple-returning `scan`). A directly supplied client takes precedence over `redis.clientName`, and the application remains responsible for connecting and closing it.
 
 ```typescript
 import Redis from 'ioredis';
@@ -129,7 +141,7 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
 export class AppModule {}
 ```
 
-This explicit setup still enables **environment-aware store selection**. Read the needed configuration at the application boundary, choose the cache options before module registration, then pass the final object to `CacheModule.forRoot(...)`. For example, production might select a high-performance Redis cluster, while a CI/CD pipeline can pass `store: 'memory'` to keep the build environment light and fast. The important boundary is that the current public API receives already-prepared options rather than an async factory.
+Both registration paths enable **environment-aware store selection**. Use `forRootAsync(...)` when DI or bootstrap work determines the final choice, or prepare the object at the application boundary and pass it to `forRoot(...)`. For example, production might select a high-performance Redis cluster while CI uses `store: 'memory'`. Async registration adds no request-time configuration lookup: it resolves and normalizes one final options object for the registration.
 
 ### 17.3.3 Custom Store Options Beyond the Built-ins
 The current public contract only provides memory and Redis as built-in stores. Start with one of them, then extend the system by connecting a custom store that implements the `CacheStore` contract if your requirements are more specialized. In other words, it is more accurate to understand `CacheModule` not as a model that switches between many built-in backends, but as a model that combines two verified default stores with user-implemented stores.
@@ -276,7 +288,7 @@ Consistent naming also helps with **cache observability**. When you inspect a Re
 ### 17.6.2 The "Thundering Herd" (Cache Stampede)
 When a very popular cache key expires, thousands of requests may hit the database at the same time trying to refresh it. This can overwhelm the database and is known as the "Thundering Herd" or "Cache Stampede" phenomenon. The shipped cache contract does **not** include built-in lease locking, probabilistic early recomputation, or automatic multi-node stampede prevention. What you do get today is per-process overlap reduction through `CacheService.remember(...)`, which can de-duplicate concurrent misses inside one `CacheService` instance.
 
-A common mitigation technique is **jittering**. Instead of giving every key exactly a 3600-second TTL, add a small random "jitter," such as 3600 plus or minus 60 seconds. This ensures keys created at the same time do not expire at exactly the same moment, spreading database refresh load more evenly over time. In Fluo, jitter must currently be applied by your own application logic or by a custom store wrapper; `CacheModule` does not expose an automatic jitter toggle.
+A common mitigation technique is **jittering**. Instead of giving every key exactly a 3600-second TTL, add a small random "jitter," such as 3600 plus or minus 60 seconds. This ensures keys created at the same time do not expire at exactly the same moment, spreading database refresh load more evenly over time. Fluo centralizes this policy with opt-in `CacheModule.forRoot({ ttlJitter: { ratio: 0.1 } })`: `CacheService` jitters each positive resolved TTL once before store handoff, including per-call TTL overrides, while preserving `ttl: 0` and invalid TTL meanings. The default `symmetric` mode can shorten or lengthen the TTL; `shorten` and `lengthen` constrain the direction. This spreads expiry times only—it is not distributed locking, refresh-ahead caching, or cross-instance stampede coordination.
 
 ### 17.6.3 Write-Through vs. Write-Back Caching: Choosing the Right Trade-off
 In "Write-Through" caching, the application writes to the cache and database at the same time. This ensures the cache is always up to date. In "Write-Back" caching, the application writes only to the cache, and a background process periodically flushes changes to the database. "Write-Back" is very fast under write-heavy load, but it carries a risk of data loss if the cache server goes down. Fluo lets you implement either strategy depending on the application's reliability requirements.
@@ -337,7 +349,22 @@ For example, if analytics show that users who read "Chapter 1" almost always mov
 ### 17.7.7 Monitoring Cache Health: Hit Rates and Latency
 Finally, a caching strategy is only effective when you can measure its performance. You must monitor **cache hit rate**, the percentage of requests handled from the cache, and **cache latency**, the time it takes to retrieve data from the cache. A low hit rate may indicate that TTLs are too short or eviction policy is not tuned well. High latency may suggest that the cache store is overloaded or the network connection is slow.
 
-Fluo's `@fluojs/metrics` module can still be part of the broader observability stack, but cache-specific metrics such as hit rate and latency remain application-owned instrumentation unless you wire them up yourself. By visualizing that data in a dashboard, such as Grafana, you can see the real-time effect of your caching strategy and identify areas that need optimization. Remember that caching is not a set-and-forget feature. As the application and traffic patterns change, continuous monitoring and tuning are required to keep efficiency high.
+Fluo's cache module provides an opt-in, metrics-backend-independent observation seam for this application-owned instrumentation. Configure `CacheModule.forRoot({ observer })` and adapt each `CacheObservation` to your existing metrics backend. Each observation reports the operation (`get`, `set`, `del`, `remember`, `reset`, or `close`), its outcome, and `durationMs`. Read operations distinguish `hit` from `miss`, while failures report `error`.
+
+```typescript
+CacheModule.forRoot({
+  observer: {
+    onCacheOperation({ operation, outcome, durationMs }) {
+      cacheOperationCounter.inc({ operation, outcome });
+      cacheOperationLatency.observe(durationMs);
+    },
+  },
+});
+```
+
+The payload deliberately omits cache keys, values, loader results, and error objects, avoiding high-cardinality or sensitive labels. Observer failures are contained and do not change cache results. `CacheInterceptor` also remains fail-soft when a store fails, while its service calls emit `error` observations. This makes degraded cache behavior measurable without turning an optional cache into a request failure.
+
+`@fluojs/metrics` can still be part of the broader observability stack; the observer simply keeps the cache package independent from it. By visualizing these measurements in a dashboard such as Grafana, you can identify where tuning is needed. Caching is not a set-and-forget feature: application and traffic changes require continuous monitoring.
 
 ## 17.8 Summary
 Caching is a cornerstone of high-performance backend systems. By moving frequently accessed data from the database into a fast storage layer, it ensures FluoBlog remains highly responsive even under heavy load.

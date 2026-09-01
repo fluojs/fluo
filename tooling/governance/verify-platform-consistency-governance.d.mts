@@ -48,6 +48,9 @@ export function enforceReactServerFunctionContract(): void;
 export function enforceHttpRuntimeCancellationAndContextIsolation(): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceHttpCustomMethodContract(): void;
+export function enforceHttpAdapterPortabilityDocumentationContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function isSupportedNodeListenerVersion(version: string): boolean;
 export function enforcePlatformFastifyEngineDocumentation(
   readText?: (relativePath: string) => string,
@@ -56,6 +59,9 @@ export function enforcePlatformNodejsEngineDocumentation(
   readText?: (relativePath: string) => string,
 ): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(
+  readText?: (relativePath: string) => string,
+): void;
+export function enforceCacheManagerNestjsMigrationDocs(
   readText?: (relativePath: string) => string,
 ): void;
 export function enforceSerializerResponseOwnershipDocsSync(
@@ -82,4 +88,7 @@ export function enforceMicroservicesSafetyRuntimeEvidence(): void;
 export function enforceQueueWorkerOwnershipContract(
   readText?: (relativePath: string) => string,
 ): void;
-export function main(): void;
+export function enforceQueueWorkerOwnershipContractFromSources(
+  sources: Readonly<Record<string, string>>,
+): void;
+export function main(): Promise<void>;

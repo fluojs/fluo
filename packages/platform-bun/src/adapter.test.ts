@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createAccessLogObserver, createCorrelationMiddleware, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
@@ -322,17 +322,30 @@ function registerBunWebRuntimePortabilitySuite(): void {
         },
       };
     },
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'Bun',
   });
 
   describe('Bun web-runtime portability conformance', () => {
+    it('preserves ordered independent response cookies through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
     it('supports HTTP-owned error representations through the shared web-runtime harness', async () => {
       await bunPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
     it('does not commit an error representation after request abort', async () => {
       await bunPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
+    it('preserves conditional response semantics through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range semantics through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsSingleByteRanges();
     });
 
     it('preserves malformed cookie values through the shared web-runtime harness', async () => {
@@ -412,6 +425,7 @@ describe('@fluojs/platform-bun', () => {
 
     const app = await runBunApplication(AppModule, {
       hostname: '127.0.0.1',
+      middleware: [createCorrelationMiddleware()],
       port: 0,
       shutdownSignals: false,
     });
@@ -459,6 +473,81 @@ describe('@fluojs/platform-bun', () => {
     expect(response.status).toBe(202);
     expect(response.headers.get('x-runtime')).toBe('bun');
     await expect(response.text()).resolves.toBe('');
+  });
+
+  it('applies byte ranges through a host-owned Bun fetch handler', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    const fetch = createBunFetchHandler({
+      dispatcher: createDispatcher({
+        conditionalRequest: {
+          resolve() {
+            return {
+              exists: true,
+              validators: {
+                etag: { opaqueValue: 'logo-v1', strength: 'strong' },
+                lastModified: new Date('2026-01-02T00:00:00Z'),
+              },
+            };
+          },
+        },
+        handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+        rootContainer: {
+          createRequestScope() {
+            return {
+              async dispose() {},
+              resolve() {
+                return new AssetController();
+              },
+            };
+          },
+        } as never,
+      }),
+    });
+
+    const [bounded, unsatisfiable, etagMatch, etagMismatch, dateMatch, dateMismatch] = await Promise.all([
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { range: 'bytes=9-' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': '"logo-v1"', range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': '"logo-v2"', range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': 'Fri, 02 Jan 2026 00:00:00 GMT', range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': 'Thu, 01 Jan 2026 00:00:00 GMT', range: 'bytes=2-4' },
+      })),
+    ]);
+
+    expect(bounded.status).toBe(206);
+    expect(bounded.headers.get('accept-ranges')).toBe('bytes');
+    expect(bounded.headers.get('content-range')).toBe('bytes 2-4/6');
+    expect(bounded.headers.get('content-length')).toBe('3');
+    await expect(bounded.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+    expect(unsatisfiable.status).toBe(416);
+    expect(unsatisfiable.headers.get('content-range')).toBe('bytes */6');
+    await expect(unsatisfiable.text()).resolves.toBe('');
+    expect(etagMatch.status).toBe(206);
+    await expect(etagMatch.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+    expect(etagMismatch.status).toBe(200);
+    await expect(etagMismatch.bytes()).resolves.toEqual(Uint8Array.from([0, 1, 2, 3, 4, 5]));
+    expect(dateMatch.status).toBe(206);
+    await expect(dateMatch.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+    expect(dateMismatch.status).toBe(200);
+    await expect(dateMismatch.bytes()).resolves.toEqual(Uint8Array.from([0, 1, 2, 3, 4, 5]));
   });
 
   it('preserves byte-exact rawBody values for byte-sensitive custom fetch handlers', async () => {
@@ -520,6 +609,77 @@ describe('@fluojs/platform-bun', () => {
     }));
 
     expect(response.status).toBe(204);
+  });
+
+  it('forwards multipart stream strategy through the Bun fetch handler', async () => {
+    const fetch = createBunFetchHandler({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const iterator = parts[Symbol.asyncIterator]();
+          const first = await iterator.next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await iterator.return?.();
+          response.setStatus(204);
+        },
+      },
+      multipart: { strategy: 'stream' },
+    });
+    const form = new FormData();
+    form.set('title', 'Ada');
+
+    const response = await fetch(new Request('https://runtime.test/hooks/stream', {
+      body: form,
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
+
+  it('forwards multipart stream strategy through managed Bun bootstrap routes', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<unknown>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : first.value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      multipart: { strategy: 'stream' },
+      port: 4313,
+    });
+
+    try {
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4313/streaming-upload', {
+        body: form,
+        method: 'POST',
+      }));
+
+      expect(response?.status).toBe(201);
+      await expect(response?.json()).resolves.toMatchObject({
+        kind: 'field',
+        name: 'title',
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('enforces multipart.maxTotalSize for custom fetch handlers', async () => {
@@ -746,6 +906,104 @@ describe('@fluojs/platform-bun', () => {
 
       expect(response?.status).toBe(200);
       await expect(response?.json()).resolves.toEqual({ userId: 'a%2Fb' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('installs access observers through Bun bootstrap while native route handoff falls back', async () => {
+    // Given
+    const mockBun = installMockBun();
+    const records: Array<{ readonly event: string; readonly outcome?: string; readonly requestId?: string }> = [];
+
+    @Controller('/native-access-log')
+    class NativeAccessLogController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NativeAccessLogController] });
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      observers: [createAccessLogObserver({
+        sink: {
+          emit(record) {
+            records.push(record);
+          },
+        },
+      })],
+      port: 4315,
+    });
+
+    // When
+    try {
+      const nativeRoutes = mockBun.lastOptions?.routes;
+      const nativeRoute = nativeRoutes?.['/native-access-log/:id'] as {
+        GET?: (request: Request & { params: { id: string } }, server: never) => Response | Promise<Response | undefined> | undefined;
+      } | undefined;
+      expect(nativeRoute).toMatchObject({ GET: expect.any(Function) });
+      const nativeRequest = Object.assign(new Request('http://127.0.0.1:4315/native-access-log/42', {
+        headers: { 'x-correlation-id': 'bun-correlation-42' },
+      }), { params: { id: '42' } });
+      const response = await nativeRoute?.GET?.(nativeRequest, mockBun.lastServer as never);
+
+      // Then
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ id: '42' });
+      expect(records).toContainEqual(expect.objectContaining({
+        event: 'http.access.finish',
+        outcome: 'success',
+        requestId: 'bun-correlation-42',
+      }));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('applies byte ranges through Bun native routes', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4330,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/assets/logo': {
+          GET: expect.any(Function),
+        },
+      });
+
+      const [bounded, unsatisfiable] = await Promise.all([
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4330/assets/logo', {
+          headers: { range: 'bytes=2-4' },
+        })),
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4330/assets/logo', {
+          headers: { range: 'bytes=9-' },
+        })),
+      ]);
+
+      expect(bounded?.status).toBe(206);
+      expect(bounded?.headers.get('content-range')).toBe('bytes 2-4/6');
+      await expect(bounded?.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+      expect(unsatisfiable?.status).toBe(416);
+      expect(unsatisfiable?.headers.get('content-range')).toBe('bytes */6');
+      await expect(unsatisfiable?.text()).resolves.toBe('');
     } finally {
       await app.close();
     }
@@ -1430,6 +1688,7 @@ describe('@fluojs/platform-bun', () => {
     const mockBun = installMockBun();
     const requestAbort = new AbortController();
     const releaseServerStop = createDeferred<void>();
+    const serverStopStarted = createDeferred<void>();
     const streamClosed = createDeferred<void>();
     const order: string[] = [];
     let closeSettled = false;
@@ -1483,6 +1742,7 @@ describe('@fluojs/platform-bun', () => {
       }
 
       server.stop.mockImplementation(async () => {
+        serverStopStarted.resolve();
         await streamClosed.promise;
         await releaseServerStop.promise;
       });
@@ -1500,17 +1760,12 @@ describe('@fluojs/platform-bun', () => {
       );
 
       expect(server.stop).toHaveBeenCalledTimes(1);
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+      await serverStopStarted.promise;
       expect(closeSettled).toBe(false);
       expect(order).toEqual([]);
 
       requestAbort.abort(new Error('SSE client disconnected.'));
       await streamClosed.promise;
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
 
       expect(closeSettled).toBe(false);
       expect(order).toEqual(['stream-closed']);
@@ -1856,9 +2111,6 @@ describe('@fluojs/platform-bun', () => {
 
     serverTermination.reject(stopError);
     await stopRejected;
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(order).not.toContain('close-settled');
     expect(adapter.getServer()).toBe(server);
@@ -2163,9 +2415,6 @@ describe('@fluojs/platform-bun', () => {
         order.push('close-settled');
       },
     );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(mockBun.lastServer);
@@ -2299,9 +2548,6 @@ describe('@fluojs/platform-bun', () => {
           order.push('close-settled');
         },
       );
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
 
       expect(closeSettled).toBe(false);
       expect(adapter.getServer()).toBe(server);
@@ -2367,9 +2613,6 @@ describe('@fluojs/platform-bun', () => {
         order.push('close-settled');
       },
     );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(mockBun.lastServer);

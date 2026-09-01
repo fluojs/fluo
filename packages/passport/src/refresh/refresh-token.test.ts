@@ -1,14 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
+import type { GuardContext, RequestContext } from '@fluojs/http';
 import type { DefaultJwtVerifier } from '@fluojs/jwt';
 import { JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
-
+import { describe, expect, it, vi } from 'vitest';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
-import { REFRESH_TOKEN_SERVICE, RefreshTokenModule, RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
-import type { AuthStrategyResult } from '../types.js';
-import type { GuardContext, RequestContext } from '@fluojs/http';
+import { REFRESH_TOKEN_SERVICE, RefreshTokenModule, type RefreshTokenPrincipal, type RefreshTokenService, RefreshTokenStrategy } from './refresh-token.js';
 
 function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> = {}): RefreshTokenService {
   return {
@@ -73,7 +70,7 @@ describe('RefreshTokenStrategy', () => {
       const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'valid-token' });
 
-      const result = await strategy.authenticate(context);
+      const result: RefreshTokenPrincipal = await strategy.authenticate(context);
 
       expect(result).toMatchObject({
         subject: 'user-1',
@@ -275,7 +272,7 @@ describe('RefreshTokenStrategy', () => {
       ]);
 
       const fulfilled = [first, second].filter(
-        (result): result is PromiseFulfilledResult<AuthStrategyResult> => result.status === 'fulfilled',
+        (result): result is PromiseFulfilledResult<RefreshTokenPrincipal> => result.status === 'fulfilled',
       );
       const rejected = [first, second].filter(
         (result): result is PromiseRejectedResult => result.status === 'rejected',
@@ -342,7 +339,6 @@ describe('RefreshTokenService contract', () => {
     const providers: Provider[] = getRefreshTokenModuleProviders(RefreshTokenServiceImpl);
     const container = new Container();
 
-    container.register(RefreshTokenServiceImpl);
     container.register(...providers);
 
     const byClass = await container.resolve(RefreshTokenServiceImpl);
@@ -377,6 +373,7 @@ describe('RefreshTokenModule', () => {
     expect(metadata?.exports).toEqual([RefreshTokenStrategy, REFRESH_TOKEN_SERVICE]);
     expect(metadata?.providers).toEqual([
       RefreshTokenStrategy,
+      RefreshTokenServiceImpl,
       {
         provide: REFRESH_TOKEN_SERVICE,
         useExisting: RefreshTokenServiceImpl,

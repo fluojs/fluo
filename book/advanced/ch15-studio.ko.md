@@ -132,14 +132,14 @@ Report가 raw snapshot을 대체하는 것은 아닙니다. Report는 support와
 
 ## 15.5 Studio Viewer 사용하기
 
-Studio Viewer는 독립 실행형 web application입니다. 설치된 패키지를 사용하는 사용자는 보통 Studio를 개발 전용 의존성으로 유지하고, 패키징된 정적 HTML entry를 resolve해서 브라우저에서 열 수 있습니다.
+Studio Viewer는 독립 실행형 web application입니다. 설치된 패키지를 사용하는 사용자는 보통 Studio를 개발 전용 의존성으로 유지하고 패키징된 HTTP server를 실행합니다.
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-출력된 경로는 패키징된 `dist/index.html` artifact를 가리킵니다. 해당 파일을 브라우저에서 연 다음 inspect artifact를 로드합니다. Artifact 자체가 Bun, Deno, Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이 viewer resolution 단계는 Node package resolution에 기반합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
+명령은 패키징된 viewer를 제공하는 `http://127.0.0.1:<port>/` URL을 출력합니다. 그 URL을 브라우저에서 열고 inspect artifact를 로드하세요. Browser의 file-origin module loading은 viewer를 빈 화면으로 만들 수 있으므로 `dist/index.html`을 직접 열지 마세요. 패키징된 HTML entry를 resolve하는 integration을 위해 `@fluojs/studio/viewer`는 계속 사용할 수 있습니다. Artifact 자체가 Bun, Deno, Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이 launch 단계는 Node package를 기반으로 합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
 
 ```bash
 pnpm --dir packages/studio dev

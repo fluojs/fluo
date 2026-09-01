@@ -15,7 +15,7 @@
 
 ## Prerequisites
 - Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10 완료.
-- `@fluojs/queue` package manifest와 일치하는 Node.js `>=20.0.0` 애플리케이션 런타임.
+- 필수 `@fluojs/runtime` dependency와 일치하는 Node.js `>=20.19.3 <21 || >=22.2.0 <27` 애플리케이션 런타임.
 - Redis 기반 transport와 background processing 개념에 대한 기초 이해.
 - retry 가능한 비동기 작업과 운영 실패 대응에 대한 기본 감각.
 
@@ -35,7 +35,7 @@ v2.0.0 시점의 FluoShop은 이미 domain event를 publish하고 multi-step wor
 
 README는 `QueueModule.forRoot(...)`를 지원되는 root entrypoint로 문서화합니다. Queue 패키지는 persistence와 coordination을 위해 Redis에 의존합니다. 따라서 FluoShop은 먼저 `@fluojs/redis`를 연결하고, 그 다음 queue support를 등록합니다.
 
-`@fluojs/queue`는 `engines.node >=20.0.0`을 선언하는 Node.js 20+ 패키지입니다. 따라서 다른 fluo API가 여러 런타임에서 portable할 수 있더라도 이 장의 Queue 경로에는 이 패키지별 런타임 요구사항이 그대로 적용됩니다.
+`@fluojs/queue`는 필수 `@fluojs/runtime` dependency와 일치하는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 major Queue release를 적용하기 전에 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, 또는 Node.js 27+ deployment를 지원되는 release로 이동하세요.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -155,7 +155,9 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 이것은 code-style trick이 아니라 deployment decision입니다. workload isolation은 noisy-neighbor effect를 줄이고 capacity planning을 더 명확하게 만듭니다.
 
-Queue registration의 `scope` 값은 DI visibility를 격리하지만 Redis queue name을 namespace하지는 않습니다. 두 scope가 같은 Redis dependency를 사용하면서 동일한 `jobName`의 worker를 발견하면, 한 scope가 다른 scope의 job을 소비하지 못하도록 BullMQ resource 생성 전 bootstrap이 실패합니다. 서로 다른 `jobName`을 지정하거나, 의도적으로 job name을 재사용해야 한다면 `clientName`으로 각 scope를 서로 다른 named Redis registration에 연결하세요.
+Queue registration의 `scope` 값은 DI visibility를 격리하지만 Redis queue name을 namespace하지는 않습니다. `clientName`은 DI registration을 선택하므로, 서로 다른 named client가 다른 Redis database나 BullMQ prefix를 쓰는지 증명할 수 없습니다. Scoped registration마다 실제 Redis database와 BullMQ prefix topology를 설명하는 `ownershipNamespace`를 선언해야 합니다. 같은 backend의 registration은 같은 namespace를 사용하고, 서로 다른 namespace는 서로 다른 backend를 뜻합니다.
+
+Queue는 BullMQ resource를 만들기 전에 `(ownershipNamespace, jobName)`을 검증합니다. 2.x 기본값은 `ownershipEnforcement: 'warn'`입니다. Identity가 없거나 collision이 있어도 diagnostic을 기록하되 기존 deployment에 configuration 변경을 강제하지 않습니다. 일치하는 pair가 bootstrap 중 실패하게 하려면 `ownershipEnforcement: 'reject'`를 설정하세요. 이것이 FluoShop의 release-safe migration path입니다. 먼저 실제 backend topology를 이름 붙이고 diagnostic을 관찰한 뒤, shared backend마다 stable namespace와 고유한 worker job name이 정리되면 rejection을 opt in 하세요.
 
 ## 11.7 Queue flow in FluoShop
 
@@ -196,7 +198,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - NestJS migration에는 `handle(job)`을 가진 명시적 singleton `@QueueWorker(JobClass)` provider, module-graph reachability, 애플리케이션이 검증한 `jobName`/payload cutover가 필요하며 legacy processor metadata는 compatibility surface가 아닙니다.
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
-- Queue scope는 BullMQ queue identity를 namespace하지 않으므로 같은 Redis dependency와 `jobName`을 서로 다른 scope의 worker가 함께 소유할 수 없습니다.
+- Queue scope는 BullMQ queue identity를 namespace하지 않습니다. `ownershipNamespace`는 `clientName`과 독립적으로 실제 Redis database와 BullMQ prefix를 이름 붙이며, Queue는 `(ownershipNamespace, jobName)`을 검증하고 2.x에서는 기본으로 warn하며 opt-in `ownershipEnforcement: 'reject'`로 resource 생성 전 bootstrap rejection을 지원합니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job의 별도 record를 보존하며, BullMQ job 자체를 소유하거나 옮기지는 않습니다. Read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
 - Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 graceful 또는 forced worker close phase별 `workerShutdownTimeoutMs`로 제한됩니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.

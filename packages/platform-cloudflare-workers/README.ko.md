@@ -72,6 +72,22 @@ export default {
 
 Workers `Response` API는 final response 이전 informational response를 request handler에서 write하는 primitive를 제공하지 않으므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Early Hints를 생성할 수 있는 Cloudflare deployment/cache feature는 host configuration이며 Fluo response writer로 노출되지 않습니다.
 
+### 스트리밍 멀티파트 소비
+
+애플리케이션 bootstrap에서 `multipart: { strategy: 'stream' }`을 설정하면 멀티파트 데이터를 점진적으로
+받습니다. 멀티파트 route에서 `RequestContext.request.body`는 `AsyncIterableIterator<MultipartPart>`입니다.
+field part는 `kind: 'field'`, `name`, `value`, `headers`를, file part는 `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, 그리고 `stream`의 single-consumer `ReadableStream<Uint8Array>`를 제공합니다. 다음
+part를 요청하기 전에 각 file stream을 끝까지 소비하거나 cancel하세요.
+
+Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해
+active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접
+집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
+
+### 바이트 범위와 캐시 검증
+
+Workers는 fetch dispatch를 통해 공유 `@fluojs/http` 단일 byte-range 및 `If-Range` contract를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 portable `206` identity-byte response를 만들고, `If-Range`는 선택된 validator를 재사용합니다. Malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만들며, `HEAD`는 stream을 소비하지 않고 GET metadata를 반영합니다.
+
 ### WebSocketPair 활용
 어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다. Binding은 `listen()`이 Worker dispatch boundary를 시작하기 전에 설정하세요. `listen()`이 한 번 실행된 뒤에는 해당 adapter instance의 binding identity가 frozen됩니다. 이미 public listen boundary를 지난 isolate 아래에서 upgrade ownership이 바뀌지 않도록, `close()` 이후에도 binding을 교체하거나 해제하려는 시도는 reject됩니다.
 
@@ -138,7 +154,7 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 
 `packages/platform-cloudflare-workers/src/adapter.test.ts`와 `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일들은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, body-cancellation 및 synchronous setup-failure drain, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP 및 websocket lifecycle guard, listen boundary 이후 websocket binding freeze, lazy entrypoint 재사용 및 timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, public seam source import, structured realtime capability contract, bounded 10초 close timeout을 검증합니다.
 
-공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 body를 포함하는 `QUERY` 및 `PURGE` fetch dispatch, malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트는 두 README locale의 structured realtime capability contract를 parse하고 machine-consumed value를 adapter capability와 비교합니다.
+공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 conditional request, single-byte range 및 `If-Range`, body를 포함하는 `QUERY` 및 `PURGE` fetch dispatch, malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트는 두 README locale의 structured realtime capability contract를 parse하고 machine-consumed value를 adapter capability와 비교합니다.
 
 ## 공개 API 개요
 

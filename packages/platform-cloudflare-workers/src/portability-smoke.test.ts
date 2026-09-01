@@ -11,6 +11,7 @@ import { defineModule } from '@fluojs/runtime';
 
 import {
   bootstrapCloudflareWorkerApplication,
+  CloudflareWorkerHttpApplicationAdapter,
   type CloudflareWorkerExecutionContext,
 } from './adapter.js';
 
@@ -174,6 +175,40 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
       });
     } finally {
       await worker.close();
+    }
+  });
+
+  it('forwards multipart stream strategy through the Workers adapter', async () => {
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      multipart: { strategy: 'stream' },
+    });
+    await adapter.listen({
+      async dispatch(request, response) {
+        const parts = request.body as AsyncIterable<unknown>;
+        const iterator = parts[Symbol.asyncIterator]();
+        const first = await iterator.next();
+
+        expect(first).toMatchObject({
+          done: false,
+          value: { kind: 'field', name: 'title', value: 'Ada' },
+        });
+        await iterator.return?.();
+        response.setStatus(204);
+      },
+    });
+    const form = new FormData();
+    form.set('title', 'Ada');
+
+    try {
+      const response = await adapter.fetch(
+        new Request('https://worker.test/uploads', { body: form, method: 'POST' }),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(204);
+    } finally {
+      await adapter.close();
     }
   });
 

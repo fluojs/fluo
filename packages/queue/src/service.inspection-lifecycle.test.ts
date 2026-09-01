@@ -115,6 +115,7 @@ const OPTIONS: NormalizedQueueModuleOptions = {
   defaultConcurrency: 1,
   defaultDeadLetterMaxEntries: 1_000,
   global: true,
+  ownershipEnforcement: 'warn',
   workerShutdownTimeoutMs: 30_000,
 };
 

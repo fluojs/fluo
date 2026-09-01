@@ -72,6 +72,22 @@ export default {
 
 The Workers `Response` API does not provide a request-handler write primitive for an informational response before the final response, so `context.response.earlyHints` is absent. Check for capability presence before use. Cloudflare deployment/cache features that may generate Early Hints are host configuration and are not exposed as a Fluo response writer.
 
+### Streaming multipart consumption
+
+Set `multipart: { strategy: 'stream' }` at application bootstrap to receive multipart data incrementally. For
+multipart routes, `RequestContext.request.body` is an `AsyncIterableIterator<MultipartPart>`: field parts expose
+`kind: 'field'`, `name`, `value`, and `headers`; file parts expose `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, and a single-consumer `ReadableStream<Uint8Array>` at `stream`. Finish or cancel each file
+stream before requesting the next part.
+
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler
+finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that
+responsibility: consume the iterator to completion or call `return()` when ending early.
+
+### Byte Ranges and Cache Validation
+
+Workers preserves the shared `@fluojs/http` single-byte-range and `If-Range` contract through fetch dispatch. After conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields the portable `206` identity-byte response; `If-Range` reuses those selected validators, while malformed or multi-range fields retain the full response and an unsatisfiable range yields bodyless `416`. `HEAD` mirrors GET metadata without consuming a stream.
+
 ### Working with WebSocketPairs
 The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests. Configure the binding before `listen()` starts the Worker dispatch boundary; once `listen()` has run, the binding identity is frozen for that adapter instance. Replacing or clearing it is rejected even after `close()`, so upgrade ownership cannot change underneath an isolate that has already crossed the public listen boundary.
 
@@ -138,7 +154,7 @@ The listen, shutdown, SSE drain, and websocket binding rules above are public li
 
 `packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, body-cancellation and synchronous setup-failure drains, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, public seam source imports, the structured realtime capability contract, and the bounded 10-second close timeout.
 
-The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for body-bearing `QUERY` and `PURGE` fetch dispatch, malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The package test parses the structured realtime capability contract in both README locales and compares its machine-consumed values with the adapter capability.
+The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for conditional requests, single-byte ranges and `If-Range`, body-bearing `QUERY` and `PURGE` fetch dispatch, malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The package test parses the structured realtime capability contract in both README locales and compares its machine-consumed values with the adapter capability.
 
 ## Public API Overview
 

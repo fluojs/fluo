@@ -132,6 +132,9 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		laneId: laneV2.lane_id,
 		baseBranch: laneV2.base_branch ?? 'main',
 		specs,
+		// The maintainer's lane-plan approval already covers merging every
+		// issue in this lane; import it so the merge gate does not re-ask.
+		mergeApproved: laneV2.authority_scope?.pr_merge === true,
 	};
 };
 
@@ -219,6 +222,7 @@ const main = () => {
 		let baseBranch = 'main';
 		let specs;
 		let ledgerRef = null;
+		let mergeApproved = false;
 		if (fromLaneV2 !== null) {
 			const raw = readFileSync(resolve(root, fromLaneV2), 'utf8');
 			const translated = laneV2ToInitSpecs(JSON.parse(raw));
@@ -226,6 +230,7 @@ const main = () => {
 			baseBranch = translated.baseBranch;
 			specs = translated.specs;
 			ledgerRef = sourceLedgerRef(fromLaneV2, raw);
+			mergeApproved = translated.mergeApproved;
 		} else {
 			laneId = arg(args, '--lane-id');
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -261,7 +266,7 @@ const main = () => {
 					branch: `issue-${n}`,
 					depends_on: deps,
 					attempts: {},
-					approvals: { merge: false },
+					approvals: { merge: mergeApproved },
 					blocker: null,
 					facts: {},
 				}]),

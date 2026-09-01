@@ -10,7 +10,7 @@ import {
 } from '@fluojs/http';
 
 import {
-  dispatchWithRequestResponseFactory,
+  startDispatchWithRequestResponseFactory,
   type RequestResponseFactory,
 } from './adapters/request-response-factory.js';
 import {
@@ -18,8 +18,10 @@ import {
   consumeRuntimeRawRequestNativeRouteHandoff,
 } from './internal/http-runtime.js';
 import {
+  markMultipartBodyConsumed,
   type MultipartOptions,
   parseMultipart,
+  parseMultipartStream,
   type UploadedFile,
 } from './multipart.js';
 
@@ -62,10 +64,27 @@ export interface DispatchWebRequestOptions extends CreateWebRequestResponseFacto
  * Represents a framework response that can be materialized as a native Web `Response`.
  */
 export interface WebFrameworkResponse extends FrameworkResponse {
+  /** @internal Optional early response signal provided by the built-in Web response facade. */
+  readonly responseReady?: Promise<Response>;
   toResponse(): Response;
 }
 
-export { parseMultipart } from './multipart.js';
+/** Native Web response materialization and long-lived request lifecycle signals. */
+export interface WebRequestDispatch {
+  readonly completion: Promise<void>;
+  readonly response: Promise<Response>;
+}
+
+export {
+  MultipartBodyConsumedError,
+  parseMultipart,
+  parseMultipartStream,
+} from './multipart.js';
+export type {
+  MultipartFieldPart,
+  MultipartFilePart,
+  MultipartPart,
+} from './multipart.js';
 
 interface WebFrameworkResponseStream {
   readonly closed: boolean;
@@ -92,7 +111,7 @@ class WebResponseStream implements WebFrameworkResponseStream {
 
   readonly readable = new ReadableStream<Uint8Array>({
     cancel: () => {
-      this.close();
+      this.close(true);
     },
     start: (controller) => {
       this.controller = controller;
@@ -105,7 +124,7 @@ class WebResponseStream implements WebFrameworkResponseStream {
     return this.markedClosed;
   }
 
-  close(): void {
+  close(closedByConsumer = false): void {
     this.activate();
 
     if (this.markedClosed) {
@@ -113,7 +132,9 @@ class WebResponseStream implements WebFrameworkResponseStream {
     }
 
     this.markedClosed = true;
-    this.controller?.close();
+    if (!closedByConsumer) {
+      this.controller?.close();
+    }
     this.emitClose();
   }
 
@@ -175,9 +196,13 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   statusSet?: boolean;
 
   private finalizedResponse?: Response;
+  private resolveResponseReady: (response: Response) => void = () => undefined;
   private responseStream?: WebResponseStream;
   private responseBody?: string | Uint8Array;
   private streamActive = false;
+  readonly responseReady = new Promise<Response>((resolve) => {
+    this.resolveResponseReady = resolve;
+  });
 
   get stream(): WebFrameworkResponseStream {
     return this.getOrCreateResponseStream();
@@ -259,6 +284,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
         : new Response(nativeResponseBody, init);
       this.raw = this.finalizedResponse;
       this.committed = true;
+      this.resolveResponseReady(this.finalizedResponse);
     }
 
     return this.finalizedResponse;
@@ -267,6 +293,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   private getOrCreateResponseStream(): WebResponseStream {
     this.responseStream ??= new WebResponseStream(() => {
       this.streamActive = true;
+      this.toResponse();
     });
 
     return this.responseStream;
@@ -326,7 +353,29 @@ export async function dispatchWebRequest({
   request,
   ...options
 }: DispatchWebRequestOptions): Promise<Response> {
-  const frameworkResponse = await dispatchWithRequestResponseFactory({
+  return await startWebRequestDispatch({
+    dispatcher,
+    dispatcherNotReadyMessage,
+    factory,
+    request,
+    ...options,
+  }).response;
+}
+
+/**
+ * Starts a native Web request dispatch without coupling streaming response materialization to lifecycle completion.
+ *
+ * @param options - Dispatch configuration including the request and runtime parsing options.
+ * @returns The native response signal and independently settling request lifecycle signal.
+ */
+export function startWebRequestDispatch({
+  dispatcher,
+  dispatcherNotReadyMessage = 'Web adapter received a request before dispatcher binding completed.',
+  factory,
+  request,
+  ...options
+}: DispatchWebRequestOptions): WebRequestDispatch {
+  const dispatch = startDispatchWithRequestResponseFactory({
     dispatcher,
     dispatcherNotReadyMessage,
     factory: factory ?? createWebRequestResponseFactory(options),
@@ -334,7 +383,17 @@ export async function dispatchWebRequest({
     rawResponse: request.signal,
   });
 
-  return frameworkResponse.toResponse();
+  const responseReady = dispatch.response.responseReady;
+
+  return {
+    completion: dispatch.completion.then(() => undefined),
+    response: responseReady
+      ? Promise.race([
+          responseReady,
+          dispatch.completion.then((frameworkResponse) => frameworkResponse.toResponse()),
+        ])
+      : dispatch.completion.then((frameworkResponse) => frameworkResponse.toResponse()),
+  };
 }
 
 /**
@@ -395,16 +454,30 @@ function createDeferredWebFrameworkRequest(
   const hasRequestBody = request.body !== null;
   const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
+      const resolvedMultipartOptions = {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      };
+
+      if (multipartOptions?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream({
+          body: request.body,
+          headers: requestHeaders,
+          method,
+          signal,
+          url: request.url,
+        }, resolvedMultipartOptions);
+        return;
+      }
+
       const materializedRequest = request.clone();
+      markMultipartBodyConsumed(request);
       const result = await parseMultipart(createRequestWithSnapshotMetadata(
         materializedRequest,
         request.url,
         method,
         requestHeaders,
-      ), {
-        ...multipartOptions,
-        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
+      ), resolvedMultipartOptions);
       frameworkRequest.body = result.fields;
       frameworkRequest.files = result.files;
       return;
@@ -471,6 +544,7 @@ function createRequestWithSnapshotMetadata(
   const init: RequestInit & { duplex?: 'half' } = {
     headers: new Headers(headers),
     method,
+    signal: request.signal,
   };
 
   if (request.body) {

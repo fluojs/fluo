@@ -57,6 +57,18 @@ Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니
 
 Deno의 Fetch `Response`는 final response 이전 informational response를 표현할 수 없으므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Adapter는 요청된 `103`을 silent no-op 또는 final-response header로 바꾸지 않습니다.
 
+### 스트리밍 멀티파트 소비
+
+애플리케이션 bootstrap에서 `multipart: { strategy: 'stream' }`을 설정하면 멀티파트 데이터를 점진적으로
+받습니다. 멀티파트 route에서 `RequestContext.request.body`는 `AsyncIterableIterator<MultipartPart>`입니다.
+field part는 `kind: 'field'`, `name`, `value`, `headers`를, file part는 `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, 그리고 `stream`의 single-consumer `ReadableStream<Uint8Array>`를 제공합니다. 다음
+part를 요청하기 전에 각 file stream을 끝까지 소비하거나 cancel하세요.
+
+Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해
+active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접
+집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
+
 ### Host-Owned Deno.serve
 애플리케이션이 `Deno.serve(...)`를 소유한다면 `app.listen()`을 호출하지 않고 fluo 애플리케이션을 bootstrap한 뒤 public dispatcher로 request handler를 만드세요. `createDenoFetchHandler(...)`는 request 변환과 dispatch만 수행하며 server를 시작하거나 shutdown, signal, websocket upgrade를 소유하지 않습니다.
 
@@ -139,7 +151,7 @@ Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve
 
 `packages/platform-deno/src/adapter.test.ts`는 managed Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `listen(dispatcher)` 이후 direct `adapter.handle(...)` success-path dispatch, 직접 constructor/factory option normalization, HTTPS startup forwarding, `Deno.serve(...)` bind target과 startup log에 대한 `host` alias 및 `hostname` 우선순위, 중복 `listen(...)` no-op dispatcher 보존, 기본 `SIGINT`/`SIGTERM` signal listener 등록, `shutdownSignals: false`, partial signal-registration failure 이후 listener rollback, websocket upgrade binding 및 no-binding HTTP fallback, websocket listen 전 bootstrap gating, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, `server.finished`까지 shutdown failure ownership 유지, bounded 10초 close timeout을 검증합니다. `packages/platform-deno/src/fetch-handler.test.ts`는 host-owned handler에 shared web-runtime portability harness를 적용하여 cookie/query decoding, JSON/text와 byte-exact raw body, multipart exclusion, SSE framing, dispatch가 `Deno.serve(...)`를 호출하지 않는다는 사실을 검증합니다. `packages/platform-deno/src/declaration-surface.test.ts`는 package를 다시 build하고 manifest가 export하는 declaration을 검증합니다.
 
-공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
+공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, 단일 byte-range status/header/body semantic, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
 ## 공개 API 개요
 

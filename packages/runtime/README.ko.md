@@ -21,7 +21,7 @@
 npm install @fluojs/runtime
 ```
 
-배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다.
+배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가 아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면 peer, host, port가 없고 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
 
 ## 사용 시점
 
@@ -66,9 +66,83 @@ await app.listen();
 
 ## 주요 패턴
 
+### 스트리밍 멀티파트 소비
+
+큰 업로드 파일을 `Uint8Array`로 실체화하지 않고 standalone raw `Request` 또는 request-like body에서
+소비할 때는 `@fluojs/runtime/web`의 `parseMultipartStream(...)`을 사용하세요. 기존
+`parseMultipart(...)` API는 명시적인 buffered mode로 유지됩니다. 요청마다 정확히 하나의 mode를
+선택해야 하며, 같은 body를 buffered와 streaming으로 함께 파싱하면
+`MultipartBodyConsumedError`로 reject됩니다.
+
+```typescript
+import {
+  parseMultipartStream,
+  type MultipartFilePart,
+} from '@fluojs/runtime/web';
+
+for await (const part of parseMultipartStream(request, {
+  maxFieldSize: 1 * 1024 * 1024,
+  maxFields: 20,
+  maxFiles: 4,
+  maxFileSize: 20 * 1024 * 1024,
+  maxHeaderSize: 8 * 1024,
+  maxTotalSize: 25 * 1024 * 1024,
+})) {
+  if (part.kind === 'field') {
+    continue; // part.name 및 part.value
+  }
+
+  const file: MultipartFilePart = part;
+  await store(file.stream); // 다음 part를 읽기 전에 끝까지 소비하거나 cancel
+}
+```
+
+Node.js, Express, Fastify, Web 애플리케이션 dispatch에서는 bootstrap의
+`multipart.strategy: 'stream'`으로 opt in하세요. route는 `RequestContext.request.body`에서 같은
+`AsyncIterable<MultipartPart>`를 받으며, adapter dispatch는 route가 소비하기 전 iterator만 만들고
+pull 또는 buffering을 수행하지 않습니다.
+
+```typescript
+const app = await bootstrapNodejsApplication(AppModule, {
+  multipart: {
+    strategy: 'stream',
+    maxTotalSize: 25 * 1024 * 1024,
+  },
+});
+
+@Controller('/uploads')
+class UploadController {
+  @Post('/')
+  async upload(_input: undefined, context: RequestContext) {
+    for await (const part of context.request.body as AsyncIterable<MultipartPart>) {
+      // 다음 part로 진행하기 전에 각 file stream을 소비합니다.
+    }
+  }
+}
+```
+
+Streaming mode에는 제한된 field/header 기본값이 적용됩니다. Buffered `parseMultipart(...)`는
+`maxFieldSize`, `maxFields`, `maxHeaderSize`를 명시할 때만 해당 제한을 적용하여 기존 field/header
+acceptance를 유지합니다.
+
+`MultipartFilePart.stream`은 parser가 제어하는 backpressure를 가진 Web
+`ReadableStream<Uint8Array>`입니다. Complete request가 도착하기 전에 file body를 yield하며,
+active file stream이 다음 chunk를 필요로 할 때만 요청 chunk를 읽습니다. File stream cancel, request
+abort, parser failure, 모든 size/count/header limit은 active source를 cancel하고 parser를 해제합니다.
+Parser는 native Fetch `Request`와 native async-iterable Node/Express/Fastify request stream을 직접 또는
+`MultipartRequestLike` wrapper로 받으며 adapter-native multipart object나 temporary-file API를 노출하지 않습니다.
+
 ### Optional Early Hints capability
 
 Runtime은 adapter가 소유하는 optional `context.response.earlyHints` capability를 보존하면서 이를 필수 response method surface로 만들지 않습니다. Node.js, Express, Fastify response는 writer를 제공하고 Web 표준 response factory는 이를 생략하므로 Bun, Deno, Workers, custom Fetch host가 unsupported임을 사용 전에 감지할 수 있습니다. Early write는 final status, header, body, commit ownership과 독립적입니다. 자세한 내용은 [`@fluojs/http` Early Hints 계약](../http/README.ko.md#early-hints)을 참고하세요.
+
+### Conditional request bootstrap
+
+Runtime bootstrap은 `@fluojs/http`의 `conditionalRequest` option을 받습니다. Resolver는 명시적인 representation 존재 여부와 optional validator를 반환하며 middleware와 guard 뒤, interceptor와 controller 호출 전에 실행됩니다. Resolver shape, RFC 9110 precedence, `HEAD` 규칙은 [`@fluojs/http` Conditional Requests 계약](../http/README.ko.md#conditional-requests)을 참고하세요.
+
+### Access log observer
+
+`createAccessLogObserver(...)`를 bootstrap `observers` option으로 전달하면 portable request lifecycle record를 애플리케이션 소유 structured logging으로 라우팅할 수 있습니다. Observer는 native adapter에서도 complete fallback path를 선택해 dispatcher lifecycle을 보존합니다. Trusted client identity와 header allowlist 요구사항은 [`@fluojs/http` Access logging 계약](../http/README.ko.md#access-logging)을 참고하세요.
 
 ### 애플리케이션 컨텍스트 (HTTP 제외)
 
@@ -140,6 +214,42 @@ const app = await fluoFactory.create(AppModule, {
   filters: [new GlobalErrorFilter()],
 });
 ```
+
+### Content negotiation
+
+`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `contentNegotiation`을 받아 HTTP
+dispatcher에 변경 없이 전달합니다. Application boundary에서 formatter를 한 번 구성하고 route의 허용
+representation은 `@Produces(...)`로 선택하세요.
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+import { fluoFactory } from '@fluojs/runtime';
+
+@Controller('/reports')
+class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      { mediaType: 'application/json', format: JSON.stringify },
+      { mediaType: 'text/plain', format: (value) => `plain:${JSON.stringify(value)}` },
+    ],
+  },
+});
+```
+
+Runtime은 `Accept`를 parse하거나 response policy를 소유하지 않습니다. `@fluojs/http`가 문서화된
+quality, wildcard, suffix, default, malformed-input, 406 의미를 적용하고 성공한 모든 formatter 선택에
+canonical `Vary: Accept`를 작성합니다. Standalone application context는 HTTP dispatcher를 만들지
+않으므로 이 option을 사용하지 않습니다. 자세한 내용은
+[HTTP package contract](../http/README.ko.md#content-negotiation)를 참고하세요.
 
 ### Optional HTML Error Representations
 
@@ -223,6 +333,7 @@ class UsersModule {}
 - Bootstrap은 독립적인 singleton lifecycle provider를 병렬로 해석한 뒤 lifecycle hook은 결정적인 provider 순서대로 실행합니다.
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
+- `@fluojs/runtime/web`은 서로 배타적인 두 멀티파트 소비 mode를 노출합니다. `parseMultipart(...)`는 field와 file을 buffer하고, `parseMultipartStream(...)`은 discriminated field/file part를 yield하며 complete file payload를 실체화하지 않습니다. Streaming mode는 byte를 읽는 동안 per-field, per-file, total-size, field-count, file-count, header limit을 강제하고 abort, cancellation, parser failure가 active source를 cancel합니다. 두 mode 중 하나가 선택한 body를 다시 buffered 또는 streaming으로 선택하면 `MultipartBodyConsumedError`로 reject됩니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - HTTP application bootstrap은 optional application-owned `errorRepresentation.html` provider를 representation ownership 없이 dispatcher에 전달합니다. Canonical JSON은 default로 유지되며 classification, negotiation, status/header, `HEAD`, abort, commit, fallback 의미는 HTTP가 소유합니다.
@@ -254,7 +365,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
-- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 같은 field를 노출합니다.
+- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하고 `BootstrapApplicationOptions.conditionalRequest`는 representation validation을 구성하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 두 field를 노출합니다.
 - `@fluojs/runtime/devtools`: `StudioDevtoolsRuntime`, transport contract, live Studio event contract를 위한 package-integration subpath입니다. 생성한 bridge를 application 또는 context bootstrap의 `studioDevtools`로 전달합니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
@@ -264,6 +375,7 @@ class UsersModule {}
 - `PlatformLifecycleOperation`, `PlatformLifecycleConflictError`: root-exported lifecycle conflict 계약입니다. Error는 code `PLATFORM_LIFECYCLE_CONFLICT`를 사용하고 일치하는 `activeOperation` / `requestedOperation` field와 structured metadata를 노출합니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
 - `UploadedFile`: 메모리 내 `buffer` payload를 Web 표준 `Uint8Array`로 제공하는 runtime-neutral 멀티파트 파일 descriptor입니다.
+- `MultipartFieldPart`, `MultipartFilePart`, `MultipartPart`, `MultipartBodyConsumedError`: 타입화된 streaming 멀티파트 계약입니다. `MultipartFilePart.stream`은 single-consumer이며 iteration이 다음 part를 요청하기 전에 settle되어야 합니다.
 
 ## 플랫폼 전용 서브경로
 
@@ -272,7 +384,7 @@ class UsersModule {}
 | 서브경로 | 용도 |
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
-| `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, `parseMultipart`를 포함합니다. |
+| `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, streaming `parseMultipartStream`을 포함합니다. |
 | `@fluojs/runtime/internal` | runtime wiring token, runtime-owned metadata 및 route-inspection helper와 함께 compiled runtime descriptor에 정렬되어야 하는 first-party runtime-neutral integration을 위한 `defineModule(...)`, `createRuntimeRouteInspection(...)`을 제공하는 internal package-integration seam입니다. |
 | `@fluojs/runtime/internal-node` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 | `@fluojs/runtime/internal/http-adapter` | platform package를 위한 internal HTTP adapter seam입니다. |

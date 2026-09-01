@@ -18,7 +18,7 @@ import type {
 } from '@fluojs/runtime';
 import {
   createWebRequestResponseFactory,
-  dispatchWebRequest,
+  startWebRequestDispatch,
   type CreateWebRequestResponseFactoryOptions,
   type DispatchWebRequestOptions,
 } from '@fluojs/runtime/web';
@@ -245,28 +245,19 @@ export class CloudflareWorkerHttpApplicationAdapter
       }
     }
 
-    const responsePromise = (async () => {
-      return await dispatchWebRequest({
-        dispatcher,
-        dispatcherNotReadyMessage: WORKER_DISPATCHER_NOT_READY_MESSAGE,
-        factory: this.createRequestResponseFactory(env, executionContext),
-        request,
-      });
-    })();
+    const dispatch = startWebRequestDispatch({
+      dispatcher,
+      dispatcherNotReadyMessage: WORKER_DISPATCHER_NOT_READY_MESSAGE,
+      factory: this.createRequestResponseFactory(env, executionContext),
+      request,
+    });
+    const trackedResponsePromise = dispatch.response.then(createLifecycleTrackedResponse);
+    const lifecycle = Promise.allSettled([
+      dispatch.completion,
+      trackedResponsePromise.then(({ lifecycle: responseLifecycle }) => responseLifecycle),
+    ]).then(() => undefined).finally(release);
 
-    const trackedResponsePromise = responsePromise.then(
-      (response) => createLifecycleTrackedResponse(response, release),
-      (error: unknown) => {
-        release();
-        throw error;
-      },
-    );
-
-    executionContext?.waitUntil(
-      trackedResponsePromise
-        .then(({ lifecycle }) => lifecycle)
-        .then(() => undefined, () => undefined),
-    );
+    executionContext?.waitUntil(lifecycle);
 
     return (await trackedResponsePromise).response;
   }
@@ -619,10 +610,8 @@ function createShutdownResponse(): Response {
 
 function createLifecycleTrackedResponse(
   response: Response,
-  release: () => void,
 ): { lifecycle: Promise<void>; response: Response } {
   if (!isLifecycleTrackedStreamingResponse(response)) {
-    release();
     return { lifecycle: Promise.resolve(), response };
   }
 
@@ -630,7 +619,6 @@ function createLifecycleTrackedResponse(
   const responseBody = response.body;
 
   if (!responseBody) {
-    release();
     return { lifecycle: Promise.resolve(), response };
   }
 
@@ -665,11 +653,10 @@ function createLifecycleTrackedResponse(
     });
 
     return {
-      lifecycle: lifecycle.promise.finally(release),
+      lifecycle: lifecycle.promise,
       response: new Response(trackedBody, response),
     };
   } catch (error) {
-    release();
     throw error;
   }
 }
