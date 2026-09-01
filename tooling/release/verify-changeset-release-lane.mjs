@@ -459,8 +459,8 @@ function isSatisfiableNodeReplacementRange(expression) {
 }
 
 function hasGeneratedMajorMigrationEvidence(section) {
-  return /(?:^|\n)Migration:\s+\S/iu.test(section) ||
-    /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+\S/iu.test(section);
+  return /(?:^|\n) {0,3}Migration:\s+\S/iu.test(section) ||
+    /(?:^|\n) {0,3}(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+ {0,3}\S/iu.test(section);
 }
 
 function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, intents, dependencies = {}) {
