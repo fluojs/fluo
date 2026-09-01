@@ -31,13 +31,20 @@ function processGroupExists(pid, kill, nativeProcessGroupProbe) {
   }
 }
 
-function probeMacOSProcessGroup(pid) {
+export function probeMacOSProcessGroup(pid, execFile = execFileSync) {
   try {
-    execFileSync('/bin/kill', ['-0', `-${pid}`], { stdio: 'ignore' });
+    execFile('/bin/kill', ['-0', `-${pid}`], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] });
     return true;
   } catch (error) {
     if (typeof error === 'object' && error !== null && error.status === 1) {
-      return false;
+      const stderr = String(error.stderr ?? '');
+
+      if (stderr.includes('No such process')) {
+        return false;
+      }
+      if (stderr.includes('Operation not permitted')) {
+        return true;
+      }
     }
     throw error;
   }
@@ -89,6 +96,47 @@ function waitForProcessGroupExit(pid, { deadline, scheduler, stateProbe }) {
   });
 }
 
+function waitForLeaderExitAndStdioClose(leaderExited, stdioClosed, { deadline, scheduler }) {
+  const pendingSignals = [leaderExited, stdioClosed].filter((signal) => signal !== undefined);
+
+  if (pendingSignals.length === 0) {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    let remainingSignals = pendingSignals.length;
+    let settled = false;
+    const finish = (value) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    const probe = () => {
+      if (remainingSignals === 0) {
+        finish(true);
+        return;
+      }
+      if (deadline()) {
+        finish(false);
+        return;
+      }
+      scheduler(probe);
+    };
+
+    for (const signal of pendingSignals) {
+      void signal.then(() => {
+        remainingSignals -= 1;
+        if (remainingSignals === 0) {
+          finish(true);
+        }
+      });
+    }
+
+    probe();
+  });
+}
+
 function hasOpenInheritedStdio(child) {
   return child.stdio?.some((stream) => stream !== null && stream !== undefined && !stream.destroyed) ?? false;
 }
@@ -129,11 +177,13 @@ export function startWorker(spawnWorker = spawn) {
   );
 
   const ready = new Promise((resolve, reject) => {
+    let startupOutput = '';
     const timeout = setTimeout(() => {
       reject(new Error('workerd did not become ready before the startup timeout'));
     }, startupTimeoutMs);
     const onOutput = (output) => {
-      const url = workerUrlFromOutput(output);
+      startupOutput += output.toString();
+      const url = workerUrlFromOutput(startupOutput);
 
       if (url !== undefined) {
         clearTimeout(timeout);
@@ -182,22 +232,64 @@ export async function stopProcessGroup(
       ? signalProcessGroup(child.pid, 'SIGKILL', kill)
       : false;
 
-  if (!leaderExitedBeforeGrace) {
-    await leaderExited;
+  if (!forceTerminationSent) {
+    if (!leaderExitedBeforeGrace) {
+      await leaderExited;
+    }
+    await stdioClosed;
+    return;
   }
 
-  await stdioClosed;
+  const exitWaitOptions =
+    processGroupExitWaitOptions ?? {
+      deadline: createProcessGroupExitDeadline(),
+      scheduler: scheduleProcessGroupExitProbe,
+      stateProbe: (pid) => processGroupExists(pid, kill, nativeProcessGroupProbe),
+    };
+  const terminationSignalsSettled = await waitForLeaderExitAndStdioClose(
+    leaderExited,
+    stdioClosed,
+    exitWaitOptions,
+  );
+  let processGroupError;
 
-  if (forceTerminationSent) {
-    await waitForProcessGroupExit(
-      child.pid,
-      processGroupExitWaitOptions ?? {
-        deadline: createProcessGroupExitDeadline(),
-        scheduler: scheduleProcessGroupExitProbe,
-        stateProbe: (pid) => processGroupExists(pid, kill, nativeProcessGroupProbe),
-      },
+  try {
+    await waitForProcessGroupExit(child.pid, exitWaitOptions);
+  } catch (error) {
+    processGroupError = error;
+  }
+
+  if (!terminationSignalsSettled) {
+    const terminationError = new Error(
+      `workerd leader exit or inherited stdio close did not settle after forced termination for process group ${child.pid}`,
     );
+
+    if (processGroupError !== undefined) {
+      throw new AggregateError(
+        [terminationError, processGroupError],
+        'Workers process termination signals and process-group cleanup both failed',
+      );
+    }
+    throw terminationError;
   }
+
+  if (processGroupError !== undefined) {
+    throw processGroupError;
+  }
+}
+
+export async function runConcurrentWorkers(operations) {
+  const results = await Promise.allSettled(operations.map((operation) => Promise.resolve().then(operation)));
+  const errors = results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []));
+
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Concurrent Workers conformance runs failed');
+  }
+
+  return results.map((result) => result.value);
 }
 
 export async function runWithWorker(worker, operation, stop = stopProcessGroup) {
