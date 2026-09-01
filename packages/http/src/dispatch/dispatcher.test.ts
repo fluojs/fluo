@@ -2783,6 +2783,83 @@ describe('dispatcher runtime', () => {
     expect(events).toEqual(['start', 'match', 'handler', 'finish']);
   });
 
+  it('keeps later observers ordered and terminally complete when an earlier observer throws', async () => {
+    // Given
+    const events: string[] = [];
+    const logger = { error: vi.fn() };
+    const failingObserver = {
+      onHandlerMatched() {
+        throw new Error('matched observer failed');
+      },
+      onRequestError() {
+        throw new Error('error observer failed');
+      },
+      onRequestFinish() {
+        throw new Error('finish observer failed');
+      },
+      onRequestStart() {
+        throw new Error('start observer failed');
+      },
+      onRequestSuccess() {
+        throw new Error('success observer failed');
+      },
+    };
+    const terminalObserver = {
+      onHandlerMatched() {
+        events.push('matched');
+      },
+      onRequestError() {
+        events.push('error');
+      },
+      onRequestFinish() {
+        events.push('finish');
+      },
+      onRequestStart() {
+        events.push('start');
+      },
+      onRequestSuccess() {
+        events.push('success');
+      },
+    };
+
+    @Controller('/observer-order')
+    class ObserverOrderController {
+      @Get('/failure')
+      fail() {
+        throw new Error('handler failed');
+      }
+
+      @Get('/success')
+      succeed() {
+        return { ok: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ObserverOrderController }]),
+      logger,
+      observers: [failingObserver, terminalObserver],
+      rootContainer: new Container().register(ObserverOrderController),
+    });
+
+    // When
+    await dispatcher.dispatch(createRequest('/observer-order/success', 'GET'), createResponse());
+    await dispatcher.dispatch(createRequest('/observer-order/failure', 'GET'), createResponse());
+
+    // Then
+    expect(events).toEqual([
+      'start',
+      'matched',
+      'success',
+      'finish',
+      'start',
+      'matched',
+      'error',
+      'finish',
+    ]);
+    expect(logger.error).toHaveBeenCalledTimes(8);
+  });
+
   it('routes observer and request-scope disposal failures through the dispatcher logger', async () => {
     const logger = {
       error: vi.fn(),

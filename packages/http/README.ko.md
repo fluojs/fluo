@@ -186,6 +186,33 @@ class AdminController {
 
 `onRequestSuccess`는 매칭된 handler와 모든 module-level 및 application-level middleware가 완전히 settle된 뒤에만 호출되며, 여기에는 `await next()` 이후의 작업도 포함됩니다. Middleware가 `next()` 반환 뒤 예외를 던지면 observer는 앞선 success 알림 없이 `onRequestError`를 받습니다. `onRequestFinish`는 어느 outcome에서든 그 뒤에 호출됩니다.
 
+### Access logging
+
+`createAccessLogObserver(...)`는 request-observer lifecycle을 애플리케이션 소유의 structured record로 변환합니다. Start record, dispatch error마다 error record, 그리고 monotonic duration, optional request ID, method, path, matched route, status, outcome(`success`, `handled_error`, `unhandled_error`, `not_found`, `aborted`)을 가진 terminal finish record 하나를 정확히 emit합니다. Observer가 구성되면 native route dispatch는 이 complete lifecycle으로 fallback합니다.
+
+Sink는 의도적으로 consumer-owned입니다. `AccessLogEvent`를 애플리케이션의 structured logger, telemetry pipeline, 또는 운영 데이터 보존 정책으로 전달하세요. Allowlist에 없는 header는 emit하지 않습니다. Allowlist에 넣어도 `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`는 계속 redaction되며, 조직별 header 이름은 `redact`로 추가합니다.
+
+```ts
+import { createAccessLogObserver } from '@fluojs/http';
+
+const accessLogObserver = createAccessLogObserver({
+  clientIdentity: {},
+  headers: {
+    allow: ['user-agent', 'set-cookie'],
+    redact: ['x-tenant-token'],
+  },
+  sink: {
+    emit(event) {
+      structuredLog.write(event);
+    },
+  },
+});
+```
+
+클라이언트 주소가 필요하지 않으면 `clientIdentity`를 생략하세요. `clientIdentity: {}`는 adapter의 direct transport peer를 명시적으로 opt-in하고 forwarding field를 무시합니다. 신뢰한 proxy boundary를 통해 forwarded identity를 사용해야 할 때만 `clientIdentity: { trustProxy: ['10.0.0.0/8'] }`를 사용하세요.
+
+Request ID는 optional입니다. Observer만 설치하면 ID를 만들지 않으므로 observer-only record에는 `requestId`가 없을 수 있습니다. `createCorrelationMiddleware()`를 설치하면 dispatcher가 incoming `x-request-id` 또는 legacy `x-correlation-id`를 채택하고, 둘 다 없을 때 access-log start record 전에 ID를 생성합니다.
+
 ### 비동기 요청 컨텍스트
 
 ```ts
@@ -455,6 +482,7 @@ export class UploadController {
 - **바이트 범위 응답**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **신뢰된 연결 API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
+- **구조화된 접근 로깅**: `createAccessLogObserver`, `CreateAccessLogObserverOptions`, `AccessLogSink`, `AccessLogEvent`, `AccessLogStartEvent`, `AccessLogErrorEvent`, `AccessLogFinishEvent`, `AccessLogOutcome`, `AccessLogHeaderOptions`, `AccessLogRequestFields`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`

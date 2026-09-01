@@ -2,12 +2,13 @@ import type { Token } from '@fluojs/core';
 import type { Container, RequestScopeContainer } from '@fluojs/di';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
+import { resolveRequestId } from '../context/request-id.js';
 import { isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
-import { getRequestHeader } from '../header-helpers.js';
 import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
+import { initializeCorrelationMiddlewareRequestContext } from '../middleware/correlation.js';
 import type {
   Binder,
   ConditionalRequestOptions,
@@ -215,11 +216,7 @@ function readRequestId(request: FrameworkRequest): string | undefined {
     return request.requestId;
   }
 
-  const raw = getRequestHeader(request, 'x-request-id');
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const normalized = value?.trim();
-
-  return normalized ? normalized : undefined;
+  return resolveRequestId(request, false);
 }
 
 function createDispatchContext(
@@ -681,23 +678,6 @@ async function resolveRequestObserver(
   return requestContext.container.resolve(definition as Token<RequestObserver>);
 }
 
-async function notifyObservers(
-  observers: RequestObserverLike[],
-  requestContext: RequestContext,
-  callback: (observer: RequestObserver, context: RequestObservationContext) => Promise<void> | void,
-  handler?: HandlerDescriptor,
-): Promise<void> {
-  const context: RequestObservationContext = {
-    handler,
-    requestContext,
-  };
-
-  for (const definition of observers) {
-    const observer = await resolveRequestObserver(definition, requestContext);
-    await callback(observer, context);
-  }
-}
-
 async function notifyObserversSafely(
   observers: RequestObserverLike[],
   requestContext: RequestContext,
@@ -709,10 +689,18 @@ async function notifyObserversSafely(
     return;
   }
 
-  try {
-    await notifyObservers(observers, requestContext, callback, handler);
-  } catch (error) {
-    logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+  const context: RequestObservationContext = {
+    handler,
+    requestContext,
+  };
+
+  for (const definition of observers) {
+    try {
+      const observer = await resolveRequestObserver(definition, requestContext);
+      await callback(observer, context);
+    } catch (error) {
+      logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+    }
   }
 }
 
@@ -827,7 +815,7 @@ async function dispatchNativeFastRoute(
   fastPathState: DispatcherFastPathState,
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
 ): Promise<boolean> {
-  if (options.conditionalRequest) {
+  if (options.conditionalRequest || (options.observers?.length ?? 0) > 0) {
     return false;
   }
 
@@ -1194,6 +1182,8 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         requestContext,
         response,
       };
+
+      initializeCorrelationMiddlewareRequestContext(options.appMiddleware ?? [], requestContext);
 
       await runWithRequestContext(phaseContext.requestContext, async () => {
         try {

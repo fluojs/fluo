@@ -8,6 +8,7 @@ import {
   isSseMessage,
   waitForSseResponseCompletion,
 } from './sse.js';
+import { isRequestContextAborted } from '../dispatch/request-abort.js';
 
 interface MockSseStream extends FrameworkResponseStream {
   _closed: boolean;
@@ -196,6 +197,19 @@ describe('SseResponse', () => {
     expect(stream.writes).toEqual([]);
     expect(stream.onCloseCalls).toBe(1);
     expect(stream.removeCloseListenerCalls).toBe(1);
+  });
+
+  it('marks a pre-closed stream as cancelled before write-frame admission', () => {
+    const stream = createMockSseStream();
+    const response = createMockResponse(stream);
+    const context = createContext(response);
+    stream._closed = true;
+
+    const sse = new SseResponse(context);
+
+    expect(sse.send('after disconnect')).toBe(false);
+    expect(isRequestContextAborted(context)).toBe(true);
+    expect(stream.writes).toEqual([]);
   });
 
   it('surfaces backpressure from send and comment calls', () => {

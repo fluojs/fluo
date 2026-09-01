@@ -34,6 +34,7 @@ const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isol
 const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
+const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
 const httpByteRangeRuntimeSourcePaths = new Set([
   'packages/http/src/byte-range-response.ts',
   'packages/http/src/dispatch/byte-range-response.ts',
@@ -874,7 +875,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
       );
       return;
     }
-    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+    if (
+      hasChanged(changedFiles, httpConnectionIdentityRegressionTest)
+      || hasChanged(changedFiles, accessLogObserverLifecycleRegressionTest)
+    ) {
       return;
     }
     assert(
