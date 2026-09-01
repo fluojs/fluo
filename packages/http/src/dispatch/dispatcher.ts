@@ -27,6 +27,7 @@ import type {
   InterceptorLike,
   MiddlewareContext,
   MiddlewareLike,
+  MiddlewareSnapshotLike,
   RequestContext,
   RequestObservationContext,
   RequestObserver,
@@ -113,7 +114,7 @@ type FrameworkRequestWithPrincipal = FrameworkRequest & {
 
 interface CompiledMiddlewareScopePlan {
   alwaysRequiresRequestScope: boolean;
-  conditionalDefinitions: MiddlewareLike[];
+  conditionalDefinitions: MiddlewareSnapshotLike[];
 }
 
 interface CompiledDispatchStartPlan {
@@ -255,7 +256,7 @@ function createDispatchContext(
 
   const getWrappedContainer = (): RequestScopeContainer => {
     if (!wrappedContainer) {
-      wrappedContainer = {
+      const wrapped = {
         async resolve<T>(token: Token<T>): Promise<T> {
           const targetContainer = ensurePromoted();
           return targetContainer.resolve(token);
@@ -270,6 +271,21 @@ function createDispatchContext(
           return activeContainer.dispose();
         },
       };
+
+      const presenceAwareContainer = activeContainer as RequestScopeContainer & {
+        has?<T>(token: Token<T>): boolean;
+      };
+
+      if (typeof presenceAwareContainer.has === 'function') {
+        Object.assign(wrapped, {
+          has<T>(token: Token<T>): boolean {
+            const targetContainer = activeContainer as typeof presenceAwareContainer;
+            return targetContainer.has?.(token) ?? false;
+          },
+        });
+      }
+
+      wrappedContainer = wrapped;
     }
     return wrappedContainer;
   };
@@ -309,7 +325,7 @@ function createRequestDispatchScope(rootContainer: Container): DispatchScope {
 }
 
 function activeMiddlewareMayRequireRequestScope(
-  definitions: readonly MiddlewareLike[],
+  definitions: readonly MiddlewareSnapshotLike[],
   request: FrameworkRequest,
 ): boolean {
   return definitions.some((definition) => {
@@ -321,8 +337,8 @@ function activeMiddlewareMayRequireRequestScope(
   });
 }
 
-function compileMiddlewareScopePlan(definitions: readonly MiddlewareLike[]): CompiledMiddlewareScopePlan {
-  const conditionalDefinitions: MiddlewareLike[] = [];
+function compileMiddlewareScopePlan(definitions: readonly MiddlewareSnapshotLike[]): CompiledMiddlewareScopePlan {
+  const conditionalDefinitions: MiddlewareSnapshotLike[] = [];
 
   for (const definition of definitions) {
     if (!isMiddlewareRouteConfig(definition) || definition.routes.length === 0) {
