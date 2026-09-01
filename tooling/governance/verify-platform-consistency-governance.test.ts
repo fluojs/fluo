@@ -188,6 +188,24 @@ describe('enforceContractCompanionUpdates', () => {
       ]),
     ).not.toThrow();
   });
+
+  it('accepts the connection identity regression for its HTTP runtime contract update', async () => {
+    // Given: a bilingual HTTP runtime update backed by its focused connection regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'packages/http/src/connection.test.ts',
+    ];
+
+    // When: the connection contract and its regression change together.
+    // Then: unrelated isolation and manual-SSE regressions are not required.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+  });
 });
 
 describe('collectDirectProcessEnvViolations', () => {

@@ -24,6 +24,23 @@ function assertOptionalBoolean(value: boolean | undefined, field: string): void 
   }
 }
 
+function assertOptionalTrustProxy(value: ThrottlerModuleOptions['trustProxy']): void {
+  if (value === undefined || value === false || typeof value === 'function') {
+    return;
+  }
+
+  if (typeof value === 'number') {
+    assertNonNegativeFiniteInteger(value, 'trustProxy');
+    return;
+  }
+
+  if (Array.isArray(value) && value.every((rule) => typeof rule === 'string' && rule.trim())) {
+    return;
+  }
+
+  throw new Error('Invalid throttler trustProxy: expected false, a hop count, address/CIDR list, or predicate.');
+}
+
 /**
  * Validate one per-handler or module-level throttle policy.
  *
@@ -49,6 +66,7 @@ export function validateThrottlerModuleOptions(options: ThrottlerModuleOptions):
   validateThrottleOptions(options);
   assertOptionalBoolean(options.global, 'global');
   assertOptionalBoolean(options.trustProxyHeaders, 'trustProxyHeaders');
+  assertOptionalTrustProxy(options.trustProxy);
 
   if (options.keyGenerator !== undefined && typeof options.keyGenerator !== 'function') {
     throw new Error('Invalid throttler keyGenerator: expected a function when provided.');
@@ -63,6 +81,7 @@ export function validateThrottlerModuleOptions(options: ThrottlerModuleOptions):
     keyGenerator: options.keyGenerator,
     limit: options.limit,
     store: options.store,
+    trustProxy: options.trustProxy,
     trustProxyHeaders: options.trustProxyHeaders,
     ttl: options.ttl,
   };

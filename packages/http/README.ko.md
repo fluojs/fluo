@@ -311,7 +311,17 @@ JSON write를 시작하지 않는다. HTTP가 `Accept`를 추가할 때 기존 n
 
 ### 프록시 뒤의 속도 제한
 
-`createRateLimitMiddleware(...)`는 기본적으로 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 해당 헤더를 신뢰 가능한 프록시가 덮어쓰는 환경에서만 `trustProxyHeaders: true`를 명시적으로 켜세요. 어댑터가 신뢰 가능한 프록시 체인도 raw socket 식별자도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
+`createRateLimitMiddleware(...)`는 기본적으로 어댑터가 snapshot한 직접 transport 주소로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 명시적인 hop 수, address/CIDR 목록 또는 predicate를 `trustProxy`로 구성하세요. 직접 peer가 해당 policy를 만족하지 않으면 forwarded data는 무시되며, malformed `Forwarded` data는 direct transport identity로 fail-closed 됩니다.
+
+```ts
+import { resolveHttpConnection } from '@fluojs/http';
+
+const connection = resolveHttpConnection(context.request, {
+  trustProxy: ['10.0.0.0/8', '2001:db8:feed::/48'],
+});
+```
+
+`connection`은 immutable이며 선택된 `clientAddress`, direct `remoteAddress`, 신뢰된 `proxyChain`, `protocol`, `secure`, `host`, `hostname`, `port`를 노출합니다. Fetch-only adapter는 Web `Request` contract가 direct address를 제공하지 않으므로 해당 값을 undefined로 둘 수 있습니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없는 fetch-style HTTPS `Request`는 peer, host, port를 갖지 않으며 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다. 기존 `trustProxyHeaders: true` 설정은 광범위한 compatibility 전용이며 새 deployment에는 권장하지 않습니다. deployment boundary는 `trustProxy`로 정확히 기술하세요. 두 설정 모두 해당 header를 다시 쓰는 proxy를 제어할 때만 사용해야 합니다. 어댑터가 신뢰 가능한 proxy chain과 raw socket identity를 모두 제공하지 않는다면 shared fallback bucket 대신 명시적인 `keyResolver`를 설정하세요.
 
 ### 서버 전송 이벤트
 
@@ -442,6 +452,7 @@ export class UploadController {
 - **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Conditional request 타입**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
+- **신뢰된 연결 API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`

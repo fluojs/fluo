@@ -317,7 +317,17 @@ complete phase and fallback contract.
 
 ### Rate limiting behind proxies
 
-`createRateLimitMiddleware(...)` resolves client identity from the raw socket `remoteAddress` by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true` only when your adapter sits behind a trusted proxy that overwrites those headers. If your adapter exposes neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
+`createRateLimitMiddleware(...)` resolves client identity from the adapter-snapshotted direct transport address by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, configure `trustProxy` with an explicit hop count, address/CIDR list, or predicate. Forwarded data is ignored unless the direct peer satisfies that policy; malformed `Forwarded` data fails closed to the direct transport identity.
+
+```ts
+import { resolveHttpConnection } from '@fluojs/http';
+
+const connection = resolveHttpConnection(context.request, {
+  trustProxy: ['10.0.0.0/8', '2001:db8:feed::/48'],
+});
+```
+
+`connection` is immutable and exposes the selected `clientAddress`, direct `remoteAddress`, trusted `proxyChain`, `protocol`, `secure`, `host`, `hostname`, and `port`. Fetch-only adapters may leave the direct address undefined because the Web `Request` contract does not expose it. A fetch-style HTTPS `Request` without an adapter-provided `connection` snapshot or explicit headers has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from its URL. The legacy `trustProxyHeaders: true` setting is broad compatibility only and is not recommended for new deployments; use `trustProxy` to describe the deployment boundary precisely. Only use either setting when you control the proxy that rewrites those headers. If an adapter provides neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
 
 ### Server-sent events
 
@@ -447,6 +457,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Trusted connection API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
 - **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`

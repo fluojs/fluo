@@ -180,6 +180,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
       return request.query;
     },
     body: request.body,
+    connection: request.connection,
     method: request.method,
     params: { ...request.params },
     path: request.path,
