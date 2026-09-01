@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsDefined, IsString } from './decorators.js';
+import { IsDefined, IsNotEmpty, IsOptional, IsString, ValidateIf } from './decorators.js';
 import { DefaultValidator } from './validation.js';
 
 describe('validation migration contract', () => {
   it('skips ordinary validators for null and undefined field values', async () => {
     // Given
     class OptionalByAbsenceDto {
+      @IsNotEmpty()
+      nullableDescription: string | null = null;
+
       @IsString()
       nullableName: string | null = null;
+
+      @IsNotEmpty()
+      undefinedDescription: string | undefined = undefined;
 
       @IsString()
       undefinedName: string | undefined = undefined;
@@ -20,6 +26,50 @@ describe('validation migration contract', () => {
 
     // Then
     await expect(validation).resolves.toBeUndefined();
+  });
+
+  it('skips synchronous ValidateIf predicates for optional missing values', async () => {
+    // Given
+    let predicateRuns = 0;
+    class OptionalConditionalDto {
+      @IsOptional()
+      @ValidateIf(() => {
+        predicateRuns += 1;
+        return true;
+      })
+      @IsString()
+      name: string | undefined = undefined;
+    }
+    const validator = new DefaultValidator();
+
+    // When
+    const validation = validator.validate(new OptionalConditionalDto(), OptionalConditionalDto);
+
+    // Then
+    await expect(validation).resolves.toBeUndefined();
+    expect(predicateRuns).toBe(0);
+  });
+
+  it('skips asynchronous ValidateIf predicates for optional missing values', async () => {
+    // Given
+    let predicateRuns = 0;
+    class OptionalConditionalDto {
+      @IsOptional()
+      @ValidateIf(async () => {
+        predicateRuns += 1;
+        return true;
+      })
+      @IsString()
+      name: string | null = null;
+    }
+    const validator = new DefaultValidator();
+
+    // When
+    const validation = validator.validate(new OptionalConditionalDto(), OptionalConditionalDto);
+
+    // Then
+    await expect(validation).resolves.toBeUndefined();
+    expect(predicateRuns).toBe(0);
   });
 
   it('requires null and undefined field values when IsDefined is present', async () => {
