@@ -140,6 +140,16 @@ class OrdersService {
 
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 
+이 예제는 `Counter`와 `Registry`를 `prom-client`에서 직접 import하므로, 애플리케이션 의존성에
+`prom-client`를 추가하세요.
+
+```bash
+pnpm add prom-client
+```
+
+`@fluojs/metrics`는 내부적으로 `prom-client`를 사용하지만, 그 의존성만으로 애플리케이션에서
+`prom-client`를 지원되는 transitive import로 사용할 수 있는 것은 아닙니다.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
