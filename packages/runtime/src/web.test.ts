@@ -2,13 +2,82 @@ import { describe, expect, it } from 'vitest';
 
 import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
+import type { RequestResponseFactory } from './adapters/request-response-factory.js';
+
 import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
   dispatchWebRequest,
+  startWebRequestDispatch,
 } from './web.js';
 
+function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Timed out waiting for test settlement after ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  });
+}
+
 describe('dispatchWebRequest', () => {
+  it('supports custom response factories without responseReady', async () => {
+    type LegacyWebFrameworkResponse = FrameworkResponse & {
+      toResponse(): Response;
+    };
+
+    const baseFactory = createWebRequestResponseFactory();
+    const factory: RequestResponseFactory<Request, AbortSignal | undefined, LegacyWebFrameworkResponse> = {
+      createRequest: baseFactory.createRequest,
+      createRequestSignal: baseFactory.createRequestSignal,
+      createResponse(rawResponse, rawRequest) {
+        const response = baseFactory.createResponse(rawResponse, rawRequest);
+
+        return {
+          get committed() {
+            return response.committed;
+          },
+          set committed(value) {
+            response.committed = value;
+          },
+          get headers() {
+            return response.headers;
+          },
+          redirect: response.redirect.bind(response),
+          send: response.send.bind(response),
+          setHeader: response.setHeader.bind(response),
+          setStatus: response.setStatus.bind(response),
+          toResponse: response.toResponse.bind(response),
+        };
+      },
+      resolveRequestId: baseFactory.resolveRequestId,
+      writeErrorResponse(_error, response) {
+        return Promise.resolve(response.send(undefined));
+      },
+    };
+
+    const dispatch = startWebRequestDispatch({
+      dispatcher: {
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          await response.send({ compatible: true });
+        },
+      },
+      factory,
+      request: new Request('https://runtime.test/legacy-factory'),
+    });
+
+    const response = await dispatch.response;
+
+    await expect(response.json()).resolves.toEqual({ compatible: true });
+    await expect(dispatch.completion).resolves.toBeUndefined();
+  });
+
   it('exposes Early Hints as unsupported on Web response facades', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {
@@ -210,6 +279,58 @@ describe('dispatchWebRequest', () => {
     expect(response.headers.get('content-type')).toContain('text/event-stream');
     expect(body).toContain('event: ready');
     expect(body).toContain('data: {"ready":true}');
+  });
+
+  it('returns an open native SSE Response before dispatch lifecycle completion and closes on cancellation', async () => {
+    let resolveSse: (sse: SseResponse) => void = () => undefined;
+    const sseCreated = new Promise<SseResponse>((resolve) => {
+      resolveSse = resolve;
+    });
+    let resolveDispatchFinished: () => void = () => undefined;
+    const dispatchFinished = new Promise<void>((resolve) => {
+      resolveDispatchFinished = resolve;
+    });
+
+    const response = await waitForSettlement(dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          const sse = new SseResponse({
+            container: {} as never,
+            metadata: {},
+            request,
+            requestId: 'req-web-open-sse',
+            response: frameworkResponse,
+          });
+
+          sse.send('connected', { event: 'ready' });
+          resolveSse(sse);
+          await sse.completion;
+          resolveDispatchFinished();
+        },
+      },
+      request: new Request('https://runtime.test/open-events', {
+        headers: {
+          accept: 'text/event-stream',
+        },
+      }),
+    }));
+    const sse = await sseCreated;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    if (!response.body) {
+      throw new Error('Expected a native SSE response body.');
+    }
+
+    const reader = response.body.getReader();
+    await expect(reader.read()).resolves.toMatchObject({
+      done: false,
+      value: new TextEncoder().encode('event: ready\ndata: connected\n\n'),
+    });
+    await reader.cancel('client-disconnected');
+    await waitForSettlement(dispatchFinished);
+
+    expect(sse.send('ignored-after-cancel')).toBe(false);
   });
 
   it('rejects oversized streaming request bodies before reading unlimited bytes', async () => {
