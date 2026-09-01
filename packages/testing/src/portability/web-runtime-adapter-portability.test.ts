@@ -280,6 +280,7 @@ function registerWebRuntimePortabilitySuite(
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
+    assertSupportsSingleByteRanges(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
@@ -303,6 +304,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('preserves conditional response validators and body suppression', async () => {
       await harness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range metadata and body slicing', async () => {
+      await harness.assertSupportsSingleByteRanges();
     });
 
     it('preserves query arrays and decoding semantics', async () => {

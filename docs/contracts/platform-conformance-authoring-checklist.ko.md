@@ -31,6 +31,7 @@
 - [ ] MUST: HTTP 어댑터는 `@fluojs/testing/http-adapter-portability`의 `createHttpAdapterPortabilityHarness(...)`를 실행합니다.
 - [ ] MUST: 독립적이고 순서가 보존되는 응답 `Set-Cookie` field를 검증하려면 `assertSupportsPortableResponseCookies()`를 실행합니다.
 - [ ] MUST: `assertSupportsCustomHttpRouteMethods()`로 `QUERY`와 extension HTTP method를 검증합니다.
+- [ ] MUST: `assertSupportsSingleByteRanges()`로 bounded, suffix, open-ended, malformed, multi-range, unsatisfiable, `HEAD`, `POST` range case를 검증합니다.
 - [ ] MUST: `createErrorRepresentationBootstrapOptions`를 구성하고 `assertSupportsHttpErrorRepresentations()`와 `assertDoesNotCommitAbortedHttpErrorRepresentations()`를 모두 실행합니다.
 - [ ] MUST: 손상된 cookie 값을 크래시 없이 보존하고 임의 정규화하지 않습니다.
 - [ ] MUST: raw body 캡처가 켜져 있을 때 JSON과 text 요청의 `rawBody`를 보존합니다.

@@ -50,6 +50,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertSupportsConditionalRequests(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsPortableResponseCookies(): Promise<void>;
+    assertSupportsSingleByteRanges(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
 

@@ -4,6 +4,12 @@
 
 이 문서는 `@fluojs/http`가 구현하고 `@fluojs/runtime`이 조립하는 현재 요청 실행 계약을 정의한다.
 
+## 바이트 범위 계약
+
+conditional-request 평가가 handler 실행을 허용한 뒤 response policy는 `GET` representation과 문서화된 `HEAD` metadata mirror에만 하나의 `Range: bytes=` member를 적용한다. 유효한 bounded, suffix, open-ended member는 `206`을 만들고 malformed 및 multi-range field는 전체 응답을 유지하며 충족 불가능한 member는 `Accept-Ranges: bytes`, `Content-Range: bytes */size`, `Content-Length: 0`을 포함한 body 없는 `416`을 만든다. `POST`, unsafe, custom method는 `Range`를 무시하고 기존 full status, body, metadata를 유지한다. `If-Range`는 선택된 representation validator를 재사용하며 conditional resolution을 다시 실행하지 않는다. `HEAD`는 portable stream을 소비하지 않으면서 GET과 같은 range status와 header를 사용한다. Node의 partial response는 `Content-Range`와 `Content-Length`가 전송 representation byte를 나타내도록 identity encoding을 사용한다.
+
+`createByteRangeResponse(...)`는 application-owned byte 또는 정확한 representation size를 가진 stream factory를 받는다. 이 API는 filesystem resource를 열거나, stat, seek, size 계산, 소유하지 않는다. application이 정확한 size와 source를 제공하며 multi-range response construction은 의도적으로 지원하지 않는다.
+
 ## Request Lifecycle
 
 1. 어댑터는 정규화된 `FrameworkRequest`와 `FrameworkResponse`를 `Dispatcher.dispatch(...)`에 전달하며, host가 요청 취소를 노출한다면 `signal` 또는 `isAborted()`를 포함한다.

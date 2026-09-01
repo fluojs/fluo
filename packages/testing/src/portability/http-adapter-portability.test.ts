@@ -79,6 +79,7 @@ interface PortabilityAssertions {
   assertReportsConfiguredHostInStartupLogs(): Promise<void>;
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+  assertSupportsSingleByteRanges(): Promise<void>;
   assertSupportsHttpErrorRepresentations(): Promise<void>;
   assertSupportsCustomHttpRouteMethods(): Promise<void>;
   assertSupportsPortableResponseCookies(): Promise<void>;
@@ -174,6 +175,10 @@ function registerPortabilitySuite(
 
     it('executes QUERY and extension methods through the real listener fallback', async () => {
       await harness.assertSupportsCustomHttpRouteMethods();
+    });
+
+    it('preserves single byte range metadata and body slicing', async () => {
+      await harness.assertSupportsSingleByteRanges();
     });
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {

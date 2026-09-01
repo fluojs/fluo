@@ -13,6 +13,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [Response Cookies](#response-cookies)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
+- [Byte Range Responses](#byte-range-responses)
 - [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
 - [Public API](#public-api)
@@ -492,6 +493,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Trusted connection API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
 - **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
+- **Byte-range responses**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
@@ -542,6 +544,23 @@ const app = await bootstrapNodeApplication(AppModule, {
 Return `{ exists: false }` when no representation exists. Return `{ exists: true }` when it exists but intentionally has no validators. The dispatcher evaluates this resolver after application/module middleware and guards, so conditional `304` and `412` responses never bypass authorization or audit logic. It accepts only valid entity-tag lists and HTTP-date forms; malformed conditional fields are ignored.
 
 The dispatcher owns RFC 9110 precedence and comparison: a successful `If-Match` skips only `If-Unmodified-Since`, then `If-None-Match` still takes precedence over `If-Modified-Since`; `If-Match` uses strong comparison and `If-None-Match` weak comparison. `304` and `412` are bodyless and retain `ETag`/`Last-Modified`, including redirect and supported custom response-writer paths. For the same selected representation, `HEAD` and `GET` use the same conditional result and framework-generated `HEAD` bodies are suppressed. An explicit `@Head` route remains an independent route; custom response writers own their body emission and must preserve the `HEAD` bodyless contract themselves. See the [HTTP Runtime Contract](../../docs/architecture/http-runtime.md).
+
+## Byte Range Responses
+
+Returning a `Uint8Array` or `ArrayBuffer` enables RFC single-range `bytes` responses automatically for `GET` and the `HEAD` metadata mirror. A valid range produces `206`, `Accept-Ranges: bytes`, `Content-Range`, and the exact identity-byte `Content-Length`; malformed or multi-range fields fall back to the complete representation, while unsatisfiable ranges return bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, and `Content-Length: 0`. `POST`, unsafe, and custom methods ignore `Range` and retain their ordinary full status, body, and metadata.
+
+Use `createByteRangeResponse(...)` for a portable `ReadableStream` and provide its exact full size. Pass a factory when `HEAD` must not construct the stream:
+
+```ts
+import { createByteRangeResponse } from '@fluojs/http';
+
+return createByteRangeResponse(
+  () => file.stream(),
+  { contentType: 'image/png', size: file.size },
+);
+```
+
+The dispatcher evaluates normal conditional requests first. `If-Range` then permits a partial response only for an exact strong `ETag` or a current `Last-Modified` date; otherwise it sends the complete representation. Partial responses preserve identity bytes and bypass Node compression so range offsets and lengths remain meaningful. `HEAD` preserves GET status and metadata without opening the stream. The application owns its bytes, exact size, and any filesystem resource: `createByteRangeResponse(...)` never opens, stats, seeks, sizes, or closes files, and it intentionally does not construct multi-range responses.
 
 ## Related Packages
 
