@@ -62,7 +62,8 @@ export interface DispatchWebRequestOptions extends CreateWebRequestResponseFacto
  * Represents a framework response that can be materialized as a native Web `Response`.
  */
 export interface WebFrameworkResponse extends FrameworkResponse {
-  readonly responseReady: Promise<Response>;
+  /** @internal Optional early response signal provided by the built-in Web response facade. */
+  readonly responseReady?: Promise<Response>;
   toResponse(): Response;
 }
 
@@ -371,12 +372,16 @@ export function startWebRequestDispatch({
     rawResponse: request.signal,
   });
 
+  const responseReady = dispatch.response.responseReady;
+
   return {
     completion: dispatch.completion.then(() => undefined),
-    response: Promise.race([
-      dispatch.response.responseReady,
-      dispatch.completion.then((frameworkResponse) => frameworkResponse.toResponse()),
-    ]),
+    response: responseReady
+      ? Promise.race([
+          responseReady,
+          dispatch.completion.then((frameworkResponse) => frameworkResponse.toResponse()),
+        ])
+      : dispatch.completion.then((frameworkResponse) => frameworkResponse.toResponse()),
   };
 }
 

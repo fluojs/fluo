@@ -86,6 +86,9 @@ export async function executeFastPath(
 
     if (result instanceof SseResponse) {
       await waitForSseResponseCompletion(result);
+      if (isRequestAborted(request)) {
+        throw new RequestAbortedError();
+      }
     } else if (!response.committed) {
       const writeResult = writeSuccessResponse(handler, request, response, result, contentNegotiation, requestContext);
 

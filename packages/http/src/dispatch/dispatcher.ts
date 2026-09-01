@@ -743,6 +743,7 @@ async function dispatchMatchedHandler(
 
   if (result instanceof SseResponse) {
     await waitForSseResponseCompletion(result);
+    ensureRequestNotAborted(requestContext.request);
   } else if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!requestContext.response.committed) {

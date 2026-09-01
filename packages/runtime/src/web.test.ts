@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
+import type { RequestResponseFactory } from './adapters/request-response-factory.js';
+
 import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
   dispatchWebRequest,
+  startWebRequestDispatch,
 } from './web.js';
 
 function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
@@ -24,6 +27,57 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
+  it('supports custom response factories without responseReady', async () => {
+    type LegacyWebFrameworkResponse = FrameworkResponse & {
+      toResponse(): Response;
+    };
+
+    const baseFactory = createWebRequestResponseFactory();
+    const factory: RequestResponseFactory<Request, AbortSignal | undefined, LegacyWebFrameworkResponse> = {
+      createRequest: baseFactory.createRequest,
+      createRequestSignal: baseFactory.createRequestSignal,
+      createResponse(rawResponse, rawRequest) {
+        const response = baseFactory.createResponse(rawResponse, rawRequest);
+
+        return {
+          get committed() {
+            return response.committed;
+          },
+          set committed(value) {
+            response.committed = value;
+          },
+          get headers() {
+            return response.headers;
+          },
+          redirect: response.redirect.bind(response),
+          send: response.send.bind(response),
+          setHeader: response.setHeader.bind(response),
+          setStatus: response.setStatus.bind(response),
+          toResponse: response.toResponse.bind(response),
+        };
+      },
+      resolveRequestId: baseFactory.resolveRequestId,
+      writeErrorResponse(_error, response) {
+        return Promise.resolve(response.send(undefined));
+      },
+    };
+
+    const dispatch = startWebRequestDispatch({
+      dispatcher: {
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          await response.send({ compatible: true });
+        },
+      },
+      factory,
+      request: new Request('https://runtime.test/legacy-factory'),
+    });
+
+    const response = await dispatch.response;
+
+    await expect(response.json()).resolves.toEqual({ compatible: true });
+    await expect(dispatch.completion).resolves.toBeUndefined();
+  });
+
   it('exposes Early Hints as unsupported on Web response facades', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {

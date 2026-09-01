@@ -89,9 +89,19 @@ function createStream(): FrameworkResponseStream & { closeCalls: number } {
 }
 
 describe('fast-path manual SSE lifecycle', () => {
-  it('keeps dispatch pending until a delayed manual SSE closes', async () => {
+  it.each([
+    {
+      close: (_abortController: AbortController, sse: SseResponse) => sse.close(),
+      label: 'the manual SSE closes normally',
+    },
+    {
+      close: (abortController: AbortController, _sse: SseResponse) => abortController.abort(new Error('client disconnected')),
+      label: 'the client aborts after dispatcher waiting begins',
+    },
+  ])('keeps a delayed fast-path manual SSE pending until $label', async ({ close }) => {
     const abortController = new AbortController();
     const stream = createStream();
+    const dispatcherWaiting = createDeferred<void>();
     const handlerReturned = createDeferred<SseResponse>();
 
     @Controller('/events')
@@ -99,6 +109,15 @@ describe('fast-path manual SSE lifecycle', () => {
       @Get('/')
       stream(_input: undefined, context: RequestContext): SseResponse {
         const sse = new SseResponse(context);
+        const completion = sse.completion;
+
+        Object.defineProperty(sse, 'completion', {
+          configurable: true,
+          get() {
+            dispatcherWaiting.resolve();
+            return completion;
+          },
+        });
 
         handlerReturned.resolve(sse);
         return sse;
@@ -116,13 +135,14 @@ describe('fast-path manual SSE lifecycle', () => {
     });
 
     const sse = await handlerReturned.promise;
+    await dispatcherWaiting.promise;
 
     expect(getDispatcherFastPathStats(dispatcher)?.routes).toMatchObject([
       { executionPath: 'fast', routeId: 'GET:/events' },
     ]);
     expect(dispatchCompleted).toBe(false);
 
-    sse.close();
+    close(abortController, sse);
     await dispatch;
 
     expect(dispatchCompleted).toBe(true);

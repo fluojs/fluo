@@ -23,6 +23,7 @@ interface ManualSseStream extends FrameworkResponseStream {
 interface ManualSseFixture {
   readonly abortController: AbortController;
   readonly dispatch: Promise<void>;
+  readonly dispatcherWaiting: Promise<void>;
   readonly events: string[];
   readonly sse: Promise<SseResponse>;
   readonly stream: ManualSseStream;
@@ -162,6 +163,7 @@ function createFixture(closeError?: Error): ManualSseFixture {
   const events: string[] = [];
   const stream = createStream(closeError);
   const response = createResponse(stream);
+  const dispatcherWaiting = createDeferred<void>();
   let resolveSse: (sse: SseResponse) => void = () => undefined;
   const sse = new Promise<SseResponse>((resolve) => {
     resolveSse = resolve;
@@ -173,6 +175,15 @@ function createFixture(closeError?: Error): ManualSseFixture {
     async stream(_input: undefined, context: RequestContext): Promise<SseResponse> {
       await context.container.resolve(RequestScopedDisposable);
       const response = new SseResponse(context);
+      const completion = response.completion;
+
+      Object.defineProperty(response, 'completion', {
+        configurable: true,
+        get() {
+          dispatcherWaiting.resolve();
+          return completion;
+        },
+      });
 
       events.push('handler');
       resolveSse(response);
@@ -206,6 +217,7 @@ function createFixture(closeError?: Error): ManualSseFixture {
   return {
     abortController,
     dispatch: dispatcher.dispatch(createRequest(abortController.signal), response),
+    dispatcherWaiting: dispatcherWaiting.promise,
     events,
     sse,
     stream,
@@ -221,6 +233,7 @@ describe('manual SSE lifecycle', () => {
 
       // When
       await fixture.sse;
+      await fixture.dispatcherWaiting;
 
       // Then
       expect(fixture.events).toEqual(['handler']);
@@ -237,6 +250,7 @@ describe('manual SSE lifecycle', () => {
   it('finishes the full request scope after a manual stream close throws', async () => {
     const fixture = createFixture(new Error('stream close failed'));
     const sse = await fixture.sse;
+    await fixture.dispatcherWaiting;
 
     expect(() => sse.close()).toThrow('stream close failed');
     await fixture.dispatch;
