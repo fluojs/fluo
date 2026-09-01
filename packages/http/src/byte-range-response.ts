@@ -42,6 +42,10 @@ export interface ByteRangeResponseOptions {
  *
  * `Uint8Array` and `ArrayBuffer` values can be returned directly from a
  * handler. Use this helper when returning a portable `ReadableStream`.
+ *
+ * @param source Byte representation or stream factory to expose with range support.
+ * @param options Optional content type and required stream size metadata.
+ * @returns A registered response entry that applies single-byte-range semantics.
  */
 export function createByteRangeResponse(
   source: ByteRangeResponseSource,
@@ -60,7 +64,12 @@ export function createByteRangeResponse(
   );
 }
 
-/** Returns whether a normal handler result is an automatically range-capable byte value. */
+/**
+ * Returns whether a normal handler result is an automatically range-capable byte value.
+ *
+ * @param value Value to test for a byte representation.
+ * @returns `true` when the value is an `ArrayBuffer` or `Uint8Array`; otherwise `false`.
+ */
 export function isByteRangeByteSource(value: unknown): value is ArrayBuffer | Uint8Array {
   return value instanceof ArrayBuffer || value instanceof Uint8Array;
 }
@@ -70,6 +79,10 @@ export function isByteRangeByteSource(value: unknown): value is ArrayBuffer | Ui
  *
  * Explicit byte-range responses retain their full-response metadata behavior;
  * this only guards automatic range handling for plain handler values.
+ *
+ * @param request Incoming request whose `Range` and `If-Range` fields are evaluated.
+ * @param validators Selected response validators used to evaluate `If-Range`.
+ * @returns `true` when the request has a valid byte range and `If-Range` permits it.
  */
 export function shouldApplyByteRange(
   request: FrameworkRequest,

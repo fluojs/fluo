@@ -304,6 +304,10 @@ function isSafeMethod(method: string): boolean {
  * strong match; valid dates match when the selected representation has not
  * changed since that instant. All malformed or unavailable validators fall
  * back to the complete representation.
+ *
+ * @param request Incoming request whose `If-Range` field is evaluated.
+ * @param validators Selected response validators used to match `If-Range`.
+ * @returns `true` when `If-Range` is absent or matches the selected representation.
  */
 export function matchesIfRange(
   request: ConditionalRequestContext['request'],
