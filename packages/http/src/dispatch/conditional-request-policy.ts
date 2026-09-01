@@ -298,6 +298,45 @@ function isSafeMethod(method: string): boolean {
 }
 
 /**
+ * Determines whether `If-Range` permits applying a requested byte range.
+ *
+ * A missing field permits the range. Entity-tag validation requires an exact
+ * strong match; valid dates match when the selected representation has not
+ * changed since that instant. All malformed or unavailable validators fall
+ * back to the complete representation.
+ *
+ * @param request Incoming request whose `If-Range` field is evaluated.
+ * @param validators Selected response validators used to match `If-Range`.
+ * @returns `true` when `If-Range` is absent or matches the selected representation.
+ */
+export function matchesIfRange(
+  request: ConditionalRequestContext['request'],
+  validators: ResponseValidators | undefined,
+): boolean {
+  const ifRange = readFirstNonEmptyRequestHeaderValue(request, 'if-range');
+
+  if (!ifRange) {
+    return true;
+  }
+
+  const tags = parseEntityTagList(ifRange);
+
+  if (tags.kind === 'tags' && tags.tags.length === 1) {
+    const [tag] = tags.tags;
+    return tag?.strength === 'strong'
+      && validators?.etag?.strength === 'strong'
+      && tag.opaqueValue === validators.etag.opaqueValue;
+  }
+
+  const ifRangeDate = parseHttpDate(ifRange);
+  const lastModified = normalizeLastModified(validators?.lastModified);
+
+  return ifRangeDate !== undefined
+    && lastModified !== undefined
+    && lastModified <= ifRangeDate;
+}
+
+/**
  * Resolve the RFC validator precedence result before the selected route executes.
  *
  * @param options Dispatcher conditional request configuration.

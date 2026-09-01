@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   Controller,
+  createByteRangeResponse,
   createDispatcher,
   createHandlerMapping,
   Get,
@@ -100,6 +101,48 @@ describe('conditional request policy', () => {
 
     // Then: RFC validator precedence rejects before executing the route.
     expect(response.statusCode).toBe(412);
+    expect(handlerCalls).toBe(0);
+  });
+
+  it('evaluates conditional validators before applying an If-Range byte response', async () => {
+    let handlerCalls = 0;
+
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        handlerCalls += 1;
+        return createByteRangeResponse(new Uint8Array([0, 1, 2, 3]));
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+            },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const response = createResponse();
+
+    // Given: a fresh cache validator alongside a satisfiable range and If-Range validator.
+    // When: the dispatcher receives the request.
+    await dispatcher.dispatch(createRequest('GET', {
+      'if-none-match': '"resource-v1"',
+      'if-range': '"resource-v1"',
+      range: 'bytes=0-3',
+    }), response);
+
+    // Then: conditional evaluation short-circuits before the range response policy runs.
+    expect(response.statusCode).toBe(304);
+    expect(response.headers['Content-Range']).toBeUndefined();
     expect(handlerCalls).toBe(0);
   });
 

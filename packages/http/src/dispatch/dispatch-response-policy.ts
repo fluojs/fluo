@@ -6,6 +6,11 @@ import type {
   ResponseFormatter,
 } from '../types.js';
 import {
+  createByteRangeResponse,
+  isByteRangeByteSource,
+  shouldApplyByteRange,
+} from '../byte-range-response.js';
+import {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
   FRAMEWORK_RESPONSE_WRITER,
   type FrameworkResponseValueFinalizer,
@@ -179,7 +184,14 @@ export async function writeSuccessResponse(
   const responseValue = responseValueFinalizer
     ? await responseValueFinalizer({ handler, request, requestContext, response, value })
     : value;
-  const responseWriter = readFrameworkResponseWriter(responseValue);
+  const writerValue = readFrameworkResponseWriter(responseValue)
+    ? responseValue
+    : isByteRangeByteSource(responseValue) && shouldApplyByteRange(request, validators)
+      ? createByteRangeResponse(responseValue)
+      : undefined;
+  const responseWriter = writerValue
+    ? readFrameworkResponseWriter(writerValue)
+    : undefined;
 
   if (responseWriter) {
     applyResponseValidators(response, validators);
@@ -200,6 +212,8 @@ export async function writeSuccessResponse(
       request,
       requestContext,
       response,
+      validators,
+      value: writerValue,
     });
   }
 
