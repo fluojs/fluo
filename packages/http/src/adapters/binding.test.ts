@@ -1,15 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Token } from '@fluojs/core';
-
-import {
-  Convert,
-  FromBody,
-  FromCookie,
-  FromHeader,
-  FromPath,
-  FromQuery,
-  Optional,
-} from '../decorators.js';
+import { Container, type RequestScopeContainer } from '@fluojs/di';
 import {
   ArrayMinSize,
   DefaultValidator as BaseDefaultValidator,
@@ -20,10 +10,21 @@ import {
   ValidateIf,
   ValidateNested,
 } from '@fluojs/validation';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  Convert,
+  FromBody,
+  FromCookie,
+  FromHeader,
+  FromPath,
+  FromQuery,
+  Optional,
+} from '../decorators.js';
+import type { ArgumentResolverContext, FrameworkRequest, FrameworkResponse } from '../types.js';
 import { DefaultBinder } from './binding.js';
 import { getCompiledDtoBindingPlan } from './dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from './dto-validation-adapter.js';
-import type { ArgumentResolverContext, FrameworkRequest, FrameworkResponse } from '../types.js';
 
 function createRequest(overrides: Partial<FrameworkRequest> = {}): FrameworkRequest {
   return {
@@ -73,7 +74,18 @@ function createContext(
   resolve: <T>(token: Token<T>) => Promise<T> = async () => {
     throw new Error('not used');
   },
+  has: (token: Token) => boolean = () => false,
 ): ArgumentResolverContext {
+  const container: RequestScopeContainer & { has(token: Token): boolean } = {
+    async dispose() {
+      return undefined;
+    },
+    has,
+    async resolve(token) {
+      return resolve(token);
+    },
+  };
+
   return {
     handler: {
       controllerToken: class ExampleController {},
@@ -91,14 +103,7 @@ function createContext(
       },
     },
     requestContext: {
-      container: {
-        async dispose() {
-          return undefined;
-        },
-        async resolve(token) {
-          return resolve(token);
-        },
-      },
+      container,
       metadata: {},
       request,
       response: createResponse(),
@@ -352,6 +357,162 @@ describe('DefaultBinder', () => {
     expect(first.id).toBe('first:42');
     expect(second.id).toBe('second:42');
     expect(resolveCalls).toEqual(['first', 'second']);
+  });
+
+  it('propagates registered converter provider failures without direct construction', async () => {
+    // Given
+    let constructorCalls = 0;
+    const providerFailure = new Error('registered converter failed');
+
+    class RegisteredConverter {
+      constructor() {
+        constructorCalls += 1;
+      }
+
+      convert(value: unknown) {
+        return value;
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = '';
+    }
+
+    const binder = new DefaultBinder([RegisteredConverter]);
+
+    // When
+    const binding = binder.bind(
+      SearchUsersRequest,
+      createContext(createRequest({ query: { id: '42' } }), async <T>(token: Token<T>) => {
+        expect(token).toBe(RegisteredConverter);
+        throw providerFailure;
+      }, (token) => token === RegisteredConverter),
+    );
+
+    // Then
+    await expect(binding).rejects.toBe(providerFailure);
+    expect(constructorCalls).toBe(0);
+  });
+
+  it('resolves class converters through request facades without registration checks', async () => {
+    // Given
+    const directConstructionFailure = new Error('must resolve through the facade');
+    const resolvedConverter = {
+      convert(value: unknown) {
+        return `resolved:${String(value)}`;
+      },
+    };
+
+    class FacadeConverter {
+      constructor() {
+        throw directConstructionFailure;
+      }
+
+      convert(value: unknown) {
+        return value;
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = '';
+    }
+
+    const context = createContext(
+      createRequest({ query: { id: '42' } }),
+      async <T>(token: Token<T>) => {
+        expect(token).toBe(FacadeConverter);
+        return resolvedConverter as T;
+      },
+    );
+    const resolve = context.requestContext.container.resolve.bind(context.requestContext.container);
+    const container: RequestScopeContainer = {
+      async dispose() {
+        return undefined;
+      },
+      async resolve<T>(token: Token<T>) {
+        return resolve(token);
+      },
+    };
+    context.requestContext.container = container;
+    const binder = new DefaultBinder([FacadeConverter]);
+
+    // When
+    const bound = (await binder.bind(SearchUsersRequest, context)) as SearchUsersRequest;
+
+    // Then
+    expect(bound.id).toBe('resolved:42');
+  });
+
+  it('directly constructs explicitly unregistered converter classes', async () => {
+    // Given
+    let constructorCalls = 0;
+
+    class UnregisteredConverter {
+      constructor() {
+        constructorCalls += 1;
+      }
+
+      convert(value: unknown) {
+        return Number(value);
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    const binder = new DefaultBinder([UnregisteredConverter]);
+
+    // When
+    const bound = (await binder.bind(
+      SearchUsersRequest,
+      createContext(createRequest({ query: { id: '42' } })),
+    )) as SearchUsersRequest;
+
+    // Then
+    expect(bound.id).toBe(42);
+    expect(constructorCalls).toBe(1);
+  });
+
+  it('uses the request container for request-scoped converter disposal', async () => {
+    // Given
+    const disposalEvents: string[] = [];
+
+    class RequestScopedConverter {
+      convert(value: unknown) {
+        return `converted:${String(value)}`;
+      }
+
+      onDestroy() {
+        disposalEvents.push('destroyed');
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = '';
+    }
+
+    const root = new Container().register({
+      provide: RequestScopedConverter,
+      scope: 'request',
+      useClass: RequestScopedConverter,
+    });
+    const requestScope = root.createRequestScope();
+    const binder = new DefaultBinder([RequestScopedConverter]);
+    const context = createContext(createRequest({ query: { id: '42' } }));
+    context.requestContext.container = requestScope;
+
+    // When
+    const bound = (await binder.bind(SearchUsersRequest, context)) as SearchUsersRequest;
+    await requestScope.dispose();
+
+    // Then
+    expect(bound.id).toBe('converted:42');
+    expect(disposalEvents).toEqual(['destroyed']);
   });
 });
 
