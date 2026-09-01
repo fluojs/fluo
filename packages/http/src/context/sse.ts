@@ -198,16 +198,18 @@ export class SseResponse {
     }
 
     this.closed = true;
-    this.context.request.signal?.removeEventListener('abort', this.onAbort);
-    this.removeCloseListener?.();
-    this.removeCloseListener = undefined;
+    try {
+      this.context.request.signal?.removeEventListener('abort', this.onAbort);
+      this.removeCloseListener?.();
+      this.removeCloseListener = undefined;
 
-    if (!this.stream.closed) {
-      this.stream.close();
+      if (!this.stream.closed) {
+        this.stream.close();
+      }
+    } finally {
+      this.context.response.committed = true;
+      this.resolveCompletion();
     }
-
-    this.context.response.committed = true;
-    this.resolveCompletion();
   }
 
   private writeFrame(frame: string): boolean {

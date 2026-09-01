@@ -1,4 +1,4 @@
-import { Container } from '@fluojs/di';
+import { Container, Scope } from '@fluojs/di';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -7,7 +7,13 @@ import type {
   FrameworkResponseStream,
   RequestContext,
 } from '../index.js';
-import { Controller, createDispatcher, createHandlerMapping, Sse, SseResponse } from '../index.js';
+import {
+  Controller,
+  createDispatcher,
+  createHandlerMapping,
+  Sse,
+  SseResponse,
+} from '../index.js';
 
 interface ManualSseStream extends FrameworkResponseStream {
   closeCalls: number;
@@ -22,9 +28,24 @@ interface ManualSseFixture {
   readonly stream: ManualSseStream;
 }
 
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T | PromiseLike<T>): void;
+}
+
 interface CloseCase {
   readonly close: (fixture: ManualSseFixture) => Promise<void>;
+  readonly events: readonly string[];
   readonly label: string;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return { promise, resolve };
 }
 
 const CLOSE_CASES = [
@@ -32,31 +53,30 @@ const CLOSE_CASES = [
     async close(fixture: ManualSseFixture): Promise<void> {
       (await fixture.sse).close();
     },
+    events: ['handler', 'success', 'finish', 'destroy'],
     label: 'the controller closes it normally',
   },
   {
     async close(fixture: ManualSseFixture): Promise<void> {
       fixture.abortController.abort(new Error('client disconnected'));
     },
+    events: ['handler', 'finish', 'destroy'],
     label: 'the request aborts',
+  },
+  {
+    async close(fixture: ManualSseFixture): Promise<void> {
+      fixture.stream.close();
+    },
+    events: ['handler', 'success', 'finish', 'destroy'],
+    label: 'the raw response stream closes',
   },
 ] as const satisfies readonly CloseCase[];
 
-class LifecycleContainer extends Container {
-  constructor(private readonly events: string[]) {
-    super();
-  }
+class RequestScopedDisposable {
+  constructor(private readonly events: string[]) {}
 
-  override createRequestScope(): Container {
-    const scope = super.createRequestScope();
-    const dispose = scope.dispose.bind(scope);
-
-    scope.dispose = async () => {
-      this.events.push('dispose');
-      await dispose();
-    };
-
-    return scope;
+  onDestroy(): void {
+    this.events.push('destroy');
   }
 }
 
@@ -100,7 +120,7 @@ function createResponse(stream: ManualSseStream): FrameworkResponse {
   };
 }
 
-function createStream(): ManualSseStream {
+function createStream(closeError?: Error): ManualSseStream {
   let closed = false;
   let closeListener: (() => void) | undefined;
 
@@ -113,6 +133,10 @@ function createStream(): ManualSseStream {
       closed = true;
       this.closeCalls += 1;
       closeListener?.();
+
+      if (closeError) {
+        throw closeError;
+      }
     },
     closeCalls: 0,
     get closed() {
@@ -133,10 +157,10 @@ function createStream(): ManualSseStream {
   };
 }
 
-function createFixture(): ManualSseFixture {
+function createFixture(closeError?: Error): ManualSseFixture {
   const abortController = new AbortController();
   const events: string[] = [];
-  const stream = createStream();
+  const stream = createStream(closeError);
   const response = createResponse(stream);
   let resolveSse: (sse: SseResponse) => void = () => undefined;
   const sse = new Promise<SseResponse>((resolve) => {
@@ -146,7 +170,8 @@ function createFixture(): ManualSseFixture {
   @Controller('/events')
   class ManualSseController {
     @Sse('/')
-    stream(_input: undefined, context: RequestContext): SseResponse {
+    async stream(_input: undefined, context: RequestContext): Promise<SseResponse> {
+      await context.container.resolve(RequestScopedDisposable);
       const response = new SseResponse(context);
 
       events.push('handler');
@@ -155,7 +180,14 @@ function createFixture(): ManualSseFixture {
     }
   }
 
-  const root = new LifecycleContainer(events).register(ManualSseController);
+  const root = new Container().register(
+    {
+      provide: RequestScopedDisposable,
+      scope: Scope.REQUEST,
+      useFactory: () => new RequestScopedDisposable(events),
+    },
+    ManualSseController,
+  );
   const dispatcher = createDispatcher({
     handlerMapping: createHandlerMapping([{ controllerToken: ManualSseController }]),
     observers: [
@@ -182,14 +214,13 @@ function createFixture(): ManualSseFixture {
 
 describe('manual SSE lifecycle', () => {
   it.each(CLOSE_CASES)(
-    'keeps request lifecycle resources active until $label',
-    async ({ close }) => {
+    'keeps full-path lifecycle resources active until $label',
+    async ({ close, events }) => {
       // Given
       const fixture = createFixture();
 
       // When
       await fixture.sse;
-      await new Promise<void>(setImmediate);
 
       // Then
       expect(fixture.events).toEqual(['handler']);
@@ -197,9 +228,21 @@ describe('manual SSE lifecycle', () => {
       await close(fixture);
       await fixture.dispatch;
 
-      expect(fixture.events).toEqual(['handler', 'success', 'finish', 'dispose']);
+      expect(fixture.events).toEqual(events);
       expect(fixture.stream.closeCalls).toBe(1);
       expect(fixture.stream.removeCloseListenerCalls).toBe(1);
     },
   );
+
+  it('finishes the full request scope after a manual stream close throws', async () => {
+    const fixture = createFixture(new Error('stream close failed'));
+    const sse = await fixture.sse;
+
+    expect(() => sse.close()).toThrow('stream close failed');
+    await fixture.dispatch;
+
+    expect(fixture.events).toEqual(['handler', 'success', 'finish', 'destroy']);
+    expect(fixture.stream.closeCalls).toBe(1);
+    expect(fixture.stream.removeCloseListenerCalls).toBe(1);
+  });
 });
