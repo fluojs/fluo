@@ -10,6 +10,8 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 
 NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에서 시작한다. i18n handoff는 각 custom resolver를 `HttpLocaleResolver`로 mapping하고, `FluoFactory.create(...)`에 application-owned `Middleware` 하나를 등록하며, 선택된 locale은 현재 `RequestContext`에만 저장한다. global locale fallback은 없다.
 
+NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 one-argument `NestFactory.create(AppModule)` bootstrap을 재작성하며, 지원하지 않는 bootstrap variant는 diagnostic과 함께 변경하지 않고 명시적으로 선택한 adapter-independent transform은 bootstrap을 변경하지 않는다.
+
 ## Hard Constraints
 
 - NEVER use `experimentalDecorators`.
@@ -37,6 +39,8 @@ Changesets 소비, 생성된 패키지 version delta, Official Node.js 지원 �
 
 ## Package Families
 
+NestJS codemod import-safety discoverability는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), `packages/cli/src/transforms/nestjs-migrate.ts`, 해당 regression test에 나뉘어 있습니다. Migration이 `Module` 같은 runtime decorator를 기존 type-only target import로 옮길 때 기존 type specifier를 보존하면서 runtime clause를 출력합니다(예: `import { type Existing, Module } from '@fluojs/core'`). Codemod는 NestJS runtime import가 전혀 남지 않는다고 주장하지 않고 `Optional` 같은 변환되지 않은 NestJS value binding을 수동 검토용으로 유지합니다.
+
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
 | Core | 데코레이터, DI, 설정, i18n, 런타임 오케스트레이션 | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
@@ -58,7 +62,7 @@ CQRS dispatch context discoverability는 `packages/cqrs/README.ko.md`, [`docs/ar
 
 Core request-pipeline metadata seam discoverability는 `packages/core/README.ko.md`와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `@fluojs/core/request-pipeline`은 `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` 같은 first-party request-pipeline 패키지가 `@fluojs/core/internal`을 직접 import하지 않고 DTO validation, binding, 표준 데코레이터 metadata bag 접근을 공유하기 위한 문서화된 package-integration seam이다. 애플리케이션 코드는 package-integration 계약이 명시적으로 적용되는 경우가 아니라면 계속 root `@fluojs/core` 데코레이터와 공개 helper를 사용해야 한다.
 
-Core DI 및 NestJS migration discoverability는 `packages/core/README.ko.md`, `packages/di/README.ko.md`, `packages/runtime/README.ko.md`, [`docs/architecture/di-and-modules.ko.md`](./architecture/di-and-modules.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch04-decorators-intro.ko.md`](../book/beginner/ch04-decorators-intro.ko.md), [`book/advanced/ch16-custom-package.ko.md`](../book/advanced/ch16-custom-package.ko.md)로 나뉜다. `@Inject(...)`는 속성 또는 매개변수 데코레이터가 아니라 생성자 토큰을 매개변수 순서대로 선언하는 클래스 데코레이터이고, 순환 모듈 import는 모듈 그래프 컴파일 중 거부되므로 공유 프로바이더를 별도 모듈이나 패키지로 추출해 제거해야 하며, `forwardRef(...)`는 클래스 수준 `@Inject(...)` 또는 프로바이더 `inject` 안에서 의존성 토큰 하나의 조회만 지연할 뿐 모듈 순환이나 실제 생성자 순환을 해석 가능하게 만들지 않는다. 또한 `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 static import가 bootstrap module body보다 먼저 평가되므로, preload entrypoint에서 `ensureMetadataSymbol()`을 실행한 뒤 decorated application graph를 dynamic import해야 한다.
+Core DI 및 NestJS migration discoverability는 `packages/core/README.ko.md`, `packages/di/README.ko.md`, `packages/runtime/README.ko.md`, [`docs/architecture/di-and-modules.ko.md`](./architecture/di-and-modules.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch04-decorators-intro.ko.md`](../book/beginner/ch04-decorators-intro.ko.md), [`book/advanced/ch16-custom-package.ko.md`](../book/advanced/ch16-custom-package.ko.md)로 나뉜다. `@Inject(...)`는 속성 또는 매개변수 데코레이터가 아니라 생성자 토큰을 매개변수 순서대로 선언하는 클래스 데코레이터다. Provider는 명시적으로 등록하므로 `@Injectable()`에 대응하는 fluo 기능은 없다. `@Scope('request')`와 `@Scope('transient')`는 Provider lifecycle을 정의하며, request-scoped resolution에는 `createRequestScope()`가 필요하고 captive singleton dependency는 `ScopeMismatchError`로 거부된다. `@Optional()`은 class-level `@Inject(...)` 또는 Provider `inject` 목록의 `optional(TOKEN)`으로 옮기며, 없는 Provider는 `undefined`로 해석한다. Module Graph compilation은 순환 Module import를 거부하므로 shared Provider를 별도 Module 또는 package로 추출해야 하며, `forwardRef(...)`는 class-level `@Inject(...)` 또는 Provider `inject` 내부에서 하나의 dependency Token lookup만 늦출 뿐 Module cycle이나 실제 constructor cycle을 해소하지 않는다. 또한 `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 static import가 bootstrap module body보다 먼저 평가되므로, preload entrypoint에서 `ensureMetadataSymbol()`을 실행한 뒤 decorated application graph를 dynamic import해야 한다.
 
 Runtime lifecycle 및 NestJS migration discoverability는 `packages/runtime/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/architecture/lifecycle-and-shutdown.ko.md`](./architecture/lifecycle-and-shutdown.ko.md), advanced [Module Graph](../book/advanced/ch08-module-graph.ko.md)와 [Application Context](../book/advanced/ch09-app-context.ko.md) chapter로 나뉜다. 공개된 네 hook 계약은 startup에서 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown에서 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행한다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 준비 작업은 문서화된 두 shutdown phase 중 하나로 옮겨야 한다. Fluo는 compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않는다.
 
@@ -119,7 +123,7 @@ Observability discoverability는 metrics와 health 패키지로 나뉜다. `pack
 
 Terminus runtime-boundary discoverability도 패키지 README, beginner book, governed package-surface docs로 나뉜다. `packages/terminus/README.ko.md`는 root-safe `TerminusModule.forRoot(...)` 등록, `indicatorProviders`, 반복 등록 가능한 provider factory, exported indicator/provider DI token, root optional-peer safety를 보존하는 Prisma named service/client provider seam 및 Drizzle provider seam, service-scoped in-flight indicator serialization, Redis/Drizzle lifecycle-aware diagnostics, Node 전용 `@fluojs/terminus/node` indicator helper, disk check를 위한 lazy filesystem access를 문서화한다. [`book/beginner/ch18-health.ko.md`](../book/beginner/ch18-health.ko.md)는 optional-peer-safe Prisma/Drizzle/Redis health probe의 learning-path 요약을 담는다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 health/readiness aggregation, optional-peer subpath, runtime-safe indicator composition에 대한 정식 `@fluojs/terminus` responsibility boundary를 기록한다.
 
-Cache-manager discoverability는 패키지 문서, governed package-surface docs, cache contract, beginner book으로 나뉜다. `packages/cache-manager/README.ko.md`는 동기 `CacheModule.forRoot(options)`, store selection, `CacheService`, cache decorator, low-level metadata helper export, compatibility-only `NormalizedCacheModuleOptions` type export, platform status/diagnostic helper를 문서화한다. Redis-backed caching은 optional `@fluojs/redis` integration에서 기본 또는 named raw client를 해석하거나 더 높은 우선순위의 `redis.client`로 애플리케이션 소유 `RedisCompatibleClient`를 받을 수 있고, top-level `keyPrefix`가 Redis key/reset namespace를 소유한다. `@CacheEvict(...)`는 일반 service-method interception 계약이 아니라 non-GET controller handler에서 `CacheInterceptor`가 소비하는 HTTP route metadata다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/cache-manager` responsibility boundary를 기록하며, 여기에는 mandatory `@fluojs/runtime` dependency 범위와 일치하는 `engines.node >=20.19.3 <21 || >=22.2.0 <27` 선언이 포함된다. 그리고 [`docs/architecture/caching.ko.md`](./architecture/caching.ko.md)는 현재 cache behavior contract를 담으며, [`book/beginner/ch17-cache.ko.md`](../book/beginner/ch17-cache.ko.md)는 application-facing configuration flow를 설명한다.
+Cache-manager discoverability는 패키지 문서, governed package-surface docs, cache contract, beginner book으로 나뉜다. `packages/cache-manager/README.ko.md`는 동기 `CacheModule.forRoot(options)`, injected-factory `CacheModule.forRootAsync({ inject, useFactory, global? })`, store selection, `CacheService`, cache decorator, low-level metadata helper export, compatibility-only `NormalizedCacheModuleOptions` type export, platform status/diagnostic helper를 문서화한다. Redis-backed caching은 optional `@fluojs/redis` integration에서 기본 또는 named raw client를 해석하거나 더 높은 우선순위의 `redis.client`로 애플리케이션 소유 `RedisCompatibleClient`를 받을 수 있고, top-level `keyPrefix`가 Redis key/reset namespace를 소유한다. `@CacheEvict(...)`는 일반 service-method interception 계약이 아니라 non-GET controller handler에서 `CacheInterceptor`가 소비하는 HTTP route metadata다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/cache-manager` responsibility boundary를 기록하며, 여기에는 mandatory `@fluojs/runtime` dependency 범위와 일치하는 `engines.node >=20.19.3 <21 || >=22.2.0 <27` 선언이 포함된다. 그리고 [`docs/architecture/caching.ko.md`](./architecture/caching.ko.md)는 현재 cache behavior contract를 담으며, [`book/beginner/ch17-cache.ko.md`](../book/beginner/ch17-cache.ko.md)는 application-facing configuration flow를 설명한다.
 
 Throttler discoverability는 패키지 README와 governed package-surface docs로 나뉜다. `packages/throttler/README.ko.md`는 `ThrottlerModule.forRoot(options)`, 명시적 `ThrottlerGuard` 활성화, route/class throttling decorator, memory 및 Redis/custom store 계약, proxy-aware client identity control, 공유 route/client bucket semantic, authoritative backing-store clock을 위한 custom-store `retryAfterMs` 지원, status input/output type, platform status/diagnostic helper를 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 request rate limiting, backing-store readiness, ownership, local/distributed operation visibility에 대한 정식 `@fluojs/throttler` responsibility boundary를 기록한다.
 
@@ -170,6 +174,10 @@ Studio sidecar teardown ownership은 `packages/cli/README.ko.md`, [`docs/referen
 Studio의 배포 Node.js `>=20.0.0` engine contract는 `@fluojs/runtime`과 독립적입니다. Studio가 runtime-neutral consumer-side snapshot, diagnostic, timing declaration을 소유하고 runtime은 development-time drift check로만 유지하므로, Studio 설치는 runtime의 더 좁은 engine range를 상속하지 않습니다.
 
 Deno signal-close failure status는 host가 소유합니다. `runDenoApplication(...)`은 signal로 트리거된 애플리케이션 close 실패를 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 배포 환경은 `shutdownSignals: false`를 사용하고 signal과 shutdown을 직접 조율해야 합니다.
+
+## HTTP Portability Harness Contract
+
+전체 listener-style HTTP portability suite는 [Chapter 14](../book/advanced/ch14-portability-testing.ko.md)와 [Platform Conformance Authoring Checklist](./contracts/platform-conformance-authoring-checklist.ko.md)에서 확인할 수 있습니다. 커스텀 어댑터 테스트는 `createHttpAdapterPortabilityHarness(...)`를 사용하며 canonical 순서는 다음과 같습니다: `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertPreservesMalformedCookieValues()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSupportsSseStreaming()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`입니다. Error representation에는 `createErrorRepresentationBootstrapOptions`를 쓰고 HTTPS에는 test-owned `TEST_TLS_CERTIFICATE`와 `TEST_TLS_PRIVATE_KEY`를 사용합니다.
 
 ## Cron Migration Option Boundary
 
@@ -231,6 +239,16 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 추가하지 않습니다. 승인 후 `@fluojs/react/experimental/rsc`는 문서화된 deprecation window 동안
 테스트되는 re-export로 남습니다.
 
+## CLI Migration Transform Token
+
+Migration transform contract는 `packages/cli/README.ko.md`와
+[`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에서
+확인합니다. `--only`와 `--skip`의 정식 vocabulary는 `imports`, `inject-params`, `scope`,
+`bootstrap`, `tests`, `tsconfig`이며, 기존 `injectable`과 `testing`은 각각 `inject-params`와
+`tests`의 허용되는 alias로만 유지됩니다. 성공한 `--json` report는 `transforms`와 파일별
+`appliedTransforms`에서 안정적인 transform token인 `injectable`과 `testing`을 보존하므로 CLI
+input alias가 이 report contract를 바꾸지 않습니다.
+
 ## File Structure
 
 | Path | Role |
@@ -262,6 +280,8 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 
 JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다.
+
+Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)`보다 먼저 `ConfigModule.forRoot()`와 global `AuthPersistenceModule`을 import합니다. 이 persistence module은 `REFRESH_TOKEN_STORE` 및 `CREDENTIALS_VERIFIER`를 export하고, 이어서 `AuthModule`이 `AuthService`와 `AuthController`를 local로 등록합니다. 마이그레이션 경계는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), 완전한 module snippet은 [`book/beginner/ch14-jwt.ko.md`](../book/beginner/ch14-jwt.ko.md)를 읽으세요.
 
 ## GraphQL Field Resolver DTO Inputs
 

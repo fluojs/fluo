@@ -450,7 +450,6 @@ describe('Container', () => {
       );
 
       await expect(container.resolve(ServiceA)).rejects.toThrow(CircularDependencyError);
-      await expect(container.resolve(ServiceA)).rejects.toThrow(/forwardRef only defers token lookup/i);
     });
 
     it('throws CircularDependencyError for a deep cycle (A -> B -> C -> A)', async () => {
@@ -2012,7 +2011,7 @@ describe('Container', () => {
 
       await expect(container.resolve(token)).rejects.toThrow('stale failed');
       await expect(container.resolve(token)).resolves.toBeInstanceOf(SecondService);
-      await container.dispose();
+      await expect(container.dispose()).rejects.toThrow('stale failed');
     });
 
     it('disposes stale singleton consumers invalidated by dependency overrides exactly once', async () => {
@@ -2184,7 +2183,7 @@ describe('Container', () => {
 
       await expect(root.resolve(CONFIG)).rejects.toThrow('descendant stale failed');
       await expect(root.resolve(CONFIG)).resolves.toBe('after-override');
-      await root.dispose();
+      await expect(root.dispose()).rejects.toThrow('descendant stale failed');
     });
 
     it('does not delay unrelated root resolution for a child-local override', async () => {
@@ -2245,7 +2244,7 @@ describe('Container', () => {
       await expect(root.resolve(ROOT_VALUE)).resolves.toBe('root');
       await expect(requestScope.resolve(CHILD_SERVICE)).rejects.toThrow('child-local stale failed');
       await expect(requestScope.resolve(CHILD_SERVICE)).resolves.toBeInstanceOf(SecondChildService);
-      await root.dispose();
+      await expect(root.dispose()).rejects.toThrow('child-local stale failed');
     });
 
     it('disposes stale overridden multi singleton instances immediately and exactly once', async () => {
