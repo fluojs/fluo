@@ -7,6 +7,7 @@ import type {
   ResponseValidators,
 } from '../types.js';
 
+/** Dispatcher outcome selected by RFC conditional request evaluation. */
 export type ConditionalRequestOutcome = 'not-modified' | 'precondition-failed' | 'proceed';
 
 /** Result of one dispatcher-owned conditional request evaluation. */
@@ -21,42 +22,190 @@ function formatEntityTag(tag: EntityTag): string {
   return `${tag.strength === 'weak' ? 'W/' : ''}"${tag.opaqueValue}"`;
 }
 
-function parseEntityTag(value: string): EntityTag | undefined {
-  const match = /^(W\/)?"([^"]*)"$/.exec(value.trim());
+type ParsedEntityTagList =
+  | { readonly kind: 'invalid' }
+  | { readonly kind: 'wildcard' }
+  | { readonly kind: 'tags'; readonly tags: readonly EntityTag[] };
 
-  if (!match) {
-    return undefined;
+const INVALID_ENTITY_TAG_LIST: ParsedEntityTagList = { kind: 'invalid' };
+const HTTP_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const HTTP_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const HTTP_WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
+function isOptionalWhitespace(character: string | undefined): boolean {
+  return character === ' ' || character === '\t';
+}
+
+function isEntityTagCharacter(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return code === 0x21 || (code >= 0x23 && code <= 0x7e) || (code >= 0x80 && code <= 0xff);
+}
+
+function isValidEntityTag(tag: EntityTag): boolean {
+  return [...tag.opaqueValue].every(isEntityTagCharacter);
+}
+
+function parseEntityTagList(value: string): ParsedEntityTagList {
+  let position = 0;
+
+  const skipOptionalWhitespace = (): void => {
+    while (isOptionalWhitespace(value[position])) {
+      position += 1;
+    }
+  };
+
+  skipOptionalWhitespace();
+
+  if (value[position] === '*') {
+    position += 1;
+    skipOptionalWhitespace();
+    return position === value.length ? { kind: 'wildcard' } : INVALID_ENTITY_TAG_LIST;
   }
 
-  return {
-    opaqueValue: match[2] ?? '',
-    strength: match[1] === 'W/' ? 'weak' : 'strong',
-  };
+  const tags: EntityTag[] = [];
+
+  while (position < value.length) {
+    const weak = value.startsWith('W/', position);
+
+    if (weak) {
+      position += 2;
+    }
+
+    if (value[position] !== '"') {
+      return INVALID_ENTITY_TAG_LIST;
+    }
+
+    position += 1;
+    const opaqueStart = position;
+
+    while (position < value.length && value[position] !== '"') {
+      if (!isEntityTagCharacter(value[position]!)) {
+        return INVALID_ENTITY_TAG_LIST;
+      }
+      position += 1;
+    }
+
+    if (value[position] !== '"') {
+      return INVALID_ENTITY_TAG_LIST;
+    }
+
+    tags.push({
+      opaqueValue: value.slice(opaqueStart, position),
+      strength: weak ? 'weak' : 'strong',
+    });
+    position += 1;
+    skipOptionalWhitespace();
+
+    if (position === value.length) {
+      return { kind: 'tags', tags };
+    }
+
+    if (value[position] !== ',') {
+      return INVALID_ENTITY_TAG_LIST;
+    }
+
+    position += 1;
+    skipOptionalWhitespace();
+    if (position === value.length) {
+      return INVALID_ENTITY_TAG_LIST;
+    }
+  }
+
+  return INVALID_ENTITY_TAG_LIST;
 }
 
 function matchesEntityTag(
-  header: string,
+  parsed: ParsedEntityTagList,
   current: EntityTag | undefined,
   comparison: EntityTag['strength'] | 'weak',
   resourceExists: boolean,
 ): boolean {
-  if (header.trim() === '*') {
+  if (parsed.kind === 'wildcard') {
     return resourceExists;
   }
 
-  if (!current) {
+  if (parsed.kind !== 'tags' || !current || !isValidEntityTag(current)) {
     return false;
   }
 
-  return header.split(',').some((candidate) => {
-    const requested = parseEntityTag(candidate);
+  return parsed.tags.some((requested) =>
+    requested.opaqueValue === current.opaqueValue
+    && (comparison === 'weak' || (requested.strength === 'strong' && current.strength === 'strong')));
+}
 
-    if (!requested || requested.opaqueValue !== current.opaqueValue) {
-      return false;
-    }
+function parseMonth(value: string): number | undefined {
+  const month = HTTP_MONTHS.indexOf(value as (typeof HTTP_MONTHS)[number]);
+  return month === -1 ? undefined : month;
+}
 
-    return comparison === 'weak' || (requested.strength === 'strong' && current.strength === 'strong');
-  });
+function parseDecimal(value: string): number | undefined {
+  if (!/^\d+$/.test(value)) {
+    return undefined;
+  }
+
+  return Number(value);
+}
+
+function parseClock(hour: string, minute: string, second: string): { hour: number; minute: number; second: number } | undefined {
+  const parsedHour = parseDecimal(hour);
+  const parsedMinute = parseDecimal(minute);
+  const parsedSecond = parseDecimal(second);
+
+  if (
+    parsedHour === undefined
+    || parsedMinute === undefined
+    || parsedSecond === undefined
+    || parsedHour > 23
+    || parsedMinute > 59
+    || parsedSecond > 59
+  ) {
+    return undefined;
+  }
+
+  return { hour: parsedHour, minute: parsedMinute, second: parsedSecond };
+}
+
+function createHttpDateTimestamp(
+  weekday: string,
+  day: string,
+  month: string,
+  year: string,
+  hour: string,
+  minute: string,
+  second: string,
+  weekdayNames: readonly string[],
+): number | undefined {
+  const parsedDay = parseDecimal(day);
+  const parsedMonth = parseMonth(month);
+  const parsedYear = parseDecimal(year);
+  const clock = parseClock(hour, minute, second);
+
+  if (
+    parsedDay === undefined
+    || parsedMonth === undefined
+    || parsedYear === undefined
+    || clock === undefined
+    || parsedDay < 1
+    || parsedDay > 31
+    || !weekdayNames.includes(weekday)
+  ) {
+    return undefined;
+  }
+
+  const date = new Date(0);
+  date.setUTCFullYear(parsedYear, parsedMonth, parsedDay);
+  date.setUTCHours(clock.hour, clock.minute, clock.second, 0);
+
+  if (
+    date.getUTCFullYear() !== parsedYear
+    || date.getUTCMonth() !== parsedMonth
+    || date.getUTCDate() !== parsedDay
+    || weekdayNames[date.getUTCDay()] !== weekday
+  ) {
+    return undefined;
+  }
+
+  return date.getTime();
 }
 
 function parseHttpDate(header: string | undefined): number | undefined {
@@ -64,8 +213,65 @@ function parseHttpDate(header: string | undefined): number | undefined {
     return undefined;
   }
 
-  const timestamp = Date.parse(header);
-  return Number.isNaN(timestamp) ? undefined : timestamp;
+  const imfFixdate = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(header);
+
+  if (imfFixdate) {
+    return createHttpDateTimestamp(
+      imfFixdate[1]!,
+      imfFixdate[2]!,
+      imfFixdate[3]!,
+      imfFixdate[4]!,
+      imfFixdate[5]!,
+      imfFixdate[6]!,
+      imfFixdate[7]!,
+      HTTP_WEEKDAYS,
+    );
+  }
+
+  const rfc850 = /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(header);
+
+  if (rfc850) {
+    const twoDigitYear = parseDecimal(rfc850[4]!);
+
+    if (twoDigitYear === undefined) {
+      return undefined;
+    }
+
+    let year = 2_000 + twoDigitYear;
+    const currentYear = new Date().getUTCFullYear();
+
+    if (year > currentYear + 50) {
+      year -= 100;
+    }
+
+    return createHttpDateTimestamp(
+      rfc850[1]!,
+      rfc850[2]!,
+      rfc850[3]!,
+      String(year),
+      rfc850[5]!,
+      rfc850[6]!,
+      rfc850[7]!,
+      HTTP_WEEKDAY_NAMES,
+    );
+  }
+
+  const asctime = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( {1}\d|\d{2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(header);
+
+  if (!asctime) {
+    return undefined;
+  }
+
+  return createHttpDateTimestamp(
+    asctime[1]!,
+    asctime[3]!.trim(),
+    asctime[2]!,
+    asctime[7]!,
+    asctime[4]!,
+    asctime[5]!,
+    asctime[6]!,
+    HTTP_WEEKDAYS,
+  );
 }
 
 function normalizeLastModified(lastModified: Date | undefined): number | undefined {
@@ -92,48 +298,52 @@ export async function resolveConditionalRequest(
   options: ConditionalRequestOptions,
   context: ConditionalRequestContext,
 ): Promise<ConditionalRequestResult> {
-  const validators = await options.resolve(context);
-  const ifMatch = readFirstNonEmptyRequestHeaderValue(context.request, 'if-match');
-
-  if (ifMatch !== undefined) {
-    return {
-      outcome: matchesEntityTag(ifMatch, validators?.etag, 'strong', validators !== undefined)
-        ? 'proceed'
-        : 'precondition-failed',
-      validators,
-    };
-  }
-
-  const lastModified = normalizeLastModified(validators?.lastModified);
-  const ifUnmodifiedSince = parseHttpDate(
-    readFirstNonEmptyRequestHeaderValue(context.request, 'if-unmodified-since'),
+  const resolution = await options.resolve(context);
+  const validators = resolution.exists ? resolution.validators : undefined;
+  const ifMatch = parseEntityTagList(
+    readFirstNonEmptyRequestHeaderValue(context.request, 'if-match') ?? '',
   );
 
-  if (ifUnmodifiedSince !== undefined && lastModified !== undefined && lastModified > ifUnmodifiedSince) {
-    return { outcome: 'precondition-failed', validators };
+  if (ifMatch.kind !== 'invalid') {
+    if (!matchesEntityTag(ifMatch, validators?.etag, 'strong', resolution.exists)) {
+      return { outcome: 'precondition-failed', validators };
+    }
+  } else {
+    const lastModified = normalizeLastModified(validators?.lastModified);
+    const ifUnmodifiedSince = parseHttpDate(
+      readFirstNonEmptyRequestHeaderValue(context.request, 'if-unmodified-since'),
+    );
+
+    if (ifUnmodifiedSince !== undefined && lastModified !== undefined && lastModified > ifUnmodifiedSince) {
+      return { outcome: 'precondition-failed', validators };
+    }
   }
 
-  const ifNoneMatch = readFirstNonEmptyRequestHeaderValue(context.request, 'if-none-match');
-
-  if (ifNoneMatch !== undefined && matchesEntityTag(ifNoneMatch, validators?.etag, 'weak', validators !== undefined)) {
-    return {
-      outcome: isSafeMethod(context.request.method) ? 'not-modified' : 'precondition-failed',
-      validators,
-    };
-  }
-
-  const ifModifiedSince = parseHttpDate(
-    readFirstNonEmptyRequestHeaderValue(context.request, 'if-modified-since'),
+  const ifNoneMatch = parseEntityTagList(
+    readFirstNonEmptyRequestHeaderValue(context.request, 'if-none-match') ?? '',
   );
 
-  if (
-    isSafeMethod(context.request.method)
-    && ifNoneMatch === undefined
-    && ifModifiedSince !== undefined
-    && lastModified !== undefined
-    && lastModified <= ifModifiedSince
-  ) {
-    return { outcome: 'not-modified', validators };
+  if (ifNoneMatch.kind !== 'invalid') {
+    if (matchesEntityTag(ifNoneMatch, validators?.etag, 'weak', resolution.exists)) {
+      return {
+        outcome: isSafeMethod(context.request.method) ? 'not-modified' : 'precondition-failed',
+        validators,
+      };
+    }
+  } else {
+    const lastModified = normalizeLastModified(validators?.lastModified);
+    const ifModifiedSince = parseHttpDate(
+      readFirstNonEmptyRequestHeaderValue(context.request, 'if-modified-since'),
+    );
+
+    if (
+      isSafeMethod(context.request.method)
+      && ifModifiedSince !== undefined
+      && lastModified !== undefined
+      && lastModified <= ifModifiedSince
+    ) {
+      return { outcome: 'not-modified', validators };
+    }
   }
 
   return { outcome: 'proceed', validators };
@@ -150,7 +360,7 @@ export function applyResponseValidators(
   response: FrameworkResponse,
   validators: ResponseValidators | undefined,
 ): void {
-  if (validators?.etag) {
+  if (validators?.etag && isValidEntityTag(validators.etag)) {
     response.setHeader('ETag', formatEntityTag(validators.etag));
   }
 

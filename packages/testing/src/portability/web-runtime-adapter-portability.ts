@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Head,
   Post,
   Query,
   type ConditionalRequestOptions,
@@ -150,6 +151,11 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         return { id: 'resource' };
       }
 
+      @Head('/resource')
+      headResource() {
+        return { id: 'resource' };
+      }
+
       @Post('/resource')
       updateResource() {
         return { id: 'resource' };
@@ -163,8 +169,11 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       conditionalRequest: {
         resolve() {
           return {
-            etag: { opaqueValue: 'resource-v1', strength: 'strong' },
-            lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
           };
         },
       },
@@ -172,13 +181,17 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
     }));
 
     await runWithCleanup(app, this.options.name, async () => {
-      const [notModified, preconditionFailed] = await Promise.all([
+      const [notModified, preconditionFailed, head] = await Promise.all([
         app.dispatch(new Request('https://runtime.test/validators/resource', {
           headers: { 'if-none-match': '"resource-v1"' },
         })),
         app.dispatch(new Request('https://runtime.test/validators/resource', {
           headers: { 'if-match': '"different-resource"' },
           method: 'POST',
+        })),
+        app.dispatch(new Request('https://runtime.test/validators/resource', {
+          headers: { 'if-none-match': '"resource-v1"' },
+          method: 'HEAD',
         })),
       ]);
 
@@ -187,8 +200,14 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         || preconditionFailed.status !== 412
         || await notModified.text() !== ''
         || await preconditionFailed.text() !== ''
+        || await head.text() !== ''
         || notModified.headers.get('etag') !== '"resource-v1"'
+        || notModified.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || preconditionFailed.headers.get('etag') !== '"resource-v1"'
         || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || head.status !== 304
+        || head.headers.get('etag') !== '"resource-v1"'
+        || head.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
       ) {
         throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
       }

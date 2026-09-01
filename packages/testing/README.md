@@ -162,7 +162,7 @@ const response = await app.request({
 
 `cookies` is assigned directly to `FrameworkRequest.cookies`; it does not parse a `Cookie` header or introduce adapter-specific cookie semantics. `TestingModuleRef.dispatch(...)` accepts the same normalized cookie record.
 
-`createTestApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, and diagnostics options. This lets application tests assert canonical JSON, negotiated HTML, `HEAD`, 406, and provider fallback behavior through the same virtual request pipeline. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
+`createTestApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `conditionalRequest`, `errorRepresentation`, and diagnostics options. This lets application tests assert canonical JSON, negotiated HTML, conditional `304`/`412`, `HEAD`, 406, and provider fallback behavior through the same virtual request pipeline. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
 
 ### Mock helpers from explicit subpaths
 

@@ -167,7 +167,7 @@ export interface ResponseValidators {
   readonly lastModified?: Date;
 }
 
-/** Route and request information supplied when resolving response validators. */
+/** Route and request information supplied when resolving a selected representation. */
 export interface ConditionalRequestContext {
   /** Matched route descriptor selected for the request. */
   readonly handler: HandlerDescriptor;
@@ -175,14 +175,33 @@ export interface ConditionalRequestContext {
   readonly request: FrameworkRequest;
 }
 
-/** Resolves the current response validators before a route handler executes. */
+/**
+ * Current existence and validators for the selected representation.
+ *
+ * @remarks `exists` controls wildcard conditional fields independently from
+ * validator metadata, so an existing representation may intentionally omit
+ * both `ETag` and `Last-Modified`.
+ */
+export type ConditionalRequestResolution =
+  | {
+      /** The selected representation does not currently exist. */
+      readonly exists: false;
+    }
+  | {
+      /** The selected representation exists, whether or not it has validators. */
+      readonly exists: true;
+      /** Optional validators emitted with a successful or conditional response. */
+      readonly validators?: ResponseValidators;
+    };
+
+/** Resolves the selected representation before its route handler executes. */
 export type ConditionalRequestResolver = (
   context: ConditionalRequestContext,
-) => MaybePromise<ResponseValidators | undefined>;
+) => MaybePromise<ConditionalRequestResolution>;
 
 /** Dispatcher-owned HTTP conditional request configuration. */
 export interface ConditionalRequestOptions {
-  /** Resolves the current validators for each matched resource request. */
+  /** Resolves representation existence and optional validators for each matched resource request. */
   readonly resolve: ConditionalRequestResolver;
 }
 

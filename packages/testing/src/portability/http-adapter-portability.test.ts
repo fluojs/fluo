@@ -198,8 +198,11 @@ function registerConditionalRequestPortabilitySuite(
         conditionalRequest: {
           resolve() {
             return {
-              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
-              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+              exists: true,
+              validators: {
+                etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+                lastModified: new Date('2026-01-01T00:00:00.750Z'),
+              },
             };
           },
         },
@@ -216,17 +219,23 @@ function registerConditionalRequestPortabilitySuite(
             headers: { 'if-match': '"different-resource"' },
             method: 'POST',
           }),
-          fetch(`${baseUrl}/validators/resource`, { method: 'HEAD' }),
+          fetch(`${baseUrl}/validators/resource`, {
+            headers: { 'if-none-match': '"resource-v1"' },
+            method: 'HEAD',
+          }),
         ]);
 
         expect(notModified.status).toBe(304);
         expect(preconditionFailed.status).toBe(412);
-        expect(head.status).toBe(200);
+        expect(head.status).toBe(304);
         expect(await notModified.text()).toBe('');
         expect(await preconditionFailed.text()).toBe('');
         expect(await head.text()).toBe('');
         expect(notModified.headers.get('etag')).toBe('"resource-v1"');
+        expect(notModified.headers.get('last-modified')).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
         expect(preconditionFailed.headers.get('etag')).toBe('"resource-v1"');
+        expect(preconditionFailed.headers.get('last-modified')).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+        expect(head.headers.get('etag')).toBe('"resource-v1"');
         expect(head.headers.get('last-modified')).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
       } finally {
         await app.close();

@@ -78,8 +78,11 @@ describe('conditional request policy', () => {
       conditionalRequest: {
         resolve() {
           return {
-            etag: { opaqueValue: 'resource-v1', strength: 'strong' },
-            lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
           };
         },
       },
@@ -118,7 +121,10 @@ describe('conditional request policy', () => {
       conditionalRequest: {
         resolve() {
           return {
-            etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+            },
           };
         },
       },
@@ -151,8 +157,11 @@ describe('conditional request policy', () => {
       conditionalRequest: {
         resolve() {
           return {
-            etag: { opaqueValue: 'resource-v1', strength: 'weak' },
-            lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'weak' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
           };
         },
       },
@@ -184,7 +193,10 @@ describe('conditional request policy', () => {
       conditionalRequest: {
         resolve() {
           return {
-            etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+            },
           };
         },
       },
@@ -220,8 +232,11 @@ describe('conditional request policy', () => {
       conditionalRequest: {
         resolve() {
           return {
-            etag: { opaqueValue: 'resource-v1', strength: 'strong' },
-            lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
           };
         },
       },
@@ -242,4 +257,5 @@ describe('conditional request policy', () => {
     expect(headResponse.headers['Last-Modified']).toBe(getResponse.headers['Last-Modified']);
     expect(headResponse.sentBodies).toEqual([undefined]);
   });
+
 });

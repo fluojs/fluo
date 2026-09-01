@@ -164,7 +164,7 @@ const response = await app.request({
 
 `cookies`는 `FrameworkRequest.cookies`에 직접 할당됩니다. `Cookie` header를 parse하거나 adapter별 cookie 의미를 도입하지 않습니다. `TestingModuleRef.dispatch(...)`도 같은 정규화된 cookie record를 받습니다.
 
-`createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
+`createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `conditionalRequest`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, conditional `304`/`412`, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
 
 ### 명시적 서브패스의 mock 헬퍼
 

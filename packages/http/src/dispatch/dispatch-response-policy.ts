@@ -170,6 +170,7 @@ export async function writeSuccessResponse(
 
   if (handler.route.redirect) {
     const { url, statusCode = 302 } = handler.route.redirect;
+    applyResponseValidators(response, validators);
     response.redirect(statusCode, url);
     return;
   }
@@ -181,6 +182,7 @@ export async function writeSuccessResponse(
   const responseWriter = readFrameworkResponseWriter(responseValue);
 
   if (responseWriter) {
+    applyResponseValidators(response, validators);
     let successResponseMetadataApplied = false;
     const applyWriterSuccessResponseMetadata = (): void => {
       if (successResponseMetadataApplied) {
@@ -189,6 +191,7 @@ export async function writeSuccessResponse(
 
       successResponseMetadataApplied = true;
       applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
+      applyResponseValidators(response, validators);
     };
 
     return responseWriter({

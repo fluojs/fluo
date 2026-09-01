@@ -721,7 +721,7 @@ async function dispatchMatchedHandler(
   controllerContainer: RequestScopeContainer,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
-  conditionalValidators?: ResponseValidators,
+  conditionalRequest: ConditionalRequestOptions | undefined,
 ): Promise<{ readonly result: unknown } | undefined> {
   const routeGuards = executionPlan.routeGuards;
   if (routeGuards.length > 0) {
@@ -735,6 +735,21 @@ async function dispatchMatchedHandler(
 
   if (requestContext.response.committed) {
     return;
+  }
+
+  let conditionalValidators: ResponseValidators | undefined;
+
+  if (conditionalRequest) {
+    const resolved = await resolveConditionalRequest(conditionalRequest, {
+      handler,
+      request: requestContext.request,
+    });
+    conditionalValidators = resolved.validators;
+
+    if (resolved.outcome !== 'proceed') {
+      await writeConditionalResponse(requestContext.response, resolved.outcome, resolved.validators);
+      return;
+    }
   }
 
   const result = executionPlan.mergedInterceptors.length === 0
@@ -981,7 +996,6 @@ async function tryFastPathExecution(
 async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void> {
   ensureRequestNotAborted(context.requestContext.request);
   let handlerResult: { readonly result: unknown } | undefined;
-  let conditionalValidators: ResponseValidators | undefined;
 
   const appMiddlewareContext: MiddlewareContext = {
     request: context.requestContext.request,
@@ -1023,19 +1037,6 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
 
     await notifyHandlerMatched(context, match.descriptor);
 
-    if (context.options.conditionalRequest) {
-      const conditionalRequest = await resolveConditionalRequest(context.options.conditionalRequest, {
-        handler: match.descriptor,
-        request: context.requestContext.request,
-      });
-      conditionalValidators = conditionalRequest.validators;
-
-      if (conditionalRequest.outcome !== 'proceed') {
-        await writeConditionalResponse(context.response, conditionalRequest.outcome, conditionalRequest.validators);
-        return;
-      }
-    }
-
     const moduleMiddlewareContext: MiddlewareContext = {
       request: context.requestContext.request,
       requestContext: context.requestContext,
@@ -1050,7 +1051,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.dispatchScope.container,
         context.contentNegotiation,
         context.options.binder,
-        conditionalValidators,
+        context.options.conditionalRequest,
       );
     });
   };

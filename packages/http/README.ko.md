@@ -404,41 +404,27 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 
 ## Conditional Requests
 
-runtime bootstrap에서 `conditionalRequest`를 구성하면 route handler가 실행되기 전에 선택된 representation의 validator를 해석할 수 있습니다.
+runtime bootstrap에서 `conditionalRequest`를 구성해 representation 존재 여부와 optional validator를 분리하여 해석합니다.
 
 ```ts
 const app = await bootstrapNodeApplication(AppModule, {
   conditionalRequest: {
     resolve({ handler, request }) {
       return {
-        etag: { opaqueValue: `${handler.method}:${request.path}:v1`, strength: 'strong' },
-        lastModified: new Date('2026-01-01T00:00:00Z'),
+        exists: true,
+        validators: {
+          etag: { opaqueValue: `${handler.route.method}:${request.path}:v1`, strength: 'strong' },
+          lastModified: new Date('2026-01-01T00:00:00Z'),
+        },
       };
     },
   },
 });
 ```
 
-dispatcher는 RFC validator precedence와 comparison을 소유합니다. `If-Match`는 strong이며 `If-Unmodified-Since`보다 우선하고, `If-None-Match`는 weak이며 `If-Modified-Since`보다 우선합니다. dispatcher는 `ETag` 및 `Last-Modified`를 보존한 body 없는 `304` 또는 `412` 응답을 보냅니다. `HEAD`는 `GET`과 validator/status가 같고 body는 없습니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
+representation이 없으면 `{ exists: false }`를, 존재하지만 validator가 의도적으로 없으면 `{ exists: true }`를 반환합니다. Dispatcher는 application/module middleware와 guard 뒤에 이 resolver를 평가하므로 conditional `304`와 `412`가 authorization 또는 audit logic을 우회하지 않습니다. 유효한 entity-tag list와 HTTP-date form만 받아들이며 malformed conditional field는 무시합니다.
 
-## Conditional Requests
-
-runtime bootstrap에서 `conditionalRequest`를 구성하면 route handler가 실행되기 전에 선택된 representation의 validator를 해석할 수 있습니다.
-
-```ts
-const app = await bootstrapNodeApplication(AppModule, {
-  conditionalRequest: {
-    resolve({ handler, request }) {
-      return {
-        etag: { opaqueValue: `${handler.method}:${request.path}:v1`, strength: 'strong' },
-        lastModified: new Date('2026-01-01T00:00:00Z'),
-      };
-    },
-  },
-});
-```
-
-dispatcher는 RFC validator precedence와 comparison을 소유합니다. `If-Match`는 strong이며 `If-Unmodified-Since`보다 우선하고, `If-None-Match`는 weak이며 `If-Modified-Since`보다 우선합니다. dispatcher는 `ETag` 및 `Last-Modified`를 보존한 body 없는 `304` 또는 `412` 응답을 보냅니다. `HEAD`는 `GET`과 validator/status가 같고 body는 없습니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
+dispatcher는 RFC 9110 precedence와 comparison을 소유합니다. 성공한 `If-Match`는 `If-Unmodified-Since`만 건너뛰고, 이후에도 `If-None-Match`가 `If-Modified-Since`보다 우선합니다. `If-Match`는 strong comparison, `If-None-Match`는 weak comparison을 사용합니다. `304`와 `412`는 body 없이 `ETag`/`Last-Modified`를 유지하며 redirect와 지원되는 custom response-writer 경로에도 적용됩니다. 같은 selected representation에서는 `HEAD`와 `GET`이 같은 conditional 결과를 사용하고 framework-generated `HEAD` body는 억제됩니다. 명시적인 `@Head` route는 독립 route이며 custom response writer는 body emission을 소유하므로 직접 bodyless `HEAD` contract를 지켜야 합니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
 
 ## 관련 패키지
 
