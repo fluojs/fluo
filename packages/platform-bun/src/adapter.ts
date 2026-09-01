@@ -26,7 +26,11 @@ import {
   type RunHttpAdapterApplicationOptions,
   runHttpAdapterApplication,
 } from '@fluojs/runtime/internal/http-adapter';
-import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
+import {
+  createWebRequestResponseFactory,
+  dispatchWebRequest,
+  startWebRequestDispatch,
+} from '@fluojs/runtime/web';
 
 type BunGlobal = {
   serve(options: BunServeOptions): BunServerLike;
@@ -361,6 +365,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
       }
 
       const release = this.trackInFlightRequest();
+      let releaseAfterResponse = true;
 
       try {
         if (realtimeBinding) {
@@ -371,14 +376,19 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
           }
         }
 
-        return await dispatchWebRequest({
+        const dispatch = startWebRequestDispatch({
           dispatcher: this.dispatcher,
           dispatcherNotReadyMessage: DEFAULT_DISPATCHER_NOT_READY_MESSAGE,
           factory: this.webRequestResponseFactory,
           request,
         });
+        releaseAfterResponse = false;
+        void dispatch.completion.finally(release).catch(() => {});
+        return await dispatch.response;
       } finally {
-        release();
+        if (releaseAfterResponse) {
+          release();
+        }
       }
     };
     const nativeRoutes = createBunNativeRoutes(dispatcher, handleRequest, bun);

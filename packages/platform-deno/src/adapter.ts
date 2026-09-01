@@ -8,7 +8,11 @@ import {
   type RunHttpAdapterApplicationOptions,
   runHttpAdapterApplication,
 } from '@fluojs/runtime/internal/http-adapter';
-import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
+import {
+  createWebRequestResponseFactory,
+  dispatchWebRequest,
+  startWebRequestDispatch,
+} from '@fluojs/runtime/web';
 
 import { validateNonNegativeIntegerOption } from './options.js';
 
@@ -197,15 +201,19 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
     }
 
     const release = this.trackInFlightRequest();
+    let releaseAfterResponse = true;
 
     try {
       if (!this.dispatcher) {
-        return await dispatchWebRequest({
+        const dispatch = startWebRequestDispatch({
           dispatcher: this.dispatcher,
           dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
           factory: this.webRequestResponseFactory,
           request,
         });
+        releaseAfterResponse = false;
+        void dispatch.completion.finally(release).catch(() => {});
+        return await dispatch.response;
       }
 
       if (this.websocketBinding && isWebSocketUpgradeRequest(request)) {
@@ -216,14 +224,19 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
         });
       }
 
-      return await dispatchWebRequest({
+      const dispatch = startWebRequestDispatch({
         dispatcher: this.dispatcher,
         dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
         factory: this.webRequestResponseFactory,
         request,
       });
+      releaseAfterResponse = false;
+      void dispatch.completion.finally(release).catch(() => {});
+      return await dispatch.response;
     } finally {
-      release();
+      if (releaseAfterResponse) {
+        release();
+      }
     }
   }
 

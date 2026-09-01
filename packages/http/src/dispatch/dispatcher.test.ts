@@ -1947,6 +1947,7 @@ describe('dispatcher runtime', () => {
       stream(_input: undefined, ctx: ReturnType<typeof assertRequestContext>) {
         const sse = new SseResponse(ctx);
         sse.send({ ok: true }, { event: 'ready', id: 'evt-1' });
+        sse.close();
         return sse;
       }
     }
