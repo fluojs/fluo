@@ -1031,6 +1031,33 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
   });
 
+  it.each([
+    ['docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['tooling/governance/verify-platform-consistency-governance.test.ts', /CI\/tooling enforcement updates/u],
+    ['packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts', /manual-sse-lifecycle\.test\.ts/u],
+  ] as const)(
+    'requires %s for HTTP lifecycle contract changes',
+    async (removedPath, expectedError) => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const completeChangedFiles = [
+        'docs/architecture/http-runtime.md',
+        'docs/architecture/http-runtime.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+        'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts',
+      ];
+
+      expect(() =>
+        enforceContractCompanionUpdates(
+          completeChangedFiles.filter((path) => path !== removedPath),
+        ),
+      ).toThrowError(expectedError);
+      expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
+    },
+  );
+
   it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
     // Given
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
