@@ -166,17 +166,27 @@ describe('enforceContractCompanionUpdates', () => {
     expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
   });
 
-  it('keeps the NestJS HTTP pipeline migration boundary discoverable in both contexts', () => {
-    // Given: the bilingual documentation hub.
-    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
-    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  it('requires context companions for NestJS HTTP pipeline migration updates', async () => {
+    // Given: a bilingual NestJS HTTP migration update with its governance regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
 
-    // When: a NestJS pipeline migration needs the portable and native middleware boundary.
-    // Then: both context companions direct readers to that boundary.
-    expect(englishContext).toContain('portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`');
-    expect(englishContext).toContain('createExpressAdapter({ nativeMiddleware: [...] })');
-    expect(koreanContext).toContain('portable bootstrap `middleware`는 `handle(MiddlewareContext, next)`를 구현');
-    expect(koreanContext).toContain('createExpressAdapter({ nativeMiddleware: [...] })');
+    // When: one or both documentation-hub companions are absent.
+    // Then: governance rejects the incomplete changed-file category.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
   });
 });
 
