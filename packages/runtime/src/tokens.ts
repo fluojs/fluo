@@ -2,10 +2,8 @@ import type { Token } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 
-import type { ApplicationLogger } from './types.js';
-import type { CompiledModule } from './types.js';
-import type { RuntimeCleanupRegistration } from './types.js';
 import type { PlatformShell } from './platform-contract.js';
+import type { ApplicationLogger, CompiledModule, RuntimeCleanupRegistration } from './types.js';
 
 /** Internal signal that resolves only after application bootstrap reaches runtime readiness. */
 export interface BootstrapReadySignal {
@@ -22,6 +20,11 @@ export const APPLICATION_LOGGER: Token<ApplicationLogger> = Symbol.for('fluo.run
  * Injection token for the runtime container.
  */
 export const RUNTIME_CONTAINER: Token<Container> = Symbol('RUNTIME_CONTAINER');
+
+/**
+ * Injection token for the effective provider tokens supplied to the application bootstrap.
+ */
+export const BOOTSTRAP_PROVIDER_TOKENS: Token<ReadonlySet<Token>> = Symbol('BOOTSTRAP_PROVIDER_TOKENS');
 
 /**
  * Injection token for the compiled module list.
