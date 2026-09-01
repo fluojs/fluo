@@ -18,8 +18,10 @@ import {
   consumeRuntimeRawRequestNativeRouteHandoff,
 } from './internal/http-runtime.js';
 import {
+  markMultipartBodyConsumed,
   type MultipartOptions,
   parseMultipart,
+  parseMultipartStream,
   type UploadedFile,
 } from './multipart.js';
 
@@ -73,7 +75,16 @@ export interface WebRequestDispatch {
   readonly response: Promise<Response>;
 }
 
-export { parseMultipart } from './multipart.js';
+export {
+  MultipartBodyConsumedError,
+  parseMultipart,
+  parseMultipartStream,
+} from './multipart.js';
+export type {
+  MultipartFieldPart,
+  MultipartFilePart,
+  MultipartPart,
+} from './multipart.js';
 
 interface WebFrameworkResponseStream {
   readonly closed: boolean;
@@ -443,16 +454,30 @@ function createDeferredWebFrameworkRequest(
   const hasRequestBody = request.body !== null;
   const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
+      const resolvedMultipartOptions = {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      };
+
+      if (multipartOptions?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream({
+          body: request.body,
+          headers: requestHeaders,
+          method,
+          signal,
+          url: request.url,
+        }, resolvedMultipartOptions);
+        return;
+      }
+
       const materializedRequest = request.clone();
+      markMultipartBodyConsumed(request);
       const result = await parseMultipart(createRequestWithSnapshotMetadata(
         materializedRequest,
         request.url,
         method,
         requestHeaders,
-      ), {
-        ...multipartOptions,
-        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
+      ), resolvedMultipartOptions);
       frameworkRequest.body = result.fields;
       frameworkRequest.files = result.files;
       return;
@@ -519,6 +544,7 @@ function createRequestWithSnapshotMetadata(
   const init: RequestInit & { duplex?: 'half' } = {
     headers: new Headers(headers),
     method,
+    signal: request.signal,
   };
 
   if (request.body) {

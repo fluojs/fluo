@@ -21,6 +21,8 @@ import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
   dispatchWebRequest,
+  parseMultipart,
+  parseMultipartStream,
   startWebRequestDispatch,
 } from './web.js';
 
@@ -40,6 +42,38 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
+  it('delivers opted-in multipart parts to dispatch without pre-buffering', async () => {
+    const boundary = 'fluo-web-streaming-route';
+    const request = new Request('https://runtime.test/uploads', {
+      body: `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nAda\r\n--${boundary}--\r\n`,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+    });
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(frameworkRequest: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          expect(request.bodyUsed).toBe(false);
+          const parts = frameworkRequest.body as AsyncIterable<{
+            kind: string;
+            name: string;
+            value?: string;
+          }>;
+          const first = await parts[Symbol.asyncIterator]().next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await frameworkResponse.send({ streamed: true });
+        },
+      },
+      multipart: { strategy: 'stream' },
+      request,
+    });
+
+    await expect(response.json()).resolves.toEqual({ streamed: true });
+  });
+
   it('logs the final default status for a manual Web response', async () => {
     // Given
     const records: AccessLogEvent[] = [];
@@ -556,6 +590,40 @@ describe('dispatchWebRequest', () => {
 });
 
 describe('createWebFrameworkRequest', () => {
+  it('cancels stream parsing through the supplied framework abort signal', async () => {
+    const abort = new AbortController();
+    let resolveCancelled!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve;
+    });
+    const request = new Request('https://runtime.test/abort', {
+      body: new ReadableStream<Uint8Array>({
+        cancel() {
+          resolveCancelled();
+        },
+      }),
+      duplex: 'half',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-web-abort',
+      },
+      method: 'POST',
+    } as RequestInit & { duplex: 'half' });
+    const factory = createWebRequestResponseFactory({
+      multipart: { strategy: 'stream' },
+    });
+    const frameworkRequest = await factory.createRequest(request, abort.signal);
+
+    await factory.materializeRequest?.(frameworkRequest);
+    const iterator = (frameworkRequest.body as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+    const pendingPart = iterator.next();
+    const reason = new Error('framework request cancelled');
+
+    abort.abort(reason);
+
+    await expect(pendingPart).rejects.toBe(reason);
+    await cancelled;
+  });
+
   it('captures headers at creation, then materializes and memoizes the cloned object lazily', async () => {
     const request = new Request('https://runtime.test/headers', {
       headers: {
@@ -691,5 +759,65 @@ describe('createWebFrameworkRequest', () => {
     const rawFormData = await request.formData();
 
     expect(rawFormData.get('title')).toBe('before');
+  });
+});
+
+describe('Web multipart consumption boundary', () => {
+  it('rejects buffered and streaming double consumption through the public Web adapter surface', async () => {
+    const createRequest = () => {
+      const form = new FormData();
+      form.set('title', 'portable');
+      return new Request('https://runtime.test/upload', {
+        body: form,
+        method: 'POST',
+      });
+    };
+    const streamingFirst = createRequest();
+    const streamingParts = parseMultipartStream(streamingFirst);
+
+    await expect(streamingParts.next()).resolves.toMatchObject({
+      done: false,
+      value: {
+        kind: 'field',
+        name: 'title',
+        value: 'portable',
+      },
+    });
+    await expect(parseMultipart(streamingFirst)).rejects.toThrow(
+      'Multipart request body has already been consumed.',
+    );
+
+    const bufferedFirst = createRequest();
+
+    await expect(parseMultipart(bufferedFirst)).resolves.toMatchObject({
+      fields: { title: 'portable' },
+    });
+    expect(() => parseMultipartStream(bufferedFirst)).toThrow(
+      'Multipart request body has already been consumed.',
+    );
+  });
+
+  it('marks the public raw request consumed after framework buffered materialization', async () => {
+    // Given
+    const form = new FormData();
+    form.set('title', 'portable');
+    const request = new Request('https://runtime.test/upload', {
+      body: form,
+      method: 'POST',
+    });
+    const factory = createWebRequestResponseFactory();
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    // When
+    await factory.materializeRequest?.(frameworkRequest);
+
+    // Then
+    if (!(frameworkRequest.raw instanceof Request)) {
+      throw new TypeError('Expected the Web framework raw request.');
+    }
+
+    expect(() => parseMultipartStream(frameworkRequest.raw as Request)).toThrow(
+      'Multipart request body has already been consumed.',
+    );
   });
 });

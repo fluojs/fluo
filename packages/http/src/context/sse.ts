@@ -231,11 +231,12 @@ export class SseResponse {
 }
 
 /**
- * Resolves after a manual SSE stream closes through any supported termination path.
+ * Resolves after a manual SSE response closes through any supported termination path.
+ *
+ * @param response Manual SSE response whose lifecycle is observed.
+ * @returns A promise that resolves after the response closes.
  *
  * @internal
- * @param response Manual SSE response to observe.
- * @returns A promise that settles after the stream has closed.
  */
 export function waitForSseResponseCompletion(response: SseResponse): Promise<void> {
   return response.completion;

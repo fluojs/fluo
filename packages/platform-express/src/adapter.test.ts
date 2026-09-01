@@ -41,6 +41,7 @@ import {
   FluoFactory,
   fluoFactory,
 } from '@fluojs/runtime';
+import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type {
   ErrorRequestHandler,
@@ -1503,6 +1504,190 @@ describe('@fluojs/platform-express', () => {
       });
     } finally {
       await app.close();
+    }
+  });
+
+  it('routes opted-in multipart parts without pre-buffering through Express dispatch', async () => {
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          name: string;
+          value?: string;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : {
+          name: first.value.name,
+          streamed: first.value.kind === 'field',
+          value: first.value.value,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const adapter = createExpressAdapter(
+      { host: '127.0.0.1', port: 0 },
+      { strategy: 'stream' },
+    ) as ExpressHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await fetch(`${adapter.getListenTarget().url}/streaming-upload`, {
+        body: form,
+        method: 'POST',
+      });
+
+      await expect(response.json()).resolves.toEqual({
+        name: 'title',
+        streamed: true,
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('cancels an ignored native-route multipart parser exactly once', async () => {
+    const sourceIterator = {
+      async next(): Promise<IteratorResult<Uint8Array>> {
+        throw new Error('The ignored multipart route must not pull its source.');
+      },
+      return: vi.fn(async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined })),
+    };
+    const parser = runtimeWeb.parseMultipartStream({
+      headers: { 'content-type': 'multipart/form-data; boundary=fluo-native-cleanup' },
+      method: 'POST',
+      [Symbol.asyncIterator]() {
+        return sourceIterator;
+      },
+      url: 'http://localhost/native-streaming-cleanup',
+    });
+    const parseMultipartStream = vi.spyOn(runtimeWeb, 'parseMultipartStream').mockReturnValue(parser);
+
+    @Controller('/native-streaming-cleanup')
+    class NativeStreamingCleanupController {
+      @Post('/')
+      upload() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NativeStreamingCleanupController] });
+
+    const adapter = createExpressAdapter(
+      { host: '127.0.0.1', port: 0 },
+      { strategy: 'stream' },
+    ) as ExpressHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await fetch(`${adapter.getListenTarget().url}/native-streaming-cleanup`, {
+        body: form,
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(sourceIterator.return).toHaveBeenCalledOnce();
+    } finally {
+      parseMultipartStream.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('cancels the active multipart file stream when the Express client disconnects', async () => {
+    const fileStreamCancelled = createDeferred<void>();
+    const parserReady = createDeferred<void>();
+    const originalParseMultipartStream = runtimeWeb.parseMultipartStream;
+    let frameworkSignal: AbortSignal | undefined;
+    let parserSignal: AbortSignal | undefined;
+    const parseMultipartStream = vi.spyOn(runtimeWeb, 'parseMultipartStream').mockImplementation((request, options) => {
+      if (!(request instanceof Request)) {
+        parserSignal = request.signal;
+      }
+
+      return originalParseMultipartStream(request, options);
+    });
+
+    @Controller('/streaming-abort')
+    class StreamingAbortController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        frameworkSignal = context.request.signal;
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          stream?: ReadableStream<Uint8Array>;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        if (first.done || first.value.kind !== 'file' || !first.value.stream) {
+          throw new Error('Expected an active multipart file part.');
+        }
+
+        const reader = first.value.stream.getReader();
+        context.request.signal?.addEventListener('abort', () => {
+          void reader.read().then(
+            () => fileStreamCancelled.reject(new Error('Expected the active file stream to reject after disconnect.')),
+            () => fileStreamCancelled.resolve(),
+          );
+        }, { once: true });
+        parserReady.resolve();
+        await fileStreamCancelled.promise;
+
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingAbortController] });
+
+    const adapter = createExpressAdapter(
+      { host: '127.0.0.1', port: 0 },
+      { strategy: 'stream' },
+    ) as ExpressHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
+    let request: ReturnType<typeof httpRequest> | undefined;
+
+    try {
+      await app.listen();
+      const target = new URL(adapter.getListenTarget().url);
+      request = httpRequest({
+        headers: {
+          'content-type': 'multipart/form-data; boundary=fluo-express-disconnect',
+          'transfer-encoding': 'chunked',
+        },
+        host: target.hostname,
+        method: 'POST',
+        path: '/streaming-abort',
+        port: Number(target.port),
+      });
+      request.on('error', () => {});
+      request.write('--fluo-express-disconnect\r\ncontent-disposition: form-data; name="file"; filename="file.txt"\r\n\r\n');
+      await parserReady.promise;
+      request.destroy();
+
+      await expect(fileStreamCancelled.promise).resolves.toBeUndefined();
+      expect(parserSignal).toBe(frameworkSignal);
+      expect(parserSignal?.aborted).toBe(true);
+    } finally {
+      request?.destroy();
+      try {
+        await app.close();
+      } finally {
+        parseMultipartStream.mockRestore();
+      }
     }
   });
 

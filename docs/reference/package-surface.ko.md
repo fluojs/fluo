@@ -28,6 +28,23 @@
 | **Deno** | `@fluojs/platform-deno` | 공식 managed `Deno.serve()` 시작 경로와 fluo를 bootstrap하되 server startup, shutdown, signal, websocket upgrade를 직접 소유하는 host를 위한 `createDenoFetchHandler(...)`. |
 | **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | fetch-style adapter seam 위에 구축된 stateless isolate lifecycle입니다. `listen()`은 socket을 열지 않고 dispatcher를 binding하며, Worker `fetch()`는 active work를 `executionContext.waitUntil(...)`에 등록합니다. SSE(`text/event-stream`) drain은 response body가 완료되거나 cancel될 때까지 유지되고, WebSocket upgrade는 첫 listen boundary 전에 frozen된 binding을 사용하며, shutdown은 bounded close window 동안 active work를 drain하면서 새 HTTP/WebSocket ingress에 JSON `503`을 반환합니다. Lazy entrypoint의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤 임시 gate를 해제하므로, 이후 request가 새 application을 bootstrap할 수 있습니다. |
 
+## portable multipart capability matrix
+
+기존 `FrameworkRequest.body`와 `files` 계약을 안정적으로 유지하기 위해 일반 runtime dispatch pipeline은
+buffered multipart materialization을 유지합니다. 애플리케이션은 `multipart: { strategy: 'stream' }`으로
+streaming을 명시적으로 선택하며, 지원되는 adapter는 iterator를 미리 읽거나 버퍼링하지 않고
+`RequestContext.request.body`를 `AsyncIterable<MultipartPart>`로 노출합니다. File byte는 file stream을
+소비할 때만 가져오며, 하나의 request body를 두 mode로 소비할 수 없습니다.
+
+| adapter family | `parseMultipartStream(...)`용 portable input | buffered mode | streaming mode |
+| --- | --- | --- | --- |
+| Node.js, Express, Fastify | native async-iterable request를 직접 또는 `MultipartRequestLike`로 전달 | runtime request pipeline에서 지원합니다. | typed part와 Web stream을 사용하는 shared parser에서 지원합니다. |
+| Bun, Deno, Cloudflare Workers | native Fetch `Request` | runtime request pipeline에서 지원합니다. | typed part와 Web stream을 사용하는 shared parser에서 지원합니다. |
+
+두 행은 같은 `maxFieldSize`, `maxFileSize`, `maxTotalSize`, `maxFields`, `maxFiles`,
+`maxHeaderSize` limit을 강제합니다. Request abort, parser failure, file-stream cancellation은 active
+source를 cancel하고, `MultipartBodyConsumedError`는 buffered/streaming double consumption을 reject합니다.
+
 ## 패키지 책임
 
 ### core

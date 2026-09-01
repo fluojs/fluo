@@ -97,6 +97,16 @@ async function fetchForTest(...args: Parameters<typeof fetch>): Promise<Response
   return registerResponseForCleanup(await fetch(...args));
 }
 
+async function resolveNodeApplicationUrl(app: Awaited<ReturnType<typeof bootstrapNodeApplication>>): Promise<string> {
+  const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+
+  if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+    throw new Error('Expected the test application to use the Node HTTP adapter.');
+  }
+
+  return adapter.getListenTarget().url;
+}
+
 afterEach(async () => {
   while (teardownCallbacks.length > 0) {
     await teardownCallbacks.pop()?.();
@@ -3152,16 +3162,16 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
+      host: '127.0.0.1',
       filters: [filter],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/boom`);
 
     expect(response.status).toBe(418);
     await expect(response.json()).resolves.toEqual({ handled: true });
@@ -3190,16 +3200,16 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
+      host: '127.0.0.1',
       filters: [filter],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/boom`);
 
     expect(response.status).toBe(500);
 
@@ -3239,16 +3249,16 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
+      host: '127.0.0.1',
       filters: [firstFilter, secondFilter],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/boom`);
 
     expect(response.status).toBe(400);
     expect(callOrder).toEqual(['first']);

@@ -611,6 +611,77 @@ describe('@fluojs/platform-bun', () => {
     expect(response.status).toBe(204);
   });
 
+  it('forwards multipart stream strategy through the Bun fetch handler', async () => {
+    const fetch = createBunFetchHandler({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const iterator = parts[Symbol.asyncIterator]();
+          const first = await iterator.next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await iterator.return?.();
+          response.setStatus(204);
+        },
+      },
+      multipart: { strategy: 'stream' },
+    });
+    const form = new FormData();
+    form.set('title', 'Ada');
+
+    const response = await fetch(new Request('https://runtime.test/hooks/stream', {
+      body: form,
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
+
+  it('forwards multipart stream strategy through managed Bun bootstrap routes', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<unknown>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : first.value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      multipart: { strategy: 'stream' },
+      port: 4313,
+    });
+
+    try {
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4313/streaming-upload', {
+        body: form,
+        method: 'POST',
+      }));
+
+      expect(response?.status).toBe(201);
+      await expect(response?.json()).resolves.toMatchObject({
+        kind: 'field',
+        name: 'title',
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('enforces multipart.maxTotalSize for custom fetch handlers', async () => {
     const dispatch = vi.fn(async () => undefined);
     const fetch = createBunFetchHandler({
