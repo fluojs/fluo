@@ -79,6 +79,12 @@ export async function dispatchWithRequestResponseFactory<
   }
 }
 
+/**
+ * Finalizes a route-owned multipart body iterator after dispatch completes.
+ *
+ * @param request Framework request whose multipart body may need finalization.
+ * @returns A promise that resolves after the iterator has been returned when applicable.
+ */
 export async function finalizeRouteOwnedMultipartBody(request: FrameworkRequest | undefined): Promise<void> {
   const body = request?.body;
 
