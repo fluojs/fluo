@@ -373,12 +373,42 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 
 Adapters that parse multipart uploads should attach runtime-neutral `FrameworkRequestFile` values to `FrameworkRequest.files` rather than augmenting the shared HTTP contract with adapter-specific file types. The seam intentionally models the portable fields every HTTP adapter can provide (`fieldname`, `originalname`, `mimetype`, `buffer`, and `size`); platform packages may keep richer native file objects on their raw request surfaces, but guards, binders, middleware, interceptors, and controllers should read files through `RequestContext.request.files` when they need cross-runtime behavior.
 
+### Multipart DTO fields
+
+Use `@FromFiles(fieldname?)` with `@RequestDto(...)` when multipart files are part of a handler's input contract:
+
+```ts
+import {
+  FromFiles,
+  Optional,
+  RequestDto,
+  type FrameworkRequestFile,
+} from '@fluojs/http';
+
+class UploadAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+
+  @FromFiles('cover')
+  @Optional()
+  cover?: readonly FrameworkRequestFile[];
+}
+
+@Post('/')
+@RequestDto(UploadAssetsDto)
+upload(input: UploadAssetsDto) {
+  return input.attachments.map((file) => file.originalname);
+}
+```
+
+`@FromFiles(...)` is array-only: when `FrameworkRequest.files` exists, it returns a readonly array filtered by `fieldname` in adapter arrival order; a present collection without matches becomes `[]`. When the collection is absent, required fields produce the standard missing-field error and `@Optional()` leaves the field `undefined`. Converters and validation receive that same portable array. The DTO binder projects only the five `FrameworkRequestFile` fields, so adapter-native file properties cannot leak through the DTO boundary. Direct `RequestContext.request.files` access remains supported for controllers and pipeline stages that need the entire request collection.
+
 Response content negotiation formatters must return `string` or `Uint8Array` from `ResponseFormatter.format(...)`. Node.js `Buffer` values remain assignable because `Buffer` implements `Uint8Array`, but formatter contracts should rely only on runtime-neutral byte behavior.
 
 ## Public API
 
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `appendVaryHeader`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`

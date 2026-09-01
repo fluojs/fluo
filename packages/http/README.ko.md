@@ -367,12 +367,42 @@ Fluo의 HTTP 데코레이터는 TC39 표준 데코레이터이며, runtime 또�
 
 Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-specific file type으로 augment하지 말고 runtime-neutral `FrameworkRequestFile` 값을 `FrameworkRequest.files`에 붙여야 합니다. 이 seam은 모든 HTTP adapter가 제공할 수 있는 portable field(`fieldname`, `originalname`, `mimetype`, `buffer`, `size`)만 의도적으로 모델링합니다. Platform package는 더 풍부한 native file object를 raw request surface에 유지할 수 있지만, guard, binder, middleware, interceptor, controller가 cross-runtime 동작을 필요로 하면 `RequestContext.request.files`를 통해 파일을 읽어야 합니다.
 
+### Multipart DTO 필드
+
+Multipart 파일이 handler 입력 계약에 포함되면 `@RequestDto(...)`와 함께 `@FromFiles(fieldname?)`를 사용하세요.
+
+```ts
+import {
+  FromFiles,
+  Optional,
+  RequestDto,
+  type FrameworkRequestFile,
+} from '@fluojs/http';
+
+class UploadAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+
+  @FromFiles('cover')
+  @Optional()
+  cover?: readonly FrameworkRequestFile[];
+}
+
+@Post('/')
+@RequestDto(UploadAssetsDto)
+upload(input: UploadAssetsDto) {
+  return input.attachments.map((file) => file.originalname);
+}
+```
+
+`@FromFiles(...)`는 array-only입니다. `FrameworkRequest.files`가 있으면 `fieldname`으로 필터링된 readonly 배열을 어댑터 도착 순서대로 반환하며, collection이 있지만 일치 항목이 없으면 `[]`가 됩니다. Collection이 없으면 필수 필드는 표준 missing-field 오류를 내고 `@Optional()` 필드는 `undefined`로 남습니다. Converter와 validation은 같은 portable 배열을 받습니다. DTO binder는 다섯 `FrameworkRequestFile` 필드만 projection하므로 adapter-native file property가 DTO 경계를 넘어오지 않습니다. 전체 요청 collection이 필요한 controller와 pipeline stage에서는 기존처럼 `RequestContext.request.files`에 직접 접근할 수 있습니다.
+
 응답 content negotiation formatter는 `ResponseFormatter.format(...)`에서 `string` 또는 `Uint8Array`를 반환해야 합니다. Node.js `Buffer` 값은 `Buffer`가 `Uint8Array`를 구현하므로 계속 할당 가능하지만, formatter contract는 runtime-neutral byte 동작에만 의존해야 합니다.
 
 ## 공개 API
 
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`

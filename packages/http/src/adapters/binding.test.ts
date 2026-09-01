@@ -5,6 +5,7 @@ import {
   Convert,
   FromBody,
   FromCookie,
+  FromFiles,
   FromHeader,
   FromPath,
   FromQuery,
@@ -23,7 +24,12 @@ import {
 import { DefaultBinder } from './binding.js';
 import { getCompiledDtoBindingPlan } from './dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from './dto-validation-adapter.js';
-import type { ArgumentResolverContext, FrameworkRequest, FrameworkResponse } from '../types.js';
+import type {
+  ArgumentResolverContext,
+  FrameworkRequest,
+  FrameworkRequestFile,
+  FrameworkResponse,
+} from '../types.js';
 
 function createRequest(overrides: Partial<FrameworkRequest> = {}): FrameworkRequest {
   return {
@@ -246,6 +252,143 @@ describe('DefaultBinder', () => {
     expect(bound.tags).toEqual(['admin']);
   });
 
+  it('binds filtered portable file arrays in adapter order without native leakage', async () => {
+    const attachments = [
+      {
+        buffer: new Uint8Array([1]),
+        fieldname: 'attachments',
+        mimetype: 'text/plain',
+        nativeUpload: { stream: 'native-only' },
+        originalname: 'first.txt',
+        size: 1,
+      },
+      {
+        buffer: new Uint8Array([2]),
+        fieldname: 'cover',
+        mimetype: 'text/plain',
+        nativeUpload: { stream: 'native-only' },
+        originalname: 'cover.txt',
+        size: 1,
+      },
+      {
+        buffer: new Uint8Array([3]),
+        fieldname: 'attachments',
+        mimetype: 'text/plain',
+        nativeUpload: { stream: 'native-only' },
+        originalname: 'second.txt',
+        size: 1,
+      },
+    ] satisfies readonly (FrameworkRequestFile & { nativeUpload: { stream: string } })[];
+
+    class UploadRequest {
+      @FromFiles('attachments')
+      attachments: readonly FrameworkRequestFile[] = [];
+    }
+
+    const request = createRequest({ files: attachments });
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(UploadRequest, createContext(request))) as UploadRequest;
+
+    expect(bound.attachments.map((file) => file.originalname)).toEqual(['first.txt', 'second.txt']);
+    expect(bound.attachments[0]).not.toBe(attachments[0]);
+    expect(bound.attachments[0]).toEqual({
+      buffer: new Uint8Array([1]),
+      fieldname: 'attachments',
+      mimetype: 'text/plain',
+      originalname: 'first.txt',
+      size: 1,
+    });
+    expect(bound.attachments[0]).not.toHaveProperty('nativeUpload');
+    expect(request.files?.[0]).toBe(attachments[0]);
+  });
+
+  it('distinguishes absent files from present unmatched fields and supports Optional', async () => {
+    class RequiredUploadRequest {
+      @FromFiles('attachments')
+      attachments: readonly FrameworkRequestFile[] = [];
+    }
+
+    class OptionalUploadRequest {
+      @FromFiles('attachments')
+      @Optional()
+      attachments?: readonly FrameworkRequestFile[];
+    }
+
+    const binder = new DefaultBinder();
+
+    await expect(
+      binder.bind(RequiredUploadRequest, createContext(createRequest())),
+    ).rejects.toMatchObject({
+      details: [
+        {
+          code: 'MISSING_FIELD',
+          field: 'attachments',
+          source: 'files',
+        },
+      ],
+      status: 400,
+    });
+
+    const absent = (await binder.bind(
+      OptionalUploadRequest,
+      createContext(createRequest()),
+    )) as OptionalUploadRequest;
+    const unmatched = (await binder.bind(
+      OptionalUploadRequest,
+      createContext(
+        createRequest({
+          files: [
+            {
+              buffer: new Uint8Array([1]),
+              fieldname: 'cover',
+              mimetype: 'text/plain',
+              originalname: 'cover.txt',
+              size: 1,
+            },
+          ],
+        }),
+      ),
+    )) as OptionalUploadRequest;
+
+    expect(absent.attachments).toBeUndefined();
+    expect(unmatched.attachments).toEqual([]);
+  });
+
+  it('applies converters to portable file arrays', async () => {
+    class FileNameConverter {
+      convert(value: unknown, target: { source: string }) {
+        expect(target.source).toBe('files');
+        return (value as readonly FrameworkRequestFile[]).map((file) => file.originalname);
+      }
+    }
+
+    class UploadRequest {
+      @FromFiles('attachments')
+      @Convert(FileNameConverter)
+      filenames: string[] = [];
+    }
+
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(
+      UploadRequest,
+      createContext(
+        createRequest({
+          files: [
+            {
+              buffer: new Uint8Array([1]),
+              fieldname: 'attachments',
+              mimetype: 'text/plain',
+              originalname: 'first.txt',
+              size: 1,
+            },
+          ],
+        }),
+      ),
+    )) as UploadRequest;
+
+    expect(bound.filenames).toEqual(['first.txt']);
+  });
+
   it('applies global converters before assigning DTO fields', async () => {
     class QueryNumberConverter {
       convert(value: unknown, target: { source: string }) {
@@ -356,6 +499,43 @@ describe('DefaultBinder', () => {
 });
 
 describe('HttpDtoValidationAdapter', () => {
+  it('validates matched file arrays after binding', async () => {
+    class UploadRequest {
+      @FromFiles('attachments')
+      @ArrayMinSize(1)
+      attachments: readonly FrameworkRequestFile[] = [];
+    }
+
+    const binder = new DefaultBinder();
+    const validator = new HttpDtoValidationAdapter();
+    const bound = (await binder.bind(
+      UploadRequest,
+      createContext(
+        createRequest({
+          files: [
+            {
+              buffer: new Uint8Array([1]),
+              fieldname: 'cover',
+              mimetype: 'text/plain',
+              originalname: 'cover.txt',
+              size: 1,
+            },
+          ],
+        }),
+      ),
+    )) as UploadRequest;
+
+    await expect(validator.validate(bound, UploadRequest)).rejects.toMatchObject({
+      details: [
+        {
+          field: 'attachments',
+          source: 'files',
+        },
+      ],
+      status: 400,
+    });
+  });
+
   it('uses DTO decorator validation rules and raises bad request details', async () => {
     class CreateUserRequest {
       @FromBody('name')
