@@ -368,7 +368,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build portable cookie helper
-        run: pnpm --filter @fluojs/http build
+        run: pnpm --filter @fluojs/http... build
 
       - name: Setup Bun
         if: matrix.runtime == 'bun'
