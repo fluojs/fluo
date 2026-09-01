@@ -207,8 +207,11 @@ accumulating until the runner refuses new spawns.
 - Implementers write only inside `.worktrees/<branch>`; reviewers are
   read-only; fix-backs go to the same child/branch.
 - `merge` is emitted only after: green CI, same-head review verdict
-  `merge`, `MERGEABLE` state, and an explicit `approve-merge` grant.
-  Without the grant the engine emits `request-merge-approval`.
+  `merge`, `MERGEABLE` state, and a merge grant. `init --from-lane-v2`
+  imports the v2 ledger's `authority_scope.pr_merge` as that grant for
+  every issue in the lane; hand-initialized lanes get it via an explicit
+  `approve-merge` run. Without the grant the engine emits
+  `request-merge-approval`.
 - Public `packages/*` changes require a `.changeset/*.md` in the branch
   diff before review (`fix-back: changeset-missing` otherwise).
 - Publishing stays GitHub Actions + Changesets only.
