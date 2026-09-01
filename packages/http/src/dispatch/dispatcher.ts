@@ -37,13 +37,12 @@ import type {
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import {
+  type ConditionalRequestOutcome,
   resolveConditionalRequest,
 } from './conditional-request-policy.js';
 import {
   type ResolvedContentNegotiation,
   resolveContentNegotiation,
-  resolveResponsePolicy,
-  writeConditionalResponse,
   writeErrorResponse,
   writeSuccessResponse,
 } from './dispatch-response-policy.js';
@@ -760,6 +759,7 @@ async function dispatchMatchedHandler(
     return;
   }
 
+  let conditionalOutcome: Exclude<ConditionalRequestOutcome, 'proceed'> | undefined;
   let conditionalValidators: ResponseValidators | undefined;
 
   if (conditionalRequest) {
@@ -770,14 +770,7 @@ async function dispatchMatchedHandler(
     conditionalValidators = resolved.validators;
 
     if (resolved.outcome !== 'proceed') {
-      const responsePolicy = resolveResponsePolicy(handler, requestContext.request, contentNegotiation);
-      await writeConditionalResponse(
-        requestContext.response,
-        resolved.outcome,
-        resolved.validators,
-        responsePolicy,
-      );
-      return;
+      conditionalOutcome = resolved.outcome;
     }
   }
 
@@ -794,10 +787,14 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (result instanceof SseResponse) {
+  if (conditionalOutcome === undefined && result instanceof SseResponse) {
     await waitForSseResponseCompletion(result);
     ensureRequestNotAborted(requestContext.request);
-  } else if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
+  } else if (
+    conditionalOutcome === undefined
+    && isAsyncIterable(result)
+    && await writeManagedSseIterable(handler, requestContext, result)
+  ) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!requestContext.response.committed) {
     await writeSuccessResponse(
@@ -808,6 +805,7 @@ async function dispatchMatchedHandler(
       contentNegotiation,
       requestContext,
       conditionalValidators,
+      conditionalOutcome,
     );
   }
 

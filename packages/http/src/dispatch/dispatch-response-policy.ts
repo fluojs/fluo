@@ -186,6 +186,7 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param contentNegotiation The configured response formatters.
  * @param requestContext The active request context passed to custom response writers.
  * @param validators Validators resolved before the route handler executes.
+ * @param conditionalOutcome Matched conditional outcome for formatter-managed responses.
  * @returns The write success response result.
  */
 export async function writeSuccessResponse(
@@ -196,6 +197,7 @@ export async function writeSuccessResponse(
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
   validators?: ResponseValidators,
+  conditionalOutcome?: Exclude<ConditionalRequestOutcome, 'proceed'>,
 ) {
   if (response.committed) {
     return;
@@ -238,6 +240,10 @@ export async function writeSuccessResponse(
 
   const responsePolicy = resolveResponsePolicy(handler, request, contentNegotiation);
   const { formatter } = responsePolicy;
+
+  if (conditionalOutcome !== undefined) {
+    return writeConditionalResponse(response, conditionalOutcome, validators, responsePolicy);
+  }
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
   if (responsePolicy.variesByAccept) {

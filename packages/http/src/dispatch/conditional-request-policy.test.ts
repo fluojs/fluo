@@ -64,7 +64,7 @@ function createResponse(): RecordedResponse {
 }
 
 describe('conditional request policy', () => {
-  it('gives If-Match precedence over If-Unmodified-Since before invoking a handler', async () => {
+  it('gives If-Match precedence over If-Unmodified-Since before conditionally writing a handler result', async () => {
     let handlerCalls = 0;
 
     @Controller('/validators')
@@ -100,9 +100,9 @@ describe('conditional request policy', () => {
       'if-unmodified-since': 'Thu, 01 Jan 2026 01:00:00 GMT',
     }), response);
 
-    // Then: RFC validator precedence rejects before executing the route.
+    // Then: RFC validator precedence rejects the formatter-managed response.
     expect(response.statusCode).toBe(412);
-    expect(handlerCalls).toBe(0);
+    expect(handlerCalls).toBe(1);
   });
 
   it('uses weak comparison for If-None-Match and strong comparison for If-Match', async () => {

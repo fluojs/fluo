@@ -50,7 +50,7 @@ function createResponse(): FrameworkResponse {
 }
 
 describe('conditional request lifecycle', () => {
-  it('runs application and module middleware plus guards before conditional evaluation', async () => {
+  it('runs application and module middleware plus guards before classifying a conditional response', async () => {
     const events: string[] = [];
 
     class AuditGuard {
@@ -109,12 +109,13 @@ describe('conditional request lifecycle', () => {
       'module-before',
       'guard',
       'resolver',
+      'handler',
       'module-after',
       'app-after',
     ]);
   });
 
-  it('continues from a successful If-Match to If-None-Match evaluation', async () => {
+  it('continues from a successful If-Match to If-None-Match before conditionally writing the handler result', async () => {
     let handlerCalls = 0;
 
     @Controller('/validators')
@@ -149,6 +150,6 @@ describe('conditional request lifecycle', () => {
     }), response);
 
     expect(response.statusCode).toBe(304);
-    expect(handlerCalls).toBe(0);
+    expect(handlerCalls).toBe(1);
   });
 });
