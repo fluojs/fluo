@@ -282,6 +282,8 @@ input alias가 이 report contract를 바꾸지 않습니다.
 
 JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다.
 
+Bearer JWT preset failure boundary: `BearerJwtStrategy`는 `JwtExpiredTokenError`만 `AuthenticationExpiredError`로, `JwtInvalidTokenError`만 `AuthenticationFailedError`로 매핑하고 각 cause를 보존합니다. `JwtConfigurationError`와 verifier-provider infrastructure error는 변경 없이 전파하므로 `AuthGuard`는 credential failure에만 `401 Unauthorized`를 생성합니다. 구속력 있는 계약은 [`docs/architecture/auth-and-jwt.ko.md`](./architecture/auth-and-jwt.ko.md)와 `packages/passport/src/bearer/bearer-jwt.ts`입니다.
+
 Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)`보다 먼저 `ConfigModule.forRoot()`와 global `AuthPersistenceModule`을 import합니다. 이 persistence module은 `REFRESH_TOKEN_STORE` 및 `CREDENTIALS_VERIFIER`를 export하고, 이어서 `AuthModule`이 `AuthService`와 `AuthController`를 local로 등록합니다. 마이그레이션 경계는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), 완전한 module snippet은 [`book/beginner/ch14-jwt.ko.md`](../book/beginner/ch14-jwt.ko.md)를 읽으세요.
 
 ## GraphQL Field Resolver DTO Inputs
