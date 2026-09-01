@@ -8,6 +8,9 @@ export interface QueueJobType<TJob extends object = object> {
 /** Supported retry backoff strategies forwarded to BullMQ workers. */
 export type QueueBackoffType = 'fixed' | 'exponential';
 
+/** Cross-scope ownership collision action selected during queue bootstrap. */
+export type QueueOwnershipEnforcement = 'warn' | 'reject';
+
 /** Retry timing settings applied to one queued job type. */
 export interface QueueBackoffOptions {
   delayMs?: number;
@@ -39,6 +42,14 @@ export interface QueueModuleOptions {
   clientName?: string;
   /** Unique registration scope for non-global queue modules that need isolated providers. */
   scope?: string;
+  /**
+   * Stable application-supplied identity for the Redis database and BullMQ prefix shared by this registration.
+   *
+   * Registrations that target one BullMQ backend must use the same namespace, regardless of `clientName`.
+   */
+  ownershipNamespace?: string;
+  /** Cross-scope collision action. Defaults to `warn` for 2.x compatibility. */
+  ownershipEnforcement?: QueueOwnershipEnforcement;
   /** Whether queue providers should be visible globally. Defaults to `true`. */
   global?: boolean;
   defaultAttempts?: number;
@@ -54,6 +65,8 @@ export interface QueueModuleOptions {
 export interface NormalizedQueueModuleOptions {
   clientName?: string;
   scope?: string;
+  ownershipNamespace?: string;
+  ownershipEnforcement: QueueOwnershipEnforcement;
   defaultAttempts: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency: number;

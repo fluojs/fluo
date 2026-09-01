@@ -1,5 +1,5 @@
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockRedisConnection {
@@ -82,8 +82,9 @@ describe('queue worker ownership', () => {
     bullmqState.workerNames.length = 0;
   });
 
-  it('rejects the same Redis dependency and jobName across distinct queue scopes', async () => {
+  it('warns about an unconfigured ownership namespace collision without creating resources first', async () => {
     // Given
+    const warnings: string[] = [];
     class FirstScopedJob {}
     class SecondScopedJob {}
 
@@ -116,6 +117,14 @@ describe('queue worker ownership', () => {
 
     // When
     const result = await bootstrapApplication({
+      logger: {
+        debug() {},
+        error() {},
+        log() {},
+        warn(message: string) {
+          warnings.push(message);
+        },
+      } satisfies ApplicationLogger,
       providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
       rootModule: AppModule,
     }).then(
@@ -125,15 +134,14 @@ describe('queue worker ownership', () => {
 
     try {
       // Then
-      expect(result.kind).toBe('failed');
-      if (result.kind === 'failed') {
-        expect(result.error).toMatchObject({
-          message:
-            'Cross-scope @fluojs/queue worker ownership collision for Redis dependency "redis.default" and jobName "shared-worker-queue" between scopes "first" (FirstScopedWorker in FirstQueueFeatureModule) and "second" (SecondScopedWorker in SecondQueueFeatureModule). Configure a distinct QueueModule.forRoot({ clientName }) or @QueueWorker(..., { jobName }) value.',
-        });
+      expect(result.kind).toBe('started');
+      if (result.kind === 'started') {
+        expect(warnings).toEqual([
+          'Cross-scope @fluojs/queue worker ownership collision for backend identity "(unconfigured)" and jobName "shared-worker-queue" between scopes "first" (FirstScopedWorker in FirstQueueFeatureModule) and "second" (SecondScopedWorker in SecondQueueFeatureModule). Set matching QueueModule.forRoot({ ownershipNamespace }) values for registrations that share one BullMQ backend, then opt into ownershipEnforcement: "reject" to fail before BullMQ resources are created.',
+        ]);
       }
-      expect(bullmqState.queueNames).toEqual([]);
-      expect(bullmqState.workerNames).toEqual([]);
+      expect(bullmqState.queueNames).toEqual(['shared-worker-queue', 'shared-worker-queue']);
+      expect(bullmqState.workerNames).toEqual(['shared-worker-queue', 'shared-worker-queue']);
     } finally {
       if (result.kind === 'started') {
         await result.app.close();
@@ -141,7 +149,7 @@ describe('queue worker ownership', () => {
     }
   });
 
-  it('allows the same jobName across scopes backed by distinct Redis dependencies', async () => {
+  it('rejects the same jobName for different Redis clients with one ownership namespace', async () => {
     // Given
     class FirstScopedJob {}
     class SecondScopedJob {}
@@ -173,13 +181,120 @@ describe('queue worker ownership', () => {
 
     class FirstQueueFeatureModule {}
     defineModule(FirstQueueFeatureModule, {
-      imports: [FirstRedisModule, QueueModule.forRoot({ clientName: 'first', global: false, scope: 'first' })],
+      imports: [
+        FirstRedisModule,
+        QueueModule.forRoot({
+          clientName: 'first',
+          global: false,
+          ownershipEnforcement: 'reject',
+          ownershipNamespace: 'orders-redis-db-0',
+          scope: 'first',
+        }),
+      ],
       providers: [FirstScopedWorker],
     });
 
     class SecondQueueFeatureModule {}
     defineModule(SecondQueueFeatureModule, {
-      imports: [SecondRedisModule, QueueModule.forRoot({ clientName: 'second', global: false, scope: 'second' })],
+      imports: [
+        SecondRedisModule,
+        QueueModule.forRoot({
+          clientName: 'second',
+          global: false,
+          ownershipEnforcement: 'reject',
+          ownershipNamespace: 'orders-redis-db-0',
+          scope: 'second',
+        }),
+      ],
+      providers: [SecondScopedWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstQueueFeatureModule, SecondQueueFeatureModule],
+    });
+
+    // When
+    const result = await bootstrapApplication({ rootModule: AppModule }).then(
+      (app) => ({ app, kind: 'started' } as const),
+      (error: unknown) => ({ error, kind: 'failed' } as const),
+    );
+
+    try {
+      // Then
+      expect(result.kind).toBe('failed');
+      if (result.kind === 'failed') {
+        expect(result.error).toMatchObject({
+          message:
+            'Cross-scope @fluojs/queue worker ownership collision for backend identity "orders-redis-db-0" and jobName "shared-worker-queue" between scopes "first" (FirstScopedWorker in FirstQueueFeatureModule) and "second" (SecondScopedWorker in SecondQueueFeatureModule). Configure distinct ownershipNamespace or @QueueWorker(..., { jobName }) values.',
+        });
+      }
+      expect(bullmqState.queueNames).toEqual([]);
+      expect(bullmqState.workerNames).toEqual([]);
+    } finally {
+      if (result.kind === 'started') {
+        await result.app.close();
+      }
+    }
+  });
+
+  it('allows the same jobName across explicitly distinct ownership namespaces', async () => {
+    // Given
+    class FirstScopedJob {}
+    class SecondScopedJob {}
+
+    @QueueWorker(FirstScopedJob, { jobName: 'shared-worker-queue' })
+    class FirstScopedWorker {
+      async handle(_job: FirstScopedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondScopedJob, { jobName: 'shared-worker-queue' })
+    class SecondScopedWorker {
+      async handle(_job: SecondScopedJob): Promise<void> {}
+    }
+
+    const firstRedisToken = getRedisClientToken('first');
+    const secondRedisToken = getRedisClientToken('second');
+
+    class FirstRedisModule {}
+    defineModule(FirstRedisModule, {
+      exports: [firstRedisToken],
+      providers: [{ provide: firstRedisToken, useValue: new MockRedisClient() }],
+    });
+
+    class SecondRedisModule {}
+    defineModule(SecondRedisModule, {
+      exports: [secondRedisToken],
+      providers: [{ provide: secondRedisToken, useValue: new MockRedisClient() }],
+    });
+
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, {
+      imports: [
+        FirstRedisModule,
+        QueueModule.forRoot({
+          clientName: 'first',
+          global: false,
+          ownershipEnforcement: 'reject',
+          ownershipNamespace: 'orders-redis-db-0',
+          scope: 'first',
+        }),
+      ],
+      providers: [FirstScopedWorker],
+    });
+
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, {
+      imports: [
+        SecondRedisModule,
+        QueueModule.forRoot({
+          clientName: 'second',
+          global: false,
+          ownershipEnforcement: 'reject',
+          ownershipNamespace: 'billing-redis-db-0',
+          scope: 'second',
+        }),
+      ],
       providers: [SecondScopedWorker],
     });
 

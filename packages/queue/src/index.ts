@@ -12,6 +12,7 @@ export type {
   QueueDeadLetterRecord,
   QueueJobType,
   QueueModuleOptions,
+  QueueOwnershipEnforcement,
   QueueRateLimiterOptions,
   QueueWorkerOptions,
 } from './types.js';

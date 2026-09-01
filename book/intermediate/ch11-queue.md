@@ -155,7 +155,9 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 This is not a code-style trick. It is a deployment decision. Workload isolation reduces noisy-neighbor effects and makes capacity planning clearer.
 
-Queue registration `scope` values isolate DI visibility, not Redis queue names. If two scopes use the same Redis dependency and discover workers with the same `jobName`, bootstrap fails before BullMQ resources are created so one scope cannot consume another scope's jobs. Assign distinct `jobName` values, or route the scopes through distinct named Redis registrations with `clientName` when they intentionally reuse a job name.
+Queue registration `scope` values isolate DI visibility, not Redis queue names. `clientName` selects a DI registration, so it cannot prove that two named clients use different Redis databases or BullMQ prefixes. Each scoped registration should declare an `ownershipNamespace` that describes its actual Redis database and BullMQ prefix topology. Registrations on the same backend use the same namespace; distinct namespaces mean distinct backends.
+
+Queue validates `(ownershipNamespace, jobName)` before creating its BullMQ resources. The 2.x default is `ownershipEnforcement: 'warn'`: it records a diagnostic for an unconfigured or colliding identity without forcing existing deployments to change configuration. Set `ownershipEnforcement: 'reject'` to make a matching pair fail during bootstrap. This gives FluoShop a release-safe migration path: first name real backend topology, observe diagnostics, then opt into rejection once each shared backend has a stable namespace and unique worker job names.
 
 ## 11.7 Queue flow in FluoShop
 
@@ -196,7 +198,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 - NestJS migration requires an explicit singleton `@QueueWorker(JobClass)` provider with `handle(job)`, module-graph reachability, and an application-verified `jobName`/payload cutover; legacy processor metadata is not a compatibility surface.
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
-- Queue scopes do not namespace BullMQ queue identity; the same Redis dependency and `jobName` cannot be owned by workers in different scopes.
+- Queue scopes do not namespace BullMQ queue identity. `ownershipNamespace` names the actual Redis database and BullMQ prefix independently of `clientName`; Queue validates `(ownershipNamespace, jobName)`, warns by default in 2.x, and supports pre-resource bootstrap rejection through opt-in `ownershipEnforcement: 'reject'`.
 - The dead-letter list preserves separate records for repeatedly failed jobs under a bounded retention policy; it does not own or move the BullMQ jobs themselves. The read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
 - Queue starts processors after the bootstrap-ready handoff. Only while Queue is `started` and all discovered processors are ready do pending dead-letter writes leave readiness `ready` while health is `degraded`; `stopping` is not-ready/degraded and `stopped` is not-ready/unhealthy. Shutdown is bounded by a `5_000ms` per-write drain plus `workerShutdownTimeoutMs` for each graceful or forced worker close phase.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.

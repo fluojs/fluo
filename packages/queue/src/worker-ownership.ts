@@ -1,6 +1,4 @@
-import type { Token } from '@fluojs/core';
-import { getRedisClientToken, getRedisComponentId } from '@fluojs/redis';
-import type { CompiledModule, ModuleType } from '@fluojs/runtime';
+import type { ApplicationLogger, CompiledModule, ModuleType } from '@fluojs/runtime';
 
 import type { DiscoveryModuleFilter } from './helpers.js';
 import type { QueueRegistrationContext } from './tokens.js';
@@ -8,10 +6,13 @@ import { QUEUE_MODULE_CONTEXT_MARKER } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 
 interface QueueWorkerOwner {
+  readonly ownershipEnforcement: 'warn' | 'reject';
   readonly moduleName: string;
   readonly scope: string;
   readonly workerName: string;
 }
+
+const UNCONFIGURED_BACKEND_IDENTITY = '(unconfigured)';
 
 function isQueueModuleContext(value: unknown): value is QueueRegistrationContext {
   return (
@@ -113,34 +114,44 @@ function assertUniqueQueueScopes(moduleContexts: readonly QueueRegistrationConte
 }
 
 function getJobOwners(
-  ownersByRedisDependency: Map<Token, Map<string, QueueWorkerOwner>>,
-  redisToken: Token,
+  ownersByBackendIdentity: Map<string, Map<string, QueueWorkerOwner>>,
+  backendIdentity: string,
 ): Map<string, QueueWorkerOwner> {
-  const existing = ownersByRedisDependency.get(redisToken);
+  const existing = ownersByBackendIdentity.get(backendIdentity);
 
   if (existing) {
     return existing;
   }
 
   const created = new Map<string, QueueWorkerOwner>();
-  ownersByRedisDependency.set(redisToken, created);
+  ownersByBackendIdentity.set(backendIdentity, created);
   return created;
 }
 
 /**
- * Rejects queue registrations that would assign one BullMQ queue to workers in different DI scopes.
+ * Validates queue registrations that would assign one BullMQ queue to workers in different DI scopes.
  *
  * @param compiledModules Complete compiled application module graph.
+ * @param logger Application logger used for compatibility diagnostics.
+ * @param validationModuleType Queue registration module that triggers this one-time application-wide validation.
  */
-export function assertUniqueQueueWorkerOwnership(compiledModules: readonly CompiledModule[]): void {
+export function assertUniqueQueueWorkerOwnership(
+  compiledModules: readonly CompiledModule[],
+  logger: ApplicationLogger,
+  validationModuleType: ModuleType,
+): void {
   const moduleContexts = collectQueueModuleContexts(compiledModules);
   assertUniqueQueueScopes(moduleContexts);
 
-  const ownersByRedisDependency = new Map<Token, Map<string, QueueWorkerOwner>>();
+  if (moduleContexts[0]?.moduleType !== validationModuleType) {
+    return;
+  }
+
+  const ownersByBackendIdentity = new Map<string, Map<string, QueueWorkerOwner>>();
 
   for (const moduleContext of moduleContexts) {
-    const redisToken = getRedisClientToken(moduleContext.options.clientName);
-    const ownersByJobName = getJobOwners(ownersByRedisDependency, redisToken);
+    const backendIdentity = moduleContext.options.ownershipNamespace ?? UNCONFIGURED_BACKEND_IDENTITY;
+    const ownersByJobName = getJobOwners(ownersByBackendIdentity, backendIdentity);
     const descriptors = discoverQueueWorkerDescriptors(
       compiledModules,
       moduleContext.options,
@@ -152,13 +163,27 @@ export function assertUniqueQueueWorkerOwnership(compiledModules: readonly Compi
       const existingOwner = ownersByJobName.get(descriptor.jobName);
 
       if (existingOwner) {
-        throw new Error(
-          `Cross-scope @fluojs/queue worker ownership collision for Redis dependency "${getRedisComponentId(moduleContext.options.clientName)}" and jobName "${descriptor.jobName}" between scopes "${existingOwner.scope}" (${existingOwner.workerName} in ${existingOwner.moduleName}) and "${moduleContext.scope}" (${descriptor.workerName} in ${descriptor.moduleName}). Configure a distinct QueueModule.forRoot({ clientName }) or @QueueWorker(..., { jobName }) value.`,
+        const message =
+          `Cross-scope @fluojs/queue worker ownership collision for backend identity "${backendIdentity}" and jobName "${descriptor.jobName}" between scopes "${existingOwner.scope}" (${existingOwner.workerName} in ${existingOwner.moduleName}) and "${moduleContext.scope}" (${descriptor.workerName} in ${descriptor.moduleName}).`;
+
+        if (
+          existingOwner.ownershipEnforcement === 'reject' ||
+          moduleContext.options.ownershipEnforcement === 'reject'
+        ) {
+          throw new Error(
+            `${message} Configure distinct ownershipNamespace or @QueueWorker(..., { jobName }) values.`,
+          );
+        }
+
+        logger.warn(
+          `${message} Set matching QueueModule.forRoot({ ownershipNamespace }) values for registrations that share one BullMQ backend, then opt into ownershipEnforcement: "reject" to fail before BullMQ resources are created.`,
+          'QueueLifecycleService',
         );
       }
 
       ownersByJobName.set(descriptor.jobName, {
         moduleName: descriptor.moduleName,
+        ownershipEnforcement: moduleContext.options.ownershipEnforcement,
         scope: moduleContext.scope,
         workerName: descriptor.workerName,
       });
