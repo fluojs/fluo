@@ -2893,33 +2893,90 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
   }
 }
 
-export function enforceQueueWorkerOwnershipContract() {
-  const contractPaths = [
-    'packages/queue/README.md',
-    'packages/queue/README.ko.md',
-    'docs/CONTEXT.md',
-    'docs/CONTEXT.ko.md',
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    'docs/reference/package-surface.md',
-    'docs/reference/package-surface.ko.md',
-    'book/intermediate/ch11-queue.md',
-    'book/intermediate/ch11-queue.ko.md',
-  ];
+const queueWorkerOwnershipContractPaths = [
+  'packages/queue/README.md',
+  'packages/queue/README.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+  'book/intermediate/ch11-queue.md',
+  'book/intermediate/ch11-queue.ko.md',
+];
+const queueWorkerOwnershipSourcePaths = [
+  ...queueWorkerOwnershipContractPaths,
+  'packages/queue/src/worker-ownership.ts',
+  'packages/queue/src/module.ts',
+  'packages/queue/src/worker-ownership.test.ts',
+];
 
-  for (const contractPath of contractPaths) {
-    const contract = read(contractPath);
+export function enforceQueueWorkerOwnershipContractFromSources(sources) {
+  const readSource = (path) => {
+    const source = sources[path];
+    assert(typeof source === 'string', `Queue ownership contract source "${path}" must be provided.`);
+    return source;
+  };
+
+  for (const contractPath of queueWorkerOwnershipContractPaths) {
+    const contract = readSource(contractPath);
     assert(
       contract.includes('scope') && contract.includes('Redis') && contract.includes('jobName'),
       `${contractPath} must keep cross-scope Redis and jobName ownership discoverable.`,
     );
   }
 
-  const ownershipSource = read('packages/queue/src/worker-ownership.ts');
-  const moduleSource = read('packages/queue/src/module.ts');
-  const regressionSource = read('packages/queue/src/worker-ownership.test.ts');
+  const queuePackageSurfaceBulletRequirements = [
+    [
+      'docs/reference/package-surface.md',
+      [
+        'application-supplied `ownershipNamespace` identities independent of DI `clientName`',
+        'pre-resource `(ownershipNamespace, jobName)` collision validation',
+        '2.x compatibility diagnostics by default',
+        "opt-in `ownershipEnforcement: 'reject'` bootstrap rejection",
+      ],
+    ],
+    [
+      'docs/reference/package-surface.ko.md',
+      [
+        'DI `clientName`과 독립적인 application-supplied `ownershipNamespace` identity',
+        'resource 생성 전 `(ownershipNamespace, jobName)` collision validation',
+        '기본 2.x compatibility diagnostic',
+        "opt-in `ownershipEnforcement: 'reject'` bootstrap rejection",
+      ],
+    ],
+  ];
+
+  for (const [contractPath, requirements] of queuePackageSurfaceBulletRequirements) {
+    const contract = readSource(contractPath);
+    const bulletStart = contract.indexOf('- **`@fluojs/queue`**:');
+    const bulletEnd = contract.indexOf('\n', bulletStart);
+    const queueBullet = contract.slice(bulletStart, bulletEnd === -1 ? undefined : bulletEnd);
+
+    assert(
+      bulletStart !== -1 && requirements.every((requirement) => queueBullet.includes(requirement)),
+      `${contractPath} Queue package-surface bullet must document application ownershipNamespace identity independent of DI clientName, pre-resource collision validation, default 2.x diagnostics, and opt-in reject failure.`,
+    );
+  }
+
+  const ownershipSource = readSource('packages/queue/src/worker-ownership.ts');
+  const moduleSource = readSource('packages/queue/src/module.ts');
+  const regressionSource = readSource('packages/queue/src/worker-ownership.test.ts');
   const unconfiguredNamespaceDiagnostic =
     'Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.';
+  const unconfiguredNamespaceWarning = [
+    'logger.warn(',
+    `        \`${unconfiguredNamespaceDiagnostic}\`,`,
+    "        'QueueLifecycleService',",
+    '      );',
+  ].join('\n');
+  const descriptorIteration = 'const descriptors = discoverQueueWorkerDescriptors(';
+  const rejectPreferredOwnerSelection = [
+    'const existingOwner =',
+    "        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??",
+    '        compatibleOwners[0];',
+  ].join('\n');
 
   assert(
     ownershipSource.includes('const ownershipNamespace = moduleContext.options.ownershipNamespace;') &&
@@ -2933,20 +2990,21 @@ export function enforceQueueWorkerOwnershipContract() {
   assert(
     ownershipSource.includes(unconfiguredNamespaceDiagnostic) &&
       (ownershipSource.match(/Queue ownership namespace is unconfigured for scope/g) ?? []).length === 1 &&
-      ownershipSource.indexOf(unconfiguredNamespaceDiagnostic) <
-        ownershipSource.indexOf('const descriptors = discoverQueueWorkerDescriptors('),
-    'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic per registration before worker descriptor iteration.',
+      ownershipSource.includes(unconfiguredNamespaceWarning) &&
+      ownershipSource.indexOf(unconfiguredNamespaceWarning) < ownershipSource.indexOf(descriptorIteration),
+    'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
   );
   assert(
     ownershipSource.includes(
       'const compatibleOwners = owners.filter((owner) => canShareBackend(ownershipNamespace, owner));',
     ) &&
+      ownershipSource.includes(rejectPreferredOwnerSelection) &&
       ownershipSource.includes(
         "existingOwner.ownershipEnforcement === 'reject' ||\n          moduleContext.options.ownershipEnforcement === 'reject'",
       ) &&
       ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
       ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
-    'Queue ownership validation must compare compatible ownership namespaces and discovered jobName inside each registration boundary, rejecting when either compatible owner enforces rejection.',
+    'Queue ownership validation must prefer a compatible owner that enforces rejection before falling back to the first compatible owner.',
   );
   assert(
     moduleSource.includes(
@@ -2973,9 +3031,34 @@ export function enforceQueueWorkerOwnershipContract() {
       regressionSource.includes(
         'rejects the same jobName for different Redis clients with one ownership namespace',
       ) &&
-      regressionSource.includes('allows the same jobName across explicitly distinct ownership namespaces') &&
-      regressionSource.includes('expect(bullmqState.queueNames).toEqual([])'),
+      regressionSource.includes('allows the same jobName across explicitly distinct ownership namespaces'),
     'Queue ownership regressions must cover unconfigured diagnostics, mixed namespace compatibility, rejection before resource creation, later-owner rejection, DI-independent ownership, and explicitly distinct namespace allowance.',
+  );
+
+  for (const regressionTitle of [
+    'rejects a mixed configured and unconfigured ownership namespace collision before creating resources',
+    'rejects when an unconfigured registration collides with a later reject owner',
+    'rejects the same jobName for different Redis clients with one ownership namespace',
+  ]) {
+    const testStart = regressionSource.indexOf(`it('${regressionTitle}',`);
+    const nextTestStart = regressionSource.indexOf("\n  it('", testStart + 1);
+    const testSource = regressionSource.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+    assert(
+      testStart !== -1 && testSource.includes('expect(bullmqState.queueNames).toEqual([])'),
+      `Queue ownership regression "${regressionTitle}" must assert no BullMQ queues are created before rejection.`,
+    );
+  }
+}
+
+export function enforceQueueWorkerOwnershipContract() {
+  return enforceQueueWorkerOwnershipContractFromSources(
+    Object.fromEntries(
+      queueWorkerOwnershipSourcePaths.map((path) => [
+        path,
+        read(path),
+      ]),
+    ),
   );
 }
 
