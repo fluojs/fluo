@@ -8,6 +8,7 @@ import { CacheService } from './service.js';
 import { MemoryStore } from './stores/memory-store.js';
 import { RedisStore } from './stores/redis-store.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
+import { normalizeCacheTtlJitterOptions } from './ttl-jitter.js';
 import type {
   CacheAsyncModuleOptions,
   CacheModuleOptions,
@@ -80,6 +81,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     redis: options.redis,
     store,
     ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0),
+    ttlJitter: normalizeCacheTtlJitterOptions(options.ttlJitter),
     httpKeyStrategy: options.httpKeyStrategy ?? 'route',
     principalScopeResolver: options.principalScopeResolver,
     observer: options.observer,

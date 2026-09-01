@@ -17,7 +17,10 @@ import type {
   CacheObservation,
   CacheObserver,
   CacheStore,
+  CacheTtlJitterMode,
+  CacheTtlJitterOptions,
   NormalizedCacheModuleOptions,
+  NormalizedCacheTtlJitterOptions,
   PrincipalScopeResolver,
   RedisCacheOptions,
   RedisCompatibleClient,
@@ -73,6 +76,10 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheStore>().toHaveProperty('set');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('store');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
+    expectTypeOf<CacheModuleOptions>().toHaveProperty('ttlJitter');
+    expectTypeOf<CacheTtlJitterOptions>().toHaveProperty('ratio');
+    expectTypeOf<CacheTtlJitterMode>().toEqualTypeOf<'symmetric' | 'shorten' | 'lengthen'>();
+    expectTypeOf<NormalizedCacheTtlJitterOptions>().toHaveProperty('mode');
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('useFactory');
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('inject');
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('global');

@@ -8,7 +8,13 @@ import { CacheInterceptor } from './interceptor.js';
 import { CacheModule } from './module.js';
 import { CacheService } from './service.js';
 import { CACHE_OPTIONS } from './tokens.js';
-import type { CacheAsyncModuleOptions, CacheStore, RedisCompatibleClient } from './types.js';
+import type {
+  CacheAsyncModuleOptions,
+  CacheObservation,
+  CacheObserver,
+  CacheStore,
+  RedisCompatibleClient,
+} from './types.js';
 
 class MemoryRedisClient implements RedisCompatibleClient {
   readonly storage = new Map<string, string>();
@@ -229,6 +235,36 @@ describe('CacheModule.forRootAsync', () => {
       await consumer.cache.set('/custom', { ok: true }, 15);
 
       expect(store.entries.get('/custom')).toEqual({ ok: true });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('registers an observer returned by the async factory with CacheService', async () => {
+    // Given: an async factory returning a recording observer.
+    const observations: CacheObservation[] = [];
+    const observer: CacheObserver = {
+      onCacheOperation(observation) {
+        observations.push(observation);
+      },
+    };
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CacheModule.forRootAsync({ useFactory: () => ({ observer, store: 'memory' }) })],
+      providers: [CacheConsumer],
+    });
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const consumer = await app.container.resolve(CacheConsumer);
+
+      // When: the injected cache service reads a missing value.
+      await consumer.cache.get('factory-observer-key');
+
+      // Then: the factory-supplied observer receives the privacy-safe operation outcome.
+      expect(observations).toEqual([
+        { durationMs: expect.any(Number), operation: 'get', outcome: 'miss' },
+      ]);
     } finally {
       await app.close();
     }

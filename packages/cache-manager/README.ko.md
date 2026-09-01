@@ -13,6 +13,7 @@
   - [애플리케이션 레벨 캐싱](#애플리케이션-레벨-캐싱)
 - [공통 패턴](#공통-패턴)
   - [Redis 저장소 사용](#redis-저장소-사용)
+  - [TTL 지터](#ttl-지터)
   - [쿼리 매개변수 기반 캐싱](#쿼리-매개변수-기반-캐싱)
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
   - [캐시 작업 관찰](#캐시-작업-관찰)
@@ -164,8 +165,30 @@ class AppModule {}
 내장 `RedisStore`는 엔트리를 `JSON.stringify(...)`로 저장합니다. 따라서 캐시 값은 JSON 호환 형태여야 합니다. 일반 객체, 배열, 문자열, 숫자, 불리언, `null`은 안정적으로 round-trip 되지만, `Date`는 JSON 결과(예: ISO 문자열)로 돌아오고, 함수/`undefined`/`symbol`은 유지되지 않으며, `bigint`나 순환 그래프처럼 직렬화 불가능한 값은 캐싱 전에 정규화해야 합니다.
 
 양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요.
+예외적으로 큰 유한 TTL 값은 두 내장 store 모두에서 가장 큰 안전한 JavaScript 만료 timestamp로 제한되므로 Redis JSON metadata는 유한하게 유지되고 memory 경로와 일치합니다.
 
 Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 비어 있지 않은 prefix의 Redis glob metacharacter(`*`, `?`, `[`, `]`, `\`)는 `SCAN` 전에 escape되므로 설정한 prefix가 reset 소유권을 넓히지 않고 literal namespace로 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
+
+### TTL 지터
+
+함께 기록된 인기 키는 같은 시점에 만료되어 origin 부하를 동기화할 수 있습니다. `ttlJitter`를 사용하면 양수 TTL 지터를 중앙에서 opt-in할 수 있습니다. `CacheService`는 memory, Redis 또는 custom store에 쓰기를 넘기기 전에 유효 TTL을 한 번 계산합니다.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  ttl: 600,
+  ttlJitter: {
+    ratio: 0.1,
+    mode: 'symmetric',
+  },
+});
+```
+
+`ratio`는 `0`보다 크고 `1` 이하여야 합니다. 기본 `symmetric` mode는 `ttl ± (ttl * ratio)` 범위에서 값을 뽑고, `shorten`은 TTL을 줄이기만 하며 `lengthen`은 늘리기만 합니다. `CacheService.set(...)` 또는 `remember(...)`의 per-call TTL override가 있으면 module 기본값 대신 해당 값에 지터를 적용합니다. `ttl: 0`은 계속 만료 없음 쓰기이며, 음수 또는 유한하지 않은 TTL 값은 여전히 쓰기를 건너뜁니다.
+
+`ttlJitter`를 생략하거나 `undefined`로 설정한 경우에만 지터가 비활성화됩니다. `null`, primitive, array 및 invalid option field는 module 등록 중 거부됩니다. Optional `random` 함수는 deterministic test seam이며 `[0, 1]` 범위의 유한한 값을 반환해야 합니다. Invalid sample은 coercion하지 않고 write를 거부합니다. Production code에서는 일반적으로 기본 `Math.random`을 유지하세요.
+
+지터가 적용된 모든 양수 TTL은 선택한 방향 범위 안에서 양수이자 유한한 값으로 유지됩니다. 완전히 단축된 TTL은 no-expiry sentinel이 되지 않고 JavaScript의 가장 작은 양수 유한값을 사용하며, 표현 가능한 범위를 넘는 증가 결과는 `Number.MAX_VALUE`에서 포화됩니다. TTL 지터는 만료 시점을 분산할 뿐입니다. Distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 쿼리 매개변수 기반 캐싱
 
@@ -381,12 +404,14 @@ class ProductController {
 ## 공개 API 개요
 
 ### 모듈
-- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
+- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, opt-in `ttlJitter`, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
   애플리케이션 모듈에서 사용하는 기본 패키지 진입점입니다.
 - `CacheModule.forRootAsync({ inject, useFactory, global? })`: cache 설정을 DI나 비동기 bootstrap 작업에서 만드는 애플리케이션을 위해 동일한 옵션을 injected factory로 해석합니다. `global`은 이 등록 호출이 소유하며, factory가 reject되면 bootstrap이 실패합니다.
 
 ### 공개 타입
-- `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `observer`를 포함합니다.
+- `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `ttlJitter`와 `observer`를 포함합니다.
+- `CacheTtlJitterOptions`, `CacheTtlJitterMode`: Opt-in 양수 TTL 지터의 범위, 방향, deterministic randomness seam을 정의합니다.
+- `NormalizedCacheTtlJitterOptions`: 기본값이 적용된 정규화 TTL 지터 설정입니다.
 - `CacheObserver`: 단일 `onCacheOperation(observation)` 메서드를 가지는 opt-in 관찰 hook입니다.
 - `CacheObservation`: 각 operation category를 유효한 outcome과 결합하고 `durationMs`를 전달하는 privacy-safe discriminated union입니다.
 - `CacheAsyncModuleOptions`: `CacheModule.forRootAsync(...)`가 받는 injected-factory 설정입니다. `useFactory`는 `CacheModuleOptions`를 반환하며, module visibility는 등록 수준의 `global`만 따릅니다.

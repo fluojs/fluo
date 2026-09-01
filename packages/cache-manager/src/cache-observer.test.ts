@@ -166,19 +166,15 @@ describe('CacheService cache observation', () => {
     ]);
   });
 
-  it('includes serialized store-queue wait in the exact monotonic duration', async () => {
-    // Given: a blocked first read, a queued second read, and a manually controlled clock.
+  it('includes exclusive scheduler wait in the exact monotonic duration', async () => {
+    // Given: a blocked ordinary read, an exclusive reset, and a manually controlled clock.
     const firstReadStarted = createDeferredSignal();
     const releaseFirstRead = createDeferredSignal();
-    let readCount = 0;
     const store: CacheStore = {
       async del() {},
       async get<_T>() {
-        readCount += 1;
-        if (readCount === 1) {
-          firstReadStarted.resolve();
-          await releaseFirstRead.promise;
-        }
+        firstReadStarted.resolve();
+        await releaseFirstRead.promise;
         return undefined;
       },
       async reset() {},
@@ -190,17 +186,17 @@ describe('CacheService cache observation', () => {
     const firstRead = cache.get('first');
     await firstReadStarted.promise;
 
-    // When: the second read waits in the queue while the monotonic clock advances exactly 37ms.
-    const secondRead = cache.get('second');
+    // When: reset waits for the active read while the monotonic clock advances exactly 37ms.
+    const reset = cache.reset();
     clock.advance(37);
     releaseFirstRead.resolve();
-    await Promise.all([firstRead, secondRead]);
+    await Promise.all([firstRead, reset]);
 
-    // Then: the queued operation reports the exact elapsed time including scheduler wait.
-    expect(observations[1]).toEqual({
+    // Then: the exclusive operation reports the exact elapsed time including scheduler wait.
+    expect(observations.find(({ operation }) => operation === 'reset')).toEqual({
       durationMs: 37,
-      operation: 'get',
-      outcome: 'miss',
+      operation: 'reset',
+      outcome: 'success',
     });
   });
 
