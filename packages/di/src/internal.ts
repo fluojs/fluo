@@ -2,21 +2,7 @@ import type { Token } from '@fluojs/core';
 
 import type { Container } from './container.js';
 import { ContainerResolutionError } from './errors.js';
-
-type MultiContributionResolver = (token: Token, contributionIndex: number) => Promise<unknown>;
-
-const multiContributionResolvers = new WeakMap<Container, MultiContributionResolver>();
-
-/**
- * Registers the container-owned multi-provider contribution resolver used by Fluo package integrations.
- *
- * @internal
- * @param container Container that owns the canonical resolution state.
- * @param resolver Resolver that preserves the container's scope, cache, cycle, ordering, and disposal behavior.
- */
-export function registerMultiContributionResolver(container: Container, resolver: MultiContributionResolver): void {
-  multiContributionResolvers.set(container, resolver);
-}
+import { multiContributionResolverFor } from './multi-contribution-registry.js';
 
 /**
  * Resolves one ordered multi-provider contribution through its owning container.
@@ -35,7 +21,7 @@ export async function resolveMultiContribution(
   token: Token,
   contributionIndex: number,
 ): Promise<unknown> {
-  const resolver = multiContributionResolvers.get(container);
+  const resolver = multiContributionResolverFor(container);
 
   if (!resolver) {
     throw new ContainerResolutionError(

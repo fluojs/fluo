@@ -8,7 +8,7 @@ import {
   RequestScopeResolutionError,
   ScopeMismatchError,
 } from './errors.js';
-import { registerMultiContributionResolver } from './internal.js';
+import { registerMultiContributionResolver } from './multi-contribution-registry.js';
 import { normalizeProvider } from './provider-normalization.js';
 import type {
   Disposable,
