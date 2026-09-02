@@ -340,6 +340,7 @@ export class PrismaService<
    */
   createPlatformStatusSnapshot() {
     return createPrismaPlatformStatusSnapshot({
+      activeTransactionBoundaries: this.activeTransactionBoundaries.size,
       activeRequestTransactions: this.activeRequestTransactions.size,
       lifecycleState: this.lifecycleState,
       strictTransactions: this.serviceOptions.strictTransactions,

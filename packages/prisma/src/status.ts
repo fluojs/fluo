@@ -24,6 +24,7 @@ type PersistencePlatformStatusSnapshot = {
 type PrismaPlatformLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
 
 type PrismaPlatformStatusSnapshotInput = {
+  activeTransactionBoundaries?: number;
   activeRequestTransactions: number;
   lifecycleState: PrismaPlatformLifecycleState;
   strictTransactions: boolean;
@@ -91,7 +92,7 @@ function createHealth(input: PrismaPlatformStatusSnapshotInput): PlatformHealthR
 
   if (input.lifecycleState === 'shutting-down') {
     return {
-      reason: 'Prisma integration is draining request transactions during shutdown.',
+      reason: 'Prisma integration is draining open transactions during shutdown.',
       status: 'degraded',
     };
   }
@@ -102,10 +103,15 @@ function createHealth(input: PrismaPlatformStatusSnapshotInput): PlatformHealthR
 }
 
 /**
- * Create prisma platform status snapshot.
+ * Creates a Prisma platform status snapshot for diagnostics surfaces.
  *
- * @param input The input.
- * @returns The create prisma platform status snapshot result.
+ * @remarks
+ * `details.activeTransactionBoundaries` reports open outer service/manual transaction boundaries that
+ * shutdown drains before disconnecting. It is intentionally distinct from
+ * `details.activeRequestTransactions`, which reports abort-aware request transaction activity.
+ *
+ * @param input Lifecycle and transaction activity inputs for the registered Prisma client.
+ * @returns A snapshot containing lifecycle, health, readiness, ownership, and transaction diagnostics.
  */
 export function createPrismaPlatformStatusSnapshot(
   input: PrismaPlatformStatusSnapshotInput,
@@ -114,6 +120,7 @@ export function createPrismaPlatformStatusSnapshot(
 
   return {
     details: {
+      activeTransactionBoundaries: input.activeTransactionBoundaries ?? 0,
       activeRequestTransactions: input.activeRequestTransactions,
       lifecycleState: input.lifecycleState,
       strictTransactions: input.strictTransactions,

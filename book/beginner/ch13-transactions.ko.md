@@ -274,7 +274,7 @@ Fluo와 Prisma를 사용하면 ACID 원칙을 진지하게 반영한 기반 위�
 데이터를 다루는 방식은 애플리케이션의 성격을 규정합니다. 숨겨진 마법보다 명시적 트랜잭션을, 강하게 결합된 리포지토리보다 트랜잭션에 종속되지 않는 리포지토리를 선택하면 오랫동안 즐겁게 유지보수할 수 있는 코드베이스로 나아가게 됩니다. Part 2는 애플리케이션의 "Ground Truth"를 다루는 여정이었습니다. 이제 탄탄한 기반을 갖췄으니 이를 안전하게 지켜 봅시다.
 
 ### Monitoring Transaction Health
-높은 성능의 시스템을 유지하려면 트랜잭션 상태를 실시간으로 모니터링해야 합니다. `PrismaService.createPlatformStatusSnapshot()`은 lifecycle, readiness, transaction capability, transaction-context availability, 활성 request boundary 상태를 보고하지만 transaction duration, commit-to-rollback 비율, lock contention metric을 기본 제공하지는 않습니다. 이러한 신호가 필요하면 애플리케이션 또는 데이터베이스 계측으로 추가하세요.
+높은 성능의 시스템을 유지하려면 트랜잭션 상태를 실시간으로 모니터링해야 합니다. `PrismaService.createPlatformStatusSnapshot()`은 lifecycle, readiness, transaction capability, transaction-context availability, 활성 트랜잭션 상태를 보고합니다. `details.activeTransactionBoundaries`는 shutdown이 disconnect 전에 drain을 기다리는 열린 바깥 service/manual `transaction(...)` boundary 수를 나타내며, `details.activeRequestTransactions`는 request transaction activity를 별도로 집계합니다. transaction duration, commit-to-rollback 비율, lock contention metric은 기본 제공하지 않으므로, 이러한 신호가 필요하면 애플리케이션 또는 데이터베이스 계측으로 추가하세요.
 
 메트릭에 더해 구조화된 로깅도 중요합니다. Prisma transaction ALS는 현재 client를 저장할 뿐 공개 transaction ID를 만들지 않습니다. `@fluojs/prisma`가 식별자를 생성한다고 가정하지 말고 애플리케이션이 소유한 request/correlation ID를 logging context로 전파하세요. 이렇게 HTTP와 데이터베이스 작업을 연결하면 지원되지 않는 package contract에 의존하지 않고도 실패를 추적할 수 있습니다.
 

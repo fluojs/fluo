@@ -1427,6 +1427,7 @@ describe('@fluojs/prisma', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 1,
       strictTransactions: false,
       transactionContext: 'als',
