@@ -2,6 +2,12 @@ import type { ServerResponse } from 'node:http';
 
 import type { FrameworkResponseStream } from '@fluojs/http';
 
+/**
+ * Adapt a native Node response to the framework streaming contract.
+ *
+ * @param response Native response to adapt.
+ * @returns A framework stream that manages the response lifecycle.
+ */
 export function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
   return {
     close() {
