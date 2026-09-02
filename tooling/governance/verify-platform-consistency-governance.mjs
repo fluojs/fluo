@@ -213,7 +213,8 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
 ) {
   const packageManifests = new Map();
 
-  for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })) {
+  for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isDirectory()) {
       continue;
     }
