@@ -611,28 +611,67 @@ Split handler discovery and NestJS `ClientProxy` migration into explicit handler
 - List each handler class explicitly in a compiled module's `providers` or `controllers`. Importing the class, decorating a method, or retaining NestJS provider metadata does not register the handler.
 - Register the selected adapter with root `MicroservicesModule.forRoot({ transport })`.
 - Inject root `MICROSERVICE` as `Microservice` for `listen()`, `send()`, `emit()`, and `close()`. The token resolves the lifecycle facade, not the raw adapter.
-- Import transport implementations from their explicit subpaths when possible: `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, and `@fluojs/microservices/rabbitmq`. `RedisStreamsMicroserviceTransport` remains the documented root-barrel-only exception.
+- Import transport implementations from their explicit subpaths when possible: `@fluojs/microservices/tcp`, `@fluojs/microservices/redis`, `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq`, `@fluojs/microservices/grpc`, and `@fluojs/microservices/mqtt`. Every adapter is also re-exported from the root barrel. `RedisStreamsMicroserviceTransport` is the one adapter with no dedicated subpath: there is no `@fluojs/microservices/redis-streams` export, so import it from the root barrel.
+- Map the NestJS transport enum to a concrete fluo adapter class; there is no `Transport.REDIS`-style enum. In particular, NestJS `Transport.REDIS` is Redis Pub/Sub, which maps to `RedisPubSubMicroserviceTransport` (the `@fluojs/microservices/redis` subpath), while the durable consumer-group transport is the separate `RedisStreamsMicroserviceTransport`. Pick the one that matches the delivery semantics you relied on, not the one that shares the Redis name.
+- Map streaming handlers explicitly. NestJS gRPC streaming methods become fluo streaming pattern decorators: server streaming uses `@ServerStreamPattern` with a `ServerStreamWriter`, client streaming uses `@ClientStreamPattern` over an async-iterable reader, and bidirectional streaming uses `@BidiStreamPattern`. Streaming is a transport capability: `serverStream()`, `clientStream()`, and `bidiStream()` throw when the configured transport does not implement them, and today only the gRPC adapter does.
+- Registering the same pattern twice does not fan out. Duplicate handler registrations for the identical pattern are ignored with a logged warning, and a single inbound message that matches more than one registered handler fails deterministically instead of invoking an arbitrary one.
+- `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, and `listen()` reject once `close()` has started; the facade applies a terminal ingress gate after shutdown begins rather than silently dropping late calls.
+- `RedisPubSubMicroserviceTransport` is event-only: its `send(...)` always throws because Redis Pub/Sub has no request/reply correlation. Migrate a NestJS Redis `ClientProxy.send(...)` to `emit(...)`, or to a request/reply-capable transport such as Redis Streams, NATS, Kafka, RabbitMQ, gRPC, or TCP.
 - `await microservice.send(...)` waits for the correlated remote response or rejects for a remote error, abort, timeout, or shutdown.
 - `await microservice.emit(...)` waits only for the outbound transport publish operation. It does not prove that a remote event handler ran; any broker acknowledgement is limited to what the caller-provided publish collaborator itself promises.
 - `await microservice.close()` waits for transport listener/subscription teardown and pending-request cleanup. NATS, Kafka, and RabbitMQ adapters detach from caller-provided collaborators but do not close or disconnect those clients, producers, consumers, publishers, channels, or connections.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import {
+  BidiStreamPattern,
+  MessagePattern,
+  MicroservicesModule,
+  ServerStreamPattern,
+  type ServerStreamWriter,
+} from '@fluojs/microservices';
+import { GrpcMicroserviceTransport } from '@fluojs/microservices/grpc';
+
+const transport = new GrpcMicroserviceTransport({
+  protoPath: new URL('./orders.proto', import.meta.url).pathname,
+  packageName: 'orders',
+  url: '0.0.0.0:50051',
+});
 
 class OrdersHandler {
   @MessagePattern('orders.find')
   public findOrder(payload: { orderId: string }) {
     return { id: payload.orderId };
   }
+
+  @ServerStreamPattern('orders.stream')
+  public streamOrders(payload: { customerId: string }, writer: ServerStreamWriter): void {
+    writer.write({ customerId: payload.customerId, order: 1 });
+    writer.end();
+  }
+
+  @BidiStreamPattern('orders.sync')
+  public async syncOrders(
+    reader: AsyncIterable<{ orderId: string }>,
+    writer: ServerStreamWriter,
+  ): Promise<void> {
+    for await (const message of reader) {
+      writer.write({ acknowledged: message.orderId });
+    }
+    writer.end();
+  }
 }
 
 @Module({
-  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4000 }) })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [OrdersHandler],
 })
 class OrdersMicroserviceModule {}
 ```
+
+Because streaming is a transport capability, register a gRPC adapter (`@fluojs/microservices/grpc` or the root `GrpcMicroserviceTransport`) when a migrated handler uses `@ServerStreamPattern`, `@ClientStreamPattern`, or `@BidiStreamPattern`. Its required `protoPath`, `packageName`, and `url` options bind the migrated patterns to the protobuf service definition and endpoint. A non-streaming transport such as TCP registers the handlers, but a stream request against it rejects with a "does not support ... streaming" error rather than silently degrading. A bidi handler must write through its `ServerStreamWriter`; returned async iterables are not consumed as outbound messages.
+
+Before adopting the gRPC adapter, install `@grpc/grpc-js@^1.14.4` and `@grpc/proto-loader@^0.8.0`. If you upgrade from an older gRPC peer, refresh the lockfile and verify the proto-loader dependency chain resolves `protobufjs@7.6.5` or newer.
 
 Kafka and RabbitMQ keep inbound consumer callbacks pending until handler execution and any request response publication settle, so the broker adapter can choose acknowledgement or retry. That consumer-side boundary remains separate from the producer-side `emit()` promise. During shutdown, close the `Microservice` facade first, then close or drain caller-owned broker resources from the application bootstrap layer.
 
