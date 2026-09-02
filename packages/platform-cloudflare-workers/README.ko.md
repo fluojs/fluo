@@ -122,6 +122,7 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 
 ### 동작 참고
 
+- Public concrete `CloudflareWorkerHttpApplicationAdapter.fetch(request, env, executionContext)` 계약은 Worker `executionContext`를 필수로 요구합니다. Direct caller는 모든 HTTP, SSE, WebSocket ingress가 `executionContext.waitUntil(...)`에 active work를 등록하도록 실제 세 번째 `ctx` 인수를 전달해야 합니다. Migration: direct two-argument adapter call을 `adapter.fetch(request, env, ctx)`로 바꾸세요.
 - `fetch()`는 `listen()` 또는 lazy entrypoint가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. Upgraded server WebSocket은 terminal `close` event까지 해당 lifecycle과 close drain을 유지하고, SSE(`text/event-stream`) response는 body가 끝나거나 cancel될 때까지 이를 유지합니다. SSE reader 또는 tracked-stream setup이 동기적으로 실패하면 오류를 전파하기 전에 lifecycle을 release합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
 - `maxBodySize` 같은 adapter option은 Worker adapter 생성 시 검증됩니다. `globalPrefix`, `cors`, `middleware`, `securityHeaders` 같은 bootstrap 전용 옵션은 `createCloudflareWorkerAdapter(...)`가 아니라 Worker bootstrap helper에 전달해야 합니다.
 - WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않으며, adapter가 한 번이라도 listen한 뒤 defined binding을 교체하거나 해제하려는 시도는 Worker upgrade ownership을 바꾸는 대신 빠르게 실패합니다. 다른 websocket binding이 필요하면 새 adapter를 생성하세요.
