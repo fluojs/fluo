@@ -13,6 +13,7 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Lifecycle and Shutdown](#lifecycle-and-shutdown)
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
+  - [Saving an Existing Document](#saving-an-existing-document)
   - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
   - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
 - [Public API](#public-api)
@@ -118,19 +119,18 @@ export class UserService {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
 
-`@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It does not select arbitrary connection fields. When a service owns multiple connections or stores its connection elsewhere, select the boundary explicitly:
+### Saving an Existing Document
+
+Use the opt-in `MongooseConnection.saveDocument(...)` helper when an existing Mongoose document must save inside an active `@Transaction()`, `transaction()`, or `requestTransaction()` boundary:
 
 ```ts
-@Inject(MongooseConnection)
-export class AnalyticsService {
-  constructor(private readonly analyticsConnection: MongooseConnection) {}
-
-  @Transaction((self: AnalyticsService) => self.analyticsConnection)
-  async rebuildReports() {
-    // Uses analyticsConnection rather than an inferred connection.
-  }
+@Transaction()
+async rename(document: UserDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
 }
 ```
+
+The helper forwards native Mongoose save options, attaches the ambient session, and returns the same document instance. It fails closed outside an active transaction and rejects `{ session: null }` or a different explicit session so a save cannot leave the current transaction accidentally. It never patches documents, prototypes, or model caches: calling `doc.save()` directly remains native Mongoose behavior and does not receive an automatic session.
 
 ### Request Transaction Interceptor Compatibility
 
@@ -187,6 +187,7 @@ For supported facade methods, fluo preserves existing Mongoose operation options
 
 ## Public API
 
+- `MongooseConnection.saveDocument(document, options?)` — explicitly saves an existing document with the current transaction session while preserving native save options and document identity.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — reports health/readiness, resource ownership, active request/session drain counts, and strict transaction support diagnostics for platform observability surfaces.

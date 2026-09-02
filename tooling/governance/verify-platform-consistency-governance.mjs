@@ -12,6 +12,7 @@ import { enforceExpressApplicationOwnershipDocs } from './express-application-ow
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
+import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -3342,6 +3343,7 @@ export async function main() {
   enforceJwtAsyncRegistrationContract();
   enforceJwtVerifiedClaimsContract((relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'));
   await enforceJwtLearningPathModuleWiring();
+  enforceMongooseNestjsMigrationDocs();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();

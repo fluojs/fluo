@@ -106,6 +106,19 @@ export class ProductRepository {
 
 트랜잭션이 활성화된 상태에서 옵션에 `session`을 명시적으로 제공했는데, 해당 세션이 앰비언트 트랜잭션 세션과 일치하지 않는 경우 fluo는 충돌 에러를 던집니다. 이는 의도치 않은 트랜잭션 간 데이터 유출을 방지하기 위함입니다.
 
+### 기존 문서를 명시적으로 저장하기
+
+`doc.save()`는 native Mongoose 동작으로 남으며 fluo가 patch하지 않습니다. 기존 document를 활성 Fluo 트랜잭션에 참여시켜야 하면 다음처럼 명시적 helper를 사용하세요.
+
+```ts
+@Transaction()
+async renameProduct(document: ProductDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+`saveDocument(...)`는 document instance와 native save option을 보존하고 ambient session을 붙이며, 트랜잭션 밖 호출 또는 충돌하는 명시적 session을 거부합니다.
+
 ## 19.5 Transaction Management
 
 

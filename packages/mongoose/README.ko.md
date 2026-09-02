@@ -13,6 +13,7 @@
 - [라이프사이클과 종료](#라이프사이클과-종료)
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [기존 문서 저장](#기존-문서-저장)
   - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
 - [공개 API](#공개-api)
@@ -121,19 +122,18 @@ export class UserService {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 지원되는 facade 작업(`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, `model.bulkWrite()`)을 사용하세요.
 
-`@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 임의의 connection field를 선택하지는 않습니다. 서비스가 여러 connection을 소유하거나 다른 field에 connection을 저장하는 경우에는 경계를 명시적으로 선택하세요.
+### 기존 문서 저장
+
+기존 Mongoose 문서를 활성 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 안에서 저장해야 하면 opt-in `MongooseConnection.saveDocument(...)` helper를 사용하세요.
 
 ```ts
-@Inject(MongooseConnection)
-export class AnalyticsService {
-  constructor(private readonly analyticsConnection: MongooseConnection) {}
-
-  @Transaction((self: AnalyticsService) => self.analyticsConnection)
-  async rebuildReports() {
-    // 추론된 connection 대신 analyticsConnection을 사용합니다.
-  }
+@Transaction()
+async rename(document: UserDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
 }
 ```
+
+helper는 native Mongoose save option을 전달하고 ambient session을 붙인 뒤 동일한 document instance를 반환합니다. 활성 트랜잭션 밖에서는 fail-closed하며, 실수로 현재 트랜잭션을 벗어나지 않도록 `{ session: null }` 또는 다른 명시적 session을 거부합니다. document, prototype, model cache를 patch하지 않으므로 `doc.save()` 직접 호출은 계속 native Mongoose 동작이며 자동 session을 받지 않습니다.
 
 ### 요청 트랜잭션 인터셉터 호환성
 
@@ -190,6 +190,7 @@ await this.conn.transaction(async () => {
 
 ## 공개 API
 
+- `MongooseConnection.saveDocument(document, options?)` — native save option과 document identity를 보존하면서 현재 트랜잭션 session으로 기존 문서를 명시적으로 저장합니다.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.

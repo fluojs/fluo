@@ -336,6 +336,10 @@ Queue producer migration discoverability는 `packages/queue/README.ko.md`와 [`d
 
 [`docs/architecture/http-runtime.ko.md`](./architecture/http-runtime.ko.md)는 canonical conditional-request lifecycle contract이다. 이 문서는 명시적인 `ConditionalRequestResolver` representation-existence result, 평가 전 application/module middleware와 guard ordering, RFC validator precedence, 독립적인 `@Head` routing, framework-managed `HEAD` body suppression, custom-writer ownership을 정의한다. `packages/http/README.ko.md`, `packages/runtime/README.ko.md`, `packages/testing/README.ko.md`는 지원하는 resolver, bootstrap, real-listener conformance API를 나열한다.
 
+## Mongoose 트랜잭션 문서 저장
+
+NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 문맥 계약](./architecture/transactions.ko.md)과 [NestJS → fluo 마이그레이션 맵](./getting-started/migrate-from-nestjs.ko.md)에 문서화합니다. `MongooseConnection.model(...)` facade 작업은 지원되는 메서드에 ambient session을 병합합니다. `MongooseConnection.saveDocument(...)`는 기존 document의 opt-in 경로로 native save option과 document identity를 보존하고 ambient session 없이는 fail-closed하며 direct `doc.save()`는 변경하지 않습니다.
+
 ## Anti-Patterns at a Glance
 
 - `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하는 것, fluo의 표준 데코레이터 기준을 깨뜨린다.

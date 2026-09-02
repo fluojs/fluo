@@ -106,6 +106,19 @@ When these methods are called inside a `@Transaction()`, `transaction()`, or `re
 
 If you explicitly provide a `session` in the options while a transaction is active, fluo will throw a conflict error if the provided session does not match the ambient transaction session. This prevents accidental cross-transaction leaks.
 
+### Saving Existing Documents Explicitly
+
+`doc.save()` remains native Mongoose behavior and is not patched by fluo. When an existing document must participate in an active Fluo transaction, use the explicit helper instead:
+
+```ts
+@Transaction()
+async renameProduct(document: ProductDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+`saveDocument(...)` preserves the document instance and native save options, attaches the ambient session, and rejects calls outside a transaction or with a conflicting explicit session.
+
 ## 19.5 Transaction Management
 
 
