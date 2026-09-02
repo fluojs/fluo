@@ -729,7 +729,7 @@ evict된 각 cached promise는 `path:packages/di/src/container.ts:1475-1523`의 
 
 stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-39`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:593-604`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며, cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
 
-`path:packages/di/src/container.ts:1422-1578`
+`path:packages/di/src/container.ts:1453-1609`
 ```typescript
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
@@ -951,11 +951,11 @@ console.log(stale instanceof FirstCache, fresh instanceof SecondCache, events);
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 마지막 scope 질문은 인스턴스가 어떻게 죽느냐입니다. Fluo의 답은 deterministic teardown이며, root singleton과 request child를 명확히 분리합니다.
 
-public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:619-648`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
+public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:705-734`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
 
 shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께 다룹니다.
 
-`path:packages/di/src/container.ts:682-703`
+`path:packages/di/src/container.ts:713-734`
 ```typescript
   private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
     if (this.disposePromise) {
@@ -983,11 +983,11 @@ shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께
 
 동시 caller는 active promise를 기다리므로 겹치는 caller가 teardown을 중복 실행하지 않습니다. 첫 caller는 나중 caller가 참여하기 전에 이미 direct 또는 parent ownership을 선택합니다. 추적 중인 subtree 어디에도 유지된 stale failure가 없는 성공한 attempt는 settle된 promise를 유지해 이후 호출을 멱등으로 만듭니다. active disposal이 retry candidate를 고르기 전에 resolution이 descendant-owned stale failure를 소비하면, owning hierarchy는 settle된 각 promise를 비워 이후 parent 또는 root 호출이 해당 retained hook을 순회하고 재시도하게 합니다. 실패한 attempt도 settlement 뒤 promise를 비웁니다. Terminal `disposed` gate는 재시도 중과 이후에도 닫힌 상태를 유지합니다.
 
-`path:packages/di/src/container.ts:650-687`의 `disposeAll()`은 추적 중인 모든 request child에 `disposeFromParent()`로 진입한 뒤 현재 tier를 정리합니다. 마지막 detach 조건은 settle된 모든 direct attempt와, subtree에 retained stale retry가 없는 성공한 parent-owned attempt를 구분합니다.
+`path:packages/di/src/container.ts:736-773`의 `disposeAll()`은 추적 중인 모든 request child에 `disposeFromParent()`로 진입한 뒤 현재 tier를 정리합니다. 마지막 detach 조건은 settle된 모든 direct attempt와, subtree에 retained stale retry가 없는 성공한 parent-owned attempt를 구분합니다.
 
 origin-aware child traversal과 detach 규칙은 이 동작의 핵심입니다.
 
-`path:packages/di/src/container.ts:705-742`
+`path:packages/di/src/container.ts:736-773`
 ```typescript
   private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
     const errors: unknown[] = [];
@@ -1040,12 +1040,12 @@ Disposal 재시도는 다음 다섯 ownership 규칙을 따릅니다.
 모든 child attempt는 parent tier가 시작되기 전에 settle됩니다. Parent와 root는 같은 호출에서 자신의 cleanup도 시도하고 해당 attempt의 모든 실패를 aggregate합니다.
 
 cache entry 선택도 root와 child로 나뉩니다.
-`path:packages/di/src/container.ts:1204-1220`의 `disposalCacheEntries()`는 child container에서는 request cache와 multi request cache만 반환하고,
+`path:packages/di/src/container.ts:1297-1313`의 `disposalCacheEntries()`는 child container에서는 request cache와 multi request cache만 반환하고,
 root에서는 singleton cache와 multi singleton cache를 반환합니다. 즉 request child 하나를 dispose해도 root singleton은 파괴되지 않습니다.
 
 tier별 cache ownership은 disposal 대상 목록에서도 반복됩니다.
 
-`path:packages/di/src/container.ts:1266-1282`
+`path:packages/di/src/container.ts:1297-1313`
 ```typescript
   private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unknown>]> {
     if (this.parent) {
@@ -1072,7 +1072,7 @@ tier별 cache ownership은 disposal 대상 목록에서도 반복됩니다.
 
 `disposeCache()`는 stale task를 settle하기 전에 retry candidate를 snapshot하므로, 같은 disposal 중 처음 관찰된 failure는 그 pass에서 재시도하지 않습니다. 실제로 재시도한 모든 stale instance는 retry가 실패한 경우까지 live-cache disposal에서 제외하므로, 같은 live object를 반환하는 factory가 retained failure 뒤에 성공한 hook을 중복 호출할 수 없습니다.
 
-`path:packages/di/src/container.ts:1284-1312`
+`path:packages/di/src/container.ts:1315-1343`
 ```typescript
   private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
     const errors: unknown[] = [];
