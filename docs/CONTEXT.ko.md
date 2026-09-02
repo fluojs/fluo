@@ -7,6 +7,10 @@
 
 정적 제공은 [HTTP Runtime Contract](./architecture/http-runtime.ko.md)에 문서화한 portable `@fluojs/http` middleware 계약입니다. 애플리케이션은 `createStaticAssetsMiddleware(...)`에 명시적 `StaticAssetSource`를 전달하므로 fetch-style 및 edge host에 암묵적 filesystem claim이 제공되지 않습니다. `@fluojs/runtime/node`는 Node, Express, Fastify deployment용 `createNodeFileSystemAssetSource(...)`를 소유하며 lexical 및 realpath 해석을 구성된 root에 제한하고 precompressed sibling을 선택할 수 있습니다. API 예제와 deployment configuration은 `@fluojs/http`, `@fluojs/runtime` package README를 사용하세요.
 
+## Node.js 지원
+
+`@fluojs/cqrs`는 필수 `@fluojs/runtime` dependency 때문에 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. 이는 검증된 Node listener 지원 창으로 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 제외됩니다. consumer 계약은 [`packages/cqrs/README.ko.md`](../packages/cqrs/README.ko.md) 및 [Package Surface](./reference/package-surface.ko.md)를 참조하세요.
+
 ## Identity
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.
