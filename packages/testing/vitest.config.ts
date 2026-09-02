@@ -6,7 +6,8 @@ export default mergeConfig(
   createFluoVitestWorkspaceConfig(new URL('../../', import.meta.url)),
   defineConfig({
     test: {
-      include: ['src/**/*.test.ts'],
+      fileParallelism: false,
+      include: ['src/**/*.test.ts', 'test-config.test.ts'],
     },
   }),
 );
