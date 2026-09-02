@@ -2,7 +2,6 @@
 "@fluojs/http": minor
 "@fluojs/runtime": minor
 "@fluojs/platform-nodejs": minor
-"@fluojs/platform-express": minor
 "@fluojs/platform-fastify": minor
 "@fluojs/platform-bun": minor
 "@fluojs/platform-deno": minor
