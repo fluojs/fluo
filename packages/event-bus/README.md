@@ -24,6 +24,8 @@ npm install @fluojs/event-bus
 npm install @fluojs/event-bus ioredis
 ```
 
+`@fluojs/event-bus` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency.
+
 ## When to Use
 
 - When you need to decouple components by communicating via events instead of direct service calls.
