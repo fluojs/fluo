@@ -2,6 +2,7 @@
 title: Persistence
 description: Choose and operate database, Redis, cache, transaction, and queue packages in fluo applications.
 ---
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 Persistence in fluo is explicit by design. The framework does not hide every database behind one generic repository abstraction. Instead, each package keeps the semantics of its backing technology visible while connecting it to fluo's DI, lifecycle, interceptor, and status contracts.
 

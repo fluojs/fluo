@@ -1,6 +1,7 @@
 # @fluojs/mongoose
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 Mongoose integration for fluo with session-aware transaction handling and lifecycle-friendly connection management.
 

@@ -2,6 +2,7 @@
 title: Persistence
 description: fluo 애플리케이션에서 database, Redis, cache, transaction, queue 패키지를 선택하고 운영합니다.
 ---
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 fluo의 persistence는 의도적으로 명시적입니다. 프레임워크가 모든 database를 하나의 generic repository abstraction 뒤에 숨기지 않습니다. 대신 각 패키지는 backing technology의 의미를 보존하면서 fluo의 DI, lifecycle, interceptor, status contract에 연결합니다.
 

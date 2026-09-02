@@ -1,5 +1,6 @@
 <!-- packages: @fluojs/mongoose, mongoose, @fluojs/core -->
 <!-- project-state: FluoShop v2.2.0 -->
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 # Chapter 19. MongoDB and Mongoose
 
