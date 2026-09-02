@@ -247,6 +247,29 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('requires tooling and regression companions for Queue producer migration updates', async () => {
+    // Given: a bilingual Queue producer migration update and its context discoverability companions.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+    ];
+
+    // When: the CI/tooling and regression companions are absent or present.
+    // Then: governance rejects the incomplete category and accepts its focused companion.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /CI\/tooling enforcement updates/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts the connection identity regression for its HTTP runtime contract update', async () => {
     // Given: a bilingual HTTP runtime update backed by its focused connection regression.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
