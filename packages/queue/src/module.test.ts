@@ -57,6 +57,9 @@ const bullmqState = vi.hoisted(() => {
   const failWorkerCreation = new Set<string>();
   const failWorkerRun = new Set<string>();
   const forceCloseHangs = new Set<string>();
+  const queueCloseHangs = new Set<string>();
+  const queueCloseStarted = new Set<string>();
+  const pendingQueueCloses = new Map<string, () => void>();
   const pendingForceCloses = new Map<string, () => void>();
   const deferredWorkerRunRejections = new Map<string, (error: Error) => void>();
   const pendingWorkerRunRejections = new Set<string>();
@@ -117,6 +120,12 @@ const bullmqState = vi.hoisted(() => {
       failWorkerCreation.clear();
       failWorkerRun.clear();
       forceCloseHangs.clear();
+      queueCloseHangs.clear();
+      queueCloseStarted.clear();
+      for (const resolve of pendingQueueCloses.values()) {
+        resolve();
+      }
+      pendingQueueCloses.clear();
       for (const resolve of pendingForceCloses.values()) {
         resolve();
       }
@@ -168,6 +177,7 @@ const bullmqState = vi.hoisted(() => {
     failWorkerCreation,
     failWorkerRun,
     forceCloseHangs,
+    queueCloseHangs,
     pendingWorkerRunRejections,
     captureDeferredWorkerRunRejection(name: string, reject: (error: Error) => void): void {
       deferredWorkerRunRejections.set(name, reject);
@@ -186,6 +196,11 @@ const bullmqState = vi.hoisted(() => {
       forceCloseHangs.delete(name);
       pendingForceCloses.get(name)?.();
       pendingForceCloses.delete(name);
+    },
+    releaseQueueClose(name: string): void {
+      queueCloseHangs.delete(name);
+      pendingQueueCloses.get(name)?.();
+      pendingQueueCloses.delete(name);
     },
     queues,
     workers,
@@ -209,6 +224,28 @@ const bullmqState = vi.hoisted(() => {
 
       return new Promise<void>((resolve) => {
         pendingForceCloses.set(name, resolve);
+      });
+    },
+    waitForQueueClose(name: string): Promise<void> {
+      if (queueCloseStarted.has(name)) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        pendingQueueCloses.set(name, resolve);
+      });
+    },
+    async closeQueue(name: string): Promise<void> {
+      queueCloseStarted.add(name);
+      pendingQueueCloses.get(name)?.();
+      pendingQueueCloses.delete(name);
+
+      if (!queueCloseHangs.has(name)) {
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        pendingQueueCloses.set(name, resolve);
       });
     },
   };
@@ -242,6 +279,7 @@ vi.mock('bullmq', () => ({
 
     async close(): Promise<void> {
       this.queue.closeCalls += 1;
+      await bullmqState.closeQueue(this.name);
     }
   },
   Worker: class MockBullWorker {
@@ -324,11 +362,16 @@ import type { Queue } from './types.js';
 class MockRedisClient {
   private duplicateSequence = 0;
   private readonly duplicateCloseObservers: (() => void)[] = [];
+  private readonly duplicateQuitObservers = new Map<string, () => void>();
+  private readonly pendingDuplicateQuits = new Map<string, () => void>();
   failConnectOnDuplicate: number | undefined;
+  hangQuitOnDuplicate: number | undefined;
 
   readonly deadLetters = new Map<string, string[]>();
   readonly disconnectCalls: string[] = [];
+  readonly duplicateDisconnectCalls: string[] = [];
   readonly duplicateOptions: MockRedisDuplicateOptions[] = [];
+  readonly duplicateQuitCalls: string[] = [];
   readonly duplicates: MockRedisConnection[] = [];
   readonly quitCalls: string[] = [];
 
@@ -349,6 +392,21 @@ class MockRedisClient {
 
     return new Promise<void>((resolve) => {
       this.duplicateCloseObservers.push(resolve);
+    });
+  }
+
+  releaseDuplicateQuit(id: string): void {
+    this.pendingDuplicateQuits.get(id)?.();
+    this.pendingDuplicateQuits.delete(id);
+  }
+
+  waitForDuplicateQuit(id: string): Promise<void> {
+    if (this.duplicateQuitCalls.includes(id)) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.duplicateQuitObservers.set(id, resolve);
     });
   }
 
@@ -380,12 +438,23 @@ class MockRedisClient {
         connection.status = 'ready';
       },
       disconnect: () => {
+        this.duplicateDisconnectCalls.push(id);
         connection.status = 'end';
         this.notifyDuplicateClosed();
       },
       id,
       maxRetriesPerRequest: Object.hasOwn(options, 'maxRetriesPerRequest') ? options.maxRetriesPerRequest : 20,
       quit: async () => {
+        this.duplicateQuitCalls.push(id);
+        this.duplicateQuitObservers.get(id)?.();
+        this.duplicateQuitObservers.delete(id);
+
+        if (this.hangQuitOnDuplicate === duplicateIndex) {
+          await new Promise<void>((resolve) => {
+            this.pendingDuplicateQuits.set(id, resolve);
+          });
+        }
+
         connection.status = 'end';
         this.notifyDuplicateClosed();
         return 'OK';
@@ -779,6 +848,119 @@ describe('@fluojs/queue', () => {
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
     expect(redis.quitCalls).toEqual([]);
     expect(redis.disconnectCalls).toEqual([]);
+  });
+
+  it('bounds a never-settling Queue close and continues Queue-owned Redis cleanup', async () => {
+    const loggerEvents: string[] = [];
+
+    class HangingQueueCloseJob {}
+
+    @QueueWorker(HangingQueueCloseJob)
+    class HangingQueueCloseWorker {
+      async handle(_job: HangingQueueCloseJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ workerShutdownTimeoutMs: 10 })],
+      providers: [HangingQueueCloseWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const queueCloseStarted = withTimeout(
+      bullmqState.waitForQueueClose('HangingQueueCloseJob'),
+      10,
+      () => new Error('Queue close did not begin before shutdown timeout.'),
+    );
+
+    bullmqState.queueCloseHangs.add('HangingQueueCloseJob');
+    vi.useFakeTimers();
+    const closing = app.close();
+    let closed = false;
+    void closing.then(() => {
+      closed = true;
+    });
+
+    try {
+      await queueCloseStarted;
+
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(closed).toBe(true);
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+      expect(loggerEvents).toContain(
+        'error:QueueLifecycleService:Failed to close queue within shutdown timeout.:queue shutdown timed out',
+      );
+    } finally {
+      bullmqState.releaseQueueClose('HangingQueueCloseJob');
+      await closing;
+    }
+  });
+
+  it('bounds a never-settling Queue-owned Redis quit and force-disconnects it', async () => {
+    const loggerEvents: string[] = [];
+
+    class HangingRedisQuitJob {}
+
+    @QueueWorker(HangingRedisQuitJob)
+    class HangingRedisQuitWorker {
+      async handle(_job: HangingRedisQuitJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ workerShutdownTimeoutMs: 10 })],
+      providers: [HangingRedisQuitWorker],
+    });
+
+    const redis = new MockRedisClient();
+    redis.hangQuitOnDuplicate = 1;
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const duplicateQuitStarted = withTimeout(
+      redis.waitForDuplicateQuit('dup-1'),
+      10,
+      () => new Error('Queue-owned Redis quit did not begin before shutdown timeout.'),
+    );
+
+    vi.useFakeTimers();
+    const closing = app.close();
+    let closed = false;
+    void closing.then(() => {
+      closed = true;
+    });
+
+    try {
+      await duplicateQuitStarted;
+
+      expect(redis.duplicates[1]?.status).not.toBe('end');
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(closed).toBe(true);
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+      expect(redis.duplicateQuitCalls).toEqual(['dup-1', 'dup-2']);
+      expect(redis.duplicateDisconnectCalls).toEqual(['dup-1']);
+      expect(redis.disconnectCalls).toEqual([]);
+      expect(loggerEvents).toContain(
+        'error:QueueLifecycleService:Failed to close queue-owned Redis connection within shutdown timeout.:queue-owned Redis connection shutdown timed out',
+      );
+    } finally {
+      redis.releaseDuplicateQuit('dup-1');
+      await closing;
+    }
   });
 
   it('rejects duplicate default scoped queue registrations with a deterministic error', async () => {

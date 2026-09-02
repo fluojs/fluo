@@ -801,17 +801,33 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private async tryCloseQueue(queue: QueueInstance): Promise<void> {
     try {
-      await queue.close();
+      await withTimeout(
+        queue.close(),
+        this.options.workerShutdownTimeoutMs,
+        () => new Error('queue shutdown timed out'),
+      );
     } catch (error) {
-      this.logger.error('Failed to close queue during shutdown.', error, 'QueueLifecycleService');
+      this.logger.error('Failed to close queue within shutdown timeout.', error, 'QueueLifecycleService');
     }
   }
 
   private async tryCloseOwnedConnection(connection: QueueOwnedConnection): Promise<void> {
     try {
-      await closeConnection(connection);
+      await withTimeout(
+        closeConnection(connection),
+        this.options.workerShutdownTimeoutMs,
+        () => new Error('queue-owned Redis connection shutdown timed out'),
+      );
     } catch (error) {
-      this.logger.error('Failed to close queue-owned Redis connection during shutdown.', error, 'QueueLifecycleService');
+      if (connection.status !== 'end') {
+        connection.disconnect();
+      }
+
+      this.logger.error(
+        'Failed to close queue-owned Redis connection within shutdown timeout.',
+        error,
+        'QueueLifecycleService',
+      );
     }
   }
 }
