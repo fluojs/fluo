@@ -10,6 +10,11 @@ describe('NestJS parity contract companions', () => {
       'docs/getting-started/migrate-from-nestjs.ko.md',
       'docs/contracts/nestjs-parity-gaps.md',
       'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/getting-started/migrate-from-fastify.md',
+      'docs/getting-started/migrate-from-fastify.ko.md',
+      'packages/platform-fastify/README.md',
+      'packages/platform-fastify/README.ko.md',
+      'packages/platform-fastify/src/adapter.test.ts',
     ];
 
     // When: the correction omits or includes its machine-governed companions.
