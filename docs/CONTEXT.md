@@ -7,6 +7,10 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.
 
+## Node.js Support
+
+`@fluojs/cqrs` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` because `@fluojs/runtime` is a mandatory dependency. This is the verified Node listener support window: Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
+
 ## Identity
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.

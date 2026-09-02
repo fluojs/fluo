@@ -24,6 +24,10 @@ CQRS primitives for fluo applications with bootstrap-time handler discovery, com
 npm install @fluojs/cqrs
 ```
 
+### Node.js Support
+
+`@fluojs/cqrs` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are not supported.
+
 ## When to Use
 
 - When you want to decouple the "intent" (Commands/Queries) from the "execution" (Handlers).

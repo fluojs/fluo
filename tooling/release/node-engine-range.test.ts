@@ -248,4 +248,16 @@ describe('published Node engine manifest enforcement', () => {
     // Then: sufficiently structured replacement-runtime guidance satisfies the migration contract.
     expect(result.checkedStableNodeEngineRangeNarrowings).toEqual([]);
   });
+
+  it('keeps CQRS within its mandatory Event Bus and Runtime Node support window', () => {
+    // Given: CQRS packages two mandatory dependencies that own its runtime execution path.
+    const cqrsManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/cqrs/package.json'), 'utf8'));
+    const eventBusManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/event-bus/package.json'), 'utf8'));
+    const runtimeManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/runtime/package.json'), 'utf8'));
+
+    // When: package-manager engines metadata admits a consumer Node.js version.
+    // Then: CQRS does not claim broader support than either mandatory dependency.
+    expect(cqrsManifest.engines.node).toBe(eventBusManifest.engines.node);
+    expect(cqrsManifest.engines.node).toBe(runtimeManifest.engines.node);
+  });
 });
