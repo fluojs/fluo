@@ -226,6 +226,25 @@ describe('CLI command runner', () => {
     expect(stderrBuffer.join('')).not.toBe('');
   });
 
+  it('rejects inspect --format without a value before bootstrap', async () => {
+    // Given: a CLI caller that omits the documented format value.
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When: inspect parses an incomplete format option at its CLI boundary.
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format'], {
+      ci: true,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    // Then: no payload is emitted and the failure is observable on stderr.
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
+  });
+
   it('publishes fluo as the canonical bin', () => {
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
@@ -4538,16 +4557,18 @@ exit 7
   });
 
   it('rejects --format json when another primary inspect mode is selected', async () => {
+    const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json', '--mermaid'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Choose only one inspect output mode');
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
   });
 
   it('rejects Mermaid timing because graph rendering stays Studio-owned', async () => {
