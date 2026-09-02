@@ -69,12 +69,12 @@ class CreateUserDto {
   @FromBody()
   @IsString()
   @MinLength(3)
-  name!: string;
+  name = '';
 }
 
 class FindUserParamsDto {
   @FromPath('id')
-  id!: string;
+  id = '';
 }
 
 @Controller('/users')
@@ -92,6 +92,8 @@ export class UserController {
   }
 }
 ```
+
+Initialize decorated DTO fields, as shown above, or declare them optional. A definite assignment assertion such as `name!: string` does not compile with the Babel decorator configuration Fluo ships, which rejects a definitely assigned field on a decorated class with `Definitely assigned fields cannot be initialized here, but only in the constructor`.
 
 ### Route path contract
 
