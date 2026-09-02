@@ -329,6 +329,8 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.ko.md',
       'packages/cli/src/transforms/nestjs-migrate.ts',
       'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
     ];
 
     // When: Fastify package documentation is unchanged but the migration diff is unavailable.
@@ -394,6 +396,7 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.md': {
         base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
         head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
           '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
           'Fastify raw request access uses `context.request.raw` and `IncomingMessage`.',
         ].join('\n'),
@@ -401,6 +404,7 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.ko.md': {
         base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
         head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
           '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
           'Fastify raw request는 `context.request.raw`와 `IncomingMessage`를 사용한다.',
         ].join('\n'),
@@ -411,6 +415,49 @@ describe('enforceContractCompanionUpdates', () => {
     // Then: the Fastify runtime regression remains mandatory.
     expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
       /Fastify raw request and response migration docs must include all governed Fastify documentation/u,
+    );
+  });
+
+  it('keeps generic companions mandatory when bootstrap-only migration evidence accompanies release governance', async () => {
+    // Given: a valid bootstrap-only migration update and an independent governed contract change.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+      'docs/contracts/release-governance.md',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `--platform express`를 선택하지 않으면 `listen()` bootstrap을 보존한다. |',
+        ].join('\n'),
+      },
+    };
+
+    // When / Then: the guide exception cannot suppress another contract trigger.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
     );
   });
 

@@ -1201,7 +1201,9 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
  */
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
-  const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path)) && !bootstrapOnlyMigrationGuideUpdate;
+  const touchedContractGate = changedFiles.some(
+    (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
+  );
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
   const fastifyRawContextDocumentation = [
     'docs/getting-started/migrate-from-nestjs.md',

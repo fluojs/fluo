@@ -350,6 +350,42 @@ function removeImportBinding(
   };
 }
 
+function removeNestFactoryValueImports(
+  source: string,
+  sourceFilePath: string,
+): { changed: boolean; source: string } {
+  const sourceFile = parseSource(source, sourceFilePath);
+  let changed = false;
+  const statements: ts.Statement[] = [];
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== '@nestjs/core') {
+      statements.push(statement);
+      continue;
+    }
+
+    const bindings = getImportBindings(statement);
+    const filtered = bindings.filter((binding) => binding.imported !== 'NestFactory' || binding.isTypeOnly);
+    if (filtered.length !== bindings.length) {
+      changed = true;
+    }
+
+    const updated = updateNamedImports(statement, filtered);
+    if (updated) {
+      statements.push(updated);
+    }
+  }
+
+  if (!changed) {
+    return { changed: false, source };
+  }
+
+  return {
+    changed: true,
+    source: printSourceFile(sourceFile, statements),
+  };
+}
+
 function rewriteImports(
   source: string,
   filePath: string,
@@ -1142,19 +1178,52 @@ function rewriteBootstrap(
   filePath: string,
   bootstrapPlatform: BootstrapPlatform | undefined,
 ): { changed: boolean; source: string; warnings: MigrationWarning[] } {
-  const sourceFile = parseSource(source, filePath);
+  const compilerOptions: ts.CompilerOptions = {
+    module: ts.ModuleKind.ESNext,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.ES2022,
+  };
+  const compilerHost = ts.createCompilerHost(compilerOptions, true);
+  const getSourceFile = compilerHost.getSourceFile.bind(compilerHost);
+  compilerHost.getSourceFile = (path, languageVersion, onError, shouldCreateNewSourceFile) =>
+    path === filePath
+      ? parseSource(source, filePath)
+      : getSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
+  const program = ts.createProgram([filePath], compilerOptions, compilerHost);
+  const sourceFile = program.getSourceFile(filePath) ?? parseSource(source, filePath);
+  const checker = program.getTypeChecker();
   const warnings: MigrationWarning[] = [];
   const bootstrapBindings = new Map<string, {
     declaration: ts.VariableDeclaration;
     functionOwner: ts.SignatureDeclaration;
     listenCalls: ts.CallExpression[];
     name: string;
-    scope: ts.Block;
+    symbol: ts.Symbol;
   }>();
   const portFoldedListenCallKeys = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
+  const nestFactoryImportLocalNames = new Set<string>();
   let usesExpressAdapter = false;
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement)
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== '@nestjs/core'
+      || !statement.importClause?.namedBindings
+      || !ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      continue;
+    }
+
+    for (const element of statement.importClause.namedBindings.elements) {
+      if ((element.propertyName ?? element.name).text === 'NestFactory') {
+        nestFactoryImportLocalNames.add(element.name.text);
+      }
+    }
+  }
 
   function toCallKey(callExpression: ts.CallExpression): string {
     return `${callExpression.pos}:${callExpression.end}`;
@@ -1176,7 +1245,7 @@ function rewriteBootstrap(
       functionOwner: ts.SignatureDeclaration;
       listenCalls: ts.CallExpression[];
       name: string;
-      scope: ts.Block;
+      symbol: ts.Symbol;
     },
     createCall: ts.CallExpression,
   ): { listenCall: ts.CallExpression; portExpression: ts.NumericLiteral } | { category: 'bootstrap-port' | 'bootstrap-unsupported'; node: ts.Node; reason: string } {
@@ -1239,25 +1308,12 @@ function rewriteBootstrap(
     return undefined;
   }
 
-  function enclosingBlock(node: ts.Node): ts.Block | undefined {
-    let current: ts.Node | undefined = node.parent;
-    while (current) {
-      if (ts.isBlock(current)) {
-        return current;
-      }
-
-      current = current.parent;
-    }
-
-    return undefined;
-  }
-
   function hasEscapedBindingUse(binding: {
     declaration: ts.VariableDeclaration;
     functionOwner: ts.SignatureDeclaration;
     listenCalls: ts.CallExpression[];
     name: string;
-    scope: ts.Block;
+    symbol: ts.Symbol;
   }): boolean {
     let escaped = false;
     const [listenCall] = binding.listenCalls;
@@ -1265,13 +1321,9 @@ function rewriteBootstrap(
       listenCall && ts.isPropertyAccessExpression(listenCall.expression) ? listenCall.expression.expression : undefined;
 
     const inspectBindingUse = (node: ts.Node): void => {
-      if (node !== binding.functionOwner && ts.isFunctionLike(node)) {
-        return;
-      }
-
       if (
         ts.isIdentifier(node)
-        && node.text === binding.name
+        && checker.getSymbolAtLocation(node) === binding.symbol
         && node !== binding.declaration.name
         && node !== listenReceiver
       ) {
@@ -1338,16 +1390,50 @@ function rewriteBootstrap(
     );
   }
 
-  function hasUnconvertedNestFactoryCreate(sourceFile: ts.SourceFile): boolean {
+  function isNestFactoryValueImportReference(identifier: ts.Identifier): boolean {
+    const symbol = checker.getSymbolAtLocation(identifier);
+    return Boolean(symbol?.declarations?.some((declaration) => {
+      if (!ts.isImportSpecifier(declaration) || declaration.isTypeOnly) {
+        return false;
+      }
+
+      const importClause = declaration.parent.parent;
+      const importDeclaration = importClause.parent;
+      return (
+        !importClause.isTypeOnly
+        && ts.isImportDeclaration(importDeclaration)
+        && ts.isStringLiteral(importDeclaration.moduleSpecifier)
+        && importDeclaration.moduleSpecifier.text === '@nestjs/core'
+        && (declaration.propertyName ?? declaration.name).text === 'NestFactory'
+      );
+    }));
+  }
+
+  function nestFactoryCreateCall(node: ts.Node): { call: ts.CallExpression; receiver: ts.Identifier } | undefined {
+    if (
+      !ts.isCallExpression(node)
+      || !ts.isPropertyAccessExpression(node.expression)
+      || !ts.isIdentifier(node.expression.expression)
+      || node.expression.name.text !== 'create'
+    ) {
+      return undefined;
+    }
+
+    return {
+      call: node,
+      receiver: node.expression.expression,
+    };
+  }
+
+  function hasUnconvertedNestFactoryCreate(): boolean {
     let found = false;
 
     const inspect = (node: ts.Node): void => {
+      const createCall = nestFactoryCreateCall(node);
       if (
-        ts.isCallExpression(node)
-        && ts.isPropertyAccessExpression(node.expression)
-        && ts.isIdentifier(node.expression.expression)
-        && node.expression.expression.text === 'NestFactory'
-        && node.expression.name.text === 'create'
+        createCall
+        && isNestFactoryValueImportReference(createCall.receiver)
+        && !rewrittenCreateCallKeys.has(toCallKey(createCall.call))
       ) {
         found = true;
         return;
@@ -1363,25 +1449,23 @@ function rewriteBootstrap(
   const inspectCreates = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && node.initializer) {
       const initializer = ts.isAwaitExpression(node.initializer) ? node.initializer.expression : node.initializer;
+      const createCall = nestFactoryCreateCall(initializer);
       if (
         ts.isIdentifier(node.name)
-        && ts.isCallExpression(initializer)
-        && ts.isPropertyAccessExpression(initializer.expression)
-        && ts.isIdentifier(initializer.expression.expression)
-        && initializer.expression.expression.text === 'NestFactory'
-        && initializer.expression.name.text === 'create'
+        && createCall
+        && isNestFactoryValueImportReference(createCall.receiver)
         && ts.isVariableDeclarationList(node.parent)
         && (node.parent.flags & ts.NodeFlags.Const) !== 0
       ) {
         const functionOwner = enclosingFunction(node);
-        const scope = enclosingBlock(node);
-        if (functionOwner && scope) {
-          bootstrapBindings.set(toCallKey(initializer), {
+        const symbol = checker.getSymbolAtLocation(node.name);
+        if (functionOwner && symbol) {
+          bootstrapBindings.set(toCallKey(createCall.call), {
             declaration: node,
             functionOwner,
             listenCalls: [],
             name: node.name.text,
-            scope,
+            symbol,
           });
         }
       }
@@ -1398,9 +1482,9 @@ function rewriteBootstrap(
       && node.expression.name.text === 'listen'
     ) {
       const functionOwner = enclosingFunction(node);
-      const scope = enclosingBlock(node);
+      const symbol = checker.getSymbolAtLocation(node.expression.expression);
       for (const binding of bootstrapBindings.values()) {
-        if (binding.name === node.expression.expression.text && binding.functionOwner === functionOwner && binding.scope === scope) {
+        if (binding.symbol === symbol && binding.functionOwner === functionOwner) {
           binding.listenCalls.push(node);
         }
       }
@@ -1415,7 +1499,15 @@ function rewriteBootstrap(
   const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
     const visit = (node: ts.Node): ts.Node => {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        if (ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'NestFactory' && node.expression.name.text === 'create') {
+        const createCall = nestFactoryCreateCall(node);
+        if (createCall) {
+          if (!isNestFactoryValueImportReference(createCall.receiver)) {
+            if (nestFactoryImportLocalNames.has(createCall.receiver.text)) {
+              warnUnsupportedCreate(node, 'NestFactory.create does not resolve to a value import from @nestjs/core.');
+            }
+            return node;
+          }
+
           const support = isSupportedCreateCall(node);
           if (!support.supported) {
             warnUnsupportedCreate(node, support.reason);
@@ -1486,8 +1578,8 @@ function rewriteBootstrap(
 
   let nextSource = printer.printFile(transformed);
 
-  if (!hasUnconvertedNestFactoryCreate(transformed)) {
-    const removed = removeImportBinding(nextSource, filePath, '@nestjs/core', 'NestFactory');
+  if (!hasUnconvertedNestFactoryCreate()) {
+    const removed = removeNestFactoryValueImports(nextSource, filePath);
     nextSource = removed.source;
   }
 

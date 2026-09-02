@@ -200,4 +200,150 @@ async function escaped() {
     expect(report.changedFiles).toBe(0);
     expect(report.warningCount).toBe(2);
   });
+
+  it('rewrites an aliased NestFactory value import but preserves local, parameter, and function shadows', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const source = `import { NestFactory as NestBootstrap } from '@nestjs/core';
+import type { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function supported() {
+  const app = await NestBootstrap.create(AppModule);
+  await app.listen(3000);
+}
+
+async function localShadow() {
+  const NestFactory = { create: async () => ({ listen: async (_port: number) => undefined }) };
+  const app = await NestFactory.create();
+  await app.listen(3001);
+}
+
+async function parameterShadow(NestFactory: { create(): Promise<{ listen(port: number): Promise<void> }> }) {
+  const app = await NestFactory.create();
+  await app.listen(3002);
+}
+
+function NestFactory() {}
+NestFactory.create = async () => ({ listen: async (_port: number) => undefined });
+
+async function functionShadow() {
+  const app = await NestFactory.create();
+  await app.listen(3003);
+}
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { warningCount: number };
+    const transformed = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(transformed).toContain('FluoFactory.create(AppModule');
+    expect(transformed).toMatch(/port:\s*3000/);
+    expect(transformed).toContain('const NestFactory = { create: async () => ({ listen: async (_port: number) => undefined }) };');
+    expect(transformed).toContain('async function parameterShadow(NestFactory: {');
+    expect(transformed).toContain('create(): Promise<{');
+    expect(transformed).toContain('function NestFactory() { }');
+    expect(transformed).toContain('await app.listen(3001);');
+    expect(transformed).toContain('await app.listen(3002);');
+    expect(transformed).toContain('await app.listen(3003);');
+    expect(report.warningCount).toBe(3);
+  });
+
+  it('preserves closure-captured bootstraps but transforms a nested shadow with a safe numeric listen', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const source = `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function capturedBootstrap() {
+  const app = await NestFactory.create(AppModule);
+  const inspect = () => app.getHttpServer();
+  void inspect;
+  await app.listen(3000);
+}
+
+async function nestedShadowBootstrap() {
+  const app = await NestFactory.create(AppModule);
+  const inspect = () => {
+    const app = { getHttpServer: () => undefined };
+    return app.getHttpServer();
+  };
+  void inspect;
+  await app.listen(3001);
+}
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { warningCount: number };
+    const transformed = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(transformed).toContain('const app = await NestFactory.create(AppModule);');
+    expect(transformed).toContain('await app.listen(3000);');
+    expect(transformed).toContain('FluoFactory.create(AppModule');
+    expect(transformed).toMatch(/port:\s*3001/);
+    expect(transformed).toContain('const app = { getHttpServer: () => undefined };');
+    expect(report.warningCount).toBe(1);
+  });
+
+  it('rewrites a safe numeric listen from a descendant block of its bootstrap binding', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  {
+    await app.listen(3000);
+  }
+}
+`,
+    );
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { warningCount: number };
+    const transformed = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(transformed).toContain('FluoFactory.create(AppModule');
+    expect(transformed).toMatch(/port:\s*3000/);
+    expect(transformed).toContain('await app.listen();');
+    expect(report.warningCount).toBe(0);
+  });
 });
