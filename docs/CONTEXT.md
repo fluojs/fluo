@@ -7,6 +7,10 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.
 
+## Node.js Support
+
+`@fluojs/cqrs` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` because `@fluojs/runtime` is a mandatory dependency. This is the verified Node listener support window: Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
+
 ## Identity
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.
@@ -32,6 +36,8 @@ NestJS microservices migration boundaries are documented in the [NestJS migratio
 NestJS Mongoose migration and transaction semantics are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md) and [Transaction Context Contract](./architecture/transactions.md): application-owned migration creates the connection, compiles its models, then registers that connection with `MongooseModule`; supported `MongooseConnection.model(...)` facade operations merge the ambient session without discarding existing options; `strictTransactions: false` can only fail open when the connection exposes neither `connection.transaction(...)` nor `startSession()`, with no rollback atomicity; and multi-connection services must use an explicit `@Transaction((self) => self.analytics.conn)` accessor rather than relying on ambiguous decorator target resolution.
 
 The NestJS OpenAPI migration map preserves three generated-document differences: fluo adds `400`, `401`, `403`, `404`, and `500` responses plus `ErrorResponse` unless explicitly declared, with `defaultErrorResponsesPolicy: 'omit'` for legacy clients; generated `operationId` values require `documentTransform` when clients need legacy names; and `OpenApiModule.forRootAsync(...)` keeps `documentPath` and `uiPath` beside `inject` and `useFactory(...)`, because factory-returned paths cannot reconfigure already-registered routes.
+
+The NestJS Prisma migration map requires `strictTransactions: true` whenever a migrated flow needs rollback atomicity: without an interactive `$transaction(...)` client, the default fail-open path runs the callback directly. `PrismaModule.forRootAsync(...)` supports only the `inject` / `useFactory` factory strategy while retaining its top-level `name` and `global` options; expose each dependency through a global-module export or bootstrap runtime provider before options resolution, and resolve NestJS `imports`, `useClass`, and `useExisting` configuration at bootstrap rather than treating them as compatibility fields.
 
 ## Hard Constraints
 

@@ -7,6 +7,10 @@
 
 정적 제공은 [HTTP Runtime Contract](./architecture/http-runtime.ko.md)에 문서화한 portable `@fluojs/http` middleware 계약입니다. 애플리케이션은 `createStaticAssetsMiddleware(...)`에 명시적 `StaticAssetSource`를 전달하므로 fetch-style 및 edge host에 암묵적 filesystem claim이 제공되지 않습니다. `@fluojs/runtime/node`는 Node, Express, Fastify deployment용 `createNodeFileSystemAssetSource(...)`를 소유하며 lexical 및 realpath 해석을 구성된 root에 제한하고 precompressed sibling을 선택할 수 있습니다. API 예제와 deployment configuration은 `@fluojs/http`, `@fluojs/runtime` package README를 사용하세요.
 
+## Node.js 지원
+
+`@fluojs/cqrs`는 필수 `@fluojs/runtime` dependency 때문에 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. 이는 검증된 Node listener 지원 창으로 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 제외됩니다. consumer 계약은 [`packages/cqrs/README.ko.md`](../packages/cqrs/README.ko.md) 및 [Package Surface](./reference/package-surface.ko.md)를 참조하세요.
+
 ## Identity
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.
@@ -32,6 +36,8 @@ NestJS microservices migration boundary는 [NestJS migration map](./getting-star
 NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)과 [Transaction Context Contract](./architecture/transactions.ko.md)에 문서화되어 있다. 애플리케이션이 소유하는 마이그레이션은 connection을 만들고 그 connection에서 model을 compile한 뒤 `MongooseModule`에 등록한다. 지원되는 `MongooseConnection.model(...)` facade 작업은 기존 option을 버리지 않고 ambient session을 병합한다. `strictTransactions: false`의 fail-open은 connection에 `connection.transaction(...)`과 `startSession()`이 모두 없을 때만 가능하며 rollback 원자성이 없다. multi-connection service에서는 모호한 decorator 대상 해석에 의존하지 말고 `@Transaction((self) => self.analytics.conn)`처럼 명시적인 accessor를 사용한다.
 
 NestJS OpenAPI migration map은 생성 문서의 세 가지 차이를 보존한다. fluo는 명시적으로 선언한 응답을 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 `ErrorResponse`를 추가하며 legacy client에는 `defaultErrorResponsesPolicy: 'omit'`을 사용한다. 생성된 `operationId`가 legacy name과 달라 client가 이를 요구하면 `documentTransform`을 사용한다. `OpenApiModule.forRootAsync(...)`에서는 이미 등록한 route를 factory-returned path로 다시 구성할 수 없으므로 `documentPath`와 `uiPath`를 `inject`, `useFactory(...)`와 같은 바깥 registration object에 둔다.
+
+NestJS Prisma migration map에서는 migrated flow에 rollback 원자성이 필요하면 `strictTransactions: true`를 설정해야 합니다. Interactive `$transaction(...)` client가 없으면 기본 fail-open 경로가 callback을 직접 실행합니다. `PrismaModule.forRootAsync(...)`는 `inject` / `useFactory` factory strategy만 지원하지만 top-level `name`, `global` option은 유지하므로, option을 resolve하기 전에 global module export 또는 bootstrap runtime provider를 통해 각 의존성을 노출하고 NestJS `imports`, `useClass`, `useExisting` configuration은 호환 field로 취급하지 말고 bootstrap에서 해석하세요.
 
 ## Hard Constraints
 

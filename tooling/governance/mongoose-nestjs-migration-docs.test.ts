@@ -43,6 +43,16 @@ const saveDocumentRequirements = [
     typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
   },
 ] as const;
+const saveDocumentMigrationRequirements = [
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+    injection: '@Inject(MongooseConnection)\nclass ProfileService',
+  },
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    injection: '@Inject(MongooseConnection)\nclass ProfileService',
+  },
+] as const;
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -213,6 +223,23 @@ describe('NestJS Mongoose migration documentation', () => {
       );
       expect(() => enforceMongooseNestjsMigrationDocs(readWithoutSaveCompatibleType)).toThrow(
         'save-compatible document type',
+      );
+    },
+  );
+
+  it.each(saveDocumentMigrationRequirements)(
+    'rejects missing explicit ProfileService MongooseConnection injection in $path',
+    ({ path: driftedPath, injection }) => {
+      const readWithoutProfileServiceInjection = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(injection, 'class ProfileService')
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutProfileServiceInjection)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutProfileServiceInjection)).toThrow(
+        'ProfileService',
       );
     },
   );

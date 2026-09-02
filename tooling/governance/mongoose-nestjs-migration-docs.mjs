@@ -80,6 +80,10 @@ const saveDocumentRequirements = [
     typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
   },
 ];
+const saveDocumentMigrationRequirements = [
+  { path: 'docs/getting-started/migrate-from-nestjs.md' },
+  { path: 'docs/getting-started/migrate-from-nestjs.ko.md' },
+];
 
 function assert(condition, message) {
   if (!condition) {
@@ -148,6 +152,24 @@ function enforceSaveDocumentContract(content, requirement) {
   );
 }
 
+function enforceSaveDocumentMigrationExample(content, requirement) {
+  const examples = [...content.matchAll(/```(?:ts|typescript)\s*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((example) => example.includes('class ProfileService') && example.includes('saveDocument'));
+  assert(
+    examples.length === 1,
+    `${requirement.path} must include exactly one fenced ProfileService saveDocument migration example.`,
+  );
+
+  const injectionMatches = [
+    ...examples[0].matchAll(/@Inject\(MongooseConnection\)\s*\n(?:export\s+)?class ProfileService\b/gu),
+  ];
+  assert(
+    injectionMatches.length === 1,
+    `${requirement.path} must declare MongooseConnection explicitly for ProfileService.`,
+  );
+}
+
 export function enforceMongooseNestjsMigrationDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
@@ -163,6 +185,10 @@ export function enforceMongooseNestjsMigrationDocs(
 
   for (const requirement of saveDocumentRequirements) {
     enforceSaveDocumentContract(readText(requirement.path), requirement);
+  }
+
+  for (const requirement of saveDocumentMigrationRequirements) {
+    enforceSaveDocumentMigrationExample(readText(requirement.path), requirement);
   }
 }
 

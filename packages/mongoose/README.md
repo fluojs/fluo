@@ -127,6 +127,20 @@ export class UserService {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
 
+`@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It does not select arbitrary connection fields. When a service owns multiple connections or stores its connection elsewhere, select the boundary explicitly:
+
+```ts
+@Inject(MongooseConnection)
+export class AnalyticsService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: AnalyticsService) => self.analyticsConnection)
+  async rebuildReports() {
+    // Uses analyticsConnection rather than an inferred connection.
+  }
+}
+```
+
 ### Saving an Existing Document
 
 <!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
