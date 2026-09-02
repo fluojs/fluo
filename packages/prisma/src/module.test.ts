@@ -71,6 +71,21 @@ void staticPrismaModuleDefinitionCompatibilityChecked;
 void asyncPrismaModuleDefinitionCompatibilityChecked;
 
 describe('@fluojs/prisma', () => {
+  it('preserves distinct static and async module definition names', () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const staticModule = PrismaModule.forRoot({ client });
+    const asyncModule = PrismaModule.forRootAsync({
+      useFactory: () => ({ client }),
+    });
+
+    expect(staticModule.name).toBe('PrismaRootModuleDefinition');
+    expect(asyncModule.name).toBe('PrismaAsyncModuleDefinition');
+  });
+
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
     const events: string[] = [];
     const transactionClient = {

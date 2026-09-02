@@ -190,7 +190,7 @@ function buildPrismaModule<
       provide: getPrismaNormalizedOptionsToken(normalizedOptions.name),
       useValue: normalizedOptions,
     }, normalizedOptions.name),
-  });
+  }, 'PrismaRootModuleDefinition');
 }
 
 function buildPrismaModuleAsync<
@@ -234,7 +234,7 @@ function buildPrismaModuleAsync<
       : [getPrismaServiceToken(normalizedName), getPrismaClientToken(normalizedName), getPrismaOptionsToken(normalizedName)],
     global: normalizedName === undefined ? options.global ?? false : false,
     providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>(normalizedOptionsProvider, normalizedName),
-  });
+  }, 'PrismaAsyncModuleDefinition');
 }
 
 /**

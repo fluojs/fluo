@@ -51,15 +51,25 @@ export type ActiveRequestTransactionHandle = {
  * Creates a module class with metadata consumed by the runtime module graph.
  *
  * @param definition Module composition metadata.
+ * @param moduleName Constructor name used by runtime diagnostics.
  * @returns A new module class carrying the supplied metadata.
  */
 export function definePrismaModule(
   definition: Parameters<typeof Module>[0],
+  moduleName: string,
 ): PrismaModuleType {
-  @Module(definition)
-  class PrismaModuleDefinition {}
+  const moduleType = {
+    [moduleName]: class {},
+  }[moduleName];
 
-  return PrismaModuleDefinition;
+  Module(definition)(moduleType, {
+    addInitializer() {},
+    kind: 'class',
+    metadata: {},
+    name: moduleName,
+  });
+
+  return moduleType;
 }
 
 /**

@@ -398,6 +398,51 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
   });
 });
 
+describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
+  function readTextWithEngineRanges(packageRange: string, dependencyRange: string): (relativePath: string) => string {
+    return (relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/prisma/package.json') {
+        const manifest = JSON.parse(content) as Record<string, unknown>;
+
+        return JSON.stringify({
+          ...manifest,
+          dependencies: { '@fluojs/core': 'workspace:*' },
+          engines: { node: packageRange },
+        });
+      }
+
+      if (relativePath === 'packages/core/package.json') {
+        const manifest = JSON.parse(content) as Record<string, unknown>;
+
+        return JSON.stringify({
+          ...manifest,
+          engines: { node: dependencyRange },
+        });
+      }
+
+      return content;
+    };
+  }
+
+  it('rejects a bare-major package range that exceeds a mandatory dependency cap', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('20', '<=20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.0\.1/u);
+  });
+
+  it('accepts compatible bare-major package and dependency ranges', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('20', '20'),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+});
+
 describe('enforcePlatformFastifyEngineDocumentation', () => {
   const fastifyGuidePaths = [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',

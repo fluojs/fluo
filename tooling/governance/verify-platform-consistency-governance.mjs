@@ -123,10 +123,20 @@ function parseNodeEngineComparator(value) {
   const match = /^(>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
   assert(match !== null, `Unsupported Node engine comparator "${value}".`);
 
-  return {
-    operator: match[1] ?? '=',
-    version: parseNodeEngineVersion(match[2]),
-  };
+  const version = parseNodeEngineVersion(match[2]);
+  if (match[1] !== undefined || match[2].split('.').length === 3) {
+    return [{ operator: match[1] ?? '=', version }];
+  }
+
+  return [
+    { operator: '>=', version },
+    {
+      operator: '<',
+      version: match[2].includes('.')
+        ? { major: version.major, minor: version.minor + 1, patch: 0 }
+        : { major: version.major + 1, minor: 0, patch: 0 },
+    },
+  ];
 }
 
 function parseNodeEngineRange(range) {
@@ -135,7 +145,7 @@ function parseNodeEngineRange(range) {
   return range.split('||').map((group) => {
     const comparators = group.trim().split(/\s+/u).filter(Boolean);
     assert(comparators.length > 0, `Unsupported empty Node engine range "${range}".`);
-    return comparators.map(parseNodeEngineComparator);
+    return comparators.flatMap(parseNodeEngineComparator);
   });
 }
 
