@@ -4222,6 +4222,54 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
   );
 }
 
+export function enforceTerminusMigrationDiscoverability(readText = read) {
+  const contractSentinel =
+    '<!-- fluo-terminus-migration-contract: registration=TerminusModule.forRoot;endpoints=/health,/ready;unhealthy-status=503;report=HealthCheckReport -->';
+  const contextPaths = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+  const readmePaths = ['packages/terminus/README.md', 'packages/terminus/README.ko.md'];
+  const migrationPaths = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ];
+  const runtimeSource = readText('packages/terminus/src/module.ts');
+
+  assert(
+    runtimeSource.includes('HealthModule.forRoot({')
+      && runtimeSource.includes("statusCode: reportWithPlatform.status === 'ok' ? 200 : 503")
+      && runtimeSource.includes('healthModule.addReadinessCheck'),
+    'packages/terminus/src/module.ts must keep Terminus health, readiness, and unhealthy HTTP 503 behavior.',
+  );
+
+  for (const contextPath of contextPaths) {
+    assert(
+      readText(contextPath).includes(contractSentinel),
+      `${contextPath} must preserve the Terminus NestJS migration contract sentinel.`,
+    );
+  }
+
+  for (const readmePath of readmePaths) {
+    const readme = readText(readmePath);
+    assert(
+      readme.includes('TerminusModule.forRoot()')
+        && readme.includes('/health')
+        && readme.includes('/ready')
+        && readme.includes('contributors'),
+      `${readmePath} must document Terminus registration, endpoints, and aggregated response behavior.`,
+    );
+  }
+
+  for (const migrationPath of migrationPaths) {
+    const migration = readText(migrationPath);
+    assert(
+      migration.includes('@HealthCheck()')
+        && migration.includes('TerminusModule.forRoot(...)')
+        && migration.includes('GET /health')
+        && migration.includes('GET /ready'),
+      `${migrationPath} must document the Terminus NestJS migration boundary and default health endpoints.`,
+    );
+  }
+}
+
 export async function main() {
   const changedFiles = changedFilesFromGit();
   const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
@@ -4269,6 +4317,7 @@ export async function main() {
   enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
+  enforceTerminusMigrationDiscoverability();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
