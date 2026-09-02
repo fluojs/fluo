@@ -435,6 +435,45 @@ describe('enforceContractCompanionUpdates', () => {
     });
   });
 
+  describe('Lifecycle dispatch shutdown contract companions', () => {
+    const lifecycleChangedFiles = [
+      'book/advanced/ch09-app-context.md',
+      'book/advanced/ch09-app-context.ko.md',
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'packages/runtime/README.md',
+      'packages/runtime/README.ko.md',
+    ];
+    const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const regressionCompanion = 'packages/runtime/src/application.test.ts';
+    const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.test.ts';
+
+    it('requires context, regression, and tooling companions for dispatch shutdown contract updates', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...lifecycleChangedFiles,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /docs\/CONTEXT\.md/u,
+      );
+      expect(() =>
+        enforceContractCompanionUpdates([
+          ...changedFiles,
+          ...contextCompanions,
+        ])
+      ).toThrow(/CI\/tooling enforcement updates/u);
+      expect(() =>
+        enforceContractCompanionUpdates([
+          ...changedFiles,
+          ...contextCompanions,
+          toolingCompanion,
+        ])
+      ).not.toThrow();
+    });
+  });
+
   it.each([
     ['English Queue README', 'packages/queue/README.md'],
     ['Korean Queue README', 'packages/queue/README.ko.md'],

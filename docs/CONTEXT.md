@@ -23,6 +23,8 @@ Static delivery is a portable `@fluojs/http` middleware contract, documented in 
 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.md) is the source of truth for application and testing module bootstrap hooks. Eligible singleton `multi: true` contributions remain distinct lifecycle instances and run in declared provider order, including when they are interleaved with singleton providers. Framework integrations resolve each contribution through its owning DI container; the internal resolver registrar remains container-private.
 
+`Application.close()` synchronously closes direct application admission: a later `Application.dispatch()` rejects before the HTTP dispatcher, while a dispatch admitted before close keeps dispatcher-owned drain semantics. The admission gate remains terminal when close is pending, fails, or succeeds.
+
 ## Identity
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.

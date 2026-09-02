@@ -23,6 +23,8 @@
 
 [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.
 
+`Application.close()`는 direct application admission을 동기적으로 닫습니다. 이후 `Application.dispatch()`는 HTTP dispatcher 전에 reject되고, close 전에 admission된 dispatch는 dispatcher-owned drain semantics를 유지합니다. 이 admission gate는 close가 pending, failed, successful 상태인 모든 경우 terminal입니다.
+
 ## Identity
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.
