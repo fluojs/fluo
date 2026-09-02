@@ -1,4 +1,5 @@
 # fluo — AI Context Document
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
@@ -27,6 +28,8 @@ Queue 중복 worker 마이그레이션 탐색은 `packages/queue/README.ko.md`, 
 NestJS metrics migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있으며, [NestJS parity map](./contracts/nestjs-parity-gaps.ko.md)은 구현된 metrics coverage와 migration boundary를 기록한다.
 
 NestJS microservices migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있다. Public decorated handler를 compiled module에 명시적으로 등록하고 `MicroservicesModule.forRoot(...)`로 concrete adapter를 구성하며 `MICROSERVICE` lifecycle facade를 주입한다. 이 map은 Redis Pub/Sub event delivery와 Redis Streams request/reply를 구분하고, streaming handler에는 `protoPath`, `packageName`, `url`을 갖춘 `GrpcMicroserviceTransport`를 요구한다.
+
+NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)과 [Transaction Context Contract](./architecture/transactions.ko.md)에 문서화되어 있다. 애플리케이션이 소유하는 마이그레이션은 connection을 만들고 그 connection에서 model을 compile한 뒤 `MongooseModule`에 등록한다. 지원되는 `MongooseConnection.model(...)` facade 작업은 기존 option을 버리지 않고 ambient session을 병합한다. `strictTransactions: false`의 fail-open은 connection에 `connection.transaction(...)`과 `startSession()`이 모두 없을 때만 가능하며 rollback 원자성이 없다. multi-connection service에서는 모호한 decorator 대상 해석에 의존하지 말고 `@Transaction((self) => self.analytics.conn)`처럼 명시적인 accessor를 사용한다.
 
 NestJS OpenAPI migration map은 생성 문서의 세 가지 차이를 보존한다. fluo는 명시적으로 선언한 응답을 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 `ErrorResponse`를 추가하며 legacy client에는 `defaultErrorResponsesPolicy: 'omit'`을 사용한다. 생성된 `operationId`가 legacy name과 달라 client가 이를 요구하면 `documentTransform`을 사용한다. `OpenApiModule.forRootAsync(...)`에서는 이미 등록한 route를 factory-returned path로 다시 구성할 수 없으므로 `documentPath`와 `uiPath`를 `inject`, `useFactory(...)`와 같은 바깥 registration object에 둔다.
 

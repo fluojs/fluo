@@ -1,6 +1,7 @@
 # @fluojs/mongoose
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 Mongoose integration for fluo with session-aware transaction handling and lifecycle-friendly connection management.
 
@@ -79,23 +80,14 @@ Nested `requestTransaction(...)` calls opened inside an existing manual `transac
 The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same MongoDB session.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
 
 type UserDocument = { readonly _id: string; readonly name: string };
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
-export class UserService {
-  constructor(private readonly repo: UserRepository) {}
-
-  @Transaction()
-  async onboardUser(dto: CreateUserDto) {
-    const [user] = await this.repo.create(dto);
-    await this.repo.initProfile(user._id);
-    return user;
-  }
-}
-
+@Inject(MongooseConnection)
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
@@ -110,9 +102,35 @@ export class UserRepository {
     return this.conn.model<ProfileCreateModel>('Profile').create([{ userId }]);
   }
 }
+
+@Inject(UserRepository)
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: CreateUserDto) {
+    const [user] = await this.repo.create(dto);
+    await this.repo.initProfile(user._id);
+    return user;
+  }
+}
 ```
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
+
+`@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It does not select arbitrary connection fields. When a service owns multiple connections or stores its connection elsewhere, select the boundary explicitly:
+
+```ts
+@Inject(MongooseConnection)
+export class AnalyticsService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: AnalyticsService) => self.analyticsConnection)
+  async rebuildReports() {
+    // Uses analyticsConnection rather than an inferred connection.
+  }
+}
+```
 
 ### Request Transaction Interceptor Compatibility
 

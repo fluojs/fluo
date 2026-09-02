@@ -1,6 +1,7 @@
 # NestJS → fluo Migration Map
 
 <p><strong><kbd>English</kbd></strong> <a href="./migrate-from-nestjs.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
@@ -98,6 +99,56 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | NestJS-style notification modules, decorator-discovered channel providers, or implicit queue/event integrations | `NotificationsModule.forRoot({ channels, queue?, events?, global? })` or `NotificationsModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/notifications` | fluo notifications registration uses explicit `NotificationChannel` values passed in `channels`. Queue adapters and event publishers are application-owned seams, not module-owned resources, and `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` are global by default unless `global: false` is set. |
 | NestJS Slack modules that assume `imports`, `useClass`, `useExisting`, a package-level multi-client registry, or `isGlobal` | `SlackModule.forRoot({ ..., global? })` or `SlackModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/slack` | fluo Slack async registration consumes injected factory options only. Register dependencies in the application module graph first, list their tokens in `inject`, return final Slack options from `useFactory`, and compose app-owned modules/providers or facades for multiple clients. |
 | NestJS Discord modules that assume `imports`, `useClass`, `useExisting`, `isGlobal`, or custom internal provider tokens | `DiscordModule.forRoot({ ..., global? })` or `DiscordModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/discord` | fluo Discord registration is singleton-oriented and injected-factory-only for async setup. The package exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default unless `global: false` is set; internal provider helpers and option tokens are intentionally private. |
+
+## Mongoose Root and Feature Migration
+
+NestJS commonly splits `MongooseModule.forRoot(...)` at the root and `MongooseModule.forFeature(...)` model registration in feature modules. fluo keeps both operations application-owned: create the concrete connection, compile models on that connection, then register the already-created connection with `MongooseModule`. Register the repository and service as explicit module providers and declare each constructor dependency with `@Inject(...)`.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { MongooseConnection, MongooseModule, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
+import mongoose from 'mongoose';
+
+type UserDocument = { readonly _id: string; readonly email: string };
+type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
+
+const connection = mongoose.createConnection('mongodb://localhost:27017/app');
+const userSchema = new mongoose.Schema({ email: { type: String, required: true } });
+connection.model('User', userSchema);
+
+@Inject(MongooseConnection)
+class UserRepository {
+  constructor(readonly conn: MongooseConnection) {}
+
+  async create(email: string) {
+    return this.conn.model<UserCreateModel>('User').create([{ email }]);
+  }
+}
+
+@Inject(UserRepository)
+class UserService {
+  constructor(private readonly users: UserRepository) {}
+
+  @Transaction()
+  async register(email: string) {
+    return this.users.create(email);
+  }
+}
+
+@Module({
+  imports: [
+    MongooseModule.forRoot({
+      connection,
+      dispose: (registeredConnection) => registeredConnection.close(),
+      strictTransactions: true,
+    }),
+  ],
+  providers: [UserRepository, UserService],
+})
+export class AppModule {}
+```
+
+`MongooseConnection.model(...)` merges the ambient session into the supported facade operations (`create`, `find`, `findOne`, `aggregate`, and `bulkWrite`) while preserving existing option fields. The `create(...)` session path requires `create([docs], options?)`; positional document arguments are not rewritten. `@Transaction()` resolves `this.conn`, the transaction-capable service itself, or one unique nested `this.*.conn` collaborator. If more than one nested repository connection is possible, pass an explicit accessor such as `@Transaction((self: ReportingService) => self.analytics.conn)` so the transaction target cannot be selected ambiguously.
 
 ## OpenAPI Contract Differences
 

@@ -1,4 +1,5 @@
 # fluo — AI Context Document
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
@@ -27,6 +28,8 @@ Queue duplicate-worker migration discoverability is split across `packages/queue
 NestJS metrics migration boundaries are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md); the [NestJS parity map](./contracts/nestjs-parity-gaps.md) records implemented metrics coverage and migration boundaries.
 
 NestJS microservices migration boundaries are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md): explicitly register public decorated handlers in a compiled module, configure a concrete adapter with `MicroservicesModule.forRoot(...)`, and inject the `MICROSERVICE` lifecycle facade. The map distinguishes Redis Pub/Sub event delivery from Redis Streams request/reply and requires `GrpcMicroserviceTransport` with `protoPath`, `packageName`, and `url` for streaming handlers.
+
+NestJS Mongoose migration and transaction semantics are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md) and [Transaction Context Contract](./architecture/transactions.md): application-owned migration creates the connection, compiles its models, then registers that connection with `MongooseModule`; supported `MongooseConnection.model(...)` facade operations merge the ambient session without discarding existing options; `strictTransactions: false` can only fail open when the connection exposes neither `connection.transaction(...)` nor `startSession()`, with no rollback atomicity; and multi-connection services must use an explicit `@Transaction((self) => self.analytics.conn)` accessor rather than relying on ambiguous decorator target resolution.
 
 The NestJS OpenAPI migration map preserves three generated-document differences: fluo adds `400`, `401`, `403`, `404`, and `500` responses plus `ErrorResponse` unless explicitly declared, with `defaultErrorResponsesPolicy: 'omit'` for legacy clients; generated `operationId` values require `documentTransform` when clients need legacy names; and `OpenApiModule.forRootAsync(...)` keeps `documentPath` and `uiPath` beside `inject` and `useFactory(...)`, because factory-returned paths cannot reconfigure already-registered routes.
 

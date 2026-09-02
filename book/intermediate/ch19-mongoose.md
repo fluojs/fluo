@@ -1,5 +1,6 @@
 <!-- packages: @fluojs/mongoose, mongoose, @fluojs/core -->
 <!-- project-state: FluoShop v2.2.0 -->
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 # Chapter 19. MongoDB and Mongoose
 
@@ -113,6 +114,25 @@ MongoDB transactions require an active **session**. Fluo reduces the caller's bu
 When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. If the connection exposes neither `connection.transaction(...)` nor `startSession()` and `strictTransactions` is `false`, fluo enters fail-open mode by running the callback directly without rollback atomicity; use this only for local fakes or staged migrations. Set `strictTransactions: true` for production paths that require MongoDB transaction guarantees so missing support fails readiness and transaction helpers. Request-scoped transactions observe the request `AbortSignal` during session acquisition and delegated transaction startup, so cancelled requests can stop before repository work runs. If cancellation happens after callback work starts, fluo preserves the abort result but waits for that original callback before transaction cleanup and connection disposal. In real transaction modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown, and new manual or request-scoped transaction boundaries are rejected once shutdown begins.
 
 Within any `@Transaction()`, `transaction(...)`, or `requestTransaction(...)` boundary, `conn.model(...)` returns a facade that auto-binds the ambient session for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`. Unsupported model methods and `doc.save()` still require explicit `conn.currentSession()` plumbing. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
+
+### Selecting a Transaction Target
+
+Mongoose `@Transaction()` resolves `this.conn`, then the decorated instance itself when it is transaction-capable, then one unique nested `this.*.conn` collaborator. It rejects ambiguous nested candidates instead of choosing a connection implicitly. A service with multiple connections must select its target explicitly:
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { MongooseConnection, Transaction } from '@fluojs/mongoose';
+
+@Inject(MongooseConnection)
+class ReportingService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: ReportingService) => self.analyticsConnection)
+  async rebuildReports() {
+    // Runs against analyticsConnection.
+  }
+}
+```
 
 ### Manual Transactions
 In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
