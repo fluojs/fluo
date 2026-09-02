@@ -127,13 +127,32 @@ function compareNodeEngineVersions(left, right) {
 }
 
 function parseNodeEngineComparator(value) {
-  const match = /^(>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
+  const match = /^(\^|~|>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
   assert(match !== null, `Unsupported Node engine comparator "${value}".`);
 
   const version = parseNodeEngineVersion(match[2]);
   const upperVersion = match[2].includes('.')
     ? { major: version.major, minor: version.minor + 1, patch: 0 }
     : { major: version.major + 1, minor: 0, patch: 0 };
+
+  if (match[1] === '^') {
+    const exclusiveUpperVersion = version.major > 0
+      ? { major: version.major + 1, minor: 0, patch: 0 }
+      : version.minor > 0
+        ? { major: 0, minor: version.minor + 1, patch: 0 }
+        : { major: 0, minor: 0, patch: version.patch + 1 };
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: exclusiveUpperVersion },
+    ];
+  }
+
+  if (match[1] === '~') {
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: upperVersion },
+    ];
+  }
 
   if (match[2].split('.').length === 3) {
     return [{ operator: match[1] ?? '=', version }];
@@ -161,7 +180,7 @@ function parseNodeEngineComparator(value) {
 function parseNodeEngineRange(range) {
   assert(typeof range === 'string' && range.trim().length > 0, 'engines.node must be a non-empty string.');
 
-  return range.split('||').map((group) => {
+  return range.replace(/(\^|~|>=|>|<=|<|=)\s+/gu, '$1').split('||').map((group) => {
     const comparators = group.trim().split(/\s+/u).filter(Boolean);
     assert(comparators.length > 0, `Unsupported empty Node engine range "${range}".`);
     return comparators.flatMap(parseNodeEngineComparator);
@@ -229,6 +248,77 @@ function formatNodeEngineVersion({ major, minor, patch }) {
   return `${major}.${minor}.${patch}`;
 }
 
+function lockfileImporterDependencyVersions(lockfileText, importerPath) {
+  const importerStart = lockfileText.indexOf(`  ${importerPath}:\n`);
+  assert(importerStart >= 0, `pnpm-lock.yaml must include the ${importerPath} importer.`);
+
+  const importerEndMatch = /\n {2}\S/u.exec(lockfileText.slice(importerStart + 1));
+  const importerEnd = importerEndMatch === null ? -1 : importerStart + 1 + importerEndMatch.index;
+  const importerText = lockfileText.slice(importerStart, importerEnd === -1 ? undefined : importerEnd);
+  const lines = importerText.split('\n');
+  const versions = new Map();
+  let dependencySection = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === '    dependencies:') {
+      dependencySection = true;
+      continue;
+    }
+
+    if (!dependencySection) {
+      continue;
+    }
+
+    if (/^ {4}\S/u.test(line)) {
+      break;
+    }
+
+    const dependencyMatch = /^[ ]{6}['"]?([^'"]+)['"]?:$/u.exec(line);
+    if (dependencyMatch === null) {
+      continue;
+    }
+
+    for (index += 1; index < lines.length; index += 1) {
+      if (/^ {6}\S/u.test(lines[index])) {
+        index -= 1;
+        break;
+      }
+
+      const versionMatch = /^[ ]{8}version: ([^\s]+)$/u.exec(lines[index]);
+      if (versionMatch !== null) {
+        versions.set(dependencyMatch[1], versionMatch[1].replace(/\(.+$/u, ''));
+        break;
+      }
+    }
+  }
+
+  return versions;
+}
+
+function lockedDependencyNodeEngineRange(lockfileText, importerPath, dependencyName) {
+  const version = lockfileImporterDependencyVersions(lockfileText, importerPath).get(dependencyName);
+  if (version === undefined || version.startsWith('link:')) {
+    return undefined;
+  }
+
+  const packagesStart = lockfileText.indexOf('\npackages:\n');
+  const snapshotsStart = lockfileText.indexOf('\nsnapshots:\n', packagesStart);
+  assert(packagesStart >= 0 && snapshotsStart > packagesStart, 'pnpm-lock.yaml must include packages and snapshots sections.');
+
+  const packageKey = `${dependencyName}@${version}`.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const packageMatch = new RegExp(`^  ['"]?${packageKey}['"]?:$`, 'mu')
+    .exec(lockfileText.slice(packagesStart, snapshotsStart));
+  const packageStart = packageMatch === null ? -1 : packagesStart + packageMatch.index;
+  assert(packageStart >= 0, `pnpm-lock.yaml must resolve ${dependencyName}@${version}.`);
+
+  const packageEndMatch = /\n {2}\S/u.exec(lockfileText.slice(packageStart + packageMatch[0].length));
+  const packageEnd = packageEndMatch === null ? -1 : packageStart + packageMatch[0].length + packageEndMatch.index;
+  const packageText = lockfileText.slice(packageStart, packageEnd === -1 ? snapshotsStart : packageEnd);
+  const engineMatch = /^\s{4}engines:\s+\{node:\s+['"]?([^'"}]+)['"]?\}$/mu.exec(packageText);
+  return engineMatch?.[1];
+}
+
 function changedPackageNames(changedFiles) {
   return new Set(changedFiles.flatMap((relativePath) => {
     const match = /^packages\/([^/]+)\//u.exec(relativePath);
@@ -236,10 +326,11 @@ function changedPackageNames(changedFiles) {
   }));
 }
 
-export function enforceMandatoryFirstPartyDependencyEngineAlignment(
+export function enforceMandatoryProductionDependencyEngineAlignment(
   readText = read,
   packageNames = changedPackageNames(changedFilesFromGit()),
 ) {
+  const lockfileText = readText('pnpm-lock.yaml');
   const packageManifests = new Map();
 
   for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
@@ -299,18 +390,18 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
 
     for (const dependencyName of Object.keys(packageManifest.dependencies ?? {})) {
       const dependency = packageManifests.get(dependencyName);
-      if (dependency === undefined) {
-        continue;
-      }
-
-      const dependencyRange = dependency.manifest.engines?.node;
+      const dependencyRange = dependency === undefined
+        ? lockedDependencyNodeEngineRange(lockfileText, relativePath.replace(/\/package\.json$/u, ''), dependencyName)
+        : dependency.manifest.engines?.node;
       if (dependencyRange === undefined) {
         continue;
       }
 
       assert(
         typeof dependencyRange === 'string' && dependencyRange.length > 0,
-        `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
+        dependency === undefined
+          ? `${dependencyName} locked engines.node must be a non-empty string.`
+          : `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
       );
 
       const incompatibleVersion = nodeEngineCandidates(packageRange, dependencyRange).find((version) =>
@@ -320,12 +411,15 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
       if (incompatibleVersion !== undefined) {
         throw new Error(
           `${packageManifest.name} engines.node ${packageRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
-            `but mandatory ${dependencyName} engines.node is ${dependencyRange}.`,
+            `but mandatory ${dependencyName}${dependency === undefined ? ' locked' : ''} engines.node is ${dependencyRange}.`,
         );
       }
     }
   }
 }
+
+export const enforceMandatoryFirstPartyDependencyEngineAlignment =
+  enforceMandatoryProductionDependencyEngineAlignment;
 
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
   const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
@@ -3728,7 +3822,7 @@ export async function main() {
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
-  enforceMandatoryFirstPartyDependencyEngineAlignment(read, changedPackageNames(changedFiles));
+  enforceMandatoryProductionDependencyEngineAlignment(read, changedPackageNames(changedFiles));
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();

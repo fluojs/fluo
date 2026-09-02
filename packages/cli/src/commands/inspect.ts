@@ -4,7 +4,6 @@ import { createRequire } from 'node:module';
 import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import * as clack from '@clack/prompts';
 import type {
   BootstrapTimingDiagnostics,
   ModuleType,
@@ -104,6 +103,10 @@ const RUNTIME_MISSING_MESSAGE = [
 const STUDIO_MISSING_MESSAGE = [
   'Mermaid graph rendering is owned by @fluojs/studio, but @fluojs/studio is not resolvable from this project.',
   'Install @fluojs/studio explicitly (for example: pnpm add -D @fluojs/studio) and rerun fluo inspect --mermaid.',
+].join('\n');
+const CLACK_MISSING_MESSAGE = [
+  'Interactive inspect guidance requires @clack/prompts, but it is not resolvable from this installation.',
+  'Install a version whose Node.js engine supports your current Node.js version and rerun fluo inspect.',
 ].join('\n');
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -297,7 +300,18 @@ async function emitInspectPayload(payload: string, outputPath: string | undefine
   await writeFile(outputPath, `${payload}\n`, 'utf8');
 }
 
-function createInspectPrompter(): InspectPrompter {
+async function createInspectPrompter(): Promise<InspectPrompter> {
+  let clack: typeof import('@clack/prompts');
+  try {
+    clack = await import('@clack/prompts');
+  } catch (error: unknown) {
+    if (isModuleNotFoundError(error)) {
+      throw new Error(CLACK_MISSING_MESSAGE);
+    }
+
+    throw error;
+  }
+
   return {
     async confirm(message: string, defaultValue: boolean): Promise<boolean> {
       const result = await clack.confirm({
@@ -422,7 +436,7 @@ async function resolveStudioMermaidRenderer(cwd: string, runtime: InspectCommand
     throw new Error(STUDIO_MISSING_MESSAGE);
   }
 
-  const prompt = runtime.prompt ?? createInspectPrompter();
+  const prompt = runtime.prompt ?? await createInspectPrompter();
   try {
     const approvedInstall = await prompt.confirm('Install @fluojs/studio before rendering Mermaid output?', false);
 
@@ -467,7 +481,6 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     const application = await FluoFactory.create(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
       ...(parsed.json || parsed.report ? { logger: createCliDiagnosticsLogger(stderr) } : {}),
-      rootModule,
     });
 
     try {
