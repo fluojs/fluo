@@ -360,4 +360,6 @@ NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 �
 
 `@fluojs/notifications`는 platform status에서 구성된 publisher infrastructure와 활성화된 lifecycle publication을 구분합니다.
 
+Lifecycle publisher는 channel resolution, queue job, generated identity, provider delivery에 쓰이는 별도 snapshot dispatch envelope을 수정할 수 없는 immutable observer snapshot을 받습니다.
+
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

@@ -4,6 +4,10 @@ import {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
 } from './errors.js';
+import {
+  createNotificationDispatchSnapshot,
+  createNotificationLifecycleEventSnapshot,
+} from './snapshots.js';
 import { createNotificationsPlatformStatusSnapshot } from './status.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATIONS_OPTIONS } from './tokens.js';
 import type {
@@ -64,35 +68,41 @@ export class NotificationsService implements Notifications {
     notification: TRequest,
     options: NotificationDispatchOptions = {},
   ): Promise<NotificationDispatchResult> {
+    const dispatchNotification = createNotificationDispatchSnapshot(notification);
     const requestedPublicationError = await this.publishLifecycleEventBestEffort(
       'notification.dispatch.requested',
-      notification,
+      dispatchNotification,
       options,
     );
 
     if (this.shouldQueueSingleDispatch(options)) {
       try {
-        this.requireChannel(notification.channel);
+        this.requireChannel(dispatchNotification.channel);
       } catch (error) {
-        await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
         throw error;
       }
 
-      const job = this.createQueueJob(notification);
+      const job = this.createQueueJob(dispatchNotification);
       try {
         const deliveryId = await this.requireQueueAdapter().enqueue(job);
         const result: NotificationDispatchResult = {
-          channel: notification.channel,
-          deliveryId: this.normalizeDeliveryId(deliveryId, notification),
+          channel: dispatchNotification.channel,
+          deliveryId: this.normalizeDeliveryId(deliveryId, dispatchNotification),
           queued: true,
           status: 'queued',
         };
 
-        await this.publishLifecycleEventBestEffort('notification.dispatch.queued', notification, options, result.deliveryId);
+        await this.publishLifecycleEventBestEffort(
+          'notification.dispatch.queued',
+          dispatchNotification,
+          options,
+          result.deliveryId,
+        );
 
         return result;
       } catch (error) {
-        await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
         throw error;
       }
     }
@@ -100,17 +110,17 @@ export class NotificationsService implements Notifications {
     let channel: NotificationChannel;
 
     try {
-      channel = this.requireChannel(notification.channel);
+      channel = this.requireChannel(dispatchNotification.channel);
     } catch (error) {
-      await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
       throw error;
     }
 
     try {
-      const delivery = await channel.send(notification, { signal: options.signal });
+      const delivery = await channel.send(dispatchNotification, { signal: options.signal });
       const result: NotificationDispatchResult = {
-        channel: notification.channel,
-        deliveryId: this.normalizeDeliveryId(delivery.externalId, notification),
+        channel: dispatchNotification.channel,
+        deliveryId: this.normalizeDeliveryId(delivery.externalId, dispatchNotification),
         metadata: delivery.metadata,
         queued: delivery.status === 'queued',
         status: delivery.status ?? 'delivered',
@@ -118,14 +128,14 @@ export class NotificationsService implements Notifications {
 
       await this.publishLifecycleEventBestEffort(
         result.queued ? 'notification.dispatch.queued' : 'notification.dispatch.delivered',
-        notification,
+        dispatchNotification,
         options,
         result.deliveryId,
       );
 
       return result;
     } catch (error) {
-      await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
       throw error;
     }
   }
@@ -336,7 +346,7 @@ export class NotificationsService implements Notifications {
       return;
     }
 
-    const event: NotificationLifecycleEvent<TRequest> = {
+    const event = createNotificationLifecycleEventSnapshot({
       channel: notification.channel,
       deliveryId,
       error: error instanceof Error
@@ -348,7 +358,7 @@ export class NotificationsService implements Notifications {
       name,
       notification,
       occurredAt: new Date().toISOString(),
-    };
+    });
 
     await this.options.events.publisher.publish(event);
   }

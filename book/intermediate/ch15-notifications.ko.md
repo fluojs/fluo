@@ -233,6 +233,8 @@ NotificationsModule.forRoot({
 
 `events.publisher`가 구성되어 있으면 module registration 또는 dispatch 시점에 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle publication은 기본으로 켜집니다. 채널 해석 실패는 영구적인 구성 오류입니다. 서비스는 `requested` 다음 `failed`를 발행하고, queue에 넣거나 provider를 호출하지 않은 채 `NotificationChannelNotFoundError`를 던집니다. Queue enqueue와 provider delivery 실패도 `failed`를 발행하지만, retry 정책은 underlying queue/provider error를 기준으로 판단해야 합니다. Queued bulk dispatch는 queue 미구성, channel 해석, 순차 fallback enqueue 실패를 포함해 `requested`를 발행한 모든 notification에 terminal `queued` 또는 `failed` 이벤트를 발행합니다. 채널이 `externalId`를 생략하면 서비스는 시간이나 난수가 아니라 deterministic fallback delivery id를 만듭니다. 이 ID는 queue job id와 동일한 locale-independent key ordering 및 64-bit runtime-neutral digest를 사용하며 caller-provided `notification.id`를 보존합니다. 생성된 fallback id는 현재 envelope shape를 위한 key이지 recursive full-payload hash value가 아닙니다. release를 넘어 durable identity가 중요하면 `notification.id`를 제공하세요.
 
+서비스는 channel resolution, queue job, generated identity, provider delivery에 사용할 각 dispatch envelope을 admission 시점에 snapshot한 뒤 별도의 immutable event snapshot을 발행합니다. Lifecycle publisher는 이 snapshot을 관찰만 하며 mutation으로 delivery policy를 바꿀 수 없습니다.
+
 성공 이벤트 publication failure는 이미 완료된 delivery를 애플리케이션 실패로 바꾸지 않도록 best-effort입니다. 반면 `notification.dispatch.failed` publication failure는 다르게 처리됩니다. 호출자는 원래 dispatch error와 publisher error를 모두 담은 `AggregateError`를 받으므로 실패 알림 reporting이 조용히 누락되지 않습니다.
 
 ## 15.8 Status Snapshots and Diagnostics

@@ -434,7 +434,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-Published lifecycle event names are `notification.dispatch.requested`, `notification.dispatch.queued`, `notification.dispatch.delivered`, and `notification.dispatch.failed`.
+Published lifecycle event names are `notification.dispatch.requested`, `notification.dispatch.queued`, `notification.dispatch.delivered`, and `notification.dispatch.failed`. Each event is an immutable observation snapshot; publisher mutation cannot alter channel resolution, queue jobs, generated identity, or provider delivery.
 
 ## End-to-end order flow
 

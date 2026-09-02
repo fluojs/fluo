@@ -107,17 +107,35 @@ export type NotificationLifecycleEventName =
   | 'notification.dispatch.delivered'
   | 'notification.dispatch.failed';
 
+/**
+ * Recursive readonly view used for notification lifecycle observation snapshots.
+ *
+ * @typeParam T Value captured in a lifecycle event.
+ */
+export type NotificationSnapshot<T> =
+  T extends Date | RegExp | URL | URLSearchParams
+    ? T
+    : T extends Map<infer TKey, infer TValue>
+      ? ReadonlyMap<NotificationSnapshot<TKey>, NotificationSnapshot<TValue>>
+      : T extends Set<infer TValue>
+        ? ReadonlySet<NotificationSnapshot<TValue>>
+        : T extends readonly (infer TValue)[]
+          ? readonly NotificationSnapshot<TValue>[]
+          : T extends object
+            ? { readonly [TKey in keyof T]: NotificationSnapshot<T[TKey]> }
+            : T;
+
 /** Published event payload emitted around notification lifecycle transitions. */
 export interface NotificationLifecycleEvent<TRequest extends NotificationDispatchRequest = NotificationDispatchRequest> {
-  channel: string;
-  deliveryId?: string;
-  error?: {
-    message: string;
-    name: string;
+  readonly channel: string;
+  readonly deliveryId?: string;
+  readonly error?: {
+    readonly message: string;
+    readonly name: string;
   };
-  name: NotificationLifecycleEventName;
-  notification: TRequest;
-  occurredAt: string;
+  readonly name: NotificationLifecycleEventName;
+  readonly notification: NotificationSnapshot<TRequest>;
+  readonly occurredAt: string;
 }
 
 /** Optional event publication seam for notification lifecycle visibility. */

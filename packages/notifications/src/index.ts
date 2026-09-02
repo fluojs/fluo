@@ -27,6 +27,7 @@ export type {
   NotificationLifecycleEvent,
   NotificationLifecycleEventName,
   NotificationPayload,
+  NotificationSnapshot,
   Notifications,
   NotificationsAsyncModuleOptions,
   NotificationsEventPublisher,
