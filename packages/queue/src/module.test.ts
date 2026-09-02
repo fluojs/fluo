@@ -1214,6 +1214,88 @@ describe('@fluojs/queue', () => {
     await app.close();
   });
 
+  it('rejects duplicate job class workers before BullMQ resource creation regardless of provider order', async () => {
+    class DuplicateJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(DuplicateJob)
+    class FirstDuplicateWorker {
+      async handle(_job: DuplicateJob): Promise<void> {}
+    }
+
+    @QueueWorker(DuplicateJob)
+    class SecondDuplicateWorker {
+      async handle(_job: DuplicateJob): Promise<void> {}
+    }
+
+    for (const providers of [
+      [FirstDuplicateWorker, SecondDuplicateWorker],
+      [SecondDuplicateWorker, FirstDuplicateWorker],
+    ]) {
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [QueueModule.forRoot()],
+        providers,
+      });
+
+      const redis = new MockRedisClient();
+
+      await expect(
+        bootstrapApplication({
+          providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+          rootModule: AppModule,
+        }),
+      ).rejects.toThrow('Duplicate @QueueWorker() registration for job type DuplicateJob.');
+      expect(bullmqState.queues).toHaveLength(0);
+      expect(bullmqState.workers).toHaveLength(0);
+      expect(redis.duplicates).toHaveLength(0);
+    }
+  });
+
+  it('rejects duplicate job names before BullMQ resource creation regardless of provider order', async () => {
+    class FirstNamedJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class SecondNamedJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(FirstNamedJob, { jobName: 'shared-job' })
+    class FirstNamedWorker {
+      async handle(_job: FirstNamedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondNamedJob, { jobName: 'shared-job' })
+    class SecondNamedWorker {
+      async handle(_job: SecondNamedJob): Promise<void> {}
+    }
+
+    for (const providers of [
+      [FirstNamedWorker, SecondNamedWorker],
+      [SecondNamedWorker, FirstNamedWorker],
+    ]) {
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [QueueModule.forRoot()],
+        providers,
+      });
+
+      const redis = new MockRedisClient();
+
+      await expect(
+        bootstrapApplication({
+          providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+          rootModule: AppModule,
+        }),
+      ).rejects.toThrow('Duplicate queue job name shared-job.');
+      expect(bullmqState.queues).toHaveLength(0);
+      expect(bullmqState.workers).toHaveLength(0);
+      expect(redis.duplicates).toHaveLength(0);
+    }
+  });
+
   it('uses decorator attempts/backoff and writes dead-letter records on terminal failure', async () => {
     const loggerEvents: string[] = [];
 

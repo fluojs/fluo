@@ -92,6 +92,9 @@ NestJS queue integration에서 이동하는 consumer는 metadata 기반 processo
 1. Backing Redis client를 `RedisModule.forRoot(...)`로 등록한 뒤 queue를 소유하는 module graph에서 `QueueModule.forRoot(...)`를 import합니다. NestJS async-module shape를 복사하거나 Queue가 environment configuration을 암묵적으로 읽을 것이라고 기대하지 마세요.
 2. `@Processor(...)`, `@Process(...)` 또는 그 밖의 NestJS/Bull provider metadata를 TC39 표준 class decorator인 `@QueueWorker(JobClass, options?)`로 바꿉니다. 각 worker는 호출 가능한 `handle(job)` 메서드를 노출해야 합니다.
 3. Decorated worker class를 singleton으로 `@Module({ providers: [...] })`에 추가합니다. Queue는 compiled provider/controller registration을 scan하며, `@Injectable()` metadata, emit된 constructor type, 임의로 import된 class는 scan하지 않습니다. Constructor dependency는 `@Inject(...)`로 명시적으로 선언합니다.
+
+**각 job class와 실제 `jobName`은 worker 하나만 소유합니다.** Queue는 BullMQ resource를 만들기 전에 bootstrap 중 singleton 중복 등록을 거부하며, provider discovery 순서와 무관합니다. 마이그레이션하는 NestJS `@Process(...)` handler마다 별도 job class와 `jobName`을 부여하거나, 여러 handler를 worker 하나의 `handle(job)` 뒤로 통합하세요.
+
 4. Worker가 queue registration에서 도달 가능하도록 유지합니다. 기본 global `QueueModule.forRoot()`는 compiled application graph 전체의 singleton worker를 discovery할 수 있습니다. `global: false`에서는 authored imports/exports를 통해 해당 registration에 도달할 수 있는 module로 discovery가 제한되며, 일치하는 Redis provider도 같은 module tree에서 도달 가능해야 합니다.
 5. Processor뿐 아니라 producer도 변환합니다. `@InjectQueue('name')`과 `queue.add('job', payload)`를 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)와 `queue.enqueue(new JobClass(...))`로 바꿉니다. Queue에는 name과 payload를 받는 producer signature가 없으며, plain payload object는 constructor가 `Object`이므로 등록된 JobClass worker를 식별할 수 없습니다.
 6. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.

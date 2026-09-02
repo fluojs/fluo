@@ -8,7 +8,7 @@ import type { NormalizedQueueModuleOptions, QueueJobType, QueueWorkerDescriptor,
  *
  * @param compiledModules The compiled modules.
  * @param options The options.
- * @param logger Optional logger for skipped or duplicate worker registrations.
+ * @param logger Optional logger for skipped worker registrations.
  * @param moduleFilter Optional compiled-module ownership filter.
  * @returns The discover queue worker descriptors result.
  */
@@ -39,21 +39,13 @@ export function discoverQueueWorkerDescriptors(
     const jobType = metadata.jobType;
 
     if (descriptorsByJobType.has(jobType)) {
-      logger?.warn(
-        `Duplicate @QueueWorker() registration for job type ${jobType.name} was ignored in ${candidate.moduleName}.`,
-        'QueueLifecycleService',
-      );
-      continue;
+      throw new Error(`Duplicate @QueueWorker() registration for job type ${jobType.name}.`);
     }
 
     const jobName = metadata.options.jobName ?? jobType.name;
 
     if (seenJobNames.has(jobName)) {
-      logger?.warn(
-        `Duplicate queue job name ${jobName} was ignored in ${candidate.moduleName}.`,
-        'QueueLifecycleService',
-      );
-      continue;
+      throw new Error(`Duplicate queue job name ${jobName}.`);
     }
 
     seenJobNames.add(jobName);

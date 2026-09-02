@@ -116,6 +116,9 @@ A NestJS/Bull worker does not become a fluo worker merely because its class is i
 1. Register `RedisModule.forRoot(...)` and `QueueModule.forRoot(...)` in the owning module graph.
 2. Replace `@Processor(...)`, `@Process(...)`, and emitted provider metadata with the TC39 standard `@QueueWorker(GenerateInvoiceJob, options)` class decorator and a `handle(job)` method.
 3. Put the worker in `@Module({ providers: [...] })` with singleton scope and declare constructor dependencies with `@Inject(...)`. Queue scans compiled singleton provider/controller registrations; request/transient workers and classes that are only imported are not registered.
+
+**One worker owns each job class and effective `jobName`.** Duplicate singleton registrations fail bootstrap before BullMQ resources are created, regardless of provider discovery order. Give each NestJS `@Process(...)` handler a distinct job class and `jobName`, or consolidate multiple handlers behind one worker's `handle(job)`.
+
 4. Keep the worker and Redis provider reachable from the queue registration. This is especially important for `QueueModule.forRoot({ global: false })`, whose discovery stays inside the authored imports/exports graph that can reach that registration.
 5. Remove processor start/stop hooks that would compete with Queue lifecycle ownership. Queue starts processors after the application bootstrap-ready handoff and gives graceful close plus any required BullMQ force-close their own `workerShutdownTimeoutMs` budgets.
 
