@@ -8,9 +8,15 @@ const activeAdapters = new Set();
 const activeSockets = new Set();
 
 afterEach(async () => {
-  for (const socket of activeSockets) {
+  await Promise.all([...activeSockets].map(async (socket) => {
+    if (socket.readyState === WebSocket.CLOSED) {
+      return;
+    }
+
+    const closed = waitForEvent(socket, 'close');
     socket.close();
-  }
+    await closed;
+  }));
   activeSockets.clear();
 
   await Promise.all([...activeAdapters].map((adapter) => adapter.close()));
@@ -45,9 +51,17 @@ defineRouteMetadata(NativeController.prototype, 'getSocketFallback', {
   path: '/socket',
 });
 
-function createNativeDispatcher() {
+function createNativeDispatcher(onHandlerMappingMatch) {
+  const handlerMapping = createHandlerMapping([{ controllerToken: NativeController }]);
+
   return createDispatcher({
-    handlerMapping: createHandlerMapping([{ controllerToken: NativeController }]),
+    handlerMapping: {
+      descriptors: handlerMapping.descriptors,
+      match(request) {
+        onHandlerMappingMatch?.(request);
+        return handlerMapping.match(request);
+      },
+    },
     rootContainer: {
       createRequestScope() {
         return {
@@ -63,27 +77,49 @@ function createNativeDispatcher() {
 
 function waitForEvent(target, eventName, timeoutMs = 5_000) {
   return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timeout);
+      target.removeEventListener(eventName, onEvent);
+      target.removeEventListener('error', onError);
+      target.removeEventListener('close', onClose);
+    };
+    const settle = (callback, value) => {
+      cleanup();
+      callback(value);
+    };
     const timeout = setTimeout(() => {
-      reject(new Error(`Timed out waiting for ${eventName}.`));
+      settle(reject, new Error(`Timed out waiting for ${eventName}.`));
     }, timeoutMs);
     const onEvent = (event) => {
-      clearTimeout(timeout);
-      resolve(event);
+      settle(resolve, event);
+    };
+    const onError = () => {
+      settle(reject, new Error(`WebSocket failed before ${eventName}.`));
+    };
+    const onClose = () => {
+      settle(reject, new Error(`WebSocket closed before ${eventName}.`));
     };
 
-    target.addEventListener(eventName, onEvent, { once: true });
+    target.addEventListener(eventName, onEvent);
+    target.addEventListener('error', onError);
+    if (eventName !== 'close') {
+      target.addEventListener('close', onClose);
+    }
   });
 }
 
 describe('real Bun native routing conformance', () => {
   test('preserves static, parameter, encoded-separator, and method fallback semantics', async () => {
     // Given: the built adapter is listening through the real Bun.serve routes host.
+    const handlerMappingMatches = [];
     const adapter = new BunHttpApplicationAdapter({
       hostname: '127.0.0.1',
       port: 0,
     });
     activeAdapters.add(adapter);
-    await adapter.listen(createNativeDispatcher());
+    await adapter.listen(createNativeDispatcher((request) => {
+      handlerMappingMatches.push({ method: request.method, path: request.path });
+    }));
 
     const server = adapter.getServer();
     if (server?.port === undefined) {
@@ -91,21 +127,36 @@ describe('real Bun native routing conformance', () => {
     }
     const httpUrl = `http://127.0.0.1:${String(server.port)}`;
 
-    // When: Bun receives native static/parameter requests and a method miss.
-    const [staticResponse, paramResponse, encodedSeparatorResponse, methodFallbackResponse] = await Promise.all([
-      fetch(`${httpUrl}/native/static`),
-      fetch(`${httpUrl}/native/params/alpha`),
-      fetch(`${httpUrl}/native/params/a%2Fb`),
-      fetch(`${httpUrl}/native/params/alpha`, { method: 'POST' }),
-    ]);
+    // When: Bun receives a static route native handoff.
+    const staticResponse = await fetch(`${httpUrl}/native/static`);
 
-    // Then: native matching preserves the shared fluo dispatcher contract.
+    // Then: the static route reaches the dispatcher without generic rematching.
     expect(staticResponse.status).toBe(200);
     expect(await staticResponse.json()).toEqual({ route: 'static' });
+    expect(handlerMappingMatches).toEqual([]);
+
+    // When: Bun receives an ordinary parameter route native handoff.
+    const paramResponse = await fetch(`${httpUrl}/native/params/alpha`);
+
+    // Then: the parameter handoff also bypasses generic rematching.
     expect(paramResponse.status).toBe(200);
     expect(await paramResponse.json()).toEqual({ value: 'alpha' });
+    expect(handlerMappingMatches).toEqual([]);
+
+    // When: the parameter contains an encoded separator.
+    const encodedSeparatorResponse = await fetch(`${httpUrl}/native/params/a%2Fb`);
+
+    // Then: normalization-sensitive parameters intentionally use the generic matcher.
     expect(encodedSeparatorResponse.status).toBe(200);
     expect(await encodedSeparatorResponse.json()).toEqual({ value: 'a%2Fb' });
+    expect(handlerMappingMatches).toEqual([
+      { method: 'GET', path: '/native/params/a%2Fb' },
+    ]);
+
+    // When: Bun receives a method miss for a native route shape.
+    const methodFallbackResponse = await fetch(`${httpUrl}/native/params/alpha`, { method: 'POST' });
+
+    // Then: the native method fallback intentionally rematches through the dispatcher.
     expect(methodFallbackResponse.status).toBe(404);
     expect(await methodFallbackResponse.json()).toMatchObject({
       error: {
@@ -113,6 +164,10 @@ describe('real Bun native routing conformance', () => {
         status: 404,
       },
     });
+    expect(handlerMappingMatches).toEqual([
+      { method: 'GET', path: '/native/params/a%2Fb' },
+      { method: 'POST', path: '/native/params/alpha' },
+    ]);
   });
 
   test('upgrades a native route and closes its socket during adapter shutdown', async () => {
@@ -134,7 +189,11 @@ describe('real Bun native routing conformance', () => {
           : new Response(null, { status: 400 });
       },
       websocket: {
-        open(socket) {
+        message(socket, message) {
+          if (message !== 'read-route') {
+            return;
+          }
+
           socket.send(JSON.stringify(socket.data));
         },
       },
@@ -148,12 +207,15 @@ describe('real Bun native routing conformance', () => {
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(server.port)}/native/socket`);
     activeSockets.add(socket);
-    const opened = waitForEvent(socket, 'open');
-    const message = waitForEvent(socket, 'message');
 
-    // When: the client upgrades and adapter shutdown starts after the connection opens.
+    // When: the client opens, subscribes for its reply, and sends an explicit trigger.
+    const opened = waitForEvent(socket, 'open');
     await opened;
+    const message = waitForEvent(socket, 'message');
+    socket.send('read-route');
     const received = await message;
+
+    // When: adapter shutdown starts after the message has been received.
     const closed = waitForEvent(socket, 'close');
     await adapter.close();
     await closed;
