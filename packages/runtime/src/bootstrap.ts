@@ -1,5 +1,6 @@
 import { InvariantError, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
+import { resolveMultiContribution } from '@fluojs/di/internal';
 import {
   createDispatcher,
   createHandlerMapping,
@@ -1138,7 +1139,7 @@ async function resolveLifecycleInstances(
         return container.resolve(entry.token);
       }
 
-      return container.resolveMultiContribution(entry.token, entry.contributionIndex);
+      return resolveMultiContribution(container, entry.token, entry.contributionIndex);
     }),
   );
 

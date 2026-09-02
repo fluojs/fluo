@@ -649,7 +649,7 @@ module graph order는 initialization order의 절반에 불과합니다. registr
 
 둘째, runtime은 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
 
-`resolveLifecycleInstances()`는 eager instantiation policy와 concurrency policy를 함께 명시합니다. Effective single-provider는 token으로 중복 제거하지만 `multi: true` contribution은 선언별 contribution index로 식별합니다. Hook-bearing value는 직접 lifecycle entry가 되고, 적격 singleton class/factory contribution은 `Container.resolveMultiContribution()`으로 자기 contribution만 해석합니다. 따라서 shared token 뒤에 나중 선언이 사라지지 않고 request/transient sibling을 root에서 해석하지 않으며, alias, request-scoped, transient provider는 lifecycle 대상이 아닙니다.
+`resolveLifecycleInstances()`는 eager instantiation policy와 concurrency policy를 함께 명시합니다. Effective single-provider는 token으로 중복 제거하지만 `multi: true` contribution은 선언별 contribution index로 식별합니다. Hook-bearing value는 직접 lifecycle entry가 되고, 적격 singleton class/factory contribution은 first-party `@fluojs/di/internal` contribution resolver로 자기 contribution만 해석합니다. 따라서 shared token 뒤에 나중 선언이 사라지지 않고 request/transient sibling을 root에서 해석하지 않으며, alias, request-scoped, transient provider는 lifecycle 대상이 아닙니다.
 
 이 helper는 lifecycle 대상이 될 수 있는 provider를 의도적으로 좁힙니다.
 

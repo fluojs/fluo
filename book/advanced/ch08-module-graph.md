@@ -633,7 +633,7 @@ First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()`
 
 Second, the runtime resolves singleton instances that may have lifecycle hooks through `resolveBootstrapLifecycleInstances()`, which combines effective runtime and module providers before delegating to `resolveLifecycleInstances()`.
 
-`resolveLifecycleInstances()` states both the eager-instantiation and concurrency policies. Effective single providers are deduplicated by Token. Every hook-bearing `multi: true` value contribution is a lifecycle entry, and every eligible singleton `multi: true` class/factory contribution resolves independently through `Container.resolveMultiContribution()`. Alias, request-scoped, and transient providers are not lifecycle targets.
+`resolveLifecycleInstances()` states both the eager-instantiation and concurrency policies. Effective single providers are deduplicated by Token. Every hook-bearing `multi: true` value contribution is a lifecycle entry, and every eligible singleton `multi: true` class/factory contribution resolves independently through the first-party `@fluojs/di/internal` contribution resolver. Alias, request-scoped, and transient providers are not lifecycle targets.
 
 This helper intentionally narrows the Providers that can become lifecycle targets.
 

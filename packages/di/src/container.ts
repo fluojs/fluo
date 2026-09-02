@@ -8,6 +8,7 @@ import {
   RequestScopeResolutionError,
   ScopeMismatchError,
 } from './errors.js';
+import { registerMultiContributionResolver } from './internal.js';
 import { normalizeProvider } from './provider-normalization.js';
 import type {
   Disposable,
@@ -346,6 +347,9 @@ export class Container {
     this.parent = childScope?.parent;
     this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
     this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
+    registerMultiContributionResolver(this, (token, contributionIndex) =>
+      this.resolveMultiContribution(token, contributionIndex),
+    );
   }
 
   static #createChildScope(construction: ChildScopeConstruction): Container {
@@ -658,15 +662,7 @@ export class Container {
     return this.resolveWithChain(token, [], new Set<Token>());
   }
 
-  /**
-   * Resolves one multi-provider contribution without materializing sibling contributions.
-   *
-   * @param token Multi-provider token.
-   * @param contributionIndex Provider-order index for the contribution.
-   * @returns The resolved contribution instance.
-   * @throws {ContainerResolutionError} When the index does not identify a registered multi-provider contribution.
-   */
-  async resolveMultiContribution(token: Token, contributionIndex: number): Promise<unknown> {
+  private async resolveMultiContribution(token: Token, contributionIndex: number): Promise<unknown> {
     if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer resolve providers.',
@@ -685,6 +681,8 @@ export class Container {
         { token, hint: 'Resolve a contribution index returned by the registered multi-provider order.' },
       );
     }
+
+    this.assertSingletonDependencyScopes(provider);
 
     return await this.withTokenInChain(token, [], new Set<Token>(), async (chain, activeTokens) =>
       this.resolveMultiProviderInstance(provider, chain, activeTokens),
