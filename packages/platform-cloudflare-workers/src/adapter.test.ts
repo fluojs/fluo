@@ -1011,7 +1011,14 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     type WorkerEnv = {
       readonly prefix: string;
     };
+    let bootstrapCount = 0;
     const configuredEnvironments: WorkerEnv[] = [];
+
+    class StartupProbe {
+      onApplicationBootstrap() {
+        bootstrapCount += 1;
+      }
+    }
 
     @Controller('/health')
     class HealthController {
@@ -1024,6 +1031,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [HealthController],
+      providers: [StartupProbe],
     });
 
     const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
@@ -1044,17 +1052,9 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       const firstEnvironment = { prefix: '/configured' };
       const secondEnvironment = { prefix: '/ignored-for-bootstrap' };
 
-      const response = await entrypoint.fetch(
-        new Request('https://worker.test/configured/health'),
-        firstEnvironment,
-        createExecutionContext(),
-      );
-
-      expect(configuredEnvironments).toEqual([firstEnvironment]);
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ ok: true });
       const firstApplication = await entrypoint.ready(firstEnvironment);
-      expect(await entrypoint.ready(secondEnvironment)).toBe(firstApplication);
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(bootstrapCount).toBe(1);
 
       await entrypoint.close();
 
@@ -1066,7 +1066,11 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
       expect(restartedResponse.status).toBe(200);
       await expect(restartedResponse.json()).resolves.toEqual({ ok: true });
+      const secondApplication = await entrypoint.ready(secondEnvironment);
+
       expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(secondApplication).not.toBe(firstApplication);
+      expect(bootstrapCount).toBe(2);
     } finally {
       await entrypoint.close();
     }
