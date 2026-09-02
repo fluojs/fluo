@@ -22,6 +22,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
+  enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePassportJsBridgeNestjsMigration,
@@ -487,6 +488,80 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 
     expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io engines\.node/u);
     expect(governanceSource).toContain('enforceSocketIoNodeEngineAlignment();');
+  });
+});
+
+describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
+  function readTextWithEngineRanges(packageRange: string, dependencyRange: string): (relativePath: string) => string {
+    return (relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/prisma/package.json') {
+        const manifest = JSON.parse(content) as Record<string, unknown>;
+
+        return JSON.stringify({
+          ...manifest,
+          dependencies: { '@fluojs/core': 'workspace:*' },
+          engines: { node: packageRange },
+        });
+      }
+
+      if (relativePath === 'packages/core/package.json') {
+        const manifest = JSON.parse(content) as Record<string, unknown>;
+
+        return JSON.stringify({
+          ...manifest,
+          engines: { node: dependencyRange },
+        });
+      }
+
+      return content;
+    };
+  }
+
+  it('rejects a bare-major package range that exceeds a mandatory dependency cap', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('20', '<=20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.0\.1/u);
+  });
+
+  it('accepts compatible bare-major package and dependency ranges', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('20', '20'),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('rejects an explicit partial equality package range that exceeds a full-version dependency', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('=20', '20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.0\.1/u);
+  });
+
+  it.each([
+    ['>=20.1', '>=20.1.0'],
+    ['<20.2', '<20.2.0'],
+    ['>20', '>=21.0.0'],
+    ['20.0.0', '=20'],
+  ])('accepts npm-equivalent partial comparator ranges %s and %s', (packageRange, dependencyRange) => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges(packageRange, dependencyRange),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('rejects a partial less-than-or-equal package range that exceeds a full-version dependency', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('<=20', '<=20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.999\.999/u);
   });
 });
 
@@ -3899,5 +3974,79 @@ describe('Auth & JWT contract gate triggers', () => {
     expect(() => enforceContractCompanionUpdates([changedPath])).toThrow(
       'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
     );
+  });
+});
+
+describe('mandatory first-party dependency Node engine alignment', () => {
+  it('rejects a public package that advertises Node versions its required dependency excludes', () => {
+    // Given: Prisma's Node 20+ package contract and a required runtime dependency with a higher floor.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/prisma/package.json') {
+        const manifest = JSON.parse(content);
+
+        return JSON.stringify({
+          ...manifest,
+          dependencies: {
+            ...manifest.dependencies,
+            '@fluojs/runtime': 'workspace:^',
+          },
+        });
+      }
+
+      return content;
+    };
+
+    // When: release governance evaluates the mandatory first-party graph.
+    // Then: it rejects the false Node 20+ compatibility claim before release.
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/prisma']))).toThrow(
+      /@fluojs\/prisma engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@fluojs\/runtime/u,
+    );
+  });
+
+  it('accepts the current mandatory first-party dependency Node engine graph', () => {
+    // Given: the checked-in public package manifests.
+    // When: release governance evaluates their mandatory first-party dependency graph.
+    // Then: every advertised Node version is executable through the required first-party packages.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('accepts a selected public package without an advertised Node engine floor', () => {
+    // Given: the documented runtime-neutral i18n package with no engines.node declaration.
+    // When: release governance evaluates its mandatory first-party dependency graph.
+    // Then: the absent public compatibility claim does not require an engine comparison.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/i18n']),
+      )).not.toThrow();
+  });
+
+  it('rejects an unchanged public dependent after its mandatory dependency narrows Node support', () => {
+    // Given: core narrows its advertised Node floor while only core's manifest is selected.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/core/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        engines: { ...manifest.engines, node: '>=22.0.0' },
+      });
+    };
+
+    // When: release governance evaluates the changed package's public reverse dependencies.
+    // Then: an unchanged public dependent's Node 20+ advertisement is rejected.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/core'])))
+      .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 20\.19\.3.*@fluojs\/core/u);
   });
 });

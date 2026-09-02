@@ -885,13 +885,13 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
-      '@fluojs/runtime':
-        specifier: workspace:^
-        version: link:../runtime
       '@prisma/client':
         specifier: '>=5.0.0'
         version: 7.5.0(typescript@6.0.2)
     devDependencies:
+      '@fluojs/runtime':
+        specifier: workspace:^
+        version: link:../runtime
       '@fluojs/validation':
         specifier: workspace:^
         version: link:../validation
