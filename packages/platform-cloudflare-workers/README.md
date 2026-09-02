@@ -70,7 +70,35 @@ export default {
 
 Cloudflare Workers does not provide a host-invoked shutdown callback to the exported `fetch` handler. When migrating NestJS shutdown hooks, choose an application-owned close trigger. An out-of-band lifecycle trigger, running outside any `worker.fetch` invocation, may call `await worker.close()` directly. A management route handled inside the same `worker.fetch` invocation must return its current response without awaiting `close()`, then observe it with `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism; otherwise `close()` waits for that active request to drain and reaches the shutdown timeout. Exporting `worker.fetch` alone does not arrange a close call.
 
-A successful `worker.close()` is intentionally restartable. It releases the current lazy application; a later `worker.fetch(...)` bootstraps a new application in the isolate, rerunning bootstrap lifecycle hooks and reconstructing application singleton providers. Do not treat `close()` as a terminal Worker shutdown signal. If an application needs terminal behavior, it must own and enforce that state explicitly.
+A successful `worker.close()` is intentionally restartable. It releases the current lazy application; a later `worker.fetch(...)` bootstraps a new application in the isolate, rerunning bootstrap lifecycle hooks and reconstructing application singleton providers. For an env-aware entrypoint, that new application generation uses the cached configuration from the first environment without calling its factory again. Do not treat `close()` as a terminal Worker shutdown signal. If an application needs terminal behavior, it must own and enforce that state explicitly.
+
+### Env-Aware Lazy Entrypoint
+Use `createCloudflareWorkerEnvEntrypoint(...)` when the first Worker `env` must select the root module or bootstrap options. Its factory runs once per isolate before module registration; the returned root module and options remain cached for that isolate, while each running application generation reuses them.
+
+```typescript
+import { createCloudflareWorkerEnvEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { createAppModule } from './app.module';
+
+interface WorkerEnv {
+  API_PREFIX: string;
+  DB: D1Database;
+}
+
+const worker = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => ({
+  rootModule: createAppModule({ database: env.DB }),
+  options: {
+    globalPrefix: env.API_PREFIX,
+  },
+}));
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+`worker.ready(env)` requires an explicit `env` for the same reason. The first supplied environment determines the singleton bootstrap configuration; later request environments still attach to `request.cloudflare.env`, but do not reconfigure it. A successful `worker.close()` releases only the current application generation: the next `ready(env)` or `fetch(...)` creates a fresh application from the retained first-environment module and options without calling the factory again. Use the existing `createCloudflareWorkerEntrypoint(module, options)` when bootstrap configuration is already available before the first Worker request.
+
+For the standard `createCloudflareWorkerEntrypoint(...)` request-bound `env` path, fetch-time bindings cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Read, validate, and narrow request-varying bindings, then pass application-shaped values to provider methods. Choose the env-aware entrypoint only when the first environment must configure the application before module registration.
 
 ## Common Patterns
 
@@ -135,7 +163,7 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 - `close()` returns JSON `503` responses for new HTTP and WebSocket upgrade requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error. Lazy entrypoints do not permanently cache that timeout once the adapter's underlying drain later finishes.
 - The Worker `fetch(...)` dispatch path preserves body-bearing RFC `QUERY` routes and uppercase extension methods such as `PURGE`; their method token and parsed body reach the registered route through the same fetch dispatch seam.
 - Multipart requests do not preserve `rawBody`.
-- The Worker `env` object is attached to each `FrameworkRequest` as `request.cloudflare.env`, with the Worker execution context available as `request.cloudflare.executionContext`. `bootstrapCloudflareWorkerApplication(...)` completes module registration before its exported `fetch(...)` handles traffic. For `createCloudflareWorkerEntrypoint(...)`, the first `fetch(request, env, ctx)` triggers bootstrap only when `ready()` has not already started it. In either path, bootstrap receives only the predeclared root module and options; that request's `env` is attached later, during request dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Reserve bootstrap configuration for values available before module registration. At an application-owned request boundary, validate and narrow selected bindings from `RequestContext`, then pass only the required application-shaped values into an injected provider method.
+- The Worker `env` object is attached to each `FrameworkRequest` as `request.cloudflare.env`, with the Worker execution context available as `request.cloudflare.executionContext`. `bootstrapCloudflareWorkerApplication(...)` completes module registration before its exported `fetch(...)` handles traffic. `createCloudflareWorkerEntrypoint(...)` keeps its predeclared root module and options, so its fetch-time `env` attaches only during request dispatch. `createCloudflareWorkerEnvEntrypoint(...)` is the opt-in alternative when the first explicit Worker environment must select the root module or final bootstrap options before module registration. Its `ready(env)` method requires that environment, caches the first environment's module and options once per isolate, and builds one application per application generation from that configuration. A successful close restarts the application without rerunning the factory or accepting later environments as bootstrap configuration. In either path, use request-bound `request.cloudflare.env` for bindings that are intentionally per-request.
 
 ## Lifecycle and Public Seam Notes
 
@@ -164,7 +192,7 @@ The listen, shutdown, SSE drain, and websocket binding rules above are public li
 
 ## Conformance Coverage
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, body-cancellation and synchronous setup-failure drains, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, public seam source imports, the structured realtime capability contract, and the bounded 10-second close timeout.
+`packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, body-cancellation and synchronous setup-failure drains, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, zero-config and env-aware lazy entrypoint reuse, explicit env-aware readiness, first-environment configuration retention across successful lazy restarts, timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, public seam source imports, the structured realtime capability contract, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for conditional requests, single-byte ranges and `If-Range`, body-bearing `QUERY` and `PURGE` fetch dispatch, malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The package test parses the structured realtime capability contract in both README locales and compares its machine-consumed values with the adapter capability.
 
@@ -172,12 +200,14 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 
 - `createCloudflareWorkerAdapter(options)`: Factory for the Worker HTTP adapter.
 - `createCloudflareWorkerEntrypoint(module, options)`: Creates a lazy-bootstrapping Worker entrypoint.
+- `createCloudflareWorkerEnvEntrypoint(factory)`: Creates a lazy Worker entrypoint from the first explicit Worker environment.
 - `bootstrapCloudflareWorkerApplication(module, options)`: Async bootstrap helper for Workers.
 - `CloudflareWorkerHttpApplicationAdapter`: The core adapter implementation.
 - `CloudflareWorkerHandler`: Fetch handler interface shared by Worker application wrappers and lazy entrypoints.
 - `CloudflareWorkerApplication`: Fully bootstrapped Worker application wrapper with `adapter`, `app`, `fetch(...)`, and `close(...)`.
 - `CloudflareWorkerEntrypoint`: Lazy entrypoint with `fetch`, `ready()`, and `close()` lifecycle methods.
-- Options and types: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, and `CloudflareWorkerWebSocketUpgradeResult`.
+- `CloudflareWorkerEnvEntrypoint`: Env-aware lazy entrypoint with `fetch`, `ready(env)`, and `close()` lifecycle methods.
+- Options and types: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerEnvBootstrap`, `CloudflareWorkerEnvEntrypointFactory`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, and `CloudflareWorkerWebSocketUpgradeResult`.
 
 ## Related Packages
 
