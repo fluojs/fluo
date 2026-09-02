@@ -1,27 +1,26 @@
 import { readFileSync } from 'node:fs';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import {
   Controller,
-  Get,
-  Post,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
+  Post,
   type RequestContext,
 } from '@fluojs/http';
 import { defineModule, fluoFactory } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import {
   bootstrapCloudflareWorkerApplication,
+  type CloudflareWorkerExecutionContext,
   CloudflareWorkerHttpApplicationAdapter,
-  createCloudflareWorkerAdapter,
-  createCloudflareWorkerEntrypoint,
   type CloudflareWorkerWebSocket,
   type CloudflareWorkerWebSocketBinding,
   type CloudflareWorkerWebSocketPair,
-  type CloudflareWorkerExecutionContext,
+  createCloudflareWorkerAdapter,
+  createCloudflareWorkerEntrypoint,
 } from './adapter.js';
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -156,6 +155,12 @@ afterEach(() => {
 });
 
 describe('@fluojs/platform-cloudflare-workers', () => {
+  it('requires an execution context in the concrete adapter fetch contract', () => {
+    expectTypeOf<
+      Parameters<CloudflareWorkerHttpApplicationAdapter['fetch']>[2]
+    >().toEqualTypeOf<CloudflareWorkerExecutionContext>();
+  });
+
   it('rejects invalid explicit numeric adapter options during setup', () => {
     expect(() => createCloudflareWorkerAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
     expect(() => createCloudflareWorkerAdapter({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);

@@ -1,9 +1,3 @@
-import {
-  createFetchStyleHttpAdapterRealtimeCapability,
-} from '@fluojs/http/internal';
-import {
-  bootstrapHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
 import type {
   CorsOptions,
   Dispatcher,
@@ -11,16 +5,22 @@ import type {
   MiddlewareLike,
   SecurityHeadersOptions,
 } from '@fluojs/http';
+import {
+  createFetchStyleHttpAdapterRealtimeCapability,
+} from '@fluojs/http/internal';
 import type {
   Application,
   CreateApplicationOptions,
   ModuleType,
 } from '@fluojs/runtime';
 import {
-  createWebRequestResponseFactory,
-  startWebRequestDispatch,
+  bootstrapHttpAdapterApplication,
+} from '@fluojs/runtime/internal/http-adapter';
+import {
   type CreateWebRequestResponseFactoryOptions,
+  createWebRequestResponseFactory,
   type DispatchWebRequestOptions,
+  startWebRequestDispatch,
 } from '@fluojs/runtime/web';
 
 declare module '@fluojs/http' {
@@ -58,7 +58,7 @@ export interface CloudflareWorkerExecutionContext {
 /** Worker-specific request context attached to fluo HTTP requests by the Cloudflare adapter. */
 export interface CloudflareWorkerRequestContext<Env = unknown> {
   readonly env: Env;
-  readonly executionContext?: CloudflareWorkerExecutionContext;
+  readonly executionContext: CloudflareWorkerExecutionContext;
 }
 
 /** Message payloads accepted by Cloudflare Worker websockets. */
@@ -212,10 +212,18 @@ export class CloudflareWorkerHttpApplicationAdapter
     return this.closeInFlight ?? Promise.resolve();
   }
 
+  /**
+   * Dispatch a Worker request while registering its lifecycle with the Worker execution context.
+   *
+   * @param request Worker request to dispatch.
+   * @param env Worker environment bindings attached to the framework request.
+   * @param executionContext Worker lifecycle context used to retain active work.
+   * @returns The dispatched Worker response.
+   */
   async fetch<Env = unknown>(
     request: Request,
-    env?: Env,
-    executionContext?: CloudflareWorkerExecutionContext,
+    env: Env,
+    executionContext: CloudflareWorkerExecutionContext,
   ): Promise<Response> {
     if (this.closeInFlight || this.isClosed) {
       return createShutdownResponse();
@@ -241,7 +249,7 @@ export class CloudflareWorkerHttpApplicationAdapter
         const lifecycle = Promise.all(socketLifecycles)
           .then(() => undefined)
           .finally(release);
-        executionContext?.waitUntil(lifecycle);
+        executionContext.waitUntil(lifecycle);
       }
     }
 
@@ -257,7 +265,7 @@ export class CloudflareWorkerHttpApplicationAdapter
       trackedResponsePromise.then(({ lifecycle: responseLifecycle }) => responseLifecycle),
     ]).then(() => undefined).finally(release);
 
-    executionContext?.waitUntil(lifecycle);
+    executionContext.waitUntil(lifecycle);
 
     return (await trackedResponsePromise).response;
   }
@@ -313,8 +321,8 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   private createRequestResponseFactory<Env>(
-    env: Env | undefined,
-    executionContext: CloudflareWorkerExecutionContext | undefined,
+    env: Env,
+    executionContext: CloudflareWorkerExecutionContext,
   ): WebRequestResponseFactory {
     const baseFactory = this.webRequestResponseFactory;
 
