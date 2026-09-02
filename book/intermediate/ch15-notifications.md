@@ -233,6 +233,8 @@ NotificationsModule.forRoot({
 
 If `events.publisher` is configured, lifecycle publication defaults to enabled unless `publishLifecycleEvents: false` is set at module registration or dispatch time. Channel resolution failures are permanent configuration errors: the service publishes `requested`, then `failed`, and throws `NotificationChannelNotFoundError` without enqueueing or calling a provider. Queue enqueue and provider delivery failures also publish `failed`, but retry policy should be based on the underlying queue or provider error. Queued bulk dispatch publishes a terminal `queued` or `failed` event for every notification that emitted `requested`, including queue-missing, channel-resolution, and sequential fallback enqueue failures. When a channel omits `externalId`, the service creates a deterministic fallback delivery id rather than using time or random data. It uses the same locale-independent key ordering and 64-bit runtime-neutral digest as queue job ids, while preserving caller-provided `notification.id`. Treat generated fallback ids as keys for the current envelope shape, not recursive full-payload hash values; provide `notification.id` when durable cross-release identity matters.
 
+The service snapshots each dispatch envelope at admission for channel resolution, queue jobs, generated identity, and provider delivery, then publishes separate immutable event snapshots. A lifecycle publisher observes those snapshots and cannot mutate one to alter delivery policy.
+
 Publication failures for success events are best-effort so they do not turn a completed delivery into an application failure. Publication failures for `notification.dispatch.failed` are different: the caller receives an `AggregateError` containing both the original dispatch error and the publisher error so failed notification reporting is never silently swallowed.
 
 ## 15.8 Status Snapshots and Diagnostics
@@ -265,6 +267,19 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 ```
 
 `NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include top-level `readiness`, `health`, and `ownership`. Diagnostics such as `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, and `eventPublicationEnabled` live under `details`, including dependency entries such as `notifications.queue-adapter` and `notifications.event-publisher`. Publisher configuration and lifecycle enablement are separate: a publisher with `publishLifecycleEvents: false` remains configured but does not produce an active event dependency, event-backed operation mode, or external ownership. Active optional seams set `ownership.externallyManaged: true`, and `ownsResources: false` stays top-level under `ownership` because the foundation package does not create, close, or drain concrete queue or event-bus resources.
+
+### Lifecycle snapshot built-in representations
+
+| Interface | Immutable fields |
+| --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
 ## 15.9 FluoShop Context: Order Success Flow
 

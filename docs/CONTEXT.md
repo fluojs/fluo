@@ -365,4 +365,19 @@ Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
 
 `@fluojs/notifications` distinguishes configured publisher infrastructure from enabled lifecycle publication in platform status.
 
+Lifecycle publishers receive immutable observer snapshots that cannot modify the separately snapshotted dispatch envelope used for channel resolution, queue jobs, generated identity, or provider delivery.
+
+### Notifications lifecycle built-in representations
+
+| Interface | Immutable fields |
+| --- | --- |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `view`, `byteOffset`, `byteLength`, `bytes` |
+
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

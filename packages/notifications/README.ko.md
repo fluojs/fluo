@@ -154,7 +154,20 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않는 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 생성된 fallback id는 queue job id와 동일한 locale-independent key ordering 및 64-bit runtime-neutral digest를 사용하며, caller가 제공한 `notification.id`는 계속 authoritative합니다. 생성 값은 현재 envelope shape를 위한 key이지, 문서화된 full-payload hash 계약이 아닙니다. release를 넘어 durable identity가 필요하면 `notification.id`를 설정하세요. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다. 성공 경로 lifecycle event의 publication failure는 이미 전달된 알림을 애플리케이션 실패로 바꾸지 않도록 best-effort로 유지됩니다. `notification.dispatch.failed` publication failure는 원래 dispatch error와 publisher error를 모두 포함하는 `AggregateError`로 호출자에게 드러나므로 failed-event 보장이 조용히 약해지지 않습니다.
+`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 서비스는 비어 있지 않은 `dispatchMany(...)` batch 전체를 첫 lifecycle publication 전에 admission 시점에 snapshot하고, 단건 `dispatch(...)` envelope도 channel resolution, queue job, generated identity, provider delivery에 사용하기 위해 admission 시점에 snapshot한 뒤, 별도의 immutable lifecycle event snapshot을 발행합니다. Lifecycle snapshot은 native mutable built-in을 노출하지 않습니다. `ArrayBuffer`는 byte length와 bytes를 저장하고 `ArrayBufferView` 값은 byte offset과 view kind도 보존합니다. `Map`과 `Set`은 순서가 보존된 entry/value data가 되고, `Date`는 epoch milliseconds(유효하지 않은 날짜는 `null`), `URL`은 `href`, `URLSearchParams`는 query string, `RegExp`는 source, flags, `lastIndex`를 저장합니다. Publisher는 lifecycle event를 observation-only로 다뤄야 하며 mutation으로 delivery에 영향을 주어서는 안 됩니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않는 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 생성된 fallback id는 queue job id와 동일한 locale-independent key ordering 및 64-bit runtime-neutral digest를 사용하며, caller가 제공한 `notification.id`는 계속 authoritative합니다. 생성 값은 현재 envelope shape를 위한 key이지, 문서화된 full-payload hash 계약이 아닙니다. release를 넘어 durable identity가 필요하면 `notification.id`를 설정하세요. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다. 성공 경로 lifecycle event의 publication failure는 이미 전달된 알림을 애플리케이션 실패로 바꾸지 않도록 best-effort로 유지됩니다. `notification.dispatch.failed` publication failure는 원래 dispatch error와 publisher error를 모두 포함하는 `AggregateError`로 호출자에게 드러나므로 failed-event 보장이 조용히 약해지지 않습니다.
+
+### Lifecycle 내장 표현
+
+| 인터페이스 | 불변 필드 |
+| --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
 ### 의도적인 제한 사항
 
@@ -192,6 +205,15 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationChannelContext`
 - `NotificationChannelDelivery`
 - `NotificationPayload`
+- `NotificationSnapshot`
+- `NotificationSnapshotDate`
+- `NotificationSnapshotMap<TKey, TValue>`
+- `NotificationSnapshotRegExp`
+- `NotificationSnapshotSet<TValue>`
+- `NotificationSnapshotUrl`
+- `NotificationSnapshotUrlSearchParams`
+- `NotificationSnapshotArrayBuffer`
+- `NotificationSnapshotArrayBufferView`
 - `NotificationsQueueAdapter`
 - `NotificationsQueueJob`
 - `NotificationsQueueOptions`

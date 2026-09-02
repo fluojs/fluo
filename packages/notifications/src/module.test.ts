@@ -1528,7 +1528,8 @@ describe('NotificationsModule', () => {
     });
     expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.notification).toEqual(notifications[1]);
+    expect(result.failures[0]?.notification).not.toBe(notifications[1]);
     expect(result.failures[0]?.error).toMatchObject({ message: 'queue enqueue failed:2' });
     expect(publisher.events).toMatchObject([
       { channel: 'email', name: 'notification.dispatch.requested' },
@@ -1585,7 +1586,8 @@ describe('NotificationsModule', () => {
     });
     expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.notification).toEqual(notifications[1]);
+    expect(result.failures[0]?.notification).not.toBe(notifications[1]);
     expect(result.failures[0]?.error).toBeInstanceOf(AggregateError);
 
     const failureError = result.failures[0]?.error;
@@ -2181,7 +2183,8 @@ describe('NotificationsModule', () => {
       'delivered:third',
     ]);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.notification).toEqual(notifications[1]);
+    expect(result.failures[0]?.notification).not.toBe(notifications[1]);
     expect(result.failures[0]?.error).toBe(providerError);
   });
 });

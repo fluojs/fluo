@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Constructor, Token } from '@fluojs/core';
 import { ensureMetadataSymbol, getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
-import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { NotificationsModule, NotificationsService, type NotificationLifecycleEvent } from '@fluojs/notifications';
 import type { Queue } from '@fluojs/queue';
 
 interface MockQueueJob {
@@ -785,6 +785,108 @@ describe('EmailModule', () => {
     await worker.handle(enqueued[1] as EmailNotificationQueueJob);
 
     expect(transportState.sent).toHaveLength(2);
+  });
+
+  it('preserves Uint8Array email attachment bytes across a deferred notification lifecycle publication', async () => {
+    const enqueued: object[] = [];
+    const fakeQueue: Pick<Queue, 'enqueue'> = {
+      async enqueue(job: object): Promise<string> {
+        enqueued.push(job);
+
+        return `queued:${enqueued.length}`;
+      },
+    };
+    let publishRequested: (() => void) | undefined;
+    let continueRequested: (() => void) | undefined;
+    const lifecycleEvents: NotificationLifecycleEvent[] = [];
+    const requested = new Promise<void>((resolve) => {
+      publishRequested = resolve;
+    });
+    const resumeRequested = new Promise<void>((resolve) => {
+      continueRequested = resolve;
+    });
+    const emailContainer = new Container();
+    const emailModuleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: new RecordingTransport('attachment'),
+    });
+
+    emailContainer.register(...moduleProviders(emailModuleType));
+
+    const channel = await emailContainer.resolve(EmailChannel);
+    const worker = new EmailNotificationsQueueWorker(channel);
+    const notificationsContainer = new Container();
+    const notificationsModuleType = NotificationsModule.forRoot({
+      channels: [channel],
+      events: {
+        publishLifecycleEvents: true,
+        publisher: {
+          async publish(event: NotificationLifecycleEvent): Promise<void> {
+            lifecycleEvents.push(event);
+
+            if (event.name === 'notification.dispatch.requested') {
+              publishRequested?.();
+              await resumeRequested;
+            }
+          },
+        },
+      },
+      queue: {
+        adapter: createEmailNotificationsQueueAdapter(fakeQueue as never),
+        bulkThreshold: 2,
+      },
+    });
+
+    notificationsContainer.register(...moduleProviders(notificationsModuleType));
+
+    const notifications = await notificationsContainer.resolve(NotificationsService);
+    const attachment = new Uint8Array([1, 2, 3]);
+    const dispatch = notifications.dispatchMany([
+      {
+        channel: 'email',
+        payload: {
+          attachments: [{ content: attachment, filename: 'report.bin' }],
+          text: 'attachment',
+        },
+        recipients: ['user@example.com'],
+        subject: 'Attachment',
+      },
+      {
+        channel: 'email',
+        payload: { text: 'second' },
+        recipients: ['second@example.com'],
+        subject: 'Second',
+      },
+    ]);
+
+    await requested;
+    attachment[0] = 9;
+    continueRequested?.();
+
+    await dispatch;
+    await worker.handle(enqueued[0] as EmailNotificationQueueJob);
+
+    const deliveredAttachment = transportState.sent[0]?.attachments?.[0]?.content;
+
+    expect(deliveredAttachment).toEqual(new Uint8Array([1, 2, 3]));
+    expect(deliveredAttachment).not.toBe(attachment);
+    expect(lifecycleEvents[0]).toMatchObject({
+      notification: {
+        payload: {
+          attachments: [
+            {
+              content: {
+                byteLength: 3,
+                byteOffset: 0,
+                bytes: [1, 2, 3],
+                kind: 'ArrayBufferView',
+                view: 'Uint8Array',
+              },
+            },
+          ],
+        },
+      },
+    });
   });
 
   it('keeps the queue worker outside EmailModule providers so queue support stays opt-in', () => {

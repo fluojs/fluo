@@ -2276,27 +2276,35 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageSurface.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
       packageSurface.includes('dispatchMany(...)') &&
       packageSurface.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      packageSurface.includes('immutable observation snapshots') &&
       docsContext.includes('packages/notifications/README.md') &&
       docsContext.includes('book/intermediate/ch15-notifications.md') &&
       docsContext.includes('concrete queue/event-bus ownership') &&
+      docsContext.includes('Lifecycle publishers receive immutable observer snapshots') &&
       notificationsReadme.includes('dispatchMany(...)') &&
       notificationsReadme.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsReadme.includes('separate immutable lifecycle event snapshot') &&
       notificationsChapter.includes('NotificationDispatchBatchResult') &&
+      notificationsChapter.includes('separate immutable event snapshots') &&
       notificationsChapter.includes('global: false'),
-    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, immutable lifecycle snapshots, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurfaceKo.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
       packageSurfaceKo.includes('dispatchMany(...)') &&
       packageSurfaceKo.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      packageSurfaceKo.includes('immutable observation snapshot') &&
       docsContextKo.includes('packages/notifications/README.ko.md') &&
       docsContextKo.includes('book/intermediate/ch15-notifications.ko.md') &&
       docsContextKo.includes('concrete queue/event-bus ownership') &&
+      docsContextKo.includes('immutable observer snapshot') &&
       notificationsReadmeKo.includes('dispatchMany(...)') &&
       notificationsReadmeKo.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsReadmeKo.includes('별도의 immutable lifecycle event snapshot') &&
       notificationsChapterKo.includes('NotificationDispatchBatchResult') &&
+      notificationsChapterKo.includes('별도의 immutable event snapshot') &&
       notificationsChapterKo.includes('global: false'),
-    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, immutable lifecycle snapshots, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurface.includes('@fluojs/cron') &&
