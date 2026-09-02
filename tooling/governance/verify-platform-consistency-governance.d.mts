@@ -96,4 +96,7 @@ export function enforceQueueWorkerOwnershipContract(
 export function enforceQueueWorkerOwnershipContractFromSources(
   sources: Readonly<Record<string, string>>,
 ): void;
+export function enforceNotificationsQueueCancellationDocumentationContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): Promise<void>;

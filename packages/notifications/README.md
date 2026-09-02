@@ -104,10 +104,10 @@ NotificationsModule.forRoot({
   channels: [emailChannel],
   queue: {
     adapter: {
-      async enqueue(job) {
+      async enqueue(job, context) {
         return queue.enqueue(job);
       },
-      async enqueueMany(jobs) {
+      async enqueueMany(jobs, context) {
         return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
@@ -123,6 +123,9 @@ Behavioral contract notes:
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
 - Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.
 - Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)` unless the caller explicitly passes `{ queue: true }`.
+- `NotificationsQueueContext` is the optional second argument of `enqueue(...)` and `enqueueMany(...)`. It carries the exact caller-owned `AbortSignal` from dispatch; existing one-argument adapters remain valid.
+- Before every queue handoff, the service checks the signal and then passes that same live signal to the adapter. A pre-aborted queued dispatch emits `requested` then `failed` when lifecycle events are enabled, but never calls `enqueue(...)` or `enqueueMany(...)`. A signal that aborts after an adapter accepts a job cannot revoke that accepted queue job.
+- Queue adapters own queue-specific cancellation policy and must remove any abort listeners when their enqueue operation settles. If an adapter rejects because the signal aborts, native bulk dispatch rejects and publishes `failed` for every requested job; sequential fallback never hands subsequent jobs to the queue. With `continueOnError: true`, earlier accepted jobs remain in `results` and aborted current/remaining jobs appear in `failures`.
 - Queue adapters must resolve every `enqueue()` result and every `enqueueMany()` result entry with a non-empty string identifier. Native `enqueueMany()` must return a dense array whose own data-property entries exactly match the admitted job count; accessor-backed entries, sparse arrays, and length drift are rejected. The service rejects malformed values with `NotificationQueueResultIntegrityError`; it never fabricates a queued delivery id from the notification envelope.
 - Queue jobs preserve caller-provided `notification.id` as the authoritative idempotency key. Otherwise, they derive a deterministic fallback `id` from a runtime-neutral serialization that orders object keys by locale-independent code-unit order and uses a wider 64-bit digest. Queue adapters should pass this value to backing queues that support deduplication. The generated fallback key is deterministic for equivalent supported inputs, including cyclic opaque payloads, but it is not a durable cross-release identity contract; set `notification.id` when callers need stable identity across application or package upgrades.
 - `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery or sequential queue fallback enqueue.
@@ -216,6 +219,7 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationSnapshotArrayBuffer`
 - `NotificationSnapshotArrayBufferView`
 - `NotificationsQueueAdapter`
+- `NotificationsQueueContext`
 - `NotificationsQueueJob`
 - `NotificationsQueueOptions`
 - `NotificationsModuleOptions`

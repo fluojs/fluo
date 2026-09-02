@@ -95,7 +95,9 @@ export class NotificationsService implements Notifications {
 
       const job = this.createQueueJob(dispatchNotification);
       try {
-        const deliveryId = validateQueueDeliveryId(await this.requireQueueAdapter().enqueue(job));
+        const queue = this.requireQueueAdapter();
+        throwIfAborted(options.signal);
+        const deliveryId = validateQueueDeliveryId(await queue.enqueue(job, { signal: options.signal }));
         const result: NotificationDispatchResult = {
           channel: dispatchNotification.channel,
           deliveryId,
@@ -212,7 +214,8 @@ export class NotificationsService implements Notifications {
       let results: NotificationDispatchResult[];
 
       try {
-        const ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs), admittedJobCount);
+        throwIfAborted(options.signal);
+        const ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs, { signal: options.signal }), admittedJobCount);
         results = dispatchNotifications.map((notification, index) => {
           const deliveryId = ids[index];
 
@@ -488,7 +491,8 @@ export class NotificationsService implements Notifications {
       }
 
       try {
-        const deliveryId = validateQueueDeliveryId(await queue.enqueue(job));
+        throwIfAborted(options.signal);
+        const deliveryId = validateQueueDeliveryId(await queue.enqueue(job, { signal: options.signal }));
         const result: NotificationDispatchResult = {
           channel: notification.channel,
           deliveryId,
@@ -529,6 +533,10 @@ export class NotificationsService implements Notifications {
       succeeded: results.length,
     };
   }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  signal?.throwIfAborted();
 }
 
 function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): readonly string[] {

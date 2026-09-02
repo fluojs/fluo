@@ -375,6 +375,12 @@ NestJS Mongoose migration and transaction semantics are documented in [Transacti
 
 Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
 
+## Notifications Queue Cancellation
+
+`NotificationsQueueContext.signal` carries the caller-owned `AbortSignal` for every notification queue handoff. A pre-aborted signal rejects immediately before the single enqueue, native `enqueueMany`, or each sequential fallback enqueue starts. Once an adapter receives the same live signal, the adapter owns its listener registration, cleanup, and queue-specific mid-flight cancellation policy. Bulk dispatch uses native `enqueueMany` when the adapter supplies it and otherwise falls back to sequential `enqueue`; after an abort, the fallback performs no remaining queue handoffs.
+
+<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->
+
 ## Notifications Status Contract
 
 `@fluojs/notifications` distinguishes configured publisher infrastructure from enabled lifecycle publication in platform status.

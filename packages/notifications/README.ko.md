@@ -104,10 +104,10 @@ NotificationsModule.forRoot({
   channels: [emailChannel],
   queue: {
     adapter: {
-      async enqueue(job) {
+      async enqueue(job, context) {
         return queue.enqueue(job);
       },
-      async enqueueMany(jobs) {
+      async enqueueMany(jobs, context) {
         return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
@@ -123,6 +123,9 @@ Behavioral contract 메모:
 - `dispatch()`는 queue adapter가 구성되어 있어도 기본적으로 직접 전달을 유지합니다. 단건 알림을 큐로 보내려면 `dispatch(..., { queue: true })`를 사용합니다.
 - queue adapter가 있어도 직접 전달을 강제하려면 `dispatch(..., { queue: false })`를 사용합니다.
 - 큐 기반 전달은 단건 dispatch에서는 opt-in이고, `dispatchMany(...)`에서는 caller가 `{ queue: true }`를 명시하지 않는 한 threshold 기반으로 동작합니다.
+- `NotificationsQueueContext`는 `enqueue(...)`와 `enqueueMany(...)`의 선택적인 두 번째 인자입니다. dispatch의 정확한 caller-owned `AbortSignal`을 전달하며, 기존의 한 인자 adapter도 계속 유효합니다.
+- 서비스는 모든 queue handoff 직전에 signal을 확인한 뒤 같은 live signal을 adapter에 전달합니다. 이미 abort된 queued dispatch는 lifecycle event가 활성화된 경우 `requested` 다음 `failed`를 발행하지만 `enqueue(...)`나 `enqueueMany(...)`를 호출하지 않습니다. Adapter가 job을 수락한 뒤 발생한 abort signal은 이미 수락된 queue job을 취소하지 못합니다.
+- Queue adapter는 queue별 cancellation policy와 enqueue operation이 settle될 때 abort listener를 제거할 책임을 집니다. Adapter가 signal abort로 reject하면 native bulk dispatch는 reject되고 모든 requested job에 `failed`를 발행합니다. Sequential fallback은 이후 job을 queue에 넘기지 않습니다. `continueOnError: true`이면 앞서 수락된 job은 `results`에 남고 abort된 현재/나머지 job은 `failures`에 들어갑니다.
 - Queue adapter는 모든 `enqueue()` 결과와 모든 `enqueueMany()` 결과 항목을 non-empty string identifier로 resolve해야 합니다. Native `enqueueMany()`는 admission된 job count와 정확히 일치하는 own data-property 항목의 dense array를 반환해야 하며, accessor-backed 항목, sparse array, length drift는 거부됩니다. 서비스는 malformed value를 `NotificationQueueResultIntegrityError`로 거부하며 notification envelope에서 queued delivery id를 fabricate하지 않습니다.
 - Queue job은 caller가 제공한 `notification.id`를 authoritative idempotency key로 보존합니다. 값이 없으면 object key를 locale-independent code-unit order로 정렬하는 runtime-neutral serialization과 더 넓은 64-bit digest에서 deterministic fallback `id`를 파생합니다. Queue adapter는 deduplication을 지원하는 backing queue에 이 값을 전달해야 합니다. 생성된 fallback key는 cyclic opaque payload를 포함해 동등한 지원 입력에 대해 deterministic하지만, cross-release durable identity 계약은 아닙니다. 애플리케이션 또는 package upgrade를 넘어 안정적인 identity가 필요하면 `notification.id`를 설정하세요.
 - `dispatchMany(..., { continueOnError: true })`는 direct delivery 또는 순차 queue fallback enqueue에서 첫 실패를 던지는 대신 실패들을 수집합니다.
@@ -216,6 +219,7 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationSnapshotArrayBuffer`
 - `NotificationSnapshotArrayBufferView`
 - `NotificationsQueueAdapter`
+- `NotificationsQueueContext`
 - `NotificationsQueueJob`
 - `NotificationsQueueOptions`
 - `NotificationsModuleOptions`
