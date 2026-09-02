@@ -94,10 +94,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     await this.drainActiveSagaWork();
 
     this.executionChains.clear();
-    this.handlerInstances.clear();
-    this.descriptorsByEvent.clear();
-    this.discovered = false;
-    this.discoveryPromise = undefined;
     this.lifecycleState = 'stopped';
   }
 
@@ -113,11 +109,15 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     sagasDiscovered: number;
     shutdownDrainTimeouts: number;
   } {
+    const stopped = this.lifecycleState === 'stopped';
+
     return {
-      discovered: this.discovered,
+      discovered: stopped ? false : this.discovered,
       inFlightSagaExecutions: this.pendingDispatches.size,
       lifecycleState: this.lifecycleState,
-      sagasDiscovered: new Set(Array.from(this.descriptorsByEvent.values()).flatMap((descriptors) => descriptors.map((d) => d.token))).size,
+      sagasDiscovered: stopped
+        ? 0
+        : new Set(Array.from(this.descriptorsByEvent.values()).flatMap((descriptors) => descriptors.map((d) => d.token))).size,
       shutdownDrainTimeouts: this.shutdownDrainTimeouts,
     };
   }

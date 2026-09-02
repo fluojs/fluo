@@ -31,6 +31,12 @@ function createLogger(events: string[]): ApplicationLogger {
   };
 }
 
+function expectFulfilled(results: readonly PromiseSettledResult<unknown>[]): void {
+  for (const result of results) {
+    expect(result.status).toBe('fulfilled');
+  }
+}
+
 describe('CQRS single shutdown deadline contract', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -75,6 +81,7 @@ describe('CQRS single shutdown deadline contract', () => {
     const closePromise = app.close().then(() => {
       closeSettled = true;
     });
+    let cleanupResults: PromiseSettledResult<unknown>[] = [];
 
     try {
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
@@ -88,9 +95,11 @@ describe('CQRS single shutdown deadline contract', () => {
     } finally {
       releaseSubscriber.resolve();
       await vi.runAllTimersAsync();
-      await Promise.allSettled([publishPromise, closePromise]);
+      cleanupResults = await Promise.allSettled([publishPromise, closePromise]);
       expect(vi.getTimerCount()).toBe(0);
     }
+
+    expectFulfilled(cleanupResults);
   });
 
   it('drains an accepted saga dispatch suspended in discovery before shutdown clears state', async () => {
@@ -120,16 +129,23 @@ describe('CQRS single shutdown deadline contract', () => {
     await discoverySuspended.promise;
 
     const suspendedSnapshot = sagaBus.getRuntimeSnapshot();
-    const closePromise = app.close();
+    let closeSettled = false;
+    const closePromise = app.close().then(() => {
+      closeSettled = true;
+    });
+    let cleanupResults: PromiseSettledResult<unknown>[] = [];
 
     try {
       expect(suspendedSnapshot.inFlightSagaExecutions).toBe(1);
       expect(sagaBus.getRuntimeSnapshot().inFlightSagaExecutions).toBe(1);
+      await new Promise<void>(queueMicrotask);
+      expect(closeSettled).toBe(false);
     } finally {
       releaseDiscovery.resolve();
-      await Promise.allSettled([dispatchPromise, closePromise]);
+      cleanupResults = await Promise.allSettled([dispatchPromise, closePromise]);
     }
 
+    expectFulfilled(cleanupResults);
     expect(sagaBus.getRuntimeSnapshot()).toEqual({
       discovered: false,
       inFlightSagaExecutions: 0,
@@ -170,6 +186,7 @@ describe('CQRS single shutdown deadline contract', () => {
     await sagaStarted.promise;
 
     const closePromise = app.close();
+    let cleanupResults: PromiseSettledResult<unknown>[] = [];
 
     try {
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
@@ -177,9 +194,11 @@ describe('CQRS single shutdown deadline contract', () => {
     } finally {
       releaseSaga.resolve();
       await vi.runAllTimersAsync();
-      await Promise.allSettled([publishPromise, closePromise]);
+      cleanupResults = await Promise.allSettled([publishPromise, closePromise]);
       expect(vi.getTimerCount()).toBe(0);
     }
+
+    expectFulfilled(cleanupResults);
   });
 
   it('reports degraded status counters for both stuck handler and saga drains', async () => {
@@ -230,15 +249,15 @@ describe('CQRS single shutdown deadline contract', () => {
     await sagaStarted.promise;
 
     const closePromise = app.close();
+    let cleanupResults: PromiseSettledResult<unknown>[] = [];
 
     try {
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
       await closePromise;
 
-      const cleanup = Promise.allSettled([handlerPublishPromise, sagaPublishPromise]);
       releaseHandler.resolve();
       releaseSaga.resolve();
-      await cleanup;
+      await Promise.all([handlerPublishPromise, sagaPublishPromise]);
 
       const snapshot = cqrsEventBus.createPlatformStatusSnapshot();
 
@@ -250,13 +269,16 @@ describe('CQRS single shutdown deadline contract', () => {
         'warn:CqrsEventBusService:CQRS event shutdown drain exceeded 20ms with 2 active publish pipeline(s); continuing shutdown.',
         'warn:CqrsSagaLifecycleService:CQRS saga shutdown drain exceeded 0ms with 1 active saga task(s); continuing shutdown.',
         'warn:EventBusLifecycleService:EventBus.publish() was ignored because the event bus is stopped.',
+        'warn:EventBusLifecycleService:EventBus.publish() was ignored because the event bus is stopped.',
       ]);
     } finally {
       releaseHandler.resolve();
       releaseSaga.resolve();
       await vi.runAllTimersAsync();
-      await Promise.allSettled([handlerPublishPromise, sagaPublishPromise, closePromise]);
+      cleanupResults = await Promise.allSettled([handlerPublishPromise, sagaPublishPromise, closePromise]);
       expect(vi.getTimerCount()).toBe(0);
     }
+
+    expectFulfilled(cleanupResults);
   });
 });
