@@ -8,6 +8,7 @@
 ## GraphQL 비동기 등록 마이그레이션
 
 NestJS application에서 GraphQL option을 비동기로 해석했다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Injected token은 기존 fluo application graph에서 해석되고, factory는 endpoint wiring 전에 application context마다 한 번 해석됩니다.
+`GraphqlModule.forRoot(...)`는 동기 option 경로로 유지되지만, 지원되는 유일한 GraphQL 등록 경로는 아닙니다.
 
 이는 NestJS dynamic-module 호환성이 아닙니다. `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 거부합니다. 필요한 provider를 application graph에 등록하고 token을 `inject`에 명시적으로 나열하세요. 별도 migration example은 추가하지 않습니다. 유지 관리되는 실행형 예제는 `@fluojs/graphql` README와 [Book Chapter 18](../../book/intermediate/ch18-graphql.ko.md)입니다.
 

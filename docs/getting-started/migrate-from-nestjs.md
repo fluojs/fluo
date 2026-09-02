@@ -10,6 +10,8 @@ Use this document as a migration contract map. Each row identifies the closest a
 Use `GraphqlModule.forRootAsync({ inject, useFactory })` when a NestJS application previously
 resolved GraphQL options asynchronously. The injected tokens resolve from the existing fluo
 application graph, and the factory resolves once per application context before endpoint wiring.
+`GraphqlModule.forRoot(...)` remains the synchronous option path, not the only supported GraphQL
+registration path.
 
 This is not NestJS dynamic-module compatibility: `imports`, `useClass`, `useExisting`, and
 implicit provider discovery are rejected. Register the required providers in the application graph

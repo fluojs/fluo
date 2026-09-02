@@ -112,6 +112,8 @@ Use `GraphqlModule.forRootAsync({ inject, useFactory })` when application-graph 
 must resolve GraphQL options before the endpoint lifecycle starts. The factory runs once per
 application context. This narrow API intentionally does not accept NestJS-style `imports`,
 `useClass`, `useExisting`, or implicit discovery.
+`GraphqlModule.forRoot(...)` remains available for synchronous options, but it is not the only
+GraphQL registration API.
 
 ```typescript
 class GraphqlSettings {

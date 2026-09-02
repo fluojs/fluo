@@ -17,6 +17,13 @@
 | **UI** | React integration. | `@fluojs/react` |
 | **Tooling** | CLI inspection export, CLI-launched Studio sidecar/viewer diagnostics, inspect artifact rendering, testing diagnostics, and Vite build integration. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
+## GraphQL async module registration
+
+`@fluojs/graphql` exposes `GraphqlModule.forRootAsync({ inject, useFactory })` alongside
+`GraphqlModule.forRoot(...)`. `GraphqlAsyncModuleOptions<TDependencies>` ties each explicit
+`inject` token to its ordered `useFactory` parameter. This is not NestJS dynamic-module
+compatibility: `imports`, `useClass`, `useExisting`, and implicit provider discovery are rejected.
+
 ## canonical runtime package matrix
 
 | runtime target | adapter package | notes |

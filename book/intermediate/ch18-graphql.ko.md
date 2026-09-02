@@ -109,6 +109,7 @@ export class AppModule {}
 ### 비동기 Module Option 해석
 
 Endpoint lifecycle이 시작되기 전에 application graph 의존성에서 GraphQL option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Factory는 application context마다 한 번 실행됩니다. 이 좁은 API는 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery를 의도적으로 허용하지 않습니다.
+`GraphqlModule.forRoot(...)`는 동기 option에 계속 사용할 수 있지만, 유일한 GraphQL 등록 API는 아닙니다.
 
 ```typescript
 class GraphqlSettings {

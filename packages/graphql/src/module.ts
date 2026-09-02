@@ -14,7 +14,9 @@ function createGraphqlProviders(optionsProvider: Provider): Provider[] {
   ];
 }
 
-function assertGraphqlAsyncModuleOptions(options: GraphqlAsyncModuleOptions): void {
+function assertGraphqlAsyncModuleOptions<TDependencies extends readonly unknown[]>(
+  options: GraphqlAsyncModuleOptions<TDependencies>,
+): void {
   if (options === null || typeof options !== 'object') {
     throw new TypeError('GraphqlModule.forRootAsync requires an options object.');
   }
@@ -87,7 +89,9 @@ export class GraphqlModule {
    *
    * @throws {TypeError} When the options shape requests unsupported registration behavior.
    */
-  static forRootAsync(options: GraphqlAsyncModuleOptions): ModuleType {
+  static forRootAsync<const TDependencies extends readonly unknown[]>(
+    options: GraphqlAsyncModuleOptions<TDependencies>,
+  ): ModuleType {
     assertGraphqlAsyncModuleOptions(options);
 
     class GraphqlAsyncRootModule extends GraphqlModule {}

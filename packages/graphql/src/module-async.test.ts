@@ -7,6 +7,7 @@ import { GraphqlModule } from './module.js';
 import { createGraphqlNetworkFixture } from './network.test-fixture.js';
 
 const { bootstrapNodeApplication, findAvailablePort, resolvePort } = createGraphqlNetworkFixture();
+const WEBSOCKET_EVENT_TIMEOUT_MS = 1_000;
 
 async function postGraphql(port: number, query: string): Promise<unknown> {
   const response = await fetch(`http://127.0.0.1:${String(await resolvePort(port))}/graphql`, {
@@ -22,22 +23,96 @@ function toWebSocketText(message: unknown): string {
   return Buffer.isBuffer(message) ? message.toString('utf8') : String(message);
 }
 
+function waitForWebSocketOpen(socket: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      finish(reject, new Error('Timed out waiting for the GraphQL websocket to open.'));
+    }, WEBSOCKET_EVENT_TIMEOUT_MS);
+    const onOpen = (): void => {
+      finish(resolve);
+    };
+    const onError = (error: Error): void => {
+      finish(reject, error);
+    };
+
+    function finish(settle: (value?: never) => void, error?: Error): void {
+      clearTimeout(timeout);
+      socket.off('error', onError);
+      socket.off('open', onOpen);
+
+      if (error === undefined) {
+        settle();
+      } else {
+        reject(error);
+      }
+    }
+
+    socket.once('error', onError);
+    socket.once('open', onOpen);
+  });
+}
+
+function waitForWebSocketMessage(socket: WebSocket): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      finish(reject, new Error('Timed out waiting for the GraphQL websocket acknowledgement.'));
+    }, WEBSOCKET_EVENT_TIMEOUT_MS);
+    const onMessage = (message: unknown): void => {
+      finish(resolve, message);
+    };
+    const onError = (error: Error): void => {
+      finish(reject, error);
+    };
+
+    function finish(settle: (value: unknown) => void, value: unknown): void {
+      clearTimeout(timeout);
+      socket.off('error', onError);
+      socket.off('message', onMessage);
+      settle(value);
+    }
+
+    socket.once('error', onError);
+    socket.once('message', onMessage);
+  });
+}
+
+function waitForWebSocketClose(socket: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      finish(reject, new Error('Timed out waiting for the GraphQL websocket to close.'));
+    }, WEBSOCKET_EVENT_TIMEOUT_MS);
+    const onClose = (): void => {
+      finish(resolve);
+    };
+    const onError = (error: Error): void => {
+      finish(reject, error);
+    };
+
+    function finish(settle: (value?: never) => void, error?: Error): void {
+      clearTimeout(timeout);
+      socket.off('close', onClose);
+      socket.off('error', onError);
+
+      if (error === undefined) {
+        settle();
+      } else {
+        reject(error);
+      }
+    }
+
+    socket.once('close', onClose);
+    socket.once('error', onError);
+  });
+}
+
 async function connectGraphqlWebSocket(port: number): Promise<WebSocket> {
   const socket = new WebSocket(`ws://127.0.0.1:${String(await resolvePort(port))}/graphql`, 'graphql-transport-ws');
 
-  await new Promise<void>((resolve, reject) => {
-    socket.once('open', resolve);
-    socket.once('error', reject);
-  });
-
+  await waitForWebSocketOpen(socket);
+  const acknowledgment = waitForWebSocketMessage(socket);
   socket.send(JSON.stringify({ type: 'connection_init' }));
 
-  const acknowledgment = await new Promise<unknown>((resolve, reject) => {
-    socket.once('message', resolve);
-    socket.once('error', reject);
-  });
-
-  expect(toWebSocketText(acknowledgment)).toBe(
+  expect(toWebSocketText(await acknowledgment)).toBe(
     JSON.stringify({ type: 'connection_ack' }),
   );
 
@@ -97,14 +172,17 @@ describe('GraphqlModule.forRootAsync', () => {
     });
 
     const socket = await connectGraphqlWebSocket(port);
+    const closed = waitForWebSocketClose(socket);
     socket.close();
-    await new Promise<void>((resolve) => socket.once('close', resolve));
+    await closed;
 
     expect(factoryCalls).toEqual(['configured']);
     await app.close();
   });
 
   it('cleans up a rejected factory registration so the application graph can retry', async () => {
+    let factoryCalls = 0;
+
     @Resolver('RetryAsyncOptionsResolver')
     class RetryAsyncOptionsResolver {
       @Query()
@@ -113,15 +191,20 @@ describe('GraphqlModule.forRootAsync', () => {
       }
     }
 
+    const asyncRegistration = GraphqlModule.forRootAsync({
+      useFactory: async () => {
+        factoryCalls += 1;
+
+        if (factoryCalls === 1) {
+            throw new Error('async GraphQL configuration failed');
+        }
+
+        return { resolvers: [RetryAsyncOptionsResolver] };
+      },
+    });
     class AppModule {}
     defineModule(AppModule, {
-      imports: [
-        GraphqlModule.forRootAsync({
-          useFactory: async () => {
-            throw new Error('async GraphQL configuration failed');
-          },
-        }),
-      ],
+      imports: [asyncRegistration],
       providers: [RetryAsyncOptionsResolver],
     });
 
@@ -131,19 +214,14 @@ describe('GraphqlModule.forRootAsync', () => {
       'async GraphQL configuration failed',
     );
 
-    class RecoveryModule {}
-    defineModule(RecoveryModule, {
-      imports: [GraphqlModule.forRoot({ resolvers: [RetryAsyncOptionsResolver] })],
-      providers: [RetryAsyncOptionsResolver],
-    });
-
-    const app = await bootstrapNodeApplication(RecoveryModule, { cors: false, port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     await expect(postGraphql(port, '{ status }')).resolves.toEqual({
       data: { status: 'ready after retry' },
     });
 
+    expect(factoryCalls).toBeGreaterThan(1);
     await app.close();
   });
 

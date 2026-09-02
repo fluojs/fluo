@@ -324,6 +324,8 @@ GraphqlModule.forRoot({
 ## Public API
 
 - `GraphqlModule.forRoot(options)`: Main entry point for GraphQL integration.
+- `GraphqlModule.forRootAsync(options)`: Asynchronously resolves GraphQL options from explicit application-graph dependencies before endpoint wiring.
+- `GraphqlAsyncModuleOptions<TDependencies>`: Public async registration contract whose injected dependency tuple types the `useFactory` parameters in order.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver and root operation decorators.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution and explicit DTO input, parent, and context parameter-index bindings.
 - `Arg`: Input DTO field-to-GraphQL-argument mapping decorator.
@@ -331,7 +333,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
 - `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration, including `GraphqlWebSocketLimitsOptions` for `subscriptions.websocket.limits`.
 
-Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`.
+Supported synchronous `GraphqlModule.forRoot(...)` options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`. `GraphqlModule.forRootAsync({ inject, useFactory })` is the separate asynchronous registration API; it accepts only explicit `inject` tokens and `useFactory`.
 
 ## Related Packages
 

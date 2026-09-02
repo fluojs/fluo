@@ -15,6 +15,8 @@ const documentationPaths = [
   'book/intermediate/ch18-graphql.ko.md',
   'docs/CONTEXT.md',
   'docs/CONTEXT.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
 ];
 const documentationMarkers = [
   'GraphqlModule.forRootAsync',
@@ -23,6 +25,61 @@ const documentationMarkers = [
   'imports',
   'useClass',
   'useExisting',
+];
+const localizedDocumentationMarkers = [
+  'GraphqlModule.forRootAsync',
+  'inject',
+  'useFactory',
+];
+const localizedAsyncRegistrationSections = [
+  {
+    contradictoryClaim: 'synchronous-only',
+    end: '## Related Packages',
+    path: 'packages/graphql/README.md',
+    start: '## Public API',
+  },
+  {
+    contradictoryClaim: '동기 전용',
+    end: '## 관련 패키지',
+    path: 'packages/graphql/README.ko.md',
+    start: '## 공개 API',
+  },
+  {
+    contradictoryClaim: 'synchronous-only',
+    end: '## Response cookie migration',
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+    start: '## GraphQL async registration migration',
+  },
+  {
+    contradictoryClaim: '동기 전용',
+    end: '## 응답 쿠키 마이그레이션',
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    start: '## GraphQL 비동기 등록 마이그레이션',
+  },
+  {
+    contradictoryClaim: 'synchronous-only',
+    end: '## 18.4',
+    path: 'book/intermediate/ch18-graphql.md',
+    start: '### Resolving Module Options Asynchronously',
+  },
+  {
+    contradictoryClaim: '동기 전용',
+    end: '## 18.4',
+    path: 'book/intermediate/ch18-graphql.ko.md',
+    start: '### 비동기 Module Option 해석',
+  },
+  {
+    contradictoryClaim: 'synchronous-only',
+    end: '## canonical runtime package matrix',
+    path: 'docs/reference/package-surface.md',
+    start: '## GraphQL async module registration',
+  },
+  {
+    contradictoryClaim: '동기 전용',
+    end: '## canonical runtime package matrix',
+    path: 'docs/reference/package-surface.ko.md',
+    start: '## GraphQL 비동기 module 등록',
+  },
 ];
 
 function fail(relativePath, message) {
@@ -71,6 +128,13 @@ function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+function readDocumentationSection(documentation, section) {
+  const start = documentation.indexOf(section.start);
+  const end = documentation.indexOf(section.end, start + section.start.length);
+  assert(start !== -1 && end !== -1, section.path, 'must retain its async registration section boundaries');
+  return documentation.slice(start, end);
+}
+
 export function enforceGraphqlAsyncRegistrationContract(readText = read) {
   const moduleSource = parseSource(modulePath, readText(modulePath));
   const typesSource = parseSource(typesPath, readText(typesPath));
@@ -87,16 +151,28 @@ export function enforceGraphqlAsyncRegistrationContract(readText = read) {
   assert(forRootAsync && ts.isMethodDeclaration(forRootAsync), modulePath, 'must declare GraphqlModule.forRootAsync(...)');
   assert(asyncOptions && ts.isInterfaceDeclaration(asyncOptions), typesPath, 'must declare GraphqlAsyncModuleOptions');
   assert(
-    asyncOptions.heritageClauses?.[0]?.types[0]?.getText() ===
-      "Pick<AsyncModuleOptions<GraphqlModuleOptions>, 'inject' | 'useFactory'>",
+    asyncOptions.typeParameters?.[0]?.name.text === 'TDependencies'
+      && asyncOptions.typeParameters[0].constraint?.getText() === 'readonly unknown[]',
     typesPath,
-    'must expose exactly the inject and useFactory async options',
+    'must type async factory dependencies as a public tuple generic',
   );
   assert(
     forRootAsync.parameters[0]?.name.getText() === 'options'
-      && forRootAsync.parameters[0]?.type?.getText() === 'GraphqlAsyncModuleOptions',
+      && forRootAsync.parameters[0]?.type?.getText() === 'GraphqlAsyncModuleOptions<TDependencies>'
+      && forRootAsync.typeParameters?.[0]?.name.text === 'TDependencies',
     modulePath,
-    'must accept typed GraphqlAsyncModuleOptions',
+    'must preserve the public dependency tuple on GraphqlModule.forRootAsync',
+  );
+  const asyncOptionMembers = asyncOptions.members.map((member) =>
+    ts.isPropertySignature(member) ? [propertyName(member.name), member.type?.getText()] : []);
+  const injectOption = asyncOptionMembers.find(([name]) => name === 'inject');
+  const factoryOption = asyncOptionMembers.find(([name]) => name === 'useFactory');
+  assert(
+    injectOption?.[1] ===
+      '{ readonly [Index in keyof TDependencies]: InjectionToken<TDependencies[Index]> }'
+      && factoryOption?.[1] === '(...dependencies: TDependencies) => MaybePromise<GraphqlModuleOptions>',
+    typesPath,
+    'must map injected tokens to matching useFactory parameter types',
   );
   assert(
     optionsValidator && ts.isFunctionDeclaration(optionsValidator)
@@ -158,6 +234,22 @@ export function enforceGraphqlAsyncRegistrationContract(readText = read) {
       missingMarkers.length === 0,
       documentationPath,
       `must document the source-backed async registration boundary; missing ${missingMarkers.join(', ')}`,
+    );
+  }
+
+  for (const section of localizedAsyncRegistrationSections) {
+    const documentation = readText(section.path);
+    const sectionText = readDocumentationSection(documentation, section);
+    const missingMarkers = localizedDocumentationMarkers.filter((marker) => !sectionText.includes(marker));
+    assert(
+      missingMarkers.length === 0,
+      section.path,
+      `must keep async registration claims section-local; missing ${missingMarkers.join(', ')}`,
+    );
+    assert(
+      !sectionText.includes(section.contradictoryClaim),
+      section.path,
+      'contains a contradictory async registration claim',
     );
   }
 }

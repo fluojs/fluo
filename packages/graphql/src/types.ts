@@ -1,4 +1,4 @@
-import type { AsyncModuleOptions, MetadataPropertyKey, Token } from '@fluojs/core';
+import type { InjectionToken, MaybePromise, MetadataPropertyKey, Token } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { FrameworkRequest, Principal } from '@fluojs/http';
 import type { GraphQLObjectType, GraphQLSchema, GraphQLUnionType } from 'graphql';
@@ -275,6 +275,17 @@ export interface GraphqlModuleOptions {
  *
  * Only `inject` and `useFactory` are supported. NestJS-style `imports`, `useClass`,
  * `useExisting`, and implicit provider discovery are intentionally unavailable.
+ *
+ * @typeParam TDependencies Tuple of values resolved from `inject` and passed to
+ * `useFactory` in the same order.
  */
-export interface GraphqlAsyncModuleOptions
-  extends Pick<AsyncModuleOptions<GraphqlModuleOptions>, 'inject' | 'useFactory'> {}
+export interface GraphqlAsyncModuleOptions<TDependencies extends readonly unknown[] = readonly unknown[]> {
+  /**
+   * Application-graph tokens whose resolved values are passed to `useFactory` in order.
+   */
+  inject?: { readonly [Index in keyof TDependencies]: InjectionToken<TDependencies[Index]> };
+  /**
+   * Resolves the GraphQL module options from the explicitly injected dependency values.
+   */
+  useFactory: (...dependencies: TDependencies) => MaybePromise<GraphqlModuleOptions>;
+}

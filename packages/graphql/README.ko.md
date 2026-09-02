@@ -319,6 +319,8 @@ GraphqlModule.forRoot({
 ## 공개 API
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
+- `GraphqlModule.forRootAsync(options)`: Endpoint wiring 전에 명시적인 application-graph 의존성으로 GraphQL option을 비동기 해석합니다.
+- `GraphqlAsyncModuleOptions<TDependencies>`: 주입된 의존성 tuple에 맞춰 순서대로 `useFactory` parameter를 typing하는 공개 비동기 등록 계약입니다.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver 및 root operation 데코레이터.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution과 명시적 DTO input, parent, context parameter-index binding.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
@@ -326,7 +328,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
 - `GraphQLContext` 및 export되는 option/metadata type: `subscriptions.websocket.limits`에 사용하는 `GraphqlWebSocketLimitsOptions`를 포함한 GraphQL 실행과 module 설정을 위한 타입 정의.
 
-지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다.
+동기 `GraphqlModule.forRoot(...)` option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다. `GraphqlModule.forRootAsync({ inject, useFactory })`는 별도의 비동기 등록 API이며, 명시적인 `inject` token과 `useFactory`만 받습니다.
 
 ## 관련 패키지
 
