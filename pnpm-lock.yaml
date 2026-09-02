@@ -341,9 +341,6 @@ importers:
       '@clack/prompts':
         specifier: ^1.2.0
         version: 1.2.0
-      '@fluojs/runtime':
-        specifier: workspace:^
-        version: link:../runtime
       '@fluojs/studio':
         specifier: workspace:^
         version: link:../studio
@@ -360,6 +357,9 @@ importers:
       '@fluojs/react':
         specifier: workspace:^
         version: link:../react
+      '@fluojs/runtime':
+        specifier: workspace:^
+        version: link:../runtime
       '@types/ejs':
         specifier: ^3.1.5
         version: 3.1.5

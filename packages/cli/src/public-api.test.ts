@@ -203,6 +203,23 @@ describe('public CLI package API', () => {
     expect(payload.health.status).toBe('healthy');
   });
 
+  it('reports the command-scoped runtime dependency when inspection requires it', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runInspectCommand([inspectFixtureModulePath, '--json'], {
+      cwd: process.cwd(),
+      loadRuntimeInspectionModule: async () => undefined,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('Runtime inspection requires @fluojs/runtime');
+    expect(stderrBuffer.join('')).toContain('pnpm add -D @fluojs/runtime');
+  });
+
   it('closes the inspect context exactly once when bootstrap fails through the public facade', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-public-api-'));
     tempDirectories.push(workspaceDirectory);

@@ -53,21 +53,25 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "@fluojs/runtime": "workspace:^",
     "ejs": "^3.1.10",
     "tsx": "^4.23.1",
     "typescript": "^6.0.2"
   },
   "peerDependencies": {
+    "@fluojs/runtime": "workspace:^",
     "@fluojs/studio": "workspace:^"
   },
   "peerDependenciesMeta": {
+    "@fluojs/runtime": {
+      "optional": true
+    },
     "@fluojs/studio": {
       "optional": true
     }
   },
   "devDependencies": {
     "@fluojs/react": "workspace:^",
+    "@fluojs/runtime": "workspace:^",
     "@types/ejs": "^3.1.5",
     "vitest": "^3.2.4"
   }
