@@ -57,6 +57,23 @@ function defineStandardSagaMetadata(metadata: unknown, sagaMetadata: SagaMetadat
   } satisfies SagaMetadata;
 }
 
+function isConstructableClass(value: unknown): value is CqrsEventType {
+  if (typeof value !== 'function') {
+    return false;
+  }
+
+  try {
+    Reflect.construct(Object, [], value);
+    return true;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 function normalizeSagaEventTypes(eventTypeOrTypes: CqrsEventType | readonly CqrsEventType[]): readonly CqrsEventType[] {
   const eventTypes = Array.isArray(eventTypeOrTypes) ? eventTypeOrTypes : [eventTypeOrTypes];
   const uniqueEventTypes = Array.from(new Set(eventTypes));
@@ -66,7 +83,7 @@ function normalizeSagaEventTypes(eventTypeOrTypes: CqrsEventType | readonly Cqrs
   }
 
   for (const eventType of uniqueEventTypes) {
-    if (typeof eventType !== 'function') {
+    if (!isConstructableClass(eventType)) {
       throw new Error('@Saga() event types must be class constructors.');
     }
   }

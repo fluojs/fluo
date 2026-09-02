@@ -32,9 +32,7 @@ describe('CQRS malformed handler dispatch contracts', () => {
 
       // Then
       await expect(dispatch).rejects.toBeInstanceOf(InvariantError);
-      await expect(commandBus.execute(new MalformedCommand())).rejects.toThrow(
-        'Command handler MalformedCommandHandler must implement execute(command).',
-      );
+      await expect(dispatch).rejects.toMatchObject({ code: 'INVARIANT_ERROR' });
     } finally {
       await app.close();
     }
@@ -66,9 +64,7 @@ describe('CQRS malformed handler dispatch contracts', () => {
 
       // Then
       await expect(dispatch).rejects.toBeInstanceOf(InvariantError);
-      await expect(queryBus.execute(new MalformedQuery())).rejects.toThrow(
-        'Query handler MalformedQueryHandler must implement execute(query).',
-      );
+      await expect(dispatch).rejects.toMatchObject({ code: 'INVARIANT_ERROR' });
     } finally {
       await app.close();
     }

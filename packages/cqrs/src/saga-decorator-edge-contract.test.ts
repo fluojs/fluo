@@ -2,6 +2,7 @@ import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { Saga } from './decorators.js';
+import { getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
 import { EVENT_BUS } from './tokens.js';
 import type { CqrsEventBus, IEvent, ISaga } from './types.js';
@@ -11,11 +12,13 @@ describe('CQRS saga decorator boundary contracts', () => {
     // When
     const emptyList = () => Saga([]);
     const nonConstructor = () => Reflect.apply(Saga, undefined, [null]);
+    const nonConstructableCallable = () => Reflect.apply(Saga, undefined, [() => undefined]);
     const mixedList = () => Reflect.apply(Saga, undefined, [[class ValidEvent implements IEvent {}, 'not-a-constructor']]);
 
     // Then
     expect(emptyList).toThrowError('@Saga() requires at least one event type.');
     expect(nonConstructor).toThrowError('@Saga() event types must be class constructors.');
+    expect(nonConstructableCallable).toThrowError('@Saga() event types must be class constructors.');
     expect(mixedList).toThrowError('@Saga() event types must be class constructors.');
   });
 
@@ -33,6 +36,9 @@ describe('CQRS saga decorator boundary contracts', () => {
         handled.push(event.id);
       }
     }
+
+    // Then
+    expect(getSagaMetadata(RepeatedEventSaga)?.eventTypes).toEqual([RepeatedSagaEvent]);
 
     class AppModule {}
     defineModule(AppModule, {
