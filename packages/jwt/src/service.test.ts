@@ -86,6 +86,48 @@ describe('JwtService', () => {
     });
   });
 
+  it('returns the verified claim bag rather than a normalized JwtPrincipal', async () => {
+    const options: JwtVerifierOptions = {
+      algorithms: ['HS256'],
+      issuer: 'jwt-service-tests',
+      secret: 'service-secret',
+    };
+    const service = createJwtService(options);
+    const token = await service.sign({ role: 'admin', sub: 'service-user' });
+
+    const claims = await service.verify<Record<string, unknown>>(token);
+    const principal = await new DefaultJwtVerifier(options).verifyAccessToken(token);
+
+    expect(claims).toEqual(principal.claims);
+    expect(claims).not.toHaveProperty('subject');
+    expect(claims).not.toHaveProperty('roles');
+    expect(claims).not.toHaveProperty('scopes');
+    expect(claims).not.toHaveProperty('claims');
+    expect(principal.subject).toBe('service-user');
+  });
+
+  it('preserves per-call verifier overrides through verifyAccessTokenWithOverrides', async () => {
+    const options: JwtVerifierOptions = {
+      algorithms: ['HS256'],
+      issuer: 'jwt-service-tests',
+      secret: 'service-secret',
+    };
+    const service = createJwtService(options);
+    const token = await service.sign(
+      { sub: 'override-user' },
+      { audience: 'fluo-users', expiresIn: '60s', issuer: 'other-issuer' },
+    );
+
+    await expect(service.verify(token)).rejects.toThrow();
+
+    const overrides = { audience: 'fluo-users', issuer: 'other-issuer' } as const;
+    const claims = await service.verify<Record<string, unknown>>(token, overrides);
+    const principal = await new DefaultJwtVerifier(options).verifyAccessTokenWithOverrides(token, overrides);
+
+    expect(claims).toEqual(principal.claims);
+    expect(principal.subject).toBe('override-user');
+  });
+
   it('applies sign and verify options overrides', async () => {
     const service = createJwtService({
       algorithms: ['HS256'],
