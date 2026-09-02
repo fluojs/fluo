@@ -10,7 +10,10 @@ const contractFields = [
   'strict-fail-open',
   'explicit-target',
 ];
-const contractMarkerPattern = /^<!-- fluo-mongoose-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu;
+const contractMarkerPatterns = [
+  /^<!-- fluo-mongoose-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu,
+  /^\{\/\* fluo-mongoose-contract: ([a-z-]+(?:, [a-z-]+)*) \*\/\}$/gmu,
+];
 const documentationRequirements = [
   {
     heading: '## Mongoose Root and Feature Migration',
@@ -81,7 +84,7 @@ function enforceUniqueLine(content, line, relativePath) {
 }
 
 function enforceMongooseContractMarker(content, relativePath) {
-  const markers = [...content.matchAll(contractMarkerPattern)];
+  const markers = contractMarkerPatterns.flatMap((pattern) => [...content.matchAll(pattern)]);
   assert(
     markers.length === 1,
     `${relativePath} must include exactly one fluo-mongoose-contract marker; found ${markers.length}.`,

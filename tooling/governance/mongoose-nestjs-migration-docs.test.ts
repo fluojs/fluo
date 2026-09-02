@@ -6,8 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const mongooseContractMarker =
-  '<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->';
+const mongooseContract = 'fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target';
 const governedDocumentationPaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
@@ -36,6 +35,12 @@ function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+function mongooseContractMarkerFor(relativePath: string): string {
+  return relativePath.endsWith('.mdx')
+    ? `{/* ${mongooseContract} */}`
+    : `<!-- ${mongooseContract} -->`;
+}
+
 describe('NestJS Mongoose migration documentation', () => {
   it('keeps the Mongoose migration and transaction contracts synchronized', () => {
     // Given
@@ -51,7 +56,10 @@ describe('NestJS Mongoose migration documentation', () => {
       // Given
       const readWithoutContractAnchor = (relativePath: string): string =>
         relativePath === driftedPath
-          ? read(relativePath).replace(mongooseContractMarker, '[removed Mongoose contract anchor]')
+          ? read(relativePath).replace(
+              mongooseContractMarkerFor(relativePath),
+              '[removed Mongoose contract anchor]',
+            )
           : read(relativePath);
 
       // When
@@ -70,8 +78,8 @@ describe('NestJS Mongoose migration documentation', () => {
       const readWithDuplicateMarker = (relativePath: string): string =>
         relativePath === driftedPath
           ? read(relativePath).replace(
-              mongooseContractMarker,
-              `${mongooseContractMarker}\n${mongooseContractMarker}`,
+              mongooseContractMarkerFor(relativePath),
+              `${mongooseContractMarkerFor(relativePath)}\n${mongooseContractMarkerFor(relativePath)}`,
             )
           : read(relativePath);
       const readWithHeadingDecoy = (relativePath: string): string =>
