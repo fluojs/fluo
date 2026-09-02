@@ -59,6 +59,49 @@ void prismaServiceCurrentInferenceChecked;
 void prismaTransactionClientInferenceChecked;
 void prismaServiceFacadeDelegateInferenceChecked;
 
+type ObservableTransactionBoundary = {
+  settled: PromiseLike<void>;
+};
+
+function isObservableTransactionBoundary(value: unknown): value is ObservableTransactionBoundary {
+  if (typeof value !== 'object' || value === null || !('settled' in value)) {
+    return false;
+  }
+
+  const { settled } = value;
+
+  return typeof settled === 'object' && settled !== null && 'then' in settled;
+}
+
+function observeActiveTransactionBoundaryDrain(prisma: object): Promise<void> {
+  const activeTransactionBoundaries = Reflect.get(prisma, 'activeTransactionBoundaries');
+
+  if (!(activeTransactionBoundaries instanceof Set) || activeTransactionBoundaries.size !== 1) {
+    throw new Error('Expected exactly one active transaction boundary before shutdown.');
+  }
+
+  const [activeTransactionBoundary] = activeTransactionBoundaries;
+
+  if (!isObservableTransactionBoundary(activeTransactionBoundary)) {
+    throw new Error('Expected the active transaction boundary to expose its settlement promise.');
+  }
+
+  let markDrainStarted!: () => void;
+  const drainStarted = new Promise<void>((resolve) => {
+    markDrainStarted = resolve;
+  });
+  const settled = activeTransactionBoundary.settled;
+
+  activeTransactionBoundary.settled = {
+    then(onfulfilled, onrejected) {
+      markDrainStarted();
+      return settled.then(onfulfilled, onrejected);
+    },
+  };
+
+  return drainStarted;
+}
+
 describe('@fluojs/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
     const events: string[] = [];
@@ -1107,8 +1150,10 @@ describe('@fluojs/prisma', () => {
       });
 
       await callbackStarted;
+      const boundaryDrainStarted = observeActiveTransactionBoundaryDrain(prisma);
       const shutdown = app.close();
 
+      await boundaryDrainStarted;
       expect(events).toEqual(['connect', 'manual:callback-start']);
 
       releaseCallback();
@@ -1171,8 +1216,11 @@ describe('@fluojs/prisma', () => {
       const openTransaction = service.holdOpen();
 
       await callbackStarted;
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const boundaryDrainStarted = observeActiveTransactionBoundaryDrain(prisma);
       const shutdown = app.close();
 
+      await boundaryDrainStarted;
       expect(events).toEqual(['connect', 'service:callback-start']);
 
       releaseCallback();
