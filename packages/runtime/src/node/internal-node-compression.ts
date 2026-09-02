@@ -1,5 +1,5 @@
-import { createBrotliCompress, createGzip, type BrotliCompress, type Gzip } from 'node:zlib';
 import type { ServerResponse } from 'node:http';
+import { type BrotliCompress, createBrotliCompress, createGzip, type Gzip } from 'node:zlib';
 
 import type {
   FrameworkResponseCompression,
