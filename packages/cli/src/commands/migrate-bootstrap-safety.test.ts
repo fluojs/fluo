@@ -125,4 +125,79 @@ void bootstrap();
       }),
     );
   });
+
+  it('preserves a cross-function shadowed app.listen binding', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const source = `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function createOnly() {
+  const app = await NestFactory.create(AppModule);
+  configure(app);
+}
+
+async function unrelatedServer(app: { listen(port: number): Promise<void> }) {
+  await app.listen(3000);
+}
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { changedFiles: number; warningCount: number };
+    expect(exitCode).toBe(0);
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(report.changedFiles).toBe(0);
+    expect(report.warningCount).toBe(1);
+  });
+
+  it('preserves reassigned and escaped bootstrap bindings', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const source = `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function reassigned() {
+  let app = await NestFactory.create(AppModule);
+  app = createUnrelatedServer();
+  await app.listen(3000);
+}
+
+async function escaped() {
+  const app = await NestFactory.create(AppModule);
+  register(app);
+  await app.listen(4000);
+}
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { changedFiles: number; warningCount: number };
+    expect(exitCode).toBe(0);
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(report.changedFiles).toBe(0);
+    expect(report.warningCount).toBe(2);
+  });
 });

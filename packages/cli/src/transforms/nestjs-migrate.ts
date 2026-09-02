@@ -1144,9 +1144,14 @@ function rewriteBootstrap(
 ): { changed: boolean; source: string; warnings: MigrationWarning[] } {
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
-  const createCalls = new Map<string, ts.CallExpression>();
-  const listenCalls = new Map<string, ts.CallExpression[]>();
-  const portFoldedApps = new Set<string>();
+  const bootstrapBindings = new Map<string, {
+    declaration: ts.VariableDeclaration;
+    functionOwner: ts.FunctionLikeDeclaration;
+    listenCalls: ts.CallExpression[];
+    name: string;
+    scope: ts.Block;
+  }>();
+  const portFoldedListenCallKeys = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
   let usesExpressAdapter = false;
@@ -1166,10 +1171,16 @@ function rewriteBootstrap(
   }
 
   function getSupportedListenCall(
-    appVariable: string,
+    binding: {
+      declaration: ts.VariableDeclaration;
+      functionOwner: ts.FunctionLikeDeclaration;
+      listenCalls: ts.CallExpression[];
+      name: string;
+      scope: ts.Block;
+    },
     createCall: ts.CallExpression,
-  ): { portExpression: ts.NumericLiteral } | { category: 'bootstrap-port' | 'bootstrap-unsupported'; node: ts.Node; reason: string } {
-    const appListenCalls = listenCalls.get(appVariable) ?? [];
+  ): { listenCall: ts.CallExpression; portExpression: ts.NumericLiteral } | { category: 'bootstrap-port' | 'bootstrap-unsupported'; node: ts.Node; reason: string } {
+    const appListenCalls = binding.listenCalls;
     if (appListenCalls.length === 0) {
       return {
         category: 'bootstrap-unsupported',
@@ -1195,6 +1206,14 @@ function rewriteBootstrap(
       };
     }
 
+    if (hasEscapedBindingUse(binding)) {
+      return {
+        category: 'bootstrap-unsupported',
+        node: createCall,
+        reason: 'Unable to prove that this NestFactory.create result owns the app.listen(...) call.',
+      };
+    }
+
     const [portExpression] = listenCall.arguments;
     if (listenCall.arguments.length !== 1 || !portExpression || !ts.isNumericLiteral(portExpression)) {
       return {
@@ -1204,7 +1223,65 @@ function rewriteBootstrap(
       };
     }
 
-    return { portExpression };
+    return { listenCall, portExpression };
+  }
+
+  function enclosingFunction(node: ts.Node): ts.FunctionLikeDeclaration | undefined {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isFunctionLike(current)) {
+        return current;
+      }
+
+      current = current.parent;
+    }
+
+    return undefined;
+  }
+
+  function enclosingBlock(node: ts.Node): ts.Block | undefined {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isBlock(current)) {
+        return current;
+      }
+
+      current = current.parent;
+    }
+
+    return undefined;
+  }
+
+  function hasEscapedBindingUse(binding: {
+    declaration: ts.VariableDeclaration;
+    functionOwner: ts.FunctionLikeDeclaration;
+    listenCalls: ts.CallExpression[];
+    name: string;
+    scope: ts.Block;
+  }): boolean {
+    let escaped = false;
+    const [listenCall] = binding.listenCalls;
+
+    const inspectBindingUse = (node: ts.Node): void => {
+      if (node !== binding.functionOwner && ts.isFunctionLike(node)) {
+        return;
+      }
+
+      if (
+        ts.isIdentifier(node)
+        && node.text === binding.name
+        && node !== binding.declaration.name
+        && node !== listenCall?.expression.expression
+      ) {
+        escaped = true;
+        return;
+      }
+
+      ts.forEachChild(node, inspectBindingUse);
+    };
+
+    inspectBindingUse(binding.functionOwner);
+    return escaped;
   }
 
   function warnUnsupportedListen(node: ts.Node, category: 'bootstrap-port' | 'bootstrap-unsupported', reason: string): void {
@@ -1281,7 +1358,7 @@ function rewriteBootstrap(
     return found;
   }
 
-  const inspect = (node: ts.Node): void => {
+  const inspectCreates = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && node.initializer) {
       const initializer = ts.isAwaitExpression(node.initializer) ? node.initializer.expression : node.initializer;
       if (
@@ -1291,27 +1368,47 @@ function rewriteBootstrap(
         && ts.isIdentifier(initializer.expression.expression)
         && initializer.expression.expression.text === 'NestFactory'
         && initializer.expression.name.text === 'create'
+        && ts.isVariableDeclarationList(node.parent)
+        && (node.parent.flags & ts.NodeFlags.Const) !== 0
       ) {
-        createCalls.set(node.name.text, initializer);
+        const functionOwner = enclosingFunction(node);
+        const scope = enclosingBlock(node);
+        if (functionOwner && scope) {
+          bootstrapBindings.set(toCallKey(initializer), {
+            declaration: node,
+            functionOwner,
+            listenCalls: [],
+            name: node.name.text,
+            scope,
+          });
+        }
       }
     }
 
+    ts.forEachChild(node, inspectCreates);
+  };
+
+  const inspectListens = (node: ts.Node): void => {
     if (
       ts.isCallExpression(node)
       && ts.isPropertyAccessExpression(node.expression)
       && ts.isIdentifier(node.expression.expression)
       && node.expression.name.text === 'listen'
     ) {
-      const appVariable = node.expression.expression.text;
-      const calls = listenCalls.get(appVariable) ?? [];
-      calls.push(node);
-      listenCalls.set(appVariable, calls);
+      const functionOwner = enclosingFunction(node);
+      const scope = enclosingBlock(node);
+      for (const binding of bootstrapBindings.values()) {
+        if (binding.name === node.expression.expression.text && binding.functionOwner === functionOwner && binding.scope === scope) {
+          binding.listenCalls.push(node);
+        }
+      }
     }
 
-    ts.forEachChild(node, inspect);
+    ts.forEachChild(node, inspectListens);
   };
 
-  inspect(sourceFile);
+  inspectCreates(sourceFile);
+  inspectListens(sourceFile);
 
   const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
     const visit = (node: ts.Node): ts.Node => {
@@ -1323,16 +1420,15 @@ function rewriteBootstrap(
             return node;
           }
 
-          const ownerEntry = [...createCalls.entries()].find(([, callExpression]) => callExpression.pos === node.pos && callExpression.end === node.end);
-          if (!ownerEntry) {
+          const binding = bootstrapBindings.get(toCallKey(node));
+          if (!binding) {
             warnUnsupportedCreate(node, 'Unable to associate this NestFactory.create call with a named application variable and app.listen(...) call.');
             return node;
           }
 
-          const [appVariable] = ownerEntry;
-          const listenCall = getSupportedListenCall(appVariable, node);
-          if ('reason' in listenCall) {
-            warnUnsupportedListen(listenCall.node, listenCall.category, listenCall.reason);
+          const supportedListenCall = getSupportedListenCall(binding, node);
+          if ('reason' in supportedListenCall) {
+            warnUnsupportedListen(supportedListenCall.node, supportedListenCall.category, supportedListenCall.reason);
             return node;
           }
 
@@ -1347,12 +1443,12 @@ function rewriteBootstrap(
               'adapter',
               createExpressAdapter(
                 ts.factory.createObjectLiteralExpression([
-                  ts.factory.createPropertyAssignment('port', listenCall.portExpression),
+                  ts.factory.createPropertyAssignment('port', supportedListenCall.portExpression),
                 ], true),
               ),
             ),
           ], true)];
-          portFoldedApps.add(appVariable);
+          portFoldedListenCallKeys.add(toCallKey(supportedListenCall.listenCall));
           rewrittenCreateCallKeys.add(toCallKey(node));
 
           return ts.factory.updateCallExpression(
@@ -1364,8 +1460,7 @@ function rewriteBootstrap(
         }
 
         if (ts.isIdentifier(node.expression.expression) && node.expression.name.text === 'listen') {
-          const appVariable = node.expression.expression.text;
-          if (createCalls.has(appVariable) && node.arguments.length > 0 && portFoldedApps.has(appVariable)) {
+          if (node.arguments.length > 0 && portFoldedListenCallKeys.has(toCallKey(node))) {
             return ts.factory.updateCallExpression(node, node.expression, node.typeArguments, []);
           }
         }
