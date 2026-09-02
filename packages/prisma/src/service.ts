@@ -163,6 +163,7 @@ export class PrismaService<
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionBoundaries = new Set<ActiveTransactionBoundary>();
   private connectTransition?: Promise<void>;
+  private shutdownTransition?: Promise<void>;
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
 
@@ -291,7 +292,27 @@ export class PrismaService<
     }
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  onApplicationShutdown(): Promise<void> {
+    if (this.lifecycleState === 'stopped') {
+      return Promise.resolve();
+    }
+
+    if (this.shutdownTransition) {
+      return this.shutdownTransition;
+    }
+
+    const shutdownTransition = this.completeApplicationShutdown();
+    this.shutdownTransition = shutdownTransition;
+    void shutdownTransition.then(undefined, () => {
+      if (this.shutdownTransition === shutdownTransition) {
+        this.shutdownTransition = undefined;
+      }
+    });
+
+    return shutdownTransition;
+  }
+
+  private async completeApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
 
     for (const transaction of this.activeRequestTransactions) {
