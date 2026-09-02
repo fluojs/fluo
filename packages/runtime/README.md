@@ -440,6 +440,19 @@ const jsonLogger = createJsonApplicationLogger();
 
 Use CLI reporter flags such as `fluo dev --verbose` when you need raw child-process output from the development command instead.
 
+### Node Compression Failure Migration
+
+**Breaking change:** When response compression fails before a Node response commits,
+`FrameworkResponse.send()` rejects. Adapter integrations must await that promise and handle the
+rejection; they must not swallow it or assume that an uncompressed success response was sent.
+
+For dispatcher-managed requests, the runtime recovers by writing its JSON 500 envelope. The
+adapter removes a `Content-Type` it assigned for the failed body so the envelope uses
+`application/json`; an explicit `Content-Type` set by application code remains unchanged.
+Consumers that relied on a fulfilled `send()` or a stale adapter-assigned `text/plain` or
+`application/octet-stream` header must handle the rejection or fallback explicitly and set any
+required application-owned header themselves.
+
 Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
 
 ## Related Packages

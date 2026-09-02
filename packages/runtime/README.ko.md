@@ -439,6 +439,20 @@ const jsonLogger = createJsonApplicationLogger();
 
 개발 명령의 raw child-process 출력이 필요하면 대신 `fluo dev --verbose` 같은 CLI reporter flag를 사용하세요.
 
+### Node 압축 실패 마이그레이션
+
+**호환성 깨짐:** Node response가 commit되기 전에 압축이 실패하면
+`FrameworkResponse.send()`는 reject됩니다. 어댑터 integration은 이 promise를 await하고
+rejection을 처리해야 하며, 압축되지 않은 성공 response가 전송되었다고 가정하거나 오류를
+무시하면 안 됩니다.
+
+dispatcher가 관리하는 request는 runtime의 JSON 500 envelope로 복구됩니다. 어댑터는 실패한
+body에 자신이 추가한 `Content-Type`만 제거하므로 envelope는 `application/json`을 사용하고,
+애플리케이션 코드가 명시한 `Content-Type`은 변경되지 않습니다. fulfilled `send()`나
+adapter가 추가한 오래된 `text/plain` 또는 `application/octet-stream` header에 의존한
+consumer는 rejection 또는 fallback을 명시적으로 처리하고 필요한 application-owned header를
+직접 설정해야 합니다.
+
 더 저수준의 Node compression internals는 공개 `@fluojs/runtime/node` 계약이 아니라 `@fluojs/runtime/internal-node` seam 뒤에 둡니다.
 
 ## 관련 패키지
