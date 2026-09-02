@@ -2,7 +2,8 @@ import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } fro
 import { SUPPORTED_HMAC_HASH } from '../signing/algorithm-policy.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
 import type { DefaultJwtVerifier } from '../signing/verifier.js';
-import type { JwtAlgorithm, JwtClaims } from '../types.js';
+import type { JwtAlgorithm } from '../types.js';
+import { type RefreshTokenClaims, verifyRefreshTokenClaims } from './refresh-token-claims.js';
 
 /**
  * Describes the refresh token store contract.
@@ -120,12 +121,6 @@ export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | unde
   };
 }
 
-interface RefreshTokenClaims extends JwtClaims {
-  family: string;
-  jti: string;
-  type: 'refresh';
-}
-
 /**
  * Represents the refresh token service.
  */
@@ -148,7 +143,7 @@ export class RefreshTokenService {
   }
 
   async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    const claims = await this.verifyRefreshClaims(currentToken);
+    const claims = await verifyRefreshTokenClaims(this.verifier, currentToken);
 
     if (this.options.rotation) {
       if (!this.options.store.rotate && !this.options.store.consume) {
@@ -225,6 +220,20 @@ export class RefreshTokenService {
     await this.options.store.revoke(tokenId);
   }
 
+  /**
+   * Revokes the record identified by a verified presented refresh token.
+   *
+   * @param token Compact refresh token to verify before its record is revoked.
+   * @returns A promise that resolves after the verified refresh-token record is revoked.
+   * @throws {JwtInvalidTokenError} When the token is malformed or lacks required refresh claims.
+   * @throws {JwtExpiredTokenError} When the refresh token has expired.
+   */
+  async revokePresentedRefreshToken(token: string): Promise<void> {
+    const claims = await verifyRefreshTokenClaims(this.verifier, token);
+
+    await this.options.store.revoke(claims.jti);
+  }
+
   async revokeAllForSubject(subject: string): Promise<void> {
     await this.options.store.revokeBySubject(subject);
   }
@@ -285,34 +294,5 @@ export class RefreshTokenService {
     const token = await this.signer.signRefreshToken(claims);
 
     return { record, token };
-  }
-
-  private async verifyRefreshClaims(token: string): Promise<RefreshTokenClaims & { sub: string }> {
-    const principal = await this.verifier.verifyRefreshToken(token);
-    const claims = principal.claims;
-
-    if (claims.type !== 'refresh') {
-      throw new JwtInvalidTokenError('JWT is not a refresh token.');
-    }
-
-    if (typeof claims.jti !== 'string' || claims.jti.length === 0) {
-      throw new JwtInvalidTokenError('Refresh token is missing jti.');
-    }
-
-    if (typeof claims.family !== 'string' || claims.family.length === 0) {
-      throw new JwtInvalidTokenError('Refresh token is missing family.');
-    }
-
-    if (typeof claims.sub !== 'string' || claims.sub.length === 0) {
-      throw new JwtInvalidTokenError('Refresh token is missing sub.');
-    }
-
-    return {
-      ...claims,
-      family: claims.family,
-      jti: claims.jti,
-      sub: claims.sub,
-      type: 'refresh',
-    };
   }
 }

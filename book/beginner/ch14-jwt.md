@@ -301,10 +301,16 @@ export class AuthService {
   async refresh(refreshToken: string) {
     return this.refreshTokens.rotateRefreshToken(refreshToken);
   }
+
+  async signOut(refreshToken: string): Promise<void> {
+    await this.refreshTokens.revokePresentedRefreshToken(refreshToken);
+  }
 }
 ```
 
 `JwtService.sign(...)` and `JwtService.verify(...)` always return Promises. When migrating NestJS code, use those names with `await`; fluo does not provide `signAsync()` or `verifyAsync()` aliases. `JwtService.decode(...)` is synchronous but only parses unverified input, so use it for diagnostics at most and call `await jwtService.verify(...)` before trusting claims.
+
+For single-session logout, pass the compact token from the caller to `RefreshTokenService.revokePresentedRefreshToken(...)`. It verifies the signature, expiry, refresh-token `type`, `jti`, `family`, and `sub` before revoking the durable record. Keep `revokeRefreshToken(tokenId)` for trusted record IDs only; it does not accept a compact token.
 
 ### Securing Refresh Tokens
 Because refresh tokens are long lived, they must be stored with special care. On the web, the standard is to store them in `httpOnly`, `secure`, `sameSite: 'strict'` cookies. This prevents JavaScript from accessing the token through cross-site scripting (XSS) attacks. Fluo's Authentication patterns are designed to work smoothly with both cookie based and header based token delivery, giving you the flexibility to choose the security model that best fits the client type, whether that client is a browser, a native mobile app, or another server. For mobile apps, it is also recommended to use secure enclaves or keychain storage to protect these persistent credentials from unauthorized extraction.

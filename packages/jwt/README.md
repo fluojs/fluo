@@ -190,6 +190,14 @@ Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current 
 
 When reuse is detected, stores that implement the optional `revokeByFamily(family)` capability revoke only the compromised token family. Existing stores remain source-compatible: if `revokeByFamily(...)` is absent, `RefreshTokenService` conservatively falls back to `revokeBySubject(subject)`, which also revokes the subject's independent refresh-token families. Implement `revokeByFamily(...)` in production stores when separate device or session families must remain active after another family is compromised.
 
+For single-session logout, pass the compact token that the caller presented to `revokePresentedRefreshToken(...)`:
+
+```typescript
+await refreshTokens.revokePresentedRefreshToken(refreshToken);
+```
+
+This verifies the signature, expiry, `type`, `jti`, `family`, and `sub` claims before revoking the matching record. `revokeRefreshToken(tokenId)` remains available for callers that already hold a trusted record ID; do not pass a raw compact token to that ID-based method.
+
 ## Configuration Guardrails
 
 JWT signing and access-token verification require at least one supported algorithm in `algorithms`. Refresh-token signing and verification use `refreshToken.algorithms` when configured, or the top-level HMAC algorithms for backward compatibility. The built-in signer supports `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, and `ES512`; configuration with an empty algorithm list fails fast instead of issuing or accepting ambiguous tokens.
@@ -218,7 +226,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 - `DefaultJwtVerifier`: Handles token validation and normalization.
 - `JwtService`: A convenience facade combining signing and verification.
 - `JwksClient`: Fetches and caches remote JWKS keys with bounded request timeouts.
-- `RefreshTokenService`: Issues, rotates, and revokes refresh tokens when `refreshToken` options are configured.
+- `RefreshTokenService`: Issues, rotates, and revokes refresh tokens when `refreshToken` options are configured. `revokePresentedRefreshToken(...)` verifies a compact refresh token before revoking its record; `revokeRefreshToken(tokenId)` is the trusted-ID alternative.
 
 ### Types
 - `JwtPrincipal`: The normalized identity object (`subject`, `roles`, `scopes`, `claims`).
