@@ -2592,6 +2592,27 @@ describe('repository governance contracts', () => {
   it('keeps PR CI governance-gated', () => {
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
     const vitestConfig = readFileSync(resolve(repoRoot, 'vitest.config.ts'), 'utf8');
+    const workflowLines = ciWorkflow.split('\n');
+    const verifyJobStart = workflowLines.indexOf('  verify:');
+    const verifyJobEnd = workflowLines.findIndex(
+      (line, index) => index > verifyJobStart && /^ {2}\S.*:$/u.test(line),
+    );
+    const verifyJobLines = workflowLines.slice(
+      verifyJobStart,
+      verifyJobEnd === -1 ? undefined : verifyJobEnd,
+    );
+    const verifyNeedsStart = verifyJobLines.indexOf('    needs:');
+    const directNeeds = (jobLines: readonly string[]): string[] => {
+      const needsStart = jobLines.indexOf('    needs:');
+      const needsEnd = jobLines.findIndex(
+        (line, index) => index > needsStart && !line.startsWith('      - '),
+      );
+
+      return jobLines
+        .slice(needsStart + 1, needsEnd === -1 ? undefined : needsEnd)
+        .map((line) => line.slice('      - '.length));
+    };
+    const verifyNeeds = directNeeds(verifyJobLines);
 
     expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
     expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
@@ -2617,6 +2638,14 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toContain('build-and-typecheck:');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
+    expect(verifyJobStart).toBeGreaterThanOrEqual(0);
+    expect(verifyNeedsStart).toBeGreaterThanOrEqual(0);
+    expect(verifyNeeds).toContain('deno-platform');
+    expect(() => {
+      expect(
+        directNeeds(verifyJobLines.filter((line) => line !== '      - deno-platform')),
+      ).toContain('deno-platform');
+    }).toThrow();
     expect(ciWorkflow).toMatch(
       /studio-browser:\n\s+name: Studio browser\n\s+runs-on: ubuntu-latest\n\s+needs:\n\s+- resolve-pr-verification-scope\n\n\s+steps:/u,
     );

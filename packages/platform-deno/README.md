@@ -153,6 +153,8 @@ Advanced options include injectable `serve` and `upgradeWebSocket` seams for tes
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, single byte-range status/header/body semantics, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
+The Deno 2 smoke lane checks the public `npm:@fluojs/platform-deno` root import and executes the built adapter closure natively. It dispatches a host-owned `createDenoFetchHandler(...)` request without a listener, then starts `runDenoApplication(...)` on port `0` with `shutdownSignals: false`, fetches a real route, and closes the application. Signal ownership remains disabled for that managed-listener test; signal registration is covered separately by the package-local contract suite.
+
 ## Public API Overview
 
 - `createDenoAdapter(options)`: Factory for the Deno HTTP adapter; it shares validation and normalization with direct construction.

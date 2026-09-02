@@ -569,10 +569,10 @@ function closeDenoServerWithDrain(
       : await gracefulClose;
 
     if (closeResult.kind === 'graceful') {
-      abortController?.abort();
       const rejected = closeResult.results.find((result) => result.status === 'rejected');
 
       if (rejected?.status === 'rejected') {
+        abortController?.abort();
         closeFailure = { error: rejected.reason };
       }
     } else {
