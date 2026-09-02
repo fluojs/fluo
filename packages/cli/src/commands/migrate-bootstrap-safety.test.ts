@@ -258,7 +258,7 @@ async function functionShadow() {
     expect(transformed).toContain('await app.listen(3001);');
     expect(transformed).toContain('await app.listen(3002);');
     expect(transformed).toContain('await app.listen(3003);');
-    expect(report.warningCount).toBe(3);
+    expect(report.warningCount).toBe(0);
   });
 
   it('preserves closure-captured bootstraps but transforms a nested shadow with a safe numeric listen', async () => {
@@ -345,5 +345,87 @@ async function bootstrap() {
     expect(transformed).toMatch(/port:\s*3000/);
     expect(transformed).toContain('await app.listen();');
     expect(report.warningCount).toBe(0);
+  });
+
+  it('retains the NestFactory value import when another value reference remains after a safe bootstrap rewrite', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+
+const applicationContext = NestFactory.createApplicationContext(AppModule);
+const factoryReference = NestFactory;
+void NestFactory;
+void applicationContext;
+void factoryReference;
+`,
+    );
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { warningCount: number };
+    const transformed = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(transformed).toContain("import { NestFactory } from '@nestjs/core';");
+    expect(transformed).toContain('FluoFactory.create(AppModule');
+    expect(transformed).toContain('NestFactory.createApplicationContext(AppModule)');
+    expect(transformed).toContain('const factoryReference = NestFactory;');
+    expect(transformed).toContain('void NestFactory;');
+    expect(report.warningCount).toBe(0);
+  });
+
+  it('warns for unsupported real NestFactory.create calls but not type-only import shadows', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const source = `import { NestFactory } from '@nestjs/core';
+import type { NestFactory as NestFactoryType } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function unsupportedBootstrap() {
+  const app = await NestFactory.create(AppModule, { logger: false });
+  await app.listen(3000);
+}
+
+async function parameterShadow(NestFactoryType: { create(): Promise<{ listen(port: number): Promise<void> }> }) {
+  const app = await NestFactoryType.create();
+  await app.listen(3001);
+}
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as { changedFiles: number; warningCount: number };
+    expect(exitCode).toBe(0);
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(report.changedFiles).toBe(0);
+    expect(report.warningCount).toBe(1);
   });
 });

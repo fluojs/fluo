@@ -1204,26 +1204,7 @@ function rewriteBootstrap(
   const portFoldedListenCallKeys = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
-  const nestFactoryImportLocalNames = new Set<string>();
   let usesExpressAdapter = false;
-
-  for (const statement of sourceFile.statements) {
-    if (
-      !ts.isImportDeclaration(statement)
-      || !ts.isStringLiteral(statement.moduleSpecifier)
-      || statement.moduleSpecifier.text !== '@nestjs/core'
-      || !statement.importClause?.namedBindings
-      || !ts.isNamedImports(statement.importClause.namedBindings)
-    ) {
-      continue;
-    }
-
-    for (const element of statement.importClause.namedBindings.elements) {
-      if ((element.propertyName ?? element.name).text === 'NestFactory') {
-        nestFactoryImportLocalNames.add(element.name.text);
-      }
-    }
-  }
 
   function toCallKey(callExpression: ts.CallExpression): string {
     return `${callExpression.pos}:${callExpression.end}`;
@@ -1425,18 +1406,20 @@ function rewriteBootstrap(
     };
   }
 
-  function hasUnconvertedNestFactoryCreate(): boolean {
+  function hasUnconvertedNestFactoryValueReference(): boolean {
     let found = false;
 
     const inspect = (node: ts.Node): void => {
-      const createCall = nestFactoryCreateCall(node);
-      if (
-        createCall
-        && isNestFactoryValueImportReference(createCall.receiver)
-        && !rewrittenCreateCallKeys.has(toCallKey(createCall.call))
-      ) {
-        found = true;
-        return;
+      if (ts.isIdentifier(node) && isNestFactoryValueImportReference(node) && !ts.isImportSpecifier(node.parent)) {
+        const createCall = nestFactoryCreateCall(node.parent.parent);
+        const isRewrittenCreateReceiver =
+          createCall
+          && createCall.receiver === node
+          && rewrittenCreateCallKeys.has(toCallKey(createCall.call));
+        if (!isRewrittenCreateReceiver) {
+          found = true;
+          return;
+        }
       }
 
       ts.forEachChild(node, inspect);
@@ -1502,9 +1485,6 @@ function rewriteBootstrap(
         const createCall = nestFactoryCreateCall(node);
         if (createCall) {
           if (!isNestFactoryValueImportReference(createCall.receiver)) {
-            if (nestFactoryImportLocalNames.has(createCall.receiver.text)) {
-              warnUnsupportedCreate(node, 'NestFactory.create does not resolve to a value import from @nestjs/core.');
-            }
             return node;
           }
 
@@ -1578,7 +1558,7 @@ function rewriteBootstrap(
 
   let nextSource = printer.printFile(transformed);
 
-  if (!hasUnconvertedNestFactoryCreate()) {
+  if (!hasUnconvertedNestFactoryValueReference()) {
     const removed = removeNestFactoryValueImports(nextSource, filePath);
     nextSource = removed.source;
   }

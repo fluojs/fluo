@@ -476,6 +476,7 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.md': {
         base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
         head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
           '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
           'Use `setCookie` with `maxAgeSeconds` for cookie migration.',
         ].join('\n'),
@@ -483,6 +484,7 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.ko.md': {
         base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
         head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
           '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
           '`setCookie`와 `maxAgeSeconds`로 cookie를 migration한다.',
         ].join('\n'),
