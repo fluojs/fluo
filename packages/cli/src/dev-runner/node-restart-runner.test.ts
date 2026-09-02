@@ -370,6 +370,40 @@ describe('Node restart runner watcher failures', () => {
     expect(stderr.join('')).toContain(`[fluo] unable to watch ${dynamicDirectory}: dynamic watcher unavailable`);
   });
 
+  it('stops the child when the required source target is absent before target discovery', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-watcher-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const signalTarget = createSignalTarget();
+    const stderr: string[] = [];
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const children: ChildProcess[] = [];
+
+    const runPromise = runNodeRestartRunner({
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: () => {
+        const child = createMockChild(signals);
+        children.push(child);
+        return child;
+      },
+      stderr: { write: (message) => stderr.push(message) },
+      watchTarget: () => new TestWatcher(),
+    });
+
+    expect(signals).toEqual(['SIGTERM']);
+    const activeChild = children[0];
+    if (!activeChild) {
+      throw new Error('Expected the active app child');
+    }
+    closeMockChild(activeChild, 0);
+
+    await expect(runPromise).resolves.toBe(1);
+    expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
+    expect(stderr.join('')).toContain(`[fluo] watcher failed for ${sourceDirectory}: ENOENT`);
+  });
+
   it('stops the child when the source target disappears after target discovery', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-watcher-'));
     createdDirectories.push(workspaceDirectory);

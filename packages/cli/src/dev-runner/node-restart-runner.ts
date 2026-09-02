@@ -302,7 +302,7 @@ export function createContentChangeGate(projectDirectory: string, ignorePatterns
 }
 
 function getWatchTargets(projectDirectory: string): string[] {
-  return [join(projectDirectory, 'src'), ...WATCH_FILES.map((fileName) => join(projectDirectory, fileName))].filter((target) => existsSync(target));
+  return [join(projectDirectory, 'src'), ...WATCH_FILES.map((fileName) => join(projectDirectory, fileName)).filter((target) => existsSync(target))];
 }
 
 function stopChild(child: ChildProcess | undefined, shutdownTimeoutMs = DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS): void {
