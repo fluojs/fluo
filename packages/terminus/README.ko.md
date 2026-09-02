@@ -151,7 +151,7 @@ TerminusModule.forRoot({
 
 인디케이터가 `down` 결과를 반환하거나 `HealthCheckError`를 던지면, `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
-- 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
+- `/health`는 집계된 `HealthCheckReport` 진단을 반환하며 그 report가 healthy일 때만 HTTP `200`을 반환하고, indicator 하나라도 실패하면 HTTP `503`을 반환합니다.
 - `readiness`를 생략했거나 `true`인 indicator가 실패하거나, custom readiness check가 `false`를 반환하거나, runtime shutdown이 시작되었거나, platform readiness가 `ready`가 아닌 경우 `/ready`는 HTTP `503`을 반환합니다. `readiness: false`인 indicator는 `/health`에는 계속 기여하지만 `/ready`를 차단하지 않습니다. Platform `critical` metadata는 diagnostics에 보존되지만 HTTP readiness endpoint 자체는 binary ready/unavailable gate이며 warning severity bucket을 노출하지 않습니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
@@ -168,7 +168,7 @@ TerminusModule.forRoot({
 
 `@nestjs/terminus`에서 마이그레이션할 때는 `TerminusModule.forRoot(...)`를 fluo의 기본 API로 취급하세요. fluo는 `HealthCheckService.check([...])`를 호출하는 controller-level `@HealthCheck()` 메서드를 주요 애플리케이션 계약으로 모델링하지 않습니다. 테스트나 커스텀 애플리케이션 코드에서 `TerminusHealthService.check()`를 직접 호출할 수는 있지만, 프로덕션 엔드포인트 등록은 indicator와 readiness hook을 module option에 두어 runtime `/health`와 `/ready` 경로가 platform diagnostics를 일관되게 포함하도록 해야 합니다.
 
-Terminus는 별도의 process-only liveness route도 기본으로 만들지 않습니다. 기본 route model은 집계 헬스를 위한 `GET /health`, readiness를 위한 `GET /ready`입니다. 배포 환경에서 좁은 의미의 process liveness probe가 필요하다면, Terminus가 NestJS-style 추가 route를 만들어 준다고 가정하지 말고 애플리케이션 또는 배포 계층에서 해당 probe를 정의하세요. 이 runtime-owned route는 NestJS controller의 `@HealthCheck()` 또는 `@UseGuards()` metadata를 채택하지 않으므로, application 또는 adapter middleware, network policy, deployment-owned probe boundary에서 보호해야 합니다.
+Terminus는 별도의 process-only liveness route도 기본으로 만들지 않습니다. 기본 route model은 집계 진단을 위한 `GET /health`, HTTP `200` 또는 `503`의 binary readiness를 위한 `GET /ready`입니다. 배포 환경에서 좁은 의미의 process liveness probe가 필요하다면, Terminus가 NestJS-style 추가 route를 만들어 준다고 가정하지 말고 애플리케이션 또는 배포 계층에서 해당 probe를 정의하세요. 이 runtime-owned route는 NestJS controller의 `@HealthCheck()` 또는 `@UseGuards()` metadata를 명시적으로 거부하므로, path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary에서 보호해야 합니다.
 
 Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js memory 및 disk check에는 `@fluojs/terminus/node`를 사용하고, Redis check에는 `@fluojs/terminus/redis`를 사용하세요. Prisma와 Drizzle provider helper는 token-only DI seam을 해석하므로 해당 선택적 peer가 없어도 root package import는 안전하게 유지되며, Node disk filesystem access도 lazy하게 유지되어 애플리케이션이 runtime-specific probe에 명시적으로 opt in합니다.
 

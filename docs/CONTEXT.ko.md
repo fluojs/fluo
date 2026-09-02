@@ -56,9 +56,9 @@ module을 import해야 하며, 이름이 runtime container를 분리하지는 �
 
 ## Terminus NestJS 마이그레이션
 
-<!-- fluo-terminus-migration-contract: registration=TerminusModule.forRoot;endpoints=/health,/ready;unhealthy-status=503;report=HealthCheckReport -->
+<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready=binary-status;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary -->
 
-`@fluojs/terminus`는 NestJS `@HealthCheck()` decorator의 치환물이 아니라 애플리케이션이 소유하는 health composition입니다. 작성한 module에 `TerminusModule.forRoot(...)`를 등록하고 runtime이 `/health`, `/ready`를 노출하게 하세요. 비정상 indicator 또는 readiness report가 있으면 해당 endpoint는 HTTP `503`을 반환하며, `HealthCheckReport`는 집계된 `status`, `contributors`, `info`, `error`, `details` 보고서를 보존합니다. indicator 등록과 failure semantics의 운영 기준은 package README이고, [NestJS 마이그레이션 맵](./getting-started/migrate-from-nestjs.ko.md)은 마이그레이션 경계를, [Chapter 18](../book/beginner/ch18-health.ko.md)은 학습 경로를 설명합니다.
+`@fluojs/terminus`는 NestJS `@HealthCheck()` decorator의 치환물이 아니라 애플리케이션이 소유하는 health composition입니다. 작성한 module에 `TerminusModule.forRoot(...)`를 등록하고 runtime이 `/health`, `/ready`를 노출하게 하세요. `/health`는 집계된 `HealthCheckReport` 진단을 반환하고 `/ready`는 binary ready/unavailable endpoint이며, 각각 조건이 성공하면 HTTP `200`, 실패하면 HTTP `503`을 반환합니다. Terminus는 기본 process-only liveness route를 만들지 않으며 runtime-owned route는 controller `@UseGuards()` metadata를 거부합니다. 보호는 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary에 두세요. indicator 등록과 failure semantics의 운영 기준은 package README이고, [NestJS 마이그레이션 맵](./getting-started/migrate-from-nestjs.ko.md)은 마이그레이션 경계를, [Chapter 18](../book/beginner/ch18-health.ko.md)은 학습 경로를 설명합니다.
 
 ## 정적 에셋 제공
 
