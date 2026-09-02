@@ -441,6 +441,35 @@ describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
         new Set(['@fluojs/prisma']),
       )).not.toThrow();
   });
+
+  it('rejects an explicit partial equality package range that exceeds a full-version dependency', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('=20', '20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.0\.1/u);
+  });
+
+  it.each([
+    ['>=20.1', '>=20.1.0'],
+    ['<20.2', '<20.2.0'],
+    ['>20', '>=21.0.0'],
+    ['20.0.0', '=20'],
+  ])('accepts npm-equivalent partial comparator ranges %s and %s', (packageRange, dependencyRange) => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges(packageRange, dependencyRange),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('rejects a partial less-than-or-equal package range that exceeds a full-version dependency', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('<=20', '<=20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.999\.999/u);
+  });
 });
 
 describe('enforcePlatformFastifyEngineDocumentation', () => {

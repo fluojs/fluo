@@ -124,19 +124,31 @@ function parseNodeEngineComparator(value) {
   assert(match !== null, `Unsupported Node engine comparator "${value}".`);
 
   const version = parseNodeEngineVersion(match[2]);
-  if (match[1] !== undefined || match[2].split('.').length === 3) {
+  const upperVersion = match[2].includes('.')
+    ? { major: version.major, minor: version.minor + 1, patch: 0 }
+    : { major: version.major + 1, minor: 0, patch: 0 };
+
+  if (match[2].split('.').length === 3) {
     return [{ operator: match[1] ?? '=', version }];
   }
 
-  return [
-    { operator: '>=', version },
-    {
-      operator: '<',
-      version: match[2].includes('.')
-        ? { major: version.major, minor: version.minor + 1, patch: 0 }
-        : { major: version.major + 1, minor: 0, patch: 0 },
-    },
-  ];
+  switch (match[1]) {
+    case '>':
+      return [{ operator: '>=', version: upperVersion }];
+    case '>=':
+    case '<':
+      return [{ operator: match[1], version }];
+    case '<=':
+      return [{ operator: '<', version: upperVersion }];
+    case '=':
+    case undefined:
+      return [
+        { operator: '>=', version },
+        { operator: '<', version: upperVersion },
+      ];
+    default:
+      assert(false, `Unsupported Node engine comparator "${value}".`);
+  }
 }
 
 function parseNodeEngineRange(range) {
