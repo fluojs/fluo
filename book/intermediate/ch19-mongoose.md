@@ -114,6 +114,25 @@ When the provided Mongoose connection exposes `connection.transaction(...)`, flu
 
 Within any `@Transaction()`, `transaction(...)`, or `requestTransaction(...)` boundary, `conn.model(...)` returns a facade that auto-binds the ambient session for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`. Unsupported model methods and `doc.save()` still require explicit `conn.currentSession()` plumbing. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
 
+### Selecting a Transaction Target
+
+Mongoose `@Transaction()` resolves `this.conn`, then the decorated instance itself when it is transaction-capable, then one unique nested `this.*.conn` collaborator. It rejects ambiguous nested candidates instead of choosing a connection implicitly. A service with multiple connections must select its target explicitly:
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { MongooseConnection, Transaction } from '@fluojs/mongoose';
+
+@Inject(MongooseConnection)
+class ReportingService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: ReportingService) => self.analyticsConnection)
+  async rebuildReports() {
+    // Runs against analyticsConnection.
+  }
+}
+```
+
 ### Manual Transactions
 In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
 

@@ -98,6 +98,56 @@ await import('./bootstrap.js');
 | `imports`, `useClass`, `useExisting`, package-level multi-client registry 또는 `isGlobal`을 가정하는 NestJS Slack module | `@fluojs/slack`의 `SlackModule.forRoot({ ..., global? })` 또는 `SlackModule.forRootAsync({ inject, useFactory, global? })` | fluo Slack async registration은 injected factory option만 소비한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환한다. 여러 client에는 app-owned module/provider 또는 facade를 조합한다. |
 | `imports`, `useClass`, `useExisting`, `isGlobal`, 또는 custom internal provider token을 가정하는 NestJS Discord module | `@fluojs/discord`의 `DiscordModule.forRoot({ ..., global? })` 또는 `DiscordModule.forRootAsync({ inject, useFactory, global? })` | fluo Discord registration은 singleton 중심이며 async setup은 injected factory만 지원한다. 이 패키지는 `global: false`가 설정되지 않으면 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export하고, 내부 provider helper와 option token은 의도적으로 private으로 유지한다. |
 
+## Mongoose 루트와 feature 마이그레이션
+
+NestJS는 보통 root의 `MongooseModule.forRoot(...)`와 feature module의 `MongooseModule.forFeature(...)` model 등록을 분리합니다. fluo에서는 두 작업을 모두 애플리케이션이 소유합니다. concrete connection을 생성하고 해당 connection에서 model을 compile한 다음, 이미 생성된 connection을 `MongooseModule`에 등록하세요. repository와 service를 명시적인 module provider로 등록하고, 각 constructor dependency는 `@Inject(...)`로 선언하세요.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { MongooseConnection, MongooseModule, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
+import mongoose from 'mongoose';
+
+type UserDocument = { readonly _id: string; readonly email: string };
+type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
+
+const connection = mongoose.createConnection('mongodb://localhost:27017/app');
+const userSchema = new mongoose.Schema({ email: { type: String, required: true } });
+connection.model('User', userSchema);
+
+@Inject(MongooseConnection)
+class UserRepository {
+  constructor(readonly conn: MongooseConnection) {}
+
+  async create(email: string) {
+    return this.conn.model<UserCreateModel>('User').create([{ email }]);
+  }
+}
+
+@Inject(UserRepository)
+class UserService {
+  constructor(private readonly users: UserRepository) {}
+
+  @Transaction()
+  async register(email: string) {
+    return this.users.create(email);
+  }
+}
+
+@Module({
+  imports: [
+    MongooseModule.forRoot({
+      connection,
+      dispose: (registeredConnection) => registeredConnection.close(),
+      strictTransactions: true,
+    }),
+  ],
+  providers: [UserRepository, UserService],
+})
+export class AppModule {}
+```
+
+`MongooseConnection.model(...)`은 기존 option field를 보존하면서 지원되는 facade 작업(`create`, `find`, `findOne`, `aggregate`, `bulkWrite`)에 ambient session을 병합합니다. `create(...)` session 경로에는 `create([docs], options?)`가 필요하며 positional document 인자는 재작성하지 않습니다. `@Transaction()`은 `this.conn`, transaction-capable service 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 중첩 repository connection이 둘 이상 가능하면 `@Transaction((self: ReportingService) => self.analytics.conn)` 같은 명시적 accessor를 전달해 transaction target이 모호하게 선택되지 않도록 하세요.
+
 ## OpenAPI 계약 차이
 
 NestJS Swagger 마이그레이션은 생성 문서 경계에서 일대일 대응이 아닙니다.

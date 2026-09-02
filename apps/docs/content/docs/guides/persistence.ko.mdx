@@ -24,7 +24,7 @@ Durable record, shared Redis state, HTTP/application caching, background job pro
 | --- | --- | --- |
 | Generated Prisma client 기반 type-safe relational access | `@fluojs/prisma` | Prisma generated type을 유지하면서 lifecycle과 ALS-backed transaction context를 추가합니다. |
 | Drizzle query builder integration | `@fluojs/drizzle` | Drizzle database handle을 `current()`, request transaction, shutdown status와 함께 감쌉니다. |
-| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | Operation option을 재작성하지 않고 explicit Mongoose session semantics를 보존합니다. |
+| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | 지원되는 transaction-aware 작업에서 기존 operation option field를 보존하면서 ambient Mongoose session을 병합합니다. |
 | Cache, queue, throttling, fan-out, custom key-value를 위한 shared state | `@fluojs/redis` | Redis client bootstrap/shutdown과 named client token을 소유합니다. |
 | Cached GET response 또는 `remember(...)` style application caching | `@fluojs/cache-manager` | Memory, Redis, custom store contract와 bounded ownership을 제공합니다. |
 | Request path 밖의 retryable work | `@fluojs/queue` | Redis-backed distributed jobs, worker discovery, retry/backoff, dead-letter record를 제공합니다. |

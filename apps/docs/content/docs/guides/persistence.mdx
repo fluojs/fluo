@@ -24,7 +24,7 @@ Use this guide when you need durable records, shared Redis state, HTTP/applicati
 | --- | --- | --- |
 | Type-safe relational access with generated Prisma clients | `@fluojs/prisma` | Keeps generated Prisma types while adding lifecycle and ALS-backed transaction context. |
 | Drizzle query builder integration | `@fluojs/drizzle` | Wraps a Drizzle database handle with `current()`, request transactions, and shutdown status. |
-| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | Preserves explicit Mongoose session semantics instead of rewriting operation options. |
+| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | Preserves existing operation option fields while merging the ambient Mongoose session for supported transaction-aware operations. |
 | Shared key-value state for cache, queues, throttling, pub/sub | `@fluojs/redis` | Owns Redis client bootstrap/shutdown and named client tokens. |
 | Cached GET responses or `remember(...)` style application caching | `@fluojs/cache-manager` | Offers memory, Redis, and custom store contracts with bounded ownership. |
 | Retryable work outside the request path | `@fluojs/queue` | Uses Redis-backed distributed jobs, worker discovery, retry/backoff, and dead-letter records. |

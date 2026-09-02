@@ -114,6 +114,25 @@ MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다.
 
 `@Transaction()`, `transaction(...)`, `requestTransaction(...)` 경계 안에서 `conn.model(...)`은 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 ambient session을 자동으로 바인딩하는 facade를 반환합니다. 지원되지 않는 model 메서드와 `doc.save()`에는 여전히 `conn.currentSession()`을 명시적으로 전달해야 합니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
 
+### 트랜잭션 대상 선택
+
+Mongoose `@Transaction()`은 먼저 `this.conn`, transaction-capable한 decorated instance 자체, 하나뿐인 중첩 `this.*.conn` collaborator 순으로 해석합니다. 중첩 후보가 모호하면 connection을 암묵적으로 선택하지 않고 거부합니다. 여러 connection을 가진 service는 대상을 명시적으로 선택해야 합니다.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { MongooseConnection, Transaction } from '@fluojs/mongoose';
+
+@Inject(MongooseConnection)
+class ReportingService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: ReportingService) => self.analyticsConnection)
+  async rebuildReports() {
+    // analyticsConnection에서 실행합니다.
+  }
+}
+```
+
 ### Manual Transactions
 fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@Transaction()` 데코레이터를 사용하는 것입니다. 수동 제어가 필요한 경우 블록 패턴을 사용하십시오:
 

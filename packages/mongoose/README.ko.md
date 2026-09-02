@@ -82,12 +82,14 @@ Request cancellation 또는 shutdown이 callback 시작 후 boundary를 abort하
 `@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 MongoDB 세션을 공유합니다.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
 
 type UserDocument = { readonly _id: string; readonly name: string };
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
+@Inject(UserRepository)
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
@@ -99,6 +101,7 @@ export class UserService {
   }
 }
 
+@Inject(MongooseConnection)
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
@@ -116,6 +119,20 @@ export class UserRepository {
 ```
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 지원되는 facade 작업(`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, `model.bulkWrite()`)을 사용하세요.
+
+`@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 임의의 connection field를 선택하지는 않습니다. 서비스가 여러 connection을 소유하거나 다른 field에 connection을 저장하는 경우에는 경계를 명시적으로 선택하세요.
+
+```ts
+@Inject(MongooseConnection)
+export class AnalyticsService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: AnalyticsService) => self.analyticsConnection)
+  async rebuildReports() {
+    // 추론된 connection 대신 analyticsConnection을 사용합니다.
+  }
+}
+```
 
 ### 요청 트랜잭션 인터셉터 호환성
 
