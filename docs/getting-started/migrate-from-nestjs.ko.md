@@ -612,7 +612,10 @@ export class CheckoutController {
 
 ### Prisma 비동기 등록과 롤백 보장
 
-`PrismaModule.forRootAsync(...)`는 injected-factory 형태만 지원합니다. 의존성은 `inject`에 나열하고 `useFactory`에서 최종 Prisma option을 반환하세요. Prisma option provider가 resolve되기 전에 주입할 각 의존성을 async Prisma module에서 볼 수 있는 surface를 통해 등록합니다.
+`PrismaModule.forRootAsync(...)`는 injected `inject` / `useFactory` factory strategy만 지원합니다.
+Top-level `name`, `global` option은 계속 지원합니다.
+의존성은 `inject`에 나열하고 `useFactory`에서 최종 Prisma option을 반환하세요.
+Prisma option provider가 resolve되기 전에 주입할 각 의존성을 async Prisma module에서 볼 수 있는 surface를 통해 등록합니다.
 
 ```typescript
 import { Global, Module } from '@fluojs/core';
@@ -645,7 +648,8 @@ class DatabaseConfigModule {}
 class AppModule {}
 ```
 
-Import하는 `AppModule`의 `providers`에만 `DatabaseConfig`를 등록하는 것으로는 충분하지 않습니다. Async child module은 자신의 local token, 자신의 import가 export한 token, global module export, bootstrap runtime provider만 볼 수 있습니다. 위 예시처럼 주입 의존성을 import한 `@Global()` module에서 export하거나 bootstrap runtime provider로 제공하세요.
+Import하는 `AppModule`의 `providers`에만 `DatabaseConfig`를 등록하는 것으로는 충분하지 않습니다. Async child module은 자신의 local token, 자신의 import가 export한 token, global module export, bootstrap runtime provider만 볼 수 있습니다.
+위 예시처럼 주입 의존성을 import한 `@Global()` module에서 export하거나 bootstrap runtime provider로 제공하세요.
 
 NestJS의 `imports`, `useClass`, `useExisting`은 `forRootAsync(...)` 호환 field가 아닙니다. 해당 configuration, class construction, provider alias는 application bootstrap 또는 명시적인 fluo provider registration에서 해석하고, 준비된 의존성을 `inject`로 전달하세요.
 

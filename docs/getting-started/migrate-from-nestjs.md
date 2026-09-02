@@ -615,7 +615,10 @@ Do not migrate every NestJS interceptor into this shape. Request-wide transactio
 
 ### Prisma Async Registration and Rollback Guarantees
 
-`PrismaModule.forRootAsync(...)` supports the injected-factory shape only: list dependencies in `inject` and return the final Prisma options from `useFactory`. Register each injected dependency through a surface visible to the async Prisma module before its options provider resolves:
+`PrismaModule.forRootAsync(...)` supports only the injected `inject` / `useFactory` factory strategy.
+Its top-level `name` and `global` options remain supported.
+List dependencies in `inject` and return the final Prisma options from `useFactory`.
+Register each injected dependency through a surface visible to the async Prisma module before its options provider resolves:
 
 ```typescript
 import { Global, Module } from '@fluojs/core';
@@ -648,7 +651,8 @@ class DatabaseConfigModule {}
 class AppModule {}
 ```
 
-Registering `DatabaseConfig` only in the importing `AppModule`'s `providers` is insufficient: the async child module can see only its local tokens, exports from its own imports, global module exports, and bootstrap runtime providers. Export injected dependencies from an imported `@Global()` module as above, or supply them as bootstrap runtime providers.
+Registering `DatabaseConfig` only in the importing `AppModule`'s `providers` is insufficient: the async child module can see only its local tokens, exports from its own imports, global module exports, and bootstrap runtime providers.
+Export injected dependencies from an imported `@Global()` module as above, or supply them as bootstrap runtime providers.
 
 NestJS `imports`, `useClass`, and `useExisting` are not `forRootAsync(...)` compatibility fields. Resolve their configuration, class construction, and provider aliases at application bootstrap or through explicit fluo provider registration, then pass the ready dependencies through `inject`.
 

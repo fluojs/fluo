@@ -33,7 +33,7 @@ NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [NestJS migratio
 
 NestJS OpenAPI migration map은 생성 문서의 세 가지 차이를 보존한다. fluo는 명시적으로 선언한 응답을 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 `ErrorResponse`를 추가하며 legacy client에는 `defaultErrorResponsesPolicy: 'omit'`을 사용한다. 생성된 `operationId`가 legacy name과 달라 client가 이를 요구하면 `documentTransform`을 사용한다. `OpenApiModule.forRootAsync(...)`에서는 이미 등록한 route를 factory-returned path로 다시 구성할 수 없으므로 `documentPath`와 `uiPath`를 `inject`, `useFactory(...)`와 같은 바깥 registration object에 둔다.
 
-NestJS Prisma migration map에서는 migrated flow에 rollback 원자성이 필요하면 `strictTransactions: true`를 설정해야 합니다. Interactive `$transaction(...)` client가 없으면 기본 fail-open 경로가 callback을 직접 실행합니다. `PrismaModule.forRootAsync(...)`는 `inject`와 `useFactory`만 받으므로 option을 resolve하기 전에 global module export 또는 bootstrap runtime provider를 통해 각 의존성을 노출하고, NestJS `imports`, `useClass`, `useExisting` configuration은 호환 field로 취급하지 말고 bootstrap에서 해석하세요.
+NestJS Prisma migration map에서는 migrated flow에 rollback 원자성이 필요하면 `strictTransactions: true`를 설정해야 합니다. Interactive `$transaction(...)` client가 없으면 기본 fail-open 경로가 callback을 직접 실행합니다. `PrismaModule.forRootAsync(...)`는 `inject` / `useFactory` factory strategy만 지원하지만 top-level `name`, `global` option은 유지하므로, option을 resolve하기 전에 global module export 또는 bootstrap runtime provider를 통해 각 의존성을 노출하고 NestJS `imports`, `useClass`, `useExisting` configuration은 호환 field로 취급하지 말고 bootstrap에서 해석하세요.
 
 ## Hard Constraints
 
