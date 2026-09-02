@@ -53,6 +53,10 @@
       "types": "./dist/transports/redis-transport.d.ts",
       "import": "./dist/transports/redis-transport.js"
     },
+    "./redis-streams": {
+      "types": "./dist/transports/redis-streams-transport.d.ts",
+      "import": "./dist/transports/redis-streams-transport.js"
+    },
     "./rabbitmq": {
       "types": "./dist/transports/rabbitmq-transport.d.ts",
       "import": "./dist/transports/rabbitmq-transport.js"

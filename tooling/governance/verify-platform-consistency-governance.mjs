@@ -15,6 +15,7 @@ import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
+  enforceRedisStreamsSubpathExportEvidence,
 } from './microservices-safety-guidance.mjs';
 import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
@@ -71,6 +72,7 @@ export { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
+  enforceRedisStreamsSubpathExportEvidence,
 } from './microservices-safety-guidance.mjs';
 export { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
 export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
@@ -3366,6 +3368,7 @@ export async function main() {
   enforceMicroservicesNestjsMigrationDocs();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
+  enforceRedisStreamsSubpathExportEvidence();
   enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);

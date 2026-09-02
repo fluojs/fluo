@@ -222,13 +222,14 @@ Payloads are cloned before dispatch, concurrent `listen()` calls are deduped, re
 
 - `@fluojs/microservices/tcp`
 - `@fluojs/microservices/redis` (Redis Pub/Sub transport)
+- `@fluojs/microservices/redis-streams`
 - `@fluojs/microservices/nats`
 - `@fluojs/microservices/kafka`
 - `@fluojs/microservices/rabbitmq`
 - `@fluojs/microservices/grpc`
 - `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport` is currently supported from the root barrel only; there is no dedicated `@fluojs/microservices/redis-streams` export.
+`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, and `RedisStreamClientLike` are available from the root barrel and the dedicated `@fluojs/microservices/redis-streams` subpath.
 
 Canonical transport learning material lives in the book chapters for [TCP](../../book/intermediate/ch02-tcp.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.md), and [gRPC](../../book/intermediate/ch08-grpc.md), while this README remains the package-level behavioral contract reference.
 
