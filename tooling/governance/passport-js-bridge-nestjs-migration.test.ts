@@ -45,6 +45,13 @@ function replaceTypeScriptFenceAt(markdown: string, targetIndex: number): string
   });
 }
 
+const typeScriptFenceCases = migrationDocuments.flatMap((targetPath) =>
+  Array.from(
+    { length: countTypeScriptFences(read(targetPath)) },
+    (_, fenceIndex) => [targetPath, fenceIndex] as const,
+  ),
+);
+
 describe('Passport.js bridge NestJS migration contract', () => {
   it('enforces the current migration and book contract', () => {
     // Given
@@ -75,25 +82,20 @@ describe('Passport.js bridge NestJS migration contract', () => {
     expect(runGovernanceGuard).toThrowError(targetPath);
   });
 
-  it.each(migrationDocuments)(
-    'rejects invalid TypeScript in every fence from %s',
-    (targetPath) => {
+  it.each(typeScriptFenceCases)(
+    'rejects invalid TypeScript in %s fence %i',
+    (targetPath, fenceIndex) => {
       // Given
-      const fenceCount = countTypeScriptFences(read(targetPath));
-      expect(fenceCount).toBeGreaterThan(0);
+      const readWithInvalidFence = (relativePath: string): string =>
+        relativePath === targetPath
+          ? replaceTypeScriptFenceAt(read(relativePath), fenceIndex)
+          : read(relativePath);
 
-      for (let fenceIndex = 0; fenceIndex < fenceCount; fenceIndex++) {
-        const readWithInvalidFence = (relativePath: string): string =>
-          relativePath === targetPath
-            ? replaceTypeScriptFenceAt(read(relativePath), fenceIndex)
-            : read(relativePath);
+      // When
+      const runGovernanceGuard = () => enforcePassportJsBridgeNestjsMigration(readWithInvalidFence);
 
-        // When
-        const runGovernanceGuard = () => enforcePassportJsBridgeNestjsMigration(readWithInvalidFence);
-
-        // Then
-        expect(runGovernanceGuard).toThrowError(targetPath);
-      }
+      // Then
+      expect(runGovernanceGuard).toThrowError(targetPath);
     },
   );
 
