@@ -516,8 +516,18 @@ const contractGateTriggers = new Set([
   'docs/reference/package-surface.ko.md',
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
+]);
+
+const studioReportBootstrapFailureCompanionPaths = [
   'book/advanced/ch15-studio.md',
   'book/advanced/ch15-studio.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'packages/cli/src/public-api.test.ts',
+];
+const studioReportBootstrapFailureTriggers = new Set([
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
 
 const removedRuntimeModuleFactoryNames = [
@@ -1403,6 +1413,17 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // payload clone, byte-safe TCP UTF-8 framing, TCP 1 MiB frames, port:0 routing,
   // shutdown send guards, concurrent close-promise sharing, and gRPC abort-listener
   // cleanup docs are also covered by this companion path.
+}
+
+export function enforceStudioReportBootstrapFailureCompanions(changedFiles) {
+  if (!changedFiles.some((path) => studioReportBootstrapFailureTriggers.has(path))) {
+    return;
+  }
+
+  assert(
+    studioReportBootstrapFailureCompanionPaths.every((path) => hasChanged(changedFiles, path)),
+    'Studio bootstrap-failure guidance must update the Chapter 15 EN/KO pair, NestJS migration EN/KO pair, and packages/cli/src/public-api.test.ts regression.',
+  );
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
@@ -3787,6 +3808,7 @@ export async function main() {
   enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
+  enforceStudioReportBootstrapFailureCompanions(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');

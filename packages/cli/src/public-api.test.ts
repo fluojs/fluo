@@ -207,6 +207,7 @@ describe('public CLI package API', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-public-api-'));
     tempDirectories.push(workspaceDirectory);
     const lifecycleLogPath = join(workspaceDirectory, 'close.log');
+    const reportPath = join(workspaceDirectory, 'bootstrap-report.json');
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
     const lifecycleFixture = await import(pathToFileURL(inspectBootstrapFailureFixtureModulePath).href) as {
@@ -217,7 +218,7 @@ describe('public CLI package API', () => {
     let exitCode: number;
 
     try {
-      exitCode = await runInspectCommand([inspectBootstrapFailureFixtureModulePath, '--json'], {
+      exitCode = await runInspectCommand([inspectBootstrapFailureFixtureModulePath, '--report', '--output', reportPath], {
         cwd: process.cwd(),
         stderr: { write: (message) => stderrBuffer.push(message) },
         stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -229,6 +230,7 @@ describe('public CLI package API', () => {
     expect(exitCode).toBe(1);
     expect(stdoutBuffer.join('')).toBe('');
     expect(stderrBuffer.join('')).toContain('inspect bootstrap fixture failed');
+    expect(existsSync(reportPath)).toBe(false);
     expect(readFileSync(lifecycleLogPath, 'utf8')).toBe('close\n');
   });
 });

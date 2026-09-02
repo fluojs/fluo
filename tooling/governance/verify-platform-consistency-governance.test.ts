@@ -152,6 +152,7 @@ async function loadGovernanceInternals() {
     enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
+    enforceStudioReportBootstrapFailureCompanions: (changedFiles: string[]) => void;
   };
 }
 
@@ -1777,30 +1778,61 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
   });
 
-  it('requires Studio report guidance to carry deterministic bootstrap regression evidence', async () => {
-    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+  it('requires the exact #3338 bilingual guidance and CLI regression companions', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
     const studioBook = 'book/advanced/ch15-studio.md';
     const studioBookKo = 'book/advanced/ch15-studio.ko.md';
-    const context = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
-    const tooling = ['tooling/governance/verify-platform-consistency-governance.mjs'];
-    const regression = ['packages/cli/src/public-api.test.ts'];
-    const inspectSource = readFileSync(join(repoRoot, 'packages/cli/src/commands/inspect.ts'), 'utf8');
-    const cliRegressionSource = readFileSync(join(repoRoot, 'packages/cli/src/public-api.test.ts'), 'utf8');
+    const nestMigration = 'docs/getting-started/migrate-from-nestjs.md';
+    const nestMigrationKo = 'docs/getting-started/migrate-from-nestjs.ko.md';
+    const cliRegression = 'packages/cli/src/public-api.test.ts';
+    const exactCompanions = [studioBook, studioBookKo, nestMigration, nestMigrationKo, cliRegression];
 
-    expect(cliRegressionSource).toContain('closes the inspect context exactly once when bootstrap fails');
-    expect(cliRegressionSource).toContain("expect(stdoutBuffer.join('')).toBe('');");
-    expect(inspectSource.indexOf('const application = await FluoFactory.create')
-      < inspectSource.indexOf('await emitInspectPayload(')).toBe(true);
-    expect(inspectSource).toContain('catch (error: unknown)');
-    expect(inspectSource).not.toContain('emitInspectPayload(message');
+    expect(() => enforceStudioReportBootstrapFailureCompanions([studioBook])).not.toThrow();
+    for (const missingCompanion of exactCompanions) {
+      expect(() =>
+        enforceStudioReportBootstrapFailureCompanions(
+          exactCompanions.filter((companion) => companion !== missingCompanion),
+        ),
+      ).toThrowError(/Studio bootstrap-failure guidance/);
+    }
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([
+        studioBook,
+        studioBookKo,
+        nestMigration,
+        nestMigrationKo,
+        'packages/studio/src/contracts.test.ts',
+      ]),
+    ).toThrowError(/packages\/cli\/src\/public-api\.test\.ts/);
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions),
+    ).not.toThrow();
+  });
 
-    expect(() => enforceContractCompanionUpdates([studioBook])).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+  it('registers the #3338 companion gate in the central governance path', () => {
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
     );
-    expect(() => enforceContractCompanionUpdates([studioBook, studioBookKo, ...context, ...tooling])).toThrowError(
-      /regression test updates/,
-    );
-    expect(() => enforceContractCompanionUpdates([studioBook, studioBookKo, ...context, ...tooling, ...regression])).not.toThrow();
+    let mainCallsStudioReportBootstrapFailureCompanions = false;
+
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)
+          && node.expression.text === 'enforceStudioReportBootstrapFailureCompanions') {
+          mainCallsStudioReportBootstrapFailureCompanions = true;
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    expect(mainCallsStudioReportBootstrapFailureCompanions).toBe(true);
   });
 
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
