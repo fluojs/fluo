@@ -106,6 +106,30 @@ import { ProductResolver } from './product.resolver';
 export class AppModule {}
 ```
 
+### 비동기 Module Option 해석
+
+Endpoint lifecycle이 시작되기 전에 application graph 의존성에서 GraphQL option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Factory는 application context마다 한 번 실행됩니다. 이 좁은 API는 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery를 의도적으로 허용하지 않습니다.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [ProductResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, ProductResolver],
+})
+export class AppModule {}
+```
+
 ## 18.4 Object Field Resolver와 DataLoader로 N+1 해결하기
 
 N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 GraphQL operation 스코프 **DataLoader** 지원을 제공해 같은 GraphQL operation 안의 반복 조회를 배치로 묶을 수 있게 합니다.

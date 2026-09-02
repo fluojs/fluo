@@ -106,6 +106,33 @@ import { ProductResolver } from './product.resolver';
 export class AppModule {}
 ```
 
+### Resolving Module Options Asynchronously
+
+Use `GraphqlModule.forRootAsync({ inject, useFactory })` when application-graph dependencies
+must resolve GraphQL options before the endpoint lifecycle starts. The factory runs once per
+application context. This narrow API intentionally does not accept NestJS-style `imports`,
+`useClass`, `useExisting`, or implicit discovery.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [ProductResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, ProductResolver],
+})
+export class AppModule {}
+```
+
 ## 18.4 Solving N+1 with Object Field Resolvers and DataLoaders
 
 The N+1 problem is the most common performance bottleneck in GraphQL. Fluo provides GraphQL-operation-scoped **DataLoader** support so repeated lookups in the same GraphQL operation can be grouped into batches.

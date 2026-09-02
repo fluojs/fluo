@@ -35,7 +35,31 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## 빠른 시작
 
-`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. 현재 `@fluojs/graphql`는 동기 모듈 엔트리포인트만 제공하며 `GraphqlModule.forRootAsync(...)` 계약은 없습니다.
+`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. GraphQL 등록 전에 명시적인 application graph 의존성에서 module option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요.
+
+`forRootAsync(...)`는 GraphQL lifecycle이 시작되기 전에 application context마다 factory를 한 번 해석합니다. 명시적인 `inject` token과 `useFactory`만 지원하며 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery는 거부합니다.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [HelloResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, HelloResolver],
+})
+export class AppModule {}
+```
+
+Async registration 전용 example application은 추가하지 않습니다. 이 Quick Start와 [Chapter 18](../../book/intermediate/ch18-graphql.ko.md)이 유지 관리되는 example surface입니다.
 
 Code-first resolver discovery 대신 schema-first 통합을 원하면 executable `GraphQLSchema`를 `schema`로 전달할 수도 있습니다.
 

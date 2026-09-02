@@ -5,6 +5,18 @@
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
+## GraphQL async registration migration
+
+Use `GraphqlModule.forRootAsync({ inject, useFactory })` when a NestJS application previously
+resolved GraphQL options asynchronously. The injected tokens resolve from the existing fluo
+application graph, and the factory resolves once per application context before endpoint wiring.
+
+This is not NestJS dynamic-module compatibility: `imports`, `useClass`, `useExisting`, and
+implicit provider discovery are rejected. Register the required providers in the application graph
+and list their tokens explicitly in `inject`. No standalone migration example is added; the
+maintained executable-style examples are the `@fluojs/graphql` README and
+[Book Chapter 18](../../book/intermediate/ch18-graphql.md).
+
 ## Response cookie migration
 
 Replace `res.cookie()` and `res.clearCookie()` with `setCookie(response, name, value, options?)` and `clearCookie(response, name, options?)` from `@fluojs/http`. These free functions work through `FrameworkResponse`, so they do not couple controllers to Express or Fastify.

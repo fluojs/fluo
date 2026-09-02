@@ -5,6 +5,12 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
+## GraphQL 비동기 등록 마이그레이션
+
+NestJS application에서 GraphQL option을 비동기로 해석했다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Injected token은 기존 fluo application graph에서 해석되고, factory는 endpoint wiring 전에 application context마다 한 번 해석됩니다.
+
+이는 NestJS dynamic-module 호환성이 아닙니다. `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 거부합니다. 필요한 provider를 application graph에 등록하고 token을 `inject`에 명시적으로 나열하세요. 별도 migration example은 추가하지 않습니다. 유지 관리되는 실행형 예제는 `@fluojs/graphql` README와 [Book Chapter 18](../../book/intermediate/ch18-graphql.ko.md)입니다.
+
 ## 응답 쿠키 마이그레이션
 
 `res.cookie()`와 `res.clearCookie()`를 `@fluojs/http`의 `setCookie(response, name, value, options?)`, `clearCookie(response, name, options?)`로 바꾸세요. 이 free function은 `FrameworkResponse`를 통해 작동하므로 controller가 Express나 Fastify에 결합되지 않습니다.

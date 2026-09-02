@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey, Token } from '@fluojs/core';
+import type { AsyncModuleOptions, MetadataPropertyKey, Token } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { FrameworkRequest, Principal } from '@fluojs/http';
 import type { GraphQLObjectType, GraphQLSchema, GraphQLUnionType } from 'graphql';
@@ -269,3 +269,12 @@ export interface GraphqlModuleOptions {
   plugins?: unknown[];
   subscriptions?: GraphqlSubscriptionsOptions;
 }
+
+/**
+ * Configures GraphQL registration through explicitly injected application dependencies.
+ *
+ * Only `inject` and `useFactory` are supported. NestJS-style `imports`, `useClass`,
+ * `useExisting`, and implicit provider discovery are intentionally unavailable.
+ */
+export interface GraphqlAsyncModuleOptions
+  extends Pick<AsyncModuleOptions<GraphqlModuleOptions>, 'inject' | 'useFactory'> {}
