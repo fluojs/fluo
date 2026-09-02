@@ -230,36 +230,37 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
   for (const provider of lifecycleProviders) {
     const token = providerToken(provider);
     const effectiveProviders = effectiveProvidersForToken(introspection, token);
+    const nextUnseenProviderIndex = effectiveProviders.findIndex(
+      (effectiveProvider) => !seenProviders.has(effectiveProvider),
+    );
 
-    for (let index = 0; index < effectiveProviders.length; index += 1) {
-      const effectiveProvider = effectiveProviders[index];
-
-      if (!effectiveProvider) {
-        continue;
-      }
-
-      if (seenProviders.has(effectiveProvider)) {
-        continue;
-      }
-
-      seenProviders.add(effectiveProvider);
-
-      if (!isSingletonLifecycleProvider(effectiveProvider)) {
-        continue;
-      }
-
-      if (effectiveProvider.type === 'value') {
-        instances.push(effectiveProvider.useValue);
-        continue;
-      }
-
-      if (effectiveProvider.multi === true) {
-        instances.push(await resolveMultiContribution(bootstrapped.container, token, index));
-        continue;
-      }
-
-      instances.push(await bootstrapped.container.resolve(token));
+    if (nextUnseenProviderIndex === -1) {
+      continue;
     }
+
+    const effectiveProvider = effectiveProviders[nextUnseenProviderIndex];
+
+    if (!effectiveProvider) {
+      continue;
+    }
+
+    seenProviders.add(effectiveProvider);
+
+    if (!isSingletonLifecycleProvider(effectiveProvider)) {
+      continue;
+    }
+
+    if (effectiveProvider.type === 'value') {
+      instances.push(effectiveProvider.useValue);
+      continue;
+    }
+
+    if (effectiveProvider.multi === true) {
+      instances.push(await resolveMultiContribution(bootstrapped.container, token, nextUnseenProviderIndex));
+      continue;
+    }
+
+    instances.push(await bootstrapped.container.resolve(token));
   }
 
   return instances;
