@@ -720,7 +720,9 @@ class FluoApplication implements Application {
     }
   }
 
-  private assertApplicationOperationAllowed(operation: 'connect a microservice' | 'start microservices'): void {
+  private assertApplicationOperationAllowed(
+    operation: 'connect a microservice' | 'dispatch' | 'start microservices',
+  ): void {
     if (this.closeStarted) {
       throw new InvariantError(`Application cannot ${operation} after shutdown has started.`);
     }
@@ -786,6 +788,7 @@ class FluoApplication implements Application {
   }
 
   dispatch = async (...args: Parameters<Dispatcher['dispatch']>): Promise<void> => {
+    this.assertApplicationOperationAllowed('dispatch');
     await this.dispatcher.dispatch(...args);
   };
 

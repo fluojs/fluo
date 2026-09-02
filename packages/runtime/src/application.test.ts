@@ -343,6 +343,109 @@ describe('bootstrapApplication', () => {
     }
   });
 
+  it('rejects new dispatches during pending shutdown without interrupting an admitted dispatch', async () => {
+    const adapterCloseStarted = createDeferred<void>();
+    const closeCanFinish = createDeferred<void>();
+    const dispatchCanFinish = createDeferred<void>();
+    const dispatchStarted = createDeferred<void>();
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        adapterCloseStarted.resolve();
+        await closeCanFinish.promise;
+      },
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const dispatch = vi.spyOn(app.dispatcher, 'dispatch').mockImplementation(async () => {
+      if (dispatch.mock.calls.length === 1) {
+        dispatchStarted.resolve();
+        await dispatchCanFinish.promise;
+      }
+    });
+
+    // Given: one request was admitted before shutdown and is still draining.
+    const admittedDispatch = app.dispatch({} as FrameworkRequest, {} as FrameworkResponse);
+    await dispatchStarted.promise;
+
+    // When: close begins and has reached the adapter-owned pending teardown stage.
+    const closePromise = app.close('SIGTERM');
+    await adapterCloseStarted.promise;
+
+    // Then: new direct dispatches reject while the already-admitted dispatch drains.
+    try {
+      await expect(app.dispatch({} as FrameworkRequest, {} as FrameworkResponse)).rejects.toThrow(
+        'Application cannot dispatch after shutdown has started.',
+      );
+      expect(dispatch).toHaveBeenCalledTimes(1);
+
+      dispatchCanFinish.resolve();
+      await admittedDispatch;
+    } finally {
+      closeCanFinish.resolve();
+      await closePromise;
+    }
+  });
+
+  it('rejects dispatches after a failed shutdown without changing close retry ownership', async () => {
+    let failClose = true;
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        if (failClose) {
+          failClose = false;
+          throw new Error('close failed');
+        }
+      },
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const dispatch = vi.spyOn(app.dispatcher, 'dispatch');
+
+    await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
+    await expect(app.dispatch({} as FrameworkRequest, {} as FrameworkResponse)).rejects.toThrow(
+      'Application cannot dispatch after shutdown has started.',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+
+    await app.close('SIGTERM');
+  });
+
+  it('rejects dispatches after successful shutdown', async () => {
+    const adapter: HttpApplicationAdapter = {
+      async close() {},
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const dispatch = vi.spyOn(app.dispatcher, 'dispatch');
+
+    await app.close('SIGTERM');
+
+    await expect(app.dispatch({} as FrameworkRequest, {} as FrameworkResponse)).rejects.toThrow(
+      'Application cannot dispatch after shutdown has started.',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it('rejects Application.get() when shutdown starts during provider resolution', async () => {
     const resolutionStarted = createDeferred<void>();
     const providerCanResolve = createDeferred<void>();
