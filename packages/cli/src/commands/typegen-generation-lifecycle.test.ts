@@ -55,7 +55,7 @@ class FakeGenerationChild implements TypegenGenerationChild {
 }
 
 describe('fluo typegen generation child lifecycle', () => {
-  it('escalates an uncooperative cancellation from SIGTERM to SIGKILL', async () => {
+  it('sends one immediate SIGTERM and escalates only after the full cancellation grace period', async () => {
     // Given: a generation child that accepts SIGTERM but never exits.
     vi.useFakeTimers();
     try {
@@ -65,15 +65,45 @@ describe('fluo typegen generation child lifecycle', () => {
         () => child,
       );
 
-      // When: its owner cancels and the bounded grace period elapses without an exit event.
+      // When: its owner cancels repeatedly while the bounded grace period advances.
+      generation.cancel();
       generation.cancel();
       expect(child.signals).toEqual(['SIGTERM']);
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(499);
+      expect(child.signals).toEqual(['SIGTERM']);
+      vi.advanceTimersByTime(1);
 
-      // Then: SIGKILL is sent without waiting for wall-clock time.
+      // Then: one SIGKILL is sent exactly at the deadline without wall-clock waiting.
       expect(child.signals).toEqual(['SIGTERM', 'SIGKILL']);
       child.emitExit(null, 'SIGKILL');
       await expect(generation.result).rejects.toThrow('signal SIGKILL');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears cancellation escalation and completion listeners when SIGTERM exits the child early', async () => {
+    // Given: a generation child with one pending SIGKILL escalation after cooperative cancellation.
+    vi.useFakeTimers();
+    try {
+      const child = new FakeGenerationChild();
+      const generation = startTypegenGenerationProcess(
+        { cwd: '/project', exportName: 'AppModule', modulePath: '/project/src/app.ts' },
+        () => child,
+      );
+      generation.cancel();
+
+      // When: the child exits before the bounded deadline.
+      child.emitExit(null, 'SIGTERM');
+      await expect(generation.result).rejects.toThrow('signal SIGTERM');
+
+      // Then: lifecycle listeners and the no-longer-owned escalation timer are both removed.
+      expect(child.errorListeners.size).toBe(0);
+      expect(child.exitListeners.size).toBe(0);
+      expect(child.messageListeners.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(500);
+      expect(child.signals).toEqual(['SIGTERM']);
     } finally {
       vi.useRealTimers();
     }

@@ -6,6 +6,52 @@ import {
 } from './typegen-artifact.js';
 
 describe('typegen artifact commits', () => {
+  it('publishes one complete replacement before a queued shutdown can run after synchronous rename begins', async () => {
+    // Given: one valid target and a shutdown event queued from the synchronous publication boundary.
+    const outputPath = '/project/src/generated/react-pages.ts';
+    const files = new Map<string, string>([[outputPath, 'last valid artifact\n']]);
+    const controller = new AbortController();
+    const fileSystem: TypegenArtifactFileSystem = {
+      mkdir: vi.fn(async () => undefined),
+      readFile: vi.fn(async (path) => {
+        const content = files.get(path);
+        if (content === undefined) {
+          throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+        }
+        return content;
+      }),
+      rename: vi.fn((source, destination) => {
+        const content = files.get(source);
+        if (content === undefined) {
+          throw new Error(`Missing temporary artifact ${source}`);
+        }
+        files.set(destination, content);
+        files.delete(source);
+        queueMicrotask(() => {
+          controller.abort();
+        });
+        return undefined;
+      }),
+      rm: vi.fn(async (path) => {
+        files.delete(path);
+      }),
+      writeFile: vi.fn(async (path, content) => {
+        files.set(path, content);
+      }),
+    };
+
+    // When: the final abort check succeeds and the synchronous rename begins before shutdown dispatches.
+    const action = await writeTypegenArtifact(outputPath, 'next complete artifact\n', fileSystem, controller.signal);
+
+    // Then: lifecycle dispatch cannot interrupt the atomic publication or leave a temporary artifact.
+    expect(action).toBe('UPDATE');
+    expect(controller.signal.aborted).toBe(true);
+    expect(files.get(outputPath)).toBe('next complete artifact\n');
+    expect([...files.keys()]).toEqual([outputPath]);
+    expect(fileSystem.rename).toHaveBeenCalledOnce();
+    expect(fileSystem.rm).not.toHaveBeenCalled();
+  });
+
   it('removes a prepared replacement when shutdown aborts before atomic publication', async () => {
     // Given: an existing valid artifact and a shutdown signal that begins during temporary-file preparation.
     const outputPath = '/project/src/generated/react-pages.ts';
@@ -20,13 +66,14 @@ describe('typegen artifact commits', () => {
         }
         return content;
       }),
-      rename: vi.fn(async (source, destination) => {
+      rename: vi.fn((source, destination) => {
         const content = files.get(source);
         if (content === undefined) {
           throw new Error(`Missing temporary artifact ${source}`);
         }
         files.set(destination, content);
         files.delete(source);
+        return undefined;
       }),
       rm: vi.fn(async (path) => {
         files.delete(path);
@@ -61,7 +108,7 @@ describe('typegen artifact commits', () => {
         }
         return content;
       }),
-      rename: vi.fn(async () => {
+      rename: vi.fn(() => {
         throw commitError;
       }),
       rm: vi.fn(async (path) => {
