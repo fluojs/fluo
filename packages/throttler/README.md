@@ -19,7 +19,7 @@ Decorator-based rate limiting for fluo applications with in-memory and Redis sto
 
 ## Installation
 
-`@fluojs/throttler` declares `engines.node >=20.0.0` in its published package manifest.
+`@fluojs/throttler` declares `engines.node >=20.19.3 <21 || >=22.2.0 <27` in its published package manifest to match mandatory `@fluojs/runtime`. Upgrade Node 20 hosts to `>=20.19.3` or Node 22 hosts to `>=22.2.0`; Node 21 and Node 27+ are unsupported.
 
 ```bash
 npm install @fluojs/throttler

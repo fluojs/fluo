@@ -2250,15 +2250,13 @@ describe('repository governance contracts', () => {
     const drizzleReadmeKo = readFileSync(resolve(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
 
     for (const source of [docsContext, packageSurface, packageChooser, drizzleReadme]) {
-      expect(source).toContain('Node.js 20+');
+      expect(source).toContain('>=20.19.3 <21 || >=22.2.0 <27');
       expect(source).toContain('node:async_hooks');
-      expect(source).toContain('engines.node >=20.0.0');
     }
 
     for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, drizzleReadmeKo]) {
-      expect(source).toContain('Node.js 20+');
+      expect(source).toContain('>=20.19.3 <21 || >=22.2.0 <27');
       expect(source).toContain('node:async_hooks');
-      expect(source).toContain('engines.node >=20.0.0');
     }
 
     for (const source of [docsContext, packageSurface, drizzleReadme]) {
@@ -4014,6 +4012,40 @@ describe('mandatory first-party dependency Node engine alignment', () => {
         (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
         new Set(['@fluojs/prisma']),
       )).not.toThrow();
+  });
+
+  it('accepts the checked-in runtime reverse-dependent Node engine closure', () => {
+    // Given: runtime has public reverse dependents with mandatory runtime dependencies.
+    // When: a runtime change selects its full public reverse-dependent closure.
+    // Then: every selected package advertises only executable Node versions.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/runtime']),
+      )).not.toThrow();
+  });
+
+  it('rejects a selected runtime closure when CLI over-advertises Node 20 support', () => {
+    // Given: the CLI regresses to an incompatible advertised Node floor.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/cli/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        engines: { ...manifest.engines, node: '>=20.0.0' },
+      });
+    };
+
+    // When: a runtime change selects public reverse dependents.
+    // Then: release governance rejects the incompatible CLI compatibility claim.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/runtime'])))
+      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
   });
 
   it('accepts a selected public package without an advertised Node engine floor', () => {
