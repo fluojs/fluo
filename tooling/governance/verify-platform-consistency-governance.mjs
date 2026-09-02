@@ -3569,6 +3569,40 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
   }
 }
 
+export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
+  const contractSentinel =
+    '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
+  const contextPaths = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
+  for (const contextPath of contextPaths) {
+    assert(
+      readText(contextPath).includes(contractSentinel),
+      `${contextPath} must preserve the machine-consumed notifications queue cancellation contract sentinel.`,
+    );
+  }
+
+  const typesSource = readText('packages/notifications/src/types.ts');
+  const serviceSource = readText('packages/notifications/src/service.ts');
+  const regressionSource = readText('packages/notifications/src/module.test.ts');
+
+  assert(
+    typesSource.includes('readonly signal?: AbortSignal;'),
+    'NotificationsQueueContext must expose the caller-owned AbortSignal.',
+  );
+  assert(
+    serviceSource.includes('throwIfAborted(options.signal);') &&
+      serviceSource.includes('await queue.enqueueMany(jobs, { signal: options.signal })') &&
+      serviceSource.includes('await queue.enqueue(job, { signal: options.signal })'),
+    'Notifications queue handoffs must reject pre-aborted signals and forward the same live signal.',
+  );
+  assert(
+    regressionSource.includes('new EnqueueOnlyQueueAdapter()') &&
+      regressionSource.includes("signal.removeEventListener('abort', onAbort)") &&
+      regressionSource.includes('expect(enqueueCalls).toBe(0);'),
+    'Notifications queue cancellation must retain native/fallback and adapter-cleanup regression evidence.',
+  );
+}
+
 export async function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -3599,6 +3633,7 @@ export async function main() {
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
   enforceNotificationsStatusDocumentationContract();
+  enforceNotificationsQueueCancellationDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();

@@ -350,6 +350,12 @@ Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)
 
 Queue producer migration discoverability는 `packages/queue/README.ko.md`와 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 나뉜다. NestJS Bull/BullMQ의 `@InjectQueue(...)`와 `queue.add(name, payload)`는 `QueueLifecycleService`(또는 `QUEUE` / `getQueueToken(scope)` facade) 및 `queue.enqueue(new JobClass(...))`로 바꾼다. Worker dispatch는 job-name 문자열이나 payload shape가 아니라 `@QueueWorker(JobClass, options?)`로 등록한 정확한 constructor를 사용하므로 producer는 같은 exported `JobClass`를 instance화해야 하며 plain object와 복사한 class 선언은 type-check를 통과해도 runtime에서 거부된다.
 
+## Notifications Queue Cancellation
+
+`NotificationsQueueContext.signal`은 모든 notification queue handoff에 대해 호출자가 소유한 `AbortSignal`을 전달합니다. 이미 abort된 signal은 single enqueue, native `enqueueMany`, 또는 각 sequential fallback enqueue가 시작되기 직전에 즉시 거부됩니다. adapter가 같은 live signal을 받은 뒤에는 listener 등록·정리와 queue별 mid-flight cancellation policy를 adapter가 소유합니다. bulk dispatch는 adapter가 제공하면 native `enqueueMany`를 사용하고, 제공하지 않으면 sequential `enqueue`로 fallback합니다. abort 뒤에는 fallback이 남은 queue handoff를 수행하지 않습니다.
+
+<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->
+
 ## GraphQL Field Resolver DTO Inputs
 
 `@fluojs/graphql`의 code-first object field resolver는 `@FieldResolver({ input: InputDto })`와 `@Args(index?)`로 GraphQL argument를 바인딩할 수 있다. `InputDto`의 각 `@Arg(...)` field는 GraphQL argument가 되고, framework는 root operation과 동일한 `BAD_USER_INPUT` error contract로 DTO를 materialize 및 validate한다. `@Args()`, `@Parent()`, `@Context()`는 서로 다른 explicit zero-based method index를 바인딩하며, index 충돌은 즉시 실패한다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고 `@Args()`에는 `input`이 필요하며, 세 binding 모두 root operation에서는 유효하지 않다. Request-scoped root resolver와 field resolver는 HTTP 및 subscription execution에서 하나의 operation container를 공유하지만 schema-first field-resolver attachment는 계속 지원하지 않는다.
