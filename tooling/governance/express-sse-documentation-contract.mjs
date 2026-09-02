@@ -40,33 +40,45 @@ function expressSseCodeExample(section, relativePath) {
   return examples[0];
 }
 
+function expressSseHandler(example, relativePath) {
+  const handlers = [
+    ...example.matchAll(
+      /^(?<indent>[ \t]*)@Sse\s*\(\s*[^)\s][^)]*\)\s*\r?\n(?<signature>(?:async\s+)?[A-Za-z_$][\w$]*\s*\((?<parameters>[\s\S]*?)\)\s*(?::[^{\r\n]+)?\{)(?<body>[\s\S]*?)^\k<indent>\}/gmu,
+    ),
+  ];
+
+  assert(
+    handlers.length === 1,
+    `${relativePath} Express SSE example must declare exactly one @Sse-decorated handler; found ${handlers.length}.`,
+  );
+
+  return handlers[0];
+}
+
 export function enforceExpressSseDocumentationContract(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
   for (const relativePath of runtimeAdapterGuides) {
     const section = expressSection(readText(relativePath), relativePath);
     const example = expressSseCodeExample(section, relativePath);
-
-    assert(
-      /@Sse\s*\(\s*[^)\s][^)]*\)/u.test(example),
-      `${relativePath} Express SSE example must declare an @Sse route.`,
-    );
-
-    const requestContextParameter = /(?:async\s+)?[A-Za-z_$][\w$]*\s*\(\s*[^,]+,\s*([A-Za-z_$][\w$]*)\s*:\s*RequestContext\b/u.exec(example);
+    const sseHandler = expressSseHandler(example, relativePath);
+    const parameters = sseHandler?.groups?.parameters ?? '';
+    const requestContextParameter = /^\s*[^,]+,\s*([A-Za-z_$][\w$]*)\s*:\s*RequestContext\b/u.exec(parameters);
     assert(
       requestContextParameter !== null,
-      `${relativePath} Express SSE example must accept RequestContext as its second parameter.`,
+      `${relativePath} Express SSE handler must accept RequestContext as its second parameter.`,
     );
 
     const requestContextName = requestContextParameter[1];
+    const body = sseHandler?.groups?.body ?? '';
     const responseContextPattern = new RegExp(
       `new\\s+SseResponse\\s*\\(\\s*${requestContextName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\s*\\)`,
       'u',
     );
 
     assert(
-      responseContextPattern.test(example),
-      `${relativePath} Express SSE example must pass its RequestContext parameter to new SseResponse(...).`,
+      responseContextPattern.test(body),
+      `${relativePath} Express SSE handler must pass its RequestContext parameter to new SseResponse(...).`,
     );
     assert(
       !/@Res\s*\(/u.test(example),
