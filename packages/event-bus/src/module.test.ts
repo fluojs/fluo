@@ -782,35 +782,53 @@ describe('@fluojs/event-bus', () => {
     await app.close();
   });
 
-  it('deduplicates duplicate handler registration for the same token and method', async () => {
-    class SharedHandler {
-      static calls = 0;
+  it('discovers the effective duplicate handler implementation with its source module', async () => {
+    const calls: string[] = [];
 
+    class SharedHandler {}
+
+    class LosingSharedHandler {
       @OnEvent(UserCreatedEvent)
-      onUserCreated(_event: UserCreatedEvent) {
-        SharedHandler.calls += 1;
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(`losing:${event.userId}`);
       }
     }
 
-    SharedHandler.calls = 0;
+    class WinningSharedHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(`winning:${event.userId}`);
+      }
+    }
 
     class FeatureModule {}
     defineModule(FeatureModule, {
-      providers: [SharedHandler],
+      providers: [{ provide: SharedHandler, useClass: LosingSharedHandler }],
     });
 
     class AppModule {}
     defineModule(AppModule, {
       imports: [FeatureModule, EventBusModule.forRoot()],
-      providers: [SharedHandler],
+      providers: [{ provide: SharedHandler, useClass: WinningSharedHandler }],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const service = await app.container.resolve(EventBusLifecycleService);
 
     await eventBus.publish(new UserCreatedEvent('user-7'));
 
-    expect(SharedHandler.calls).toBe(1);
+    expect(calls).toEqual(['winning:user-7']);
+    expect(service['descriptors']).toEqual([
+      {
+        eventType: UserCreatedEvent,
+        methodKey: 'onUserCreated',
+        methodName: 'onUserCreated',
+        moduleName: 'AppModule',
+        targetName: 'WinningSharedHandler',
+        token: SharedHandler,
+      },
+    ]);
 
     await app.close();
   });
