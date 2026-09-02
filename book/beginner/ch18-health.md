@@ -1,5 +1,5 @@
 <!-- packages: @fluojs/terminus, @fluojs/metrics -->
-<!-- project-state: FluoBlog v1.15 -->
+<!-- project-state: FluoBlog v1.15; fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready=binary-status;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary -->
 
 # Chapter 18. Health Checks and Reliability
 
@@ -30,7 +30,7 @@ Modern infrastructure such as Kubernetes or AWS ECS distinguishes between two ki
 - **Liveness (active)**: "Is the process running?" If this check fails, the container is restarted. It is meant to detect situations where the app is deadlocked and cannot recover without a reboot.
 - **Readiness**: "Is the application ready to handle traffic?" If this check fails, the instance is temporarily removed from the load balancer, but it is not always restarted. This is used during startup or when a dependency is temporarily overloaded.
 
-Understanding these two states lets you build a precise reliability strategy that avoids unnecessary downtime while still ensuring that only healthy instances serve users. In the current Fluo contract, the default routes are `GET /health` and `GET /ready`. `@fluojs/terminus` places aggregated health and readiness decisions on top of these routes, but it does not provide a separate process only liveness route by default.
+Understanding these two states lets you build a precise reliability strategy that avoids unnecessary downtime while still ensuring that only healthy instances serve users. In the current Fluo contract, `GET /health` returns aggregated diagnostics, while `GET /ready` is a binary ready/unavailable status: each returns HTTP `200` when its condition succeeds and HTTP `503` when it does not. `@fluojs/terminus` does not provide a separate process-only liveness route by default.
 
 ### 18.1.1 The Startup Sequence
 When a new Fluo instance starts, it may need to run database migrations, warm caches, or establish connections to remote message brokers. During this time, the process is "alive" and passes liveness, but it is not yet "ready" and fails readiness. A proper readiness probe prevents users from reaching an instance that is still preparing, which avoids the "Service Unavailable" errors that often appear right after deployment. This kind of "coordinated startup" is a hallmark of high availability architecture.
@@ -51,7 +51,7 @@ Health checks are essential for every application, but they play different roles
 Terminus is designed to be extensible. It provides built in indicators for the most common dependencies while still letting you write application specific indicators for custom logic. It aggregates runtime readiness state and indicator results on the `/health` and `/ready` routes and supplies the readiness signal that removes a shutting-down instance from rotation. It does not register shutdown signals, set forced-shutdown timing, or own cleanup order; those responsibilities belong to the host, adapter, and runtime close path.
 
 ### 18.2.1 The Standardized Health Response
-Terminus does not return only a simple "OK" string. Following industry standards, it provides a detailed JSON object that includes the status of every subcheck. This lets monitoring tools understand not only that something is wrong, but *exactly what* is wrong. For example, the response can clearly show that the database is healthy but the cache is down. This level of detail is invaluable when SRE teams diagnose complex production problems under pressure.
+`GET /health` does not return only a simple "OK" string. Following industry standards, it provides aggregated diagnostics in a detailed JSON object that includes the status of every registered subcheck. This lets monitoring tools understand not only that something is wrong, but *exactly what* is wrong. `GET /ready` remains a binary status for traffic admission and returns HTTP `200` or `503`, not an alternate diagnostic grouping. For example, the health response can clearly show that the database is healthy but the cache is down. This level of detail is invaluable when SRE teams diagnose complex production problems under pressure.
 
 ### 18.2.2 Decoupling from Domain Logic
 One of the core design goals of `@fluojs/terminus` is to separate health check logic from the main business logic. You do not need to scatter checks like "is the database healthy?" throughout service code. Instead, health indicators run independently and query infrastructure state through optimized paths. This ensures that monitoring the application does not add unnecessary overhead or complexity to the features users actually care about.
@@ -120,7 +120,7 @@ When a request is sent to the `/health` endpoint, Terminus returns a standardize
 If you are migrating from NestJS Terminus, do not start by recreating a controller method decorated with `@HealthCheck()` that calls `HealthCheckService.check([...])`. In Fluo, the primary API is the module registration shown above: indicators, indicator providers, readiness checks, and execution guardrails belong in `TerminusModule.forRoot(...)` so the runtime-owned `GET /health` and `GET /ready` routes stay aligned with platform diagnostics. `TerminusHealthService.check()` is still useful in tests or custom application flows, but it is not the default route authoring pattern.
 
 ### 18.3.2 Securing the Health Endpoint
-Health checks are essential for operations, but you may not want to expose internal architectural details to the public internet. A common best practice is to restrict access to the `/health` endpoint to internal IP addresses or require a specific secret header. Fluo's Guard system lets you add this security layer, limiting the service's vital signs to only the systems and people that need to see them.
+Health checks are essential for operations, but you may not want to expose internal architectural details to the public internet. Do not attach controller `@UseGuards()` metadata and expect it to protect the runtime-owned `/health` or `/ready` routes: those routes do not read controller metadata. Apply path-scoped application or adapter middleware, network policy, or a deployment-owned probe boundary to limit access to the systems and people that need it.
 
 ### 18.3.3 Advanced Terminus Configuration: Customizing the Root
 By default, `TerminusHealthService` collects registered indicator results and returns a standardized structure. Rather than assembling the root response yourself, it is more idiomatic in Fluo to keep clear which indicators are registered and which state each indicator reports.
@@ -174,7 +174,7 @@ In highly connected microservice architectures, the failure of a small service c
 - **Critical Dependencies**: Core elements such as the primary database, where failure should immediately fail the readiness check.
 - **Non-Critical Dependencies**: Elements such as a nonessential search indexer, where failure should usually be reported through health details, metrics, or alerts instead of the binary `/ready` gate if the application can still handle most user requests.
 
-By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Fluo's Terminus configuration composes indicator results, custom readiness checks, and runtime platform readiness into a binary `/ready` decision: any non-ready platform readiness result, including a non-critical degraded result, keeps the instance out of rotation while the diagnostic payload preserves severity context.
+By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Put required traffic-admission dependencies in the binary `/ready` decision, and report non-critical degradation through aggregated `/health` diagnostics, metrics, or alerts instead of inventing readiness severity buckets.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 For applications that handle file uploads or heavy logging, **disk space** is a critical resource. If the disk fills up, the application can crash or stop responding just as it would with a memory leak. Terminus includes a Node disk indicator for free-space thresholds, such as minimum free bytes or minimum free ratio. Use that signal to take action before a production emergency occurs, such as cleaning temporary files or expanding storage. If you also need I/O latency or throughput monitoring, collect those metrics through your metrics or host observability stack rather than treating them as Terminus disk-indicator output.
@@ -213,7 +213,7 @@ export class WorkerHealthIndicator implements HealthIndicator {
 Custom indicators give you the power to monitor complex internal state. You can check whether the file system is writable, whether a specific configuration file exists, or whether a license key is still valid. When you register this logic through `TerminusModule.forRoot({ indicators })`, you bring it into Fluo's runtime-owned `/health` and `/ready` aggregation instead of creating a separate controller-owned route. This lets custom business level health states trigger the same automated recovery and alerting workflows as database or network health.
 
 ### 18.5.2 Aggregating Health Data
-Complex systems can have dozens of subindicators. Fluo lets you group these indicators as "sub health checks" or combine them into a single score. This is especially useful in large enterprise applications where different teams own different parts of the system. Each team can provide its own health indicator through `TerminusModule.forRoot({ indicators })`, and Fluo's runtime-owned `/health` and `/ready` aggregation can collect them all to provide a comprehensive view of the whole platform state.
+Complex systems can have dozens of subindicators. Terminus does not provide built-in sub-health grouping or scoring. Compose a flat indicator set at startup with `TerminusModule.forRoot({ indicators })`; if teams need grouped dashboards or scores, derive them in application-owned observability tooling from the aggregated `/health` diagnostics rather than treating them as Terminus runtime behavior.
 
 ### 18.5.3 Health Indicators for Security and Compliance
 Custom health indicators can also be used for **security monitoring**. You can create indicators that check whether the latest security patches are applied, whether sensitive configuration files are exposed, or whether failed login attempts have spiked abnormally. By including these security checks in the health endpoint, you bring security into the same operational visibility framework as performance and reliability.
@@ -231,9 +231,9 @@ If you have several Fluo applications that connect to the same custom legacy dat
 This "shared reliability" approach ensures that every team follows the same best practices for monitoring core internal infrastructure. By centralizing monitoring logic for common dependencies, you reduce duplicate code and let every application in the organization benefit from the latest, strongest health check logic.
 
 ### 18.5.6 Dynamic Indicator Registration
-In some advanced scenarios, you may want to register health indicators dynamically based on application configuration or runtime state. For example, a "plugin based" application may only want to monitor the plugins that are currently active. Fluo's Terminus configuration lets you programmatically compose the indicator set that participates in `check()`.
+In some advanced scenarios, a deployment may choose a different indicator set from application configuration. Compose that flat set before startup and pass the final values to `TerminusModule.forRoot(...)`; Terminus does not support runtime-active plugin registration that changes the running health graph.
 
-This dynamic behavior lets health checks adapt to the specific context in which the application is running. Whether it is a minimal development mode or a fully featured production environment, the vital signs should reflect the actual active components serving users. This level of adaptability is one of the core advantages of Fluo's explicit dependency management without metadata.
+Whether it is a minimal development mode or a fully featured production environment, make the startup composition explicit and restart through the host when the topology changes. This keeps the visible health contract tied to the components that the deployed application actually owns.
 
 ## 18.6 Graceful Shutdowns
 Health is not only about being alive. It is also about going down gracefully. When you deploy a new version of FluoBlog, the previous version must shut down. In the current contract, shutdown signal registration is handled by the surrounding host or adapter helper, and the actual cleanup order is managed by the runtime close path. Terminus only aggregates health/readiness and exposes the runtime's shutdown-readiness signal so an instance about to shut down no longer receives new traffic; it does not initiate or own shutdown.
@@ -245,7 +245,7 @@ When a shutdown signal is received, the following things happen.
 1. The readiness probe is set to "failed," so the load balancer stops sending new traffic.
 2. Within the shutdown boundary set by the host and adapter, the application gets time for existing requests to complete.
 3. The runtime close path calls shutdown hooks for long running resources such as databases and message queues in order.
-4. The process finally exits with exit code 0.
+4. The host terminates the process with the exit status it owns; Terminus does not select or publish a process exit code.
 
 ### 18.6.2 Handling Hung Requests
 Sometimes a request can hang during shutdown or take too long to complete. In that case, forced shutdown timing is less a Terminus only feature and more a boundary set by the host's signal handling and the adapter's drain timeout configuration. This prevents a process that should be replaced from remaining forever as a "zombie" process that consumes resources. Balancing work completion against fast shutdown is a key part of tuning production reliability settings.
@@ -269,7 +269,7 @@ Sometimes an application does not shut down quickly. This is often caused by the
 - **Infinite loops**: Code that does not check for shutdown signals.
 - **Leftover timers**: `setInterval` or `setTimeout` calls that keep the event loop active.
 
-Fluo's debugger includes tools for detecting these "leakage" issues during the shutdown phase. By regularly running "shutdown audits" in staging environments, you can identify and fix these bugs before they appear in production. A clean, fast shutdown is just as important for high availability as a fast startup.
+Use host-owned runtime diagnostics and your platform's debugger or profiler to detect these "leakage" issues during the shutdown phase. By regularly running "shutdown audits" in staging environments, you can identify and fix these bugs before they appear in production. A clean, fast shutdown is just as important for high availability as a fast startup.
 
 ### 18.6.6 Real-World Scenario: Deploying FluoBlog
 Suppose you are deploying a major FluoBlog update while thousands of users are active. Here is what signals Terminus provides during the transition.

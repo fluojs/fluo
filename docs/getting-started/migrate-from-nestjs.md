@@ -24,7 +24,7 @@
 
 <!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
-Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
+Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one. For Terminus, compose indicators in the authored module with `TerminusModule.forRoot(...)`: `/health` returns aggregated diagnostics, `/ready` is binary and returns HTTP `200` or `503`, no default liveness route exists, and runtime-owned routes reject controller `@UseGuards()` metadata in favor of path-scoped application or adapter middleware, network policy, or deployment-owned probe boundaries.
 
 ## GraphQL async registration migration
 

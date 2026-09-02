@@ -24,7 +24,7 @@
 
 <!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
-이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
+이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다. Terminus는 작성한 module에서 `TerminusModule.forRoot(...)`로 indicator를 구성하세요. `/health`는 집계 진단을 반환하고 `/ready`는 HTTP `200` 또는 `503`의 binary status이며, 기본 liveness route는 없고 runtime-owned route는 controller `@UseGuards()` metadata를 거부하므로 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary를 사용하세요.
 
 ## GraphQL 비동기 등록 마이그레이션
 
