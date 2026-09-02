@@ -86,20 +86,24 @@ export function compressNodeResponse(
       response.removeListener('finish', resolveResponse);
       stream.removeListener('error', rejectFailure);
     };
-    const settle = (action: () => void) => {
+    const settle = (action: () => void, terminateStream = false) => {
       if (settled) {
         return;
       }
 
       settled = true;
+      if (terminateStream) {
+        stream.unpipe(response);
+        stream.destroy();
+      }
       cleanup();
       action();
     };
     const rejectFailure = (error: Error) => {
-      settle(() => reject(error));
+      settle(() => reject(error), true);
     };
     const rejectClosedResponse = () => {
-      settle(() => reject(new Error('Node response closed before compression completed.')));
+      settle(() => reject(new Error('Node response closed before compression completed.')), true);
     };
     const resolveResponse = () => {
       if (response.destroyed || !response.writableEnded) {

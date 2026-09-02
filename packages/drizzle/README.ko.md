@@ -40,7 +40,7 @@ Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 
 
 ## 사용 시점
 
-- Node.js 20+ 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
+- Node.js `>=20.19.3 <21 || >=22.2.0 <27` 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
 - repository 코드가 root handle과 현재 트랜잭션 handle 사이를 `current()` 하나로 다루고 싶을 때
 - 애플리케이션 종료 시 underlying driver 정리 로직도 함께 실행해야 할 때
 

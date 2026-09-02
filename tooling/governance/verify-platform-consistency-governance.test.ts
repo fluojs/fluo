@@ -4048,6 +4048,26 @@ describe('mandatory first-party dependency Node engine alignment', () => {
       .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
   });
 
+  it('rejects a transitive runtime reverse dependent that over-advertises Node support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/discord/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        engines: { ...manifest.engines, node: '>=20.0.0' },
+      });
+    };
+
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/runtime'])))
+      .toThrow(/@fluojs\/discord engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
+  });
+
   it('accepts a selected public package without an advertised Node engine floor', () => {
     // Given: the documented runtime-neutral i18n package with no engines.node declaration.
     // When: release governance evaluates its mandatory first-party dependency graph.

@@ -40,7 +40,7 @@ Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare 
 
 ## When to Use
 
-- when a Node.js 20+ application needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
+- when an application running Node.js `>=20.19.3 <21 || >=22.2.0 <27` needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
 - when repositories need a single `current()` seam that switches between the root handle and the active transaction handle
 - when application shutdown should also run an explicit cleanup hook for the underlying driver resources
 

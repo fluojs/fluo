@@ -111,7 +111,6 @@ describe('Node response compression failures', () => {
     let compressionResult:
       | { readonly kind: 'rejected'; readonly error: unknown }
       | { readonly kind: 'resolved' }
-      | { readonly kind: 'timed_out' }
       | undefined;
     let contentEncoding: number | string | string[] | undefined;
     let resolveResponseSettlement: () => void;
@@ -120,22 +119,16 @@ describe('Node response compression failures', () => {
     });
     const server = createServer(async (_request, response) => {
       try {
-        response.destroy();
-        await new Promise<void>((resolve) => {
+        const responseClosed = new Promise<void>((resolve) => {
           response.once('close', resolve);
         });
+        response.destroy();
+        await responseClosed;
 
-        compressionResult = await Promise.race([
-          compressNodeResponse(response, Buffer.from('payload'), 'gzip').then(
-            () => ({ kind: 'resolved' } as const),
-            (error: unknown) => ({ error, kind: 'rejected' } as const),
-          ),
-          new Promise<{ readonly kind: 'timed_out' }>((resolve) => {
-            setTimeout(() => {
-              resolve({ kind: 'timed_out' });
-            }, 100);
-          }),
-        ]);
+        compressionResult = await compressNodeResponse(response, Buffer.from('payload'), 'gzip').then(
+          () => ({ kind: 'resolved' } as const),
+          (error: unknown) => ({ error, kind: 'rejected' } as const),
+        );
         contentEncoding = response.getHeader('Content-Encoding');
       } finally {
         resolveResponseSettlement();
@@ -187,6 +180,7 @@ describe('Node response compression failures', () => {
 
   it('propagates a native compression write failure and terminates the response', async () => {
     const compressionFailure = new Error('socket write failed');
+    let compressionStream: { readonly destroyed: boolean } | undefined;
     let sendFailure: unknown;
     let responseTerminated = false;
     let resolveResponseSettlement: () => void;
@@ -194,7 +188,8 @@ describe('Node response compression failures', () => {
       resolveResponseSettlement = resolve;
     });
     const server = createServer(async (_request, response) => {
-      response.once('pipe', () => {
+      response.once('pipe', (source) => {
+        compressionStream = source as { readonly destroyed: boolean };
         response.destroy(compressionFailure);
       });
       response.once('error', () => {});
@@ -247,6 +242,7 @@ describe('Node response compression failures', () => {
         message: 'Node response closed before compression completed.',
       });
       expect(responseTerminated).toBe(true);
+      expect(compressionStream?.destroyed).toBe(true);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
