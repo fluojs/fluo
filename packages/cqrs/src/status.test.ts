@@ -42,6 +42,21 @@ describe('createCqrsPlatformStatusSnapshot', () => {
     });
   });
 
+  it('preserves independent command and query lifecycle states', () => {
+    const snapshot = createCqrsPlatformStatusSnapshot(createCqrsInput({
+      commandLifecycleState: 'stopping',
+      lifecycleState: 'ready',
+      queryLifecycleState: 'failed',
+      sagaLifecycleState: 'ready',
+    }));
+
+    expect(snapshot.details).toMatchObject({
+      commandLifecycleState: 'stopping',
+      lifecycleState: 'ready',
+      queryLifecycleState: 'failed',
+    });
+  });
+
   it('marks saga drain as not-ready/degraded', () => {
     const snapshot = createCqrsPlatformStatusSnapshot({
       eventHandlersDiscovered: 1,
