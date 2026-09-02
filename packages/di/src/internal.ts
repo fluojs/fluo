@@ -1,8 +1,10 @@
 import type { Token } from '@fluojs/core';
 
-import type { Container } from './container.js';
 import { ContainerResolutionError } from './errors.js';
-import { multiContributionResolverFor } from './multi-contribution-registry.js';
+import {
+  type MultiContributionResolverOwner,
+  multiContributionResolverFor,
+} from './multi-contribution-registry.js';
 
 /**
  * Resolves one ordered multi-provider contribution through its owning container.
@@ -17,7 +19,7 @@ import { multiContributionResolverFor } from './multi-contribution-registry.js';
  * @throws {ContainerResolutionError} When the container has no registered internal resolver.
  */
 export async function resolveMultiContribution(
-  container: Container,
+  container: MultiContributionResolverOwner,
   token: Token,
   contributionIndex: number,
 ): Promise<unknown> {

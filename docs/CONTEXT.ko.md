@@ -19,6 +19,10 @@
 
 `@fluojs/cqrs`는 필수 `@fluojs/runtime` dependency 때문에 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. 이는 검증된 Node listener 지원 창으로 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 제외됩니다. consumer 계약은 [`packages/cqrs/README.ko.md`](../packages/cqrs/README.ko.md) 및 [Package Surface](./reference/package-surface.ko.md)를 참조하세요.
 
+## 라이프사이클 및 multi-provider 순서
+
+[라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.
+
 ## Identity
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.

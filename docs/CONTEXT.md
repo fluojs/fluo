@@ -19,6 +19,10 @@ Static delivery is a portable `@fluojs/http` middleware contract, documented in 
 
 `@fluojs/cqrs` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` because `@fluojs/runtime` is a mandatory dependency. This is the verified Node listener support window: Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
 
+## Lifecycle & Multi-Provider Ordering
+
+[Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.md) is the source of truth for application and testing module bootstrap hooks. Eligible singleton `multi: true` contributions remain distinct lifecycle instances and run in declared provider order, including when they are interleaved with singleton providers. Framework integrations resolve each contribution through its owning DI container; the internal resolver registrar remains container-private.
+
 ## Identity
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.

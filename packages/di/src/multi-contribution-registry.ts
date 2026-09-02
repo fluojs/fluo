@@ -1,10 +1,9 @@
 import type { Token } from '@fluojs/core';
 
-import type { Container } from './container.js';
-
 type MultiContributionResolver = (token: Token, contributionIndex: number) => Promise<unknown>;
+export type MultiContributionResolverOwner = object;
 
-const multiContributionResolvers = new WeakMap<Container, MultiContributionResolver>();
+const multiContributionResolvers = new WeakMap<MultiContributionResolverOwner, MultiContributionResolver>();
 
 /**
  * Associates a container with its canonical multi-provider contribution resolver.
@@ -13,7 +12,10 @@ const multiContributionResolvers = new WeakMap<Container, MultiContributionResol
  * @param container Container that owns the resolver.
  * @param resolver Container-bound resolver that preserves DI lifecycle invariants.
  */
-export function registerMultiContributionResolver(container: Container, resolver: MultiContributionResolver): void {
+export function registerMultiContributionResolver(
+  container: MultiContributionResolverOwner,
+  resolver: MultiContributionResolver,
+): void {
   multiContributionResolvers.set(container, resolver);
 }
 
@@ -24,6 +26,8 @@ export function registerMultiContributionResolver(container: Container, resolver
  * @param container Container that owns the resolver.
  * @returns The container-bound resolver, if the container registered one.
  */
-export function multiContributionResolverFor(container: Container): MultiContributionResolver | undefined {
+export function multiContributionResolverFor(
+  container: MultiContributionResolverOwner,
+): MultiContributionResolver | undefined {
   return multiContributionResolvers.get(container);
 }
