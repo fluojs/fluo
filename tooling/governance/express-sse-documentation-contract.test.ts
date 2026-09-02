@@ -13,17 +13,51 @@ describe('Express SSE documentation contract', () => {
     expect(() => enforceExpressSseDocumentationContract()).not.toThrow();
   });
 
-  it('rejects a NestJS-style response decorator in either runtime-adapter guide', () => {
+  it('accepts arbitrary SSE paths and handler identifiers while ignoring @Res prose', () => {
+    const readText = (): string =>
+      [
+        '## Express',
+        '',
+        '`@Res()` is unsupported for this handler.',
+        '',
+        '```ts',
+        "import { type RequestContext, SseResponse, Sse } from '@fluojs/http';",
+        '',
+        "@Sse('/live-events')",
+        'streamLiveFeed(_input: undefined, requestContext: RequestContext) {',
+        '  return new SseResponse(requestContext);',
+        '}',
+        '```',
+      ].join('\n');
+
+    expect(() => enforceExpressSseDocumentationContract(readText)).not.toThrow();
+  });
+
+  it('rejects an additive @Res decorator in the English runtime-adapter example', () => {
     const readText = (relativePath: string): string => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
-      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'
-        ? content.replace("@Sse('events')", '@Res()')
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace("@Sse('events')", "@Res()\n@Sse('events')")
         : content;
     };
 
     expect(() => enforceExpressSseDocumentationContract(readText)).toThrow(
-      /must include @Sse\('events'\)/u,
+      /must not use the unsupported @Res\(\) decorator/u,
+    );
+  });
+
+  it('rejects an additive @Res decorator in the Korean runtime-adapter example', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'
+        ? content.replace("@Sse('events')", "@Res()\n@Sse('events')")
+        : content;
+    };
+
+    expect(() => enforceExpressSseDocumentationContract(readText)).toThrow(
+      /must not use the unsupported @Res\(\) decorator/u,
     );
   });
 });

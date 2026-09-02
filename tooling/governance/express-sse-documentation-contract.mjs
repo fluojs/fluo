@@ -27,27 +27,50 @@ function expressSection(content, relativePath) {
   return content.slice(sectionStart, nextSectionStart === -1 ? undefined : nextSectionStart);
 }
 
+function expressSseCodeExample(section, relativePath) {
+  const examples = [...section.matchAll(/```(?:typescript|ts)\s*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((example) => /@Sse\s*\(/u.test(example));
+
+  assert(
+    examples.length === 1,
+    `${relativePath} Express section must include exactly one TypeScript SSE code example; found ${examples.length}.`,
+  );
+
+  return examples[0];
+}
+
 export function enforceExpressSseDocumentationContract(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
   for (const relativePath of runtimeAdapterGuides) {
     const section = expressSection(readText(relativePath), relativePath);
-
-    for (const requiredSnippet of [
-      "import { Sse, SseResponse, type RequestContext } from '@fluojs/http';",
-      "@Sse('events')",
-      'async streamEvents(_input: undefined, context: RequestContext)',
-      'new SseResponse(context)',
-    ]) {
-      assert(
-        section.includes(requiredSnippet),
-        `${relativePath} Express SSE example must include ${requiredSnippet}.`,
-      );
-    }
+    const example = expressSseCodeExample(section, relativePath);
 
     assert(
-      !section.includes('@Res()') && !section.includes('new SseResponse()'),
-      `${relativePath} Express SSE example must not use the unsupported @Res() decorator or omit RequestContext.`,
+      /@Sse\s*\(\s*[^)\s][^)]*\)/u.test(example),
+      `${relativePath} Express SSE example must declare an @Sse route.`,
+    );
+
+    const requestContextParameter = /(?:async\s+)?[A-Za-z_$][\w$]*\s*\(\s*[^,]+,\s*([A-Za-z_$][\w$]*)\s*:\s*RequestContext\b/u.exec(example);
+    assert(
+      requestContextParameter !== null,
+      `${relativePath} Express SSE example must accept RequestContext as its second parameter.`,
+    );
+
+    const requestContextName = requestContextParameter[1];
+    const responseContextPattern = new RegExp(
+      `new\\s+SseResponse\\s*\\(\\s*${requestContextName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\s*\\)`,
+      'u',
+    );
+
+    assert(
+      responseContextPattern.test(example),
+      `${relativePath} Express SSE example must pass its RequestContext parameter to new SseResponse(...).`,
+    );
+    assert(
+      !/@Res\s*\(/u.test(example),
+      `${relativePath} Express SSE example must not use the unsupported @Res() decorator.`,
     );
   }
 }
