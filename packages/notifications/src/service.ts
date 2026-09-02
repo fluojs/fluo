@@ -248,6 +248,7 @@ export class NotificationsService implements Notifications {
     return createNotificationsPlatformStatusSnapshot({
       bulkQueueThreshold: this.options.queue?.bulkThreshold ?? 0,
       channelsRegistered: this.channelsByName.size,
+      eventPublicationEnabled: this.options.events?.publishLifecycleEvents ?? false,
       eventPublisherConfigured: this.options.events !== undefined,
       queueConfigured: this.options.queue !== undefined,
     });

@@ -140,6 +140,7 @@ async function loadGovernanceInternals() {
     enforceOpenApiMigrationDocumentStructure: (readText?: (relativePath: string) => string) => void;
     enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforcePlatformNodejsEngineDocumentation: (readText?: (relativePath: string) => string) => void;
+    enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
   };
@@ -3749,6 +3750,50 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioRuntimeBridgeDiscoverability(readText)).toThrow(
       /docs\/CONTEXT\.ko\.md must document the host-owned @fluojs\/runtime\/devtools bridge/u,
     );
+  });
+});
+
+describe('Notifications configured-disabled status contract', () => {
+  const documentationPaths = [
+    'packages/notifications/README.md',
+    'packages/notifications/README.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+  ] as const;
+
+  it('keeps configuration, enablement, and configured-disabled health semantics machine-readable', async () => {
+    const { enforceNotificationsStatusDocumentationContract } = await loadGovernanceInternals();
+
+    expect(() => enforceNotificationsStatusDocumentationContract()).not.toThrow();
+  });
+
+  it('rejects configured-but-disabled health semantic drift in every governed documentation surface', async () => {
+    const { enforceNotificationsStatusDocumentationContract } = await loadGovernanceInternals();
+
+    for (const targetPath of documentationPaths) {
+      const readText = (relativePath: string): string => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace(
+            'configured-but-disabled-no-channels=degraded',
+            'configured-but-disabled-no-channels=unhealthy',
+          )
+          : content;
+      };
+
+      expect(() => enforceNotificationsStatusDocumentationContract(readText)).toThrow(targetPath);
+    }
+  });
+
+  it('runs the documentation contract from the central governance path', () => {
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(governanceSource).toContain('enforceNotificationsStatusDocumentationContract();');
   });
 });
 

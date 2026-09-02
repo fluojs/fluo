@@ -12,8 +12,33 @@ export type NotificationsOperationMode =
 export interface NotificationsStatusAdapterInput {
   bulkQueueThreshold: number;
   channelsRegistered: number;
+  /**
+   * Whether lifecycle publication is enabled for the configured publisher. Defaults to
+   * `eventPublisherConfigured` when omitted so callers that only know about configuration keep
+   * their previous diagnostics.
+   */
+  eventPublicationEnabled?: boolean;
   eventPublisherConfigured: boolean;
   queueConfigured: boolean;
+}
+
+/**
+ * Typed diagnostics published under {@link NotificationsPlatformStatusSnapshot.details}.
+ *
+ * The index signature keeps the shape assignable to `Record<string, unknown>` consumers while the
+ * named members give typed access to the documented diagnostics.
+ */
+export interface NotificationsStatusDetails {
+  bulkQueueThreshold: number;
+  channelsRegistered: number;
+  dependencies: readonly string[];
+  /** Whether a configured publisher is actually publishing lifecycle events. */
+  eventPublicationEnabled: boolean;
+  /** Whether an event publisher is wired, regardless of publication enablement. */
+  eventPublisherConfigured: boolean;
+  operationMode: NotificationsOperationMode;
+  queueConfigured: boolean;
+  [detail: string]: unknown;
 }
 
 /** Structured snapshot returned by {@link createNotificationsPlatformStatusSnapshot}. */
@@ -21,15 +46,34 @@ export interface NotificationsPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
   ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
+  details: NotificationsStatusDetails;
 }
 
-function resolveOperationMode(input: NotificationsStatusAdapterInput): NotificationsOperationMode {
-  if (input.channelsRegistered === 0 && !input.queueConfigured && !input.eventPublisherConfigured) {
+interface ResolvedNotificationsStatusInput {
+  bulkQueueThreshold: number;
+  channelsRegistered: number;
+  eventPublicationEnabled: boolean;
+  eventPublisherConfigured: boolean;
+  queueConfigured: boolean;
+}
+
+function resolveStatusInput(input: NotificationsStatusAdapterInput): ResolvedNotificationsStatusInput {
+  return {
+    bulkQueueThreshold: input.bulkQueueThreshold,
+    channelsRegistered: input.channelsRegistered,
+    eventPublicationEnabled:
+      input.eventPublisherConfigured && (input.eventPublicationEnabled ?? true),
+    eventPublisherConfigured: input.eventPublisherConfigured,
+    queueConfigured: input.queueConfigured,
+  };
+}
+
+function resolveOperationMode(input: ResolvedNotificationsStatusInput): NotificationsOperationMode {
+  if (input.channelsRegistered === 0 && !input.queueConfigured && !input.eventPublicationEnabled) {
     return 'unconfigured';
   }
 
-  if (input.queueConfigured && input.eventPublisherConfigured) {
+  if (input.queueConfigured && input.eventPublicationEnabled) {
     return 'queue-backed-with-events';
   }
 
@@ -37,14 +81,14 @@ function resolveOperationMode(input: NotificationsStatusAdapterInput): Notificat
     return 'queue-backed';
   }
 
-  if (input.eventPublisherConfigured) {
+  if (input.eventPublicationEnabled) {
     return 'direct-with-events';
   }
 
   return 'direct-only';
 }
 
-function createReadiness(input: NotificationsStatusAdapterInput): PlatformReadinessReport {
+function createReadiness(input: ResolvedNotificationsStatusInput): PlatformReadinessReport {
   if (input.channelsRegistered > 0) {
     return {
       critical: true,
@@ -59,7 +103,7 @@ function createReadiness(input: NotificationsStatusAdapterInput): PlatformReadin
   };
 }
 
-function createHealth(input: NotificationsStatusAdapterInput): PlatformHealthReport {
+function createHealth(input: ResolvedNotificationsStatusInput): PlatformHealthReport {
   if (input.channelsRegistered > 0) {
     return {
       status: 'healthy',
@@ -82,29 +126,38 @@ function createHealth(input: NotificationsStatusAdapterInput): PlatformHealthRep
 /**
  * Creates a health/readiness snapshot for the notifications orchestration layer.
  *
- * @param input Registered-channel and optional-integration counts derived from the active module wiring.
+ * Publisher configuration and lifecycle publication enablement are reported separately:
+ * `details.eventPublisherConfigured` records the wiring while `details.eventPublicationEnabled`
+ * records whether events are actually published. Operation mode, active dependencies, and external
+ * ownership are derived from enablement so a configured-but-disabled publisher is never reported as
+ * an active event-backed runtime.
+ *
+ * @param input Registered-channel and optional-integration state derived from the active module wiring.
  * @returns A structured snapshot suitable for status endpoints and operational diagnostics.
  */
 export function createNotificationsPlatformStatusSnapshot(
   input: NotificationsStatusAdapterInput,
 ): NotificationsPlatformStatusSnapshot {
+  const resolved = resolveStatusInput(input);
+
   return {
     details: {
-      bulkQueueThreshold: input.bulkQueueThreshold,
-      channelsRegistered: input.channelsRegistered,
+      bulkQueueThreshold: resolved.bulkQueueThreshold,
+      channelsRegistered: resolved.channelsRegistered,
       dependencies: [
-        ...(input.queueConfigured ? ['notifications.queue-adapter'] : []),
-        ...(input.eventPublisherConfigured ? ['notifications.event-publisher'] : []),
+        ...(resolved.queueConfigured ? ['notifications.queue-adapter'] : []),
+        ...(resolved.eventPublicationEnabled ? ['notifications.event-publisher'] : []),
       ],
-      eventPublisherConfigured: input.eventPublisherConfigured,
-      operationMode: resolveOperationMode(input),
-      queueConfigured: input.queueConfigured,
+      eventPublicationEnabled: resolved.eventPublicationEnabled,
+      eventPublisherConfigured: resolved.eventPublisherConfigured,
+      operationMode: resolveOperationMode(resolved),
+      queueConfigured: resolved.queueConfigured,
     },
-    health: createHealth(input),
+    health: createHealth(resolved),
     ownership: {
-      externallyManaged: input.queueConfigured || input.eventPublisherConfigured,
+      externallyManaged: resolved.queueConfigured || resolved.eventPublicationEnabled,
       ownsResources: false,
     },
-    readiness: createReadiness(input),
+    readiness: createReadiness(resolved),
   };
 }

@@ -205,14 +205,18 @@ These limitations are part of the package contract so leaf packages can evolve i
 ### Status and errors
 
 - `createNotificationsPlatformStatusSnapshot(...)`
+- `NotificationsOperationMode`
 - `NotificationsPlatformStatusSnapshot`
 - `NotificationsStatusAdapterInput`
+- `NotificationsStatusDetails`
 - `NotificationsConfigurationError`
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
 
 Status snapshots include `readiness`, `health`, `ownership`, and a `details` object for platform diagnostics.
-`operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, and `eventPublisherConfigured` live under `details`; they are not top-level snapshot fields. When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are published through an event publisher, it includes `notifications.event-publisher`. Those optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not create, close, or drain concrete queue or event-bus resources.
+`operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, and `eventPublicationEnabled` live under `details`; they are not top-level snapshot fields. `eventPublisherConfigured` records publisher wiring, while `eventPublicationEnabled` records whether that publisher emits lifecycle events. When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are enabled through an event publisher, it includes `notifications.event-publisher`. A configured publisher with `publishLifecycleEvents: false` remains visible as configured but does not add an active dependency, event-backed operation mode, or external ownership. Active optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not create, close, or drain concrete queue or event-bus resources.
+
+<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->
 
 ## Related Packages
 

@@ -258,12 +258,13 @@ export class NotificationsDiagnostics {
 const standaloneStatus = createNotificationsPlatformStatusSnapshot({
   bulkQueueThreshold: 50,
   channelsRegistered: 2,
+  eventPublicationEnabled: true,
   eventPublisherConfigured: true,
   queueConfigured: true,
 });
 ```
 
-`NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 top-level `readiness`, `health`, `ownership`을 포함합니다. `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured` 같은 diagnostics는 `details` 아래에 있으며, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency entry도 여기에 포함됩니다. 선택적 seam이 구성되면 `ownership.externallyManaged: true`가 설정되고, foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`는 `ownership` 아래에 유지됩니다.
+`NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 top-level `readiness`, `health`, `ownership`을 포함합니다. `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, `eventPublicationEnabled` 같은 diagnostics는 `details` 아래에 있으며, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency entry도 여기에 포함됩니다. Publisher configuration과 lifecycle enablement는 분리됩니다. `publishLifecycleEvents: false`인 publisher는 configured 상태로 남지만 active event dependency, event-backed operation mode, external ownership을 만들지 않습니다. 활성화된 선택적 seam은 `ownership.externallyManaged: true`로 표시되고, foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`는 `ownership` 아래에 유지됩니다.
 
 ## 15.9 FluoShop Context: Order Success Flow
 

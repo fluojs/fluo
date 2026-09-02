@@ -1007,8 +1007,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus HTTP conditional-request middleware/guard ordering, representation
   // existence, conditional/HEAD response ownership, single-range 206 and
   // bodyless 416 partial responses, If-Range reuse of selected validators,
-  // identity-encoded representation-byte metadata, and cross-adapter
-  // conformance.
+  // identity-encoded representation-byte metadata, cross-adapter conformance,
+  // and Notifications publisher wiring versus active lifecycle-publication
+  // status so configured-but-disabled publishers do not appear as active
+  // event-backed dependencies or external owners.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
@@ -3291,6 +3293,26 @@ export function enforceStudioRuntimeBridgeDiscoverability(readText = read) {
   }
 }
 
+export function enforceNotificationsStatusDocumentationContract(readText = read) {
+  const contractSentinel =
+    '<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->';
+  const documentationPaths = [
+    'packages/notifications/README.md',
+    'packages/notifications/README.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+  ];
+
+  for (const documentationPath of documentationPaths) {
+    assert(
+      readText(documentationPath).includes(contractSentinel),
+      `${documentationPath} must preserve the notifications configured-disabled status contract sentinel.`,
+    );
+  }
+}
+
 export async function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -3319,6 +3341,7 @@ export async function main() {
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
+  enforceNotificationsStatusDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
