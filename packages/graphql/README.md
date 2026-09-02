@@ -74,6 +74,8 @@ await app.listen(3000);
 //   -d '{"query": "{ hello(name: \"fluo\") }"}'
 ```
 
+Migrating from NestJS? Read the [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.md#graphql-migration-boundaries) before porting resolver authorization, schema nullability, scopes, or subscriptions.
+
 ## Core Capabilities
 
 ### Code-first Resolvers

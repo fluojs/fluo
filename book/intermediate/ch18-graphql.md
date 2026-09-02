@@ -87,6 +87,14 @@ fluo does not infer GraphQL output types from TypeScript return types or emitted
 
 Resolver methods can also receive `context: GraphQLContext`. That context carries the underlying fluo request, any authenticated `principal` set by HTTP middleware or guards, custom fields returned from `GraphqlModule.forRoot({ context })`, and websocket `connectionParams`/`socket` values when the operation arrives through the optional websocket transport.
 
+### NestJS Migration Boundaries
+
+NestJS resolver guards and `GqlExecutionContext` do not carry into fluo. Authenticate HTTP requests in application-owned middleware or guards, then use `context.principal` in a root resolver method with the signature `(input, context)`. `@Args()`, `@Context()`, and `@Parent()` are method decorators for code-first object field resolvers only; they are not root-operation parameter decorators.
+
+WebSocket `context.connectionParams` is client-provided `Record<string, unknown>`, not an authenticated identity. Parse and authorize it in application-owned subscription setup before using it to create a stream. The GraphQL endpoint is fixed at `/graphql`, so a NestJS `GraphQLModule.forRoot({ path })` configuration has no fluo equivalent.
+
+Resolver decorators require public instance targets: root and field operation decorators reject private and static methods, and `@Arg()` rejects private and static input fields. Compare the generated SDL before cutover: `outputType` is not inferred and falls back to `String`, `listOf(...)` preserves list output, new object fields are non-null only with `nullable: false`, and `@Arg(...)` creates nullable scalar or list arguments. DTO validation does not turn an argument into a non-null schema argument, so a required NestJS argument remains a migration gap until the SDL preserves that requirement.
+
 ### Registering the Module
 
 ```typescript
@@ -188,6 +196,35 @@ export class NotificationResolver {
   @Subscription()
   async onNewNotification() {
     return pubsub.subscribe('NEW_NOTIFICATION');
+  }
+}
+```
+
+Subscriptions must return an `AsyncIterable`, not a NestJS `Observable`. fluo disposes its request-scoped DI container when an HTTP operation completes or a WebSocket operation completes or disconnects, but the application owns its external subscription resources. Return a typed iterator that closes those resources when GraphQL stops consuming it:
+
+```typescript
+type Notification = { id: string; message: string };
+
+async function* ownedNotifications(
+  source: AsyncIterable<Notification>,
+  close: () => Promise<void>,
+): AsyncIterable<Notification> {
+  try {
+    yield* source;
+  } finally {
+    await close();
+  }
+}
+
+@Resolver()
+class NotificationResolver {
+  @Subscription({ outputType: NotificationType })
+  notifications(_input: undefined, context: GraphQLContext): AsyncIterable<Notification> {
+    const principal = requireAuthorizedPrincipal(context.principal);
+    return ownedNotifications(
+      this.events.subscribe(principal.id),
+      () => this.events.unsubscribe(principal.id),
+    );
   }
 }
 ```

@@ -87,6 +87,14 @@ fluo는 TypeScript 반환 타입이나 emit된 metadata에서 GraphQL output typ
 
 Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, HTTP middleware나 guard가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
 
+### NestJS 마이그레이션 경계
+
+NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니다. HTTP request는 application-owned middleware 또는 guard에서 인증한 뒤 root resolver의 `(input, context)` signature에서 `context.principal`을 사용하세요. `@Args()`, `@Context()`, `@Parent()`는 code-first object field resolver용 method decorator이며 root operation parameter decorator가 아닙니다.
+
+WebSocket `context.connectionParams`는 인증된 identity가 아니라 client가 제공한 `Record<string, unknown>`입니다. Subscription setup을 application-owned로 두고 stream을 만들기 전에 이를 parse 및 authorize하세요. GraphQL endpoint는 `/graphql`로 고정되므로 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
+
+Resolver decorator에는 public instance target이 필요합니다. Root 및 field operation decorator는 private/static method를 거부하고, `@Arg()`는 private/static input field를 거부합니다. Cutover 전에 생성 SDL을 비교하세요. `outputType`은 추론되지 않고 `String`으로 fallback하며, list output은 `listOf(...)`로 보존하고, 새 object field는 `nullable: false`일 때만 non-null이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만듭니다. DTO validation은 argument를 non-null schema argument로 바꾸지 않으므로 NestJS의 required argument는 SDL이 그 요구사항을 보존할 때까지 migration gap입니다.
+
 ### Registering the Module
 
 ```typescript
@@ -188,6 +196,35 @@ export class NotificationResolver {
   @Subscription()
   async onNewNotification() {
     return pubsub.subscribe('NEW_NOTIFICATION');
+  }
+}
+```
+
+Subscription은 NestJS `Observable`이 아니라 `AsyncIterable`을 반환해야 합니다. fluo는 HTTP operation 완료 또는 WebSocket operation 완료/disconnect 시 request-scoped DI container를 dispose하지만, 외부 subscription resource는 application이 소유합니다. GraphQL이 소비를 멈출 때 resource를 닫는 typed iterator를 반환하세요.
+
+```typescript
+type Notification = { id: string; message: string };
+
+async function* ownedNotifications(
+  source: AsyncIterable<Notification>,
+  close: () => Promise<void>,
+): AsyncIterable<Notification> {
+  try {
+    yield* source;
+  } finally {
+    await close();
+  }
+}
+
+@Resolver()
+class NotificationResolver {
+  @Subscription({ outputType: NotificationType })
+  notifications(_input: undefined, context: GraphQLContext): AsyncIterable<Notification> {
+    const principal = requireAuthorizedPrincipal(context.principal);
+    return ownedNotifications(
+      this.events.subscribe(principal.id),
+      () => this.events.unsubscribe(principal.id),
+    );
   }
 }
 ```

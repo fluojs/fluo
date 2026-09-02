@@ -74,6 +74,8 @@ await app.listen(3000);
 //   -d '{"query": "{ hello(name: \"fluo\") }"}'
 ```
 
+NestJS에서 이전하나요? Resolver authorization, schema nullability, scope, subscription을 옮기기 전에 [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계)을 읽으세요.
+
 ## 핵심 기능
 
 ### Code-first Resolvers
