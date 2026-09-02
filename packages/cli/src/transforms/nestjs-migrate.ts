@@ -1146,7 +1146,7 @@ function rewriteBootstrap(
   const warnings: MigrationWarning[] = [];
   const bootstrapBindings = new Map<string, {
     declaration: ts.VariableDeclaration;
-    functionOwner: ts.FunctionLikeDeclaration;
+    functionOwner: ts.SignatureDeclaration;
     listenCalls: ts.CallExpression[];
     name: string;
     scope: ts.Block;
@@ -1173,7 +1173,7 @@ function rewriteBootstrap(
   function getSupportedListenCall(
     binding: {
       declaration: ts.VariableDeclaration;
-      functionOwner: ts.FunctionLikeDeclaration;
+      functionOwner: ts.SignatureDeclaration;
       listenCalls: ts.CallExpression[];
       name: string;
       scope: ts.Block;
@@ -1226,7 +1226,7 @@ function rewriteBootstrap(
     return { listenCall, portExpression };
   }
 
-  function enclosingFunction(node: ts.Node): ts.FunctionLikeDeclaration | undefined {
+  function enclosingFunction(node: ts.Node): ts.SignatureDeclaration | undefined {
     let current: ts.Node | undefined = node.parent;
     while (current) {
       if (ts.isFunctionLike(current)) {
@@ -1254,13 +1254,15 @@ function rewriteBootstrap(
 
   function hasEscapedBindingUse(binding: {
     declaration: ts.VariableDeclaration;
-    functionOwner: ts.FunctionLikeDeclaration;
+    functionOwner: ts.SignatureDeclaration;
     listenCalls: ts.CallExpression[];
     name: string;
     scope: ts.Block;
   }): boolean {
     let escaped = false;
     const [listenCall] = binding.listenCalls;
+    const listenReceiver =
+      listenCall && ts.isPropertyAccessExpression(listenCall.expression) ? listenCall.expression.expression : undefined;
 
     const inspectBindingUse = (node: ts.Node): void => {
       if (node !== binding.functionOwner && ts.isFunctionLike(node)) {
@@ -1271,7 +1273,7 @@ function rewriteBootstrap(
         ts.isIdentifier(node)
         && node.text === binding.name
         && node !== binding.declaration.name
-        && node !== listenCall?.expression.expression
+        && node !== listenReceiver
       ) {
         escaped = true;
         return;
