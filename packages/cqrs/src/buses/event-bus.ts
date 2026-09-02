@@ -1,5 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
+import { type EventBus, EventBusLifecycleService, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
 import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -16,6 +16,7 @@ import type { CqrsDispatchContext, CqrsEventBus, CqrsEventType, EventHandlerDesc
 import { discoverEventHandlerDescriptors } from './event-handler-discovery.js';
 import { CqrsPublishDrainTracker } from './publish-drain-tracker.js';
 import { CQRS_SAGA_DRAIN_AUTHORIZATION, CqrsSagaLifecycleService } from './saga-bus.js';
+import { CqrsShutdownDeadline } from './shutdown-deadline.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
@@ -46,6 +47,8 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   APPLICATION_LOGGER,
   CQRS_MODULE_OPTIONS,
   RUNTIME_CLEANUP_REGISTRATION,
+  EventBusLifecycleService,
+  CqrsShutdownDeadline,
 )
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
@@ -63,6 +66,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
+    private readonly delegatedEventBus: EventBusLifecycleService | undefined = undefined,
+    private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
   ) {
     super(runtimeContainer, compiledModules, logger);
     this.publishDrainTracker = new CqrsPublishDrainTracker(logger);
@@ -90,7 +95,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.unregisterShutdownStartCleanup = undefined;
 
     if (this.publishDrainTracker.hasActivePipelines) {
-      await this.publishDrainTracker.drain(this.resolveShutdownDrainTimeoutMs());
+      await this.publishDrainTracker.drain(this.resolveRemainingShutdownDrainTimeoutMs());
     }
 
     this.lifecycleState = 'stopped';
@@ -194,6 +199,17 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   private markApplicationShutdownStarted(): void {
+    this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
+    const deadlineAtMs = this.shutdownDeadline.deadlineAtMs();
+
+    if (
+      deadlineAtMs !== undefined &&
+      this.delegatedEventBus &&
+      this.moduleOptions.eventBus?.shutdown?.drainTimeoutMs === undefined
+    ) {
+      this.delegatedEventBus.adoptShutdownDeadline(deadlineAtMs);
+    }
+
     if (this.lifecycleState !== 'stopped') {
       this.lifecycleState = 'stopping';
     }
@@ -225,6 +241,10 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
 
     return Math.floor(timeoutMs);
+  }
+
+  private resolveRemainingShutdownDrainTimeoutMs(): number {
+    return this.shutdownDeadline.remainingTimeoutMs() ?? this.resolveShutdownDrainTimeoutMs();
   }
 
   private matchEventDescriptors(event: IEvent): EventHandlerDescriptor[] {

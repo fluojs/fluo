@@ -74,6 +74,13 @@ function createReadiness(input: CqrsStatusAdapterInput): PlatformReadinessReport
 }
 
 function createHealth(input: CqrsStatusAdapterInput): PlatformHealthReport {
+  if (input.shutdownDrainTimeouts > 0 || input.sagaShutdownDrainTimeouts > 0) {
+    return {
+      reason: 'CQRS event/saga pipeline reported bounded shutdown drain timeouts.',
+      status: 'degraded',
+    };
+  }
+
   if (
     input.lifecycleState === 'failed' ||
     input.sagaLifecycleState === 'failed' ||
@@ -94,13 +101,6 @@ function createHealth(input: CqrsStatusAdapterInput): PlatformHealthReport {
   ) {
     return {
       reason: 'CQRS event/saga pipeline is transitioning lifecycle state.',
-      status: 'degraded',
-    };
-  }
-
-  if (input.shutdownDrainTimeouts > 0 || input.sagaShutdownDrainTimeouts > 0) {
-    return {
-      reason: 'CQRS event/saga pipeline reported bounded shutdown drain timeouts.',
       status: 'degraded',
     };
   }

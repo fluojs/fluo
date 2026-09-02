@@ -11,6 +11,7 @@ import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor 
 import { drainSagaContinuations, runSerializedSagaContinuationTasks, type SagaDispatchOptions } from './saga-continuation.js';
 import { discoverSagaDescriptors } from './saga-discovery.js';
 import { drainPendingSagaDispatches } from './saga-drain.js';
+import { CqrsShutdownDeadline } from './shutdown-deadline.js';
 import { enterSagaTopology, type SagaTopologyEntry } from './saga-topology.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
@@ -40,7 +41,14 @@ function toErrorMessage(error: unknown): string {
  * The service prevents re-entrant dispatch loops within the same explicit dispatch context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
-@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS, RUNTIME_CLEANUP_REGISTRATION)
+@Inject(
+  RUNTIME_CONTAINER,
+  COMPILED_MODULES,
+  APPLICATION_LOGGER,
+  CQRS_MODULE_OPTIONS,
+  RUNTIME_CLEANUP_REGISTRATION,
+  CqrsShutdownDeadline,
+)
 export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
   private discoveryPromise: Promise<void> | undefined;
@@ -57,6 +65,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
+    private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
   ) {
     super(runtimeContainer, compiledModules, logger);
 
@@ -173,6 +182,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private markApplicationShutdownStarted(): void {
+    this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
+
     if (this.lifecycleState !== 'stopped') {
       this.lifecycleState = 'stopping';
     }
@@ -218,7 +229,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async drainActiveSagaWork(): Promise<void> {
-    const timeoutMs = this.resolveShutdownDrainTimeoutMs();
+    const timeoutMs = this.shutdownDeadline.remainingTimeoutMs() ?? this.resolveShutdownDrainTimeoutMs();
     const activeWorkCount = this.pendingDispatches.size;
     const drained = await drainPendingSagaDispatches(this.pendingDispatches, timeoutMs);
 
