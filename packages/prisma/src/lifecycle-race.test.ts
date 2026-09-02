@@ -129,6 +129,55 @@ describe('Prisma lifecycle transition races', () => {
     }
   });
 
+  it('retries disconnect after a failed shutdown transition', async () => {
+    // Given
+    const disconnectFailure = new Error('disconnect failed');
+    let disconnectCalls = 0;
+    let releaseFirstDisconnect: () => void = () => undefined;
+    let notifyFirstDisconnectStarted: () => void = () => undefined;
+    const firstDisconnectReleased = new Promise<void>((resolve) => {
+      releaseFirstDisconnect = resolve;
+    });
+    const firstDisconnectStarted = new Promise<void>((resolve) => {
+      notifyFirstDisconnectStarted = resolve;
+    });
+    const client = {
+      async $disconnect() {
+        disconnectCalls += 1;
+
+        if (disconnectCalls === 1) {
+          notifyFirstDisconnectStarted();
+          await firstDisconnectReleased;
+          throw disconnectFailure;
+        }
+      },
+    };
+    const prisma = new PrismaService<typeof client>(client);
+    const firstShutdown = prisma.onApplicationShutdown();
+
+    try {
+      await firstDisconnectStarted;
+      expect(disconnectCalls).toBe(1);
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ lifecycleState: 'shutting-down' });
+
+      releaseFirstDisconnect();
+      await expect(firstShutdown).rejects.toThrow(disconnectFailure);
+      expect(disconnectCalls).toBe(1);
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ lifecycleState: 'shutting-down' });
+
+      // When
+      const retryShutdown = prisma.onApplicationShutdown();
+
+      // Then
+      await expect(retryShutdown).resolves.toBeUndefined();
+      expect(disconnectCalls).toBe(2);
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ lifecycleState: 'stopped' });
+    } finally {
+      releaseFirstDisconnect();
+      await Promise.allSettled([firstShutdown]);
+    }
+  });
+
   it('shares an in-flight shutdown transition', async () => {
     // Given
     let disconnectCalls = 0;
