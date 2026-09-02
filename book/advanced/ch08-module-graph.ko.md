@@ -547,37 +547,11 @@ for each compiled module:
 그래서 이후 bootstrap 코드는 비교적 단순할 수 있습니다. 이미 coherence가 증명된 graph를 넘겨받기 때문입니다.
 
 ## 8.4 Container registration replays the compiled order and applies duplicate-provider policy
-graph가 compile되면, `path:packages/runtime/src/bootstrap.ts:372-398`의 `bootstrapModule()`이 새로운 `Container`를 만듭니다. 그리고 그 뒤에야 실제로 어떤 provider를 등록할지 결정합니다.
+graph가 compile되면, `bootstrapModule()`은 새 `Container`를 만들고 `selectEffectiveBootstrapProviders()`를 호출합니다. 이 selector는 모든 `multi: true` contribution을 선언 순서대로 보존합니다. 단일 provider만 중복 제거하므로 shared multi token이 하나의 승자로 축소되지 않습니다.
 
-여기서 가장 흥미로운 helper는 `path:packages/runtime/src/bootstrap.ts:262-312`의 `collectProvidersForContainer()`입니다. 이 함수는 runtime provider와 module provider를 token 기준의 selected-provider map으로 합칩니다. 여기서는 multi-version 공존을 시도하지 않습니다. token마다 승자 하나만 선택합니다.
+selector는 runtime과 module entry에 대해 분리된 single-provider index를 유지합니다. `'warn'` 또는 `'ignore'`에서는 나중 single provider가 effective provider가 되고, `'throw'`는 그 중복을 거부합니다. Runtime single provider는 같은 token의 module single provider를 가리지만, multi contribution은 다른 multi contribution과 token을 공유해도 effective 상태로 남습니다.
 
-helper의 시작은 runtime provider를 같은 selected map에 먼저 넣습니다.
-
-`path:packages/runtime/src/bootstrap.ts:262-278`
-```typescript
-function collectProvidersForContainer(
-  modules: CompiledModule[],
-  runtimeProviders: Provider[] | undefined,
-  policy: DuplicateProviderPolicy,
-  logger?: ApplicationLogger,
-): Provider[] {
-  const selectedProviders = new Map<Token, SelectedProviderEntry>();
-
-  for (const runtimeProvider of runtimeProviders ?? []) {
-    const token = providerToken(runtimeProvider);
-    selectedProviders.set(token, {
-      moduleName: '<runtime>',
-      provider: runtimeProvider,
-      source: 'runtime',
-      token,
-    });
-  }
-```
-
-runtime provider도 token key로 선택되지만, 뒤쪽 filter에서 module provider 중 runtime token과 겹치는 항목은 빠집니다. 그래서 bootstrap 전용 token이 module provider와 섞여 중복 등록되지 않습니다.
-
-
-duplicate policy는 `path:packages/runtime/src/types.ts:33-39`의 `BootstrapModuleOptions`에서 옵니다. 허용 값은 `'warn'`, `'throw'`, `'ignore'`입니다. `bootstrapModule()`은 `path:packages/runtime/src/bootstrap.ts:375`에서 기본값을 `'warn'`으로 둡니다.
+duplicate policy는 `BootstrapModuleOptions`에서 옵니다. 허용 값은 `'warn'`, `'throw'`, `'ignore'`이고 `bootstrapModule()`의 기본값은 `'warn'`입니다.
 
 옵션 타입은 duplicate policy가 graph compile 옵션과 같은 저수준 bootstrap 계약에 속한다는 점을 보여 줍니다.
 
@@ -595,50 +569,18 @@ export interface BootstrapModuleOptions {
 이 옵션은 graph validation 자체뿐 아니라, graph가 승인된 뒤 provider selection을 어떻게 다룰지도 함께 전달합니다.
 
 
-두 module이 같은 token을 등록하면, runtime은 `path:packages/runtime/src/bootstrap.ts:257-260`의 `createDuplicateProviderMessage()`를 사용한 뒤 policy에 따라 분기합니다. `'throw'`는 `DuplicateProviderError`를 던지고, `'warn'`은 로그를 남기고 계속 진행하며, `'ignore'`는 조용히 나중 registration을 승자로 둡니다.
+두 module이 같은 **single-provider** token을 등록하면, `selectEffectiveBootstrapProviders()`는 duplicate 보고를 `handleDuplicateProvider()`에 위임합니다. `'throw'`는 `DuplicateProviderError`를 던지고, `'warn'`은 로그를 남긴 뒤 나중 single provider를 보존하며, `'ignore'`도 조용히 그 나중 single provider를 보존합니다. 이 정책은 `multi: true`에 one-winner 규칙을 적용하지 않습니다.
 
-module provider 순회 부분은 duplicate 감지와 last write를 같은 루프 안에서 처리합니다.
+selector는 compiled module을 dependency order로 순회하면서 모든 entry를 기록하고, single token마다 마지막 index만 보존합니다. 따라서 결과에는 다음 두 성질이 명시적으로 적용됩니다.
 
-`path:packages/runtime/src/bootstrap.ts:280-308`
-```typescript
-  for (const compiledModule of modules) {
-    for (const provider of compiledModule.definition.providers ?? []) {
-      const token = providerToken(provider);
-      const existing = selectedProviders.get(token);
-
-      if (existing && existing.source === 'module') {
-        const message = createDuplicateProviderMessage(token, compiledModule.type.name, existing.moduleName);
-
-        if (policy === 'throw') {
-          throw new DuplicateProviderError(message, {
-            module: compiledModule.type.name,
-            token,
-            phase: 'provider registration',
-            hint: `Remove the duplicate registration from one of the modules, use container.override() for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
-          });
-        }
-
-        if (policy === 'warn') {
-          logger?.warn(message, 'BootstrapModule');
-        }
-      }
-
-      selectedProviders.set(token, {
-        moduleName: compiledModule.type.name,
-        provider,
-        source: 'module',
-        token,
-      });
+```text
+모든 runtime/module multi contribution을 선언 순서대로 보존
+각 single token에는 effective runtime/module provider만 보존
 ```
 
-`selectedProviders.set()`이 항상 루프 끝에서 실행되므로, throw가 아닌 정책에서는 나중 module provider가 map의 값을 바꿉니다. 이 때문에 duplicate 허용 모드는 deterministic last write wins입니다.
+테스트는 두 성질을 모두 다룹니다. Duplicate single provider는 설정된 policy를 따르고, `multi: true` lifecycle contribution은 독립적으로 resolve되며 선언 순서를 유지합니다.
 
-
-여기서 중요한 구현 포인트는 selection order입니다. `collectProvidersForContainer()`는 compiled module을 dependency order로 순회하지만, map에 나중 write가 이전 write를 덮어쓰기 때문에, 마지막에 만난 provider token이 승리합니다. 즉 설계가 좋지 않을 수는 있어도, 동작은 deterministic합니다.
-
-테스트가 이를 분명하게 보여 줍니다. `path:packages/runtime/src/bootstrap.test.ts:291-317`은 warning path를 검증합니다. `path:packages/runtime/src/bootstrap.test.ts:319-343`은 warning mode에서 나중 provider가 실제로 승리함을 증명합니다. runtime은 duplicate를 merge하지 않습니다. token당 selected provider 하나만 남깁니다.
-
-selection 이후, `bootstrapModule()`은 `createRuntimeTokenSet()`과 `providerToken()`을 사용해 module provider 목록에서 runtime provider token을 제거합니다. 이 단계 덕분에 bootstrap-scoped runtime token이 중복 등록되지 않습니다.
+selection 이후 `bootstrapModule()`은 effective runtime provider를 먼저, effective module provider를 다음에 등록합니다. Runtime single token은 같은 token의 module single provider만 억제하며 multi contribution은 버리지 않습니다.
 
 그 다음 registration은 의도적으로 단순한 순서로 진행됩니다.
 
@@ -701,79 +643,21 @@ function registerModuleMiddleware(container: Container, modules: CompiledModule[
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 module graph order는 initialization order의 절반에 불과합니다. registration 이후 runtime은 어떤 singleton instance를 eager하게 만들지, 어떤 hook을 실행할지, 언제 app이 ready해지는지도 결정해야 합니다.
 
-이 연속 단계는 `path:packages/runtime/src/bootstrap.ts:1445-1590`의 `bootstrapApplication()`과 `path:packages/runtime/src/bootstrap.ts:1619-1740`의 `FluoFactory.createApplicationContext()`에 있습니다. 두 흐름은 같은 lifecycle skeleton을 공유합니다.
+이 연속 단계는 `bootstrapApplication()`과 `FluoFactory.createApplicationContext()`에 있습니다. 두 흐름은 같은 lifecycle skeleton을 공유합니다.
 
-첫째, runtime context token이 등록됩니다. `path:packages/runtime/src/bootstrap.ts:1280-1300`의 `registerRuntimeBootstrapTokens()`는 full application에 대해 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 추가합니다. `path:packages/runtime/src/bootstrap.ts:1316-1332`의 `registerRuntimeApplicationContextTokens()`는 context-only bootstrap에 `PLATFORM_SHELL`을 추가하지만 HTTP adapter는 추가하지 않습니다.
+첫째, runtime context token이 등록됩니다. `registerRuntimeBootstrapTokens()`는 full application에 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 추가합니다. `registerRuntimeApplicationContextTokens()`는 context-only bootstrap에 `PLATFORM_SHELL`을 추가하지만 HTTP adapter는 추가하지 않습니다.
 
-둘째, runtime은 `path:packages/runtime/src/bootstrap.ts:1334-1344`의 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
+둘째, runtime은 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`의 `resolveLifecycleInstances()`가 eager instantiation policy와 concurrency policy를 함께 명시합니다. Provider order대로 token 중복을 제거하고 hook-bearing value provider와 direct singleton class/factory provider만 유지합니다. Runtime은 direct-singleton filtering 전에 hook-bearing value provider를 lifecycle entry에 추가하므로, hook-bearing `multi: true` value provider도 lifecycle entry가 될 수 있습니다. Alias, request-scoped, transient, 그리고 value가 아닌 multi class/factory provider는 direct top-level lifecycle entry가 되지 않습니다.
+`resolveLifecycleInstances()`는 eager instantiation policy와 concurrency policy를 함께 명시합니다. Effective single-provider는 token으로 중복 제거하지만 `multi: true` contribution은 선언별 contribution index로 식별합니다. Hook-bearing value는 직접 lifecycle entry가 되고, 적격 singleton class/factory contribution은 first-party `@fluojs/di/internal` contribution resolver로 자기 contribution만 해석합니다. 따라서 shared token 뒤에 나중 선언이 사라지지 않고 request/transient sibling을 root에서 해석하지 않으며, alias, request-scoped, transient provider는 lifecycle 대상이 아닙니다.
 
 이 helper는 lifecycle 대상이 될 수 있는 provider를 의도적으로 좁힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`
-```typescript
-async function resolveLifecycleInstances(
-  container: Container,
-  providers: Provider[],
-  resolvedInstances: unknown[] = [],
-): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. Effective single-provider class/factory 후보와 hook-bearing value는 token 중복 제거를 거쳐 eager lifecycle 대상이 됩니다. `multi: true` contribution은 declaration별로 구분되므로 모든 적격 singleton contribution이 lifecycle instance로 유지됩니다.
 
-  for (const provider of providers) {
-    const token = providerToken(provider);
+`Promise.allSettled(...)` map은 앞 entry가 끝날 때까지 기다리지 않고 모든 top-level lifecycle entry를 시작하므로 독립 singleton resolution이 겹칩니다. 같은 Token을 공유하는 multi-provider entry는 하나의 DI resolution promise를 재사용한 뒤 각자의 contribution index를 선택합니다. `Promise.allSettled(...)`는 input order로 result를 반환하고 이어지는 loop도 fulfilled instance를 같은 provider order로 append합니다. 따라서 resolution completion order가 이후 hook order를 바꿀 수 없습니다.
 
-    if (seen.has(token)) {
-      continue;
-    }
-
-    if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
-      lifecycleEntries.push({ token, useValue: provider.useValue });
-      continue;
-    }
-
-    if (!isDirectSingletonContextProvider(provider)) {
-      continue;
-    }
-
-    seen.add(token);
-    lifecycleEntries.push({ token });
-  }
-
-  const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
-  );
-
-  let resolutionError: unknown;
-  let hasResolutionError = false;
-
-  for (const result of resolutionResults) {
-    if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
-      continue;
-    }
-
-    if (!hasResolutionError) {
-      resolutionError = result.reason;
-      hasResolutionError = true;
-    }
-  }
-
-  if (hasResolutionError) {
-    throw resolutionError;
-  }
-
-  return resolvedInstances;
-}
-```
-
-그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. Direct singleton class/factory 후보와 hook-bearing singleton value만 token 중복 제거를 거쳐 eager lifecycle 대상이 됩니다.
-
-`Promise.allSettled(...)` map은 앞 entry가 끝날 때까지 기다리지 않고 모든 top-level lifecycle entry를 시작하므로 독립 singleton resolution이 겹칩니다. DI는 각 entry가 settle되기 전에 해당 entry 자체의 dependency chain을 계속 해석합니다. `Promise.allSettled(...)`는 input order로 result를 반환하고 이어지는 loop도 fulfilled instance를 같은 provider order로 append합니다. 따라서 resolution completion order가 이후 hook order를 바꿀 수 없습니다.
-
-즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 순차적으로 instantiate한다"가 아니라 "독립적인 unique singleton lifecycle candidate를 병렬로 resolve한 뒤 hook을 결정적으로 실행한다"에 가깝습니다. `path:packages/runtime/src/bootstrap.test.ts:887-936`은 이 분리를 직접 증명합니다. 첫 번째 factory가 중단된 동안 두 번째 factory가 resolve되지만, `first:init`은 여전히 `second:init`보다 먼저입니다. `path:packages/runtime/src/bootstrap.test.ts:938-980`은 병렬 peer가 실패해도 fulfilled lifecycle instance가 cleanup에 남는다는 점도 검증합니다.
+즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 순차적으로 instantiate한다"가 아니라 "독립적인 singleton lifecycle candidate를 병렬로 resolve한 뒤 hook을 결정적으로 실행한다"에 가깝습니다. `path:packages/runtime/src/bootstrap.test.ts:887-936`은 이 분리를 직접 증명합니다. 첫 번째 factory가 중단된 동안 두 번째 factory가 resolve되지만, `first:init`은 여전히 `second:init`보다 먼저입니다. `path:packages/runtime/src/bootstrap.test.ts:1331-1530`은 multi-value, class/factory, runtime, rollback contribution이 같은 startup 및 역순 shutdown 순서를 지키는지도 검증합니다.
 
 셋째, `path:packages/runtime/src/bootstrap.ts:1346-1358`의 `runBootstrapLifecycle()`이 실제 start sequence를 조율합니다. readiness marker를 reset하고, bootstrap hook을 실행하고, platform shell을 시작하고, readiness를 표시하고, bootstrap-ready signal을 resolve하고, compiled module 로그를 남깁니다.
 
@@ -781,7 +665,7 @@ async function resolveLifecycleInstances(
 
 bootstrap hook runner는 두 번의 pass로 phase barrier를 만듭니다.
 
-`path:packages/runtime/src/bootstrap.ts:1183-1195`
+`path:packages/runtime/src/bootstrap.ts:runBootstrapHooks()`
 ```typescript
 async function runBootstrapHooks(instances: unknown[]): Promise<void> {
   for (const instance of instances) {

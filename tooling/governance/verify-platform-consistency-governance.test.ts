@@ -402,6 +402,39 @@ describe('enforceContractCompanionUpdates', () => {
     });
   });
 
+  describe('Lifecycle multi-provider contract companions', () => {
+    const lifecycleChangedFiles = [
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'packages/di/README.md',
+      'packages/di/README.ko.md',
+      'packages/runtime/README.md',
+      'packages/runtime/README.ko.md',
+    ];
+    const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const regressionCompanion = 'packages/testing/src/module.test.ts';
+    const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.test.ts';
+
+    it('requires CI tooling enforcement for lifecycle multi-provider contract updates', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...lifecycleChangedFiles,
+        ...contextCompanions,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /CI\/tooling enforcement updates/u,
+      );
+      expect(() =>
+        enforceContractCompanionUpdates([
+          ...changedFiles,
+          toolingCompanion,
+        ])
+      ).not.toThrow();
+    });
+  });
+
   it.each([
     ['English Queue README', 'packages/queue/README.md'],
     ['Korean Queue README', 'packages/queue/README.ko.md'],

@@ -176,7 +176,7 @@ In `@fluojs/runtime` 2.x, overlapping `start()` calls could start the same compo
 
 ### Migrating NestJS Lifecycle Hooks
 
-The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo.
+The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. Each eligible singleton `multi: true` contribution is a distinct lifecycle instance: startup follows contribution order and shutdown reverses it. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo.
 
 Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
 
@@ -320,7 +320,7 @@ class UsersModule {}
 
 ## Behavioral Contracts
 
-- Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
+- Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. Every eligible singleton `multi: true` contribution participates as its own instance in contribution order. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests. Oversized Web bodies settle as HTTP 413 without waiting for stream cancellation, and cancellation failures do not mask that response, including on the default cloned-body path where the original request remains unread.
 - `preferNativeJsonBodyReader` remains accepted by `@fluojs/runtime/web` as a deprecated adapter compatibility option, but it no longer changes parsing. Web JSON bodies always use the bounded streaming reader so native whole-body reads cannot bypass `maxBodySize`.
 - On `@fluojs/runtime/node`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
