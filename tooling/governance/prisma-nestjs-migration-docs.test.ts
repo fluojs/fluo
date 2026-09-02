@@ -23,82 +23,87 @@ describe('NestJS Prisma migration documentation', () => {
     expect(runGovernanceGuard).not.toThrow();
   });
 
-  it('rejects every removed or duplicated Prisma visibility contract anchor', () => {
+  it('permits prose rewording while preserving machine-consumed Prisma contract markers', () => {
     // Given
-    const guardedDocumentationAnchors = [
+    const guardedDocumentationMarkers = [
       {
         path: 'docs/getting-started/migrate-from-nestjs.md',
-        anchors: [
-          '`PrismaModule.forRootAsync(...)` supports only the injected `inject` / `useFactory` factory strategy.',
-          'Its top-level `name` and `global` options remain supported.',
-          'Register each injected dependency through a surface visible to the async Prisma module before its options provider resolves:',
-          'Registering `DatabaseConfig` only in the importing `AppModule`\'s `providers` is insufficient: the async child module can see only its local tokens, exports from its own imports, global module exports, and bootstrap runtime providers.',
-          'Export injected dependencies from an imported `@Global()` module as above, or supply them as bootstrap runtime providers.',
-          'NestJS `imports`, `useClass`, and `useExisting` are not `forRootAsync(...)` compatibility fields. Resolve their configuration, class construction, and provider aliases at application bootstrap or through explicit fluo provider registration, then pass the ready dependencies through `inject`.',
-          'Set `strictTransactions: true` whenever migrated business work requires rollback atomicity. With its default `false` value, fluo runs the callback directly when the registered client does not expose interactive `$transaction(...)`, so `@Transaction()` and `requestTransaction(...)` do not provide rollback in that case.',
-          "import { Global, Module } from '@fluojs/core';",
-          '@Global()',
-          '  providers: [DatabaseConfig],',
-          '  exports: [DatabaseConfig],',
-          'class DatabaseConfigModule {}',
-          '    DatabaseConfigModule,',
-          '    PrismaModule.forRootAsync({',
-          '      inject: [DatabaseConfig],',
-          '      useFactory: (config: DatabaseConfig) => ({',
-        ],
+        marker:
+          '<!-- fluo-prisma-contract: injected-factory-only, top-level-name-global, global-export-visibility, bootstrap-provider-visibility, no-nest-dynamic-options, strict-transaction-rollback -->',
       },
       {
         path: 'docs/getting-started/migrate-from-nestjs.ko.md',
-        anchors: [
-          '`PrismaModule.forRootAsync(...)`는 injected `inject` / `useFactory` factory strategy만 지원합니다.',
-          'Top-level `name`, `global` option은 계속 지원합니다.',
-          'Prisma option provider가 resolve되기 전에 주입할 각 의존성을 async Prisma module에서 볼 수 있는 surface를 통해 등록합니다.',
-          'Import하는 `AppModule`의 `providers`에만 `DatabaseConfig`를 등록하는 것으로는 충분하지 않습니다. Async child module은 자신의 local token, 자신의 import가 export한 token, global module export, bootstrap runtime provider만 볼 수 있습니다.',
-          '위 예시처럼 주입 의존성을 import한 `@Global()` module에서 export하거나 bootstrap runtime provider로 제공하세요.',
-          'NestJS의 `imports`, `useClass`, `useExisting`은 `forRootAsync(...)` 호환 field가 아닙니다. 해당 configuration, class construction, provider alias는 application bootstrap 또는 명시적인 fluo provider registration에서 해석하고, 준비된 의존성을 `inject`로 전달하세요.',
-          '마이그레이션한 비즈니스 작업에 rollback 원자성이 필요하면 항상 `strictTransactions: true`를 설정하세요. 기본값 `false`에서는 등록한 client가 interactive `$transaction(...)`을 노출하지 않을 경우 fluo가 callback을 직접 실행하므로, 그 경우 `@Transaction()`과 `requestTransaction(...)`은 rollback을 보장하지 않습니다.',
-          "import { Global, Module } from '@fluojs/core';",
-          '@Global()',
-          '  providers: [DatabaseConfig],',
-          '  exports: [DatabaseConfig],',
-          'class DatabaseConfigModule {}',
-          '    DatabaseConfigModule,',
-          '    PrismaModule.forRootAsync({',
-          '      inject: [DatabaseConfig],',
-          '      useFactory: (config: DatabaseConfig) => ({',
-        ],
+        marker:
+          '<!-- fluo-prisma-contract: injected-factory-only, top-level-name-global, global-export-visibility, bootstrap-provider-visibility, no-nest-dynamic-options, strict-transaction-rollback -->',
       },
     ] as const;
 
-    for (const { path, anchors } of guardedDocumentationAnchors) {
-      for (const anchor of anchors) {
-        const readWithoutAnchor = (relativePath: string): string =>
-          relativePath === path ? read(relativePath).replace(anchor, '') : read(relativePath);
-        const readWithDuplicateAnchor = (relativePath: string): string =>
-          relativePath === path ? read(relativePath).replace(anchor, `${anchor}\n${anchor}`) : read(relativePath);
+    for (const { path, marker } of guardedDocumentationMarkers) {
+      const readWithRewordedProse = (relativePath: string): string =>
+        relativePath === path
+          ? read(relativePath).replace(
+              /(<!-- fluo-prisma-contract: [^\n]+ -->\n\n)[^\n]+/u,
+              '$1Reworded Prisma migration guidance remains explicit.',
+            )
+          : read(relativePath);
+      const readWithoutMarker = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(marker, '') : read(relativePath);
+      const readWithDuplicateMarker = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(marker, `${marker}\n${marker}`) : read(relativePath);
 
-        // When / Then
-        expect(() => enforcePrismaNestjsMigrationDocs(readWithoutAnchor)).toThrow('exactly once');
-        expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateAnchor)).toThrow('exactly once');
-      }
+      // When / Then
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithRewordedProse)).not.toThrow();
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithoutMarker)).toThrow(
+        'fluo-prisma-contract marker',
+      );
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateMarker)).toThrow(
+        'fluo-prisma-contract marker',
+      );
     }
   });
 
-  it('rejects invalid parent-only DatabaseConfig registration', () => {
+  it('rejects removed or duplicated Prisma visibility code anchors', () => {
     // Given
     const documentationPath = 'docs/getting-started/migrate-from-nestjs.md';
-    const readWithParentOnlyRegistration = (relativePath: string): string =>
+    const codeAnchor = 'class DatabaseConfigModule {}';
+    const readWithoutCodeAnchor = (relativePath: string): string =>
+      relativePath === documentationPath ? read(relativePath).replace(codeAnchor, '') : read(relativePath);
+    const readWithDuplicateCodeAnchor = (relativePath: string): string =>
+      relativePath === documentationPath
+        ? read(relativePath).replace(codeAnchor, `${codeAnchor}\n${codeAnchor}`)
+        : read(relativePath);
+
+    // When / Then
+    expect(() => enforcePrismaNestjsMigrationDocs(readWithoutCodeAnchor)).toThrow('code anchor');
+    expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateCodeAnchor)).toThrow('code anchor');
+  });
+
+  it('rejects Prisma visibility anchors split across fenced examples', () => {
+    // Given
+    const documentationPath = 'docs/getting-started/migrate-from-nestjs.md';
+    const readWithSplitVisibilityExample = (relativePath: string): string =>
       relativePath === documentationPath
         ? read(relativePath)
-          .replace('    DatabaseConfigModule,\n', '')
-          .replace('  ],\n})\nclass AppModule {}', '  ],\n  providers: [DatabaseConfig],\n})\nclass AppModule {}')
+          .replace(
+            '    DatabaseConfigModule,\n    PrismaModule.forRootAsync({',
+            `    DatabaseConfigModule,
+  ],
+})
+class VisibilityModule {}
+\`\`\`
+
+\`\`\`typescript
+@Module({
+  imports: [
+    PrismaModule.forRootAsync({`,
+          )
         : read(relativePath);
 
     // When
-    const runGovernanceGuard = () => enforcePrismaNestjsMigrationDocs(readWithParentOnlyRegistration);
+    const runGovernanceGuard = () => enforcePrismaNestjsMigrationDocs(readWithSplitVisibilityExample);
 
     // Then
-    expect(runGovernanceGuard).toThrow('exactly once');
+    expect(runGovernanceGuard).toThrow('complete @Global() Prisma visibility example');
   });
 
   it('requires the main governance body to invoke the Prisma guard', () => {

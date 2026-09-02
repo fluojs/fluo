@@ -612,6 +612,8 @@ export class CheckoutController {
 
 ### Prisma 비동기 등록과 롤백 보장
 
+<!-- fluo-prisma-contract: injected-factory-only, top-level-name-global, global-export-visibility, bootstrap-provider-visibility, no-nest-dynamic-options, strict-transaction-rollback -->
+
 `PrismaModule.forRootAsync(...)`는 injected `inject` / `useFactory` factory strategy만 지원합니다.
 Top-level `name`, `global` option은 계속 지원합니다.
 의존성은 `inject`에 나열하고 `useFactory`에서 최종 Prisma option을 반환하세요.

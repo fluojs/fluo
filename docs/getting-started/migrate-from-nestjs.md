@@ -615,6 +615,8 @@ Do not migrate every NestJS interceptor into this shape. Request-wide transactio
 
 ### Prisma Async Registration and Rollback Guarantees
 
+<!-- fluo-prisma-contract: injected-factory-only, top-level-name-global, global-export-visibility, bootstrap-provider-visibility, no-nest-dynamic-options, strict-transaction-rollback -->
+
 `PrismaModule.forRootAsync(...)` supports only the injected `inject` / `useFactory` factory strategy.
 Its top-level `name` and `global` options remain supported.
 List dependencies in `inject` and return the final Prisma options from `useFactory`.
