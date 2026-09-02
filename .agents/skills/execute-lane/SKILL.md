@@ -138,6 +138,22 @@ The operator (human or agent session):
    broke on a react/runtime seam change that http/react/runtime suites
    could not see).
 
+   Package-scoped closures never execute the cheap global gates, and a
+   300-run CI-failure audit (2026-09) showed those gaps are exactly where
+   PRs burn fix-back rounds. Every `verify-local` run MUST finish with the
+   two second-cost global gates:
+
+   ```text
+   pnpm lint                                    # Biome rules
+   pnpm verify:platform-consistency-governance  # contract companion-update rules
+   ```
+
+   When the change touches `docs/` or `tooling/governance/`, also run the
+   governance suites that consume those files directly —
+   `pnpm vitest run tooling/governance/<related>.test.ts` — because doc
+   fences and contract texts are validated there, not by any package's
+   vitest project.
+
    Additional verification rules, each earned by a live incident
    (lane-30x10, 30 issues):
 

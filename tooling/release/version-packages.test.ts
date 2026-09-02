@@ -1,5 +1,67 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePackageChangelog, runVersionPackages } from './version-packages.mjs';
+import { normalizePackageChangelog, runChangesetsVersion, runVersionPackages } from './version-packages.mjs';
+
+describe('runChangesetsVersion', () => {
+  const transientStderr = [
+    '🦋  error Error: Failed to parse data from GitHub',
+    '🦋  error invalid json response body at https://api.github.com/graphql reason: Unexpected end of JSON input',
+  ].join('\n');
+
+  function createSpawnScript(script: readonly ('transient' | 'success' | 'fatal')[]) {
+    const spawnCalls: string[][] = [];
+    return {
+      spawnCalls,
+      spawn: (_command: string, args: readonly string[]) => {
+        spawnCalls.push([...args]);
+        const outcome = script[Math.min(spawnCalls.length - 1, script.length - 1)];
+        if (outcome === 'success') {
+          return { status: 0, stdout: '🦋  All changesets have been consumed.\n', stderr: '' };
+        }
+        return {
+          status: 1,
+          stdout: '',
+          stderr: outcome === 'transient' ? transientStderr : '🦋  error Could not resolve changesets config.',
+        };
+      },
+    };
+  }
+
+  it('retries transient GitHub API failures until the command succeeds', () => {
+    const { spawn, spawnCalls } = createSpawnScript(['transient', 'transient', 'success']);
+    const sleeps: number[] = [];
+    const outputChunks: string[] = [];
+
+    expect(() =>
+      runChangesetsVersion({
+        spawn,
+        sleep: (milliseconds) => {
+          sleeps.push(milliseconds);
+        },
+        writeOutput: () => {},
+      }),
+    ).not.toThrow();
+    expect(spawnCalls).toHaveLength(3);
+    expect(sleeps).toEqual([2_000, 5_000]);
+  });
+
+  it('does not retry non-transient failures', () => {
+    const { spawn, spawnCalls } = createSpawnScript(['fatal']);
+
+    expect(() => runChangesetsVersion({ spawn, sleep: () => {}, writeOutput: () => {} })).toThrowError(
+      'Changesets version command failed with exit code 1.',
+    );
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('throws after exhausting every retry attempt on persistent transient failures', () => {
+    const { spawn, spawnCalls } = createSpawnScript(['transient', 'transient', 'transient']);
+
+    expect(() =>
+      runChangesetsVersion({ attempts: 3, spawn, sleep: () => {}, writeOutput: () => {} }),
+    ).toThrowError('Changesets version command failed with exit code 1.');
+    expect(spawnCalls).toHaveLength(3);
+  });
+});
 
 describe('normalizePackageChangelog', () => {
   it('adds Unreleased below a foundation package title when the section is missing', () => {
