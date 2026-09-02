@@ -73,6 +73,8 @@ The package provides several indicators out of the box:
 - `MemoryHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
 - `DiskHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
 
+When migrating from `@nestjs/terminus`, keep ownership boundaries explicit: register custom fluo `HealthIndicator` instances in `indicators`, and use the matching `create*HealthIndicatorProvider()` only when the indicator must resolve its dependency from DI through `indicatorProviders`. Import Node memory/disk helpers from `@fluojs/terminus/node` and Redis helpers from `@fluojs/terminus/redis`; Prisma, Drizzle, and HTTP indicators are root exports. The dedicated Redis subpath keeps its optional peer out of the root import boundary, while Node helpers remain root-exported only for compatibility.
+
 ### DI-Backed Indicators
 
 To use indicators that require dependencies from the DI container (like Redis or Database clients) without importing peer dependencies at module load time, use the documented provider factories. These helpers create indicator provider entries for `TerminusModule.forRoot({ indicatorProviders })`; they do not replace the module facade.
@@ -166,7 +168,7 @@ When an indicator returns a `down` result or throws a `HealthCheckError`, the `T
 
 When migrating from `@nestjs/terminus`, treat `TerminusModule.forRoot(...)` as the primary fluo API. fluo does not model controller-level `@HealthCheck()` methods that call `HealthCheckService.check([...])` as the main application contract. You can still call `TerminusHealthService.check()` directly from tests or custom application code, but production endpoint registration should keep indicators and readiness hooks in module options so the runtime `/health` and `/ready` routes include platform diagnostics consistently.
 
-Terminus also does not create a separate process-only liveness route by default. The default route model remains `GET /health` for aggregated health and `GET /ready` for readiness. If your deployment requires a narrow process liveness probe, define that probe at the application or deployment layer instead of assuming Terminus will add a NestJS-style extra route.
+Terminus also does not create a separate process-only liveness route by default. The default route model remains `GET /health` for aggregated health and `GET /ready` for readiness. If your deployment requires a narrow process liveness probe, define that probe at the application or deployment layer instead of assuming Terminus will add a NestJS-style extra route. These runtime-owned routes do not adopt a NestJS controller's `@HealthCheck()` or `@UseGuards()` metadata; protect them with application or adapter middleware, network policy, or a deployment-owned probe boundary.
 
 Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` for Node.js memory and disk checks, and use `@fluojs/terminus/redis` for Redis checks. Prisma and Drizzle provider helpers resolve token-only DI seams so the root package stays import-safe when those optional peers are absent, and Node disk filesystem access stays lazy so applications opt into runtime-specific probes explicitly.
 

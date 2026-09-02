@@ -73,6 +73,8 @@ class AppModule {}
 - `MemoryHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
 - `DiskHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
 
+`@nestjs/terminus`에서 마이그레이션할 때는 소유권 경계를 명시적으로 유지하세요. Custom fluo `HealthIndicator` instance는 `indicators`에 등록하고, indicator가 DI를 통해 dependency를 resolve해야 할 때만 해당 `create*HealthIndicatorProvider()`를 `indicatorProviders`에 사용합니다. Node memory/disk helper는 `@fluojs/terminus/node`에서, Redis helper는 `@fluojs/terminus/redis`에서 import하세요. Prisma, Drizzle, HTTP indicator는 root export입니다. 전용 Redis subpath는 optional peer를 root import 경계 밖에 유지하며, Node helper가 root에서도 export되는 것은 호환성을 위한 것입니다.
+
 ### DI 기반 인디케이터
 
 Redis나 DB 클라이언트와 같이 DI 컨테이너의 의존성이 필요한 인디케이터를 사용할 때는, 모듈 로드 시점에 피어 의존성을 import하지 않도록 문서화된 provider 팩토리를 사용하세요. 이 helper들은 `TerminusModule.forRoot({ indicatorProviders })`에 전달할 indicator provider entry를 만들며 module facade를 대체하지 않습니다.
@@ -166,7 +168,7 @@ TerminusModule.forRoot({
 
 `@nestjs/terminus`에서 마이그레이션할 때는 `TerminusModule.forRoot(...)`를 fluo의 기본 API로 취급하세요. fluo는 `HealthCheckService.check([...])`를 호출하는 controller-level `@HealthCheck()` 메서드를 주요 애플리케이션 계약으로 모델링하지 않습니다. 테스트나 커스텀 애플리케이션 코드에서 `TerminusHealthService.check()`를 직접 호출할 수는 있지만, 프로덕션 엔드포인트 등록은 indicator와 readiness hook을 module option에 두어 runtime `/health`와 `/ready` 경로가 platform diagnostics를 일관되게 포함하도록 해야 합니다.
 
-Terminus는 별도의 process-only liveness route도 기본으로 만들지 않습니다. 기본 route model은 집계 헬스를 위한 `GET /health`, readiness를 위한 `GET /ready`입니다. 배포 환경에서 좁은 의미의 process liveness probe가 필요하다면, Terminus가 NestJS-style 추가 route를 만들어 준다고 가정하지 말고 애플리케이션 또는 배포 계층에서 해당 probe를 정의하세요.
+Terminus는 별도의 process-only liveness route도 기본으로 만들지 않습니다. 기본 route model은 집계 헬스를 위한 `GET /health`, readiness를 위한 `GET /ready`입니다. 배포 환경에서 좁은 의미의 process liveness probe가 필요하다면, Terminus가 NestJS-style 추가 route를 만들어 준다고 가정하지 말고 애플리케이션 또는 배포 계층에서 해당 probe를 정의하세요. 이 runtime-owned route는 NestJS controller의 `@HealthCheck()` 또는 `@UseGuards()` metadata를 채택하지 않으므로, application 또는 adapter middleware, network policy, deployment-owned probe boundary에서 보호해야 합니다.
 
 Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js memory 및 disk check에는 `@fluojs/terminus/node`를 사용하고, Redis check에는 `@fluojs/terminus/redis`를 사용하세요. Prisma와 Drizzle provider helper는 token-only DI seam을 해석하므로 해당 선택적 peer가 없어도 root package import는 안전하게 유지되며, Node disk filesystem access도 lazy하게 유지되어 애플리케이션이 runtime-specific probe에 명시적으로 opt in합니다.
 

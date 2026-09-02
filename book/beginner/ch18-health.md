@@ -113,11 +113,13 @@ Real applications like FluoBlog depend on more than a simple database. You need 
 
 ```typescript
 const report = await this.health.check();
-await this.databaseIndicator.check('database');
-await this.cacheIndicator.check('cache');
-await this.externalApiIndicator.check('external-api');
-await this.memoryIndicator.check('memory_heap');
-return report;
+
+return {
+  database: report.details.database,
+  cache: report.details.cache,
+  externalApi: report.details['external-api'],
+  memoryHeap: report.details.memory_heap,
+};
 ```
 
 ### 18.4.1 Strategic Monitoring
@@ -259,9 +261,9 @@ Suppose you are deploying a major FluoBlog update while thousands of users are a
 This sequence is the standard for modern backend operations. By adapting the tools in this chapter to your project, you can aim for this level of reliability in services built with Fluo.
 
 ### 18.6.7 Graceful Shutdown and Global State
-In globally distributed systems, the graceful shutdown process must also account for **global state**. If you use a global traffic manager that sends users to the nearest healthy region, you need to ensure that the region is marked as "draining," meaning traffic inflow is blocked, before individual instances shut down. Terminus can integrate with these global control planes, allowing the system to announce shutdown intent at the global level before starting the local cleanup sequence.
+In globally distributed systems, graceful shutdown may require a **global control plane**. If a traffic manager sends users to the nearest healthy region, your deployment system must mark that region as draining before individual instances shut down. Terminus does not operate, announce to, or coordinate a global control plane; it only exposes each application's local health and readiness state.
 
-This coordinated cross region shutdown prevents users from being routed to a data center under maintenance and experiencing "stale region" errors. When you extend the concept of graceful shutdown across the full global infrastructure, you keep reliability and user experience more stable during regional transitions.
+Keep cross-region draining, traffic-manager updates, and rollout ordering in your deployment platform. That separation prevents users from being routed to a data center under maintenance without claiming that Terminus owns global shutdown coordination.
 
 ### 18.6.8 Automated Post-Mortem and Feedback Loops
 When an application shuts down because of a failure rather than a planned deployment, an **automated post mortem** is usually an application-level or platform-level workflow. Terminus can contribute the current health report and readiness signal, but it does not provide a post-mortem hook or webhook automation surface. If you need this workflow, capture the health report from your own shutdown/error handling code and send the resulting snapshot through Slack or Discord modules covered in the intermediate volume.
