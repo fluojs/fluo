@@ -84,7 +84,15 @@ The `@Transaction()` decorator is the recommended way to define transaction boun
 import { Inject } from '@fluojs/core';
 import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
 
-type UserDocument = { readonly _id: string; readonly name: string };
+type UserDocumentSaveOptions = {
+  readonly validateBeforeSave?: boolean;
+  readonly session?: object | null;
+};
+type UserDocument = {
+  readonly _id: string;
+  readonly name: string;
+  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;
+};
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
@@ -120,6 +128,8 @@ export class UserService {
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
 
 ### Saving an Existing Document
+
+<!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
 
 Use the opt-in `MongooseConnection.saveDocument(...)` helper when an existing Mongoose document must save inside an active `@Transaction()`, `transaction()`, or `requestTransaction()` boundary:
 

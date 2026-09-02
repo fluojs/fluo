@@ -3,76 +3,166 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-const requirements = [
-  [
-    'docs/getting-started/migrate-from-nestjs.md',
-    [
-      '## Mongoose Root and Feature Migration',
-      'MongooseConnection.saveDocument(...)',
-      'return this.conn.saveDocument(document, { validateBeforeSave: false });',
-      '`MongooseConnection.saveDocument(...)` is opt-in',
-      '`doc.save()` itself is unchanged',
-    ],
-  ],
-  [
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    [
-      '## Mongoose 루트와 feature 마이그레이션',
-      'MongooseConnection.saveDocument(...)',
-      'return this.conn.saveDocument(document, { validateBeforeSave: false });',
-      '`MongooseConnection.saveDocument(...)`는 opt-in입니다.',
-      '`doc.save()` 자체는 변경되지 않으므로',
-    ],
-  ],
-  [
-    'docs/architecture/transactions.md',
-    [
-      '| Mongoose document save helper |',
-      '`MongooseConnection.saveDocument(document, options?)`',
-      'fails closed outside a transaction',
-      'leaves native `doc.save()` unmodified',
-    ],
-  ],
-  [
-    'docs/architecture/transactions.ko.md',
-    [
-      '| Mongoose 문서 저장 helper |',
-      '`MongooseConnection.saveDocument(document, options?)`',
-      '트랜잭션 밖에서는 fail-closed',
-      'native `doc.save()`는 수정하지 않습니다',
-    ],
-  ],
-  [
-    'docs/CONTEXT.md',
-    [
-      'NestJS Mongoose migration and transaction semantics are documented',
-      '`MongooseConnection.saveDocument(...)` is the opt-in path',
-      'leaves direct `doc.save()` unchanged',
-    ],
-  ],
-  [
-    'docs/CONTEXT.ko.md',
-    [
-      'NestJS Mongoose 마이그레이션과 트랜잭션 의미론은',
-      '`MongooseConnection.saveDocument(...)`는 기존 document의 opt-in 경로',
-      'direct `doc.save()`는 변경하지 않습니다',
-    ],
-  ],
+const contractFields = [
+  'application-owned-connection',
+  'ambient-session-merge',
+  'preserves-operation-options',
+  'strict-fail-open',
+  'explicit-target',
 ];
+const contractMarkerPatterns = [
+  /^<!-- fluo-mongoose-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu,
+  /^\{\/\* fluo-mongoose-contract: ([a-z-]+(?:, [a-z-]+)*) \*\/\}$/gmu,
+];
+const documentationRequirements = [
+  {
+    heading: '## Mongoose Root and Feature Migration',
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+    requiresExplicitDiExample: true,
+  },
+  {
+    heading: '## Mongoose 루트와 feature 마이그레이션',
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    requiresExplicitDiExample: true,
+  },
+  {
+    heading: '## Context Resolution Rules',
+    path: 'docs/architecture/transactions.md',
+  },
+  {
+    heading: '## 문맥 해석 규칙',
+    path: 'docs/architecture/transactions.ko.md',
+  },
+  {
+    heading: '## Migration Reference',
+    path: 'docs/CONTEXT.md',
+  },
+  {
+    heading: '## Migration Reference',
+    path: 'docs/CONTEXT.ko.md',
+  },
+  {
+    heading: '# @fluojs/mongoose',
+    path: 'packages/mongoose/README.md',
+    requiresExplicitDiExample: true,
+  },
+  {
+    heading: '# @fluojs/mongoose',
+    path: 'packages/mongoose/README.ko.md',
+    requiresExplicitDiExample: true,
+  },
+  {
+    heading: '## Mongoose',
+    path: 'apps/docs/content/docs/guides/persistence.mdx',
+  },
+  {
+    heading: '## Mongoose',
+    path: 'apps/docs/content/docs/guides/persistence.ko.mdx',
+  },
+  {
+    heading: '# Chapter 19. MongoDB and Mongoose',
+    path: 'book/intermediate/ch19-mongoose.md',
+  },
+  {
+    heading: '# Chapter 19. MongoDB and Mongoose',
+    path: 'book/intermediate/ch19-mongoose.ko.md',
+  },
+];
+const saveDocumentContractMarker =
+  '<!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->';
+const saveDocumentRequirements = [
+  {
+    path: 'packages/mongoose/README.md',
+    typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
+  },
+  {
+    path: 'packages/mongoose/README.ko.md',
+    typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
+  },
+];
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(`Platform consistency governance check failed: ${message}`);
+  }
+}
+
+function enforceUniqueLine(content, line, relativePath) {
+  const matches = content.split('\n').filter((candidate) => candidate === line);
+  assert(
+    matches.length === 1,
+    `${relativePath} must include exactly one ${line}; found ${matches.length}.`,
+  );
+}
+
+function enforceMongooseContractMarker(content, relativePath) {
+  const markers = contractMarkerPatterns.flatMap((pattern) => [...content.matchAll(pattern)]);
+  assert(
+    markers.length === 1,
+    `${relativePath} must include exactly one fluo-mongoose-contract marker; found ${markers.length}.`,
+  );
+
+  const fields = markers[0][1].split(', ');
+  assert(
+    fields.length === contractFields.length &&
+      new Set(fields).size === contractFields.length &&
+      contractFields.every((field) => fields.includes(field)),
+    `${relativePath} must declare each machine-consumed Mongoose contract field exactly once.`,
+  );
+}
+
+function enforceExplicitDiExample(content, relativePath) {
+  const examples = [...content.matchAll(/```(?:ts|typescript)\s*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((example) => example.includes('class UserRepository') && example.includes('class UserService'));
+  assert(
+    examples.length === 1,
+    `${relativePath} must include exactly one fenced UserRepository/UserService migration example.`,
+  );
+
+  const example = examples[0];
+  const repositoryMatches = [
+    ...example.matchAll(/@Inject\(MongooseConnection\)\s*\n(?:export\s+)?class UserRepository\b/gu),
+  ];
+  const serviceMatches = [
+    ...example.matchAll(/@Inject\(UserRepository\)\s*\n(?:export\s+)?class UserService\b/gu),
+  ];
+  assert(
+    repositoryMatches.length === 1 && serviceMatches.length === 1,
+    `${relativePath} must declare explicit MongooseConnection and UserRepository constructor tokens.`,
+  );
+  assert(
+    (repositoryMatches[0].index ?? 0) < (serviceMatches[0].index ?? 0),
+    `${relativePath} must declare UserRepository before UserService references its token.`,
+  );
+}
+
+function enforceSaveDocumentContract(content, requirement) {
+  enforceUniqueLine(content, saveDocumentContractMarker, requirement.path);
+  const typeConstraints = content
+    .split('\n')
+    .filter((candidate) => candidate === requirement.typeConstraint);
+  assert(
+    typeConstraints.length === 1,
+    `${requirement.path} must include exactly one save-compatible document type constraint; found ${typeConstraints.length}.`,
+  );
+}
 
 export function enforceMongooseNestjsMigrationDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
-  for (const [relativePath, requiredMarkers] of requirements) {
-    const content = readText(relativePath);
-    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+  for (const requirement of documentationRequirements) {
+    const content = readText(requirement.path);
+    enforceMongooseContractMarker(content, requirement.path);
+    enforceUniqueLine(content, requirement.heading, requirement.path);
 
-    if (missingMarkers.length > 0) {
-      throw new Error(
-        `Platform consistency governance check failed: ${relativePath} must keep the Mongoose document-save migration contract synchronized; missing: ${missingMarkers.join(', ')}.`,
-      );
+    if (requirement.requiresExplicitDiExample) {
+      enforceExplicitDiExample(content, requirement.path);
     }
+  }
+
+  for (const requirement of saveDocumentRequirements) {
+    enforceSaveDocumentContract(readText(requirement.path), requirement);
   }
 }
 

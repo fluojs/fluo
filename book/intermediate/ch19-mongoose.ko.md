@@ -70,7 +70,16 @@ Fluo에서는 일반적으로 리포지토리를 통해 MongoDB와 상호작용�
 import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
 import { Inject } from '@fluojs/core';
 
-type ProductDocument = { readonly _id: string; readonly name: string; readonly price: number };
+type ProductDocumentSaveOptions = {
+  readonly validateBeforeSave?: boolean;
+  readonly session?: object | null;
+};
+type ProductDocument = {
+  readonly _id: string;
+  readonly name: string;
+  readonly price: number;
+  save(options?: ProductDocumentSaveOptions): Promise<ProductDocument>;
+};
 type ProductLookupModel = MongooseModelFacade<unknown, unknown, Promise<ProductDocument | null>>;
 type InventoryWriteModel = MongooseModelFacade<
   unknown,

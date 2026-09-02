@@ -892,7 +892,7 @@ CqrsModule.forRoot({
 
 `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`를 설정하면 위임된 `@OnEvent(...)` subscriber가 위임 publication이 resolve된 뒤에도 실행 중일 수 있습니다. 이 모드에서는 `publish(...)`, `publishAll(...)`, CQRS shutdown drain 완료가 모든 `@fluojs/event-bus` subscriber의 완료를 보장하지 않습니다.
 
-## Mongoose 루트와 feature 마이그레이션
+## 트랜잭션 안에서 Mongoose 문서 저장
 
 concrete connection을 생성하고 애플리케이션에서 model을 compile한 뒤 해당 connection을 `MongooseModule`에 등록하세요. 지원되는 세션 인지형 model facade 작업에는 `MongooseConnection.model(...)`을 사용합니다. 이미 로드한 Mongoose document를 저장하는 NestJS 서비스를 마이그레이션할 때는 명시적 트랜잭션 경계 안에서 `MongooseConnection.saveDocument(...)`를 사용하세요.
 

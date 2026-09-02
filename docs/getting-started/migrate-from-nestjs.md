@@ -895,7 +895,7 @@ CqrsModule.forRoot({
 
 When `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })` is configured, delegated `@OnEvent(...)` subscribers may still be running after delegated publication resolves. In that mode, `publish(...)`, `publishAll(...)`, and CQRS shutdown drain completion do not guarantee that every `@fluojs/event-bus` subscriber has finished.
 
-## Mongoose Root and Feature Migration
+## Mongoose Document Saves Inside Transactions
 
 Create the concrete connection and compile models in the application before registering that connection with `MongooseModule`. Use `MongooseConnection.model(...)` for the supported session-aware model facade operations. When migrating a NestJS service that saves an already-loaded Mongoose document, use `MongooseConnection.saveDocument(...)` inside the explicit transaction boundary:
 
