@@ -18,13 +18,19 @@ function expectBefore(order: string[], earlier: string, later: string) {
 }
 
 describe('resolveWorkspaceBuildOrder', () => {
-  it('orders @fluojs/studio behind its declaration-producing dependencies', () => {
+  it('resolves @fluojs/studio as a standalone build closure', () => {
     const order = resolveWorkspaceBuildOrder('@fluojs/studio', repoRoot);
+
+    expect(order).toEqual(['@fluojs/studio']);
+  });
+
+  it('orders @fluojs/runtime behind Studio and its declaration-producing dependencies', () => {
+    const order = resolveWorkspaceBuildOrder('@fluojs/runtime', repoRoot);
 
     expectBefore(order, '@fluojs/core', '@fluojs/di');
     expectBefore(order, '@fluojs/di', '@fluojs/http');
     expectBefore(order, '@fluojs/http', '@fluojs/runtime');
-    expectBefore(order, '@fluojs/runtime', '@fluojs/studio');
+    expectBefore(order, '@fluojs/studio', '@fluojs/runtime');
   });
 
   it('orders @fluojs/testing behind runtime/http/di/core', () => {
