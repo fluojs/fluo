@@ -514,6 +514,8 @@ const contractGateTriggers = new Set([
   'docs/reference/package-folder-structure.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
 
 const removedRuntimeModuleFactoryNames = [
@@ -1087,8 +1089,115 @@ function enforceSsotMirrorStructure() {
   }
 }
 
-export function enforceContractCompanionUpdates(changedFiles) {
-  const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
+const nestMigrationGuidePaths = [
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const bootstrapMigrationImplementationEvidence = [
+  'packages/cli/src/transforms/nestjs-migrate.ts',
+  'packages/cli/src/transforms/nestjs-migrate.test.ts',
+  'packages/cli/src/commands/migrate.ts',
+  'packages/cli/src/commands/migrate.test.ts',
+];
+const bootstrapMigrationBoundaryMarker =
+  '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->';
+const fastifyRawContextTokens = [
+  'context.request.raw',
+  'context.response.raw',
+  'IncomingMessage',
+  'ServerResponse',
+  'FastifyRequest',
+  'FastifyReply',
+];
+
+function nestFactoryCreateRow(documentation) {
+  const rows = documentation
+    .split('\n')
+    .filter((line) => line.startsWith('| `NestFactory.create(AppModule)` |'));
+
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
+function isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots) {
+  if (
+    !migrationGuideSnapshots
+    || !nestMigrationGuidePaths.every((path) => hasChanged(changedFiles, path))
+    || !bootstrapMigrationImplementationEvidence.every((path) => hasChanged(changedFiles, path))
+  ) {
+    return false;
+  }
+
+  return nestMigrationGuidePaths.every((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseRow = nestFactoryCreateRow(snapshot.base);
+    const headRow = nestFactoryCreateRow(snapshot.head);
+    if (!baseRow || !headRow || baseRow === headRow) {
+      return false;
+    }
+
+    return (
+      snapshot.base.replace(baseRow, '') === snapshot.head.replace(headRow, '').replace(`${bootstrapMigrationBoundaryMarker}\n`, '')
+      && snapshot.head.includes(bootstrapMigrationBoundaryMarker)
+      && headRow.includes('FluoFactory.create(AppModule, { adapter })')
+      && headRow.includes('listen()')
+      && headRow.includes('--platform express')
+    );
+  });
+}
+
+function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
+  if (!migrationGuideSnapshots) {
+    return false;
+  }
+
+  return nestMigrationGuidePaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseLines = new Set(snapshot.base.split('\n'));
+    const headLines = new Set(snapshot.head.split('\n'));
+    const changedLines = [
+      ...snapshot.base.split('\n').filter((line) => !headLines.has(line)),
+      ...snapshot.head.split('\n').filter((line) => !baseLines.has(line)),
+    ];
+
+    return changedLines.some((line) => fastifyRawContextTokens.some((token) => line.includes(token)));
+  });
+}
+
+export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    return undefined;
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const snapshots = {};
+  for (const path of nestMigrationGuidePaths) {
+    const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
+    if (baseResult.status !== 0) {
+      return undefined;
+    }
+
+    snapshots[path] = {
+      base: baseResult.stdout,
+      head: read(path),
+    };
+  }
+
+  return snapshots;
+}
+
+export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
+  const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path)) && !bootstrapOnlyMigrationGuideUpdate;
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
   const fastifyRawContextDocumentation = [
     'docs/getting-started/migrate-from-nestjs.md',
@@ -1099,7 +1208,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   const touchedFastifyRawContextDocumentation = [
     'packages/platform-fastify/README.md',
     'packages/platform-fastify/README.ko.md',
-  ].some((path) => hasChanged(changedFiles, path));
+  ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
 
   if (touchedFastifyRawContextDocumentation) {
     assert(
@@ -3607,6 +3716,7 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
 
 export async function main() {
   const changedFiles = changedFilesFromGit();
+  const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
 
   enforceSsotMirrorStructure();
   enforcePackageDirectoriesHaveManifests();
@@ -3666,7 +3776,7 @@ export async function main() {
   enforceRedisStreamsSubpathExportEvidence();
   enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
-  enforceContractCompanionUpdates(changedFiles);
+  enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');

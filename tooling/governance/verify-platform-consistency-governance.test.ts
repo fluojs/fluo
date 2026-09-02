@@ -253,7 +253,7 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('accepts NestJS HTTP pipeline migration updates without generic context companions', async () => {
+  it('requires generic context companions for migration updates without bootstrap-only evidence', async () => {
     // Given: a bilingual NestJS HTTP migration update with complete Fastify raw-object coverage.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const changedFiles = [
@@ -263,9 +263,11 @@ describe('enforceContractCompanionUpdates', () => {
       'tooling/governance/verify-platform-consistency-governance.test.ts',
     ];
 
-    // When: the migration guide changes independently of a generic contract surface.
-    // Then: it does not require unrelated documentation-hub companions.
-    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+    // When: no bootstrap-only content proof is supplied.
+    // Then: the generic contract companions remain mandatory.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
   });
 
   it('requires Fastify raw-object regression coverage for its migration documentation', async () => {
@@ -316,7 +318,7 @@ describe('enforceContractCompanionUpdates', () => {
     );
   });
 
-  it('accepts Nest bootstrap migration evidence without Fastify raw-object companions', async () => {
+  it('fails closed when Nest bootstrap migration evidence lacks content snapshots', async () => {
     // Given: a Nest bootstrap migration update with its focused CLI regression.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const changedFiles = [
@@ -326,9 +328,122 @@ describe('enforceContractCompanionUpdates', () => {
       'packages/cli/src/transforms/nestjs-migrate.test.ts',
     ];
 
-    // When: Fastify package documentation is unchanged.
-    // Then: unrelated Fastify raw-object companions are not required.
-    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+    // When: Fastify package documentation is unchanged but the migration diff is unavailable.
+    // Then: governance cannot infer a bootstrap-only change and keeps the generic gate closed.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+  });
+
+  it('allows only an explicit-adapter bootstrap table-row update without generic companions', async () => {
+    // Given: bilingual migration guides change only their NestFactory bootstrap mapping.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
+        ].join('\n'),
+      },
+    };
+
+    // When: no Fastify or generic-contract region changed.
+    // Then: the dedicated bootstrap exception permits only this content delta.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).not.toThrow();
+  });
+
+  it('rejects a Fastify raw-object mutation in the Nest migration guide', async () => {
+    // Given: the same bootstrap implementation evidence plus a Fastify raw-object contract mutation.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        head: [
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+          'Fastify raw request access uses `context.request.raw` and `IncomingMessage`.',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        head: [
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
+          'Fastify raw request는 `context.request.raw`와 `IncomingMessage`를 사용한다.',
+        ].join('\n'),
+      },
+    };
+
+    // When: Fastify runtime documentation changes without its governed companions.
+    // Then: the Fastify runtime regression remains mandatory.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+      /Fastify raw request and response migration docs must include all governed Fastify documentation/u,
+    );
+  });
+
+  it('rejects a general cookie contract mutation in the Nest migration guide', async () => {
+    // Given: a bootstrap row update also changes the cookie migration contract.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        head: [
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+          'Use `setCookie` with `maxAgeSeconds` for cookie migration.',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        head: [
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
+          '`setCookie`와 `maxAgeSeconds`로 cookie를 migration한다.',
+        ].join('\n'),
+      },
+    };
+
+    // When: a general contract region changes without the generic companions.
+    // Then: governance fails closed instead of treating it as bootstrap-only.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
   });
 
   describe('Queue producer migration contract companions', () => {
@@ -1576,7 +1691,7 @@ describe('enforceContractCompanionUpdates', () => {
     expect(enforceCompanions).not.toThrow();
   });
 
-  it('accepts metadata preload guidance without unrelated generic companions', async () => {
+  it('requires generic companions for metadata preload migration guidance', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const guidanceFiles = [
       'packages/core/README.md',
@@ -1588,7 +1703,9 @@ describe('enforceContractCompanionUpdates', () => {
       'book/advanced/ch16-custom-package.ko.md',
     ];
 
-    expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
   });
 
   it('accepts i18n catalog migration guidance with required governance companions', async () => {
