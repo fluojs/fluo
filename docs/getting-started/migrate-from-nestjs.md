@@ -615,10 +615,10 @@ Do not migrate every NestJS interceptor into this shape. Request-wide transactio
 
 ### Prisma Async Registration and Rollback Guarantees
 
-`PrismaModule.forRootAsync(...)` supports the injected-factory shape only: list dependencies in `inject` and return the final Prisma options from `useFactory`. Register each injected dependency in the fluo application graph before the Prisma options provider resolves:
+`PrismaModule.forRootAsync(...)` supports the injected-factory shape only: list dependencies in `inject` and return the final Prisma options from `useFactory`. Register each injected dependency through a surface visible to the async Prisma module before its options provider resolves:
 
 ```typescript
-import { Module } from '@fluojs/core';
+import { Global, Module } from '@fluojs/core';
 import { PrismaModule } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
@@ -626,8 +626,16 @@ class DatabaseConfig {
   readonly url = 'postgresql://localhost/app';
 }
 
+@Global()
+@Module({
+  providers: [DatabaseConfig],
+  exports: [DatabaseConfig],
+})
+class DatabaseConfigModule {}
+
 @Module({
   imports: [
+    DatabaseConfigModule,
     PrismaModule.forRootAsync({
       inject: [DatabaseConfig],
       useFactory: (config: DatabaseConfig) => ({
@@ -636,10 +644,11 @@ class DatabaseConfig {
       }),
     }),
   ],
-  providers: [DatabaseConfig],
 })
 class AppModule {}
 ```
+
+Registering `DatabaseConfig` only in the importing `AppModule`'s `providers` is insufficient: the async child module can see only its local tokens, exports from its own imports, global module exports, and bootstrap runtime providers. Export injected dependencies from an imported `@Global()` module as above, or supply them as bootstrap runtime providers.
 
 NestJS `imports`, `useClass`, and `useExisting` are not `forRootAsync(...)` compatibility fields. Resolve their configuration, class construction, and provider aliases at application bootstrap or through explicit fluo provider registration, then pass the ready dependencies through `inject`.
 
