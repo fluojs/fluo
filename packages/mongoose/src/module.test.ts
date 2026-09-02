@@ -1256,6 +1256,106 @@ describe('@fluojs/mongoose', () => {
     ]);
   });
 
+  it('keeps manual transaction shutdown ownership through deferred session acquisition', async () => {
+    const events: string[] = [];
+    let releaseSessionAcquisition!: () => void;
+    let resolveCallbackStarted!: () => void;
+    let releaseCallback!: () => void;
+    const sessionAcquisitionReleased = new Promise<void>((resolve) => {
+      releaseSessionAcquisition = resolve;
+    });
+    const callbackStarted = new Promise<void>((resolve) => {
+      resolveCallbackStarted = resolve;
+    });
+    const callbackReleased = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    const session = createFakeSession(events);
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession:start');
+        await sessionAcquisitionReleased;
+        events.push('connection:startSession:end');
+        return session;
+      },
+    };
+    const mongoose = new MongooseConnection<typeof connection>(connection, () => {
+      events.push('dispose');
+    });
+
+    const transaction = mongoose.transaction(async () => {
+      events.push('transaction:callback:start');
+      resolveCallbackStarted();
+      await callbackReleased;
+      events.push('transaction:callback:end');
+      return 'transaction-result';
+    });
+    const shutdown = mongoose.onApplicationShutdown();
+
+    releaseSessionAcquisition();
+    await callbackStarted;
+    expect(events).not.toContain('dispose');
+
+    releaseCallback();
+
+    await expect(transaction).resolves.toBe('transaction-result');
+    await shutdown;
+
+    expect(events).toEqual([
+      'connection:startSession:start',
+      'connection:startSession:end',
+      'transaction:start',
+      'transaction:callback:start',
+      'transaction:callback:end',
+      'transaction:commit',
+      'session:end',
+      'dispose',
+    ]);
+  });
+
+  it('preserves fail-open request abort results until callback settlement releases shutdown ownership', async () => {
+    const events: string[] = [];
+    const controller = new AbortController();
+    let resolveCallbackStarted!: () => void;
+    let releaseCallback!: () => void;
+    const callbackStarted = new Promise<void>((resolve) => {
+      resolveCallbackStarted = resolve;
+    });
+    const callbackReleased = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    const connection: MongooseConnectionLike = {};
+    const mongoose = new MongooseConnection<typeof connection>(connection, () => {
+      events.push(`dispose:activeRequests=${mongoose.createPlatformStatusSnapshot().details.activeRequestTransactions}`);
+    });
+
+    const request = mongoose.requestTransaction(async () => {
+      events.push('request:callback:start');
+      resolveCallbackStarted();
+      await callbackReleased;
+      events.push('request:callback:end');
+      return 'request-result';
+    }, controller.signal);
+    await callbackStarted;
+
+    const shutdown = mongoose.onApplicationShutdown();
+    const requestResult = expect(request).rejects.toThrow(
+      'Application shutdown interrupted an open request transaction.',
+    );
+    expect(events).toEqual(['request:callback:start']);
+
+    releaseCallback();
+
+    await requestResult;
+    await shutdown;
+
+    expect(events).toEqual([
+      'request:callback:start',
+      'request:callback:end',
+      'dispose:activeRequests=0',
+    ]);
+  });
+
   it('rejects new manual and request transactions after shutdown begins', async () => {
     const events: string[] = [];
     let resolveDisposeStarted!: () => void;

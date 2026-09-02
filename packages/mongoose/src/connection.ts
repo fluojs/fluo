@@ -327,9 +327,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return this.runDirectTransaction(fn, activeCallback);
     }
 
-    activeCallback.settle();
-
-    return this.runManualSessionTransaction(session, fn);
+    return this.runManualSessionTransaction(session, fn, activeCallback);
   }
 
   /**
@@ -412,7 +410,11 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
-  private async runManualSessionTransaction<T>(session: MongooseSessionLike, fn: () => Promise<T>): Promise<T> {
+  private async runManualSessionTransaction<T>(
+    session: MongooseSessionLike,
+    fn: () => Promise<T>,
+    activeCallback?: ActiveTransactionCallbackHandle,
+  ): Promise<T> {
     const activeSession = this.trackActiveSession();
 
     try {
@@ -422,6 +424,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         await session.endSession();
       } finally {
         activeSession.settle();
+        activeCallback?.settle();
       }
     }
   }
