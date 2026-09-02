@@ -114,21 +114,11 @@ export async function runTypegenCommand(
           ? () => startTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
           : () => {
             let cancelled = false;
-            let rejectResult: (error: Error) => void = () => undefined;
-            const result = new Promise<string>((resolveResult, reject) => {
-              rejectResult = reject;
-              void generateSource().then(
-                (source) => {
-                  if (!cancelled) {
-                    resolveResult(source);
-                  }
-                },
-                (error: unknown) => {
-                  if (!cancelled) {
-                    reject(error);
-                  }
-                },
-              );
+            const result = generateSource().then((source) => {
+              if (cancelled) {
+                throw new TypegenCommandError('Typegen generation was cancelled.');
+              }
+              return source;
             });
             return {
               cancel() {
@@ -136,7 +126,6 @@ export async function runTypegenCommand(
                   return;
                 }
                 cancelled = true;
-                rejectResult(new TypegenCommandError('Typegen generation was cancelled.'));
               },
               result,
             };

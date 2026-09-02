@@ -392,9 +392,11 @@ A regeneration failure prints `ERROR <output>: <message>`, preserves the last va
 waits for a later change. A watcher failure exits with code `1` after cleanup. Every source event
 received while a generation or its owned artifact commit is active invalidates that work; its output
 cannot publish before the coalesced successor completes. `SIGINT` and `SIGTERM` close the watcher,
-remove signal handlers, cancel the active owned generation child and abort its owned artifact commit
-before either can publish, wait for them to settle, and exit with code `0`. A child that does not exit
-after `SIGTERM` is force-killed after the bounded grace period.
+remove signal handlers, cancel the active owned generation (a child process or caller-process
+bootstrap), and abort its owned artifact commit before either can publish. Caller-process
+cancellation waits for asynchronous bootstrap and application close to settle before watch exits
+with code `0`; a child that does not exit after `SIGTERM` is force-killed after the bounded grace
+period.
 Files outside the module directory are intentionally outside this watch boundary; run the command
 again or choose a module path at the intended source root instead of expecting source scanning or a
 second route discovery system.

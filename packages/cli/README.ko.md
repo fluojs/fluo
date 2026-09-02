@@ -390,9 +390,11 @@ burst는 100 ms 동안 coalesce되고 generation은 serialize되며 output과 �
 출력하고 마지막 valid artifact를 보존한 채 다음 change를 기다립니다. Watcher failure는 cleanup 뒤 code
 `1`로 종료됩니다. generation 또는 generation이 소유한 artifact commit이 active인 동안 수신한 모든 source
 event는 해당 작업을 무효화하므로 coalesce된 후속 generation이 끝나기 전에는 그 output이 publish될 수
-없습니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active owned generation child를
-cancel하고 owned artifact commit을 abort하여 둘 중 어느 것도 publish하지 못하게 한 뒤 settle을 기다리고
-code `0`으로 종료됩니다. `SIGTERM` 뒤에도 종료하지 않는 child는 제한된 grace period 뒤 force-kill됩니다.
+없습니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active owned generation(child
+process 또는 caller-process bootstrap)을 cancel하고 owned artifact commit을 abort하여 둘 중 어느 것도
+publish하지 못하게 합니다. Caller-process cancellation은 asynchronous bootstrap과 application close가
+settle될 때까지 기다린 뒤 code `0`으로 watch를 종료하며, `SIGTERM` 뒤에도 종료하지 않는 child는 제한된
+grace period 뒤 force-kill됩니다.
 Module directory 밖의 파일은 의도적으로 watch boundary 밖에
 있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
 의도한 source root의 module path를 선택하세요.
