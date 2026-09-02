@@ -7,6 +7,18 @@ interface RedisPubSubMessage {
   payload?: unknown;
 }
 
+function isRedisPubSubMessage(value: unknown): value is RedisPubSubMessage {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && 'kind' in value
+    && value.kind === 'event'
+    && 'pattern' in value
+    && typeof value.pattern === 'string'
+  );
+}
+
 interface RedisLike {
   off?(event: 'message', listener: (channel: string, message: string) => void): unknown;
   on(event: 'message', listener: (channel: string, message: string) => void): unknown;
@@ -43,6 +55,20 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
 
   private logEventHandlerFailure(error: unknown): void {
     logTransportEventHandlerFailure(this.logger, 'RedisPubSubMicroserviceTransport', error);
+  }
+
+  private logMalformedFrame(error: unknown): void {
+    const logger = this.logger;
+
+    if (!logger) {
+      return;
+    }
+
+    try {
+      logger.error('Malformed frame discarded.', error, 'RedisPubSubMicroserviceTransport');
+    } catch {
+      // Redis callbacks must remain isolated when the configured logger fails.
+    }
   }
 
   /**
@@ -184,31 +210,33 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   }
 
   private async handleIncoming(channel: string, rawMessage: string): Promise<void> {
+    if (!this.handler || channel !== this.eventChannel) {
+      return;
+    }
+
     let message: RedisPubSubMessage;
+    try {
+      const decoded: unknown = JSON.parse(rawMessage);
+
+      if (!isRedisPubSubMessage(decoded)) {
+        throw new Error('Redis Pub/Sub event frames must have kind "event" and a string pattern.');
+      }
+
+      message = decoded;
+    } catch (error) {
+      this.logMalformedFrame(error);
+      return;
+    }
 
     try {
-      message = JSON.parse(rawMessage) as RedisPubSubMessage;
-    } catch {
-      return;
+      await this.handler({
+        kind: 'event',
+        pattern: message.pattern,
+        payload: message.payload,
+      });
+    } catch (error) {
+      this.logEventHandlerFailure(error);
     }
-
-    if (!this.handler) {
-      return;
-    }
-
-    if (channel === this.eventChannel && message.kind === 'event') {
-      try {
-        await this.handler({
-          kind: 'event',
-          pattern: message.pattern,
-          payload: message.payload,
-        });
-      } catch (error) {
-        this.logEventHandlerFailure(error);
-      }
-      return;
-    }
-
   }
 
   private get eventChannel(): string {
