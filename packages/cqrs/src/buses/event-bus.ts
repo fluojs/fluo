@@ -133,9 +133,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async publish<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
     this.assertAcceptingNewWork('publish', context);
     const publishContext = this.createPublishContext(context);
-    await this.publishDrainTracker.track(
+    await this.trackPublishPipeline(
+      publishContext,
       this.runPublishPipeline(event, publishContext.context),
-      publishContext.drainToken,
     );
   }
 
@@ -149,9 +149,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
     this.assertAcceptingNewWork('publishAll', context);
     const publishContext = this.createPublishContext(context);
-    await this.publishDrainTracker.track(
+    await this.trackPublishPipeline(
+      publishContext,
       this.runPublishAllPipeline(events, publishContext.context),
-      publishContext.drainToken,
     );
   }
 
@@ -181,6 +181,16 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[], context: CqrsDispatchContext): Promise<void> {
     for (const event of events) {
       await this.runPublishPipeline(event, context);
+    }
+  }
+
+  private async trackPublishPipeline(publishContext: CqrsPublishContext, pipeline: Promise<void>): Promise<void> {
+    const releaseSagaGraph = this.sagaService.acquireAuthorizedPipelineLease();
+
+    try {
+      await this.publishDrainTracker.track(pipeline, publishContext.drainToken);
+    } finally {
+      releaseSagaGraph();
     }
   }
 

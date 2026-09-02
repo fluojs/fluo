@@ -1,3 +1,4 @@
+import { InvariantError } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -35,6 +36,13 @@ function expectFulfilled(results: readonly PromiseSettledResult<unknown>[]): voi
   for (const result of results) {
     expect(result.status).toBe('fulfilled');
   }
+}
+
+function getSagaCacheCounts(sagaBus: CqrsSagaLifecycleService): { descriptors: number; instances: number } {
+  return {
+    descriptors: sagaBus['descriptorsByEvent'].size,
+    instances: sagaBus['handlerInstances'].size,
+  };
 }
 
 describe('CQRS single shutdown deadline contract', () => {
@@ -105,14 +113,25 @@ describe('CQRS single shutdown deadline contract', () => {
   it('drains an accepted saga dispatch suspended in discovery before shutdown clears state', async () => {
     const discoverySuspended = createDeferred<void>();
     const releaseDiscovery = createDeferred<void>();
+    const releaseSaga = createDeferred<void>();
+    const sagaStarted = createDeferred<void>();
 
     class DiscoveryRaceEvent implements IEvent {
       constructor(public readonly id: string) {}
     }
 
+    @Saga(DiscoveryRaceEvent)
+    class DiscoveryRaceSaga implements ISaga<DiscoveryRaceEvent> {
+      async handle(): Promise<void> {
+        sagaStarted.resolve();
+        await releaseSaga.promise;
+      }
+    }
+
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
+      providers: [DiscoveryRaceSaga],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -140,12 +159,18 @@ describe('CQRS single shutdown deadline contract', () => {
       expect(sagaBus.getRuntimeSnapshot().inFlightSagaExecutions).toBe(1);
       await new Promise<void>(queueMicrotask);
       expect(closeSettled).toBe(false);
+
+      releaseDiscovery.resolve();
+      await sagaStarted.promise;
+      expect(getSagaCacheCounts(sagaBus)).toEqual({ descriptors: 1, instances: 1 });
     } finally {
       releaseDiscovery.resolve();
+      releaseSaga.resolve();
       cleanupResults = await Promise.allSettled([dispatchPromise, closePromise]);
     }
 
     expectFulfilled(cleanupResults);
+    expect(getSagaCacheCounts(sagaBus)).toEqual({ descriptors: 0, instances: 0 });
     expect(sagaBus.getRuntimeSnapshot()).toEqual({
       discovered: false,
       inFlightSagaExecutions: 0,
@@ -153,6 +178,77 @@ describe('CQRS single shutdown deadline contract', () => {
       sagasDiscovered: 0,
       shutdownDrainTimeouts: 0,
     });
+  });
+
+  it('keeps a late authorized saga dispatch alive after the drain deadline, then releases its graph', async () => {
+    vi.useFakeTimers();
+    const releaseHandler = createDeferred<void>();
+    const releaseSaga = createDeferred<void>();
+    const handlerStarted = createDeferred<void>();
+    const sagaStarted = createDeferred<void>();
+
+    class LateAuthorizedEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class RejectedExternalEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @EventHandler(LateAuthorizedEvent)
+    class LateAuthorizedHandler implements IEventHandler<LateAuthorizedEvent> {
+      async handle(): Promise<void> {
+        handlerStarted.resolve();
+        await releaseHandler.promise;
+      }
+    }
+
+    @Saga(LateAuthorizedEvent)
+    class LateAuthorizedSaga implements ISaga<LateAuthorizedEvent> {
+      async handle(): Promise<void> {
+        sagaStarted.resolve();
+        await releaseSaga.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ shutdown: { drainTimeoutMs: DRAIN_TIMEOUT_MS } })],
+      providers: [LateAuthorizedHandler, LateAuthorizedSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const publishPromise = eventBus.publish(new LateAuthorizedEvent('late-authorized'));
+    await handlerStarted.promise;
+
+    const closePromise = app.close();
+    let cleanupResults: PromiseSettledResult<unknown>[] = [];
+
+    try {
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
+      await closePromise;
+
+      expect(getSagaCacheCounts(sagaBus)).toEqual({ descriptors: 1, instances: 1 });
+
+      releaseHandler.resolve();
+      await sagaStarted.promise;
+      expect(getSagaCacheCounts(sagaBus)).toEqual({ descriptors: 1, instances: 1 });
+      await expect(eventBus.publish(new RejectedExternalEvent('rejected'))).rejects.toBeInstanceOf(InvariantError);
+
+      releaseSaga.resolve();
+      await publishPromise;
+      expect(getSagaCacheCounts(sagaBus)).toEqual({ descriptors: 0, instances: 0 });
+    } finally {
+      releaseHandler.resolve();
+      releaseSaga.resolve();
+      await vi.runAllTimersAsync();
+      cleanupResults = await Promise.allSettled([publishPromise, closePromise]);
+      expect(vi.getTimerCount()).toBe(0);
+    }
+
+    expectFulfilled(cleanupResults);
   });
 
   it('shares one drain window between CQRS event and saga shutdown hooks', async () => {

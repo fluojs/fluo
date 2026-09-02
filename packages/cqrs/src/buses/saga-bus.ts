@@ -56,6 +56,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private readonly executionChains = new Map<Token, Promise<void>>();
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly pendingDispatches = new Set<Promise<void>>();
+  private authorizedPipelineLeaseCount = 0;
   private shutdownDrainTimeouts = 0;
   private unregisterShutdownStartCleanup: (() => void) | undefined;
 
@@ -93,8 +94,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
     await this.drainActiveSagaWork();
 
-    this.executionChains.clear();
     this.lifecycleState = 'stopped';
+    this.clearStoppedSagaGraphIfQuiescent();
   }
 
   /**
@@ -135,6 +136,26 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   ): Promise<void> {
     this.assertAcceptingNewWork(options.drainAuthorization);
     return this.trackPendingDispatch(this.runDispatch(event, context, options));
+  }
+
+  /**
+   * Retains the discovered saga graph for one active CQRS publish pipeline.
+   *
+   * @returns A release function that must run after the authorized pipeline settles.
+   */
+  acquireAuthorizedPipelineLease(): () => void {
+    this.authorizedPipelineLeaseCount += 1;
+    let released = false;
+
+    return () => {
+      if (released) {
+        return;
+      }
+
+      released = true;
+      this.authorizedPipelineLeaseCount -= 1;
+      this.clearStoppedSagaGraphIfQuiescent();
+    };
   }
 
   private async runDispatch<TEvent extends IEvent>(
@@ -240,7 +261,24 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
       await dispatch;
     } finally {
       this.pendingDispatches.delete(dispatch);
+      this.clearStoppedSagaGraphIfQuiescent();
     }
+  }
+
+  private clearStoppedSagaGraphIfQuiescent(): void {
+    if (
+      this.lifecycleState !== 'stopped'
+      || this.pendingDispatches.size > 0
+      || this.authorizedPipelineLeaseCount > 0
+    ) {
+      return;
+    }
+
+    this.executionChains.clear();
+    this.handlerInstances.clear();
+    this.descriptorsByEvent.clear();
+    this.discovered = false;
+    this.discoveryPromise = undefined;
   }
 
   private async drainActiveSagaWork(): Promise<void> {
