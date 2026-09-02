@@ -138,6 +138,20 @@ Native handoff가 붙은 뒤 app middleware가 framework request의 method 또�
 - **Realtime seam**: `getRealtimeCapability()`는 fetch-style version 1을 보존하면서 optional version 1 `bindingInstallation` contract를 노출합니다. Bun websocket binding은 서버를 시작하는 `listen()` 전에 구성해야 합니다. Capability installer는 protocol package를 위한 canonical configuration path이며 `fetch` 및 `websocket` host contract가 없는 값을 거부합니다. Startup 이후 live server의 binding은 고정되고 adapter `close()` boundary가 Bun 종료와 요청 drain이 끝난 후 retained binding state를 정리합니다. Adapter가 새 유입을 받는 동안 Upgrade 요청은 HTTP dispatch로 넘어가기 전에 구성된 binding에 먼저 전달되며, 비동기 binding 평가 도중 shutdown이 시작되어도 이미 수락된 요청에는 dispatcher가 유지되고, binding이 response를 반환하거나 요청 업그레이드에 성공한 경우에만 HTTP fallback을 억제합니다. Binding host는 `upgrade(...)`만 노출하므로 adapter가 소유하는 `stop()`과 raw `fetch()` 제어는 realtime seam 밖에 남습니다.
 - **Adapter instance helper**: `BunHttpApplicationAdapter`는 `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, `close()`를 노출합니다.
 
+### 안정적인 진단 코드
+
+패키지가 생성하는 caller-visible failure는 기존 `Error` 또는 `TypeError` class와 message를 유지하면서 `error.code`에 안정적인 문자열을 노출합니다.
+
+| 코드 | Error class | 실패 조건 |
+| --- | --- | --- |
+| `BUN_ADAPTER_INVALID_OPTION` | `Error` | 숫자형 adapter 또는 shutdown option이 문서화된 범위를 벗어납니다. |
+| `BUN_ADAPTER_REALTIME_BINDING_INVALID` | `TypeError` | Realtime capability installer가 필수 `fetch` 및 `websocket` contract가 없는 값을 받습니다. |
+| `BUN_ADAPTER_REALTIME_BINDING_LOCKED` | `Error` | `listen()`이 Bun server를 시작한 뒤 caller가 realtime/websocket binding을 변경하려고 합니다. |
+| `BUN_ADAPTER_RUNTIME_UNAVAILABLE` | `Error` | `listen()`이 호출 가능한 `globalThis.Bun.serve()`를 찾지 못합니다. |
+| `BUN_ADAPTER_SHUTDOWN_TIMEOUT` | `Error` | Caller-facing `close()` 대기가 bounded shutdown timeout을 초과합니다. |
+
+Bun 또는 application code에서 전파된 error에는 package-owned code를 덧붙이지 않고 원래 class, message, metadata를 유지합니다.
+
 ## Conformance 커버리지
 
 `packages/platform-bun/src/adapter.test.ts`는 문서화된 계약을 검증하는 package-local regression 대상입니다. 이 파일은 conditional request, single-byte range 및 `If-Range`, custom `QUERY`/extension-method fallback, malformed cookie, byte-exact JSON/text raw-body 보존, managed/custom fetch handler의 multipart raw-body 제외, SSE framing, native-route param parity, same-path multi-method handoff, middleware가 request path 또는 method를 rewrite한 뒤의 stale native handoff rematch, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, TLS listen-target reporting을 검증하는 Bun fetch-style portability assertion과 startup logging, duplicate listen idempotency, shutdown listener cleanup, in-flight drain, 비동기 realtime binding 평가 중 close, binding 완료 후 HTTP fallback, timeout validation/reporting, shutdown 503 ingress rejection, signal-driven close rejection reporting, upgrade-only host를 통한 websocket binding delegation/short-circuit 동작을 검증하는 집중 테스트를 포함합니다.
