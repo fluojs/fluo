@@ -2,6 +2,8 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 CLI sidecar and React viewer workflow for fluo diagnostics, with a Node dev-runner live MVP and backward-compatible static/report artifact loading.
 
 ## Table of Contents

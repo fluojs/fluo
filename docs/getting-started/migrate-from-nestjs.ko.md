@@ -4,6 +4,8 @@
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
 ## 응답 쿠키 마이그레이션

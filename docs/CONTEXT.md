@@ -1,6 +1,8 @@
 # fluo — AI Context Document
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
 ## Runtime Cleanup Settlement

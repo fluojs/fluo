@@ -4,6 +4,8 @@
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
 ## Response cookie migration
