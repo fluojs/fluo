@@ -2078,6 +2078,7 @@ describe('bootstrapApplication', () => {
   it('waits for an in-flight request to finish before closing', async () => {
     const requestStarted = createDeferred<void>();
     const allowResponse = createDeferred<void>();
+    const order: string[] = [];
 
     @Controller('/slow')
     class SlowController {
@@ -2085,6 +2086,7 @@ describe('bootstrapApplication', () => {
       async getSlowResponse() {
         requestStarted.resolve();
         await allowResponse.promise;
+        order.push('handler-released');
         return { ok: true };
       }
     }
@@ -2108,30 +2110,61 @@ describe('bootstrapApplication', () => {
         throw new Error('Expected the runtime Node HTTP application adapter.');
       }
 
-      const address: AddressInfo | string | null = adapter.getServer().address();
+      const server = adapter.getServer();
+      const address: AddressInfo | string | null = server.address();
       if (!address || typeof address === 'string') {
         throw new Error('Failed to resolve the bound test port.');
       }
 
-      const responsePromise = fetchForTest(`http://127.0.0.1:${String(address.port)}/slow`);
-      await requestStarted.promise;
-
-      let closeResolved = false;
-      const closePromise = app.close().then(() => {
-        closeResolved = true;
+      const responseFinished = createDeferred<void>();
+      const serverClosed = createDeferred<void>();
+      const serverCloseStarted = createDeferred<void>();
+      server.once('request', (_request, response) => {
+        response.once('finish', () => {
+          order.push('response-finished');
+          responseFinished.resolve();
+        });
+      });
+      server.once('close', () => {
+        order.push('server-closed');
+        serverClosed.resolve();
+      });
+      const closeServer = server.close.bind(server);
+      const serverCloseSpy = vi.spyOn(server, 'close').mockImplementation((callback) => {
+        serverCloseStarted.resolve();
+        return closeServer(callback);
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      expect(closeResolved).toBe(false);
+      try {
+        const responsePromise = fetchForTest(`http://127.0.0.1:${String(address.port)}/slow`);
+        await requestStarted.promise;
 
-      allowResponse.resolve();
+        let closeSettled = false;
+        const closePromise = app.close().then(() => {
+          closeSettled = true;
+          order.push('close-resolved');
+        });
 
-      const response = await responsePromise;
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ ok: true });
+        await serverCloseStarted.promise;
+        expect(closeSettled).toBe(false);
+        expect(order).toEqual([]);
 
-      await closePromise;
-      expect(closeResolved).toBe(true);
+        allowResponse.resolve();
+
+        await responseFinished.promise;
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ ok: true });
+
+        await serverClosed.promise;
+        await closePromise;
+
+        expect(order).toEqual(['handler-released', 'response-finished', 'server-closed', 'close-resolved']);
+      } finally {
+        allowResponse.resolve();
+        await app.close();
+        serverCloseSpy.mockRestore();
+      }
     } finally {
       allowResponse.resolve();
       await app.close();
