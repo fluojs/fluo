@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { NotificationsService } from './service.js';
 import type {
   NotificationChannel,
+  NotificationDispatchRequest,
   NotificationLifecycleEvent,
   NotificationsEventPublisher,
   NotificationsQueueAdapter,
@@ -241,5 +242,107 @@ describe('NotificationsService lifecycle snapshots', () => {
         },
       },
     ]);
+  });
+
+  it('publishes immutable value representations for nested mutable built-ins', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const deliveries: NotificationDispatchRequest[] = [];
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send(notification) {
+        deliveries.push(notification);
+
+        return { externalId: 'delivered:email' };
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+      },
+      [channel],
+    );
+    const expression = /notice/gy;
+    expression.lastIndex = 2;
+    const notification = {
+      channel: 'email',
+      metadata: {
+        map: new Map([['one', { value: 'initial' }]]),
+        set: new Set(['one']),
+      },
+      payload: {
+        date: new Date(0),
+        expression,
+        parameters: new URLSearchParams('tag=one&tag=two'),
+        url: new URL('https://example.test/a'),
+      },
+    };
+
+    const dispatch = service.dispatch(notification);
+
+    await publisher.waitForRequested();
+
+    notification.metadata.map.set('two', { value: 'caller-mutated' });
+    notification.metadata.set.add('two');
+    notification.payload.date.setTime(1_000);
+    notification.payload.expression.lastIndex = 0;
+    notification.payload.parameters.append('tag', 'caller-mutated');
+    notification.payload.url.pathname = '/b';
+    publisher.continueRequestedPublication();
+
+    await dispatch;
+
+    const snapshot = publisher.events[0]?.notification;
+    expect(snapshot).toMatchObject({
+      metadata: {
+        map: {
+          entries: [['one', { value: 'initial' }]],
+          kind: 'Map',
+        },
+        set: {
+          kind: 'Set',
+          values: ['one'],
+        },
+      },
+      payload: {
+        date: {
+          epochMilliseconds: 0,
+          kind: 'Date',
+        },
+        expression: {
+          flags: 'gy',
+          kind: 'RegExp',
+          lastIndex: 2,
+          source: 'notice',
+        },
+        parameters: {
+          kind: 'URLSearchParams',
+          query: 'tag=one&tag=two',
+        },
+        url: {
+          href: 'https://example.test/a',
+          kind: 'URL',
+        },
+      },
+    });
+    expect(deliveries[0]?.metadata?.map).toEqual(new Map([['one', { value: 'initial' }]]));
+    expect(deliveries[0]?.metadata?.set).toEqual(new Set(['one']));
+    expect(deliveries[0]?.payload.date).toEqual(new Date(0));
+    expect(deliveries[0]?.payload.expression).toEqual(expect.objectContaining({ lastIndex: 2 }));
+    expect(deliveries[0]?.payload.parameters).toEqual(new URLSearchParams('tag=one&tag=two'));
+    expect(deliveries[0]?.payload.url).toEqual(new URL('https://example.test/a'));
+    expect(publisher.events[1]?.notification).toEqual(snapshot);
+    expect(publisher.events[1]?.notification).not.toBe(snapshot);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot?.metadata)).toBe(true);
+    expect(Object.isFrozen(snapshot?.payload)).toBe(true);
+    expect(Reflect.set(snapshot?.payload.date ?? {}, 'epochMilliseconds', 1_000)).toBe(false);
+    expect(snapshot?.payload.date).toEqual({
+      epochMilliseconds: 0,
+      kind: 'Date',
+    });
   });
 });

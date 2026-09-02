@@ -1,4 +1,14 @@
-import type { NotificationDispatchRequest, NotificationLifecycleEvent } from './types.js';
+import type {
+  NotificationDispatchRequest,
+  NotificationLifecycleEvent,
+  NotificationSnapshot,
+  NotificationSnapshotDate,
+  NotificationSnapshotMap,
+  NotificationSnapshotRegExp,
+  NotificationSnapshotSet,
+  NotificationSnapshotUrl,
+  NotificationSnapshotUrlSearchParams,
+} from './types.js';
 
 /**
  * Copies and freezes one notification envelope at dispatch admission.
@@ -33,7 +43,9 @@ export function createNotificationLifecycleEventSnapshot<TRequest extends Notifi
     occurredAt: string;
   },
 ): NotificationLifecycleEvent<TRequest> {
-  return freezeSnapshot(cloneSnapshot(event, new Map<object, object>())) as NotificationLifecycleEvent<TRequest>;
+  return freezeSnapshot(
+    createLifecycleSnapshot(event, new Map<object, object>()),
+  ) as NotificationLifecycleEvent<TRequest>;
 }
 
 function cloneSnapshot<T>(value: T, seen: Map<object, object>): T {
@@ -70,6 +82,7 @@ function cloneSnapshot<T>(value: T, seen: Map<object, object>): T {
 
   if (value instanceof RegExp) {
     const clone = new RegExp(value.source, value.flags);
+    clone.lastIndex = value.lastIndex;
     seen.set(value, clone);
 
     return clone as T;
@@ -117,6 +130,103 @@ function cloneSnapshot<T>(value: T, seen: Map<object, object>): T {
   }
 
   return clone as T;
+}
+
+function createLifecycleSnapshot<T>(value: T, seen: Map<object, object>): NotificationSnapshot<T> {
+  if (value === null || typeof value !== 'object') {
+    return value as NotificationSnapshot<T>;
+  }
+
+  const existing = seen.get(value);
+
+  if (existing) {
+    return existing as NotificationSnapshot<T>;
+  }
+
+  if (value instanceof Date) {
+    const snapshot: NotificationSnapshotDate = {
+      epochMilliseconds: Number.isNaN(value.getTime()) ? null : value.getTime(),
+      kind: 'Date',
+    };
+    seen.set(value, snapshot);
+
+    return snapshot as NotificationSnapshot<T>;
+  }
+
+  if (value instanceof URL) {
+    const snapshot: NotificationSnapshotUrl = { href: value.href, kind: 'URL' };
+    seen.set(value, snapshot);
+
+    return snapshot as NotificationSnapshot<T>;
+  }
+
+  if (value instanceof URLSearchParams) {
+    const snapshot: NotificationSnapshotUrlSearchParams = {
+      kind: 'URLSearchParams',
+      query: value.toString(),
+    };
+    seen.set(value, snapshot);
+
+    return snapshot as NotificationSnapshot<T>;
+  }
+
+  if (value instanceof RegExp) {
+    const snapshot: NotificationSnapshotRegExp = {
+      flags: value.flags,
+      kind: 'RegExp',
+      lastIndex: value.lastIndex,
+      source: value.source,
+    };
+    seen.set(value, snapshot);
+
+    return snapshot as NotificationSnapshot<T>;
+  }
+
+  if (value instanceof Map) {
+    const snapshot: { entries: unknown[]; kind: 'Map' } = { entries: [], kind: 'Map' };
+    seen.set(value, snapshot);
+
+    for (const [key, entry] of value) {
+      snapshot.entries.push([
+        createLifecycleSnapshot(key, seen),
+        createLifecycleSnapshot(entry, seen),
+      ]);
+    }
+
+    return snapshot as NotificationSnapshotMap<unknown, unknown> as NotificationSnapshot<T>;
+  }
+
+  if (value instanceof Set) {
+    const snapshot: { kind: 'Set'; values: unknown[] } = { kind: 'Set', values: [] };
+    seen.set(value, snapshot);
+
+    for (const entry of value) {
+      snapshot.values.push(createLifecycleSnapshot(entry, seen));
+    }
+
+    return snapshot as NotificationSnapshotSet<unknown> as NotificationSnapshot<T>;
+  }
+
+  const snapshot: object = Array.isArray(value)
+    ? []
+    : Object.create(Object.getPrototypeOf(value));
+  seen.set(value, snapshot);
+
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+    if (!descriptor) {
+      continue;
+    }
+
+    if ('value' in descriptor) {
+      descriptor.value = createLifecycleSnapshot(descriptor.value, seen);
+    }
+
+    Object.defineProperty(snapshot, key, descriptor);
+  }
+
+  return snapshot as NotificationSnapshot<T>;
 }
 
 function freezeSnapshot<T>(value: T, seen = new WeakSet<object>()): T {

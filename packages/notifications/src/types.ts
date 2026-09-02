@@ -107,23 +107,70 @@ export type NotificationLifecycleEventName =
   | 'notification.dispatch.delivered'
   | 'notification.dispatch.failed';
 
+/** Immutable lifecycle representation of a `Date` value. */
+export interface NotificationSnapshotDate {
+  readonly epochMilliseconds: number | null;
+  readonly kind: 'Date';
+}
+
+/** Immutable lifecycle representation of a `Map` value. */
+export interface NotificationSnapshotMap<TKey, TValue> {
+  readonly entries: readonly (readonly [NotificationSnapshot<TKey>, NotificationSnapshot<TValue>])[];
+  readonly kind: 'Map';
+}
+
+/** Immutable lifecycle representation of a `RegExp` value. */
+export interface NotificationSnapshotRegExp {
+  readonly flags: string;
+  readonly kind: 'RegExp';
+  readonly lastIndex: number;
+  readonly source: string;
+}
+
+/** Immutable lifecycle representation of a `Set` value. */
+export interface NotificationSnapshotSet<TValue> {
+  readonly kind: 'Set';
+  readonly values: readonly NotificationSnapshot<TValue>[];
+}
+
+/** Immutable lifecycle representation of a `URL` value. */
+export interface NotificationSnapshotUrl {
+  readonly href: string;
+  readonly kind: 'URL';
+}
+
+/** Immutable lifecycle representation of a `URLSearchParams` value. */
+export interface NotificationSnapshotUrlSearchParams {
+  readonly kind: 'URLSearchParams';
+  readonly query: string;
+}
+
 /**
- * Recursive readonly view used for notification lifecycle observation snapshots.
+ * Recursive immutable value view used for notification lifecycle observation snapshots.
+ *
+ * Native mutable built-ins are converted into the corresponding `NotificationSnapshot*`
+ * data representation rather than exposed as live instances.
  *
  * @typeParam T Value captured in a lifecycle event.
  */
 export type NotificationSnapshot<T> =
-  T extends Date | RegExp | URL | URLSearchParams
-    ? T
-    : T extends Map<infer TKey, infer TValue>
-      ? ReadonlyMap<NotificationSnapshot<TKey>, NotificationSnapshot<TValue>>
-      : T extends Set<infer TValue>
-        ? ReadonlySet<NotificationSnapshot<TValue>>
-        : T extends readonly (infer TValue)[]
-          ? readonly NotificationSnapshot<TValue>[]
-          : T extends object
-            ? { readonly [TKey in keyof T]: NotificationSnapshot<T[TKey]> }
-            : T;
+  T extends Date
+    ? NotificationSnapshotDate
+    : T extends RegExp
+      ? NotificationSnapshotRegExp
+      : T extends URL
+        ? NotificationSnapshotUrl
+        : T extends URLSearchParams
+          ? NotificationSnapshotUrlSearchParams
+          : T extends Map<infer TKey, infer TValue>
+            ? NotificationSnapshotMap<TKey, TValue>
+            : T extends Set<infer TValue>
+              ? NotificationSnapshotSet<TValue>
+              : T extends readonly (infer TValue)[]
+                ? readonly NotificationSnapshot<TValue>[]
+                : T extends object
+                  ? { readonly [TKey in keyof T]: NotificationSnapshot<T[TKey]> }
+                  : T;
 
 /** Published event payload emitted around notification lifecycle transitions. */
 export interface NotificationLifecycleEvent<TRequest extends NotificationDispatchRequest = NotificationDispatchRequest> {
