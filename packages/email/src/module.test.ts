@@ -798,6 +798,7 @@ describe('EmailModule', () => {
     };
     let publishRequested: (() => void) | undefined;
     let continueRequested: (() => void) | undefined;
+    const lifecycleEvents: NotificationLifecycleEvent[] = [];
     const requested = new Promise<void>((resolve) => {
       publishRequested = resolve;
     });
@@ -821,6 +822,8 @@ describe('EmailModule', () => {
         publishLifecycleEvents: true,
         publisher: {
           async publish(event: NotificationLifecycleEvent): Promise<void> {
+            lifecycleEvents.push(event);
+
             if (event.name === 'notification.dispatch.requested') {
               publishRequested?.();
               await resumeRequested;
@@ -867,6 +870,23 @@ describe('EmailModule', () => {
 
     expect(deliveredAttachment).toEqual(new Uint8Array([1, 2, 3]));
     expect(deliveredAttachment).not.toBe(attachment);
+    expect(lifecycleEvents[0]).toMatchObject({
+      notification: {
+        payload: {
+          attachments: [
+            {
+              content: {
+                byteLength: 3,
+                byteOffset: 0,
+                bytes: [1, 2, 3],
+                kind: 'ArrayBufferView',
+                view: 'Uint8Array',
+              },
+            },
+          ],
+        },
+      },
+    });
   });
 
   it('keeps the queue worker outside EmailModule providers so queue support stays opt-in', () => {

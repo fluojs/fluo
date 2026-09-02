@@ -8,6 +8,8 @@ import type {
   NotificationDispatchRequest,
   NotificationLifecycleEvent,
   NotificationSnapshot,
+  NotificationSnapshotArrayBuffer,
+  NotificationSnapshotArrayBufferView,
   NotificationSnapshotDate,
   NotificationSnapshotMap,
   NotificationSnapshotRegExp,
@@ -73,6 +75,9 @@ describe('@fluojs/notifications public API surface', () => {
       occurredAt: string;
     }>();
     expectTypeOf<NotificationSnapshot<Date>>().toEqualTypeOf<NotificationSnapshotDate>();
+    expectTypeOf<NotificationSnapshot<ArrayBuffer>>().toEqualTypeOf<NotificationSnapshotArrayBuffer>();
+    expectTypeOf<NotificationSnapshot<DataView>>().toEqualTypeOf<NotificationSnapshotArrayBufferView>();
+    expectTypeOf<NotificationSnapshot<Uint8Array>>().toEqualTypeOf<NotificationSnapshotArrayBufferView>();
     expectTypeOf<NotificationSnapshot<Map<string, number>>>().toEqualTypeOf<
       NotificationSnapshotMap<string, number>
     >();

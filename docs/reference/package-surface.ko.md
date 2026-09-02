@@ -154,6 +154,8 @@ Microservices transport 학습 경로는 패키지 계약 원천으로 다시 �
 
 | 인터페이스 | 불변 필드 |
 | --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
 | `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
 | `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
 | `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |

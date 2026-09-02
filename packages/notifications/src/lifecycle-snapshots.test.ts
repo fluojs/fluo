@@ -67,6 +67,20 @@ class RecordingQueueAdapter implements NotificationsQueueAdapter {
   }
 }
 
+class SelectiveFailureQueueAdapter implements NotificationsQueueAdapter {
+  readonly jobs: NotificationsQueueJob[] = [];
+
+  async enqueue(job: NotificationsQueueJob): Promise<string> {
+    this.jobs.push(job);
+
+    if (job.notification.id === 'batch-two') {
+      throw new Error('queue rejected batch-two');
+    }
+
+    return `queued:${job.notification.id ?? 'generated'}`;
+  }
+}
+
 describe('NotificationsService lifecycle snapshots', () => {
   it('isolates requested and delivered event snapshots from caller and observer mutations', async () => {
     const publisher = new MutatingLifecyclePublisher();
@@ -405,6 +419,66 @@ describe('NotificationsService lifecycle snapshots', () => {
     expect(deliveredPayload?.template).toBe('original');
   });
 
+  it('represents ArrayBuffer and view lifecycle values as immutable byte data', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send() {
+        return { externalId: 'delivered:email' };
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+      },
+      [channel],
+    );
+    const buffer = new ArrayBuffer(3);
+    const bytes = new Uint8Array(buffer);
+    bytes.set([1, 2, 3]);
+    const dispatch = service.dispatch({
+      channel: 'email',
+      payload: {
+        buffer,
+        dataView: new DataView(buffer, 0, 2),
+        view: new Uint8Array(buffer, 1, 2),
+      },
+    });
+
+    await publisher.waitForRequested();
+    bytes[1] = 9;
+    publisher.continueRequestedPublication();
+
+    await dispatch;
+
+    expect(publisher.events[0]?.notification.payload).toMatchObject({
+      buffer: {
+        byteLength: 3,
+        bytes: [1, 2, 3],
+        kind: 'ArrayBuffer',
+      },
+      dataView: {
+        byteLength: 2,
+        byteOffset: 0,
+        bytes: [1, 2],
+        kind: 'ArrayBufferView',
+        view: 'DataView',
+      },
+      view: {
+        byteLength: 2,
+        byteOffset: 1,
+        bytes: [2, 3],
+        kind: 'ArrayBufferView',
+        view: 'Uint8Array',
+      },
+    });
+    expect(publisher.events[1]?.notification).toEqual(publisher.events[0]?.notification);
+  });
+
   it('admits every queued batch envelope before requested publication can yield', async () => {
     const publisher = new MutatingLifecyclePublisher();
     const queue = new RecordingQueueAdapter();
@@ -497,6 +571,212 @@ describe('NotificationsService lifecycle snapshots', () => {
       false,
       false,
     ]);
+  });
+
+  it('admits direct batch envelopes before lifecycle publication and preserves failure snapshots', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const deliveries: NotificationDispatchRequest[] = [];
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send(notification) {
+        deliveries.push(notification);
+
+        if (notification.id === 'batch-two') {
+          throw new Error('provider rejected batch-two');
+        }
+
+        return { externalId: 'delivered:first' };
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+      },
+      [channel],
+    );
+    const first: NotificationDispatchRequest = {
+      channel: 'email',
+      id: 'batch-one',
+      payload: { template: 'first' },
+    };
+    const second: NotificationDispatchRequest = {
+      channel: 'email',
+      id: 'batch-two',
+      payload: { template: 'second' },
+    };
+    const dispatch = service.dispatchMany([first, second], { continueOnError: true });
+
+    await publisher.waitForRequested();
+    second.channel = 'discord';
+    second.id = 'caller-mutated-second';
+    second.payload.template = 'caller-mutated-second';
+    publisher.continueRequestedPublication();
+
+    await expect(dispatch).resolves.toMatchObject({
+      failed: 1,
+      failures: [
+        {
+          notification: {
+            channel: 'email',
+            id: 'batch-two',
+            payload: { template: 'second' },
+          },
+        },
+      ],
+      queued: 0,
+      results: [
+        {
+          channel: 'email',
+          deliveryId: 'delivered:first',
+          queued: false,
+          status: 'delivered',
+        },
+      ],
+      succeeded: 1,
+    });
+    expect(deliveries).toEqual([
+      {
+        channel: 'email',
+        id: 'batch-one',
+        payload: { template: 'first' },
+      },
+      {
+        channel: 'email',
+        id: 'batch-two',
+        payload: { template: 'second' },
+      },
+    ]);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.delivered',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
+    expect(publisher.events.slice(2)).toMatchObject([
+      {
+        notification: {
+          channel: 'email',
+          id: 'batch-two',
+          payload: { template: 'second' },
+        },
+      },
+      {
+        notification: {
+          channel: 'email',
+          id: 'batch-two',
+          payload: { template: 'second' },
+        },
+      },
+    ]);
+    expect(publisher.mutationResults).toHaveLength(12);
+    expect(publisher.mutationResults.every((result) => result === false)).toBe(true);
+  });
+
+  it('uses admitted envelopes for sequential queue fallback failure records', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const queue = new SelectiveFailureQueueAdapter();
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send() {
+        throw new Error('direct delivery should not run for queued dispatch');
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+        queue: {
+          adapter: queue,
+          bulkThreshold: 10,
+        },
+      },
+      [channel],
+    );
+    const first: NotificationDispatchRequest = {
+      channel: 'email',
+      id: 'batch-one',
+      payload: { template: 'first' },
+    };
+    const second: NotificationDispatchRequest = {
+      channel: 'email',
+      id: 'batch-two',
+      payload: { template: 'second' },
+    };
+    const dispatch = service.dispatchMany([first, second], {
+      continueOnError: true,
+      queue: true,
+    });
+
+    await publisher.waitForRequested();
+    second.channel = 'discord';
+    second.id = 'caller-mutated-second';
+    second.payload.template = 'caller-mutated-second';
+    publisher.continueRequestedPublication();
+
+    await expect(dispatch).resolves.toMatchObject({
+      failed: 1,
+      failures: [
+        {
+          notification: {
+            channel: 'email',
+            id: 'batch-two',
+            payload: { template: 'second' },
+          },
+        },
+      ],
+      queued: 1,
+      results: [
+        {
+          channel: 'email',
+          deliveryId: 'queued:batch-one',
+          queued: true,
+          status: 'queued',
+        },
+      ],
+      succeeded: 1,
+    });
+    expect(queue.jobs).toMatchObject([
+      {
+        channel: 'email',
+        id: 'batch-one',
+        notification: {
+          channel: 'email',
+          id: 'batch-one',
+          payload: { template: 'first' },
+        },
+      },
+      {
+        channel: 'email',
+        id: 'batch-two',
+        notification: {
+          channel: 'email',
+          id: 'batch-two',
+          payload: { template: 'second' },
+        },
+      },
+    ]);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.queued',
+      'notification.dispatch.failed',
+    ]);
+    expect(publisher.events[3]).toMatchObject({
+      notification: {
+        channel: 'email',
+        id: 'batch-two',
+        payload: { template: 'second' },
+      },
+    });
+    expect(publisher.mutationResults).toHaveLength(12);
+    expect(publisher.mutationResults.every((result) => result === false)).toBe(true);
   });
 
   it('rejects own and prototype accessors before they can expose mutable state', async () => {

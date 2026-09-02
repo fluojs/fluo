@@ -69,6 +69,14 @@ export class NotificationsService implements Notifications {
     options: NotificationDispatchOptions = {},
   ): Promise<NotificationDispatchResult> {
     const dispatchNotification = createNotificationDispatchSnapshot(notification);
+
+    return this.dispatchAdmitted(dispatchNotification, options);
+  }
+
+  private async dispatchAdmitted<TRequest extends NotificationDispatchRequest>(
+    dispatchNotification: TRequest,
+    options: NotificationDispatchOptions,
+  ): Promise<NotificationDispatchResult> {
     const requestedPublicationError = await this.publishLifecycleEventBestEffort(
       'notification.dispatch.requested',
       dispatchNotification,
@@ -163,8 +171,9 @@ export class NotificationsService implements Notifications {
       };
     }
 
+    const dispatchNotifications = notifications.map((notification) => createNotificationDispatchSnapshot(notification));
+
     if (this.shouldQueue(notifications.length, options)) {
-      const dispatchNotifications = notifications.map((notification) => createNotificationDispatchSnapshot(notification));
       const requestedPublicationErrors = await this.publishRequestedLifecycleEvents(dispatchNotifications, options);
 
       let queue: ReturnType<NotificationsService['requireQueueAdapter']>;
@@ -193,7 +202,6 @@ export class NotificationsService implements Notifications {
           jobs,
           options,
           requestedPublicationErrors,
-          notifications,
         );
       }
 
@@ -230,9 +238,9 @@ export class NotificationsService implements Notifications {
     const results: NotificationDispatchResult[] = [];
     const failures: Array<{ error: Error; notification: TRequest }> = [];
 
-    for (const notification of notifications) {
+    for (const notification of dispatchNotifications) {
       try {
-        results.push(await this.dispatch(notification, options));
+        results.push(await this.dispatchAdmitted(notification, options));
       } catch (error) {
         const failure = {
           error: error instanceof Error ? error : new Error('Notification dispatch failed.'),
@@ -455,7 +463,6 @@ export class NotificationsService implements Notifications {
     jobs: readonly NotificationsQueueJob<TRequest>[],
     options: NotificationDispatchManyOptions,
     requestedPublicationErrors: readonly unknown[],
-    failureNotifications: readonly TRequest[],
   ): Promise<NotificationDispatchBatchResult<TRequest>> {
     const queue = this.requireQueueAdapter();
     const results: NotificationDispatchResult[] = [];
@@ -464,9 +471,8 @@ export class NotificationsService implements Notifications {
     for (let index = 0; index < jobs.length; index += 1) {
       const job = jobs[index];
       const notification = notifications[index];
-      const failureNotification = failureNotifications[index];
 
-      if (!job || !notification || !failureNotification) {
+      if (!job || !notification) {
         continue;
       }
 
@@ -484,7 +490,7 @@ export class NotificationsService implements Notifications {
       } catch (error) {
         const failure: { error: Error; notification: TRequest } = {
           error: error instanceof Error ? error : new Error('Notification queue enqueue failed.'),
-          notification: failureNotification,
+          notification,
         };
 
         if (!(options.continueOnError ?? false)) {

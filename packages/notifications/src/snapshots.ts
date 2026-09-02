@@ -2,6 +2,8 @@ import type {
   NotificationDispatchRequest,
   NotificationLifecycleEvent,
   NotificationSnapshot,
+  NotificationSnapshotArrayBuffer,
+  NotificationSnapshotArrayBufferView,
   NotificationSnapshotDate,
   NotificationSnapshotMap,
   NotificationSnapshotRegExp,
@@ -201,14 +203,24 @@ function createLifecycleSnapshot<T>(value: T, seen: Map<object, object>): Notifi
   }
 
   if (value instanceof ArrayBuffer) {
-    const snapshot = Array.from(new Uint8Array(value));
+    const snapshot: NotificationSnapshotArrayBuffer = {
+      byteLength: value.byteLength,
+      bytes: Array.from(new Uint8Array(value)),
+      kind: 'ArrayBuffer',
+    };
     seen.set(value, snapshot);
 
     return snapshot as NotificationSnapshot<T>;
   }
 
   if (ArrayBuffer.isView(value)) {
-    const snapshot = Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    const snapshot: NotificationSnapshotArrayBufferView = {
+      byteLength: value.byteLength,
+      byteOffset: value.byteOffset,
+      bytes: Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength)),
+      kind: 'ArrayBufferView',
+      view: Object.prototype.toString.call(value).slice(8, -1),
+    };
     seen.set(value, snapshot);
 
     return snapshot as NotificationSnapshot<T>;

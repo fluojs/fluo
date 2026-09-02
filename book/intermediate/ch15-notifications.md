@@ -272,6 +272,8 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 
 | Interface | Immutable fields |
 | --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
 | `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
 | `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
 | `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |

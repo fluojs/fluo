@@ -28,6 +28,8 @@ export type {
   NotificationLifecycleEventName,
   NotificationPayload,
   NotificationSnapshot,
+  NotificationSnapshotArrayBuffer,
+  NotificationSnapshotArrayBufferView,
   NotificationSnapshotDate,
   NotificationSnapshotMap,
   NotificationSnapshotRegExp,

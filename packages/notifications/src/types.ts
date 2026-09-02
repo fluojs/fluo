@@ -113,6 +113,27 @@ export interface NotificationSnapshotDate {
   readonly kind: 'Date';
 }
 
+/** Immutable lifecycle representation of an `ArrayBuffer` value. */
+export interface NotificationSnapshotArrayBuffer {
+  readonly byteLength: number;
+  readonly bytes: readonly number[];
+  readonly kind: 'ArrayBuffer';
+}
+
+/**
+ * Immutable lifecycle representation of an `ArrayBufferView` value.
+ *
+ * @remarks
+ * `view` records the native view kind, such as `DataView` or `Uint8Array`.
+ */
+export interface NotificationSnapshotArrayBufferView {
+  readonly byteLength: number;
+  readonly byteOffset: number;
+  readonly bytes: readonly number[];
+  readonly kind: 'ArrayBufferView';
+  readonly view: string;
+}
+
 /** Immutable lifecycle representation of a `Map` value. */
 export interface NotificationSnapshotMap<TKey, TValue> {
   readonly entries: readonly (readonly [NotificationSnapshot<TKey>, NotificationSnapshot<TValue>])[];
@@ -156,21 +177,25 @@ export interface NotificationSnapshotUrlSearchParams {
 export type NotificationSnapshot<T> =
   T extends Date
     ? NotificationSnapshotDate
-    : T extends RegExp
-      ? NotificationSnapshotRegExp
-      : T extends URL
-        ? NotificationSnapshotUrl
-        : T extends URLSearchParams
-          ? NotificationSnapshotUrlSearchParams
-          : T extends ReadonlyMap<infer TKey, infer TValue>
-            ? NotificationSnapshotMap<TKey, TValue>
-            : T extends ReadonlySet<infer TValue>
-              ? NotificationSnapshotSet<TValue>
-              : T extends readonly (infer TValue)[]
-                ? readonly NotificationSnapshot<TValue>[]
-                : T extends object
-                  ? { readonly [TKey in keyof T]: NotificationSnapshot<T[TKey]> }
-                  : T;
+    : T extends ArrayBuffer
+      ? NotificationSnapshotArrayBuffer
+      : T extends ArrayBufferView
+        ? NotificationSnapshotArrayBufferView
+        : T extends RegExp
+          ? NotificationSnapshotRegExp
+          : T extends URL
+            ? NotificationSnapshotUrl
+            : T extends URLSearchParams
+              ? NotificationSnapshotUrlSearchParams
+              : T extends ReadonlyMap<infer TKey, infer TValue>
+                ? NotificationSnapshotMap<TKey, TValue>
+                : T extends ReadonlySet<infer TValue>
+                  ? NotificationSnapshotSet<TValue>
+                  : T extends readonly (infer TValue)[]
+                    ? readonly NotificationSnapshot<TValue>[]
+                    : T extends object
+                      ? { readonly [TKey in keyof T]: NotificationSnapshot<T[TKey]> }
+                      : T;
 
 /** Published event payload emitted around notification lifecycle transitions. */
 export interface NotificationLifecycleEvent<TRequest extends NotificationDispatchRequest = NotificationDispatchRequest> {
