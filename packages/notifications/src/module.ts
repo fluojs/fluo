@@ -109,15 +109,6 @@ function buildNotificationsModuleAsync(options: NotificationsAsyncModuleOptions)
   class NotificationsAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<NotificationsModuleOptions>;
-  let cachedResult: Promise<NormalizedNotificationsModuleOptions> | undefined;
-
-  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedNotificationsModuleOptions> => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps)).then((resolved) => normalizeNotificationsModuleOptions(resolved));
-    }
-
-    return cachedResult;
-  };
 
   return defineModule(NotificationsAsyncModuleDefinition, {
     exports: [NotificationsService, NOTIFICATIONS, NOTIFICATION_CHANNELS],
@@ -126,7 +117,8 @@ function buildNotificationsModuleAsync(options: NotificationsAsyncModuleOptions)
       inject: options.inject,
       provide: NOTIFICATIONS_OPTIONS,
       scope: 'singleton',
-      useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
+      useFactory: (...deps: unknown[]) =>
+        Promise.resolve(factory(...deps)).then((resolved) => normalizeNotificationsModuleOptions(resolved)),
     }),
   });
 }
@@ -137,7 +129,7 @@ export class NotificationsModule {
    * Registers notifications providers using static options.
    *
    * @param options Static notifications module options including channels and optional queue/event integrations.
-   * @returns A global module definition that exports {@link NotificationsService}, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`.
+   * @returns A module definition that exports {@link NotificationsService}, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; exports are global unless `global: false`.
    * @throws {NotificationsConfigurationError} When channel registrations are duplicated or `queue.bulkThreshold` is not a finite positive integer.
    *
    * @example
@@ -155,7 +147,7 @@ export class NotificationsModule {
    * Registers notifications providers from an async DI factory.
    *
    * @param options Async module options that resolve channels and optional integration seams.
-   * @returns A global module definition that memoizes async options resolution per module instance.
+   * @returns A module definition that resolves async options once per application container and exports {@link NotificationsService}, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; exports are global unless `global: false`.
    * @throws {NotificationsConfigurationError} During options resolution when channel registrations are duplicated or `queue.bulkThreshold` is not a finite positive integer.
    *
    * @example
