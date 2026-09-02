@@ -1,6 +1,12 @@
 import type { Token } from '@fluojs/core';
 
 type MultiContributionResolver = (token: Token, contributionIndex: number) => Promise<unknown>;
+
+/**
+ * Object identity that owns a canonical multi-provider contribution resolver.
+ *
+ * @internal
+ */
 export type MultiContributionResolverOwner = object;
 
 const multiContributionResolvers = new WeakMap<MultiContributionResolverOwner, MultiContributionResolver>();
