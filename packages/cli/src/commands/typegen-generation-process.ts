@@ -25,6 +25,8 @@ export type TypegenGenerationChild = {
 
 type TypegenGenerationSpawner = (request: TypegenGenerationRequest) => TypegenGenerationChild;
 
+const CHILD_TERMINATION_GRACE_MS = 500;
+
 function createGenerationChild(request: TypegenGenerationRequest): TypegenGenerationChild {
   const currentPath = fileURLToPath(import.meta.url);
   const extension = extname(currentPath);
@@ -119,11 +121,29 @@ export function startTypegenGenerationProcess(
   spawnGeneration: TypegenGenerationSpawner = createGenerationChild,
 ): TypegenGenerationProcess {
   const child = spawnGeneration(request);
+  let cancelled = false;
+  let forcedKillTimer: ReturnType<typeof setTimeout> | undefined;
+  const result = waitForTypegenGenerationChild(child).finally(() => {
+    if (forcedKillTimer !== undefined) {
+      clearTimeout(forcedKillTimer);
+      forcedKillTimer = undefined;
+    }
+  });
   return {
     cancel() {
-      child.kill('SIGTERM');
+      if (cancelled) {
+        return;
+      }
+      cancelled = true;
+      if (!child.kill('SIGTERM')) {
+        return;
+      }
+      forcedKillTimer = setTimeout(() => {
+        forcedKillTimer = undefined;
+        child.kill('SIGKILL');
+      }, CHILD_TERMINATION_GRACE_MS);
     },
-    result: waitForTypegenGenerationChild(child),
+    result,
   };
 }
 

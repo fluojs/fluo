@@ -99,13 +99,16 @@ export async function checkTypegenArtifact(
  * @param outputPath Target artifact path.
  * @param source Complete generated source to publish.
  * @param fileSystem Filesystem boundary used for the atomic replacement.
+ * @param signal Optional owner cancellation signal checked before publication.
  * @returns The stable create, update, or unchanged action.
  */
 export async function writeTypegenArtifact(
   outputPath: string,
   source: string,
   fileSystem: TypegenArtifactFileSystem = NODE_FILE_SYSTEM,
+  signal?: AbortSignal,
 ): Promise<TypegenArtifactWriteAction> {
+  signal?.throwIfAborted();
   const existingSource = await readExistingArtifact(outputPath, fileSystem);
   if (existingSource === source) {
     return 'UNCHANGED';
@@ -120,6 +123,7 @@ export async function writeTypegenArtifact(
   let committed = false;
   try {
     await fileSystem.writeFile(temporaryPath, source);
+    signal?.throwIfAborted();
     await fileSystem.rename(temporaryPath, outputPath);
     committed = true;
   } finally {
