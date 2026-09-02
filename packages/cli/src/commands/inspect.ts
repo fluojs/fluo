@@ -18,9 +18,9 @@ import {
 } from '@fluojs/runtime';
 import { tsImport } from 'tsx/esm/api';
 
-import { createCliDiagnosticsLogger } from './diagnostics.js';
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
 import { inspectUsage } from '../usage.js';
+import { createCliDiagnosticsLogger } from './diagnostics.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -116,6 +116,21 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
 
     if (option === '--json') {
       json = true;
+      continue;
+    }
+
+    if (option === '--format') {
+      const format = argv[index + 1];
+      if (!format || format.startsWith('-')) {
+        throw new Error('Expected --format to have a value of "json".');
+      }
+
+      if (format !== 'json') {
+        throw new Error(`Invalid --format value "${format}". Use "json".`);
+      }
+
+      json = true;
+      index += 1;
       continue;
     }
 

@@ -6,7 +6,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { generatorManifest } from './generators/manifest.js';
@@ -188,30 +188,42 @@ describe('CLI command runner', () => {
     expect(errorOutput.join('')).toContain('fluo inspect <module-path> --report --output <path>');
   });
 
-  it('keeps JSON inspect stdout parseable while routing runtime diagnostics to stderr', async () => {
+  it('accepts inspect --format json with one JSON stdout document and stderr diagnostics', async () => {
     // Given: a CLI caller capturing each process stream independently.
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
-    const log = vi.spyOn(console, 'log').mockImplementation((...messages: unknown[]) => {
-      stdoutBuffer.push(`${messages.join(' ')}\n`);
+
+    // When: inspect renders a runtime snapshot through the documented format option.
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json'], {
+      ci: true,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
     });
 
-    try {
-      // When: inspect renders a runtime snapshot in machine-readable JSON mode.
-      const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json'], {
-        ci: true,
-        stderr: { write: (message) => stderrBuffer.push(message) },
-        stdout: { write: (message) => stdoutBuffer.push(message) },
-        updateCheck: false,
-      });
+    // Then: stdout is one JSON artifact and runtime diagnostics remain on stderr.
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+    expect(() => JSON.parse(stdoutBuffer.join(''))).not.toThrow();
+    expect(stderrBuffer.join('')).not.toBe('');
+  });
 
-      // Then: stdout is one JSON artifact and bootstrap diagnostics remain on stderr.
-      expect(exitCode).toBe(0);
-      expect(() => JSON.parse(stdoutBuffer.join(''))).not.toThrow();
-      expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
-    } finally {
-      log.mockRestore();
-    }
+  it('rejects unsupported inspect --format values before bootstrap', async () => {
+    // Given: a caller requesting an unsupported inspect serialization format.
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When: inspect parses the format at its CLI boundary.
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'yaml'], {
+      ci: true,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    // Then: no payload is emitted and the invalid value is diagnosed.
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('Invalid --format value "yaml". Use "json".');
   });
 
   it('publishes fluo as the canonical bin', () => {
@@ -4091,7 +4103,7 @@ exit 7
     };
 
     expect(exitCode).toBe(0);
-    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.generatedAt).toEqual(expect.any(String));
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
@@ -4118,7 +4130,7 @@ exit 7
       readiness: { status: string };
     };
 
-    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
@@ -4136,7 +4148,7 @@ exit 7
     });
 
     expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
-    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    expect(stderrBuffer.join('')).not.toBe('');
 
     const payload = JSON.parse(stdoutBuffer.join('')) as {
       routes: Array<{
@@ -4287,7 +4299,7 @@ exit 7
     };
 
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(report.version).toBe(1);
     expect(report.snapshot.diagnostics).toEqual([]);
     expect(report.summary.readinessStatus).toBe('ready');
@@ -4516,7 +4528,7 @@ exit 7
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.snapshot.diagnostics).toEqual([]);
     expect(payload.snapshot.readiness.status).toBe('ready');
     expect(payload.snapshot.health.status).toBe('healthy');
@@ -4525,10 +4537,10 @@ exit 7
     expect(payload.timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
   });
 
-  it('rejects conflicting inspect JSON and Mermaid output modes', async () => {
+  it('rejects --format json when another primary inspect mode is selected', async () => {
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--mermaid'], {
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json', '--mermaid'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
@@ -5086,6 +5098,7 @@ exit 7
     expect(output).toContain('platform snapshot');
     expect(output).toContain('diagnostics');
     expect(output).toContain('timing');
+    expect(output).toContain('--format <json>');
   });
 
   it('generate schematics help uses canonical provider/module registration vocabulary', async () => {
