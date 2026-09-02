@@ -32,6 +32,12 @@ This file defines the always-on project rules and behavioral contracts for all O
 - **Lane-Scoped Grants**: A v2 lane ledger's `authority_scope` IS the explicit approval above, scoped to that lane's issues: `pr_merge: true` authorizes merging that lane's PRs (squash per `pr_merge_method`) and `cleanup_command_worktrees: true` authorizes removing that lane's worktrees and branches. Do not re-ask per issue.
 - **Behavioral Contract Precedence**: Implementation must adhere to documented behavioral contracts in `README.md` and `docs/contracts/` before proceeding with changes.
 
+## Subagent Dispatch Discipline
+- **Background by Default**: On `main`, dispatch every subagent with `run_in_background: true`. A foreground wait detaches at the prompt-cache-safe budget anyway, so a foreground spawn only costs a blocked lead turn without changing the child's lifecycle. Let the completion notification wake the session; use `task_output` for a single midpoint peek and `task_send` to steer.
+- **Parallel Waves Stay Parallel**: Independent children (for example the `$pr-to-merge` contract/code/verification triad) are dispatched in one wave of background spawns, never serialized behind one another's results.
+- **Reviewers Get the Reviewed Head**: A reviewer that must read a specific commit is handed a checkout actually at that commit. `main` is usually not that commit. Create a detached review worktree (`git worktree add --detach .worktrees/review-<pr> <head-sha>`), pass that absolute path in the prompt, and state explicitly that the changed files must be read from there. A reviewer left to read `main` reviews base-state code and fails closed on tooling access rather than on the change.
+- **Pass Captured Evidence Inline**: Command output the lead already captured under its own authority (head SHA re-checks, `gh pr checks` results) belongs in the child prompt. A read-only reviewer without shell access cannot re-derive it and must otherwise return `NEEDS-HUMAN-CHECK` for a gap that is not a defect.
+
 ## Project-Local OMO+Senpi Assets
 - **Local Scope**: Fluo-specific native assets live under `.agents/` and runtime state lives under `.omo/`. Use them only inside this repository; do not promote them to global configuration unless explicitly requested.
 - **Skills**: For Fluo workflow, governance, audit, documentation, or release work, inspect `.agents/skills/*/SKILL.md` before relying on generic guidance.

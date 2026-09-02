@@ -23,11 +23,29 @@ may be silently converted to PASS.
 
 ## Same-head reviewer wave
 
-Create exactly three native background tasks in one parallel batch:
+Create exactly three native background tasks in one parallel batch. Every spawn
+uses `run_in_background: true`; a foreground wait detaches at the prompt-cache
+budget anyway and only blocks the lead.
 
 - `contract`, using `reviewers/contract.md`
 - `code`, using `reviewers/code.md`
 - `verification`, using `reviewers/verification.md`
+
+Before dispatch, materialize the reviewed head as a detached worktree:
+
+```bash
+git worktree add --detach .worktrees/review-<pr> <head-sha>
+git -C .worktrees/review-<pr> rev-parse HEAD
+```
+
+Reviewers are read-only and may lack shell access, so they cannot fetch a head
+or decode pack objects. Each prompt must give the absolute worktree path, state
+that changed files are read from there and not from the `main` checkout, and
+inline the evidence the lead already captured under its own authority: the head
+SHA re-check and the verbatim `gh pr checks` result rows. A reviewer pointed at
+`main` reviews base-state code, and a reviewer denied captured check output
+fails closed on a tooling gap that is not a defect. Remove the review worktree
+only after the gate reports.
 
 Each prompt includes the PR identity, linked issue, base branch, captured head
 SHA, changed paths, and the evidence relevant to that reviewer. Each task is
