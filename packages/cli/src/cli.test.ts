@@ -5740,7 +5740,7 @@ void bootstrap();
     expect(dryRunStdout.join('')).toContain('Mode: dry-run');
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toContain('NestFactory.create');
 
-    const applyExitCode = await runCli(['migrate', './src', '--apply'], {
+    const applyExitCode = await runCli(['migrate', './src', '--platform', 'express', '--apply'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },

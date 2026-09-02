@@ -1,6 +1,7 @@
 # @fluojs/cli
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 The canonical CLI for fluo — bootstrap new applications, generate components and React page types, export runtime inspection data, and run code transforms.
 
@@ -304,15 +305,18 @@ Use `--json` when CI jobs, dashboards, or migration reports need a stable machin
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
 
-Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The default NestJS bootstrap uses Express, so the default bootstrap transform rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds a static `listen(port)` argument into that adapter. Install `@fluojs/platform-express` and `express` before compiling the migrated application; select only the independent transforms to leave bootstrap unchanged:
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Bootstrap rewrites never infer a platform: without a selected platform, the codemod retains `NestFactory.create(AppModule)` and its `listen(port)` call and emits a required adapter-selection warning. The only automatic bootstrap rewrite requires explicit `--platform express` and exactly one numeric-literal single-argument `app.listen(port)`. Host, callback, string, environment-derived, and multiple-`listen` forms remain untouched with a warning for manual migration. Install `@fluojs/platform-express` and `express` before compiling the migrated application:
 
 ```bash
+fluo migrate ./src --apply --platform express
+
+# Leave bootstrap unchanged while applying only adapter-independent transforms
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
 ```
 
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.
-- Rewrites bootstrap patterns and folds supported `listen(port)` calls into fluo runtime startup conventions.
+- Rewrites bootstrap patterns only after explicit platform selection and folds supported `listen(port)` calls into fluo runtime startup conventions.
 - Migrates constructor parameter `@Inject(...)` usage into fluo-compatible dependency declarations.
 - Removes `@Injectable()` and maps scopes to `@Scope()`.
 - Migrates test templates toward `@fluojs/testing` helpers where the codemod can do so safely.

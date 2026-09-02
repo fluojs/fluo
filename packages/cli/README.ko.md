@@ -1,6 +1,7 @@
 # @fluojs/cli
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 React page type 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
 
@@ -304,15 +305,18 @@ CI 작업, 대시보드, migration report에서 안정적인 machine-readable �
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
 
-Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. 기본 NestJS bootstrap은 Express를 사용하므로 기본 bootstrap transform은 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하고 static `listen(port)` 인수를 그 adapter로 접습니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap 재작성은 platform을 추론하지 않습니다. Platform을 선택하지 않으면 codemod은 `NestFactory.create(AppModule)`와 `listen(port)` 호출을 유지하고 필요한 adapter-selection warning을 출력합니다. 자동 bootstrap 재작성은 명시적인 `--platform express`와 정확히 하나의 숫자 리터럴 단일 인자 `app.listen(port)`에서만 지원됩니다. host, callback, string, 환경 변수 기반, 여러 `listen` 형태는 warning과 함께 그대로 보존되며 수동 마이그레이션이 필요합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요:
 
 ```bash
+fluo migrate ./src --apply --platform express
+
+# bootstrap은 그대로 두고 adapter-independent transform만 적용
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
 ```
 
 **주요 변환 사항:**
 - `@nestjs/common` 임포트를 `@fluojs/core` 또는 `@fluojs/http`로 재작성합니다.
-- bootstrap 패턴을 재작성하고 지원되는 `listen(port)` 호출을 fluo runtime startup 규칙으로 접습니다.
+- 명시적으로 platform을 선택한 뒤에만 bootstrap 패턴을 재작성하고 지원되는 `listen(port)` 호출을 fluo runtime startup 규칙으로 접습니다.
 - constructor parameter `@Inject(...)` 사용을 fluo 호환 의존성 선언으로 migration합니다.
 - `@Injectable()`을 제거하고 스코프를 `@Scope()`로 매핑합니다.
 - 안전하게 변환 가능한 test template을 `@fluojs/testing` helper 쪽으로 migration합니다.

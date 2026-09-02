@@ -12,6 +12,8 @@ import {
 } from '../transforms/nestjs-migrate.js';
 import { MIGRATION_TRANSFORM_CLI_TOKENS, parseMigrationTransformList } from './migration-transform-tokens.js';
 
+type BootstrapPlatform = 'express';
+
 type CliStream = {
   write(message: string): unknown;
 };
@@ -38,6 +40,7 @@ type ParsedMigrateArgs = {
   apply: boolean;
   json: boolean;
   path: string;
+  platform?: BootstrapPlatform;
   transforms: Set<MigrationTransformKind>;
 };
 
@@ -63,6 +66,11 @@ const MIGRATE_OPTION_HELP: MigrateOptionHelpEntry[] = [
     option: '--skip <comma-list>',
   },
   {
+    aliases: [],
+    description: 'Select the HTTP platform for bootstrap rewrites. Required for automatic bootstrap migration; supported: express.',
+    option: '--platform <name>',
+  },
+  {
     aliases: ['-h'],
     description: 'Show help for the migrate command.',
     option: '--help',
@@ -78,6 +86,7 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
   let apply = false;
   let json = false;
   let onlyTransforms: MigrationTransformKind[] | undefined;
+  let platform: BootstrapPlatform | undefined;
   let skipTransforms: MigrationTransformKind[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -118,6 +127,25 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
       continue;
     }
 
+    if (arg === '--platform') {
+      const rawValue = argv[index + 1];
+      if (!rawValue || rawValue.startsWith('-')) {
+        throw new Error('Expected --platform to have a platform name.');
+      }
+
+      if (platform) {
+        throw new Error('Duplicate --platform option.');
+      }
+
+      if (rawValue !== 'express') {
+        throw new Error(`Unsupported bootstrap platform: ${rawValue}. Supported platform: express.`);
+      }
+
+      platform = rawValue;
+      index += 1;
+      continue;
+    }
+
     if (arg.startsWith('-')) {
       throw new Error(`Unknown option for migrate command: ${arg}`);
     }
@@ -146,6 +174,7 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
     apply,
     json,
     path: pathArgument,
+    platform,
     transforms: enabled,
   };
 }
@@ -225,6 +254,7 @@ export async function runMigrateCommand(argv: string[], runtime: MigrateCommandR
     const transforms = [...parsed.transforms];
     const report = runNestJsMigration({
       apply: parsed.apply,
+      bootstrapPlatform: parsed.platform,
       enabledTransforms: parsed.transforms,
       targetPath,
     });
