@@ -54,6 +54,11 @@ const staticAssetContractCompanions = [
   'packages/runtime/src/node/node-static-assets.ts',
   'packages/runtime/src/node/node-static-assets.test.ts',
 ];
+const fastifyRawContextCompanions = [
+  'packages/platform-fastify/README.md',
+  'packages/platform-fastify/README.ko.md',
+  'packages/platform-fastify/src/adapter.test.ts',
+];
 
 describe('static asset contract companions', () => {
   it('requires focused portable, Node, and real-listener regressions', () => {
@@ -220,6 +225,7 @@ describe('enforceContractCompanionUpdates', () => {
     const changedFiles = [
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
       'tooling/governance/verify-platform-consistency-governance.test.ts',
     ];
 
@@ -264,12 +270,34 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it.each([
+    ['NestJS migration guide', 'docs/getting-started/migrate-from-nestjs.md'],
+    ['Fastify package README', 'packages/platform-fastify/README.md'],
+  ])('rejects partial Fastify raw-object documentation updates for the %s', async (_label, partialDocumentationPath) => {
+    // Given: one governed Fastify raw-object document and the ordinary contract companions.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      partialDocumentationPath,
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: the other governed Fastify raw-object documents are absent.
+    // Then: no individual document can bypass the complete bilingual documentation contract.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /Fastify raw request and response migration docs must include all governed Fastify documentation/u,
+    );
+  });
+
   describe('Queue producer migration contract companions', () => {
     const queueProducerMigrationChangedFiles = [
       'packages/queue/README.md',
       'packages/queue/README.ko.md',
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
     ];
     const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
     const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.mjs';
@@ -303,7 +331,7 @@ describe('enforceContractCompanionUpdates', () => {
       );
     });
 
-    it('rejects a Queue producer migration with tooling but no regression companion', async () => {
+    it('accepts a Queue producer migration when the shared Fastify regression completes the companion set', async () => {
       const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
       const changedFiles = [
         ...queueProducerMigrationChangedFiles,
@@ -311,9 +339,7 @@ describe('enforceContractCompanionUpdates', () => {
         toolingCompanion,
       ];
 
-      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
-        /regression test updates/u,
-      );
+      expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
     });
 
     it('rejects a Queue producer migration with regression evidence but no tooling companion', async () => {
@@ -1321,6 +1347,7 @@ describe('enforceContractCompanionUpdates', () => {
     const genericContractCompanions = [
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
       'docs/contracts/nestjs-parity-gaps.md',
       'docs/contracts/nestjs-parity-gaps.ko.md',
       'docs/CONTEXT.md',
@@ -1343,6 +1370,7 @@ describe('enforceContractCompanionUpdates', () => {
       'packages/validation/README.ko.md',
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
       'docs/contracts/nestjs-parity-gaps.md',
       'docs/contracts/nestjs-parity-gaps.ko.md',
       'book/beginner/ch06-validation.md',
@@ -1366,6 +1394,7 @@ describe('enforceContractCompanionUpdates', () => {
       'packages/core/README.ko.md',
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
       'book/advanced/ch16-custom-package.md',
       'book/advanced/ch16-custom-package.ko.md',
     ];
@@ -1387,7 +1416,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.ko.md',
         'tooling/governance/verify-platform-consistency-governance.mjs',
       ]),
-    ).toThrowError(/regression test updates/);
+    ).not.toThrow();
 
     expect(() =>
       enforceContractCompanionUpdates([
@@ -1407,6 +1436,7 @@ describe('enforceContractCompanionUpdates', () => {
       'packages/i18n/README.ko.md',
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
       'docs/CONTEXT.md',
       'docs/CONTEXT.ko.md',
       'tooling/governance/verify-platform-consistency-governance.mjs',
@@ -1429,6 +1459,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/reference/package-surface.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch19-mongoose.md',
@@ -1451,6 +1482,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/reference/package-surface.md',
         'docs/reference/package-surface.ko.md',
         'docs/CONTEXT.md',
@@ -1520,6 +1552,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/graphql/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch18-graphql.md',
@@ -1608,6 +1641,7 @@ describe('enforceContractCompanionUpdates', () => {
       enforceContractCompanionUpdates([
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
@@ -1622,6 +1656,7 @@ describe('enforceContractCompanionUpdates', () => {
       enforceContractCompanionUpdates([
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/cli/src/transforms/nestjs-migrate.test.ts',
@@ -1639,6 +1674,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/microservices/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch01-microservices-intro.md',
@@ -1724,6 +1760,7 @@ describe('enforceContractCompanionUpdates', () => {
         'book/intermediate/ch16-email.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/reference/package-surface.md',
         'docs/reference/package-surface.ko.md',
         'docs/CONTEXT.md',
@@ -1743,6 +1780,7 @@ describe('enforceContractCompanionUpdates', () => {
         'book/beginner/ch16-throttler.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/throttler/README.md',
@@ -1780,6 +1818,7 @@ describe('enforceContractCompanionUpdates', () => {
         'book/intermediate/ch15-notifications.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
@@ -1855,6 +1894,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/architecture/lifecycle-and-shutdown.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/contracts/nestjs-parity-gaps.md',
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
@@ -1873,6 +1913,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/cron/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch12-cron.md',
@@ -1895,7 +1936,9 @@ describe('enforceContractCompanionUpdates', () => {
 
     for (const trigger of cronLifecycleTriggers) {
       expect(() => enforceContractCompanionUpdates([trigger])).toThrowError(
-        /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+        trigger.startsWith('docs/getting-started/migrate-from-nestjs')
+          ? /Fastify raw request and response migration docs must include all governed Fastify documentation/
+          : /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
       );
     }
   });
@@ -1913,6 +1956,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/beginner/ch07-serialization.md',
@@ -2014,6 +2058,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/cli/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/cli/src/commands/migration-transform-tokens.test.ts',

@@ -875,7 +875,18 @@ export function enforceContractCompanionUpdates(changedFiles) {
     'packages/platform-fastify/README.md',
     'packages/platform-fastify/README.ko.md',
   ];
-  const touchedFastifyRawContextDocumentation = fastifyRawContextDocumentation.every((path) => hasChanged(changedFiles, path));
+  const touchedFastifyRawContextDocumentation = fastifyRawContextDocumentation.some((path) => hasChanged(changedFiles, path));
+
+  if (touchedFastifyRawContextDocumentation) {
+    assert(
+      fastifyRawContextDocumentation.every((path) => hasChanged(changedFiles, path)),
+      'Fastify raw request and response migration docs must include all governed Fastify documentation.',
+    );
+    assert(
+      hasChanged(changedFiles, 'packages/platform-fastify/src/adapter.test.ts'),
+      'Fastify raw request and response migration docs must include packages/platform-fastify/src/adapter.test.ts.',
+    );
+  }
 
   if (!touchedContractGate) {
     return;
@@ -927,13 +938,6 @@ export function enforceContractCompanionUpdates(changedFiles) {
       `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
     );
     return;
-  }
-
-  if (touchedFastifyRawContextDocumentation) {
-    assert(
-      hasChanged(changedFiles, 'packages/platform-fastify/src/adapter.test.ts'),
-      'Fastify raw request and response migration docs must include packages/platform-fastify/src/adapter.test.ts.',
-    );
   }
 
   // Contract-governing docs must remain discoverable from the docs hub, and any

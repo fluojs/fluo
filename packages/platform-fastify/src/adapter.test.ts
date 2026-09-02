@@ -260,29 +260,33 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('exposes asymmetric native raw request and response objects', async () => {
+    let observedFastifyRequest: FastifyRequest | undefined;
+    let observedFastifyReply: FastifyReply | undefined;
+    let observedRequestContext: RequestContext | undefined;
+
     @Controller('/raw-objects')
     class RawObjectsController {
       @Get('/')
       read(_input: undefined, context: RequestContext) {
-        const responseRaw = context.response.raw;
-
-        return {
-          requestIsIncomingMessage: context.request.raw instanceof IncomingMessage,
-          responseIsFastifyReply:
-            typeof responseRaw === 'object' &&
-            responseRaw !== null &&
-            'code' in responseRaw &&
-            typeof responseRaw.code === 'function' &&
-            'send' in responseRaw &&
-            typeof responseRaw.send === 'function',
-        };
+        observedRequestContext = context;
+        return { ok: true };
       }
     }
 
     class AppModule {}
     defineModule(AppModule, { controllers: [RawObjectsController] });
 
-    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 });
+    const adapter = createFastifyAdapter({
+      configureFastify(app) {
+        app.addHook('onRequest', (request, reply, done) => {
+          observedFastifyRequest = request;
+          observedFastifyReply = reply;
+          done();
+        });
+      },
+      host: '127.0.0.1',
+      port: 0,
+    });
     const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
@@ -290,10 +294,13 @@ describe('@fluojs/platform-fastify', () => {
       const response = await fetch(`http://127.0.0.1:${String(getBoundPort((adapter as { getServer(): unknown }).getServer()))}/raw-objects`);
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        requestIsIncomingMessage: true,
-        responseIsFastifyReply: true,
-      });
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(observedFastifyRequest).toBeDefined();
+      expect(observedFastifyReply).toBeDefined();
+      expect(observedRequestContext).toBeDefined();
+      expect(observedRequestContext?.request.raw).toBe(observedFastifyRequest?.raw);
+      expect(observedRequestContext?.request.raw).toBeInstanceOf(IncomingMessage);
+      expect(observedRequestContext?.response.raw).toBe(observedFastifyReply);
     } finally {
       await app.close();
     }
