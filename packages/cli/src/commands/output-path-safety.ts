@@ -14,6 +14,7 @@ function isMissingPathError(error: unknown): boolean {
  *
  * @param modulePath Absolute application module path.
  * @param outputPath Absolute artifact output path.
+ * @returns Resolves when the output path does not identify the input application module.
  * @throws {OutputPathAliasesModuleError} When the paths identify the same file.
  */
 export async function assertOutputDoesNotAliasModule(
