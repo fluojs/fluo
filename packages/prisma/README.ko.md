@@ -204,7 +204,7 @@ await this.prisma.transaction(async () => {
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
 - `readiness.status`는 `onModuleInit()`이 클라이언트를 연결하기 전, Prisma가 종료 중이거나 stopped 상태일 때, `strictTransactions`가 켜져 있는데 `$transaction(...)`을 지원하지 않을 때, 그리고 클라이언트가 interactive transaction을 지원하지만 호스트 런타임이 `AsyncLocalStorage`를 제공하지 않을 때 `not-ready`입니다. ALS 미지원 상태의 readiness reason은 `Prisma transaction context requires AsyncLocalStorage support from the host runtime.`이며 `details.transactionContext`가 `unavailable`로 보고됩니다. 이 상태는 Prisma 클라이언트 자체는 연결되어 있고 기능적으로 정상일 수 있으므로 일반 database readiness 실패와 구분됩니다.
-- `health.status`는 종료 중 요청 트랜잭션을 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
+- `health.status`는 종료 중 열린 요청, 수동 또는 서비스 트랜잭션 경계를 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
 - `details.activeRequestTransactions`, `details.activeTransactionBoundaries`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, `details.transactionAbortSignalSupport`는 현재 트랜잭션과 트랜잭션 capability 상태를 설명합니다.
 - `details.activeTransactionBoundaries`는 shutdown이 `$disconnect()` 전에 drain하는 현재 열린 바깥 `transaction(...)` 및 service `@Transaction()` boundary 수를 나타냅니다. 요청 전용 `requestTransaction(...)` activity는 포함하지 않으며, 해당 activity는 `details.activeRequestTransactions`에서 별도로 확인할 수 있습니다.
 - `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다. `details.transactionContext: 'unavailable'`은 호스트 런타임이 사용 가능한 `AsyncLocalStorage`를 노출하지 않았음을 나타내며, 이 경우 `transaction()`과 `requestTransaction()`은 Prisma 트랜잭션을 열기 전에 예외를 던집니다.

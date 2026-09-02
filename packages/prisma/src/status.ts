@@ -24,7 +24,7 @@ type PersistencePlatformStatusSnapshot = {
 type PrismaPlatformLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
 
 type PrismaPlatformStatusSnapshotInput = {
-  activeTransactionBoundaries: number;
+  activeTransactionBoundaries?: number;
   activeRequestTransactions: number;
   lifecycleState: PrismaPlatformLifecycleState;
   strictTransactions: boolean;
@@ -92,7 +92,7 @@ function createHealth(input: PrismaPlatformStatusSnapshotInput): PlatformHealthR
 
   if (input.lifecycleState === 'shutting-down') {
     return {
-      reason: 'Prisma integration is draining request transactions during shutdown.',
+      reason: 'Prisma integration is draining open transactions during shutdown.',
       status: 'degraded',
     };
   }
@@ -120,7 +120,7 @@ export function createPrismaPlatformStatusSnapshot(
 
   return {
     details: {
-      activeTransactionBoundaries: input.activeTransactionBoundaries,
+      activeTransactionBoundaries: input.activeTransactionBoundaries ?? 0,
       activeRequestTransactions: input.activeRequestTransactions,
       lifecycleState: input.lifecycleState,
       strictTransactions: input.strictTransactions,

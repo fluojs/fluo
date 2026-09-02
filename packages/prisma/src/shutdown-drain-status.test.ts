@@ -47,6 +47,10 @@ describe('Prisma request transaction shutdown status', () => {
           activeTransactionBoundaries: 1,
           lifecycleState: 'shutting-down',
         },
+        health: {
+          reason: 'Prisma integration is draining open transactions during shutdown.',
+          status: 'degraded',
+        },
       });
       expect(events).toEqual(['transaction:start']);
 
@@ -132,10 +136,14 @@ describe('Prisma request transaction shutdown status', () => {
       // Then
       expect(prisma.createPlatformStatusSnapshot()).toMatchObject({
         details: {
+          activeTransactionBoundaries: 0,
           activeRequestTransactions: 1,
           lifecycleState: 'shutting-down',
         },
-        health: { status: 'degraded' },
+        health: {
+          reason: 'Prisma integration is draining open transactions during shutdown.',
+          status: 'degraded',
+        },
         readiness: { status: 'not-ready' },
       });
       expect(events).toEqual(['connect', 'transaction:start', 'transaction:rollback:pending']);
