@@ -5,7 +5,117 @@ import {
   writeTypegenArtifact,
 } from './typegen-artifact.js';
 
+const publication = vi.hoisted(() => {
+  const files = new Map<string, string>();
+  let invalidated = false;
+  let stalePublication = false;
+  let dispatchRename: () => void = () => undefined;
+  let releaseRename: () => void = () => undefined;
+  let renameDispatched = Promise.resolve();
+
+  return {
+    files,
+    get invalidated(): boolean {
+      return invalidated;
+    },
+    get stalePublication(): boolean {
+      return stalePublication;
+    },
+    beginRename(): void {
+      dispatchRename();
+    },
+    invalidateSource(): void {
+      invalidated = true;
+    },
+    publish(source: string, destination: string): void {
+      const content = files.get(source);
+      if (content === undefined) {
+        throw new Error(`Missing temporary artifact ${source}`);
+      }
+      if (invalidated) {
+        stalePublication = true;
+      }
+      files.set(destination, content);
+      files.delete(source);
+    },
+    releasePublication(): void {
+      releaseRename();
+    },
+    reset(): void {
+      files.clear();
+      invalidated = false;
+      stalePublication = false;
+      renameDispatched = new Promise<void>((resolve) => {
+        dispatchRename = resolve;
+      });
+      releaseRename = () => undefined;
+    },
+    waitForRenameDispatch(): Promise<void> {
+      return renameDispatched;
+    },
+    waitToPublish(): Promise<void> {
+      return new Promise<void>((resolve) => {
+        releaseRename = resolve;
+      });
+    },
+  };
+});
+
+vi.mock('node:fs', () => ({
+  renameSync(source: string, destination: string): void {
+    publication.publish(source, destination);
+    publication.beginRename();
+    publication.invalidateSource();
+  },
+}));
+
+vi.mock('node:fs/promises', () => ({
+  async mkdir(_path: string): Promise<void> {
+    return undefined;
+  },
+  async readFile(path: string): Promise<string> {
+    const content = publication.files.get(path);
+    if (content === undefined) {
+      throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+    }
+    return content;
+  },
+  rename(source: string, destination: string): Promise<void> {
+    publication.beginRename();
+    publication.invalidateSource();
+    return publication.waitToPublish().then(() => {
+      publication.publish(source, destination);
+    });
+  },
+  async rm(path: string): Promise<void> {
+    publication.files.delete(path);
+  },
+  async writeFile(path: string, content: string): Promise<void> {
+    publication.files.set(path, content);
+  },
+}));
+
 describe('typegen artifact commits', () => {
+  it('does not publish invalidated source after the rename dispatch boundary', async () => {
+    // Given: a replacement and an injected source invalidation at the filesystem rename boundary.
+    const outputPath = '/project/src/generated/react-pages.ts';
+    publication.reset();
+    publication.files.set(outputPath, 'last valid artifact\n');
+
+    // When: typegen commits through the production filesystem adapter.
+    const action = writeTypegenArtifact(outputPath, 'next complete artifact\n');
+    await publication.waitForRenameDispatch();
+    publication.releasePublication();
+    const result = await action;
+
+    // Then: publication completes before invalidation; an asynchronous rename would mark this stale.
+    expect(result).toBe('UPDATE');
+    expect(publication.invalidated).toBe(true);
+    expect(publication.stalePublication).toBe(false);
+    expect(publication.files.get(outputPath)).toBe('next complete artifact\n');
+    expect([...publication.files.keys()]).toEqual([outputPath]);
+  });
+
   it('publishes one complete replacement before a queued shutdown can run after synchronous rename begins', async () => {
     // Given: one valid target and a shutdown event queued from the synchronous publication boundary.
     const outputPath = '/project/src/generated/react-pages.ts';
