@@ -1,12 +1,11 @@
 import type { HandlerDescriptor } from '@fluojs/http';
-import type { StudioRouteKind } from '@fluojs/studio/contracts';
 import { describe, expect, it } from 'vitest';
 import { handlerToStudioRouteDescriptor } from './devtools/snapshot.js';
 import * as runtime from './index.js';
 import { defineStandardRuntimeRouteInspectionMetadata } from './internal.js';
 import { createRuntimeInspectionSnapshot } from './route-inspection.js';
 
-function RouteKind(kind: StudioRouteKind) {
+function RouteKind(kind: string) {
   return (_value: Function, context: ClassMethodDecoratorContext): void => {
     defineStandardRuntimeRouteInspectionMetadata(context.metadata, context.name, { kind });
   };
@@ -16,6 +15,11 @@ class CatalogModule {}
 
 class CatalogController {
   @RouteKind('react-page')
+  show(): void {}
+}
+
+class CustomMarkerController {
+  @RouteKind('custom-page')
   show(): void {}
 }
 
@@ -106,6 +110,35 @@ describe('runtime route inspection', () => {
     expect(Object.isFrozen(snapshot.routes[0])).toBe(true);
     expect(Object.isFrozen(snapshot.routes[0]?.params)).toBe(true);
     expect(platformSnapshot).not.toHaveProperty('routes');
+  });
+
+  it('preserves arbitrary package-integration markers for route inspection consumers', () => {
+    // Given
+    const descriptor = createDescriptor(CustomMarkerController, 'show', '/custom', []);
+    const platformSnapshot = {
+      components: [],
+      diagnostics: [],
+      generatedAt: '2026-08-30T00:00:00.000Z',
+      health: { status: 'healthy' as const },
+      readiness: { critical: false, status: 'ready' as const },
+    };
+
+    // When
+    const snapshot = createRuntimeInspectionSnapshot(platformSnapshot, [descriptor]);
+
+    // Then
+    expect(snapshot.routes[0]?.kind).toBe('custom-page');
+  });
+
+  it('normalizes arbitrary package-integration markers at the Studio live wire boundary', () => {
+    // Given
+    const descriptor = createDescriptor(CustomMarkerController, 'show', '/custom', []);
+
+    // When
+    const route = handlerToStudioRouteDescriptor(descriptor);
+
+    // Then
+    expect(route.kind).toBe('http');
   });
 
   it('carries route kind and effective params into live Studio descriptors', () => {

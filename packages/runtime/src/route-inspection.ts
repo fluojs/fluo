@@ -1,5 +1,4 @@
 import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
-import type { StudioRouteKind } from '@fluojs/studio/contracts';
 
 import { getRuntimeRouteInspectionMetadata } from './internal/route-inspection-metadata.js';
 import type { PlatformShellSnapshot } from './platform-contract.js';
@@ -17,7 +16,7 @@ export interface RuntimeRouteInspection {
   readonly controller: string;
   readonly handler: string;
   readonly id: string;
-  readonly kind: StudioRouteKind;
+  readonly kind: string;
   readonly method: HttpMethod;
   readonly module?: string;
   readonly params: readonly string[];

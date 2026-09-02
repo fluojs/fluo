@@ -72,6 +72,8 @@ Live mode shows:
 - bootstrap timing summaries for live and static/report data;
 - runtime/request diagnostics with severity, target, message, and fix hints where available.
 
+Runtime inspection integrations may retain non-empty, integration-specific route `kind` markers. At the live Studio wire boundary, `react-page` remains distinct and every other marker is emitted as `http`, so the Studio event contract accepts only its documented route kinds.
+
 MVP request flow intentionally means route/handler and dependency-graph correlation, not full method-level service call-chain tracing.
 
 ## Static/Report Compatibility

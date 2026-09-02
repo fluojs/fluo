@@ -72,6 +72,8 @@ Live mode는 다음을 보여줍니다.
 - live 및 static/report 데이터의 bootstrap timing summary
 - severity, target, message, 가능한 fix hint가 포함된 runtime/request diagnostics
 
+Runtime inspection integration은 비어 있지 않은 integration-specific route `kind` marker를 유지할 수 있습니다. Live Studio wire boundary에서는 `react-page`만 별도로 유지하고 다른 marker는 모두 `http`로 내보내므로, Studio event 계약은 문서화된 route kind만 허용합니다.
+
 MVP request flow는 route/handler와 dependency-graph correlation을 의미합니다. full method-level service call-chain tracing은 아직 포함하지 않습니다.
 
 ## 정적/리포트 호환성

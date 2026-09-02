@@ -223,7 +223,7 @@ export function handlerToStudioRouteDescriptor(descriptor: HandlerDescriptor): S
     controller: inspection.controller,
     handler: inspection.handler,
     id: inspection.id,
-    kind: inspection.kind,
+    kind: inspection.kind === 'react-page' ? 'react-page' : 'http',
     method: inspection.method,
     params: [...inspection.params],
     path: inspection.path,

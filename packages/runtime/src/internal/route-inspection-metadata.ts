@@ -1,6 +1,5 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
-import type { StudioRouteKind } from '@fluojs/studio/contracts';
 
 const runtimeRouteInspectionMetadataKey = Symbol.for('fluo.runtime.route-inspection');
 
@@ -11,7 +10,7 @@ const legacyRouteInspectionMetadataStore = new WeakMap<
 
 /** Describes package-integration metadata that classifies a compiled runtime route. */
 export interface RuntimeRouteInspectionMetadata {
-  readonly kind: StudioRouteKind;
+  readonly kind: string;
 }
 
 function cloneMetadata(metadata: RuntimeRouteInspectionMetadata): RuntimeRouteInspectionMetadata {
@@ -78,7 +77,8 @@ function isRuntimeRouteInspectionMetadata(value: unknown): value is RuntimeRoute
 
   return typeof value === 'object'
     && value !== null
-    && (kind === 'http' || kind === 'react-page');
+    && typeof kind === 'string'
+    && kind.length > 0;
 }
 
 /**
