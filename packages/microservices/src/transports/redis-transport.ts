@@ -31,7 +31,6 @@ interface RedisLike {
 export interface RedisPubSubMicroserviceTransportOptions {
   namespace?: string;
   publishClient: RedisLike;
-  requestTimeoutMs?: number;
   subscribeClient: RedisLike;
 }
 
