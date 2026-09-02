@@ -14,6 +14,44 @@ function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+const prismaVisibilityCodeAnchors = [
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+    anchors: [
+      "import { Global, Module } from '@fluojs/core';",
+      '@Global()',
+      '  providers: [DatabaseConfig],',
+      '  exports: [DatabaseConfig],',
+      'class DatabaseConfigModule {}',
+      '    DatabaseConfigModule,',
+      '    PrismaModule.forRootAsync({',
+      '      inject: [DatabaseConfig],',
+      '      useFactory: (config: DatabaseConfig) => ({',
+    ],
+  },
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    anchors: [
+      "import { Global, Module } from '@fluojs/core';",
+      '@Global()',
+      '  providers: [DatabaseConfig],',
+      '  exports: [DatabaseConfig],',
+      'class DatabaseConfigModule {}',
+      '    DatabaseConfigModule,',
+      '    PrismaModule.forRootAsync({',
+      '      inject: [DatabaseConfig],',
+      '      useFactory: (config: DatabaseConfig) => ({',
+    ],
+  },
+] as const;
+
+const prismaVisibilityCodeAnchorMutations = prismaVisibilityCodeAnchors.flatMap(({ path, anchors }) =>
+  anchors.flatMap((anchor) => [
+    { path, anchor, replacement: '', mutation: 'removed' },
+    { path, anchor, replacement: `${anchor}\n${anchor}`, mutation: 'duplicated' },
+  ]),
+);
+
 describe('NestJS Prisma migration documentation', () => {
   it('keeps async registration and rollback guidance synchronized', () => {
     // Given
@@ -62,20 +100,37 @@ describe('NestJS Prisma migration documentation', () => {
     }
   });
 
-  it('rejects removed or duplicated Prisma visibility code anchors', () => {
+  it.each(prismaVisibilityCodeAnchorMutations)(
+    'rejects $mutation Prisma visibility code anchor $anchor in $path',
+    ({ path, anchor, replacement }) => {
+    // Given
+      const readWithMutatedCodeAnchor = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(anchor, replacement) : read(relativePath);
+
+      // When / Then
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithMutatedCodeAnchor)).toThrow(
+        'code anchor',
+      );
+    },
+  );
+
+  it('rejects parent-only DatabaseConfig registration', () => {
     // Given
     const documentationPath = 'docs/getting-started/migrate-from-nestjs.md';
-    const codeAnchor = 'class DatabaseConfigModule {}';
-    const readWithoutCodeAnchor = (relativePath: string): string =>
-      relativePath === documentationPath ? read(relativePath).replace(codeAnchor, '') : read(relativePath);
-    const readWithDuplicateCodeAnchor = (relativePath: string): string =>
+    const readWithParentOnlyRegistration = (relativePath: string): string =>
       relativePath === documentationPath
-        ? read(relativePath).replace(codeAnchor, `${codeAnchor}\n${codeAnchor}`)
+        ? read(relativePath)
+            .replace('    DatabaseConfigModule,\n', '')
+            .replace(
+              '  ],\n})\nclass AppModule {}',
+              '  ],\n  providers: [DatabaseConfig],\n})\nclass AppModule {}',
+            )
         : read(relativePath);
 
     // When / Then
-    expect(() => enforcePrismaNestjsMigrationDocs(readWithoutCodeAnchor)).toThrow('code anchor');
-    expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateCodeAnchor)).toThrow('code anchor');
+    expect(() => enforcePrismaNestjsMigrationDocs(readWithParentOnlyRegistration)).toThrow(
+      'code anchor',
+    );
   });
 
   it('rejects Prisma visibility anchors split across fenced examples', () => {
