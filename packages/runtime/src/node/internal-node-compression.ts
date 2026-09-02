@@ -69,6 +69,10 @@ export function compressNodeResponse(
   body: Uint8Array,
   encoding: Exclude<Encoding, 'identity'>,
 ): Promise<void> {
+  if (response.destroyed || response.socket?.destroyed) {
+    return Promise.reject(new Error('Node response closed before compression completed.'));
+  }
+
   const stream: BrotliCompress | Gzip = encoding === 'br' ? createBrotliCompress() : createGzip();
 
   response.setHeader('Content-Encoding', encoding);

@@ -115,7 +115,8 @@ export function createFrameworkResponse(
         if (activeCompression) {
           this.committed = true;
 
-          return Promise.resolve(activeCompression.write(payload, { contentType }))
+          return Promise.resolve()
+            .then(() => activeCompression.write(payload, { contentType }))
             .then((handled) => {
               if (!handled && !response.writableEnded) {
                 response.end(payload);
