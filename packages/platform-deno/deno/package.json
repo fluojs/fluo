@@ -1,5 +1,6 @@
 {
   "name": "@fluojs/platform-deno-native-test",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
