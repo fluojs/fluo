@@ -137,18 +137,26 @@ export interface CloudflareWorkerEntrypoint<Env = unknown>
   ready(): Promise<CloudflareWorkerApplication<Env>>;
 }
 
-/** Root module and final bootstrap options selected from a Worker environment. */
+/** Isolate-lifetime root module and final bootstrap options selected from a Worker environment. */
 export interface CloudflareWorkerEnvBootstrap {
   readonly options?: BootstrapCloudflareWorkerApplicationOptions;
   readonly rootModule: ModuleType;
 }
 
-/** Factory that derives one Worker bootstrap configuration from the first supplied environment. */
+/**
+ * Factory that derives the isolate-lifetime bootstrap configuration from the first supplied environment.
+ *
+ * Each application generation uses the returned configuration, including a generation restarted after a successful close.
+ */
 export type CloudflareWorkerEnvEntrypointFactory<Env = unknown> = (
   env: Env,
 ) => CloudflareWorkerEnvBootstrap;
 
-/** Lazy Cloudflare Worker entrypoint whose readiness requires an explicit environment. */
+/**
+ * Lazy Cloudflare Worker entrypoint whose first explicit environment configures the isolate.
+ *
+ * A successful close starts a fresh application generation with the same cached configuration.
+ */
 export interface CloudflareWorkerEnvEntrypoint<Env = unknown>
   extends CloudflareWorkerHandler<Env> {
   close(signal?: string): Promise<void>;
@@ -424,17 +432,19 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
 }
 
 /**
- * Create a lazy Cloudflare Worker entrypoint configured from its first supplied environment.
+ * Create a lazy Cloudflare Worker entrypoint configured once per isolate from its first supplied environment.
  *
- * @param factory Factory that derives the root module and final bootstrap options from one Worker environment.
- * @returns A Worker entrypoint exposing env-aware lazy `fetch(...)`, `ready(env)`, and `close(...)` helpers.
+ * @param factory Factory that derives and caches the root module and final bootstrap options from one Worker environment.
+ * @returns A Worker entrypoint exposing env-aware lazy `fetch(...)`, `ready(env)`, and `close(...)` helpers for application generations using that cached configuration.
  */
 export function createCloudflareWorkerEnvEntrypoint<Env = unknown>(
   factory: CloudflareWorkerEnvEntrypointFactory<Env>,
 ): CloudflareWorkerEnvEntrypoint<Env> {
+  let bootstrap: CloudflareWorkerEnvBootstrap | undefined;
+
   return createLazyCloudflareWorkerEntrypoint<Env, Env>({
     createApplication(env) {
-      const bootstrap = factory(env);
+      bootstrap ??= factory(env);
       return bootstrapCloudflareWorkerApplication<Env>(bootstrap.rootModule, bootstrap.options);
     },
     getReadyArgument(env) {
@@ -472,7 +482,13 @@ function createLazyCloudflareWorkerEntrypoint<Env, ReadyArgument>(
     }
 
     if (!runningApplication) {
-      runningApplication = Promise.resolve().then(() => options.createApplication(readyArgument));
+      const application = Promise.resolve().then(() => options.createApplication(readyArgument));
+      runningApplication = application;
+      void application.catch(() => {
+        if (runningApplication === application) {
+          runningApplication = undefined;
+        }
+      });
     }
 
     return await runningApplication;

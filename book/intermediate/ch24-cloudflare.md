@@ -80,7 +80,7 @@ export default {
 
 ### 24.3.1 Env-Aware Lazy Bootstrapping
 
-When the first Worker `env` must configure `ConfigModule`, singleton providers, D1, KV, service bindings, or deployment-specific bootstrap options, use the opt-in `createCloudflareWorkerEnvEntrypoint(...)`. Its factory receives one explicit environment before module registration, returns the root module and final bootstrap options, and runs once per isolate.
+When the first Worker `env` must configure `ConfigModule`, singleton providers, D1, KV, service bindings, or deployment-specific bootstrap options, use the opt-in `createCloudflareWorkerEnvEntrypoint(...)`. Its factory receives one explicit environment before module registration, returns the root module and final bootstrap options, and runs once per isolate. The returned configuration is retained for that isolate, while applications are created per application generation.
 
 ```typescript
 import { createCloudflareWorkerEnvEntrypoint } from '@fluojs/platform-cloudflare-workers';
@@ -103,7 +103,7 @@ export default {
 };
 ```
 
-Call `worker.ready(env)` only with an explicit environment. The first `env` wins for singleton bootstrap configuration and later fetches reuse that application; their request-specific environment still appears at `context.request.cloudflare?.env`, but cannot reconfigure it. Keep `createCloudflareWorkerEntrypoint(AppModule)` for zero-config bootstraps whose module and options do not depend on the first host-provided environment.
+Call `worker.ready(env)` only with an explicit environment. The first `env` wins for singleton bootstrap configuration and later fetches reuse that running application; their request-specific environment still appears at `context.request.cloudflare?.env`, but cannot reconfigure it. After a successful `worker.close()`, the next `ready(env)` or `fetch(...)` creates a fresh application generation from the retained first-environment configuration without rerunning the factory. Keep `createCloudflareWorkerEntrypoint(AppModule)` for zero-config bootstraps whose module and options do not depend on the first host-provided environment.
 
 ### 24.3.2 Lifecycle and Shutdown Boundaries
 
@@ -126,7 +126,7 @@ Cloudflare Workers have constraints that differ from traditional Node.js environ
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo's Cloudflare adapter attaches the Worker `env` object to each request as `context.request.cloudflare?.env` and exposes the Worker execution context as `context.request.cloudflare?.executionContext`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. `createCloudflareWorkerEntrypoint(...)` likewise receives only its predeclared root module and options, so its fetch-time `env` attaches later during dispatch; on that standard path, fetch-time bindings cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. `createCloudflareWorkerEnvEntrypoint(...)` is the explicit exception: its first environment selects the root module and final options before registration, then its cached application is reused for the isolate. Use that entrypoint for bootstrap-owned bindings and retain request-bound mapping for bindings that vary by request.
+fluo's Cloudflare adapter attaches the Worker `env` object to each request as `context.request.cloudflare?.env` and exposes the Worker execution context as `context.request.cloudflare?.executionContext`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. `createCloudflareWorkerEntrypoint(...)` likewise receives only its predeclared root module and options, so its fetch-time `env` attaches later during dispatch; on that standard path, fetch-time bindings cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. `createCloudflareWorkerEnvEntrypoint(...)` is the explicit exception: its first environment selects and caches the root module and final options before registration once per isolate. It reuses that configuration for each application generation, including a restart after successful close, without rerunning the factory or accepting a later environment as bootstrap configuration. Use that entrypoint for bootstrap-owned bindings and retain request-bound mapping for bindings that vary by request.
 
 Keep the mapping application-owned and request-bound: read and narrow the required bindings from the handler's `RequestContext`, then pass an application-shaped value into an injected provider method. Register `CatalogService` as a provider and `WorkerController` as a controller in the owning module.
 
@@ -303,7 +303,7 @@ export class DatabaseModule {}
 - `@fluojs/platform-cloudflare-workers` provides a standard `fetch`-based adapter integrated with the fluo lifecycle.
 - Export a `fetch` handler instead of opening a server socket; `app.listen()` still binds the fluo dispatcher before the Worker handler receives traffic.
 - Native edge features such as KV, D1, and WebSockets can be connected through dedicated fluo bindings and Provider boundaries.
-- Use `createCloudflareWorkerEnvEntrypoint(...)` when first-fetch bindings must become bootstrap configuration; otherwise read and narrow request-varying bindings from `context.request.cloudflare?.env` at the application request boundary, then pass only application-shaped values into provider methods.
+- Use `createCloudflareWorkerEnvEntrypoint(...)` when first-fetch bindings must become bootstrap configuration: its factory runs once per isolate, and every application generation uses that first environment's cached module and options. Otherwise read and narrow request-varying bindings from `context.request.cloudflare?.env` at the application request boundary, then pass only application-shaped values into provider methods.
 - Use `wrangler` to keep deployment and environment management consistent.
 - `ctx.waitUntil` is handled by fluo to keep request lifecycle tracking and SSE (`text/event-stream`) response drains alive at the edge.
 - The edge is not just a hosting platform; it is a different way to think about global application architecture.

@@ -1007,7 +1007,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
-  it('configures a lazy Worker entrypoint once from the first explicit environment', async () => {
+  it('reuses the first explicit environment configuration after a successful lazy-entrypoint restart', async () => {
     type WorkerEnv = {
       readonly prefix: string;
     };
@@ -1055,7 +1055,81 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       await expect(response.json()).resolves.toEqual({ ok: true });
       const firstApplication = await entrypoint.ready(firstEnvironment);
       expect(await entrypoint.ready(secondEnvironment)).toBe(firstApplication);
+
+      await entrypoint.close();
+
+      const restartedResponse = await entrypoint.fetch(
+        new Request('https://worker.test/configured/health'),
+        secondEnvironment,
+        createExecutionContext(),
+      );
+
+      expect(restartedResponse.status).toBe(200);
+      await expect(restartedResponse.json()).resolves.toEqual({ ok: true });
       expect(configuredEnvironments).toEqual([firstEnvironment]);
+    } finally {
+      await entrypoint.close();
+    }
+  });
+
+  it('retries failed bootstrap with the first explicit environment configuration', async () => {
+    type WorkerEnv = {
+      readonly prefix: string;
+    };
+    let bootstrapAttempts = 0;
+    const configuredEnvironments: WorkerEnv[] = [];
+
+    class StartupProbe {
+      onApplicationBootstrap() {
+        bootstrapAttempts += 1;
+        if (bootstrapAttempts === 1) {
+          throw new Error('first bootstrap failed');
+        }
+      }
+    }
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      providers: [StartupProbe],
+    });
+
+    const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
+      configuredEnvironments.push(env);
+
+      return {
+        options: {
+          cors: false,
+          globalPrefix: env.prefix,
+        },
+        rootModule: AppModule,
+      };
+    });
+
+    const firstEnvironment = { prefix: '/configured' };
+    const secondEnvironment = { prefix: '/ignored-for-bootstrap' };
+
+    try {
+      await expect(entrypoint.ready(firstEnvironment)).rejects.toThrow('first bootstrap failed');
+
+      const response = await entrypoint.fetch(
+        new Request('https://worker.test/configured/health'),
+        secondEnvironment,
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(bootstrapAttempts).toBe(2);
     } finally {
       await entrypoint.close();
     }
