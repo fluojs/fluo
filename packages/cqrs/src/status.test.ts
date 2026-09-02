@@ -32,9 +32,28 @@ describe('createCqrsPlatformStatusSnapshot', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
+      commandHandlersDiscovered: 0,
+      commandLifecycleState: 'ready',
       dependencies: ['event-bus.default'],
       eventHandlersDiscovered: 2,
+      queryHandlersDiscovered: 0,
+      queryLifecycleState: 'ready',
       sagasDiscovered: 1,
+    });
+  });
+
+  it('preserves independent command and query lifecycle states', () => {
+    const snapshot = createCqrsPlatformStatusSnapshot(createCqrsInput({
+      commandLifecycleState: 'stopping',
+      lifecycleState: 'ready',
+      queryLifecycleState: 'failed',
+      sagaLifecycleState: 'ready',
+    }));
+
+    expect(snapshot.details).toMatchObject({
+      commandLifecycleState: 'stopping',
+      lifecycleState: 'ready',
+      queryLifecycleState: 'failed',
     });
   });
 

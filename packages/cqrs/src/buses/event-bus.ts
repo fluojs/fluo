@@ -17,6 +17,8 @@ import { discoverEventHandlerDescriptors } from './event-handler-discovery.js';
 import { CqrsPublishDrainTracker } from './publish-drain-tracker.js';
 import { CQRS_SAGA_DRAIN_AUTHORIZATION, CqrsSagaLifecycleService } from './saga-bus.js';
 import { CqrsShutdownDeadline } from './shutdown-deadline.js';
+import { CommandBusLifecycleService } from './command-bus.js';
+import { QueryBusLifecycleService } from './query-bus.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
@@ -49,6 +51,8 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   RUNTIME_CLEANUP_REGISTRATION,
   EventBusLifecycleService,
   CqrsShutdownDeadline,
+  CommandBusLifecycleService,
+  QueryBusLifecycleService,
 )
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
@@ -68,6 +72,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
     private readonly delegatedEventBus: EventBusLifecycleService | undefined = undefined,
     private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
+    private readonly commandService: CommandBusLifecycleService | undefined = undefined,
+    private readonly queryService: QueryBusLifecycleService | undefined = undefined,
   ) {
     super(runtimeContainer, compiledModules, logger);
     this.publishDrainTracker = new CqrsPublishDrainTracker(logger);
@@ -107,12 +113,18 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @returns A structured snapshot describing CQRS event-handler discovery and saga lifecycle state.
    */
   createPlatformStatusSnapshot() {
+    const commandSnapshot = this.commandService?.getRuntimeSnapshot();
+    const querySnapshot = this.queryService?.getRuntimeSnapshot();
     const sagaSnapshot = this.sagaService.getRuntimeSnapshot();
 
     return createCqrsPlatformStatusSnapshot({
+      commandHandlersDiscovered: commandSnapshot?.commandHandlersDiscovered,
+      commandLifecycleState: commandSnapshot?.lifecycleState,
       eventHandlersDiscovered: this.descriptors.length,
       inFlightSagaExecutions: sagaSnapshot.inFlightSagaExecutions,
       lifecycleState: this.lifecycleState,
+      queryHandlersDiscovered: querySnapshot?.queryHandlersDiscovered,
+      queryLifecycleState: querySnapshot?.lifecycleState,
       sagaLifecycleState: sagaSnapshot.lifecycleState,
       sagaShutdownDrainTimeouts: sagaSnapshot.shutdownDrainTimeouts,
       sagasDiscovered: sagaSnapshot.sagasDiscovered,

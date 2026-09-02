@@ -228,7 +228,8 @@ class TokenInjectedService {
 - `SagaTopologyError`: Raised when saga orchestration detects an active provider-token/event-route cycle or an over-deep in-process saga graph.
 
 ### Status and metadata
-- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces.
+- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces. Snapshot `details` reports discovered command, query, event-handler, and saga counts alongside their lifecycle summaries. Command and query adapter inputs remain optional for compatibility and default to zero discovered handlers plus the CQRS event lifecycle when omitted.
+- `CqrsEventBusService.createPlatformStatusSnapshot()`: Populates command and query discovery summaries from the live bus state. Snapshot details never expose handler descriptors, provider tokens, or saga topology; command and query summaries do not change the existing event/saga readiness or health semantics.
 - Metadata helpers and symbols are exported for framework packages that need to inspect command, query, event, or saga registrations.
 
 ## Related Packages

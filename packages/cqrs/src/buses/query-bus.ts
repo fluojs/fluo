@@ -79,6 +79,25 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
   }
 
   /**
+   * Returns query-handler discovery and lifecycle state for CQRS diagnostics.
+   *
+   * @returns Current discovery state, lifecycle state, and discovered query-handler count.
+   */
+  getRuntimeSnapshot(): {
+    discovered: boolean;
+    lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
+    queryHandlersDiscovered: number;
+  } {
+    const stopped = this.lifecycleState === 'stopped';
+
+    return {
+      discovered: stopped ? false : this.discovered,
+      lifecycleState: this.lifecycleState,
+      queryHandlersDiscovered: stopped ? 0 : this.descriptors.size,
+    };
+  }
+
+  /**
    * Executes one query by dispatching it to the discovered handler for its constructor.
    *
    * @param query Query instance to execute.

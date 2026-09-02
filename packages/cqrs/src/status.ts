@@ -9,9 +9,13 @@ export type CqrsLifecycleState = 'created' | 'discovering' | 'ready' | 'stopping
  * Describes the cqrs status adapter input contract.
  */
 export interface CqrsStatusAdapterInput {
+  commandHandlersDiscovered?: number;
+  commandLifecycleState?: CqrsLifecycleState;
   eventHandlersDiscovered: number;
   inFlightSagaExecutions: number;
   lifecycleState: CqrsLifecycleState;
+  queryHandlersDiscovered?: number;
+  queryLifecycleState?: CqrsLifecycleState;
   sagaLifecycleState: CqrsLifecycleState;
   sagaShutdownDrainTimeouts: number;
   sagasDiscovered: number;
@@ -119,10 +123,14 @@ function createHealth(input: CqrsStatusAdapterInput): PlatformHealthReport {
 export function createCqrsPlatformStatusSnapshot(input: CqrsStatusAdapterInput): CqrsPlatformStatusSnapshot {
   return {
     details: {
+      commandHandlersDiscovered: input.commandHandlersDiscovered ?? 0,
+      commandLifecycleState: input.commandLifecycleState ?? input.lifecycleState,
       dependencies: ['event-bus.default'],
       eventHandlersDiscovered: input.eventHandlersDiscovered,
       inFlightSagaExecutions: input.inFlightSagaExecutions,
       lifecycleState: input.lifecycleState,
+      queryHandlersDiscovered: input.queryHandlersDiscovered ?? 0,
+      queryLifecycleState: input.queryLifecycleState ?? input.lifecycleState,
       sagaLifecycleState: input.sagaLifecycleState,
       sagaShutdownDrainTimeouts: input.sagaShutdownDrainTimeouts,
       sagasDiscovered: input.sagasDiscovered,
