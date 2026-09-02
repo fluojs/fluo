@@ -36,6 +36,7 @@ describe('@fluojs/notifications public API surface', () => {
     expect(notificationsPublicApi).toHaveProperty('NotificationsConfigurationError');
     expect(notificationsPublicApi).toHaveProperty('NotificationChannelNotFoundError');
     expect(notificationsPublicApi).toHaveProperty('NotificationQueueNotConfiguredError');
+    expect(notificationsPublicApi).toHaveProperty('NotificationQueueResultIntegrityError');
   });
 
   it('keeps documented TypeScript-only contracts stable enough for leaf packages', () => {
