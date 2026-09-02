@@ -3804,4 +3804,38 @@ describe('mandatory first-party dependency Node engine alignment', () => {
         new Set(['@fluojs/prisma']),
       )).not.toThrow();
   });
+
+  it('accepts a selected public package without an advertised Node engine floor', () => {
+    // Given: the documented runtime-neutral i18n package with no engines.node declaration.
+    // When: release governance evaluates its mandatory first-party dependency graph.
+    // Then: the absent public compatibility claim does not require an engine comparison.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/i18n']),
+      )).not.toThrow();
+  });
+
+  it('rejects an unchanged public dependent after its mandatory dependency narrows Node support', () => {
+    // Given: core narrows its advertised Node floor while only core's manifest is selected.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/core/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        engines: { ...manifest.engines, node: '>=22.0.0' },
+      });
+    };
+
+    // When: release governance evaluates the changed package's public reverse dependencies.
+    // Then: an unchanged public dependent's Node 20+ advertisement is rejected.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/core'])))
+      .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 20\.19\.3.*@fluojs\/core/u);
+  });
 });

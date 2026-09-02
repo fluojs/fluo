@@ -227,19 +227,44 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
     packageManifests.set(manifest.name, { manifest, relativePath });
   }
 
+  const selectedPackageNames = new Set(packageNames);
+  let addedReverseDependent = true;
+
+  while (addedReverseDependent) {
+    addedReverseDependent = false;
+
+    for (const [packageName, { manifest }] of packageManifests) {
+      if (
+        manifest.private ||
+        selectedPackageNames.has(packageName) ||
+        !Object.keys(manifest.dependencies ?? {}).some((dependencyName) =>
+          selectedPackageNames.has(dependencyName))
+      ) {
+        continue;
+      }
+
+      selectedPackageNames.add(packageName);
+      addedReverseDependent = true;
+    }
+  }
+
   for (const { manifest: packageManifest, relativePath } of packageManifests.values()) {
     if (
       packageManifest.private ||
       typeof packageManifest.name !== 'string' ||
-      !packageNames.has(packageManifest.name)
+      !selectedPackageNames.has(packageManifest.name)
     ) {
       continue;
     }
 
     const packageRange = packageManifest.engines?.node;
+    if (packageRange === undefined) {
+      continue;
+    }
+
     assert(
       typeof packageRange === 'string' && packageRange.length > 0,
-      `${packageManifest.name} (${relativePath}) must declare engines.node.`,
+      `${packageManifest.name} (${relativePath}) engines.node must be a non-empty string.`,
     );
 
     for (const dependencyName of Object.keys(packageManifest.dependencies ?? {})) {
@@ -249,9 +274,13 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
       }
 
       const dependencyRange = dependency.manifest.engines?.node;
+      if (dependencyRange === undefined) {
+        continue;
+      }
+
       assert(
         typeof dependencyRange === 'string' && dependencyRange.length > 0,
-        `${dependencyName} (${dependency.relativePath}) must declare engines.node.`,
+        `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
       );
 
       const incompatibleVersion = nodeEngineCandidates(packageRange, dependencyRange).find((version) =>
