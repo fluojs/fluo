@@ -7,6 +7,10 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback. A trigger outside `worker.fetch` may call `await worker.close()` directly; a management route inside that fetch must return its current response, then use `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
 
+## CQRS Status Snapshot
+
+`@fluojs/cqrs` exposes `createCqrsPlatformStatusSnapshot(...)` and `CqrsEventBusService.createPlatformStatusSnapshot()` for platform diagnostics. Their `details` report command/query/event-handler/saga discovery and lifecycle state, current saga executions, bounded shutdown-drain diagnostics, and the delegated `event-bus.default` dependency; readiness and health are defined by the event/saga runtime. The complete field and lifecycle contract is [CQRS Contract](./architecture/cqrs.md), and the public-package usage overview is [the CQRS README](../packages/cqrs/README.md).
+
 ## Static Asset Delivery
 
 Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.
