@@ -252,7 +252,7 @@ MVP runtime support는 명시적으로 제한됩니다.
 | Runtime target | `fluo dev --studio` status |
 | --- | --- |
 | Node dev runner | Full support target입니다. |
-| Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. 대신 `fluo inspect --json --output <path>` 또는 `fluo inspect --report --output <path>`로 Studio 호환 static artifact를 내보내세요. |
+| Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. 대신 `fluo inspect <module-path> --json --output <path>` 또는 `fluo inspect <module-path> --report --output <path>`로 Studio 호환 static artifact를 내보내세요. |
 | Deno | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Deno 프로젝트를 거부합니다. |
 | Cloudflare Workers | worker bridge를 추가하고 테스트하지 않는 한 이번 MVP에서는 unsupported입니다. |
 

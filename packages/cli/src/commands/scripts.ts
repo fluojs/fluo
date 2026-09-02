@@ -432,7 +432,7 @@ function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRun
   }
 
   if (projectRuntime !== 'node') {
-    throw new Error(`fluo dev --studio supports Node dev runner projects only. ${projectRuntime} projects can generate Studio-compatible artifacts with fluo inspect --json --output <path> or fluo inspect --report --output <path>.`);
+    throw new Error(`fluo dev --studio supports Node dev runner projects only. ${projectRuntime} projects can generate Studio-compatible artifacts with fluo inspect <module-path> --json --output <path> or fluo inspect <module-path> --report --output <path>.`);
   }
 
   if (devRunner !== 'fluo' || rawWatch) {
