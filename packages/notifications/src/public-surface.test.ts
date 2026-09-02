@@ -20,6 +20,7 @@ import type {
   NotificationsEventPublisher,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
+  NotificationsQueueContext,
   NotificationsQueueJob,
   NotificationsQueueOptions,
   NotificationsStatusAdapterInput,
@@ -52,6 +53,9 @@ describe('@fluojs/notifications public API surface', () => {
     expectTypeOf<NotificationChannel>().toHaveProperty('channel');
     expectTypeOf<NotificationChannel>().toHaveProperty('send');
     expectTypeOf<NotificationsQueueAdapter>().toHaveProperty('enqueue');
+    expectTypeOf<NotificationsQueueContext>().toMatchTypeOf<{
+      signal?: AbortSignal;
+    }>();
     expectTypeOf<NotificationsQueueJob>().toMatchTypeOf<{
       channel: string;
       id: string;

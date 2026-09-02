@@ -191,11 +191,11 @@ NotificationsModule.forRoot({
   channels: [emailChannel],
   queue: {
     adapter: {
-      async enqueue(job) {
+      async enqueue(job, context) {
         // @fluojs/queue 또는 애플리케이션 소유 queue와의 통합
         return queue.enqueue(job);
       },
-      async enqueueMany(jobs) {
+      async enqueueMany(jobs, context) {
         return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
@@ -204,7 +204,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-`dispatchMany(...)`가 `bulkThreshold`에 도달하거나 옵션에서 `{ queue: true }`를 명시하면, service는 직접 전송 대신 queue adapter를 사용합니다. 명시적 `{ queue: true }` 옵션은 batch가 `bulkThreshold`보다 작아도 queue-backed batch delivery를 강제합니다. 모든 `enqueue()` 결과와 모든 `enqueueMany()` 결과 항목은 non-empty string이어야 합니다. Native `enqueueMany()`는 admission된 job count와 정확히 일치하는 own data-property 항목의 dense array를 반환해야 하며, accessor-backed 항목, sparse array, length drift는 fabricated queued delivery id로 바뀌지 않고 export된 `NotificationQueueResultIntegrityError`를 throw합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 authoritative value로 보존하고, 없으면 object key를 locale-independent code-unit order로 정렬하는 runtime-neutral serialization과 64-bit digest에서 deterministic fallback key를 만듭니다. 따라서 idempotent enqueue를 지원하는 queue backend는 host locale behavior나 이전 32-bit collision risk를 물려받지 않고 동등한 반복 요청을 중복 제거할 수 있습니다. 생성된 fallback key는 문서화된 recursive full-payload hash 계약이 아니므로 release를 넘어 durable identity가 필요한 caller는 `notification.id`를 제공해야 합니다. Adapter가 `enqueueMany(...)`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 malformed queue result를 포함해 성공한 queued result는 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다. Queue delivery가 요청되었지만 queue adapter가 등록되어 있지 않으면 `NotificationQueueNotConfiguredError`가 발생합니다.
+`dispatchMany(...)`가 `bulkThreshold`에 도달하거나 옵션에서 `{ queue: true }`를 명시하면, service는 직접 전송 대신 queue adapter를 사용합니다. 명시적 `{ queue: true }` 옵션은 batch가 `bulkThreshold`보다 작아도 queue-backed batch delivery를 강제합니다. `enqueue(...)`와 `enqueueMany(...)`는 caller의 정확한 `AbortSignal`을 담은 선택적 두 번째 `NotificationsQueueContext` 인자를 받으며, 기존 한 인자 adapter는 계속 유효합니다. 서비스는 모든 queue handoff 직전에 signal을 확인하므로 이미 abort된 dispatch는 lifecycle publication이 활성화된 경우 `requested` 다음 `failed`를 발행하지만 adapter를 호출하지 않습니다. In-flight queue call에는 같은 live signal을 전달하며 listener cleanup과 queue별 cancellation policy는 queue adapter가 소유합니다. Queue가 job을 수락한 뒤의 abort는 그 job을 취소하지 못합니다. Native bulk가 abort로 reject되면 모든 requested job이 실패하고, sequential fallback은 이후 job을 queue에 넘기지 않습니다. `continueOnError: true`이면 앞서 수락된 result를 보존하고 abort된 현재/나머지 job은 failure로 기록합니다. 모든 `enqueue()` 결과와 모든 `enqueueMany()` 결과 항목은 non-empty string이어야 합니다. Native `enqueueMany()`는 admission된 job count와 정확히 일치하는 own data-property 항목의 dense array를 반환해야 하며, accessor-backed 항목, sparse array, length drift는 fabricated queued delivery id로 바뀌지 않고 export된 `NotificationQueueResultIntegrityError`를 throw합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 authoritative value로 보존하고, 없으면 object key를 locale-independent code-unit order로 정렬하는 runtime-neutral serialization과 64-bit digest에서 deterministic fallback key를 만듭니다. 따라서 idempotent enqueue를 지원하는 queue backend는 host locale behavior나 이전 32-bit collision risk를 물려받지 않고 동등한 반복 요청을 중복 제거할 수 있습니다. 생성된 fallback key는 문서화된 recursive full-payload hash 계약이 아니므로 release를 넘어 durable identity가 필요한 caller는 `notification.id`를 제공해야 합니다. Adapter가 `enqueueMany(...)`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 malformed queue result를 포함해 성공한 queued result는 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다. Queue delivery가 요청되었지만 queue adapter가 등록되어 있지 않으면 `NotificationQueueNotConfiguredError`가 발생합니다.
 
 ## 15.7 Lifecycle Events
 

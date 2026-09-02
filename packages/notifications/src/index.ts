@@ -43,6 +43,7 @@ export type {
   NotificationsEventsOptions,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
+  NotificationsQueueContext,
   NotificationsQueueJob,
   NotificationsQueueOptions,
 } from './types.js';

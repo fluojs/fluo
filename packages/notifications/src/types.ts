@@ -75,6 +75,19 @@ export interface NotificationsQueueJob<TRequest extends NotificationDispatchRequ
   queuedAt: string;
 }
 
+/** Context passed to an application-owned queue adapter for one enqueue operation. */
+export interface NotificationsQueueContext {
+  /**
+   * Caller-owned cancellation signal for the queue handoff.
+   *
+   * @remarks
+   * The notifications foundation checks this signal immediately before every
+   * queue handoff and passes the same live signal to the adapter. Queue
+   * adapters own any listener cleanup and queue-specific cancellation policy.
+   */
+  readonly signal?: AbortSignal;
+}
+
 /**
  * Queue seam used when applications prefer background delivery for bulk notifications.
  *
@@ -87,19 +100,21 @@ export interface NotificationsQueueAdapter {
    * Enqueues one notification delivery job.
    *
    * @param job Serialized notification envelope ready for background processing.
+   * @param context Optional caller-owned cancellation context for this queue handoff.
    * @returns A non-empty queue-assigned identifier that can be surfaced to callers.
    * @throws {NotificationQueueResultIntegrityError} When the adapter resolves with an empty or non-string identifier.
    */
-  enqueue(job: NotificationsQueueJob): Promise<string>;
+  enqueue(job: NotificationsQueueJob, context?: NotificationsQueueContext): Promise<string>;
 
   /**
    * Enqueues multiple notification delivery jobs in one operation when supported.
    *
    * @param jobs Ordered notification envelopes to enqueue.
+   * @param context Optional caller-owned cancellation context for this queue handoff.
    * @returns A dense array of own-data-property, non-empty queue identifiers aligned with the admitted input order.
    * @throws {NotificationQueueResultIntegrityError} When the adapter resolves with a malformed result or identifiers.
    */
-  enqueueMany?(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]>;
+  enqueueMany?(jobs: readonly NotificationsQueueJob[], context?: NotificationsQueueContext): Promise<readonly string[]>;
 }
 
 /** Lifecycle event names emitted through the optional event publication seam. */

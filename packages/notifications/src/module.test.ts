@@ -155,6 +155,39 @@ class FailingEnqueueOnlyQueueAdapter implements NotificationsQueueAdapter {
   }
 }
 
+function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  let resolvePromise = (): void => {
+    throw new Error('Deferred promise was not initialized.');
+  };
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return { promise, resolve: resolvePromise };
+}
+
+function rejectWhenAborted(
+  signal: AbortSignal | undefined,
+  started: () => void,
+  onListenerRemoved: () => void,
+): Promise<never> {
+  if (!signal) {
+    started();
+    return Promise.reject(new Error('Expected the caller abort signal.'));
+  }
+
+  return new Promise((_, reject) => {
+    const onAbort = (): void => {
+      signal.removeEventListener('abort', onAbort);
+      onListenerRemoved();
+      reject(signal.reason);
+    };
+
+    signal.addEventListener('abort', onAbort);
+    started();
+  });
+}
+
 describe('NotificationsModule', () => {
   it('makes default global providers visible through a real testing module graph', async () => {
     const deliveries: string[] = [];
@@ -564,6 +597,117 @@ describe('NotificationsModule', () => {
       channel: 'email',
       notification: { channel: 'email', payload: { template: 'single' } },
     });
+  });
+
+  it('forwards a live caller abort signal to direct channels', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('direct dispatch aborted');
+    const channelStarted = createDeferred();
+    let listenerRemoved = false;
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send(_notification, context) {
+            return rejectWhenAborted(context.signal, channelStarted.resolve, () => {
+              listenerRemoved = true;
+            });
+          },
+        },
+      ],
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatch(
+      { channel: 'email', payload: { template: 'direct-abort' } },
+      { signal: abortController.signal },
+    );
+
+    await channelStarted.promise;
+    abortController.abort(abortError);
+
+    await expect(dispatch).rejects.toBe(abortError);
+    expect(listenerRemoved).toBe(true);
+  });
+
+  it('rejects a pre-aborted queued single dispatch before queue handoff', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('queued single dispatch aborted');
+    const publisher = new RecordingPublisher();
+    let enqueueCalls = 0;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue() {
+        enqueueCalls += 1;
+        return 'queued:unexpected';
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    abortController.abort(abortError);
+
+    await expect(
+      service.dispatch(
+        { channel: 'email', payload: { template: 'queued-single-pre-abort' } },
+        { queue: true, signal: abortController.signal },
+      ),
+    ).rejects.toBe(abortError);
+
+    expect(enqueueCalls).toBe(0);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
+    expect(publisher.events).not.toContainEqual(expect.objectContaining({ name: 'notification.dispatch.queued' }));
+  });
+
+  it('forwards a live caller abort signal to queued single dispatch and cleans up adapter listeners', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('queued single dispatch aborted');
+    const enqueueStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    let listenerRemoved = false;
+    let receivedSignal: AbortSignal | undefined;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(_job, context?: { readonly signal?: AbortSignal }) {
+        receivedSignal = context?.signal;
+        return rejectWhenAborted(context?.signal, enqueueStarted.resolve, () => {
+          listenerRemoved = true;
+        });
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatch(
+      { channel: 'email', payload: { template: 'queued-single-mid-flight' } },
+      { queue: true, signal: abortController.signal },
+    );
+
+    await enqueueStarted.promise;
+    abortController.abort(abortError);
+
+    await expect(dispatch).rejects.toBe(abortError);
+    expect(receivedSignal).toBe(abortController.signal);
+    expect(listenerRemoved).toBe(true);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
   });
 
   it('throws when single dispatch explicitly requests queue delivery without a queue adapter', async () => {
@@ -1314,6 +1458,56 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('forwards a live caller abort signal to native bulk queue adapters and emits no queued result', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('native bulk dispatch aborted');
+    const enqueueManyStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    let listenerRemoved = false;
+    let receivedSignal: AbortSignal | undefined;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue() {
+        return 'queued:unexpected';
+      },
+      async enqueueMany(_jobs, context?: { readonly signal?: AbortSignal }) {
+        receivedSignal = context?.signal;
+        return rejectWhenAborted(context?.signal, enqueueManyStarted.resolve, () => {
+          listenerRemoved = true;
+        });
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue, bulkThreshold: 2 },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany(
+      [
+        { channel: 'email', payload: { template: 'native-bulk-first' } },
+        { channel: 'email', payload: { template: 'native-bulk-second' } },
+      ],
+      { signal: abortController.signal },
+    );
+
+    await enqueueManyStarted.promise;
+    abortController.abort(abortError);
+
+    await expect(dispatch).rejects.toBe(abortError);
+    expect(receivedSignal).toBe(abortController.signal);
+    expect(listenerRemoved).toBe(true);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+    expect(publisher.events).not.toContainEqual(expect.objectContaining({ name: 'notification.dispatch.queued' }));
+  });
+
   it('lets explicit bulk queue opt-in override the configured threshold', async () => {
     const queue = new RecordingQueueAdapter();
     const container = new Container();
@@ -1778,6 +1972,94 @@ describe('NotificationsModule', () => {
       'notification.dispatch.requested',
       'notification.dispatch.queued',
       'notification.dispatch.queued',
+    ]);
+  });
+
+  it('records abort failures without handing remaining fallback jobs to the queue', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('sequential fallback dispatch aborted');
+    const firstEnqueueStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    const receivedSignals: AbortSignal[] = [];
+    let enqueueCalls = 0;
+    let listenerRemoved = false;
+    let rejectMissingSignal = (): void => {};
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(_job, context?: { readonly signal?: AbortSignal }) {
+        enqueueCalls += 1;
+
+        const signal = context?.signal;
+
+        if (signal) {
+          receivedSignals.push(signal);
+        }
+
+        if (enqueueCalls > 1) {
+          return 'queued:unexpected';
+        }
+
+        if (!signal) {
+          firstEnqueueStarted.resolve();
+
+          return new Promise((_, reject) => {
+            rejectMissingSignal = (): void => {
+              reject(new Error('Expected the caller abort signal.'));
+            };
+          });
+        }
+
+        return new Promise((_, reject) => {
+          const onAbort = (): void => {
+            signal.removeEventListener('abort', onAbort);
+            listenerRemoved = true;
+            reject(signal.reason);
+          };
+
+          signal.addEventListener('abort', onAbort);
+          firstEnqueueStarted.resolve();
+        });
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue, bulkThreshold: 2 },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany(
+      [
+        { channel: 'email', payload: { template: 'sequential-first' } },
+        { channel: 'email', payload: { template: 'sequential-second' } },
+      ],
+      { continueOnError: true, signal: abortController.signal },
+    );
+
+    await firstEnqueueStarted.promise;
+    abortController.abort(abortError);
+    rejectMissingSignal();
+
+    const result = await dispatch;
+
+    expect(enqueueCalls).toBe(1);
+    expect(receivedSignals).toEqual([abortController.signal]);
+    expect(listenerRemoved).toBe(true);
+    expect(result).toMatchObject({
+      failed: 2,
+      queued: 0,
+      succeeded: 0,
+    });
+    expect(result.results).toEqual([]);
+    expect(result.failures).toHaveLength(2);
+    expect(result.failures[0]?.error).toBe(abortError);
+    expect(result.failures[1]?.error).toBe(abortError);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
     ]);
   });
 
