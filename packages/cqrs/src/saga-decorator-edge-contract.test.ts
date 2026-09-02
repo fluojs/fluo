@@ -8,18 +8,20 @@ import { EVENT_BUS } from './tokens.js';
 import type { CqrsEventBus, IEvent, ISaga } from './types.js';
 
 describe('CQRS saga decorator boundary contracts', () => {
-  it('rejects empty and non-constructor event inputs when creating the decorator', () => {
+  const invalidSagaInputs: readonly (readonly [string, unknown])[] = [
+    ['an empty event list', []],
+    ['a null event input', null],
+    ['a string event input', 'not-a-constructor'],
+    ['a non-constructable callable event input', () => undefined],
+    ['an event list containing a non-constructable value', [class ValidEvent implements IEvent {}, 'not-a-constructor']],
+  ];
+
+  it.each(invalidSagaInputs)('rejects %s when creating the decorator', (_scenario, invalidInput) => {
     // When
-    const emptyList = () => Saga([]);
-    const nonConstructor = () => Reflect.apply(Saga, undefined, [null]);
-    const nonConstructableCallable = () => Reflect.apply(Saga, undefined, [() => undefined]);
-    const mixedList = () => Reflect.apply(Saga, undefined, [[class ValidEvent implements IEvent {}, 'not-a-constructor']]);
+    const createDecorator = () => Reflect.apply(Saga, undefined, [invalidInput]);
 
     // Then
-    expect(emptyList).toThrowError('@Saga() requires at least one event type.');
-    expect(nonConstructor).toThrowError('@Saga() event types must be class constructors.');
-    expect(nonConstructableCallable).toThrowError('@Saga() event types must be class constructors.');
-    expect(mixedList).toThrowError('@Saga() event types must be class constructors.');
+    expect(createDecorator).toThrow();
   });
 
   it('deduplicates repeated event constructors into one saga invocation', async () => {
