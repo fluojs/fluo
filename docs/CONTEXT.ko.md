@@ -303,6 +303,10 @@ input alias가 이 report contract를 바꾸지 않습니다.
 
 Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/runtime/README.ko.md)와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)에 나뉘어 있습니다. package integration은 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`, `StudioDevtoolsRuntimeTransport`, `StudioLiveEvent`를 import하고, host-owned bridge를 `bootstrapApplication`, `FluoFactory.create`, 또는 `FluoFactory.createApplicationContext`의 `studioDevtools`로 전달합니다. delivery는 observational이므로 synchronous transport throw와 async rejection은 애플리케이션 동작을 바꾸지 않습니다. explicit bridge는 CLI-injected Studio configuration보다 우선하며, bridge와 injected configuration이 모두 없으면 Studio는 비활성 상태로 남습니다.
 
+## Fastify `RequestContext` 네이티브 객체
+
+[`@fluojs/platform-fastify`](../packages/platform-fastify/README.ko.md)는 `RequestContext`의 의도적인 비대칭 native 객체를 문서화합니다. `context.request.raw`는 Node.js `IncomingMessage`이고 `context.response.raw`는 `FastifyReply`입니다. Controller 코드는 기본적으로 이식 가능한 `FrameworkRequest`와 `FrameworkResponse` 작업을 사용해야 합니다. Adapter에는 typed Fastify-native request accessor가 없으므로 shared code가 안전하지 않은 `unknown` cast에 의존하면 안 됩니다. 전체 NestJS 마이그레이션 안내는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 있습니다.
+
 ## Navigation
 
 | Need | Read first | Follow with |

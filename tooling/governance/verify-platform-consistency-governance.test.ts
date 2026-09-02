@@ -237,6 +237,33 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('requires Fastify raw-object regression coverage for its migration documentation', async () => {
+    // Given: Fastify raw-object migration and package documentation updates with their discoverability and tooling companions.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/platform-fastify/README.md',
+      'packages/platform-fastify/README.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: the Fastify adapter regression is absent or present.
+    // Then: only the concrete runtime regression completes the documentation contract.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'packages/platform-fastify/src/adapter.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   describe('Queue producer migration contract companions', () => {
     const queueProducerMigrationChangedFiles = [
       'packages/queue/README.md',

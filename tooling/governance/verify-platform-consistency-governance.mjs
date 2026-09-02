@@ -869,6 +869,13 @@ function enforceSsotMirrorStructure() {
 export function enforceContractCompanionUpdates(changedFiles) {
   const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
+  const fastifyRawContextDocumentation = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ];
+  const touchedFastifyRawContextDocumentation = fastifyRawContextDocumentation.every((path) => hasChanged(changedFiles, path));
 
   if (!touchedContractGate) {
     return;
@@ -920,6 +927,13 @@ export function enforceContractCompanionUpdates(changedFiles) {
       `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
     );
     return;
+  }
+
+  if (touchedFastifyRawContextDocumentation) {
+    assert(
+      hasChanged(changedFiles, 'packages/platform-fastify/src/adapter.test.ts'),
+      'Fastify raw request and response migration docs must include packages/platform-fastify/src/adapter.test.ts.',
+    );
   }
 
   // Contract-governing docs must remain discoverable from the docs hub, and any

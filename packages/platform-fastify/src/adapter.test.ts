@@ -1,5 +1,5 @@
+import { IncomingMessage, request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders, InformationEvent } from 'node:http';
-import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { type AddressInfo, createServer } from 'node:net';
 import { Container } from '@fluojs/di';
@@ -253,6 +253,46 @@ describe('@fluojs/platform-fastify', () => {
       await expect(response.json()).resolves.toEqual({
         protocol: 'http',
         remoteAddress: '127.0.0.1',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('exposes asymmetric native raw request and response objects', async () => {
+    @Controller('/raw-objects')
+    class RawObjectsController {
+      @Get('/')
+      read(_input: undefined, context: RequestContext) {
+        const responseRaw = context.response.raw;
+
+        return {
+          requestIsIncomingMessage: context.request.raw instanceof IncomingMessage,
+          responseIsFastifyReply:
+            typeof responseRaw === 'object' &&
+            responseRaw !== null &&
+            'code' in responseRaw &&
+            typeof responseRaw.code === 'function' &&
+            'send' in responseRaw &&
+            typeof responseRaw.send === 'function',
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [RawObjectsController] });
+
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await fetch(`http://127.0.0.1:${String(getBoundPort((adapter as { getServer(): unknown }).getServer()))}/raw-objects`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        requestIsIncomingMessage: true,
+        responseIsFastifyReply: true,
       });
     } finally {
       await app.close();

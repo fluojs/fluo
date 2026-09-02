@@ -112,6 +112,14 @@ const adapter = createFastifyAdapter(
 );
 ```
 
+### Native Raw Request and Response Objects
+
+Use the portable `FrameworkRequest` and `FrameworkResponse` fields and methods on `RequestContext` by default. Read request data through `context.request`, then write status, headers, redirects, and bodies through `context.response`; this keeps controllers portable across fluo HTTP adapters.
+
+Fastify's shared `raw` fields are intentionally asymmetric: `context.request.raw` is the underlying Node.js `IncomingMessage`, while `context.response.raw` is Fastify's `FastifyReply`. The request raw object is not a `FastifyRequest`, and the response raw object is not a Node.js `ServerResponse`.
+
+Do not rely on unsafe casts of those `unknown` fields when migrating NestJS `@Req()` or `@Res()` code. This adapter does not currently expose a typed Fastify-native request accessor. If a portable framework operation cannot satisfy a native Fastify requirement, request a contract-preserving typed accessor rather than coupling shared controller code to a cast.
+
 ### Server-Backed Real-Time
 Fastify provides a `server-backed` capability that allows `@fluojs/websockets` to attach directly to the underlying Node.js HTTP server.
 
