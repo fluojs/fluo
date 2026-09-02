@@ -1436,6 +1436,55 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
+  it('resolves only singleton multi contributions during bootstrap while request contributions remain request-scoped', async () => {
+    // Given
+    const events: string[] = [];
+    const LIFECYCLE_MULTI = Symbol('mixed-scope-lifecycle-multi');
+    let requestContributions = 0;
+
+    class SingletonPlugin {
+      onApplicationShutdown(signal?: string) {
+        events.push(`singleton:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleInit() {
+        events.push('singleton:init');
+      }
+    }
+
+    @ScopeDecorator('request')
+    class RequestPlugin {
+      readonly id = ++requestContributions;
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: SingletonPlugin },
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: RequestPlugin },
+      ],
+    });
+
+    // When
+    const context = await FluoFactory.createApplicationContext(AppModule, {});
+
+    // Then
+    expect(events).toEqual(['singleton:init']);
+    expect(requestContributions).toBe(0);
+
+    const requestScope = context.container.createRequestScope();
+    const contributions = await requestScope.resolve<Array<SingletonPlugin | RequestPlugin>>(LIFECYCLE_MULTI);
+
+    expect(contributions).toHaveLength(2);
+    expect(contributions[0]).toBeInstanceOf(SingletonPlugin);
+    expect(contributions[1]).toBeInstanceOf(RequestPlugin);
+    expect(requestContributions).toBe(1);
+
+    await context.close('SIGTERM');
+
+    expect(events).toEqual(['singleton:init', 'singleton:shutdown:SIGTERM']);
+  });
+
   it('runs lifecycle hooks for every runtime multi contribution', async () => {
     const events: string[] = [];
     const LIFECYCLE_MULTI = Symbol('runtime-lifecycle-multi');
@@ -1521,6 +1570,52 @@ describe('FluoFactory.createApplicationContext', () => {
       'rollback-first:destroy',
       'rollback-second:shutdown:bootstrap-failed',
       'rollback-first:shutdown:bootstrap-failed',
+    ]);
+  });
+
+  it('rolls back fulfilled singleton multi contributions when a later contribution fails to resolve', async () => {
+    // Given
+    const events: string[] = [];
+    const bootstrapFailure = new Error('later multi contribution failed');
+    const LIFECYCLE_MULTI = Symbol('partial-multi-lifecycle-rollback');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+
+    class FirstPlugin {
+      onApplicationShutdown(signal?: string) {
+        events.push(`first:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('first:destroy');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: FirstPlugin },
+        {
+          multi: true,
+          provide: LIFECYCLE_MULTI,
+          useFactory: () => {
+            throw bootstrapFailure;
+          },
+        },
+      ],
+    });
+
+    // When
+    await expect(
+      bootstrapApplication({
+        logger,
+        rootModule: AppModule,
+      }),
+    ).rejects.toBe(bootstrapFailure);
+
+    // Then
+    expect(events).toEqual([
+      'first:destroy',
+      'first:shutdown:bootstrap-failed',
     ]);
   });
 

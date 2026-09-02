@@ -1128,7 +1128,6 @@ async function resolveLifecycleInstances(
     lifecycleEntries.push({ token });
   }
 
-  const multiResolutions = new Map<Token, Promise<unknown>>();
   const resolutionResults = await Promise.allSettled(
     lifecycleEntries.map((entry) => {
       if (entry.useValue !== undefined) {
@@ -1139,15 +1138,11 @@ async function resolveLifecycleInstances(
         return container.resolve(entry.token);
       }
 
-      const contributionIndex = entry.contributionIndex;
-      const resolution: Promise<unknown> = multiResolutions.get(entry.token) ?? container.resolve<unknown>(entry.token);
-      multiResolutions.set(entry.token, resolution);
-
-      return resolution.then((values: unknown) => Array.isArray(values) ? values[contributionIndex] : undefined);
+      return container.resolveMultiContribution(entry.token, entry.contributionIndex);
     }),
   );
 
-  let resolutionError: unknown = undefined;
+  let resolutionError: unknown;
   let hasResolutionError = false;
 
   for (const [index, result] of resolutionResults.entries()) {
