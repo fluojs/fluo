@@ -402,6 +402,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const childShutdownTimeoutMs = Number(env.FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS ?? DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS);
   const ignorePatterns = parseIgnorePatterns(env);
   const gate = createContentChangeGate(projectDirectory, ignorePatterns);
+  const sourceDirectory = join(projectDirectory, 'src');
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
   const pendingRestartPaths = new Set<string>();
@@ -655,15 +656,26 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           if (!stats.isDirectory()) {
             throw error;
           }
+          let sourceCoverageAcquired = false;
           for (const directoryPath of getFallbackWatchDirectories(target, projectDirectory, ignorePatterns)) {
             if (!watchFallbackDirectory(directoryPath)) {
               const message = error instanceof Error ? error.message : String(error);
               failFromWatcher(target, new Error(`${message}; required fallback watcher could not be acquired`));
               return;
             }
+            sourceCoverageAcquired ||= directoryPath === target;
+          }
+          if (!sourceCoverageAcquired) {
+            const message = error instanceof Error ? error.message : String(error);
+            failFromWatcher(target, new Error(`${message}; required fallback watcher could not be acquired`));
+            return;
           }
         }
       } catch (error: unknown) {
+        if (target === sourceDirectory) {
+          failFromWatcher(target, error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
         stderr.write(`[fluo] unable to watch ${target}: ${error instanceof Error ? error.message : String(error)}\n`);
       }
     }
