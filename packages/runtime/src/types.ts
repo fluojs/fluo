@@ -1,14 +1,14 @@
 import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
+  ConditionalRequestOptions,
   ContentNegotiationOptions,
   ConverterLike,
-  ConditionalRequestOptions,
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
-  HttpErrorRepresentationOptions,
   HttpApplicationAdapter,
+  HttpErrorRepresentationOptions,
   InterceptorLike,
   MiddlewareLike,
   RequestObserverLike,
@@ -118,8 +118,8 @@ export interface ApplicationLogger {
   warn(message: string, context?: string): void;
 }
 
-/** Registers runtime-owned cleanup callbacks that must run during bootstrap failure or shutdown. */
-export type RuntimeCleanupRegistration = (cleanup: () => void) => () => void;
+/** Registers runtime-owned cleanup callbacks that must settle during bootstrap failure or shutdown. */
+export type RuntimeCleanupRegistration = (cleanup: () => MaybePromise<void>) => () => void;
 
 /** Runtime-visible application states for HTTP and microservice shells. */
 export type ApplicationState = 'bootstrapped' | 'ready' | 'closed';

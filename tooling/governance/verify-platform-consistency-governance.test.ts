@@ -435,7 +435,7 @@ describe('enforceContractCompanionUpdates', () => {
     });
   });
 
-  describe('Lifecycle dispatch shutdown contract companions', () => {
+  describe('Lifecycle shutdown contract companions', () => {
     const lifecycleChangedFiles = [
       'book/advanced/ch09-app-context.md',
       'book/advanced/ch09-app-context.ko.md',
@@ -445,14 +445,17 @@ describe('enforceContractCompanionUpdates', () => {
       'packages/runtime/README.ko.md',
     ];
     const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
-    const regressionCompanion = 'packages/runtime/src/application.test.ts';
+    const regressionCompanions = [
+      'packages/runtime/src/application.test.ts',
+      'packages/runtime/src/bootstrap.test.ts',
+    ];
     const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.test.ts';
 
-    it('requires context, regression, and tooling companions for dispatch shutdown contract updates', async () => {
+    it('requires context, regression, and tooling companions for shutdown contract updates', async () => {
       const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
       const changedFiles = [
         ...lifecycleChangedFiles,
-        regressionCompanion,
+        ...regressionCompanions,
       ];
 
       expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(

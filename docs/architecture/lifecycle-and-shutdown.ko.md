@@ -51,6 +51,14 @@
 
 런타임은 종료 훅을 명시적 계약으로만 제공합니다. 신호 등록은 범용 런타임 표면이 아니라 주변 호스트나 어댑터 헬퍼의 책임입니다.
 
+## Runtime cleanup settlement
+
+Runtime-owned cleanup registration은 동기 또는 비동기 callback을 받습니다. close와
+bootstrap-failure cleanup은 등록 순서대로 callback을 실행하고 다음 cleanup phase 전에 각각을
+await합니다. 실패해도 이후 registration은 건너뛰지 않습니다. close는 failure를 aggregate하고
+완료되지 않은 cleanup phase만 retry 가능하게 남기며, bootstrap은 원래 bootstrap error를 보존하고
+cleanup failure를 `ApplicationLogger`로 보고합니다.
+
 ## 관련 문서
 
 - [패키지 아키텍처 참조](./architecture-overview.ko.md)

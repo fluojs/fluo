@@ -458,6 +458,15 @@ required application-owned header themselves.
 
 Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
 
+### Runtime Cleanup Callbacks
+
+Providers that receive the internal `RUNTIME_CLEANUP_REGISTRATION` token may register cleanup
+callbacks that return `void` or `Promise<void>`. Runtime close and bootstrap-failure cleanup run
+the callbacks in registration order and await each one before entering later cleanup phases.
+Failures do not prevent later callbacks from running: `close()` aggregates cleanup failures and
+leaves that incomplete phase eligible for an explicit retry, while bootstrap preserves its original
+failure and reports cleanup failures through `ApplicationLogger`.
+
 ## Related Packages
 
 - [@fluojs/core](../core): Core decorators and metadata system.

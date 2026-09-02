@@ -79,6 +79,7 @@ type MutableBootstrapReadySignal = BootstrapReadySignal & {
 };
 
 type CacheInvalidatingContainer = Container & { override(...providers: Provider[]): Container };
+type RuntimeCleanupCallback = Parameters<RuntimeCleanupRegistration>[0];
 
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
@@ -126,12 +127,12 @@ async function disposeContainer(container: Container): Promise<void> {
   await container.dispose();
 }
 
-async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<unknown[]> {
+async function runCleanupCallbacks(cleanups: readonly RuntimeCleanupCallback[]): Promise<unknown[]> {
   const errors: unknown[] = [];
 
   for (const cleanup of cleanups) {
     try {
-      cleanup();
+      await cleanup();
     } catch (error) {
       errors.push(error);
     }
@@ -140,7 +141,7 @@ async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<u
   return errors;
 }
 
-function createRuntimeCleanupRegistration(cleanups: Array<() => void>): RuntimeCleanupRegistration {
+function createRuntimeCleanupRegistration(cleanups: RuntimeCleanupCallback[]): RuntimeCleanupRegistration {
   return (cleanup) => {
     cleanups.push(cleanup);
 
@@ -180,7 +181,7 @@ async function closeRuntimeResources(options: {
   container: Container;
   lifecycleInstances: readonly unknown[];
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   shutdownState: RetryableShutdownState<RuntimeShutdownPhase>;
   signal?: string;
 }): Promise<void> {
@@ -238,7 +239,7 @@ async function runBootstrapFailureCleanup(options: {
   lifecycleInstances: readonly unknown[];
   logger: ApplicationLogger;
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   scope: 'application' | 'application context';
 }): Promise<void> {
   const errors: unknown[] = [];
@@ -1403,7 +1404,7 @@ function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -1438,7 +1439,7 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
 function registerRuntimeApplicationContextTokens(
   bootstrapped: BootstrapResult,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -1585,7 +1586,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     async close() {},
     async listen() {},
   };
-  const runtimeCleanup: Array<() => void> = [];
+  const runtimeCleanup: RuntimeCleanupCallback[] = [];
   if (studioDevtools) {
     runtimeCleanup.push(() => studioDevtools.close());
   }
@@ -1757,7 +1758,7 @@ export class FluoFactory {
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
-    const runtimeCleanup: Array<() => void> = [];
+    const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
       runtimeCleanup.push(() => studioDevtools.close());
     }
