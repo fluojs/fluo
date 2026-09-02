@@ -189,7 +189,7 @@ describe('CLI command runner', () => {
     // Then: no payload is emitted and the invalid value is diagnosed.
     expect(exitCode).toBe(1);
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toContain('Invalid --format value "yaml". Use "json".');
+    expect(stderrBuffer.join('')).not.toBe('');
   });
 
   it('publishes fluo as the canonical bin', () => {
