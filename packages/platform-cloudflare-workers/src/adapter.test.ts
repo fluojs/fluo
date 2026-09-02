@@ -39,6 +39,17 @@ type DocumentedRealtimeCapability = {
   readonly version: number;
 };
 
+type DocumentedWorkerCloseOwnership = {
+  readonly inFetchManagement: string;
+  readonly outOfBand: string;
+  readonly restart: string;
+};
+
+type DocumentedWorkerLifecycleContract = {
+  readonly closeOwnership: DocumentedWorkerCloseOwnership;
+  readonly realtimeCapability: DocumentedRealtimeCapability;
+};
+
 const REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR = '<!-- fluo-contract: realtime-capability -->';
 
 function isDocumentedRealtimeCapability(value: unknown): value is DocumentedRealtimeCapability {
@@ -56,7 +67,19 @@ function isDocumentedRealtimeCapability(value: unknown): value is DocumentedReal
   );
 }
 
-function readDocumentedRealtimeCapability(readme: string, locale: string): DocumentedRealtimeCapability {
+function isDocumentedWorkerCloseOwnership(value: unknown): value is DocumentedWorkerCloseOwnership {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+
+  return (
+    typeof Reflect.get(value, 'inFetchManagement') === 'string'
+    && typeof Reflect.get(value, 'outOfBand') === 'string'
+    && typeof Reflect.get(value, 'restart') === 'string'
+  );
+}
+
+function readDocumentedWorkerLifecycleContract(readme: string, locale: string): DocumentedWorkerLifecycleContract {
   const anchorOffset = readme.indexOf(REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR);
 
   if (anchorOffset === -1) {
@@ -83,13 +106,18 @@ function readDocumentedRealtimeCapability(readme: string, locale: string): Docum
   if (
     !parsed
     || typeof parsed !== 'object'
+    || !('closeOwnership' in parsed)
     || !('realtimeCapability' in parsed)
+    || !isDocumentedWorkerCloseOwnership(parsed.closeOwnership)
     || !isDocumentedRealtimeCapability(parsed.realtimeCapability)
   ) {
     throw new Error(`${locale} README realtime capability documentation contract has an invalid shape.`);
   }
 
-  return parsed.realtimeCapability;
+  return {
+    closeOwnership: parsed.closeOwnership,
+    realtimeCapability: parsed.realtimeCapability,
+  };
 }
 
 function createMockWorkerWebSocket(): CloudflareWorkerWebSocket {
@@ -171,16 +199,23 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
 
     const expectedDocumentationContract = {
-      bindingInstallationVersion: capability.bindingInstallation.version,
-      contract: capability.contract,
-      kind: capability.kind,
-      mode: capability.mode,
-      support: capability.support,
-      version: capability.version,
+      closeOwnership: {
+        inFetchManagement: 'wait-until',
+        outOfBand: 'await',
+        restart: 'restartable',
+      },
+      realtimeCapability: {
+        bindingInstallationVersion: capability.bindingInstallation.version,
+        contract: capability.contract,
+        kind: capability.kind,
+        mode: capability.mode,
+        support: capability.support,
+        version: capability.version,
+      },
     };
 
-    expect(readDocumentedRealtimeCapability(englishReadme, 'English')).toEqual(expectedDocumentationContract);
-    expect(readDocumentedRealtimeCapability(koreanReadme, 'Korean')).toEqual(expectedDocumentationContract);
+    expect(readDocumentedWorkerLifecycleContract(englishReadme, 'English')).toEqual(expectedDocumentationContract);
+    expect(readDocumentedWorkerLifecycleContract(koreanReadme, 'Korean')).toEqual(expectedDocumentationContract);
   });
 
   it('keeps the Worker adapter runtime import path free of the HTTP root barrel', () => {

@@ -5,7 +5,7 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 ## Cloudflare Worker Close Ownership
 
-The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback, so applications own the explicit trigger that calls `await worker.close()`. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
+The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback. A trigger outside `worker.fetch` may call `await worker.close()` directly; a management route inside that fetch must return its current response, then use `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
 
 ## Static Asset Delivery
 

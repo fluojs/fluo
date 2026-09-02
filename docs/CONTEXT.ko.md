@@ -5,7 +5,7 @@
 
 ## Cloudflare Worker close 소유권
 
-`@fluojs/platform-cloudflare-workers` lifecycle contract는 package README, [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md), [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.ko.md)에 문서화합니다. Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로 애플리케이션이 `await worker.close()`를 호출하는 explicit trigger를 소유합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 이후의 `fetch(...)`는 새 application을 bootstrap하고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
+`@fluojs/platform-cloudflare-workers` lifecycle contract는 package README, [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md), [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.ko.md)에 문서화합니다. Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로 애플리케이션이 close trigger를 소유합니다. `worker.fetch` 밖의 trigger는 `await worker.close()`를 직접 호출할 수 있지만, 그 fetch 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 이후의 `fetch(...)`는 새 application을 bootstrap하고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
 
 ## 정적 에셋 제공
 

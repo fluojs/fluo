@@ -68,7 +68,7 @@ export default {
 
 ### close 소유권과 lazy 재시작
 
-Cloudflare Workers는 exported `fetch` 핸들러에 host가 호출하는 shutdown callback을 제공하지 않습니다. NestJS shutdown hook을 마이그레이션할 때는 operator가 제어하는 management path나 애플리케이션이 소유한 다른 lifecycle처럼 application-owned close trigger를 선택하고, 그 trigger에서 `await worker.close()`를 호출하세요. `worker.fetch`만 export한다고 해서 close 호출이 마련되지는 않습니다.
+Cloudflare Workers는 exported `fetch` 핸들러에 host가 호출하는 shutdown callback을 제공하지 않습니다. NestJS shutdown hook을 마이그레이션할 때는 application-owned close trigger를 선택하세요. `worker.fetch` 호출 밖에서 실행되는 out-of-band lifecycle trigger는 `await worker.close()`를 직접 호출할 수 있습니다. 같은 `worker.fetch` 호출 안에서 처리되는 management route는 `close()`를 await하지 않고 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그렇지 않으면 `close()`가 자기 자신의 active request drain을 기다리다 shutdown timeout에 도달합니다. `worker.fetch`만 export한다고 해서 close 호출이 마련되지는 않습니다.
 
 성공한 `worker.close()`는 의도적으로 재시작 가능합니다. 현재 lazy application을 해제하며, 이후의 `worker.fetch(...)`는 isolate 안에서 새 application을 bootstrap하여 bootstrap lifecycle hook을 다시 실행하고 application singleton provider를 다시 생성합니다. `close()`를 terminal Worker shutdown signal로 취급하지 마세요. Application에 terminal behavior가 필요하면 해당 상태를 명시적으로 소유하고 강제해야 합니다.
 
@@ -145,6 +145,11 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 <!-- fluo-contract: realtime-capability -->
 ```json
 {
+  "closeOwnership": {
+    "inFetchManagement": "wait-until",
+    "outOfBand": "await",
+    "restart": "restartable"
+  },
   "realtimeCapability": {
     "bindingInstallationVersion": 1,
     "contract": "raw-websocket-expansion",

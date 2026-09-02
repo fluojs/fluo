@@ -12,7 +12,7 @@ fluo는 두 가지 공식 realtime path를 제공합니다.
 
 ## Cloudflare Worker close 소유권
 
-Cloudflare Workers는 exported `fetch` handler를 통해 shutdown callback을 보내지 않습니다. 마이그레이션한 NestJS shutdown 작업이 필요하면 application-owned explicit trigger가 `await worker.close()`를 호출해야 합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 다음 `fetch(...)`는 새 application을 만들고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
+Cloudflare Workers는 exported `fetch` handler를 통해 shutdown callback을 보내지 않습니다. `worker.fetch` 호출 밖의 application-owned trigger만 `await worker.close()`를 직접 호출할 수 있습니다. 같은 `worker.fetch` 호출 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그 안에서 await하면 해당 active request의 drain을 기다리다 shutdown timeout에 도달합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 다음 `fetch(...)`는 새 application을 만들고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
 
 ## Realtime package 선택하기
 
