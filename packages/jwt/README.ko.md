@@ -190,6 +190,14 @@ Rotation은 `RefreshTokenStore.rotate(...)`를 사용해 현재 토큰을 소비
 
 재사용을 감지하면 optional `revokeByFamily(family)` capability를 구현한 store는 침해된 token family만 revoke합니다. 기존 store는 source-compatible 상태를 유지합니다. `revokeByFamily(...)`가 없으면 `RefreshTokenService`는 보수적으로 `revokeBySubject(subject)`로 fallback하며, 이 경우 해당 subject의 독립적인 refresh-token family도 함께 revoke됩니다. 다른 family가 침해된 뒤에도 별도 device 또는 session family를 유지해야 하는 production store는 `revokeByFamily(...)`를 구현하세요.
 
+단일 세션 로그아웃에서는 caller가 제시한 compact token을 `revokePresentedRefreshToken(...)`에 전달하세요.
+
+```typescript
+await refreshTokens.revokePresentedRefreshToken(refreshToken);
+```
+
+이 method는 일치하는 record를 revoke하기 전에 signature, expiry, `type`, `jti`, `family`, `sub` claim을 검증합니다. `revokeRefreshToken(tokenId)`는 신뢰할 수 있는 record ID를 이미 가진 caller를 위한 API로 유지됩니다. raw compact token을 이 ID 기반 method에 전달하지 마세요.
+
 ## 설정 가드레일
 
 JWT 서명과 access-token 검증에는 `algorithms`에 지원되는 알고리즘이 하나 이상 필요합니다. Refresh-token 서명과 검증은 `refreshToken.algorithms`가 설정되어 있으면 이를 사용하고, 설정되지 않으면 backward compatibility를 위해 top-level HMAC algorithms를 사용합니다. 기본 signer는 `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`를 지원하며, 빈 알고리즘 목록은 모호한 토큰을 발행하거나 수락하지 않도록 즉시 실패합니다.
@@ -218,7 +226,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 - `DefaultJwtVerifier`: 토큰 검증 및 정규화를 담당하는 클래스입니다.
 - `JwtService`: 서명과 검증 기능을 결합한 편의용 파사드(facade)입니다.
 - `JwksClient`: 제한된 요청 시간 안에서 원격 JWKS 키를 가져오고 캐싱합니다.
-- `RefreshTokenService`: `refreshToken` 옵션이 구성된 경우 refresh token을 발행, 회전, 폐기합니다.
+- `RefreshTokenService`: `refreshToken` 옵션이 구성된 경우 refresh token을 발행, 회전, 폐기합니다. `revokePresentedRefreshToken(...)`은 compact refresh token을 검증한 뒤 record를 revoke하며, `revokeRefreshToken(tokenId)`는 신뢰된 ID를 받는 대안입니다.
 
 ### 타입
 - `JwtPrincipal`: 정규화된 사용자 식별 객체 (`subject`, `roles`, `scopes`, `claims`).
