@@ -252,4 +252,6 @@ export class CatalogResolver {
 
 In Fluo, GraphQL is not a peripheral feature. It is an API layer connected to DI, the runtime facade, and Standard Decorators. This structure gives clients a flexible query model while leaving maintainable resolver boundaries on the server side.
 
+For an executable companion that registers the module, discovers resolvers, uses operation-scoped DataLoader, and verifies an SSE subscription, see [`examples/graphql`](../../examples/graphql/README.md).
+
 In the next chapter, we'll cover how to persist the data that powers this API with **MongoDB and Mongoose**.

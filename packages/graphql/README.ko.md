@@ -312,6 +312,7 @@ GraphqlModule.forRoot({
 
 ## 예제 소스
 
+- `../../examples/graphql/README.ko.md`: module registration, resolver discovery, operation 범위 DataLoader 사용, SSE subscription을 다루는 공식 실행 가능 애플리케이션입니다.
 - `packages/graphql/src/module.test.ts`: 모듈 등록, resolver 실행, request-scoped container, subscription, guardrail 기본값을 다루는 통합 테스트 및 사용 예제.
 - `packages/graphql/src/field-resolver-input.test.ts`: Object field DTO input의 HTTP, request scope, validation, scalar/list argument, subscription, binding collision을 실행 가능한 형태로 검증하는 테스트.
 - `packages/graphql/src/runtime-support.test.ts`: Package의 Node.js engine 하한이 필수 first-party dependency graph에서 가장 높은 하한 이상인지 검증하는 회귀 테스트.

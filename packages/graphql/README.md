@@ -312,6 +312,7 @@ Supported module options include `schema`, `context`, `plugins`, `graphiql`, `in
 
 ## Example Sources
 
+- `../../examples/graphql/README.md`: Official runnable application for module registration, resolver discovery, operation-scoped DataLoader use, and an SSE subscription.
 - `packages/graphql/src/module.test.ts`: Integration tests and usage examples for module registration, resolver execution, request-scoped containers, subscriptions, and guardrail defaults.
 - `packages/graphql/src/field-resolver-input.test.ts`: Executable HTTP, request-scope, validation, scalar/list argument, subscription, and binding-collision coverage for object field DTO inputs.
 - `packages/graphql/src/runtime-support.test.ts`: Regression coverage that keeps the package's Node.js engine floor at or above the highest floor in its mandatory first-party dependency graph.

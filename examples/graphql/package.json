@@ -1,0 +1,23 @@
+{
+  "name": "@fluojs/example-graphql",
+  "description": "Runnable Fluo GraphQL application with resolver discovery, DataLoader, and SSE subscriptions.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.3 <21 || >=22.2.0 <27"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fluojs/core": "workspace:*",
+    "@fluojs/graphql": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "graphql": "^16.13.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
+}

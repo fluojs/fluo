@@ -252,4 +252,6 @@ export class CatalogResolver {
 
 Fluo에서 GraphQL은 주변 기능이 아니라 DI, 런타임 퍼사드, 표준 데코레이터와 맞물린 API 계층입니다. 이 구조를 사용하면 클라이언트에는 유연한 질의 모델을 제공하고, 서버 쪽에는 유지보수 가능한 리졸버 경계를 남길 수 있습니다.
 
+module을 등록하고 resolver를 discovery하며 operation 범위 DataLoader를 사용하고 SSE subscription을 검증하는 실행 가능한 companion은 [`examples/graphql`](../../examples/graphql/README.ko.md)에서 확인하세요.
+
 다음 장에서는 이 API를 구동하는 데이터를 **MongoDB와 Mongoose**로 영속화하는 방법을 다룹니다.
