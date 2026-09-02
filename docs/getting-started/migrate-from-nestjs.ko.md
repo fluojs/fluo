@@ -1051,7 +1051,7 @@ fluo migrate ./src --skip testing
 
 JSON report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 파일별 metadata가 포함됩니다. 각 파일 항목은 `filePath`, 파일 변경 여부, 적용된 transform, warning count, category label과 source line number가 포함된 warning detail을 기록합니다.
 
-Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. 기본 NestJS bootstrap은 Express를 사용하므로 기본 bootstrap transform은 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하고 static `listen(port)` 인수를 그 adapter로 접습니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap migration은 명시적입니다. `--platform express`를 선택해야 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하며, 대응하는 `listen(port)`가 정확히 하나의 numeric literal 인수일 때만 변환합니다. `--platform express`가 없으면 bootstrap은 warning과 함께 변경하지 않으며, 지원하지 않는 bootstrap form도 warning과 함께 보존합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig

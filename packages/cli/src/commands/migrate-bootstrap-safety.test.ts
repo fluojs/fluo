@@ -137,7 +137,6 @@ import { AppModule } from './app.module';
 
 async function createOnly() {
   const app = await NestFactory.create(AppModule);
-  configure(app);
 }
 
 async function unrelatedServer(app: { listen(port: number): Promise<void> }) {
@@ -155,11 +154,27 @@ async function unrelatedServer(app: { listen(port: number): Promise<void> }) {
     });
 
     // Then
-    const report = JSON.parse(stdoutBuffer.join('')) as { changedFiles: number; warningCount: number };
+    const report = JSON.parse(stdoutBuffer.join('')) as {
+      changedFiles: number;
+      warningCount: number;
+      files: { filePath: string; warnings: { category: string; message: string }[] }[];
+    };
+    const transformed = readFileSync(sourceFilePath, 'utf8');
     expect(exitCode).toBe(0);
-    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(transformed).toContain('const app = await NestFactory.create(AppModule);');
+    expect(transformed).toContain('await app.listen(3000);');
+    expect(transformed).not.toContain('FluoFactory');
     expect(report.changedFiles).toBe(0);
     expect(report.warningCount).toBe(1);
+    expect(report.files).toContainEqual(expect.objectContaining({
+      filePath: sourceFilePath,
+      warnings: [
+        expect.objectContaining({
+          category: 'bootstrap-unsupported',
+          message: 'Unable to find an app.listen(...) call for this NestFactory.create result. Keep this Nest bootstrap path and migrate manually.',
+        }),
+      ],
+    }));
   });
 
   it('preserves reassigned and escaped bootstrap bindings', async () => {
@@ -251,10 +266,15 @@ async function functionShadow() {
     expect(exitCode).toBe(0);
     expect(transformed).toContain('FluoFactory.create(AppModule');
     expect(transformed).toMatch(/port:\s*3000/);
+    expect(transformed).toContain("import type { NestFactory } from '@nestjs/core';");
     expect(transformed).toContain('const NestFactory = { create: async () => ({ listen: async (_port: number) => undefined }) };');
     expect(transformed).toContain('async function parameterShadow(NestFactory: {');
     expect(transformed).toContain('create(): Promise<{');
     expect(transformed).toContain('function NestFactory() { }');
+    expect(transformed).toMatch(/async function localShadow\(\) \{[\s\S]*?await NestFactory\.create\(\);/u);
+    expect(transformed).toMatch(/async function parameterShadow\(NestFactory:[\s\S]*?await NestFactory\.create\(\);/u);
+    expect(transformed).toMatch(/async function functionShadow\(\) \{[\s\S]*?await NestFactory\.create\(\);/u);
+    expect([...transformed.matchAll(/FluoFactory\.create\(/gu)]).toHaveLength(1);
     expect(transformed).toContain('await app.listen(3001);');
     expect(transformed).toContain('await app.listen(3002);');
     expect(transformed).toContain('await app.listen(3003);');
