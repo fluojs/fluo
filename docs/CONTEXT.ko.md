@@ -372,5 +372,7 @@ Lifecycle publisher는 channel resolution, queue job, generated identity, provid
 | `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
 | `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
 | `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `view`, `byteOffset`, `byteLength`, `bytes` |
 
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

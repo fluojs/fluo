@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from './service.js';
-import type { NotificationChannel } from './types.js';
+import type { NotificationChannel, NotificationsQueueAdapter, NotificationsQueueJob } from './types.js';
 
 const fallbackChannel = {
   channel: 'email',
@@ -82,5 +82,64 @@ describe('notification fallback identity', () => {
 
     // Then
     expect(result.deliveryId).toBe('caller-notification-id');
+  });
+
+  it('distinguishes binary generated identities while preserving equivalent ArrayBuffer and DataView values', async () => {
+    // Given
+    const queuedJobs: NotificationsQueueJob[] = [];
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(job) {
+        queuedJobs.push(job);
+
+        return `queued:${queuedJobs.length}`;
+      },
+    };
+    const queuedService = new NotificationsService(
+      {
+        channels: [fallbackChannel],
+        queue: {
+          adapter: queue,
+          bulkThreshold: 1,
+        },
+      },
+      [fallbackChannel],
+    );
+    const fallbackService = createFallbackService();
+    const requests = [
+      { channel: 'email', payload: { binary: new Uint8Array([1, 2]).buffer } },
+      { channel: 'email', payload: { binary: new Uint8Array([1, 3]).buffer } },
+      { channel: 'email', payload: { binary: new Uint8Array([1, 2]).buffer } },
+      { channel: 'email', payload: { binary: new DataView(new Uint8Array([0, 1, 2, 0]).buffer, 1, 2) } },
+      { channel: 'email', payload: { binary: new DataView(new Uint8Array([0, 1, 3, 0]).buffer, 1, 2) } },
+      { channel: 'email', payload: { binary: new DataView(new Uint8Array([9, 1, 2, 8]).buffer, 1, 2) } },
+      { channel: 'email', payload: { binary: new DataView(new Uint8Array([1, 2, 0]).buffer, 0, 2) } },
+    ];
+
+    // When
+    for (const request of requests) {
+      await queuedService.dispatch(request, { queue: true });
+    }
+    const fallbackResults = [];
+
+    for (const request of requests) {
+      fallbackResults.push(await fallbackService.dispatch(request));
+    }
+
+    const [queuedArrayBuffer, queuedChangedArrayBuffer, queuedEquivalentArrayBuffer, queuedDataView, queuedChangedDataView, queuedEquivalentDataView, queuedOffsetDataView] =
+      queuedJobs.map((job) => job.id);
+    const [fallbackArrayBuffer, fallbackChangedArrayBuffer, fallbackEquivalentArrayBuffer, fallbackDataView, fallbackChangedDataView, fallbackEquivalentDataView, fallbackOffsetDataView] =
+      fallbackResults.map((result) => result.deliveryId);
+
+    // Then
+    expect(queuedChangedArrayBuffer).not.toBe(queuedArrayBuffer);
+    expect(queuedEquivalentArrayBuffer).toBe(queuedArrayBuffer);
+    expect(queuedChangedDataView).not.toBe(queuedDataView);
+    expect(queuedEquivalentDataView).toBe(queuedDataView);
+    expect(queuedOffsetDataView).not.toBe(queuedDataView);
+    expect(fallbackChangedArrayBuffer).not.toBe(fallbackArrayBuffer);
+    expect(fallbackEquivalentArrayBuffer).toBe(fallbackArrayBuffer);
+    expect(fallbackChangedDataView).not.toBe(fallbackDataView);
+    expect(fallbackEquivalentDataView).toBe(fallbackDataView);
+    expect(fallbackOffsetDataView).not.toBe(fallbackDataView);
   });
 });

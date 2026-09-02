@@ -644,6 +644,20 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
     return `Circular:${circularReferenceId}`;
   }
 
+  if (value instanceof ArrayBuffer) {
+    const serialized = `ArrayBuffer:{byteLength:${value.byteLength},bytes:${stableByteArray(new Uint8Array(value))}}`;
+    context.seen.delete(value);
+
+    return serialized;
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    const serialized = `ArrayBufferView:{view:${JSON.stringify(Object.prototype.toString.call(value).slice(8, -1))},byteOffset:${value.byteOffset},byteLength:${value.byteLength},bytes:${stableByteArray(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))}}`;
+    context.seen.delete(value);
+
+    return serialized;
+  }
+
   if (value instanceof Date) {
     const serialized = Number.isNaN(value.getTime()) ? 'Date:Invalid' : `Date:${JSON.stringify(value.toISOString())}`;
     context.seen.delete(value);
@@ -718,4 +732,8 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
   context.seen.delete(value);
 
   return serialized;
+}
+
+function stableByteArray(bytes: Uint8Array): string {
+  return `[${Array.from(bytes).join(',')}]`;
 }

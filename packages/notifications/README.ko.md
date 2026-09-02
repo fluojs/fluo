@@ -206,6 +206,12 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationChannelDelivery`
 - `NotificationPayload`
 - `NotificationSnapshot`
+- `NotificationSnapshotDate`
+- `NotificationSnapshotMap<TKey, TValue>`
+- `NotificationSnapshotRegExp`
+- `NotificationSnapshotSet<TValue>`
+- `NotificationSnapshotUrl`
+- `NotificationSnapshotUrlSearchParams`
 - `NotificationSnapshotArrayBuffer`
 - `NotificationSnapshotArrayBufferView`
 - `NotificationsQueueAdapter`

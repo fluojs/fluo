@@ -206,6 +206,12 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationChannelDelivery`
 - `NotificationPayload`
 - `NotificationSnapshot`
+- `NotificationSnapshotDate`
+- `NotificationSnapshotMap<TKey, TValue>`
+- `NotificationSnapshotRegExp`
+- `NotificationSnapshotSet<TValue>`
+- `NotificationSnapshotUrl`
+- `NotificationSnapshotUrlSearchParams`
 - `NotificationSnapshotArrayBuffer`
 - `NotificationSnapshotArrayBufferView`
 - `NotificationsQueueAdapter`
