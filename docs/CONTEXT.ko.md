@@ -22,6 +22,8 @@ NestJS HTTP pipeline migration에서 portable bootstrap `middleware`는 `handle(
 
 NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 one-argument `NestFactory.create(AppModule)` bootstrap을 재작성하며, 지원하지 않는 bootstrap variant는 diagnostic과 함께 변경하지 않고 명시적으로 선택한 adapter-independent transform은 bootstrap을 변경하지 않는다.
 
+Queue 중복 worker 마이그레이션 탐색은 `packages/queue/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [Queue chapter](../book/intermediate/ch11-queue.ko.md)에 나뉘어 있다. 각 job class와 실제 `jobName`은 singleton worker owner 하나만 가지며, 중복은 discovery 순서와 무관하게 BullMQ resource를 만들기 전 bootstrap을 실패시킨다. 마이그레이션하는 NestJS `@Process(...)` handler마다 별도 job class와 `jobName`을 부여하거나, handler를 worker 하나의 `handle(job)` 뒤로 통합한다.
+
 NestJS metrics migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있으며, [NestJS parity map](./contracts/nestjs-parity-gaps.ko.md)은 구현된 metrics coverage와 migration boundary를 기록한다.
 
 NestJS microservices migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있다. Public decorated handler를 compiled module에 명시적으로 등록하고 `MicroservicesModule.forRoot(...)`로 concrete adapter를 구성하며 `MICROSERVICE` lifecycle facade를 주입한다. 이 map은 Redis Pub/Sub event delivery와 Redis Streams request/reply를 구분하고, streaming handler에는 `protoPath`, `packageName`, `url`을 갖춘 `GrpcMicroserviceTransport`를 요구한다.

@@ -116,6 +116,9 @@ NestJS/Bull worker class를 import하기만 해서는 fluo worker가 되지 않�
 1. 소유하는 module graph에 `RedisModule.forRoot(...)`와 `QueueModule.forRoot(...)`를 등록합니다.
 2. `@Processor(...)`, `@Process(...)`, emit된 provider metadata를 TC39 표준 `@QueueWorker(GenerateInvoiceJob, options)` class decorator와 `handle(job)` 메서드로 바꿉니다.
 3. Worker를 singleton scope로 `@Module({ providers: [...] })`에 넣고 constructor dependency를 `@Inject(...)`로 선언합니다. Queue는 compiled singleton provider/controller registration을 scan하며, request/transient worker와 import만 된 class는 등록하지 않습니다.
+
+**각 job class와 실제 `jobName`은 worker 하나만 소유합니다.** Singleton 중복 등록은 BullMQ resource 생성 전에 bootstrap을 실패시키며 provider discovery 순서와 무관합니다. 각 NestJS `@Process(...)` handler에 별도 job class와 `jobName`을 부여하거나, 여러 handler를 worker 하나의 `handle(job)` 뒤로 통합하세요.
+
 4. Worker와 Redis provider가 queue registration에서 도달 가능하도록 유지합니다. 이는 discovery가 해당 registration에 도달할 수 있는 authored imports/exports graph 안에 머무는 `QueueModule.forRoot({ global: false })`에서 특히 중요합니다.
 5. Queue lifecycle ownership과 경쟁하는 processor start/stop hook을 제거합니다. Queue는 application bootstrap-ready handoff 이후 processor를 시작하고, graceful close와 필요한 BullMQ force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
 
