@@ -369,6 +369,7 @@ class MockRedisClient {
 
   readonly deadLetters = new Map<string, string[]>();
   readonly disconnectCalls: string[] = [];
+  readonly duplicateDisconnectCalls: string[] = [];
   readonly duplicateOptions: MockRedisDuplicateOptions[] = [];
   readonly duplicateQuitCalls: string[] = [];
   readonly duplicates: MockRedisConnection[] = [];
@@ -437,6 +438,7 @@ class MockRedisClient {
         connection.status = 'ready';
       },
       disconnect: () => {
+        this.duplicateDisconnectCalls.push(id);
         connection.status = 'end';
         this.notifyDuplicateClosed();
       },
@@ -871,9 +873,14 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
 
+    const queueCloseStarted = withTimeout(
+      bullmqState.waitForQueueClose('HangingQueueCloseJob'),
+      10,
+      () => new Error('Queue close did not begin before shutdown timeout.'),
+    );
+
     bullmqState.queueCloseHangs.add('HangingQueueCloseJob');
     vi.useFakeTimers();
-
     const closing = app.close();
     let closed = false;
     void closing.then(() => {
@@ -881,7 +888,7 @@ describe('@fluojs/queue', () => {
     });
 
     try {
-      await bullmqState.waitForQueueClose('HangingQueueCloseJob');
+      await queueCloseStarted;
 
       expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(false);
 
@@ -922,8 +929,13 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
 
-    vi.useFakeTimers();
+    const duplicateQuitStarted = withTimeout(
+      redis.waitForDuplicateQuit('dup-1'),
+      10,
+      () => new Error('Queue-owned Redis quit did not begin before shutdown timeout.'),
+    );
 
+    vi.useFakeTimers();
     const closing = app.close();
     let closed = false;
     void closing.then(() => {
@@ -931,7 +943,7 @@ describe('@fluojs/queue', () => {
     });
 
     try {
-      await redis.waitForDuplicateQuit('dup-1');
+      await duplicateQuitStarted;
 
       expect(redis.duplicates[1]?.status).not.toBe('end');
 
@@ -940,6 +952,8 @@ describe('@fluojs/queue', () => {
       expect(closed).toBe(true);
       expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
       expect(redis.duplicateQuitCalls).toEqual(['dup-1', 'dup-2']);
+      expect(redis.duplicateDisconnectCalls).toEqual(['dup-1']);
+      expect(redis.disconnectCalls).toEqual([]);
       expect(loggerEvents).toContain(
         'error:QueueLifecycleService:Failed to close queue-owned Redis connection within shutdown timeout.:queue-owned Redis connection shutdown timed out',
       );
