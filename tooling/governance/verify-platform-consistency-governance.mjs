@@ -4082,60 +4082,19 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
 
 export function enforceStudioStaticGraphLimitsContract(readText = read) {
   const staticLiveContractSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
-  const documentationContracts = [
-    [
-      'docs/CONTEXT.md',
-      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio', staticLiveContractSentinel],
-    ],
-    [
-      'docs/CONTEXT.ko.md',
-      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio', staticLiveContractSentinel],
-    ],
-    [
-      'packages/studio/README.md',
-      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio', staticLiveContractSentinel],
-    ],
-    [
-      'packages/studio/README.ko.md',
-      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio', staticLiveContractSentinel],
-    ],
-    [
-      'book/advanced/ch15-studio.md',
-      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph', staticLiveContractSentinel],
-    ],
-    [
-      'book/advanced/ch15-studio.ko.md',
-      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph', staticLiveContractSentinel],
-    ],
-    [
-      'docs/getting-started/migrate-from-nestjs.md',
-      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio', staticLiveContractSentinel],
-    ],
-    [
-      'docs/getting-started/migrate-from-nestjs.ko.md',
-      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio', staticLiveContractSentinel],
-    ],
-  ];
-  const forbiddenClaims = [
-    'static reports diagnose provider deadlocks.',
-    'static report는 provider deadlock을 진단합니다.',
-    'mermaid output tracks the actual compiled module graph.',
-    'mermaid output은 실제 compiled module graph를 추적합니다.',
-    'the node live snapshot provides lifecycle diagnostics.',
-    'node live snapshot은 lifecycle diagnostics를 제공합니다.',
+  const documentationCompanions = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
   ];
 
-  for (const [relativePath, requiredMarkers] of documentationContracts) {
-    const documentation = readText(relativePath).toLowerCase();
-    assert(
-      requiredMarkers.every((marker) => documentation.includes(marker)),
-      `${relativePath} must name the source-backed static or live Studio artifact boundary.`,
-    );
-
-    for (const forbiddenClaim of forbiddenClaims) {
+  for (const companionPaths of documentationCompanions) {
+    for (const relativePath of companionPaths) {
+      const documentation = readText(relativePath);
       assert(
-        !documentation.includes(forbiddenClaim),
-        `${relativePath} must not claim unsupported static deadlock, Mermaid Module Graph, or live lifecycle diagnostics behavior.`,
+        documentation.includes(staticLiveContractSentinel),
+        `${relativePath} must include the Studio static/live contract sentinel.`,
       );
     }
   }

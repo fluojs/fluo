@@ -4,7 +4,7 @@
 
 # Chapter 15. Studio: Visual Diagnostics and Observability
 
-This chapter covers the Studio ecosystem, which turns runtime-produced Module Graph snapshots, diagnostics, timing data, and inspect reports into artifacts that people can read. Chapter 14 used contract verification to confirm runtime consistency. This chapter moves to the tools that export, store, view, and interpret that internal state.
+This chapter covers the Studio ecosystem, which turns Node live Studio compiled graph snapshots, diagnostics, timing data, and inspect reports into artifacts that people can read. Chapter 14 used contract verification to confirm runtime consistency. This chapter moves to the tools that export, store, view, and interpret that internal state.
 
 ## Learning Objectives
 
