@@ -3,6 +3,10 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+## Cloudflare Worker close 소유권
+
+`@fluojs/platform-cloudflare-workers` lifecycle contract는 package README, [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md), [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.ko.md)에 문서화합니다. Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로 애플리케이션이 close trigger를 소유합니다. `worker.fetch` 밖의 trigger는 `await worker.close()`를 직접 호출할 수 있지만, 그 fetch 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 이후의 `fetch(...)`는 새 application을 bootstrap하고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
+
 ## 정적 에셋 제공
 
 정적 제공은 [HTTP Runtime Contract](./architecture/http-runtime.ko.md)에 문서화한 portable `@fluojs/http` middleware 계약입니다. 애플리케이션은 `createStaticAssetsMiddleware(...)`에 명시적 `StaticAssetSource`를 전달하므로 fetch-style 및 edge host에 암묵적 filesystem claim이 제공되지 않습니다. `@fluojs/runtime/node`는 Node, Express, Fastify deployment용 `createNodeFileSystemAssetSource(...)`를 소유하며 lexical 및 realpath 해석을 구성된 root에 제한하고 precompressed sibling을 선택할 수 있습니다. API 예제와 deployment configuration은 `@fluojs/http`, `@fluojs/runtime` package README를 사용하세요.

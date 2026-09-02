@@ -66,6 +66,12 @@ export default {
 };
 ```
 
+### Close Ownership and Lazy Restart
+
+Cloudflare Workers does not provide a host-invoked shutdown callback to the exported `fetch` handler. When migrating NestJS shutdown hooks, choose an application-owned close trigger. An out-of-band lifecycle trigger, running outside any `worker.fetch` invocation, may call `await worker.close()` directly. A management route handled inside the same `worker.fetch` invocation must return its current response without awaiting `close()`, then observe it with `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism; otherwise `close()` waits for that active request to drain and reaches the shutdown timeout. Exporting `worker.fetch` alone does not arrange a close call.
+
+A successful `worker.close()` is intentionally restartable. It releases the current lazy application; a later `worker.fetch(...)` bootstraps a new application in the isolate, rerunning bootstrap lifecycle hooks and reconstructing application singleton providers. Do not treat `close()` as a terminal Worker shutdown signal. If an application needs terminal behavior, it must own and enforce that state explicitly.
+
 ## Common Patterns
 
 ### Early Hints are unsupported
@@ -140,6 +146,11 @@ The listen, shutdown, SSE drain, and websocket binding rules above are public li
 <!-- fluo-contract: realtime-capability -->
 ```json
 {
+  "closeOwnership": {
+    "inFetchManagement": "wait-until",
+    "outOfBand": "await",
+    "restart": "restartable"
+  },
   "realtimeCapability": {
     "bindingInstallationVersion": 1,
     "contract": "raw-websocket-expansion",
