@@ -4,7 +4,9 @@ import {
   isAwaitExpression,
   isCallExpression,
   isClassDeclaration,
+  isClassExpression,
   isExportDeclaration,
+  isFunctionLike,
   isIdentifier,
   isMethodDeclaration,
   isNamedExports,
@@ -30,14 +32,20 @@ function parseSource(source, fileName) {
   return createSourceFile(fileName, source, ScriptTarget.Latest, true, ScriptKind.TS);
 }
 
-function hasNode(node, predicate) {
+function isNestedExecutableScope(node) {
+  return isClassDeclaration(node) || isClassExpression(node) || isFunctionLike(node);
+}
+
+function hasNodeInScope(node, predicate) {
   if (predicate(node)) {
     return true;
   }
 
   let found = false;
   forEachChild(node, (child) => {
-    found ||= hasNode(child, predicate);
+    if (!isNestedExecutableScope(child)) {
+      found ||= hasNodeInScope(child, predicate);
+    }
   });
   return found;
 }
@@ -75,7 +83,7 @@ function hasExportedNames(source, fileName, requiredNames) {
 }
 
 function hasThrowingError(method, marker) {
-  return method !== undefined && hasNode(method, (node) =>
+  return method !== undefined && hasNodeInScope(method, (node) =>
     isThrowStatement(node) &&
     isNewExpression(node.expression) &&
     isIdentifier(node.expression.expression) &&
@@ -84,7 +92,7 @@ function hasThrowingError(method, marker) {
 }
 
 function hasThrownTemplateError(method, marker) {
-  return method !== undefined && hasNode(method, (node) =>
+  return method !== undefined && hasNodeInScope(method, (node) =>
     isThrowStatement(node) &&
     isNewExpression(node.expression) &&
     isIdentifier(node.expression.expression) &&
@@ -94,7 +102,7 @@ function hasThrownTemplateError(method, marker) {
 }
 
 function hasMethodCall(method, receiver, methodName) {
-  return method !== undefined && hasNode(method, (node) =>
+  return method !== undefined && hasNodeInScope(method, (node) =>
     isCallExpression(node) &&
     isPropertyAccessExpression(node.expression) &&
     (
@@ -106,7 +114,7 @@ function hasMethodCall(method, receiver, methodName) {
 }
 
 function hasAwaitedGrpcEventCall(method) {
-  return method !== undefined && hasNode(method, (node) =>
+  return method !== undefined && hasNodeInScope(method, (node) =>
     isAwaitExpression(node) &&
     isCallExpression(node.expression) &&
     isPropertyAccessExpression(node.expression.expression) &&
@@ -120,7 +128,7 @@ function hasAwaitedGrpcEventCall(method) {
 }
 
 function hasEventFanout(method) {
-  return method !== undefined && hasNode(method, (node) =>
+  return method !== undefined && hasNodeInScope(method, (node) =>
     isCallExpression(node) &&
     isPropertyAccessExpression(node.expression) &&
     node.expression.name.text === 'allSettled' &&
