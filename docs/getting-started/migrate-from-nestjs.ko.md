@@ -2,6 +2,7 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./migrate-from-nestjs.md"><kbd>English</kbd></a></p>
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
@@ -1050,7 +1051,7 @@ fluo migrate ./src --skip testing
 
 JSON report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 파일별 metadata가 포함됩니다. 각 파일 항목은 `filePath`, 파일 변경 여부, 적용된 transform, warning count, category label과 source line number가 포함된 warning detail을 기록합니다.
 
-Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap 재작성은 Express를 추론하지 않습니다. `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하고 단일 숫자 `listen(port)` 인수를 해당 adapter로 접으려면 `--platform express`를 명시적으로 선택하세요. 지원되지 않는 `listen(...)` signature는 warning과 함께 그대로 유지됩니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. 기본 호출은 Nest bootstrap을 보존합니다. 자동 bootstrap 재작성은 명시적인 `--platform express`와 정확히 하나의 숫자 리터럴 단일 인자 `app.listen(port)`에서만 지원되며, 이 경우 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하고 해당 port를 adapter에 접습니다. host, callback, string, 환경 변수 기반, 여러 `listen` 형태는 warning과 함께 그대로 보존되며 수동 마이그레이션이 필요합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig

@@ -1,12 +1,16 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrateCommand } from './migrate.js';
 
 const temporaryDirectories: string[] = [];
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const BOOTSTRAP_AUTOMATION_BOUNDARY =
+  'fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen';
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -15,6 +19,19 @@ afterEach(() => {
 });
 
 describe('documented migration transform tokens', () => {
+  it.each([
+    'packages/cli/README.md',
+    'packages/cli/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('keeps the bootstrap automation boundary in %s', (relativePath) => {
+    // Given
+    const documentation = readFileSync(resolve(repoRoot, relativePath), 'utf8');
+
+    // When / Then
+    expect(documentation).toContain(`<!-- ${BOOTSTRAP_AUTOMATION_BOUNDARY} -->`);
+  });
+
   it('applies documented --only transform tokens', async () => {
     // Given
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));

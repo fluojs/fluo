@@ -1,6 +1,7 @@
 # @fluojs/cli
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 The canonical CLI for fluo — bootstrap new applications, generate components and React page types, export runtime inspection data, and run code transforms.
 
@@ -304,7 +305,7 @@ Use `--json` when CI jobs, dashboards, or migration reports need a stable machin
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
 
-Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Bootstrap rewrites never infer a platform: without a selected platform, the codemod retains `NestFactory.create(AppModule)` and its `listen(port)` call and emits a required adapter-selection warning. To migrate an Express bootstrap, explicitly select it with `--platform express`; the transform then emits `createExpressAdapter(...)` and folds a static `listen(port)` argument into that adapter. Install `@fluojs/platform-express` and `express` before compiling the migrated application:
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Bootstrap rewrites never infer a platform: without a selected platform, the codemod retains `NestFactory.create(AppModule)` and its `listen(port)` call and emits a required adapter-selection warning. The only automatic bootstrap rewrite requires explicit `--platform express` and exactly one numeric-literal single-argument `app.listen(port)`. Host, callback, string, environment-derived, and multiple-`listen` forms remain untouched with a warning for manual migration. Install `@fluojs/platform-express` and `express` before compiling the migrated application:
 
 ```bash
 fluo migrate ./src --apply --platform express

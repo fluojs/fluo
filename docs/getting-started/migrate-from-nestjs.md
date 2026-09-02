@@ -2,6 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./migrate-from-nestjs.ko.md"><kbd>한국어</kbd></a></p>
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
@@ -1053,7 +1054,7 @@ Human-readable output is the default. Add `--json` when CI jobs, dashboards, or 
 
 The JSON report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata. Each file entry records `filePath`, whether the file changed, applied transforms, warning count, and warning details with category labels and source line numbers.
 
-Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Bootstrap rewriting never infers Express: explicitly select it with `--platform express` before the codemod rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds a single numeric `listen(port)` argument into that adapter. Unsupported `listen(...)` signatures remain unchanged with a warning. Install `@fluojs/platform-express` and `express` before compiling the migrated application. Select only the independent transforms when you want to leave bootstrap unchanged:
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Default calls preserve the Nest bootstrap. The only automatic bootstrap rewrite requires explicit `--platform express` and exactly one numeric-literal single-argument `app.listen(port)`; it rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds that port into the adapter. Host, callback, string, environment-derived, and multiple-`listen` forms remain unchanged with a warning for manual migration. Install `@fluojs/platform-express` and `express` before compiling the migrated application. Select only the independent transforms when you want to leave bootstrap unchanged:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
