@@ -1,5 +1,5 @@
 ---
-"@fluojs/queue": patch
+"@fluojs/queue": minor
 ---
 
-Reject queue bootstrap when workers in different registration scopes would consume the same Redis-backed BullMQ `jobName`.
+Add application-supplied BullMQ `ownershipNamespace` validation for cross-scope worker ownership. Queue now groups collisions by `(ownershipNamespace, jobName)` rather than the DI-only `clientName`; unconfigured identities emit 2.x compatibility diagnostics by default, and `ownershipEnforcement: 'reject'` opts into bootstrap rejection before BullMQ resources are created.

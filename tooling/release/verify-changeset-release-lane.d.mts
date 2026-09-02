@@ -31,6 +31,23 @@ export type PatchCliFeatureDowngrade = {
   source: 'changeset' | 'package-changelog';
 };
 
+export type PatchStudioRouteKindInputContractNarrowing = {
+  changelogPath?: string;
+  filePath?: string;
+  nextVersion?: string;
+  packageName: '@fluojs/studio';
+  releaseText: string;
+  source: 'changeset' | 'package-changelog';
+};
+
+export type StableNodeEngineRangeNarrowing = {
+  filePath: string;
+  nextEngineRange: string;
+  packageName: string;
+  previousEngineRange: string;
+  previousVersion: string;
+};
+
 export type VerifyChangesetReleaseLaneOptions = {
   baseRef?: string;
   changesetDirectory?: string;
@@ -42,6 +59,8 @@ export type VerifyChangesetReleaseLaneResult = {
   checkedDependencyOnlyMajorVersionDeltas: DependencyOnlyMajorVersionDelta[];
   checkedIntents: ChangesetReleaseIntent[];
   checkedPatchCliFeatureDowngrades: PatchCliFeatureDowngrade[];
+  checkedPatchStudioRouteKindInputContractNarrowings: PatchStudioRouteKindInputContractNarrowing[];
+  checkedStableNodeEngineRangeNarrowings: StableNodeEngineRangeNarrowing[];
   checkedVersionDeltas: PackageVersionDelta[];
   lane: ChangesetReleaseLane;
 };

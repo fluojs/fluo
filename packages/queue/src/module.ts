@@ -81,10 +81,17 @@ interface QueueProviderTokens {
 function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): NormalizedQueueModuleOptions {
   const defaultRateLimiter = normalizeRateLimiter(options.defaultRateLimiter);
   const scope = normalizeQueueScope(options.scope);
+  const ownershipNamespace = options.ownershipNamespace?.trim();
+
+  if (options.ownershipNamespace !== undefined && !ownershipNamespace) {
+    throw new Error('Queue ownership namespace must be a non-empty string when provided.');
+  }
 
   return {
     clientName: options.clientName,
     ...(scope ? { scope } : {}),
+    ...(ownershipNamespace ? { ownershipNamespace } : {}),
+    ownershipEnforcement: options.ownershipEnforcement ?? 'warn',
     defaultAttempts: normalizePositiveInteger(options.defaultAttempts, 1),
     defaultBackoff: options.defaultBackoff
       ? {
@@ -197,7 +204,7 @@ function createQueueProviders(
       provide: tokens.lifecycleServiceToken,
       useFactory: (...deps: unknown[]) => {
         const typedDeps = deps as QueueLifecycleServiceFactoryDeps;
-        assertUniqueQueueWorkerOwnership(typedDeps[3]);
+        assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType);
 
         return new QueueLifecycleService(...typedDeps);
       },

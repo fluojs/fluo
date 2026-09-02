@@ -132,14 +132,14 @@ Report가 raw snapshot을 대체하는 것은 아닙니다. Report는 support와
 
 ## 15.5 Studio Viewer 사용하기
 
-Studio Viewer는 독립 실행형 web application입니다. 설치된 패키지를 사용하는 사용자는 보통 Studio를 개발 전용 의존성으로 유지하고, 패키징된 정적 HTML entry를 resolve해서 브라우저에서 열 수 있습니다.
+Studio Viewer는 독립 실행형 web application입니다. 설치된 패키지를 사용하는 사용자는 보통 Studio를 개발 전용 의존성으로 유지하고 패키징된 HTTP server를 실행합니다.
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-출력된 경로는 패키징된 `dist/index.html` artifact를 가리킵니다. 해당 파일을 브라우저에서 연 다음 inspect artifact를 로드합니다. Artifact 자체가 Bun, Deno, Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이 viewer resolution 단계는 Node package resolution에 기반합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
+명령은 패키징된 viewer를 제공하는 `http://127.0.0.1:<port>/` URL을 출력합니다. 그 URL을 브라우저에서 열고 inspect artifact를 로드하세요. Browser의 file-origin module loading은 viewer를 빈 화면으로 만들 수 있으므로 `dist/index.html`을 직접 열지 마세요. 패키징된 HTML entry를 resolve하는 integration을 위해 `@fluojs/studio/viewer`는 계속 사용할 수 있습니다. Artifact 자체가 Bun, Deno, Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이 launch 단계는 Node package를 기반으로 합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
 
 ```bash
 pnpm --dir packages/studio dev
@@ -233,7 +233,7 @@ Studio artifact는 CI/CD pipeline 안의 architecture guard가 될 수 있습니
 
 CLI는 live sidecar teardown도 소유합니다. `StudioSidecar.close()`는 기존처럼 추적 중인 SSE response를 종료하고, 인증된 runtime ingestion을 처리 중인 socket만 닫으며, 반복되거나 동시에 호출된 caller가 하나의 결정적인 close 작업을 공유하게 합니다. 따라서 request body를 완료하지 않은 ingestion client가 `fluo dev --studio` shutdown을 무기한 열어 두지 못하며, teardown이 완료된 일반 요청 socket까지 일괄 파괴하지도 않습니다.
 
-Bun, Deno, Cloudflare Workers는 이번 MVP에서 migration/static 사용자입니다. Dedicated bridge가 구현되고 검증될 때까지 non-Node 프로젝트는 live sidecar stream을 기대하는 대신 `fluo inspect` JSON, timing, report, Mermaid artifact를 만들고 패키징된 Studio viewer로 열어야 합니다.
+Bun, Deno, Cloudflare Workers는 기본적으로 migration/static 사용자로 남습니다. Host 소유자는 이제 `@fluojs/runtime/devtools`에서 transport-neutral bridge contract를 import하고 `StudioDevtoolsRuntime`을 만든 뒤 legacy process-global에 의존하지 않고 application 또는 context bootstrap의 `studioDevtools`로 전달할 수 있습니다. 이 seam은 bundled non-Node sidecar가 아닙니다. Non-Node live path는 소유자가 executable host integration evidence를 제공한 경우에만 지원되며, 그렇지 않으면 `fluo inspect` JSON, timing, report, Mermaid artifact를 만들고 패키징된 Studio viewer로 열어야 합니다.
 
 Live Studio가 inspect artifact의 필요성을 없애지는 않습니다. 팀은 여전히 CI, support, governance를 위한 재현 가능한 증거가 필요합니다. File-first report는 그 증거를 제공하고, live devtool은 앱이 실행되는 동안 개발자에게 즉각적인 피드백을 제공합니다.
 

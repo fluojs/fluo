@@ -34,6 +34,7 @@ import type {
   MultipartOptions,
   UploadedFile,
 } from '@fluojs/runtime';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
@@ -89,6 +90,7 @@ const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', '
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 type FastifyNativeRouteMethod = (typeof FASTIFY_NATIVE_ROUTE_METHODS)[number];
+type StreamingMultipartOptions = MultipartOptions & { strategy?: 'stream' };
 
 type RouteDescribingDispatcher = Dispatcher & {
   describeRoutes?: () => readonly HandlerDescriptor[];
@@ -862,10 +864,14 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     this.reply.redirect(location, status);
   }
 
-  send(body: unknown): ReturnType<FrameworkResponse['send']> {
+  send(body: unknown, options?: Parameters<FrameworkResponse['send']>[1]): ReturnType<FrameworkResponse['send']> {
     if (this.reply.sent) {
       this.committed = true;
       return;
+    }
+
+    if (options?.compression === false) {
+      disableNativeCompression(this.reply);
     }
 
     const existingContentType = this.reply.getHeader('content-type');
@@ -897,9 +903,8 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     const lowerName = name.toLowerCase();
 
     if (lowerName === 'set-cookie') {
-      const merged = mergeSetCookieHeader(this.reply.getHeader(name), value);
-      this.reply.header(name, merged);
-      this.headers[name] = merged;
+      this.reply.header(name, value);
+      this.headers[name] = mergeSetCookieHeader(this.headers[name], value);
       return;
     }
 
@@ -911,6 +916,15 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     this.reply.status(code);
     this.statusCode = code;
     this.statusSet = true;
+  }
+}
+
+function disableNativeCompression(reply: FastifyReply): void {
+  const cacheControl = reply.getHeader('cache-control');
+  const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
+
+  if (!/\bno-transform\b/i.test(value)) {
+    reply.header('Cache-Control', value ? `${value}, no-transform` : 'no-transform');
   }
 }
 
@@ -947,6 +961,9 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
     get closed() {
       return reply.raw.writableEnded;
     },
+    disableCompression() {
+      disableNativeCompression(reply);
+    },
     flush() {
       ensureHijacked();
       reply.raw.flushHeaders?.();
@@ -957,6 +974,12 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
         reply.raw.removeListener('close', listener);
       };
     },
+    onError(listener: (error: unknown) => void) {
+      reply.raw.on('error', listener);
+      return () => {
+        reply.raw.removeListener('error', listener);
+      };
+    },
     waitForDrain() {
       ensureHijacked();
 
@@ -964,17 +987,24 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
         return Promise.resolve();
       }
 
-      return new Promise<void>((resolve) => {
-        const settle = () => {
-          reply.raw.removeListener('drain', settle);
-          reply.raw.removeListener('close', settle);
-          reply.raw.removeListener('error', settle);
+      return new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          reply.raw.removeListener('drain', resolveDrain);
+          reply.raw.removeListener('close', resolveDrain);
+          reply.raw.removeListener('error', rejectError);
+        };
+        const rejectError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const resolveDrain = () => {
+          cleanup();
           resolve();
         };
 
-        reply.raw.once('drain', settle);
-        reply.raw.once('close', settle);
-        reply.raw.once('error', settle);
+        reply.raw.once('drain', resolveDrain);
+        reply.raw.once('close', resolveDrain);
+        reply.raw.once('error', rejectError);
       });
     },
     write(chunk: string | Uint8Array) {
@@ -1014,12 +1044,24 @@ function createDeferredFrameworkRequest(
     let files: UploadedFile[] | undefined;
 
     if (isMultipart) {
-      const parsed = await parseMultipartRequest(request, {
+      const resolvedMultipartOptions = {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
-      body = parsed.fields;
-      files = parsed.files;
+      };
+
+      if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
+        body = parseMultipartStream({
+          body: request.raw,
+          headers: headerSnapshot,
+          method: request.method,
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
+      } else {
+        const parsed = await parseMultipartRequest(request, resolvedMultipartOptions);
+        body = parsed.fields;
+        files = parsed.files;
+      }
     }
 
     frameworkRequest.body = body;
@@ -1152,70 +1194,11 @@ function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescripto
   );
 }
 
-async function parseMultipartRequest(
+function parseMultipartRequest(
   request: FastifyRequest,
   options: MultipartOptions = {},
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
-  const fields: Record<string, string | string[]> = {};
-  const files: UploadedFile[] = [];
-  const maxFileSize = options.maxFileSize ?? 10 * 1024 * 1024;
-  const maxFiles = options.maxFiles ?? 10;
-  const maxTotalSize = options.maxTotalSize ?? 10 * 1024 * 1024;
-  const contentLength = Number(request.headers['content-length']);
-  let totalSize = 0;
-
-  if (Number.isFinite(contentLength) && contentLength > maxTotalSize) {
-    throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-  }
-
-  try {
-    for await (const part of request.parts({
-      limits: {
-        fileSize: maxFileSize,
-        files: maxFiles,
-      },
-    })) {
-      if (part.type === 'file') {
-        if (files.length >= maxFiles) {
-          throw new PayloadTooLargeException(`Exceeded maximum file count of ${String(maxFiles)}.`);
-        }
-
-        const buffer = await part.toBuffer();
-        totalSize += buffer.byteLength;
-
-        if (totalSize > maxTotalSize) {
-          throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-        }
-
-        files.push({
-          buffer,
-          fieldname: part.fieldname,
-          mimetype: part.mimetype,
-          originalname: part.filename,
-          size: buffer.byteLength,
-        });
-
-        continue;
-      }
-
-      const value = String(part.value ?? '');
-      totalSize += Buffer.byteLength(value, 'utf8');
-
-      if (totalSize > maxTotalSize) {
-        throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-      }
-
-      setMultiValue(fields, part.fieldname, value);
-    }
-  } catch (error: unknown) {
-    if (isFastifyMultipartTooLargeError(error)) {
-      throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-    }
-
-    throw error;
-  }
-
-  return { fields, files };
+  return parseMultipart(request.raw, options);
 }
 
 /**
@@ -1271,22 +1254,6 @@ function cloneRequestHeaders(headers: FastifyRequest['headers']): IncomingHttpHe
   return Object.fromEntries(
     Object.entries(headers).map(([name, value]) => [name, cloneHeaderValue(value)]),
   );
-}
-
-function setMultiValue(target: Record<string, string | string[]>, key: string, value: string): void {
-  const existing = target[key];
-
-  if (existing === undefined) {
-    target[key] = value;
-    return;
-  }
-
-  if (Array.isArray(existing)) {
-    existing.push(value);
-    return;
-  }
-
-  target[key] = [existing, value];
 }
 
 function createRequestSignal(response: import('node:http').ServerResponse): AbortSignal {

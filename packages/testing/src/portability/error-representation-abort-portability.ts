@@ -265,7 +265,11 @@ export async function assertWebHttpErrorRepresentationAbortPortability<
     await withTimeout(probe.providerStarted, options.name, 'the HTML error provider to start');
     abortController.abort();
     await withTimeout(probe.providerAborted, options.name, 'the provider request signal to abort');
-    await dispatch;
+    await withTimeout(
+      dispatch.then(() => undefined),
+      options.name,
+      'the aborted Web request dispatch to finish',
+    );
     probe.assertNoCommit(options.name);
   });
 }

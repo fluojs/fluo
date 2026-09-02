@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 기능](#주요-기능)
+- [NestJS scope 및 optional 의존성 마이그레이션](#nestjs-scope-및-optional-의존성-마이그레이션)
 - [순환 의존성 처리](#순환-의존성-처리)
 - [테스트 및 모킹](#테스트-및-모킹)
 - [문제 해결](#문제-해결)
@@ -104,6 +105,32 @@ direct `child.dispose()`는 이제 실패한 attempt를 포함해 attempt가 set
 
 테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다. override 호출은 원자적입니다. 배치 전체를 검증한 뒤에야 등록과 캐시를 변경하므로, 거부된 호출은 모든 provider와 cached instance, disposal 소유권을 호출 이전 상태 그대로 남깁니다.
 
+### 컨테이너 생성 경계
+
+공개된 생성 형태는 `new Container()` 하나뿐이며, 항상 자신의 singleton cache를 소유하는 루트 컨테이너를 만듭니다. child request scope는 package가 소유합니다. parent 연결, request-scope flag, singleton cache 공유는 `createRequestScope()`로만 도달할 수 있는 private construction path입니다.
+
+```ts
+const root = new Container();
+const requestScope = root.createRequestScope();
+```
+
+constructor 인자 전달은 거부됩니다. emitted declaration은 할당 가능한 인자 타입을 받지 않으며, 런타임에서도 caller가 인자를 넘기면 cache ownership을 빌린 컨테이너를 만드는 대신 `ContainerResolutionError`를 던집니다.
+
+```ts
+// 거부됨: child-scope wiring은 package가 소유합니다.
+Reflect.construct(Container, [root]);
+```
+
+### 2.x에서 3.x로 컨테이너 생성 마이그레이션
+
+`@fluojs/di` 2.x에서는 caller가 child wiring을 직접 넘기는 것이 지원되는 workflow가 아니었음에도, emitted `Container` declaration이 `parent`, `requestScopeEnabled`, `singletonCache` constructor parameter를 노출했습니다. 3.x에서는 이 surface를 봉쇄합니다. constructor는 인자를 받지 않으며, 인자를 전달하면 `ContainerResolutionError`를 던집니다.
+
+인자 없는 `new Container()`와 `createRequestScope()`는 그대로이므로 지원되는 코드는 마이그레이션이 필요 없습니다. child 컨테이너를 직접 생성했다면 해당 호출을 `parent.createRequestScope()`로 바꾸세요. 동일한 parent 연결, request-scope flag, 공유 root singleton cache를 제공하면서 disposal ownership도 그대로 유지합니다.
+
+실행 가능한 근거는 `packages/di/src/container-construction-boundary.test.ts`에 있습니다.
+
+실패한 stale `onDestroy()` hook도 일반 disposal과 동일한 retained-retry 계약을 따릅니다. observing container의 다음 resolution이 그 실패를 한 번 노출해 replacement가 계속될 수 있게 하며, 실패한 instance는 해당 cleanup을 예약한 container가 이후 명시적 `dispose()`로 hook을 다시 호출할 때까지 retain됩니다. 이미 성공한 stale hook은 다시 실행하지 않습니다.
+
 ### request scope 분리
 
 ```ts
@@ -114,6 +141,27 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 request scope 컨테이너는 부모 체인의 provider를 해석할 수 있지만, request가 소유하는 등록은 새 singleton provider를 만들 수 없습니다. singleton provider는 request scope를 만들기 전에 루트 컨테이너에 등록하세요. request scope에 로컬 provider를 추가해야 한다면 `scope: 'request'`/`Scope.REQUEST`를 명시하거나 `override()`로 의도적인 request-local 교체를 표현하세요. multi provider에도 같은 규칙이 적용됩니다. 기본 scope의 multi provider는 루트 컨테이너에 등록하고, request-local multi provider는 request scope를 명시하거나 `override()`로 교체해야 합니다.
 
 provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 string, symbol 또는 constructable class `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. alias provider의 `useExisting`에도 동일한 유효 토큰 형태가 필요합니다. class provider에서 `inject`를 생략하거나 `undefined`로 지정하면 `useClass`의 `@Inject(...)` 메타데이터로 fallback하며, 그 밖의 명시적 `inject` 값은 유효한 token 또는 올바른 `forwardRef(...)` / `optional(...)` wrapper로 구성된 배열이어야 합니다. value provider는 `inject`를 생략해야 하며, 값이 `undefined`인 경우에도 자체 속성으로 선언하면 거부됩니다. 명시적인 `scope` 값은 `singleton`, `request`, `transient` 중 하나여야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
+
+## NestJS scope 및 optional 의존성 마이그레이션
+
+NestJS `@Injectable({ scope: Scope.REQUEST })`와 `@Injectable({ scope: Scope.TRANSIENT })`는 `@Scope('request')` / `@Scope('transient')` 또는 명시적 provider `scope: 'request'` / `scope: 'transient'`를 가진 fluo provider로 매핑합니다. Singleton은 기본값으로 유지됩니다.
+
+fluo는 NestJS scope bubbling을 구현하지 않습니다. Request-scoped provider는 `createRequestScope()` child container에서 resolve하세요. Root에서 resolve하면 `RequestScopeResolutionError`가 발생하고, request-scoped provider에 의존하는 singleton은 `ScopeMismatchError`를 발생시킵니다.
+
+NestJS `@Optional()`은 클래스 수준 `@Inject(...)` 목록 또는 provider `inject` 배열의 `optional(Token)`으로 매핑합니다. `optional(...)`은 decorator가 아닌 token wrapper이고, 등록이 없으면 `undefined`로 resolve됩니다.
+
+```typescript
+import { Inject, Scope } from '@fluojs/core';
+import { optional } from '@fluojs/di';
+
+class AuditLogger {}
+
+@Scope('request')
+@Inject(optional(AuditLogger))
+class RequestAuditService {
+  constructor(private readonly auditLogger: AuditLogger | undefined) {}
+}
+```
 
 ## 순환 의존성 처리
 
@@ -201,12 +249,12 @@ it('uses a mock database', async () => {
 
 | Surface | 종류 | 설명 |
 |---|---|---|
-| `Container` | Root export | 메인 DI 컨테이너 클래스입니다. |
+| `Container` | Root export | 메인 DI 컨테이너 클래스입니다. `new Container()`는 인자를 받지 않고 루트 컨테이너를 만들며, child request scope는 package가 소유하고 `createRequestScope()`로 생성합니다. constructor 인자를 전달하면 `ContainerResolutionError`를 던집니다. |
 | `container.register(...providers)` | `Container` instance method | 하나 이상의 프로바이더를 등록합니다. |
 | `container.override(...providers)` | `Container` instance method | 호출 단위로 원자적으로 기존 provider를 교체하고 cached instance를 무효화하며 다음 replacement resolution이 계속되기 전에 오래된 instance dispose가 settle되도록 보장합니다. |
 | `container.resolve<T>(token)` | `Container` instance method | 토큰을 인스턴스로 비동기 해석합니다. |
 | `container.inspectResolutionState()` | `Container` instance method | snapshot read-only map view, frozen provider record, controlled cache adoption을 통해 cache ownership을 보존해야 하는 testing/tooling helper를 위한 지원 대상 framework-owned container introspection seam을 노출합니다. 애플리케이션 코드는 `has(...)`와 `resolve(...)`를 우선 사용하세요. |
-| `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
+| `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. parent에 연결되고 request scope가 활성화되며 root singleton cache를 공유하는 컨테이너를 얻는 유일한 지원 경로입니다. |
 | `container.has(token)` | `Container` instance method | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
 | `container.dispose()` | `Container` instance method | parent/root cache보다 request child를 먼저 정리하고 active 시도를 공유하며, 이후 명시적 호출에서 실패한 `onDestroy()` hook만 재시도합니다. |

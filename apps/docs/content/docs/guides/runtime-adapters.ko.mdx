@@ -17,6 +17,12 @@ AppModule
 
 Runtime target을 선택하거나 어떤 behavior가 portable하고 어떤 behavior가 adapter 책임인지 이해해야 할 때 이 가이드를 사용하세요.
 
+## 정적 에셋
+
+정적 에셋 policy는 애플리케이션이 `createStaticAssetsMiddleware(...)`에 `StaticAssetSource`를 제공할 때만 portable합니다. 이렇게 하면 모든 adapter에서 traversal protection, validator, `HEAD`, `Range`, `If-Range`, stream-cancellation behavior를 동일하게 유지하면서 모든 host에 filesystem이 있다고 주장하지 않습니다.
+
+Raw Node.js, Express, Fastify에서는 `@fluojs/runtime/node`의 `createNodeFileSystemAssetSource(...)`를 root-confined filesystem source로 사용하세요. 이 helper는 configuration 중 invalid root를 거부하고 lexical 및 symlink escape를 거부하며 precompression을 활성화하면 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. Bun, Deno, Cloudflare Workers는 애플리케이션이 소유한 source를 제공해야 하며 fluo는 해당 target에서 Node filesystem access를 emulation하지 않습니다.
+
 ## Adapter families
 
 | Target | Package | Best for |
@@ -82,6 +88,8 @@ const adapter = createFastifyAdapter(
 ```
 
 Multipart request에서는 raw-body capture가 생략됩니다. `multipart.maxTotalSize`가 없으면 `maxBodySize`가 기본값이 되어 HTTP adapter 전반의 size limit이 portable하게 유지됩니다.
+
+Fastify는 공유 단일 byte-range 및 `If-Range` policy를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 `206`을 만들고, `If-Range`는 선택된 validator를 재사용하며 malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만듭니다.
 
 ### Fastify HTTPS/TLS
 
@@ -229,6 +237,8 @@ Bun `>=1.2.3`에서는 semantically safe static/parameterized fluo route가 `Bun
 
 Bun WebSocket upgrade는 `@fluojs/websockets/bun`을 통해 제공되며, `listen()`이 server를 시작하기 전에 설정되어야 합니다.
 
+Bun fetch dispatch는 공유 단일 byte-range 및 `If-Range` policy를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 `206`을 만들고, `If-Range`는 선택된 validator를 재사용하며 malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만듭니다.
+
 ## Deno
 
 Native `Deno.serve` deployment에는 Deno adapter를 사용합니다.
@@ -334,6 +344,8 @@ class EdgeGateway {}
 export class RealtimeModule {}
 ```
 
+Worker fetch dispatch는 공유 단일 byte-range 및 `If-Range` policy를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 `206`을 만들고, `If-Range`는 선택된 validator를 재사용하며 malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만듭니다.
+
 Worker request는 active HTTP, SSE body, upgraded WebSocket work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 HTTP 및 WebSocket ingress는 JSON `503`을 받고, active work에는 bounded 10-second drain window가 주어집니다. Lazy entrypoint의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤, 이후 request가 새 application을 bootstrap할 수 있게 합니다.
 
 Worker `env` object는 request별로 `request.cloudflare.env`에서 사용할 수 있습니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`에서는 `ready()`가 bootstrap을 미리 시작하지 않은 경우에만 첫 request가 bootstrap을 시작합니다. 어느 경로든 미리 선언한 root module과 option만 module registration에 참여하고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값으로 제한하세요. Handler의 `RequestContext`에서 선택한 fetch-time binding을 읽고 검증하고 좁힌 뒤 application-shaped 값만 injected provider method에 전달하세요. Provider와 controller를 owning module에 등록하세요.
@@ -386,6 +398,7 @@ export class WorkerBindingsModule {}
 | Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
 | Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
 | SSE/streaming | Yes | Yes | Yes | Yes | Yes | Fetch response contract |
+| Single-byte range 및 `If-Range` | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy |
 | WebSockets | Server-backed | Server-backed | Server-backed | Native Bun binding | Native Deno binding | WebSocketPair binding |
 | Native route acceleration | Fastify native safe path | No | Express native safe path | Bun routes safe path | No | No |
 

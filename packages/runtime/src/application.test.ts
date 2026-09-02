@@ -97,6 +97,16 @@ async function fetchForTest(...args: Parameters<typeof fetch>): Promise<Response
   return registerResponseForCleanup(await fetch(...args));
 }
 
+async function resolveNodeApplicationUrl(app: Awaited<ReturnType<typeof bootstrapNodeApplication>>): Promise<string> {
+  const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+
+  if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+    throw new Error('Expected the test application to use the Node HTTP adapter.');
+  }
+
+  return adapter.getListenTarget().url;
+}
+
 afterEach(async () => {
   while (teardownCallbacks.length > 0) {
     await teardownCallbacks.pop()?.();
@@ -868,6 +878,70 @@ describe('bootstrapApplication', () => {
     await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
 
     await app.close();
+  });
+
+  it('directly constructs unregistered global converter classes through runNodeApplication()', async () => {
+    let converterInstances = 0;
+
+    class QueryNumberConverter implements Converter {
+      constructor() {
+        converterInstances += 1;
+      }
+
+      convert(value: unknown, target: { source: string }) {
+        if (target.source === 'query' && typeof value === 'string') {
+          return Number(value);
+        }
+
+        return value;
+      }
+    }
+
+    class SearchRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @RequestDto(SearchRequest)
+      @Get('/')
+      list(input: SearchRequest) {
+        return { id: input.id, type: typeof input.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SearchController],
+    });
+
+    const app = await runNodeApplication(AppModule, {
+      converters: [QueryNumberConverter],
+      cors: false,
+      port: 0,
+      shutdownSignals: false,
+    });
+
+    try {
+      const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+      if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+        throw new Error('Expected the runtime Node HTTP application adapter.');
+      }
+
+      const address: AddressInfo | string | null = adapter.getServer().address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Failed to resolve the bound test port.');
+      }
+
+      const response = await fetchForTest(`http://127.0.0.1:${String(address.port)}/search?id=42`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
+      expect(converterInstances).toBe(1);
+    } finally {
+      await app.close();
+    }
   });
 
   it('provides getServer() on the Node HTTP adapter before listen()', async () => {
@@ -2408,6 +2482,7 @@ describe('bootstrapApplication', () => {
       raw: {},
       url: '/streams/owned',
     };
+    let sendCount = 0;
     const response: FrameworkResponse & { body?: unknown } = {
       committed: false,
       headers: {},
@@ -2417,6 +2492,7 @@ describe('bootstrapApplication', () => {
         this.committed = true;
       },
       send(body) {
+        sendCount += 1;
         this.body = body;
         this.committed = true;
       },
@@ -2433,6 +2509,7 @@ describe('bootstrapApplication', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toBe(owner);
+    expect(sendCount).toBe(1);
     expect(observedSuccess).toBe(owner);
   });
 
@@ -3085,16 +3162,16 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
+      host: '127.0.0.1',
       filters: [filter],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/boom`);
 
     expect(response.status).toBe(418);
     await expect(response.json()).resolves.toEqual({ handled: true });
@@ -3123,16 +3200,16 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
+      host: '127.0.0.1',
       filters: [filter],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/boom`);
 
     expect(response.status).toBe(500);
 
@@ -3172,16 +3249,16 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
+      host: '127.0.0.1',
       filters: [firstFilter, secondFilter],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/boom`);
 
     expect(response.status).toBe(400);
     expect(callOrder).toEqual(['first']);

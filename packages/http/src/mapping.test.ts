@@ -1,10 +1,52 @@
 import { defineControllerMetadata, defineRouteMetadata } from '@fluojs/core/internal';
-import { describe, expect, it } from 'vitest';
+import { Container } from '@fluojs/di';
+import { describe, expect, it, vi } from 'vitest';
 
 import { All, Controller, Get, Query, Route, Version } from './decorators.js';
 import { InvalidRoutePathError, RouteConflictError } from './errors.js';
 import { createHandlerMapping } from './mapping.js';
+import { isMiddlewareRouteConfig, runMiddlewareChain } from './middleware/middleware.js';
+import type {
+  CallHandler,
+  FrameworkRequest,
+  FrameworkResponse,
+  Guard,
+  GuardContext,
+  Interceptor,
+  InterceptorContext,
+  Middleware,
+  MiddlewareContext,
+  Next,
+} from './types.js';
 import { VersioningType } from './types.js';
+
+function createMiddlewareContext(path: string, container: Container): MiddlewareContext {
+  const request: FrameworkRequest = {
+    body: undefined,
+    cookies: {},
+    headers: {},
+    method: 'GET',
+    params: {},
+    path,
+    query: {},
+    raw: {},
+    url: path,
+  };
+  const response: FrameworkResponse = {
+    committed: false,
+    headers: {},
+    redirect() {},
+    send() {},
+    setHeader() {},
+    setStatus() {},
+  };
+
+  return {
+    request,
+    requestContext: { container, metadata: {}, request, response },
+    response,
+  };
+}
 
 describe('handler mapping', () => {
   it('normalizes paths and extracts path params', () => {
@@ -47,6 +89,262 @@ describe('handler mapping', () => {
         id: '42',
       },
     });
+  });
+
+  it('freezes mapping snapshots without freezing caller metadata', () => {
+    class RouteGuard implements Guard {
+      canActivate(_context: GuardContext): boolean {
+        return true;
+      }
+    }
+
+    class RouteInterceptor implements Interceptor {
+      intercept(_context: InterceptorContext, next: CallHandler) {
+        return next.handle();
+      }
+    }
+
+    class UsersController {
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    const route = {
+      guards: [RouteGuard],
+      headers: [{ name: 'x-source', value: 'original' }],
+      interceptors: [RouteInterceptor],
+      method: 'GET',
+      path: '/:id',
+      produces: ['application/json'],
+      redirect: { statusCode: 308, url: '/users/next' },
+    };
+    defineControllerMetadata(UsersController, { basePath: '/users' });
+    defineRouteMetadata(UsersController.prototype, 'getUser', route);
+
+    const mapping = createHandlerMapping([{ controllerToken: UsersController }]);
+    const descriptor = mapping.descriptors[0];
+
+    route.path = '/:slug';
+    route.headers[0]!.value = 'mutated';
+
+    const header = descriptor.route.headers?.[0];
+    if (header === undefined) {
+      throw new Error('Expected descriptor route headers.');
+    }
+
+    expect(Reflect.set(mapping.descriptors, mapping.descriptors.length, descriptor)).toBe(false);
+    expect(Reflect.set(descriptor.route, 'path', '/users/:slug')).toBe(false);
+    expect(Reflect.set(descriptor.metadata.pathParams, descriptor.metadata.pathParams.length, 'slug')).toBe(false);
+    expect(Reflect.set(header, 'value', 'mutated')).toBe(false);
+    expect(Reflect.set(descriptor.route.redirect!, 'url', '/users/mutated')).toBe(false);
+    expect(Object.isFrozen(mapping.descriptors)).toBe(true);
+    expect(Object.isFrozen(descriptor)).toBe(true);
+    expect(Object.isFrozen(descriptor.metadata)).toBe(true);
+    expect(Object.isFrozen(descriptor.metadata.pathParams)).toBe(true);
+    expect(Object.isFrozen(descriptor.route)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.guards)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.headers)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.headers?.[0])).toBe(true);
+    expect(Object.isFrozen(descriptor.route.interceptors)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.produces)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.redirect)).toBe(true);
+    expect(Object.isFrozen(route)).toBe(false);
+    expect(Object.isFrozen(route.guards)).toBe(false);
+    expect(Object.isFrozen(route.headers)).toBe(false);
+    expect(Object.isFrozen(route.interceptors)).toBe(false);
+    expect(Object.isFrozen(route.produces)).toBe(false);
+    expect(Object.isFrozen(route.redirect)).toBe(false);
+    expect(descriptor.route.headers).toEqual([{ name: 'x-source', value: 'original' }]);
+
+    const match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/42',
+      query: {},
+      raw: {},
+      url: '/users/42',
+    });
+
+    expect(match).toMatchObject({
+      descriptor: {
+        route: {
+          headers: [{ name: 'x-source', value: 'original' }],
+          path: '/users/:id',
+        },
+      },
+      params: { id: '42' },
+    });
+    expect(match?.descriptor).toBe(descriptor);
+  });
+
+  it('keeps matching bound to an immutable exposed descriptor snapshot', () => {
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    const mapping = createHandlerMapping([{ controllerToken: UsersController }]);
+    const descriptor = mapping.descriptors[0];
+    const descriptorsProperty = Object.getOwnPropertyDescriptor(mapping, 'descriptors');
+
+    expect(Reflect.set(mapping, 'descriptors', [])).toBe(false);
+    expect(mapping.descriptors).toContain(descriptor);
+    expect(descriptorsProperty).toMatchObject({
+      configurable: false,
+      writable: false,
+    });
+    expect(Object.isFrozen(mapping)).toBe(false);
+    const match = vi.spyOn(mapping, 'match');
+
+    const result = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/42',
+      query: {},
+      raw: {},
+      url: '/users/42',
+    });
+
+    expect(result?.descriptor).toBe(descriptor);
+    expect(match).toHaveBeenCalledOnce();
+  });
+
+  it('isolates route middleware matching from source input mutation', async () => {
+    const events: string[] = [];
+
+    class RouteMiddleware implements Middleware {
+      async handle(_context: MiddlewareContext, next: Next) {
+        events.push('middleware');
+        await next();
+      }
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    const sourceConfig = { middleware: RouteMiddleware, routes: ['/users/*'] };
+    const mapping = createHandlerMapping([{
+      controllerToken: UsersController,
+      moduleMiddleware: [sourceConfig],
+    }]);
+    const descriptor = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/42',
+      query: {},
+      raw: {},
+      url: '/users/42',
+    })?.descriptor;
+
+    expect(descriptor).toBeDefined();
+    if (!descriptor) {
+      throw new Error('Expected a matching descriptor.');
+    }
+
+    sourceConfig.routes[0] = '/admin/*';
+
+    const mappedConfig = descriptor.metadata.moduleMiddleware[0];
+    expect(isMiddlewareRouteConfig(mappedConfig)).toBe(true);
+    if (!isMiddlewareRouteConfig(mappedConfig)) {
+      throw new Error('Expected a mapped middleware route config.');
+    }
+
+    expect(mappedConfig).not.toBe(sourceConfig);
+    expect(mappedConfig).toMatchObject({ routes: ['/users/*'] });
+    expect(Object.isFrozen(mappedConfig)).toBe(true);
+    expect(Object.isFrozen(mappedConfig.routes)).toBe(true);
+
+    const container = new Container().register(RouteMiddleware);
+    await runMiddlewareChain(
+      descriptor.metadata.moduleMiddleware,
+      createMiddlewareContext('/users/42', container),
+      async () => {
+        events.push('terminal');
+      },
+    );
+
+    expect(events).toEqual(['middleware', 'terminal']);
+  });
+
+  it('prevents public middleware snapshot mutation from changing matching', async () => {
+    const events: string[] = [];
+
+    class RouteMiddleware implements Middleware {
+      async handle(_context: MiddlewareContext, next: Next) {
+        events.push('middleware');
+        await next();
+      }
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    const sourceConfig = { middleware: RouteMiddleware, routes: ['/users/*'] };
+    const mapping = createHandlerMapping([{
+      controllerToken: UsersController,
+      moduleMiddleware: [sourceConfig],
+    }]);
+    const descriptor = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/42',
+      query: {},
+      raw: {},
+      url: '/users/42',
+    })?.descriptor;
+
+    expect(descriptor).toBeDefined();
+    if (!descriptor) {
+      throw new Error('Expected a matching descriptor.');
+    }
+
+    const mappedConfig = descriptor.metadata.moduleMiddleware[0];
+
+    expect(isMiddlewareRouteConfig(mappedConfig)).toBe(true);
+    if (!isMiddlewareRouteConfig(mappedConfig)) {
+      throw new Error('Expected a mapped middleware route config.');
+    }
+
+    expect(Reflect.set(mappedConfig.routes, 0, '/admin/*')).toBe(false);
+    expect(mappedConfig.middleware).toBe(RouteMiddleware);
+    expect(mappedConfig.routes).toEqual(['/users/*']);
+
+    const container = new Container().register(RouteMiddleware);
+    await runMiddlewareChain(
+      descriptor.metadata.moduleMiddleware,
+      createMiddlewareContext('/users/42', container),
+      async () => {
+        events.push('terminal');
+      },
+    );
+
+    expect(events).toEqual(['middleware', 'terminal']);
   });
 
   it('fails fast on duplicate normalized route registrations', () => {

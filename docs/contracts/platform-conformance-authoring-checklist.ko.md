@@ -29,14 +29,20 @@
 ## Adapter Portability Requirements
 
 - [ ] MUST: HTTP 어댑터는 `@fluojs/testing/http-adapter-portability`의 `createHttpAdapterPortabilityHarness(...)`를 실행합니다.
+- [ ] MUST: 독립적이고 순서가 보존되는 응답 `Set-Cookie` field를 검증하려면 `assertSupportsPortableResponseCookies()`를 실행합니다.
+- [ ] MUST: `assertSupportsCustomHttpRouteMethods()`로 `QUERY`와 extension HTTP method를 검증합니다.
+- [ ] MUST: `assertSupportsSingleByteRanges()`로 bounded, suffix, open-ended, malformed, multi-range, unsatisfiable, `HEAD`, `POST` range case를 검증합니다.
+- [ ] MUST: `createErrorRepresentationBootstrapOptions`를 구성하고 `assertSupportsHttpErrorRepresentations()`와 `assertDoesNotCommitAbortedHttpErrorRepresentations()`를 모두 실행합니다.
 - [ ] MUST: 손상된 cookie 값을 크래시 없이 보존하고 임의 정규화하지 않습니다.
 - [ ] MUST: raw body 캡처가 켜져 있을 때 JSON과 text 요청의 `rawBody`를 보존합니다.
 - [ ] MUST: byte-sensitive payload에 대해 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 검증하여 어댑터가 Unicode replacement, newline normalization, re-encoding 없이 정확한 `rawBody` byte를 보존하는지 확인합니다.
 - [ ] MUST NOT: multipart 요청의 `rawBody`를 보존하지 않습니다.
+- [ ] MUST: `assertDefaultsMultipartTotalLimitToMaxBodySize()`로 multipart upload가 `maxBodySize`를 기본 total limit으로 쓰는지 검증합니다.
 - [ ] MUST: `text/event-stream` content type과 안정적인 event framing으로 SSE streaming을 지원합니다.
-- [ ] MUST: 시작 로그에 구성된 host를 보고합니다.
-- [ ] MUST: HTTPS 시작을 지원하고 HTTPS listen URL을 보고합니다.
-- [ ] MUST: `close()` 이후 등록한 shutdown signal listener를 제거합니다.
+- [ ] MUST: 어댑터가 `response.stream.waitForDrain()`을 제공하는 경우 `assertSettlesStreamDrainWaitOnClose()`를 검증합니다.
+- [ ] MUST: `assertReportsConfiguredHostInStartupLogs()`를 검증합니다.
+- [ ] MUST: test-owned TLS certificate와 key를 `assertReportsHttpsStartupUrl(...)`에 제공합니다.
+- [ ] MUST: `assertRemovesShutdownSignalListenersAfterClose()`를 검증합니다.
 - [ ] MUST: fetch-style websocket 어댑터는 `@fluojs/testing/fetch-style-websocket-conformance`의 `createFetchStyleWebSocketConformanceHarness(...)`를 실행합니다.
 - [ ] MUST: fetch-style websocket capability 필드 `kind`, `contract`, `mode`, `version`, `support`, `reason`를 안정적으로 유지합니다. Version 1 capability는 adapter `listen()` 전에 설치해야 하는 protocol binding을 위해 별도로 versioned된 optional `bindingInstallation` extension을 추가할 수 있지만 capability `version` field를 바꾸면 안 됩니다.
 

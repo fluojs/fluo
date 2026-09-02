@@ -110,11 +110,13 @@ not make a field required by itself. Add `@IsDefined()` when either missing valu
 must fail. Use `@IsOptional()` when that skip should be an explicit part of the
 DTO contract.
 
-Materializing a plain input object also retains its safe own enumerable properties
-contains beyond the declared DTO fields. It excludes dangerous prototype keys,
-inherited properties, and non-enumerable properties, but it is not a whitelist or
-forbid-extra-fields mode. Shape or reject extra input explicitly when your API
-needs that policy.
+Materializing a plain input object retains safe own enumerable properties beyond
+the declared DTO fields by default. It excludes dangerous prototype keys,
+inherited properties, and non-enumerable properties. For a strict input boundary,
+pass `{ undeclaredProperties: 'reject' }` as the third `materialize()` argument.
+That policy accepts initialized or metadata-backed DTO fields and binding aliases,
+applies recursively to plain nested DTO values, and rejects extras instead of
+silently stripping them.
 
 Finally, fluo validation does not execute class-validator-style `groups` or
 `always` options. Use separate DTOs, mapped DTO helpers, `@ValidateIf(...)`, or
@@ -197,6 +199,8 @@ This is a meaningful upgrade for FluoBlog. The create route now has explicit rul
 ### Why Mapped DTO Helpers Matter
 
 At first, it is easy to write similar DTOs by hand, and that works in the beginning. But it quickly becomes repetitive and prone to mistakes. Helpers such as `PartialType`, `PickType`, and `OmitType` reduce duplication while preserving field-level validation metadata, so derived contracts can stay tied to one base DTO safely. Class-level validators are not copied onto subset or partial DTOs because they may depend on fields that were intentionally omitted or made optional.
+
+When migrating these DTOs from NestJS, review the explicit import rewrites and the different class-level rule semantics for subset, partial, and intersection helpers in the [NestJS migration map](../../docs/getting-started/migrate-from-nestjs.md#nested-dto-and-mapped-type-rewrites).
 
 ### Creating Specific DTO Variations
 

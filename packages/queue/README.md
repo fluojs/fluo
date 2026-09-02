@@ -21,7 +21,7 @@ Redis-backed distributed job processing for fluo. It features decorator-based wo
 npm install @fluojs/queue @fluojs/redis
 ```
 
-`@fluojs/queue` requires Node.js `>=20.0.0`, as declared by `engines.node` in the package manifest. This package-level requirement still applies when the rest of a fluo application uses runtime-portable APIs.
+`@fluojs/queue` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Upgrade Queue consumers from Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, or Node.js 27+ to a supported release before adopting this major version.
 
 `@fluojs/queue` includes BullMQ `^5.81.1`. Refresh the application lockfile when upgrading so BullMQ's patched dependency graph is installed. Queue registration, worker discovery, and persisted-job contracts are unchanged.
 
@@ -115,7 +115,21 @@ When `QueueModule.forRoot({ global: false })` is used, each queue registration o
 
 Use an explicit `scope` when an application imports more than one non-global queue registration. Scope names are trimmed, must be non-empty, and must be unique per compiled module graph. Duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports, or duplicate explicit scopes such as two `QueueModule.forRoot({ global: false, scope: 'jobs' })` imports, fail deterministically during bootstrap.
 
-A scope isolates DI ownership; it does not namespace the BullMQ queue stored in Redis. During bootstrap, Queue rejects two scopes that resolve the same Redis client and discover workers with the same `jobName`, because both workers would otherwise consume the same BullMQ queue. Configure a distinct `clientName` or `jobName` for each owner. Reusing a `jobName` across scopes is supported only when those scopes resolve distinct named Redis registrations.
+A scope isolates DI ownership; it does not namespace the BullMQ queue stored in Redis. `clientName` selects a DI registration and is not a BullMQ backend identity: distinct named clients can point to the same Redis database and BullMQ prefix.
+
+Declare `ownershipNamespace` for every scoped registration that shares a BullMQ backend. This stable application-supplied value identifies the actual Redis database plus BullMQ prefix topology; registrations for the same backend must use the same value, regardless of `clientName`. It is a validation identity only and does not change BullMQ keys or prefixes.
+
+Queue validates each `(ownershipNamespace, jobName)` pair before it creates BullMQ resources. In 2.x, `ownershipEnforcement` defaults to `'warn'`, so an unconfigured or colliding topology logs a diagnostic and preserves startup behavior. Set `ownershipEnforcement: 'reject'` on a registration to reject a collision before resources are created. A registration with an empty namespace is invalid. Use distinct namespaces only for distinct BullMQ backends, or configure distinct `jobName` values for intentional isolation.
+
+```typescript
+QueueModule.forRoot({
+  clientName: 'orders',
+  global: false,
+  ownershipNamespace: 'orders-redis-db-0',
+  ownershipEnforcement: 'reject',
+  scope: 'orders',
+})
+```
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
@@ -196,7 +210,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `QueueDeadLetterInspectionResult`: Newest-first valid records plus `malformedRecordCount` for the inspected window.
 - `QueueDeadLetterRecord`: Typed dead-letter metadata with an `unknown` application payload.
 - `QueueJobType`: Constructor type used to identify and rehydrate a job payload class.
-- `QueueModuleOptions`: Global queue settings (`global`, clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
+- `QueueModuleOptions`: Global queue settings (`global`, `clientName`, `ownershipNamespace`, `ownershipEnforcement`, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
+- `QueueOwnershipEnforcement`: Cross-scope ownership collision action (`'warn'` or `'reject'`).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffType`: Supported retry backoff strategy names (`fixed`, `exponential`).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
@@ -211,7 +226,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 - `global`: whether the queue module registration is global. Defaults to `true`; set `false` when queue providers should stay scoped to the importing module graph.
 - `scope`: unique non-empty queue registration scope. Required when multiple non-global queue registrations exist in one app.
-- Cross-scope ownership: registrations that resolve the same Redis client must use distinct worker `jobName` values; collisions fail during bootstrap before BullMQ resources are created.
+- `ownershipNamespace`: stable application-supplied identity for the Redis database and BullMQ prefix. Registrations for one BullMQ backend must use the same non-empty value, independent of `clientName`.
+- `ownershipEnforcement`: cross-scope ownership action. It defaults to `'warn'` in 2.x; set `'reject'` to fail a matching `(ownershipNamespace, jobName)` collision before BullMQ resources are created.
 - `workerShutdownTimeoutMs`: maximum time allotted to each BullMQ worker close phase: graceful close first, then force-close if graceful close fails or times out. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 

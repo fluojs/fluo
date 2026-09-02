@@ -13,22 +13,23 @@ Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then edit
 `src/page.tsx`. The page component contains only page UI and hydrated interaction; the generated
 application wiring keeps the server/client render tree aligned for you.
 
-The route remains explicit in `src/app.tsx`:
+The decorated route remains explicit in `src/app.ts`:
 
-```tsx
+```ts
 @Router('/products')
 class ProductPageRouter {
   @Path('/:sku')
   @RequestDto(ProductPageRequest)
   show(_input: ProductPageRequest): ReactElement {
-    return <ProductPage />;
+    return createElement(ProductPage);
   }
 }
 ```
 
 This handler still runs through `@fluojs/http` matching, DTO binding, validation, middleware,
 guards, interceptors, request scopes, and not-found behavior before the application renderer sees
-the returned `ReactElement`.
+the returned `ReactElement`. Decorator-bearing application declarations stay in `.ts` files so the
+Vite transform handles them; JSX rendering stays in `.tsx` modules such as `src/page.tsx`.
 
 ## Production verification
 
@@ -48,7 +49,7 @@ Install the Playwright Chrome browser first when your environment does not alrea
 
 Read these files only when you need to change the default composition:
 
-- `src/app.tsx` owns explicit HTTP routes and registers the application renderer.
+- `src/app.ts` owns explicit HTTP routes and registers the application renderer.
 - `src/entry-server.tsx` is the application-owned `ReactPageRenderer`. It turns the already-loaded
   Vite manifest into hydration assets and returns `ReactServerEntry` through
   `createReactServerEntry(...)`. Replace this renderer when the application needs another document

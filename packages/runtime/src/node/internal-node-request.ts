@@ -3,17 +3,18 @@ import type {
   IncomingMessage,
   ServerResponse,
 } from 'node:http';
-import { Readable } from 'node:stream';
 import { URL } from 'node:url';
 
 import {
   BadRequestException,
   PayloadTooLargeException,
+  type FrameworkRequestConnection,
   type FrameworkRequest,
 } from '@fluojs/http';
 
 import {
   parseMultipart,
+  parseMultipartStream,
   type MultipartOptions,
   type UploadedFile,
 } from '../multipart.js';
@@ -28,11 +29,34 @@ type MemoizedValue<T> = () => T;
 
 type QueryRecord = Record<string, string | string[] | undefined>;
 
+function snapshotNodeConnection(raw: unknown): FrameworkRequestConnection | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+
+  const socket = (raw as {
+    socket?: {
+      encrypted?: unknown;
+      remoteAddress?: unknown;
+    };
+  }).socket;
+
+  if (typeof socket?.remoteAddress !== 'string' || !socket.remoteAddress.trim()) {
+    return undefined;
+  }
+
+  return Object.freeze({
+    protocol: socket.encrypted === true ? 'https' : 'http',
+    remoteAddress: socket.remoteAddress,
+  });
+}
+
 /**
  * Options for creating a deferred framework request shell from a Node-backed adapter.
  */
 export interface DeferredFrameworkRequestShellOptions<RawRequest> {
   cookieHeader?: string | string[] | undefined;
+  connection?: FrameworkRequestConnection;
   headers?: FrameworkRequest['headers'];
   headersFactory?: () => FrameworkRequest['headers'];
   materializeBody?: () => Promise<void>;
@@ -123,18 +147,23 @@ export function createDeferredFrameworkRequest(
   let frameworkRequest!: NodeFrameworkRequest;
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const result = await parseMultipart(
-        {
-          body: Readable.toWeb(request),
+      const resolvedMultipartOptions = {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      };
+
+      if (multipartOptions?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream({
+          body: request,
           headers,
           method: request.method,
-          url: resolveAbsoluteRequestUrl(rawUrl),
-        },
-        {
-          ...multipartOptions,
-          maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-        },
-      );
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
+        return;
+      }
+
+      const result = await parseMultipart(request, resolvedMultipartOptions);
       frameworkRequest.body = result.fields;
       frameworkRequest.files = result.files.map((file) => ({ ...file, buffer: Buffer.from(file.buffer) }));
       return;
@@ -177,6 +206,7 @@ export function createDeferredFrameworkRequest(
  */
 export function createDeferredFrameworkRequestShell<RawRequest>({
   cookieHeader,
+  connection,
   headers,
   headersFactory,
   materializeBody,
@@ -196,6 +226,7 @@ export function createDeferredFrameworkRequestShell<RawRequest>({
   const resolveQuery = hasQuerySnapshot ? undefined : createMemoizedValue(() => queryFactory?.() ?? {});
 
   const frameworkRequest = {
+    connection: connection ?? snapshotNodeConnection(raw),
     get cookies() {
       return resolveCookies();
     },

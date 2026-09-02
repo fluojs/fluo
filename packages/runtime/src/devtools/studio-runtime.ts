@@ -13,14 +13,16 @@ const runtimePerformance = globalThis.performance ?? { now: () => Date.now() };
 const processStart = runtimePerformance.now();
 
 /**
- * Describes Studio Devtools Runtime Transport data used by the Studio devtool.
+ * Host-owned transport that receives live Studio events.
+ *
+ * Transport failures are ignored so Studio instrumentation remains observational.
  */
 export interface StudioDevtoolsRuntimeTransport {
   publish(event: StudioLiveEvent): Promise<void> | void;
 }
 
 /**
- * Describes Studio Devtools Runtime Options data used by the Studio devtool.
+ * Options for a host-owned Studio bridge.
  */
 export interface StudioDevtoolsRuntimeOptions {
   appId: string;
@@ -70,7 +72,12 @@ class FetchStudioTransport implements StudioDevtoolsRuntimeTransport {
   }
 }
 
-/** Process-local runtime bridge used only when Studio env injection is present. */
+/**
+ * Host-owned bridge for publishing live Studio bootstrap and request events.
+ *
+ * Pass an instance as `studioDevtools` to application or context bootstrap.
+ * Event delivery is observational: transport throws and rejections never alter runtime behavior.
+ */
 export class StudioDevtoolsRuntime {
   private readonly epoch: string;
   private readonly observer = new StudioRequestObserver(this);
@@ -104,7 +111,11 @@ export class StudioDevtoolsRuntime {
       version: 1 as const,
     } as StudioLiveEvent;
 
-    void Promise.resolve(this.options.transport.publish(event)).catch(() => undefined);
+    try {
+      void Promise.resolve(this.options.transport.publish(event)).catch(() => undefined);
+    } catch {
+      // Studio instrumentation must remain observational when a host transport throws.
+    }
   }
 
   publishBootstrapSnapshot(input: StudioBootstrapSnapshotInput): void {

@@ -4,9 +4,35 @@
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
-## Custom decorator preload ordering
+## Response cookie migration
 
-Fluo's built-in decorators store their runtime records in framework-owned stores and do not require import-time global mutation. A migrated custom standard decorator that reads `context.metadata` is different: its decorated class needs `Symbol.metadata` while that class module is being evaluated.
+Replace `res.cookie()` and `res.clearCookie()` with `setCookie(response, name, value, options?)` and `clearCookie(response, name, options?)` from `@fluojs/http`. These free functions work through `FrameworkResponse`, so they do not couple controllers to Express or Fastify.
+
+```ts
+// Before: NestJS with Express
+res.cookie('session', token, { httpOnly: true, maxAge: 3_600_000 });
+res.clearCookie('session');
+
+// After: fluo
+setCookie(context.response, 'session', token, {
+  httpOnly: true,
+  maxAgeSeconds: 3_600,
+  path: '/',
+});
+clearCookie(context.response, 'session', { path: '/' });
+```
+
+> **Warning:** Express `res.cookie()` defaults `Path=/`. Portable `setCookie()` emits no `Path` unless you pass `options.path`, so pass `path: '/'` when migrating an Express cookie to preserve its scope. Repeat the same `path` (and `domain`, when present) for `clearCookie()`.
+
+Use `maxAgeSeconds` as an explicit whole-second lifetime; do not carry Express millisecond values into the new option. Repeated helper calls stay independent and ordered `Set-Cookie` fields. A clear operation emits `Max-Age=0` and a past `Expires`; pass the original `path` and `domain` again to target the same browser cookie.
+
+## Executable JWT learning path
+
+For the complete Chapter 14 path, import `ConfigModule.forRoot()` and the global `AuthPersistenceModule` before `JwtModule.forRootAsync(...)`. `AuthPersistenceModule` exports the durable `REFRESH_TOKEN_STORE` and `CREDENTIALS_VERIFIER` tokens, while `AuthModule` registers `AuthService` in `providers` and `AuthController` in `controllers`. This is application-graph wiring, not NestJS dynamic-module configuration; follow [`book/beginner/ch14-jwt.md`](../../book/beginner/ch14-jwt.md) for the complete executable module.
+
+## Decorator metadata preload ordering
+
+Fluo's built-in decorators store their runtime records in framework-owned stores and do not require import-time global mutation. A migrated custom standard decorator that reads `context.metadata` is different, as are `@fluojs/serialization` decorators: their decorated classes need `Symbol.metadata` while the class module is being evaluated.
 
 Do not statically import the decorated application graph and then call `ensureMetadataSymbol()` in the same bootstrap module. ESM evaluates static dependencies before the bootstrap module body, so that call is too late. Use a preload entrypoint that installs the symbol before dynamically importing the ordinary bootstrap graph:
 
@@ -30,58 +56,85 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@Get()`, `@Post()`, other route decorators | `@Get()`, `@Post()`, other route decorators from `@fluojs/http` | HTTP route decoration remains method-based. |
 | `@Sse()` | `@Sse()` from `@fluojs/http` with `SseResponse` for manual streams or `AsyncIterable` for managed streams | fluo maps `@Sse()` to a `GET` route with `text/event-stream` metadata. It can convert `AsyncIterable` values into SSE frames, while NestJS `Observable` return values must still be rewritten to `SseResponse` or an async iterable. |
 | `ClassSerializerInterceptor` with returned DTOs, `@Res()`, or passthrough/manual response writes | `SerializerInterceptor` from `@fluojs/serialization` for framework-managed return values; `RequestContext.response` for explicit handler ownership | Returned values are serialized only while the response is uncommitted. After `send(...)`, `redirect(...)`, or a manual stream commits the response, `SerializerInterceptor` returns the value it received from `next.handle()` unchanged instead of serializing it. Other interceptors may still transform the chain result, while the dispatcher skips a second success-response write. |
+| `class-transformer` `@Expose()`, `@Exclude()`, and `@Transform()` | `@Expose()`, `@Exclude()`, and `@Transform()` from `@fluojs/serialization` | Replace the decorators as well as the interceptor. The fluo transform callback is synchronous and receives only the field value; calculate multi-field output before assigning the DTO field. Base metadata is inherited, but child overrides remain isolated from base and sibling DTOs. |
 | `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime` | HTTP listening requires an explicit platform adapter such as `createFastifyAdapter()`. `FluoFactory.create(AppModule)` can still build an adapterless application shell, but that shell cannot call `listen()`. |
 | NestJS `beforeApplicationShutdown(signal?)` | no direct replacement; use `onModuleDestroy()` or `onApplicationShutdown(signal?)` from `@fluojs/runtime` | `beforeApplicationShutdown` is unsupported. Put shutdown preparation in `onModuleDestroy()` when it belongs before the application-wide signal phase, or in `onApplicationShutdown(signal?)` when cleanup needs the signal. fluo provides no compatibility shim or additional runtime hook. |
 | `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, and `isGlobal` | `ConfigModule.forRoot({ processEnv, schema, global? })` from `@fluojs/config` | fluo registration is synchronous: pass an explicit `processEnv` snapshot, use a synchronous Standard Schema validator, and use `global?: boolean` (`true` by default) for visibility. Resolve async factories before module registration, preserve their nested objects for deep merging and dot-path access, and share one validated snapshot with both `ConfigModule` and any HTTP adapter inputs. `ConfigService.get(key)` and `getOrThrow(key)` accept a single key only; NestJS default-value and options overloads such as `get(key, defaultValue)` or `get(key, { infer: true })` have no fluo counterpart. Own defaults in `defaults` or the `schema` output, or apply an explicit call-site `??` fallback to the `get(key)` result. |
 | `@nestjs/passport` `PassportModule.register(...)`, `PassportStrategy(...)`, named `AuthGuard(...)`, sessions, and serializers | `createPassportJsStrategyBridge(...)`, `PassportModule.forRoot(...)`, explicit bridge providers/named registration, and `mapPrincipal(...)` from `@fluojs/passport` | Adapt one explicitly provided Passport.js strategy at a time. Register `bridge.providers`, pass `bridge.strategy` to the fluo registry, and map the Passport user to a fluo principal. Middleware, sessions, serializers/deserializers, strategy discovery, and host integration remain outside the bridge. |
-| NestJS JWT async registration with dynamic-module `imports`, `useClass`, `useExisting`, or provider discovery | `JwtModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/jwt` | `JwtModule.forRootAsync(...)` requires dependencies named by `inject` to be registered in the application module graph before its JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to a parent module's providers, are not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery. |
+| `@nestjs/passport` `PassportModule.registerAsync(...)` | application-owned async configuration resolution, then synchronous `PassportModule.forRoot(...)` from `@fluojs/passport` | fluo has no async Passport registration or dynamic-module parity layer. Resolve secrets and configuration at the application bootstrap/composition boundary, validate the final values there, then pass the resolved options to `forRoot(...)`. |
+| NestJS JWT async registration with dynamic-module `imports`, `useClass`, `useExisting`, or provider discovery | `JwtModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/jwt` | `JwtModule.forRootAsync(...)` requires dependencies named by `inject` to be registered in the application module graph before its JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to a parent module's providers, are not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery. When using asymmetric access tokens with HMAC refresh tokens, configure `refreshToken.algorithms` explicitly; do not add HS algorithms to the access-token list solely for refresh tokens. |
+| NestJS `JwtService.signAsync()` / `verifyAsync()` or synchronous-looking `sign()` / `verify()` migration | `await JwtService.sign(...)` and `await JwtService.verify(...)` from `@fluojs/jwt` | fluo exposes Promise-returning `sign()` and `verify()` directly; it has no `signAsync()` or `verifyAsync()` aliases. Do not pass either unresolved Promise as a token or claims object. `decode()` remains synchronous, but it only parses unverified input and must never make an authorization decision. Follow the complete [JWT refresh learning path](../../book/beginner/ch14-jwt.md#145-refresh-token-rotation) for durable storage, rotation, and endpoint wiring. |
 | NestJS HTTP server lifecycle hooks or late WebSocket server mutation when moving to Cloudflare Workers | `@fluojs/platform-cloudflare-workers` plus `CloudflareWorkersWebSocketModule.forRoot()` from `@fluojs/websockets/cloudflare-workers` | Workers expose a host-owned `fetch(request, env, ctx)` boundary rather than a server socket. `listen()` only binds the fluo dispatcher; register the Worker WebSocket module in the application graph so bootstrap configures its binding before that listen boundary. Each accepted request is tracked through `ctx.waitUntil(...)`. Bootstrap receives only the predeclared root module and options; request `env` is attached during dispatch, so it cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep independently available pre-registration values in bootstrap configuration. Read, validate, and narrow selected fetch-time bindings from `RequestContext`, then pass application-shaped values into provider methods. |
 | `@Injectable()` provider marker | provider class or provider definition listed in `@Module(...).providers` | fluo does not use `@Injectable()` as a required provider registration step. |
+| `@Injectable({ scope: Scope.REQUEST })` or `@Injectable({ scope: Scope.TRANSIENT })` | explicit provider registration with `@Scope('request')` / `@Scope('transient')`, or a provider `scope: 'request'` / `scope: 'transient'` | Providers are singleton by default. A request-scoped provider must resolve from a `createRequestScope()` child; it is not promoted through NestJS-style scope bubbling. |
+| `@Optional()` with `@Inject(TOKEN)` | class-level `@Inject(optional(TOKEN))` from `@fluojs/core` and `@fluojs/di`, or provider `inject: [optional(TOKEN)]` | `optional(TOKEN)` is a token wrapper, not a decorator. An unregistered optional token resolves to `undefined`; the constructor parameter must allow `undefined`. |
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | property injection such as `@Inject(TOKEN) private value` | class-level `@Inject(TOKEN)` plus a matching constructor parameter | fluo's `@Inject(...)` is a standard class Decorator that declares constructor Tokens in parameter order. It is not a property or constructor-parameter Decorator. |
-| `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support, including Zod and Valibot | This is a fluo-native validation surface, not class-validator compatibility. Ordinary validators skip `null` / `undefined`, requiredness uses `@IsDefined()`, plain-object materialization retains safe own enumerable extra properties, and validation groups are unsupported. |
+| `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support, including Zod and Valibot | This is a fluo-native validation surface, not class-validator compatibility. Ordinary validators skip `null` / `undefined`, requiredness uses `@IsDefined()`, plain-object materialization retains safe own enumerable extra properties by default, supports opt-in rejection through `materialize(..., { undeclaredProperties: 'reject' })`, and validation groups are unsupported. |
+| `@ValidateNested()` plus class-transformer `@Type(() => ChildDto)` | `@ValidateNested(() => ChildDto)` from `@fluojs/validation` | The nested DTO target is an explicit decorator argument. Remove `@Type(...)` and the class-transformer import; fluo does not consume class-transformer metadata or reflected design types. |
 | `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolvers, request-scoped `I18nContext`, and localized validation filters | `I18nModule.forRoot(...)` from `@fluojs/i18n`; `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, and `getHttpLocale(...)` from `@fluojs/i18n/http`; `localizeDtoValidationError(...)` from `@fluojs/i18n/validation` | Resolve asynchronous catalog and configuration inputs before the synchronous root registration described below. Then resolve and store each locale at an application-owned request boundary and pass it explicitly to translation and validation localization. fluo does not discover NestJS resolver classes or expose an implicit request-locale global. |
 | `SwaggerModule.createDocument(...)` and `SwaggerModule.setup(...)` | `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` from `@fluojs/openapi` | OpenAPI adoption is explicit: list every documented controller in `sources`, pass prebuilt HTTP handler mappings in `descriptors`, or use both. fluo does not scan the application module graph for controllers. `documentPath` and `uiPath` default to `/openapi.json` and `/docs`; assign distinct values to each module instance when serving multiple documents. Swagger UI serves only when `ui: true`, and `swaggerUiAssets` can replace the default CSS and JavaScript URLs. Normalized runtime route collisions fail bootstrap with `RouteConflictError`. |
-| `@nestjs/graphql` resolver discovery, reflected return types, parameter decorators, and `forRootAsync(...)` | `GraphqlModule.forRoot(...)`, module providers/controllers, `@Resolver`, root operation decorators, `@FieldResolver`, `@Parent`, `@Context`, and `listOf(...)` from `@fluojs/graphql` | Register resolver classes as providers or controllers in compiled modules. The `resolvers` option is an optional allowlist/filter over those discoverable classes; omitting it or passing an empty list allows every decorated registered candidate. fluo does not infer providers or GraphQL output types from metadata. Object results require `outputType`, arrays require `outputType: listOf(ItemType)`, and omitted output types use GraphQL `String`. Object fields attach to a named code-first output type through `@Resolver('TypeName')`. Because TC39 standard decorators do not support parameter decorators, place `@Parent(index?)` and `@Context(index?)` on the field resolver method; their defaults bind indexes `0` and `1`. There is no `forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, or `@Subscription({ topics })` contract. Optional WebSocket subscriptions require a server-backed Node HTTP/S adapter. |
+| `@nestjs/graphql` resolver discovery, reflected return types, parameter decorators, and `forRootAsync(...)` | `GraphqlModule.forRoot(...)`, module providers/controllers, `@Resolver`, root operation decorators, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, and `listOf(...)` from `@fluojs/graphql` | Register resolver classes as providers or controllers in compiled modules. The `resolvers` option is an optional allowlist/filter over those discoverable classes; omitting it or passing an empty list allows every decorated registered candidate. fluo does not infer providers or GraphQL output types from metadata. Object results require `outputType`, arrays require `outputType: listOf(ItemType)`, and omitted output types use GraphQL `String`. Object fields attach to a named code-first output type through `@Resolver('TypeName')`. Because TC39 standard decorators do not support parameter decorators, place `@Args(index?)`, `@Parent(index?)`, and `@Context(index?)` on the field resolver method with distinct indexes. Code-first field argument DTO binding is supported through `@FieldResolver({ input: InputDto })`, optional `argTypes`, and `@Args(index?)`; `input` and `@Args()` require each other and are invalid on root operations. There is no `forRootAsync(...)`, schema-first field-resolver attachment, or `@Subscription({ topics })` contract. Optional WebSocket subscriptions require a server-backed Node HTTP/S adapter. |
 | Controller parameter decorators such as `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()`, plus `Pipe` / `ValidationPipe` transformation | `@RequestDto(...)` with field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, and `@Convert(...)` from `@fluojs/http`; a `RequestContext` handler parameter for advanced request/response access | fluo does not expose NestJS-style controller parameter decorators or a public parameter Pipe stage. Bind one request DTO, declare each field source, use `@Convert(...)` for number/boolean/date/domain conversion, then validate the materialized DTO with the validation package. |
 | `createApplicationContext()` standalone bootstrap | `FluoFactory.createApplicationContext(AppModule)` | Standalone application context exists in `@fluojs/runtime`. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `createTestingModule({ rootModule }).overrideModule(...)` from `@fluojs/testing` | fluo testing uses an explicit `rootModule` and replacement compile seam so tests preserve authored module identity without mutating module metadata globally. |
 | NestJS request transaction interceptor | Service `@Transaction()` from the persistence package, or explicit `requestTransaction(...)` at the controller/request boundary | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` remain deprecated 1.x compatibility bridges for existing imports. New code should keep business transactions on services and use explicit `requestTransaction(...)` only when the entire request must share one boundary, forwarding `RequestContext.request.signal` when available. Drizzle has no compatibility interceptor export. |
 | `@HealthCheck()` controller method with `HealthCheckService.check([...])` | `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` from `@fluojs/terminus` | Module-level registration is the primary API so runtime `/health` and `/ready` routes include indicator and platform diagnostics consistently. |
 | NestJS Terminus memory/disk or Redis checks | `@fluojs/terminus/node` and `@fluojs/terminus/redis` | Node.js memory/disk helpers and Redis helpers live on dedicated subpaths. The root package does not make Redis peers or Node filesystem access part of the default import boundary. |
+| NestJS Prometheus module registration or a shared `prom-client` registry | `MetricsModule.forRoot(...)`, `MetricsService`, and `Registry` from `@fluojs/metrics` | This is a fluo-native Prometheus integration, not a NestJS Dynamic Module compatibility layer. Configure final options synchronously before module composition. `GET /metrics` is the default scrape route, HTTP collectors are opt-in through `http`, and omitting `registry` creates an isolated registry per application bootstrap. Pass a `Registry` explicitly only when framework and application metrics intentionally share one scrape surface. |
 | `@nestjs/throttler` global throttler setup | `ThrottlerModule.forRoot(...)` plus explicit `@UseGuards(ThrottlerGuard)` from `@fluojs/throttler` / `@fluojs/http` | Module registration provides the policy and guard provider; route enforcement starts only where the guard is attached. |
 | `@WebSocketGateway()` with `@SubscribeMessage()` and parameter decorators | `@WebSocketGateway()` with `@OnMessage(event?)`, positional handler arguments, and optional `WebSocketRoomService` from `@fluojs/websockets` | fluo websocket handlers receive `(payload, socket, request, socketId)` directly. The stable `socketId` can be passed to `WebSocketRoomService`. There are no Nest-style `@MessageBody()`, `@ConnectedSocket()`, or `@SubscribeMessage()` parameter/decorator rewrites. |
 | NestJS Socket.IO gateway return values, gateway `path`, scoped providers, or `@WebSocketServer()` | `@fluojs/socket.io` plus `@fluojs/websockets` decorators with `@OnMessage(...)`, explicit acknowledgement callbacks, singleton gateway registration, and `@Inject(SOCKETIO_SERVER)` | Socket.IO handlers do not turn return values into implicit emits or ACK replies. fluo maps `@WebSocketGateway({ path: '/chat' })` to the Socket.IO namespace `/chat`, while the Engine.IO request path stays `/socket.io/`; do not carry over a NestJS Engine.IO `path` assumption. Register migrated gateways as singleton providers/controllers because request/transient gateways are warned and skipped. `serverBacked` is unsupported for Socket.IO gateways. Install/import the websockets companion for decorators and inject `SOCKETIO_SERVER` when migrating gateway-server access, multi-room emits, or volatile delivery. |
-| `@nestjs/cache-manager` / `CacheModule.register(...)` | `CacheModule.forRoot(...)`, `CacheService`, and cache decorators from `@fluojs/cache-manager` | fluo cache registration is synchronous. Prepare Redis or custom stores before module registration, inject `CacheService` for manual cache operations, and use `httpKeyStrategy` or `@CacheKey(...)` for request-aware response-cache keys. |
+| `@nestjs/cache-manager` / `CacheModule.register(...)` / `registerAsync(...)` | `CacheModule.forRoot(...)`, `CacheModule.forRootAsync({ inject, useFactory, global? })`, `CacheService`, and cache decorators from `@fluojs/cache-manager` | Use synchronous registration after preparing final Redis/custom stores, or injected-factory async registration when final store, TTL, namespace, or key strategy depends on DI or bootstrap work. Async dependencies must come from bootstrap runtime providers or globally visible exports; NestJS `imports`, `useClass`, and `useExisting` are unsupported. Inject `CacheService` for manual cache operations, use `httpKeyStrategy` or `@CacheKey(...)` for request-aware keys, express `ttl` in seconds, map `isGlobal` to module-local `global`, and re-express NestJS store adapters as fluo `CacheStore` values. |
 | `@nestjs/event-emitter` / `@OnEvent()` handlers | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, and `@OnEvent(EventClass)` from `@fluojs/event-bus` | Event routing is class-based, `static eventKey` stabilizes distributed transport channels, handlers are discovered only from singleton providers/controllers, and awaited or background publish work remains in shutdown drain tracking. A listener that throws or rejects is logged and isolated for local and inbound transport dispatch, so other matching listeners continue; that listener failure alone does not reject `publish(...)` or surface through inbound callback completion. |
 | `@nestjs/cqrs` command/query/event handlers and sagas | `CqrsModule.forRoot(...)`, standard `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, and `@Saga(...)` from `@fluojs/cqrs` | CQRS discovery scans singleton providers only, not controllers or emitted design metadata. Commands and queries remain point-to-point; event handlers and sagas fan out by provider token before delegated `@fluojs/event-bus` publication. |
 | `ClientsModule.register(...)`, injected `ClientProxy`, and NestJS broker transport options | `MicroservicesModule.forRoot({ transport })`, `MICROSERVICE` typed as `Microservice`, and transport adapters from `@fluojs/microservices/<transport>` | Registration and the programmatic facade stay on root `@fluojs/microservices`; NATS, Kafka, and RabbitMQ collaborators remain application-owned, and `send()`, `emit()`, and `close()` have distinct completion boundaries described below. |
 | NestJS `@MessagePattern(...)` / `@EventPattern(...)` handler discovery and provider metadata | TC39 standard pattern decorators from `@fluojs/microservices` plus explicit module `providers` or `controllers` registration | fluo discovers decorated public instance methods only on classes registered in the compiled module graph. It does not scan NestJS metadata, `reflect-metadata`, or emitted design types. |
 | NestJS Redis async module registration or shared Redis Pub/Sub clients | `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, and `getRedisClientToken(name)` from `@fluojs/redis` | fluo Redis registration is synchronous and each `forRoot(...)` call creates a client from final options. Resolve environment-specific options before registration; do not pass or expect the module to adopt an externally created client. Keep Pub/Sub subscribers on a dedicated duplicate or named client instead of reusing the ordinary command client. |
-| `@nestjs/bull` / `@nestjs/bullmq` processor discovery through `@Processor(...)`, `@Process(...)`, or provider metadata | `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` providers, and explicit `@Inject(...)` from `@fluojs/queue`, `@fluojs/redis`, and `@fluojs/core` | fluo discovers only decorated singleton providers/controllers in the compiled module graph. Workers expose `handle(job)`; Queue does not read NestJS metadata or automatically preserve a legacy Bull/BullMQ `queueName`, named job, persisted payload, or their topology. |
+| `@nestjs/bull` / `@nestjs/bullmq` processor discovery through `@Processor(...)`, `@Process(...)`, or provider metadata | `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` providers, and explicit `@Inject(...)` from `@fluojs/queue`, `@fluojs/redis`, and `@fluojs/core` | fluo discovers only decorated singleton providers/controllers in the compiled module graph. Workers expose `handle(job)`; Queue does not read NestJS metadata or automatically preserve a legacy Bull/BullMQ `queueName`, named job, persisted payload, or their topology. Queue requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory runtime dependency. |
 | `@nestjs/schedule` decorators, `SchedulerRegistry`, or `CronJob` handles | `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, and `SCHEDULING_REGISTRY` from `@fluojs/cron` | Rename NestJS `timeZone` to fluo `timezone`. Do not carry `waitForCompletion`: fluo has no such option and always skips a tick when the same task instance is still running. fluo starts decorator-discovered tasks during application bootstrap, starts dynamic registry tasks when added to a started registry, and exposes read-only task descriptors instead of live scheduler handles. |
 | NestJS-style email async module registration with `imports`, `useClass`, or `useExisting` | `EmailModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/email` | fluo email async registration supports injected factory options only. Register dependencies in the application module graph first, list tokens in `inject`, and set `global: false` only when opting out of the default global provider visibility. |
 | NestJS-style notification modules, decorator-discovered channel providers, or implicit queue/event integrations | `NotificationsModule.forRoot({ channels, queue?, events?, global? })` or `NotificationsModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/notifications` | fluo notifications registration uses explicit `NotificationChannel` values passed in `channels`. Queue adapters and event publishers are application-owned seams, not module-owned resources, and `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` are global by default unless `global: false` is set. |
 | NestJS Slack modules that assume `imports`, `useClass`, `useExisting`, a package-level multi-client registry, or `isGlobal` | `SlackModule.forRoot({ ..., global? })` or `SlackModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/slack` | fluo Slack async registration consumes injected factory options only. Register dependencies in the application module graph first, list their tokens in `inject`, return final Slack options from `useFactory`, and compose app-owned modules/providers or facades for multiple clients. |
 | NestJS Discord modules that assume `imports`, `useClass`, `useExisting`, `isGlobal`, or custom internal provider tokens | `DiscordModule.forRoot({ ..., global? })` or `DiscordModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/discord` | fluo Discord registration is singleton-oriented and injected-factory-only for async setup. The package exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default unless `global: false` is set; internal provider helpers and option tokens are intentionally private. |
 
+## OpenAPI Contract Differences
+
+NestJS Swagger migration is not one-to-one at the generated-document boundary:
+
+- fluo injects `400`, `401`, `403`, `404`, and `500` responses plus an `ErrorResponse` schema by default, without replacing an explicitly declared response. Review that generated error contract before regenerating clients, or select `defaultErrorResponsesPolicy: 'omit'` when legacy clients must not receive the injected responses.
+- fluo derives `operationId` from the controller tag, handler name, HTTP method, and normalized path; collisions receive numeric suffixes. If generated clients require legacy operation identifiers, use `documentTransform` to rename the generated operation IDs before serving the document, then validate the transformed output with the client generator.
+- In `OpenApiModule.forRootAsync(...)`, `documentPath` and `uiPath` belong to the outer registration object because their routes compile before `useFactory(...)` resolves. Keep routes beside `inject` and `useFactory`, and return document configuration from the factory; factory-returned paths cannot reconfigure the registered routes.
+
+## GraphQL Field Resolver DTO Arguments
+
+The prior migration limitation for field argument DTO binding is superseded for code-first object fields. Put GraphQL argument fields on an `InputDto` with `@Arg(...)`, pass it through `@FieldResolver({ input: InputDto })`, and bind the materialized, validated DTO with `@Args(index?)`. `@Args()`, `@Parent()`, and `@Context()` are TC39 method decorators, so every binding must use a distinct zero-based method index; duplicate indexes fail during decorator evaluation. Bootstrap rejects `input` without `@Args()`, `@Args()` without `input`, and every one of these bindings on root operations. Request-scoped root and field resolvers share one HTTP or subscription operation container. Schema-first field-resolver attachment remains unsupported.
+
+### Field Resolver DTO Limitation
+
+Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is supported. The remaining limitation is schema-first field-resolver attachment only.
+
 ## Breaking Differences
 
 - Decorators MUST follow the TC39 standard model. NestJS legacy decorator assumptions do not carry over.
 - Dependency injection is NEVER inferred from constructor types. fluo requires explicit `@Inject(...)` declarations for constructor dependencies.
 - NestJS property injection MUST become constructor injection. Put `@Inject(TokenA, TokenB)` on the class and keep its Token order aligned with the constructor parameters; do not attach `@Inject(...)` to properties or parameters.
+- NestJS provider scopes are not scope bubbling. Declare a fluo provider as `@Scope('request')`, `@Scope('transient')`, or with its explicit provider `scope`; singleton remains the default. Resolve request-scoped providers only from `createRequestScope()`: resolving one from the root throws `RequestScopeResolutionError`, and injecting one into a singleton throws `ScopeMismatchError`.
+- NestJS `@Optional()` must become `optional(Token)` inside the class-level `@Inject(...)` token list or a provider `inject` array. `optional(...)` is not a property, parameter, or class decorator; an absent registration resolves as `undefined`.
 - NestJS Module `forwardRef(...)` has no fluo equivalent. Break Module import cycles by extracting shared Providers into a separate Module or package. fluo's `forwardRef(...)` only defers lookup for one dependency Token in class-level `@Inject(...)` or Provider `inject`; it does not resolve Module cycles or true constructor cycles.
 - HTTP listening is adapter-first. `FluoFactory.create(...)` does not select a platform implicitly: it may build an adapterless application shell, but `listen()` requires an application created with an explicit adapter.
 - NestJS `beforeApplicationShutdown` is unsupported and does not add a phase between fluo's documented shutdown hooks. Move preparation to `onModuleDestroy()` when it must precede application-wide signal cleanup, or to `onApplicationShutdown(signal?)` when it needs the signal. Do not introduce a compatibility shim, fallback, alias, or new runtime hook; the four-hook contract and its startup/shutdown ordering remain unchanged.
 - `@nestjs/config` migration is not an async Dynamic Module or namespace-loader clone. `@fluojs/config` exposes synchronous `ConfigModule.forRoot(...)`; pass ambient process values through the explicit `processEnv` option, validate the merged snapshot with a synchronous Standard Schema `schema`, and use `global?: boolean` with default global visibility instead of NestJS `isGlobal`. Await remote secrets and NestJS `load` factories at the application bootstrap boundary before module graph construction, but preserve their nested objects in `defaults` or `runtimeOverrides`; plain objects deep-merge and remain available through dot-path `ConfigService` lookups.
 - Configuration can be resolved in `FluoFactory.create(AppModule)` or `FluoFactory.createApplicationContext(AppModule)` without an HTTP adapter. Only `listen()` has the adapter requirement. When an adapter option such as `port` comes from configuration, prepare one validated snapshot before HTTP application creation, register that same snapshot with `ConfigModule`, and construct the adapter from it. `app.listen(port)` does not select a platform or port.
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
+- Nested DTO validation MUST name its target explicitly with `@ValidateNested(() => ChildDto)`. fluo does not consume class-transformer `@Type(...)`, `reflect-metadata`, or emitted design metadata to infer nested constructors.
 - NestJS controller parameter decorators, Pipe, and `ValidationPipe` migration are not parameter-for-parameter replacements. Replace `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()` assumptions with one `@RequestDto(...)`, field-level source decorators, `@Convert(...)`, and an explicit `RequestContext` handler parameter when low-level access is necessary. Validation runs after DTO materialization instead of through a public controller-parameter Pipe stage.
 - Do not expect `ClassSerializerInterceptor`-style post-processing after taking direct response ownership. Return DTOs without committing the response when `SerializerInterceptor` should shape them. If migrated code calls `RequestContext.response.send(...)`, `redirect(...)`, or a manual streaming helper, it must produce the final safe payload before that commit. Afterward, `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged; other interceptors may still transform the chain result. The dispatcher independently skips a second success-response write.
-- Do not carry over `ValidationPipe` whitelist/forbid assumptions or class-validator group execution. Ordinary fluo validators skip `null` and `undefined`, so add `@IsDefined()` for required fields. When its input is a plain object, `materialize()` retains safe own enumerable extra properties rather than stripping or rejecting them; this filtering guarantee does not describe already-created DTO instances. Decorator options do not support `groups` or `always`. Use explicit input shaping and separate DTOs, mapped DTOs, `@ValidateIf(...)`, or class-level validators for workflow-specific rules.
+- Do not carry over `ValidationPipe` whitelist-stripping assumptions or class-validator group execution. Ordinary fluo validators skip `null` and `undefined`, so add `@IsDefined()` for required fields. When its input is a plain object, `materialize()` retains safe own enumerable extra properties by default. Pass `{ undeclaredProperties: 'reject' }` as its third argument for an explicit recursive rejection boundary; initialized and metadata-backed DTO fields plus binding aliases are accepted, extras produce `UNDECLARED_PROPERTY`, and nothing is silently stripped. This policy does not inspect already-created DTO instances. Decorator options do not support `groups` or `always`. Use separate DTOs, mapped DTOs, `@ValidateIf(...)`, or class-level validators for workflow-specific rules.
 - NestJS i18n request-scoped context and resolver discovery do not carry over. Run `resolveHttpLocale(...)` with an ordered resolver list at an application-owned request boundary, read only the metadata stored on that `RequestContext` with `getHttpLocale(...)`, and pass its `locale` to each `I18nService` or `localizeDtoValidationError(...)` call. The validation helper does not read request state or a global locale implicitly.
 - NestJS Passport migration is not full NestJS Passport compatibility. The Passport.js bridge adapts one explicitly registered strategy execution to fluo `AuthStrategy`; it does not install Passport middleware, sessions, serializers/deserializers, or automatic strategy discovery. It adds no implicit guards, request augmentation beyond the documented `requestContext.principal` mapping, or host middleware ownership. Session and serializer/deserializer migration remains application-owned.
-- NestJS JWT async registration is not a dynamic-module shape clone. `JwtModule.forRootAsync({ inject, useFactory, global? })` requires every injected dependency to be registered in the application module graph first, and `useFactory` must return the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
+- NestJS JWT async registration is not a dynamic-module shape clone. `JwtModule.forRootAsync({ inject, useFactory, global? })` requires every injected dependency to be registered in the application module graph first, and `useFactory` must return the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery. When using asymmetric access tokens with HMAC refresh tokens, configure `refreshToken.algorithms` explicitly; do not add HS algorithms to the access-token list solely for refresh tokens.
+- NestJS JWT method names do not preserve a synchronous boundary. fluo's `JwtService.sign(...)` and `JwtService.verify(...)` always return Promises, so every migrated call must use `await`; `signAsync()` and `verifyAsync()` aliases do not exist. `JwtService.decode(...)` is synchronous only because it parses without signature or claim verification. Treat every decoded value as attacker-controlled until `verify(...)` succeeds, and use the [JWT refresh learning path](../../book/beginner/ch14-jwt.md#145-refresh-token-rotation) when migrating refresh endpoints.
 - OpenAPI migration is not a reflection-driven `SwaggerModule` replacement. `OpenApiModule` requires `title` and `version`, and documented operations must come from explicit `sources`, explicit `descriptors`, or both; application `controllers` are not inferred. Handler return values and TypeScript return types do not produce response schemas. Without `@ApiResponse(...)`, the generated success response contains only the method-derived or `@HttpCode(...)` status and an `OK` description; provide `schema` or `type` to `@ApiResponse(...)` for response content. Duplicate OpenAPI path/method operations use later-descriptor precedence, and module composition places explicit `descriptors` after discovered `sources`, so explicit descriptors win collisions.
 - Controller decorators MUST be imported from `@fluojs/http`, while structural decorators such as `@Module` come from `@fluojs/core`.
 - NestJS `@Sse()` handlers that return Observables MUST be rewritten to construct `SseResponse` or return an `AsyncIterable`. Manual `SseResponse` streams should call `send(...)` or `comment(...)` and close from request abort or application cleanup paths; managed async iterables are closed by the dispatcher when the request aborts or the response stream closes.
@@ -98,17 +151,31 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Testing migrations must keep fluo's explicit `rootModule` assumption, authored module identity, request-level guard/interceptor/filter assertions, and metadata-free boundaries visible in tests. Do not port NestJS specs by assuming design metadata, implicit provider discovery, or a singleton application fixture owns cleanup for every request-path test.
 - NestJS Terminus controller-level `@HealthCheck()` handlers SHOULD be migrated to `TerminusModule.forRoot(...)` indicator and readiness registration. Direct `TerminusHealthService.check()` calls are available for tests or custom code, but they are not the primary endpoint registration API.
 - `@fluojs/terminus` does not create a separate process-only liveness route by default. Keep the default `GET /health` aggregated health route and `GET /ready` readiness gate, and define any narrower process probe at the application or deployment layer.
+- NestJS Prometheus migration is not an async Dynamic Module or implicit global-registry replacement. `MetricsModule.forRoot(...)` accepts final synchronous options only, so resolve environment-specific configuration before composing the application module. It creates a fresh `Registry` for each application bootstrap unless you pass `registry` explicitly; do not assume a NestJS or `prom-client` global registry is adopted. `GET /metrics` is enabled by default, `path: false` disables that scrape route, and built-in HTTP request collectors are installed only when `http: true` or an `http` options object is supplied.
 - Throttler migration is not a global-module-for-global-enforcement replacement. `ThrottlerModule.forRoot(...)` registers defaults, while `ThrottlerGuard` must be activated with guard metadata on protected controllers or handlers.
 - `@fluojs/throttler` exposes one module default plus class/method `@Throttle({ ttl, limit })` overrides. Multi-window policies such as burst plus sustained limits require explicit HTTP middleware, a custom `ThrottlerStore`, or an application-owned guard wrapper.
+- `@nestjs/throttler` TTL values are milliseconds, while `@fluojs/throttler` `ttl` values are seconds. Convert the unit explicitly: `ttl: 60_000` in NestJS becomes `ttl: 60` in fluo. Copying the value directly changes a one-minute window into a 1,000-minute window.
+- NestJS named skip metadata can use a method-level `false` value to reactivate throttling below a skipped class. fluo `@SkipThrottle()` has no argument and class- and method-level skips combine additively, so a skipped class cannot be reactivated on one method. Restructure the controller so the protected method is outside the skipped class, or use an application-owned guard wrapper when that policy is required.
+- NestJS `ThrottlerModule.forRootAsync(...)` dynamic-module shapes are unsupported. Resolve async secrets, configuration, and store preparation at the application bootstrap boundary, then pass final synchronous options to `ThrottlerModule.forRoot(...)`.
+- `ThrottlerGuard` and `keyGenerator` consume the HTTP `GuardContext` and `MiddlewareContext`; they are not WebSocket, GraphQL, RPC, or queue transport policies. Move equivalent limits to transport-owned guards or middleware at each of those boundaries.
+- Do not assume persisted NestJS throttle windows continue in fluo. The packages use different bucket keys and storage call contracts, so the default migration starts a new window. When continuity is required, provide an application-owned compatibility store or use a bounded cutover that permits the existing windows to expire.
+- Prefer `trustProxy` when migrating a proxy deployment. Declare the known proxy boundary with a hop count, CIDR list, or predicate so only that trusted suffix can supply `Forwarded`, `X-Forwarded-For`, host, or protocol metadata.
+- `trustProxyHeaders: true` remains a broad legacy compatibility mode for applications that intentionally trust the complete forwarding chain. It is not direct-peer-only trust and is not recommended for new deployments.
+- Malformed forwarding data fails closed to the direct transport identity; it never falls through from `Forwarded` or `X-Forwarded-For` to a lower-precedence client-IP header.
 - `@fluojs/platform-express` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` and preserves Express only as the host engine. This bounded range excludes Node 21, Node 22 before 22.2.0, and unverified Node 27+ to keep listener-level RFC `QUERY` ingress truthful. Before replacing a NestJS HTTP adapter, migrate controllers and providers to TC39 standard decorators, declare constructor tokens with class-level `@Inject(...)`, and use explicit module/provider registration. Keep `experimentalDecorators` and `emitDecoratorMetadata` disabled; changing the HTTP host does not preserve NestJS decorator, reflection metadata, or implicit dependency-discovery semantics.
 - `@fluojs/platform-express` is not an implicit middleware translation layer. The adapter constructs and owns its Express application; adopting or reusing an existing Express application is unsupported. Native Express/Connect `(req, res, next)` middleware from a NestJS or Express migration must be supplied through the adapter's explicit `nativeMiddleware` option at construction time, which runs in array order before Express routing and fluo dispatch. After bootstrap, calling `use(...)` to append to the native stack is not a supported surface. A handler that calls `next()` continues into fluo; a handler that ends the response does not. Native failures stay in the Express error chain, and native middleware resources remain application-owned. Prefer rewriting portable behavior as fluo `Middleware` before it enters `fluoFactory.create({ middleware })`.
-- Forwarded client IP headers are ignored unless `trustProxyHeaders: true` is set behind a trusted proxy that overwrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
+- `@fluojs/platform-express` is not an implicit middleware translation layer. The adapter constructs and owns its Express application; adopting or reusing an existing Express application is unsupported. Native Express/Connect `(req, res, next)` middleware from a NestJS or Express migration must be supplied through the adapter's explicit `nativeMiddleware` option at construction time, which runs in array order before Express routing and fluo dispatch. After bootstrap, calling `use(...)` to append to the native stack is not a supported surface. A handler that calls `next()` continues into fluo; a handler that ends the response does not. Native failures stay in the Express error chain, and native middleware resources remain application-owned. Prefer rewriting portable behavior as fluo `Middleware` before it enters `fluoFactory.create(AppModule, { middleware })`.
+- Forwarded client IP headers are ignored unless `trustProxy` or `trustProxyHeaders: true` is configured behind a trusted proxy that overwrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
 - The guaranteed throttled response metadata is HTTP `429` with `Retry-After`; add any extra rate-limit headers or body shape at the application boundary.
 - WebSocket migration is not a decorator-for-decorator replacement. Use `@OnMessage(event?)` from `@fluojs/websockets`, read handler inputs positionally as `(payload, socket, request, socketId)`, and use `WebSocketRoomService` for room membership or broadcasts instead of assuming NestJS gateway server injection or parameter decorators carry over. `WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service; inject the lifecycle service token with `@Inject(...)` (root entrypoint: `WebSocketGatewayLifecycleService`; explicit Node subpath: `NodeWebSocketGatewayLifecycleService`; other runtime subpaths: the matching `*WebSocketGatewayLifecycleService`) and type the constructor parameter as `WebSocketRoomService`. The root `@fluojs/websockets` and `@fluojs/websockets/node` module paths are the Node.js defaults with `IncomingMessage` upgrade guards; Bun, Deno, and Cloudflare Workers migrations should import from `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` so guard/request types and runtime lifecycle services stay at the correct subpath boundary. Room broadcast backpressure is applied only by the Node.js-backed adapter; the fetch-style runtimes do not apply a backpressure policy to room broadcasts. Raw WebSocket gateway return values are awaited and then ignored by default; send replies explicitly with the runtime socket argument, or opt into valid `{ event, data? }` return replies with `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`.
 - Socket.IO migration keeps the same explicit websocket handler model. Install `@fluojs/websockets` because `@fluojs/socket.io` reuses its `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators. A handler return value is awaited and then ignored; call the provided ACK callback when a client expects an acknowledgement, or inject `SOCKETIO_SERVER` from `@fluojs/socket.io` for native Socket.IO emits, multi-room fan-out, `.volatile`, and `@WebSocketServer()` replacement code. The package targets Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed adapters and the official Bun engine path; Deno and Workers are unsupported, Bun requires static CORS shapes, and every runtime rejects `@WebSocketGateway({ serverBacked })`. `@WebSocketGateway({ path })` selects a Socket.IO namespace rather than the fixed `/socket.io/` Engine.IO request path, and migrated gateways must be singleton providers/controllers because request/transient registrations are warned and skipped.
-- Cache-manager migration is not an async dynamic-module replacement. `@fluojs/cache-manager` exposes synchronous `CacheModule.forRoot(...)`; configure environment-specific clients at the application boundary first, then pass final cache options such as `store`, `ttl`, `keyPrefix`, `redis.clientName`, and `httpKeyStrategy`.
+- Cache-manager migration supports `CacheModule.forRootAsync({ inject, useFactory, global? })` as an injected-factory path, not a NestJS dynamic-module shape clone. Dependencies must be bootstrap runtime providers or globally visible module exports; parent-local providers and ordinary sibling/parent exports are not visible. Return final options such as `store`, `ttl`, `keyPrefix`, `redis.clientName`, and `httpKeyStrategy` from `useFactory`. The outer `global?` controls module visibility, while `imports`, `useClass`, and `useExisting` are unsupported.
 - NestJS-style cache-key customization should move to fluo's documented key seams instead of subclassing the interceptor. Use a function-valued `httpKeyStrategy` for an application-wide request-aware policy, or `@CacheKey(...)` with a literal key or key factory for handler-local behavior.
 - Custom cache tooling should read exported cache metadata helpers such as `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)` rather than reimplementing private metadata keys.
+- Cache TTL values are seconds, not milliseconds, and `@CacheTTL(ttlSeconds: number)` accepts only a static number. Inspect the installed underlying `cache-manager` dependency/version before converting a NestJS TTL: divide by 1000 only when that dependency generation defines TTLs in milliseconds. Move dynamic per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`.
+- The default HTTP cache key is path-only. `httpKeyStrategy` defaults to `'route'`, so query values are ignored until you select `'route+query'`, a function strategy, or `@CacheKey(...)`.
+- NestJS `isGlobal` becomes fluo `global`, whose default is `false`. Cache providers are module-local unless a migration sets `global: true` or imports `CacheModule.forRoot(...)` into every consuming module.
+- NestJS store adapters such as `cache-manager-redis-store` are not fluo `CacheStore` values. Select the built-in `store: 'redis'` path or pass an object implementing `get`, `set`, `del`, and `reset`, and keep teardown ownership explicit: fluo forwards shutdown only to a store's optional `close()`/`dispose()`, so a directly supplied `redis.client` stays application-owned.
 - Event-bus migration is class-based rather than string-pattern based. Use `@OnEvent(EventClass)`, keep retryable or slow side effects idempotent, and move long-running/retry-heavy work to an explicit queue handoff instead of hiding it in an awaited event handler.
 - Event-bus publisher completion is not an acknowledgement that every listener succeeded. Matching local listener failures are logged and isolated, while other matching listeners continue. A local listener failure alone does not reject `publish(...)`. Inbound transport listeners follow the same isolation rule, so inbound callback completion does not surface isolated listener failures. Publisher completion does not prove that every listener succeeded. Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract. Those failures retain their own separately documented behavior.
 - Use a directly declared `static eventKey` when distributed routing must survive class renames or minification. Transport publication fans out across the concrete event and inherited event channels; an inherited `eventKey` does not silently replace the subclass channel name.
@@ -118,7 +185,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Pass the optional `CqrsDispatchContext` argument through nested command, query, event, and saga dispatch unchanged. It is a frozen fieldless value whose trusted topology and shutdown-drain state remains private; do not construct, clone, inspect, or mutate it, and do not expect direct saga dispatch to opt into shutdown work.
 - Redis migration is not an async dynamic-module replacement. `@fluojs/redis` exposes synchronous `RedisModule.forRoot(...)`, which creates a new client from final options rather than accepting or adopting an external client. Resolve secrets, hosts, and TLS options at the application boundary before passing them into the module; keep an external raw client outside the module and close it from application shutdown.
 - Redis Pub/Sub migration must keep subscriber ownership explicit. A `client.duplicate()` subscriber is application-owned and must be connected, subscribed, and closed by the code that created it; use named `RedisModule.forRoot({ name: 'subscriber', ... })` plus `getRedisClientToken('subscriber')` when fluo should own the subscriber client's lifecycle timeouts.
-- Queue migration is not a NestJS processor-discovery compatibility layer. Register Redis and `QueueModule.forRoot(...)`, replace each processor with a TC39 standard `@QueueWorker(JobClass, options?)` class that implements `handle(job)`, list it as a singleton module provider, and declare constructor tokens with `@Inject(...)`. With `global: false`, the worker and Redis provider must remain reachable through the same authored module graph as that queue registration; request/transient workers are skipped. Queue owns processor lifecycle after registration, starts processors only after the application bootstrap-ready handoff, and waits up to `workerShutdownTimeoutMs` during shutdown.
+- Queue migration is not a NestJS processor-discovery compatibility layer. Register Redis and `QueueModule.forRoot(...)`, replace each processor with a TC39 standard `@QueueWorker(JobClass, options?)` class that implements `handle(job)`, list it as a singleton module provider, and declare constructor tokens with `@Inject(...)`. With `global: false`, the worker and Redis provider must remain reachable through the same authored module graph as that queue registration; request/transient workers are skipped. Queue owns processor lifecycle after registration, starts processors only after the application bootstrap-ready handoff, and waits up to `workerShutdownTimeoutMs` during shutdown. Before adopting the Queue major release, move deployments from Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, or Node.js 27+ to `>=20.19.3 <21 || >=22.2.0 <27`.
 - Queue owns processor lifecycle and a different persistence identity. NestJS Bull/BullMQ can store multiple named job values under one `queueName`; fluo uses `jobName` as both its BullMQ queue name and named job for one worker/job type. Setting `jobName` alone therefore cannot preserve that legacy topology, and Queue does not consume NestJS metadata or automatically transform a persisted payload. Before producer cutover, either drain the legacy queue with its old workers, transform and re-enqueue compatible payloads into fluo's per-job queues, or deploy separate queue names while the legacy workers drain.
 - Queue registration scopes isolate DI ownership but do not namespace BullMQ queue identity. Two scopes that resolve the same Redis dependency and discover the same `jobName` fail bootstrap before worker resources are created. Give migrated owners distinct `jobName` values or configure distinct named Redis registrations through `clientName`.
 - Cron migration is not a `SchedulerRegistry`/`CronJob` handle-preserving replacement. Use public instance methods for `@Cron`, `@Interval`, and `@Timeout`; move private or static scheduled work behind a public provider method; and use `SCHEDULING_REGISTRY.get(...)` / `getAll()` for `SchedulingTaskDescriptor` snapshots rather than mutating live `CronJob` handles.
@@ -129,6 +196,62 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 - Slack migration is not a NestJS async dynamic-module or package-level multi-client registry clone. `SlackModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph before listing their tokens in `inject`, then return final Slack options from `useFactory`. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, mirrors that singleton wiring through `createSlackProviders(...)`, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `@fluojs/discord` exposes singleton compatibility tokens `DISCORD` and `DISCORD_CHANNEL`, uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keeps internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
+
+### Nested DTO and Mapped Type Rewrites
+
+NestJS commonly combines class-validator with class-transformer so reflected or transformer metadata supplies the nested constructor:
+
+```typescript
+import { Type } from 'class-transformer';
+import { IsString, ValidateNested } from 'class-validator';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address = new AddressDto();
+}
+```
+
+In fluo, move that constructor into `@ValidateNested(...)` and remove class-transformer from this boundary:
+
+```typescript
+import { IsString, ValidateNested } from '@fluojs/validation';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested(() => AddressDto)
+  address = new AddressDto();
+}
+```
+
+`@ValidateNested(() => AddressDto)` is the runtime source of truth for materialization and recursive validation. fluo does not read `@Type(...)`, class-transformer metadata, `reflect-metadata`, or `emitDecoratorMetadata`; keep the legacy decorator compiler flags disabled. This is an explicit rewrite, not a compatibility shim.
+
+Mapped DTO helpers also move to fluo imports:
+
+```typescript
+import {
+  IntersectionType,
+  OmitType,
+  PartialType,
+  PickType,
+} from '@fluojs/validation';
+
+class UpdateUserDto extends PartialType(CreateUserDto) {}
+class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
+```
+
+All four helpers are exported from `@fluojs/validation`; `@fluojs/validation/mapped-types` is also available as the dedicated mapped-type subpath. `PickType`, `OmitType`, and `PartialType` preserve applicable field-level validation and binding metadata but intentionally do not copy base class-level validators, because a subset or optionalized DTO may no longer satisfy those validators' field assumptions. Audit and redeclare any class-level rule that is still valid on the derived DTO. `IntersectionType` preserves field-level and class-level validation from every input DTO because the intersection retains all source contracts. Do not assume NestJS mapped-type class-level metadata behavior carries over implicitly.
 
 ### NestJS Config Registration and Bootstrap Migration
 
@@ -217,6 +340,69 @@ Replace NestJS i18n's resolver discovery and request-scoped context with one exp
 
 `I18nModule.forRoot(...)` is synchronous. Finish asynchronous catalog or configuration loading at the application-owned bootstrap boundary before `I18nModule.forRoot(...)`, then define the module graph with the completed values. This is application-owned composition, not a NestJS dynamic-module runtime bridge or compatibility layer; the framework-agnostic root contract does not gain `forRootAsync(...)`.
 
+#### Catalog Aggregation and Fallback Migration
+
+Do not pass a NestJS loader configuration through to fluo registration. Load every required locale and namespace at the application-owned bootstrap boundary, then pass the completed locale-scoped catalog map to the synchronous `I18nModule.forRoot(...)` call:
+
+```ts
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const catalogLoader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const catalogEntries = await Promise.all(
+  locales.map(async (locale) => {
+    const namespaceEntries = await Promise.all(
+      namespaces.map(async (namespace) => [
+        namespace,
+        await catalogLoader.load(locale, namespace),
+      ] as const),
+    );
+
+    return [locale, Object.fromEntries(namespaceEntries)] as const;
+  }),
+);
+const catalogs = Object.fromEntries(catalogEntries);
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: locales,
+      fallbackLocales: { ko: ['en'] },
+      catalogs,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Each loader result stays below its namespace instead of being shallow-merged. For example, `locales/ko/common.json` is addressed with `i18n.translate('title', { locale: 'ko', namespace: 'common' })`. A missing catalog file still rejects aggregation with `I18N_MISSING_CATALOG`; `fallbackLocales` does not silently substitute a missing loader result.
+
+Convert NestJS i18n fallback intent explicitly:
+
+```ts
+// NestJS i18n
+I18nModule.forRoot({
+  fallbackLanguage: 'en',
+  fallbacks: { ko: 'en' },
+});
+
+// fluo
+I18nModule.forRoot({
+  defaultLocale: 'en',
+  fallbackLocales: { ko: ['en'] },
+  catalogs,
+});
+```
+
+After registration, message lookup remains deterministic: the explicit locale, that locale's `fallbackLocales` chain, `defaultLocale`, the per-call `defaultValue`, then `missingMessage`. The asynchronous aggregation above completes before synchronous registration; it does not change that lookup order or add `forRootAsync(...)`.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { I18nModule, type I18nService } from '@fluojs/i18n';
@@ -224,12 +410,25 @@ import {
   createAcceptLanguageLocaleResolver,
   getHttpLocale,
   resolveHttpLocale,
+  type HttpLocaleResolver,
 } from '@fluojs/i18n/http';
 import { localizeDtoValidationError } from '@fluojs/i18n/validation';
-import type { RequestContext } from '@fluojs/http';
+import type { Middleware, RequestContext } from '@fluojs/http';
+import { FluoFactory } from '@fluojs/runtime';
+import { createNodeHttpAdapter } from '@fluojs/runtime/node';
 import type { DtoValidationError } from '@fluojs/validation';
 
 const acceptLanguage = createAcceptLanguageLocaleResolver();
+
+class TenantLocaleResolver {
+  resolve(context: RequestContext) {
+    const locale = context.request.headers['x-tenant-locale'];
+    return typeof locale === 'string' ? { locale, source: 'tenant-header' } : undefined;
+  }
+}
+
+const tenantLocaleResolver = new TenantLocaleResolver();
+const mapTenantLocaleResolver: HttpLocaleResolver = ({ context }) => tenantLocaleResolver.resolve(context);
 
 @Module({
   imports: [
@@ -245,13 +444,22 @@ const acceptLanguage = createAcceptLanguageLocaleResolver();
 })
 class AppModule {}
 
-function bindRequestLocale(context: RequestContext) {
-  return resolveHttpLocale(context, {
-    defaultLocale: 'en',
-    supportedLocales: ['en', 'ko'],
-    resolvers: [acceptLanguage],
-  });
-}
+const requestLocaleHook: Middleware = {
+  async handle({ requestContext }, next) {
+    resolveHttpLocale(requestContext, {
+      defaultLocale: 'en',
+      supportedLocales: ['en', 'ko'],
+      resolvers: [mapTenantLocaleResolver, acceptLanguage],
+    });
+    await next();
+  },
+};
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodeHttpAdapter({ port: 3000 }),
+  middleware: [requestLocaleHook],
+});
+await app.listen();
 
 function localizeValidationFailure(
   i18n: I18nService,
@@ -263,7 +471,7 @@ function localizeValidationFailure(
 }
 ```
 
-Invoke `bindRequestLocale(...)` from application-owned middleware or another request hook before downstream translation or validation-error handling. `resolveHttpLocale(...)` runs resolvers in array order, ignores invalid or unsupported results, and stores the configured default with source `default` when none match. `getHttpLocale(...)` reads only that `RequestContext`; it does not consult global state.
+Map each custom NestJS resolver class to an `HttpLocaleResolver` and register one application-owned `Middleware` in `FluoFactory.create(...)`. The hook resolves the tenant value before `Accept-Language`, then downstream translation or validation-error handling reads the result from the same `RequestContext`. `resolveHttpLocale(...)` runs resolvers in array order, ignores invalid or unsupported results, and stores the configured default with source `default` when none match. `getHttpLocale(...)` reads only that `RequestContext`; it does not consult global state or another request's locale.
 
 `localizeDtoValidationError(...)` returns a new error whose issue messages use the explicit locale. Its default namespace is `validation`, candidate keys run from `source.field.code` through `code`, and missing translations preserve the original issue message unless `fallbackToIssueMessage: false` is selected. The helper remains transport-agnostic: HTTP chooses the locale here, but validation localization never reads HTTP state itself.
 
@@ -318,6 +526,12 @@ export class AuthModule {}
 ```
 
 `mapPrincipal(...)` is the only documented request-identity handoff: validate the Passport.js `user`, return a fluo `Principal` with a non-empty `subject` and object `claims`, and let `AuthGuard` assign it to `requestContext.principal`. The bridge does not install Passport middleware, sessions, serializers, deserializers, or automatic strategy discovery. It does not provide full NestJS Passport compatibility, implicit guards, request augmentation beyond that principal mapping, or host middleware ownership. Session and serializer/deserializer migration remains application-owned at the bootstrap and request-host boundaries.
+
+Before cutover, audit every bridged strategy against these request and lifecycle boundaries:
+
+- The bridge passes the active platform adapter's raw host request to `authenticate(request, options)` when available; otherwise it passes the normalized fluo request.
+- It never constructs a Passport-initialized Express request. Migrate dependencies on `request.logIn`, `request.user`, sessions, Passport middleware augmentation, and adapter-specific request fields to application-owned middleware, session, or host-adaptation code.
+- `app.close()` and application-context `close()` cancel unsettled bridge authentication and clear its action timeout. Do not retain external request work that assumes the bridge will wait for its timeout after shutdown begins.
 
 ### Prisma Request-Wide Transaction Migration
 
@@ -422,6 +636,48 @@ class OrdersMicroserviceModule {}
 
 Kafka and RabbitMQ keep inbound consumer callbacks pending until handler execution and any request response publication settle, so the broker adapter can choose acknowledgement or retry. That consumer-side boundary remains separate from the producer-side `emit()` promise. During shutdown, close the `Microservice` facade first, then close or drain caller-owned broker resources from the application bootstrap layer.
 
+### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration
+
+`@nestjs/cache-manager` and `@fluojs/cache-manager` expose overlapping cache concepts, but their option names, units, defaults, and ownership do not all carry over. Convert each of the following before reusing a NestJS cache configuration.
+
+- **TTL unit and defaults.** fluo `ttl` is a number of seconds. Before converting a NestJS TTL, inspect the installed underlying `cache-manager` dependency/version: divide by 1000 only when that dependency generation defines TTLs in milliseconds; copying such a value unchanged inflates expiry by 1000x. When `ttl` is omitted, `CacheModule.forRoot(...)` applies `300` seconds on the default memory path and `0` for the `redis` and custom-store paths.
+- **TTL `0` and invalid values.** `ttl: 0` means "no expiry", not "do not cache". A negative or non-finite TTL is treated as invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and the cache write for that handler, so the route falls through to the handler on every request.
+- **Static `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)` stores one static number as route metadata; it accepts no factory, context argument, or async value. A NestJS handler that computed a per-request lifetime must call `CacheService.set(key, value, ttlSeconds)` explicitly instead.
+- **Query-sensitive keys.** `httpKeyStrategy` defaults to `'route'`, which keys entries on the concrete request path only and ignores query values, so `/search?q=a` and `/search?q=b` would share one entry. Select `httpKeyStrategy: 'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` whenever a response varies by query parameters.
+- **`isGlobal` to `global`.** Rename `isGlobal` to `global`. Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules stay module-local. Either set `global: true` or import the returned module into each module that resolves cache providers; otherwise bootstrap fails to resolve them.
+- **Custom store adaptation.** `store` accepts `'memory'`, `'redis'`, or a `CacheStore` object. NestJS store adapters such as `cache-manager-redis-store` do not satisfy that contract; either use the built-in `store: 'redis'` path or wrap the adapter in an object exposing `get`, `set`, `del`, and `reset`. Convert callback/options completion to the Promise result that `CacheStore` expects, map Fluo `ttlSeconds` to the legacy adapter TTL in seconds, and make `reset()` delete only the cache namespace. Never blindly forward `CacheService.reset()` to a whole-database `flushDb`, because that could delete application-owned data outside the configured cache namespace.
+- **Teardown ownership.** Application shutdown closes `CacheService`, which forwards teardown only to a store's optional `close()` or `dispose()` hook. Implement one of those hooks on a custom store that owns sockets, pools, or timers. A raw client passed through `redis.client` is never closed by the module and must be closed from the application lifecycle, while a client resolved through `@fluojs/redis` keeps that package's own lifecycle ownership.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import Redis from 'ioredis';
+
+// Application-owned client: fluo never closes this instance.
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      // If the installed underlying cache-manager generation uses milliseconds,
+      // NestJS `ttl: 60_000` becomes 60 seconds.
+      ttl: 60,
+      // NestJS `isGlobal: true` becomes `global: true`.
+      global: true,
+      // Opt in explicitly when responses vary by query parameters.
+      httpKeyStrategy: 'route+query',
+      store: 'redis',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+class AppModule {}
+
+async function shutdown() {
+  await cacheClient.quit();
+}
+```
+
 ## Removed Concepts
 
 - `@Injectable()` as the default provider marker. Provider registration happens through the module `providers` array.
@@ -434,7 +690,8 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - Assuming every documented platform is part of `fluo new`; starter coverage is defined separately in the support matrix.
 - Assuming `@nestjs/terminus` controller decorators or a separate default liveness route are one-to-one Terminus migration targets.
 - Assuming `@nestjs/throttler` named definitions, global guard registration, or proxy header trust carry over without explicit Fluo wiring.
-- Assuming `@nestjs/cache-manager` async registration, implicit global cache enforcement, or interceptor subclassing carries over. fluo keeps cache setup on synchronous `CacheModule.forRoot(...)`, explicit `CacheInterceptor` placement, and documented key strategy hooks.
+- Assuming `@nestjs/cache-manager` async dynamic-module `imports`, `useClass`, `useExisting`, implicit global cache enforcement, or interceptor subclassing carries over. fluo supports synchronous `CacheModule.forRoot(...)` and injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, explicit `CacheInterceptor` placement, and documented key strategy hooks.
+- Assuming NestJS cache option units, defaults, or ownership carry over. fluo `ttl` is in seconds with a memory-path default of `300`, `@CacheTTL(...)` takes only a static number, conversion divides a NestJS TTL by `1000` only when the installed underlying `cache-manager` dependency generation defines milliseconds, `httpKeyStrategy` defaults to path-only `'route'`, `global` replaces `isGlobal` and defaults to module-local `false`, and NestJS store adapters must first be adapted to Fluo's `CacheStore` contract, shutdown reaches an adapted custom store only through `close()` or `dispose()`, and directly supplied Redis clients remain application-owned.
 - Assuming the deprecated Mongoose compatibility interceptor or implicit connection ownership should become the primary migration target. fluo keeps connection ownership application-side and prefers service `@Transaction()` plus explicit `requestTransaction(...)` boundaries.
 - Assuming NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, or implicit gateway server injection exists in fluo websocket gateways.
 - Assuming Socket.IO gateway return values become implicit client replies. fluo requires explicit ACK callbacks or raw `SOCKETIO_SERVER` emits.
@@ -493,15 +750,69 @@ Use `--apply` only after reviewing the report and warnings. Use `--only <comma-l
 ```bash
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
+
+The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, and `tsconfig`. The legacy `injectable` and `testing` tokens remain accepted aliases for `inject-params` and `tests`.
 
 Human-readable output is the default. Add `--json` when CI jobs, dashboards, or migration reports need stable machine-readable output. JSON mode writes only the structured migration report to stdout on success. Parser errors and invalid flag combinations still write their message to stderr, return exit code `1`, and do not emit partial JSON.
 
 The JSON report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata. Each file entry records `filePath`, whether the file changed, applied transforms, warning count, and warning details with category labels and source line numbers.
 
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The default NestJS bootstrap uses Express, so the default bootstrap transform rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds a static `listen(port)` argument into that adapter. Install `@fluojs/platform-express` and `express` before compiling the migrated application. Select only the independent transforms when you want to leave bootstrap unchanged:
+
+```bash
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
+
 The codemod can rewrite imports, remove `@Injectable()`, map provider scopes, migrate constructor parameter `@Inject(...)` usage, rewrite supported bootstrap/listen patterns, update test templates toward `@fluojs/testing`, update decorator compiler flags, and rewrite `baseUrl` path alias configuration. It does not remove the need for manual review. Treat every warning category as a post-codemod checklist item before accepting the migration.
+
+When removing `@Injectable()`, the codemod retains required `import type` bindings and removes only the obsolete `@Injectable` import binding. It does not remove other NestJS runtime value imports: unconverted values such as `Optional` remain for manual review. Manually verify every remaining `@nestjs/common` import, then migrate or remove it before removing the NestJS dependency.
+
+## HTTP migration boundaries
+
+### Route grammar is narrower than NestJS
+
+| NestJS route declaration | fluo migration |
+| --- | --- |
+| Wildcards and catch-alls such as `assets/*`, `:path*`, or `(.*)` | Define explicit routes instead. fluo supports only literal segments and full-segment `:param` placeholders; broad matching remains middleware-only. |
+| Regex-like, optional, or mixed-segment parameters such as `:id(\\d+)`, `:id?`, or `report-:id` | Split the behavior into explicit routes and validate the bound value in application code. `*`, `?`, `+`, grouping tokens, brackets, braces, backslashes, and a `:` outside a complete `:param` segment are rejected. |
+
+Do not infer HTTP wildcard support from NestJS's router. A fluo `ALL` method can select every HTTP method for one explicit path, but it does not widen the path grammar. See the [HTTP Catch-All Route Grammar Decision](../architecture/http-catch-all-route-grammar.md) before designing a catch-all migration.
+
+### Global pipeline registration belongs at bootstrap
+
+NestJS's application-wide pipeline calls map to `FluoFactory.create(...)` options, not to DI provider tokens:
+
+```ts
+const application = await FluoFactory.create(AppModule, {
+  middleware: [new RequestLogMiddleware()],
+  interceptors: [new EnvelopeInterceptor()],
+  filters: [new ApiExceptionFilter()],
+});
+```
+
+| NestJS registration | fluo migration |
+| --- | --- |
+| `app.use(...)` | Supply portable `middleware` at bootstrap. Do not move NestJS/Express `(req, res, next)` middleware unchanged into `FluoFactory.create(AppModule, { middleware })`: the portable contract is `handle(MiddlewareContext, next)`. Keep Express-specific handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`. This application-wide chain runs in addition to module middleware. |
+| `app.useGlobalInterceptors(...)` | Supply `interceptors` at bootstrap. |
+| `app.useGlobalFilters(...)` | Supply `filters` at bootstrap. This is the only shipped filter registration: filters run in declared order before fluo's built-in error writer, and the first filter that returns `true` stops the chain. |
+| `app.useGlobalGuards(...)` or `APP_GUARD` | No application-wide guard array exists. Put `@UseGuards(...)` explicitly on each controller or handler that requires it, and use an application-owned shared decorator or base-controller convention when that repetition is intentional. |
+
+`APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, and `APP_PIPE` are NestJS-specific provider tokens. Registering one as a fluo `providers` entry only makes it injectable; it does not configure a global HTTP pipeline. Use the bootstrap arrays above, explicit guard metadata, and fluo's binding/validation contracts instead of relying on `APP_*` discovery.
+
+### Multipart files use the portable request seam
+
+Do not carry `FileInterceptor`, `FilesInterceptor`, `@UploadedFile()`, `@UploadedFiles()`, or Multer-specific request objects into fluo. The host adapter supplies portable multipart values on `RequestContext.request.files`; read that array from the active request context and handle an absent array deliberately:
+
+```ts
+import { assertRequestContext } from '@fluojs/http';
+
+const files = assertRequestContext().request.files ?? [];
+```
+
+Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`, `mimetype`, `buffer`, and `size`. Keep storage, validation, and application policy outside adapter-specific upload interceptors.
 
 ## Related Docs
 
@@ -511,3 +822,7 @@ The codemod can rewrite imports, remove `@Injectable()`, map provider scopes, mi
 - [CQRS Contract](../architecture/cqrs.md)
 - [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.md)
+- [Book Chapter 5: Routing and Controllers](../../book/beginner/ch05-routing-controllers.md)
+- [Book Chapter 9: Guards and Interceptors](../../book/beginner/ch09-guards-interceptors.md)
+- [Book Chapter 11: Request Pipeline Anatomy](../../book/advanced/ch11-request-pipeline.md)
+- [Book Chapter 12: Execution Chain and Exception Chain](../../book/advanced/ch12-execution-chain.md)

@@ -10,7 +10,6 @@ import {
   type ServerOptions as HttpsServerOptions,
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
-import { Readable } from 'node:stream';
 import {
   BadRequestException,
   type CorsOptions,
@@ -48,6 +47,7 @@ import {
 } from '@fluojs/runtime/internal/http-adapter';
 import {
   dispatchWithRequestResponseFactory,
+  finalizeRouteOwnedMultipartBody,
   type RequestResponseFactory,
 } from '@fluojs/runtime/internal/request-response-factory';
 import {
@@ -58,7 +58,6 @@ import {
   createRequestSignal,
   normalizePrimaryContentType,
   parseQueryParamsFromSearch,
-  resolveAbsoluteRequestUrl,
   resolveRequestIdFromHeaders,
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
@@ -68,7 +67,7 @@ import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
-import { parseMultipart } from '@fluojs/runtime/web';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import express, {
   type ErrorRequestHandler,
   type Express,
@@ -83,6 +82,7 @@ import express, {
  * @remarks Native middleware remains platform-specific and follows Express response and error-chain semantics.
  */
 export type ExpressNativeMiddleware = RequestHandler | ErrorRequestHandler;
+type StreamingMultipartOptions = MultipartOptions & { strategy?: 'stream' };
 
 /**
  * Describes the express adapter options contract.
@@ -444,9 +444,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     const factory = this.requestResponseFactory;
     const frameworkResponse = factory.createResponse(response, request);
     const signal = factory.createRequestSignal(response);
+    let frameworkRequest: FrameworkRequest | undefined;
 
     try {
-      const frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
+      frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
         await factory.createRequest(request, signal),
         { descriptor, params },
       );
@@ -468,6 +469,8 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       }
 
       await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(request));
+    } finally {
+      await finalizeRouteOwnedMultipartBody(frameworkRequest);
     }
   }
 }
@@ -691,10 +694,14 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       this.committed = true;
       response.redirect(status, location);
     },
-    async send(body: unknown) {
+    async send(body: unknown, options) {
       if (response.writableEnded) {
         this.committed = true;
         return;
+      }
+
+      if (options?.compression === false) {
+        disableNativeCompression(response);
       }
 
       if (body === undefined && response.req.method.toUpperCase() === 'HEAD') {
@@ -753,6 +760,15 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
   return frameworkResponse;
 }
 
+function disableNativeCompression(response: ExpressResponse): void {
+  const cacheControl = response.getHeader('cache-control');
+  const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
+
+  if (!/\bno-transform\b/i.test(value)) {
+    response.setHeader('Cache-Control', value ? `${value}, no-transform` : 'no-transform');
+  }
+}
+
 function createFrameworkResponseStream(response: ExpressResponse): FrameworkResponseStream {
   return {
     close() {
@@ -763,6 +779,9 @@ function createFrameworkResponseStream(response: ExpressResponse): FrameworkResp
     get closed() {
       return response.writableEnded;
     },
+    disableCompression() {
+      disableNativeCompression(response);
+    },
     flush() {
       response.flushHeaders?.();
     },
@@ -772,22 +791,35 @@ function createFrameworkResponseStream(response: ExpressResponse): FrameworkResp
         response.removeListener('close', listener);
       };
     },
+    onError(listener: (error: unknown) => void) {
+      response.on('error', listener);
+      return () => {
+        response.removeListener('error', listener);
+      };
+    },
     waitForDrain() {
       if (response.writableEnded || response.destroyed) {
         return Promise.resolve();
       }
 
-      return new Promise<void>((resolve) => {
-        const settle = () => {
-          response.removeListener('drain', settle);
-          response.removeListener('close', settle);
-          response.removeListener('error', settle);
+      return new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          response.removeListener('drain', resolveDrain);
+          response.removeListener('close', resolveDrain);
+          response.removeListener('error', rejectError);
+        };
+        const rejectError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const resolveDrain = () => {
+          cleanup();
           resolve();
         };
 
-        response.once('drain', settle);
-        response.once('close', settle);
-        response.once('error', settle);
+        response.once('drain', resolveDrain);
+        response.once('close', resolveDrain);
+        response.once('error', rejectError);
       });
     },
     write(chunk: string | Uint8Array) {
@@ -816,10 +848,23 @@ async function createFrameworkRequest(
   };
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const parsed = await parseMultipartRequest(request, {
+      const resolvedMultipartOptions = {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      });
+      };
+
+      if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
+        frameworkRequest.body = parseMultipartStream({
+          body: request,
+          headers,
+          method: request.method,
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
+        return;
+      }
+
+      const parsed = await parseMultipartRequest(request, resolvedMultipartOptions);
       frameworkRequest.body = parsed.fields;
       frameworkRequest.files = parsed.files;
       return;
@@ -904,12 +949,7 @@ async function parseMultipartRequest(
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
   try {
     const result = await parseMultipart(
-      {
-        body: Readable.toWeb(request),
-        headers: normalizeHeaders(request.headers),
-        method: request.method,
-        url: resolveAbsoluteRequestUrl(request.url),
-      },
+      request,
       options,
     );
 

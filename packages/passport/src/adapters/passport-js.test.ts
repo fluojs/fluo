@@ -9,7 +9,7 @@ class UnsettledStrategy implements PassportJsStrategyLike {
   authenticate(): void {}
 }
 
-function createGuardContext(): GuardContext {
+function createGuardContext(input: { readonly raw: unknown } = { raw: {} }): GuardContext {
   const response = {
     committed: false,
     headers: {},
@@ -58,7 +58,7 @@ function createGuardContext(): GuardContext {
         params: {},
         path: '/auth/callback',
         query: {},
-        raw: {},
+        raw: input.raw,
         url: '/auth/callback',
       },
       response,
@@ -194,6 +194,52 @@ describe('PassportJsAuthStrategy action timeout', () => {
     await rejection;
     expect(delegationCount).toBe(0);
     expect(timerCount).toBe(0);
+  });
+});
+
+describe('PassportJsAuthStrategy request delegation', () => {
+  it('passes the active platform raw request to Passport strategies', async () => {
+    // Given
+    let receivedRequest: unknown;
+    const rawRequest = { platform: 'host-request' };
+    class RawRequestStrategy implements PassportJsStrategyLike {
+      success?: (user: unknown) => void;
+
+      authenticate(request: unknown): void {
+        receivedRequest = request;
+        this.success?.({ id: 'passport-user' });
+      }
+    }
+    const strategy = new PassportJsAuthStrategy(new RawRequestStrategy());
+
+    // When
+    const principal = await strategy.authenticate(createGuardContext({ raw: rawRequest }));
+
+    // Then
+    expect(receivedRequest).toBe(rawRequest);
+    expect(principal).toMatchObject({ subject: 'passport-user' });
+  });
+
+  it('passes the normalized fluo request when no raw request exists', async () => {
+    // Given
+    let receivedRequest: unknown;
+    class NormalizedRequestStrategy implements PassportJsStrategyLike {
+      success?: (user: unknown) => void;
+
+      authenticate(request: unknown): void {
+        receivedRequest = request;
+        this.success?.({ id: 'passport-user' });
+      }
+    }
+    const strategy = new PassportJsAuthStrategy(new NormalizedRequestStrategy());
+    const context = createGuardContext({ raw: undefined });
+
+    // When
+    const principal = await strategy.authenticate(context);
+
+    // Then
+    expect(receivedRequest).toBe(context.requestContext.request);
+    expect(principal).toMatchObject({ subject: 'passport-user' });
   });
 });
 

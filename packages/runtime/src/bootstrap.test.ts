@@ -1,5 +1,5 @@
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, RequestDto } from '@fluojs/http';
+import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, Produces, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
@@ -19,6 +19,60 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function createBootstrapFailureComponent(
+  id: string,
+  events: string[],
+): PlatformComponent {
+  let currentState: PlatformState = 'created';
+
+  return {
+    async health() {
+      return { status: 'healthy' };
+    },
+    id,
+    kind: 'test',
+    async ready() {
+      return { critical: false, status: 'ready' };
+    },
+    snapshot() {
+      return {
+        dependencies: [],
+        details: {},
+        health: { status: 'healthy' },
+        id,
+        kind: 'test',
+        ownership: {
+          externallyManaged: false,
+          ownsResources: true,
+        },
+        readiness: {
+          critical: false,
+          status: 'ready',
+        },
+        state: currentState,
+        telemetry: {
+          namespace: 'fluo.test',
+          tags: {},
+        },
+      };
+    },
+    async start() {
+      currentState = 'ready';
+      events.push('platform:start');
+    },
+    state() {
+      return currentState;
+    },
+    async stop() {
+      currentState = 'stopped';
+      events.push('platform:stop');
+    },
+    async validate() {
+      return { issues: [], ok: true };
+    },
+  };
 }
 
 function createRequest(path: string, query: FrameworkRequest['query'] = {}): FrameworkRequest {
@@ -1087,6 +1141,110 @@ describe('FluoFactory.createApplicationContext', () => {
     }
   });
 
+  it('continues bootstrapApplication() cleanup after a provider destroy failure', async () => {
+    const events: string[] = [];
+    const destroyFailure = new Error('provider destroy failed');
+    const shutdownFailure = new Error('provider shutdown failed');
+    const bootstrapFailure = new Error('readiness publication failed');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+    const platformComponent = createBootstrapFailureComponent('platform.bootstrap', events);
+
+    class FailingLifecycleProvider {
+      onApplicationShutdown(signal?: string) {
+        events.push(`provider:shutdown:${signal ?? 'none'}`);
+        throw shutdownFailure;
+      }
+
+      onModuleDestroy() {
+        events.push('provider:destroy');
+        throw destroyFailure;
+      }
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingLifecycleProvider],
+    });
+
+    await expect(
+      bootstrapApplication({
+        logger,
+        platform: { components: [platformComponent] },
+        rootModule: AppModule,
+      }),
+    ).rejects.toBe(bootstrapFailure);
+
+    expect(events).toEqual([
+      'platform:start',
+      'provider:destroy',
+      'platform:stop',
+      'provider:shutdown:bootstrap-failed',
+    ]);
+
+    const cleanupFailure = logger.error.mock.calls.find(
+      ([message]) => message === 'Failed to clean up after application bootstrap failure.',
+    )?.[1];
+
+    expect(cleanupFailure).toBeInstanceOf(AggregateError);
+    if (cleanupFailure instanceof AggregateError) {
+      expect(cleanupFailure.errors).toEqual([destroyFailure, shutdownFailure]);
+    }
+  });
+
+  it('continues application context cleanup after a provider destroy failure', async () => {
+    const events: string[] = [];
+    const destroyFailure = new Error('context provider destroy failed');
+    const bootstrapFailure = new Error('context readiness publication failed');
+    const platformComponent = createBootstrapFailureComponent('platform.context', events);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    class FailingLifecycleProvider {
+      onApplicationShutdown(signal?: string) {
+        events.push(`provider:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('provider:destroy');
+        throw destroyFailure;
+      }
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingLifecycleProvider],
+    });
+
+    try {
+      await expect(
+        FluoFactory.createApplicationContext(AppModule, {
+          platform: { components: [platformComponent] },
+        }),
+      ).rejects.toBe(bootstrapFailure);
+
+      expect(events).toEqual([
+        'platform:start',
+        'provider:destroy',
+        'platform:stop',
+        'provider:shutdown:bootstrap-failed',
+      ]);
+      expect(errorLog).toHaveBeenCalledWith(destroyFailure);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   it('runs startup and shutdown lifecycle hooks around close()', async () => {
     const events: string[] = [];
 
@@ -1669,6 +1827,59 @@ describe('FluoFactory.create HTTP dispatch request scopes', () => {
     expect(secondResponse.body).toEqual({ id: 'second:2' });
 
     await app.close();
+  });
+});
+
+describe('FluoFactory.create content negotiation', () => {
+  it('forwards bootstrap formatters through @Produces selection', async () => {
+    @Controller('/bootstrap-negotiation')
+    class NegotiationController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [NegotiationController],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.create(AppModule, {
+      contentNegotiation: {
+        defaultMediaType: 'application/json',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+    });
+
+    try {
+      const request = createRequest('/bootstrap-negotiation');
+      request.headers = { accept: 'text/plain' };
+      const response = createResponse();
+
+      await app.dispatch(request, response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['Content-Type']).toBe('text/plain');
+      expect(response.headers.Vary).toBe('Accept');
+      expect(response.body).toBe('plain:{"ok":true}');
+    } finally {
+      await app.close();
+    }
   });
 });
 

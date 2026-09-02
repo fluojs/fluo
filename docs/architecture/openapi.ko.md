@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | 기본 문서 버전 | `buildOpenApiDocument(...)`는 항상 `openapi: '3.1.0'`을 생성합니다. | `packages/openapi/src/schema-builder.ts` |
 | HTTP 라우트 메타데이터 | 경로, HTTP 메서드, 핸들러 이름, 해석된 URI 버전 경로는 fluo HTTP handler descriptor에서 옵니다. Express 스타일 `:id` 경로 세그먼트는 최종 문서에서 `{id}`로 변환됩니다. | `packages/openapi/src/schema-builder.ts` |
-| Descriptor method 검증 | Descriptor operation은 fluo가 작성할 수 있는 OpenAPI Path Item method인 `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, `PATCH`로 제한됩니다. Runtime 전용 `ALL` 및 향후 또는 custom unsupported method는 operation을 생성하기 전에 문서 생성을 실패시킵니다. | `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/path-item.test.ts` |
+| Descriptor method 검증 | Descriptor operation은 fluo가 작성할 수 있는 OpenAPI Path Item method인 `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, `PATCH`, `TRACE`로 제한됩니다. Runtime 전용 `ALL` 및 향후 또는 custom unsupported method는 operation을 생성하기 전에 문서 생성을 실패시킵니다. | `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/path-item.test.ts` |
 | 컨트롤러 태그 | `@ApiTag(...)`가 컨트롤러 태그를 정의합니다. 없으면 컨트롤러 클래스 이름이 기본 태그가 됩니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | 오퍼레이션 메타데이터 | `@ApiOperation(...)`는 핸들러별 `summary`, `description`, `deprecated` 플래그를 저장합니다. | `packages/openapi/src/decorators.ts` |
 | 응답 메타데이터 | `@ApiResponse(...)`는 명시적 status/description/schema/type 메타데이터를 저장합니다. DTO `type` 값은 component schema reference로 변환됩니다. Handler 반환값과 TypeScript 반환 타입은 검사하지 않습니다. `@ApiResponse(...)`가 없으면 builder는 추론된 response schema가 아니라 method-derived 또는 `@HttpCode(...)` success status와 `OK` description만 생성합니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |

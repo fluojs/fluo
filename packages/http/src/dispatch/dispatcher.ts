@@ -2,14 +2,16 @@ import type { Token } from '@fluojs/core';
 import type { Container, RequestScopeContainer } from '@fluojs/di';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
-import { isSseMessage, SseResponse, type SseSendOptions } from '../context/sse.js';
+import { resolveRequestId } from '../context/request-id.js';
+import { isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
-import { getRequestHeader } from '../header-helpers.js';
 import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
+import { initializeCorrelationMiddlewareRequestContext } from '../middleware/correlation.js';
 import type {
   Binder,
+  ConditionalRequestOptions,
   ContentNegotiationOptions,
   ConverterLike,
   Dispatcher,
@@ -26,14 +28,28 @@ import type {
   InterceptorLike,
   MiddlewareContext,
   MiddlewareLike,
+  MiddlewareSnapshotLike,
   RequestContext,
   RequestObservationContext,
   RequestObserver,
   RequestObserverLike,
+  ResponseValidators,
 } from '../types.js';
+import {
+  type ConditionalRequestOutcome,
+  resolveConditionalRequest,
+} from './conditional-request-policy.js';
+import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
-import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveResponsePolicy,
+  resolveContentNegotiation,
+  writeErrorResponse,
+  writeSuccessResponse,
+} from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
+import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import {
   addPathDebugHeader,
   createPathDebugInfo,
@@ -42,9 +58,9 @@ import {
   type FastPathStats,
   shouldUseFastPathForRequest,
 } from './fast-path/index.js';
-import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
+import { FRAMEWORK_RESPONSE_VALUE_FINALIZER } from './response-integration.js';
 
 export type { FastPathEligibility, FastPathStats } from './fast-path/index.js';
 export { FAST_PATH_ELIGIBILITY_SYMBOL, FAST_PATH_STATS_SYMBOL } from './fast-path/index.js';
@@ -60,6 +76,8 @@ export interface CreateDispatcherOptions {
   binder?: Binder;
   /** Optional content negotiation configuration. */
   contentNegotiation?: ContentNegotiationOptions;
+  /** Optional dispatcher-owned HTTP conditional request policy. */
+  conditionalRequest?: ConditionalRequestOptions;
   /** Mapping of routes to their respective handlers. */
   handlerMapping: HandlerMapping;
   /** Global interceptors applied to all matched handlers. */
@@ -104,7 +122,7 @@ type FrameworkRequestWithPrincipal = FrameworkRequest & {
 
 interface CompiledMiddlewareScopePlan {
   alwaysRequiresRequestScope: boolean;
-  conditionalDefinitions: MiddlewareLike[];
+  conditionalDefinitions: MiddlewareSnapshotLike[];
 }
 
 interface CompiledDispatchStartPlan {
@@ -116,7 +134,7 @@ interface CompiledHandlerExecutionPlan {
   mergedInterceptors: InterceptorLike[];
   requestScope: CompiledMiddlewareScopePlan;
   requiresRequestScope: boolean;
-  routeGuards: GuardLike[];
+  routeGuards: readonly GuardLike[];
 }
 
 interface FastPathHandlerRuntimeCache {
@@ -171,6 +189,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
       return request.query;
     },
     body: request.body,
+    connection: request.connection,
     method: request.method,
     params: { ...request.params },
     path: request.path,
@@ -205,11 +224,7 @@ function readRequestId(request: FrameworkRequest): string | undefined {
     return request.requestId;
   }
 
-  const raw = getRequestHeader(request, 'x-request-id');
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const normalized = value?.trim();
-
-  return normalized ? normalized : undefined;
+  return resolveRequestId(request, false);
 }
 
 function createDispatchContext(
@@ -246,7 +261,7 @@ function createDispatchContext(
 
   const getWrappedContainer = (): RequestScopeContainer => {
     if (!wrappedContainer) {
-      wrappedContainer = {
+      const wrapped = {
         async resolve<T>(token: Token<T>): Promise<T> {
           const targetContainer = ensurePromoted();
           return targetContainer.resolve(token);
@@ -261,6 +276,21 @@ function createDispatchContext(
           return activeContainer.dispose();
         },
       };
+
+      const presenceAwareContainer = activeContainer as RequestScopeContainer & {
+        has?<T>(token: Token<T>): boolean;
+      };
+
+      if (typeof presenceAwareContainer.has === 'function') {
+        Object.assign(wrapped, {
+          has<T>(token: Token<T>): boolean {
+            const targetContainer = activeContainer as typeof presenceAwareContainer;
+            return targetContainer.has?.(token) ?? false;
+          },
+        });
+      }
+
+      wrappedContainer = wrapped;
     }
     return wrappedContainer;
   };
@@ -300,7 +330,7 @@ function createRequestDispatchScope(rootContainer: Container): DispatchScope {
 }
 
 function activeMiddlewareMayRequireRequestScope(
-  definitions: readonly MiddlewareLike[],
+  definitions: readonly MiddlewareSnapshotLike[],
   request: FrameworkRequest,
 ): boolean {
   return definitions.some((definition) => {
@@ -312,8 +342,8 @@ function activeMiddlewareMayRequireRequestScope(
   });
 }
 
-function compileMiddlewareScopePlan(definitions: readonly MiddlewareLike[]): CompiledMiddlewareScopePlan {
-  const conditionalDefinitions: MiddlewareLike[] = [];
+function compileMiddlewareScopePlan(definitions: readonly MiddlewareSnapshotLike[]): CompiledMiddlewareScopePlan {
+  const conditionalDefinitions: MiddlewareSnapshotLike[] = [];
 
   for (const definition of definitions) {
     if (!isMiddlewareRouteConfig(definition) || definition.routes.length === 0) {
@@ -656,23 +686,6 @@ async function resolveRequestObserver(
   return requestContext.container.resolve(definition as Token<RequestObserver>);
 }
 
-async function notifyObservers(
-  observers: RequestObserverLike[],
-  requestContext: RequestContext,
-  callback: (observer: RequestObserver, context: RequestObservationContext) => Promise<void> | void,
-  handler?: HandlerDescriptor,
-): Promise<void> {
-  const context: RequestObservationContext = {
-    handler,
-    requestContext,
-  };
-
-  for (const definition of observers) {
-    const observer = await resolveRequestObserver(definition, requestContext);
-    await callback(observer, context);
-  }
-}
-
 async function notifyObserversSafely(
   observers: RequestObserverLike[],
   requestContext: RequestContext,
@@ -684,10 +697,18 @@ async function notifyObserversSafely(
     return;
   }
 
-  try {
-    await notifyObservers(observers, requestContext, callback, handler);
-  } catch (error) {
-    logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+  const context: RequestObservationContext = {
+    handler,
+    requestContext,
+  };
+
+  for (const definition of observers) {
+    try {
+      const observer = await resolveRequestObserver(definition, requestContext);
+      await callback(observer, context);
+    } catch (error) {
+      logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
+    }
   }
 }
 
@@ -713,6 +734,7 @@ async function dispatchMatchedHandler(
   controllerContainer: RequestScopeContainer,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
+  conditionalRequest: ConditionalRequestOptions | undefined,
 ): Promise<{ readonly result: unknown } | undefined> {
   const routeGuards = executionPlan.routeGuards;
   if (routeGuards.length > 0) {
@@ -728,6 +750,47 @@ async function dispatchMatchedHandler(
     return;
   }
 
+  if (
+    contentNegotiation
+    && handler.route.produces?.length
+    && handler.route.redirect === undefined
+    && typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] !== 'function'
+  ) {
+    resolveResponsePolicy(handler, requestContext.request, contentNegotiation);
+  }
+
+  let conditionalOutcome: Exclude<ConditionalRequestOutcome, 'proceed'> | undefined;
+  let conditionalValidators: ResponseValidators | undefined;
+
+  if (conditionalRequest) {
+    const resolved = await resolveConditionalRequest(conditionalRequest, {
+      handler,
+      request: requestContext.request,
+    });
+    conditionalValidators = resolved.validators;
+
+    if (resolved.outcome !== 'proceed') {
+      conditionalOutcome = resolved.outcome;
+    }
+  }
+
+  if (
+    conditionalOutcome !== undefined
+    && !requiresResultFirstConditionalClassification(handler, requestContext)
+  ) {
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      undefined,
+      contentNegotiation,
+      requestContext,
+      conditionalValidators,
+      conditionalOutcome,
+    );
+    return { result: undefined };
+  }
+
   const result = executionPlan.mergedInterceptors.length === 0
     ? await invokeControllerHandler(handler, requestContext, binder, controllerContainer)
     : await runInterceptorChain(
@@ -741,13 +804,42 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
+  if (conditionalOutcome === undefined && result instanceof SseResponse) {
+    await waitForSseResponseCompletion(result);
+    ensureRequestNotAborted(requestContext.request);
+  } else if (
+    conditionalOutcome === undefined
+    && isAsyncIterable(result)
+    && await writeManagedSseIterable(handler, requestContext, result)
+  ) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
-  } else if (!(result instanceof SseResponse) && !requestContext.response.committed) {
-    await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation, requestContext);
+  } else if (!requestContext.response.committed) {
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      result,
+      contentNegotiation,
+      requestContext,
+      conditionalValidators,
+      conditionalOutcome,
+    );
   }
 
   return { result };
+}
+
+function requiresResultFirstConditionalClassification(
+  handler: HandlerDescriptor,
+  requestContext: RequestContext,
+): boolean {
+  const method = requestContext.request.method.toUpperCase();
+
+  return (method === 'GET' || method === 'HEAD')
+    && (
+      handler.route.redirect !== undefined
+      || typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] === 'function'
+    );
 }
 
 function resolveHandlerExecutionPlan(
@@ -775,6 +867,10 @@ async function dispatchNativeFastRoute(
   fastPathState: DispatcherFastPathState,
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
 ): Promise<boolean> {
+  if (options.conditionalRequest || (options.observers?.length ?? 0) > 0) {
+    return false;
+  }
+
   const eligibility = fastPathState.getEligibility(match.descriptor);
 
   if (!shouldUseFastPathForRequest(eligibility, request)) {
@@ -985,7 +1081,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
       addPathDebugHeader(context.response.setHeader.bind(context.response), debugInfo);
     }
 
-    if (shouldUseFastPathForRequest(eligibility, appMiddlewareContext.request)) {
+    if (!context.options.conditionalRequest && shouldUseFastPathForRequest(eligibility, appMiddlewareContext.request)) {
       const fastPathSuccess = await tryFastPathExecution(match.descriptor, context);
 
       if (fastPathSuccess) {
@@ -1015,6 +1111,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.dispatchScope.container,
         context.contentNegotiation,
         context.options.binder,
+        context.options.conditionalRequest,
       );
     });
   };
@@ -1072,6 +1169,7 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
     ...(context.options.errorRepresentation === undefined
       ? {}
       : { representation: context.options.errorRepresentation }),
+    ...(isContentNegotiationNotAcceptableException(dispatchError) ? { varyAccept: true } : {}),
   });
 }
 
@@ -1137,6 +1235,8 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         requestContext,
         response,
       };
+
+      initializeCorrelationMiddlewareRequestContext(options.appMiddleware ?? [], requestContext);
 
       await runWithRequestContext(phaseContext.requestContext, async () => {
         try {

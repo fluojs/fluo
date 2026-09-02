@@ -105,7 +105,7 @@ await app.listen();
 
 ## Conformance 커버리지
 
-`packages/platform-nodejs/src/index.test.ts`와 `packages/platform-nodejs/src/lifecycle.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. Adapter portability suite는 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
+`packages/platform-nodejs/src/index.test.ts`와 `packages/platform-nodejs/src/lifecycle.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. Adapter portability suite는 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, 단일 byte-range status/header/body semantic, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
 
 이 패키지는 `HttpApplicationAdapter`를 노출하며 `platform.components`에 등록되는 runtime-managed `PlatformComponent`가 아닙니다. 따라서 generic `createPlatformConformanceHarness(...)` component lifecycle 검사는 이 패키지의 지원 계약 범위에 포함되지 않고, `createHttpAdapterPortabilityHarness(...)`가 적용되는 공유 harness입니다.
 
@@ -121,6 +121,12 @@ await app.listen();
 - `NodejsApplicationSignal`: `runNodejsApplication(...)` shutdown 등록이 지원하는 시그널 이름입니다.
 - `NodejsHttpApplicationAdapter`: `createNodejsAdapter(...)`가 반환하는 어댑터 인스턴스를 설명하는 타입 전용 별칭이며, `@fluojs/runtime/node`가 공개하는 어댑터 surface를 그대로 보존합니다.
 - `RunNodejsApplicationOptions`: 부트스트랩, 리스닝 시작, graceful shutdown 배선을 한 번에 수행하기 위한 옵션입니다.
+
+## Multipart 스트리밍
+
+애플리케이션 생성 시 `multipart: { strategy: 'stream' }`을 설정하면 multipart part가 `RequestContext.request.body`의 `AsyncIterable`로 노출됩니다. Node listener는 iterator를 미리 읽거나 버퍼링하지 않으며, file part를 소비할 때만 바이트를 가져옵니다. 버퍼링 multipart parsing은 기본값이며 fields와 `request.files`를 노출하고, 하나의 request body에서 stream 소비와 함께 사용할 수 없습니다.
+
+Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해 active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접 집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
 
 ## 관련 패키지
 

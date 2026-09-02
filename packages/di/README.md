@@ -10,6 +10,7 @@ Minimal token-based dependency injection container powering every fluo applicati
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Key Capabilities](#key-capabilities)
+- [NestJS Scope and Optional Dependency Migration](#nestjs-scope-and-optional-dependency-migration)
 - [Circular Dependency Handling](#circular-dependency-handling)
 - [Testing and Mocking](#testing-and-mocking)
 - [Troubleshooting](#troubleshooting)
@@ -103,6 +104,32 @@ Direct `child.dispose()` now detaches the request child from its parent after th
 
 Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous. An override call is atomic: the whole batch is validated before any registration or cache changes, so a rejected call leaves every provider, cached instance, and disposal ownership exactly as it was.
 
+### Container Construction Boundary
+
+`new Container()` is the only supported public construction form, and it always creates a root container that owns its own singleton cache. Child request scopes are package-owned: parent linkage, the request-scope flag, and singleton-cache sharing use a private construction path reachable only through `createRequestScope()`.
+
+```typescript
+const root = new Container();
+const requestScope = root.createRequestScope();
+```
+
+Supplying constructor arguments is rejected. The emitted declaration accepts no assignable argument type, and at runtime a caller-supplied argument throws `ContainerResolutionError` rather than producing a container with borrowed cache ownership.
+
+```typescript
+// Rejected: child-scope wiring is package-owned.
+Reflect.construct(Container, [root]);
+```
+
+### Migrating container construction from 2.x to 3.x
+
+In `@fluojs/di` 2.x, the emitted `Container` declaration exposed `parent`, `requestScopeEnabled`, and `singletonCache` constructor parameters even though caller-supplied child wiring was never a supported application workflow. In 3.x that surface is sealed: the constructor accepts no arguments, and passing any argument throws `ContainerResolutionError`.
+
+Zero-argument `new Container()` and `createRequestScope()` are unchanged, so supported code needs no migration. If you constructed child containers directly, replace that call with `parent.createRequestScope()`, which supplies the same parent linkage, request-scope flag, and shared root singleton cache while keeping disposal ownership intact.
+
+Executable evidence lives in `packages/di/src/container-construction-boundary.test.ts`.
+
+A failed stale `onDestroy()` hook follows the same retained-retry contract as ordinary disposal. The next resolution on an observing container surfaces that failure once so the replacement can continue, and the failed instance stays retained by the container that scheduled its cleanup until a later explicit `dispose()` on that container invokes the hook again. Stale hooks that already completed successfully are never repeated.
+
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
 
@@ -114,6 +141,27 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 Request-scope containers may resolve providers from their parent chain, but request-owned registrations must not introduce new singleton providers. Register singleton providers on the root container before creating request scopes. If a request scope needs local additions, declare them with `scope: 'request'`/`Scope.REQUEST` or use `override()` for an explicit request-local replacement. The same rule applies to multi providers: default-scope multi providers belong on the root container, while request-local multi providers must opt into request scope or be replaced through `override()`.
 
 Provider objects are validated at registration time: every object provider must include a string, symbol, or constructable class `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). Alias providers require the same valid token forms for `useExisting`. For class providers, an omitted or `undefined` `inject` value falls back to the `useClass` `@Inject(...)` metadata; any other explicit `inject` value must be an array containing valid tokens or well-formed `forwardRef(...)` / `optional(...)` wrappers. Value providers must omit `inject`; declaring it as an own property is rejected even when its value is `undefined`. Explicit `scope` values must be `singleton`, `request`, or `transient`. Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
+
+## NestJS Scope and Optional Dependency Migration
+
+NestJS `@Injectable({ scope: Scope.REQUEST })` and `@Injectable({ scope: Scope.TRANSIENT })` map to a fluo provider with `@Scope('request')` / `@Scope('transient')`, or an explicit provider `scope: 'request'` / `scope: 'transient'`. Singleton remains the default.
+
+fluo does not implement NestJS scope bubbling. Resolve request-scoped providers from a `createRequestScope()` child container: root resolution throws `RequestScopeResolutionError`, and a singleton that depends on a request-scoped provider throws `ScopeMismatchError`.
+
+NestJS `@Optional()` maps to `optional(Token)` in a class-level `@Inject(...)` list or a provider `inject` array. `optional(...)` is a token wrapper, not a decorator, and a missing registration resolves to `undefined`.
+
+```typescript
+import { Inject, Scope } from '@fluojs/core';
+import { optional } from '@fluojs/di';
+
+class AuditLogger {}
+
+@Scope('request')
+@Inject(optional(AuditLogger))
+class RequestAuditService {
+  constructor(private readonly auditLogger: AuditLogger | undefined) {}
+}
+```
 
 ## Circular Dependency Handling
 
@@ -201,12 +249,12 @@ Ensure all required providers are registered in the container. If you use `creat
 
 | Surface | Kind | Description |
 |---|---|---|
-| `Container` | Root export | The main DI container class. |
+| `Container` | Root export | The main DI container class. `new Container()` takes no arguments and creates a root container; child request scopes are package-owned and created with `createRequestScope()`. Supplying constructor arguments throws `ContainerResolutionError`. |
 | `container.register(...providers)` | `Container` instance method | Registers one or more providers. |
 | `container.override(...providers)` | `Container` instance method | Replaces existing providers atomically per call, invalidates cached instances, and ensures stale instance disposal settles before the next replacement resolution continues. |
 | `container.resolve<T>(token)` | `Container` instance method | Asynchronously resolves a token to an instance. |
 | `container.inspectResolutionState()` | `Container` instance method | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership through snapshot read-only map views, frozen provider records, and controlled cache adoption. Prefer `has(...)` and `resolve(...)` for application code. |
-| `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. |
+| `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. This is the only supported path to parent-linked, request-scope-enabled containers that share the root singleton cache. |
 | `container.has(token)` | `Container` instance method | Checks if a token is registered in the container or its parents. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 | `container.dispose()` | `Container` instance method | Disposes request children before parent/root caches, shares an active attempt, and retries only failed `onDestroy()` hooks on a later explicit call. |

@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/platform-express, @fluojs/platform-nodejs, @fluojs/runtime -->
+<!-- packages: @fluojs/http, @fluojs/platform-express, @fluojs/platform-nodejs, @fluojs/runtime -->
 <!-- project-state: FluoShop v2.3.0 -->
 
 # Chapter 21. Express and Node.js Adapters
@@ -206,7 +206,24 @@ async download(_input: undefined, ctx: RequestContext) {
 }
 ```
 
-### 21.3.3 Runtime diagnostics snapshots vs Studio rendering
+### 21.3.3 Portable byte-range 다운로드
+
+Controller가 byte representation을 소유하거나 정확한 size를 가진 portable stream을 만들 수 있다면 `createByteRangeResponse(...)`를 사용하세요. `GET`은 유효한 단일 `Range: bytes=` member로 partial response를 만들고, `HEAD`는 stream을 열지 않고 그 metadata를 반영합니다. `POST`, unsafe, custom method는 원래 full response를 유지합니다.
+
+```typescript
+import { createByteRangeResponse, Get } from '@fluojs/http';
+
+@Get('exports/report')
+downloadReport() {
+  return createByteRangeResponse(report.bytes, {
+    contentType: 'application/pdf',
+  });
+}
+```
+
+File open, `stat`, seek, 정확한 size 계산, close는 애플리케이션이 소유합니다. `report.bytes` 대신 file stream을 쓴다면 factory와 애플리케이션이 아는 `size`를 전달하세요. Helper는 file을 열거나 닫지 않고 multi-range response도 구성하지 않습니다. Raw Node는 partial representation을 identity encoding으로 보내므로 전송되는 `Content-Range`와 `Content-Length`가 byte-accurate하게 유지되고, complete representation은 설정된 compression을 계속 사용할 수 있습니다.
+
+### 21.3.4 Runtime diagnostics snapshots vs Studio rendering
 
 어댑터 선택은 diagnostics 소유권을 바꾸지 않습니다. `@fluojs/runtime`과 platform shell은 readiness, health, component graph data, structured diagnostic issue를 포함한 기계 읽기 가능한 `PlatformShellSnapshot`을 생산합니다. `fluo inspect`는 CLI, CI, support workflow를 위해 런타임이 생산한 snapshot을 JSON 또는 report artifact로 내보냅니다.
 

@@ -1,14 +1,173 @@
 import { describe, expect, it } from 'vitest';
 
-import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { Container } from '@fluojs/di';
+import {
+  assertRequestContext,
+  Controller,
+  createAccessLogObserver,
+  createCorrelationMiddleware,
+  createDispatcher,
+  createHandlerMapping,
+  Get,
+  SseResponse,
+  type AccessLogEvent,
+  type FrameworkRequest,
+  type FrameworkResponse,
+} from '@fluojs/http';
+
+import type { RequestResponseFactory } from './adapters/request-response-factory.js';
 
 import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
   dispatchWebRequest,
+  parseMultipart,
+  parseMultipartStream,
+  startWebRequestDispatch,
 } from './web.js';
 
+function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Timed out waiting for test settlement after ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  });
+}
+
 describe('dispatchWebRequest', () => {
+  it('delivers opted-in multipart parts to dispatch without pre-buffering', async () => {
+    const boundary = 'fluo-web-streaming-route';
+    const request = new Request('https://runtime.test/uploads', {
+      body: `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nAda\r\n--${boundary}--\r\n`,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      method: 'POST',
+    });
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(frameworkRequest: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          expect(request.bodyUsed).toBe(false);
+          const parts = frameworkRequest.body as AsyncIterable<{
+            kind: string;
+            name: string;
+            value?: string;
+          }>;
+          const first = await parts[Symbol.asyncIterator]().next();
+
+          expect(first).toMatchObject({
+            done: false,
+            value: { kind: 'field', name: 'title', value: 'Ada' },
+          });
+          await frameworkResponse.send({ streamed: true });
+        },
+      },
+      multipart: { strategy: 'stream' },
+      request,
+    });
+
+    await expect(response.json()).resolves.toEqual({ streamed: true });
+  });
+
+  it('logs the final default status for a manual Web response', async () => {
+    // Given
+    const records: AccessLogEvent[] = [];
+
+    @Controller('/web-access-log')
+    class WebAccessLogController {
+      @Get('/')
+      async sendManually() {
+        await assertRequestContext().response.send({ committed: true });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      appMiddleware: [createCorrelationMiddleware()],
+      handlerMapping: createHandlerMapping([{ controllerToken: WebAccessLogController }]),
+      observers: [createAccessLogObserver({
+        sink: {
+          emit(record) {
+            records.push(record);
+          },
+        },
+      })],
+      rootContainer: new Container().register(WebAccessLogController),
+    });
+
+    // When
+    const response = await dispatchWebRequest({
+      dispatcher,
+      request: new Request('https://runtime.test/web-access-log', {
+        headers: { 'x-correlation-id': 'web-correlation-42' },
+      }),
+    });
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(records).toContainEqual(expect.objectContaining({
+      event: 'http.access.finish',
+      outcome: 'success',
+      requestId: 'web-correlation-42',
+      status: 200,
+    }));
+  });
+
+  it('supports custom response factories without responseReady', async () => {
+    type LegacyWebFrameworkResponse = FrameworkResponse & {
+      toResponse(): Response;
+    };
+
+    const baseFactory = createWebRequestResponseFactory();
+    const factory: RequestResponseFactory<Request, AbortSignal | undefined, LegacyWebFrameworkResponse> = {
+      createRequest: baseFactory.createRequest,
+      createRequestSignal: baseFactory.createRequestSignal,
+      createResponse(rawResponse, rawRequest) {
+        const response = baseFactory.createResponse(rawResponse, rawRequest);
+
+        return {
+          get committed() {
+            return response.committed;
+          },
+          set committed(value) {
+            response.committed = value;
+          },
+          get headers() {
+            return response.headers;
+          },
+          redirect: response.redirect.bind(response),
+          send: response.send.bind(response),
+          setHeader: response.setHeader.bind(response),
+          setStatus: response.setStatus.bind(response),
+          toResponse: response.toResponse.bind(response),
+        };
+      },
+      resolveRequestId: baseFactory.resolveRequestId,
+      writeErrorResponse(_error, response) {
+        return Promise.resolve(response.send(undefined));
+      },
+    };
+
+    const dispatch = startWebRequestDispatch({
+      dispatcher: {
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          await response.send({ compatible: true });
+        },
+      },
+      factory,
+      request: new Request('https://runtime.test/legacy-factory'),
+    });
+
+    const response = await dispatch.response;
+
+    await expect(response.json()).resolves.toEqual({ compatible: true });
+    await expect(dispatch.completion).resolves.toBeUndefined();
+  });
+
   it('exposes Early Hints as unsupported on Web response facades', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {
@@ -212,6 +371,58 @@ describe('dispatchWebRequest', () => {
     expect(body).toContain('data: {"ready":true}');
   });
 
+  it('returns an open native SSE Response before dispatch lifecycle completion and closes on cancellation', async () => {
+    let resolveSse: (sse: SseResponse) => void = () => undefined;
+    const sseCreated = new Promise<SseResponse>((resolve) => {
+      resolveSse = resolve;
+    });
+    let resolveDispatchFinished: () => void = () => undefined;
+    const dispatchFinished = new Promise<void>((resolve) => {
+      resolveDispatchFinished = resolve;
+    });
+
+    const response = await waitForSettlement(dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          const sse = new SseResponse({
+            container: {} as never,
+            metadata: {},
+            request,
+            requestId: 'req-web-open-sse',
+            response: frameworkResponse,
+          });
+
+          sse.send('connected', { event: 'ready' });
+          resolveSse(sse);
+          await sse.completion;
+          resolveDispatchFinished();
+        },
+      },
+      request: new Request('https://runtime.test/open-events', {
+        headers: {
+          accept: 'text/event-stream',
+        },
+      }),
+    }));
+    const sse = await sseCreated;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    if (!response.body) {
+      throw new Error('Expected a native SSE response body.');
+    }
+
+    const reader = response.body.getReader();
+    await expect(reader.read()).resolves.toMatchObject({
+      done: false,
+      value: new TextEncoder().encode('event: ready\ndata: connected\n\n'),
+    });
+    await reader.cancel('client-disconnected');
+    await waitForSettlement(dispatchFinished);
+
+    expect(sse.send('ignored-after-cancel')).toBe(false);
+  });
+
   it('rejects oversized streaming request bodies before reading unlimited bytes', async () => {
     let producedChunks = 0;
 
@@ -379,6 +590,40 @@ describe('dispatchWebRequest', () => {
 });
 
 describe('createWebFrameworkRequest', () => {
+  it('cancels stream parsing through the supplied framework abort signal', async () => {
+    const abort = new AbortController();
+    let resolveCancelled!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve;
+    });
+    const request = new Request('https://runtime.test/abort', {
+      body: new ReadableStream<Uint8Array>({
+        cancel() {
+          resolveCancelled();
+        },
+      }),
+      duplex: 'half',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-web-abort',
+      },
+      method: 'POST',
+    } as RequestInit & { duplex: 'half' });
+    const factory = createWebRequestResponseFactory({
+      multipart: { strategy: 'stream' },
+    });
+    const frameworkRequest = await factory.createRequest(request, abort.signal);
+
+    await factory.materializeRequest?.(frameworkRequest);
+    const iterator = (frameworkRequest.body as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+    const pendingPart = iterator.next();
+    const reason = new Error('framework request cancelled');
+
+    abort.abort(reason);
+
+    await expect(pendingPart).rejects.toBe(reason);
+    await cancelled;
+  });
+
   it('captures headers at creation, then materializes and memoizes the cloned object lazily', async () => {
     const request = new Request('https://runtime.test/headers', {
       headers: {
@@ -514,5 +759,65 @@ describe('createWebFrameworkRequest', () => {
     const rawFormData = await request.formData();
 
     expect(rawFormData.get('title')).toBe('before');
+  });
+});
+
+describe('Web multipart consumption boundary', () => {
+  it('rejects buffered and streaming double consumption through the public Web adapter surface', async () => {
+    const createRequest = () => {
+      const form = new FormData();
+      form.set('title', 'portable');
+      return new Request('https://runtime.test/upload', {
+        body: form,
+        method: 'POST',
+      });
+    };
+    const streamingFirst = createRequest();
+    const streamingParts = parseMultipartStream(streamingFirst);
+
+    await expect(streamingParts.next()).resolves.toMatchObject({
+      done: false,
+      value: {
+        kind: 'field',
+        name: 'title',
+        value: 'portable',
+      },
+    });
+    await expect(parseMultipart(streamingFirst)).rejects.toThrow(
+      'Multipart request body has already been consumed.',
+    );
+
+    const bufferedFirst = createRequest();
+
+    await expect(parseMultipart(bufferedFirst)).resolves.toMatchObject({
+      fields: { title: 'portable' },
+    });
+    expect(() => parseMultipartStream(bufferedFirst)).toThrow(
+      'Multipart request body has already been consumed.',
+    );
+  });
+
+  it('marks the public raw request consumed after framework buffered materialization', async () => {
+    // Given
+    const form = new FormData();
+    form.set('title', 'portable');
+    const request = new Request('https://runtime.test/upload', {
+      body: form,
+      method: 'POST',
+    });
+    const factory = createWebRequestResponseFactory();
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    // When
+    await factory.materializeRequest?.(frameworkRequest);
+
+    // Then
+    if (!(frameworkRequest.raw instanceof Request)) {
+      throw new TypeError('Expected the Web framework raw request.');
+    }
+
+    expect(() => parseMultipartStream(frameworkRequest.raw as Request)).toThrow(
+      'Multipart request body has already been consumed.',
+    );
   });
 });

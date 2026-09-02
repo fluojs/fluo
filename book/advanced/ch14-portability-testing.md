@@ -52,6 +52,9 @@ export interface HttpAdapterPortabilityHarnessOptions<
   TApp extends AppLike = AppLike,
 > {
   bootstrap: (rootModule: ModuleType, options: TBootstrapOptions) => Promise<TApp>;
+  createErrorRepresentationBootstrapOptions?: (
+    options: NetworkHttpErrorRepresentationBootstrapOptions,
+  ) => TBootstrapOptions;
   name: string;
   run: (rootModule: ModuleType, options: TRunOptions) => Promise<TApp>;
 }
@@ -61,11 +64,13 @@ export interface HttpAdapterPortabilityHarnessOptions<
 
 The harness covers several critical surfaces where runtimes often diverge. The purpose is to make sure the Fluo abstraction layer does not leak across different execution environments:
 
-1. **Cookie Handling**: Ensures malformed cookies do not crash the server or contaminate other headers.
-2. **Raw Body Preservation**: Verifies that `rawBody` is available for JSON and text, preserves exact bytes for byte-sensitive payloads, and is excluded for multipart requests to save memory.
-3. **SSE (Server-Sent Events)**: Confirms proper streaming behavior that keeps the connection open without buffering.
-4. **Startup Logs**: Verifies that adapters correctly report the listening host and port through standardized hooks.
-5. **Shutdown Signals**: Ensures `SIGTERM` and `SIGINT` listeners are cleaned up correctly after shutdown to prevent memory leaks.
+1. **Custom HTTP Methods**: Verifies that `QUERY` and extension methods reach the real listener and preserve their request bodies.
+2. **HTTP Error Representations**: Verifies JSON, HTML, HEAD, `406`, and already-committed response semantics, plus client-disconnect abort handling without a fallback error commit.
+3. **Cookie Handling**: Ensures malformed cookies do not crash the server or contaminate other headers.
+4. **Raw Body Preservation**: Verifies that `rawBody` is available for JSON and text, preserves exact bytes for byte-sensitive payloads, is excluded for multipart requests, and enforces the default multipart total limit.
+5. **SSE (Server-Sent Events)**: Confirms proper streaming behavior that keeps the connection open without buffering and, where the adapter exposes it, settles `response.stream.waitForDrain()` when the stream closes.
+6. **Startup Logs and HTTPS**: Verifies that adapters report the configured HTTP host and the bound HTTPS listen URL.
+7. **Shutdown Signals**: Ensures `SIGTERM` and `SIGINT` listeners are cleaned up correctly after shutdown to prevent memory leaks.
 
 If a harness bootstraps an app and setup or `listen()` fails before the assertion body runs, cleanup is still part of the contract: the partially bootstrapped app must be closed, and any `close()` failure is reported together with the original setup failure.
 
@@ -166,11 +171,21 @@ If you implemented a custom adapter in Chapter 13, you should now verify it with
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import {
+  createHttpAdapterPortabilityHarness,
+  type NetworkHttpErrorRepresentationBootstrapOptions,
+} from '@fluojs/testing/http-adapter-portability';
 import { myAdapter } from './my-adapter';
+import { TEST_TLS_CERTIFICATE, TEST_TLS_PRIVATE_KEY } from './test-tls-fixture';
 
 const harness = createHttpAdapterPortabilityHarness({
   name: 'MyCustomAdapter',
+  createErrorRepresentationBootstrapOptions: (
+    options: NetworkHttpErrorRepresentationBootstrapOptions,
+  ) => ({
+    ...options,
+    port: 0,
+  }),
   bootstrap: async (module, opts) => {
     const app = await FluoFactory.create(module, { adapter: myAdapter(opts) });
     return app;
@@ -183,19 +198,32 @@ const harness = createHttpAdapterPortabilityHarness({
 });
 
 describe('MyCustomAdapter Portability', () => {
+  it('supports custom HTTP route methods', () => harness.assertSupportsCustomHttpRouteMethods());
+  it('supports single byte ranges', () => harness.assertSupportsSingleByteRanges());
+  it('supports HTTP error representations', () => harness.assertSupportsHttpErrorRepresentations());
+  it('does not commit aborted HTTP error representations', () =>
+    harness.assertDoesNotCommitAbortedHttpErrorRepresentations());
   it('preserves malformed cookies', () => harness.assertPreservesMalformedCookieValues());
-  it('handles SSE', () => harness.assertSupportsSseStreaming());
+  it('supports portable response cookies', () => harness.assertSupportsPortableResponseCookies());
   it('preserves JSON and text raw bodies', () => harness.assertPreservesRawBodyForJsonAndText());
   it('preserves exact raw body bytes', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('excludes multipart raw bodies', () => harness.assertExcludesRawBodyForMultipart());
   it('defaults multipart total limit to max body size', () => harness.assertDefaultsMultipartTotalLimitToMaxBodySize());
+  it('handles SSE', () => harness.assertSupportsSseStreaming());
   it('settles stream drain waits after close', () => harness.assertSettlesStreamDrainWaitOnClose());
   it('reports configured host startup logs', () => harness.assertReportsConfiguredHostInStartupLogs());
+  it('reports the HTTPS startup URL', () =>
+    harness.assertReportsHttpsStartupUrl({
+      cert: TEST_TLS_CERTIFICATE,
+      key: TEST_TLS_PRIVATE_KEY,
+    }));
   it('removes shutdown signal listeners', () => harness.assertRemovesShutdownSignalListenersAfterClose());
 });
 ```
 
-When you run these tests, keep the cleanup and performance-sensitive assertions enabled instead of copying only the first few examples. The harness checks partial-bootstrap cleanup, exact byte preservation, multipart memory boundaries, startup logging through the application logger, shutdown listener cleanup, and stream-drain settlement. You should also inspect timing data. Slow tests in the portability suite can signal that a lower-level implementation of a platform primitive is not optimized. Use feedback from the harness to refine the adapter and check both correctness and performance.
+This is the complete shipped HTTP portability suite: keep all fifteen assertions instead of treating a smaller sample as Behavioral Contract compliance. `createErrorRepresentationBootstrapOptions` adapts the shared error-representation fixture fields to your adapter's bootstrap options; it is required by both error-representation assertions. Keep `TEST_TLS_CERTIFICATE` and `TEST_TLS_PRIVATE_KEY` in a test-owned PEM fixture, never production credentials, so `assertReportsHttpsStartupUrl(...)` can exercise a real HTTPS listener. The stream-drain assertion applies when the adapter exposes `response.stream.waitForDrain()`.
+
+The harness also checks partial-bootstrap cleanup, exact byte preservation, multipart memory boundaries, startup logging through the application logger, shutdown listener cleanup, and stream-drain settlement. You should also inspect timing data. Slow tests in the portability suite can signal that a lower-level implementation of a platform primitive is not optimized. Use feedback from the harness to refine the adapter and check both correctness and performance.
 
 ## 14.9 Why Line-by-Line Consistency Matters
 

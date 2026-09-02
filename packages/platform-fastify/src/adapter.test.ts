@@ -33,6 +33,7 @@ import {
   VersioningType,
 } from '@fluojs/http';
 import { type Application, createHealthModule, defineModule, FluoFactory, fluoFactory } from '@fluojs/runtime';
+import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
@@ -118,7 +119,8 @@ async function requestHttp(options: {
   headers?: IncomingHttpHeaders;
   method?: string;
   path: string;
-  port: number;
+  port?: number;
+  target?: string;
 }): Promise<{
   body: string;
   headers: IncomingHttpHeaders;
@@ -127,12 +129,13 @@ async function requestHttp(options: {
 }> {
   return await new Promise((resolve, reject) => {
     const informational: InformationEvent[] = [];
+    const target = options.target === undefined ? undefined : new URL(options.target);
     const request = httpRequest({
       headers: options.headers,
-      host: '127.0.0.1',
+      host: target?.hostname ?? '127.0.0.1',
       method: options.method,
       path: options.path,
-      port: options.port,
+      port: target?.port ?? options.port,
     }, (response) => {
       const chunks: Buffer[] = [];
 
@@ -216,6 +219,7 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness<
   Application
 >({
   bootstrap: bootstrapFastifyApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'fastify',
   run: runFastifyApplication,
@@ -226,6 +230,35 @@ interface FastifyReplySerializerHost {
 }
 
 describe('@fluojs/platform-fastify', () => {
+  it('snapshots connection metadata on a real loopback request', async () => {
+    @Controller('/connection')
+    class ConnectionController {
+      @Get('/')
+      read(_input: undefined, context: RequestContext) {
+        return context.request.connection;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ConnectionController] });
+
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await fetch(`http://127.0.0.1:${String(getBoundPort((adapter as { getServer(): unknown }).getServer()))}/connection`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        protocol: 'http',
+        remoteAddress: '127.0.0.1',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('emits multiple Early Hints before an independent final response on a real listener', async () => {
     @Controller('/early-hints')
     class EarlyHintsController {
@@ -291,6 +324,14 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   describe('adapter portability', () => {
+    it('preserves conditional response semantics through the real listener', async () => {
+      await fastifyPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range semantics through the real listener', async () => {
+      await fastifyPortabilityHarness.assertSupportsSingleByteRanges();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
@@ -689,7 +730,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('serializes string responses with JSON structured-suffix media types', () => {
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const requestResponseFactory = Reflect.get(adapter, 'requestResponseFactory') as {
       createResponse(reply: FastifyReply): FrameworkResponse;
     };
@@ -1308,7 +1349,7 @@ describe('@fluojs/platform-fastify', () => {
       controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const app = await fluoFactory.create(AppModule, {
       adapter,
       middleware: [appMiddleware],
@@ -1319,7 +1360,8 @@ describe('@fluojs/platform-fastify', () => {
       },
     });
 
-    const port = await listenOnEphemeralPort(app);
+    await app.listen();
+    const target = adapter.getListenTarget().url;
 
     try {
       const fastifyApp = (adapter as unknown as Record<'app', {
@@ -1338,7 +1380,7 @@ describe('@fluojs/platform-fastify', () => {
       const userResponse = await requestHttp({
         method: 'GET',
         path: '/users///123/?tag=a&tag=b',
-        port,
+        target,
       });
 
       expect(userResponse.statusCode).toBe(200);
@@ -1365,7 +1407,7 @@ describe('@fluojs/platform-fastify', () => {
         headers: { 'x-api-version': '1' },
         method: 'GET',
         path: '/versions/',
-        port,
+        target,
       });
       expect(versionedResponse.statusCode).toBe(200);
       expect(JSON.parse(versionedResponse.body)).toEqual({ route: 'version', version: '1' });
@@ -1373,7 +1415,7 @@ describe('@fluojs/platform-fastify', () => {
       const unversionedResponse = await requestHttp({
         method: 'GET',
         path: '/versions',
-        port,
+        target,
       });
       expect(unversionedResponse.statusCode).toBe(200);
       expect(JSON.parse(unversionedResponse.body)).toEqual({ route: 'version', version: 'latest' });
@@ -1381,14 +1423,14 @@ describe('@fluojs/platform-fastify', () => {
       const allResponse = await requestHttp({
         method: 'PATCH',
         path: '/fallback',
-        port,
+        target,
       });
       expect(allResponse.statusCode).toBe(200);
       expect(JSON.parse(allResponse.body)).toEqual({ method: 'PATCH', route: 'all' });
 
       const [queryResponse, purgeResponse] = await Promise.all([
-        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', port }),
-        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', port }),
+        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', target }),
+        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', target }),
       ]);
       expect(queryResponse.statusCode).toBe(200);
       expect(purgeResponse.statusCode).toBe(200);
@@ -1399,7 +1441,7 @@ describe('@fluojs/platform-fastify', () => {
       const errorResponse = await requestHttp({
         method: 'GET',
         path: '/errors',
-        port,
+        target,
       });
       expect(errorResponse.statusCode).toBe(500);
       expect(JSON.parse(errorResponse.body)).toEqual({
@@ -1414,7 +1456,7 @@ describe('@fluojs/platform-fastify', () => {
       const missingResponse = await requestHttp({
         method: 'GET',
         path: '/missing',
-        port,
+        target,
       });
       expect(missingResponse.statusCode).toBe(404);
       expect(JSON.parse(missingResponse.body)).toEqual({
@@ -1681,6 +1723,136 @@ describe('@fluojs/platform-fastify', () => {
       });
     } finally {
       await app.close();
+    }
+  });
+
+  it('routes opted-in multipart parts without pre-buffering through Fastify dispatch', async () => {
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          name: string;
+          value?: string;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : {
+          name: first.value.name,
+          streamed: first.value.kind === 'field',
+          value: first.value.value,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      multipart: { strategy: 'stream' },
+      port: 0,
+    });
+    const port = await listenOnEphemeralPort(app);
+
+    try {
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await fetch(`http://127.0.0.1:${String(port)}/streaming-upload`, {
+        body: form,
+        method: 'POST',
+      });
+
+      await expect(response.json()).resolves.toEqual({
+        name: 'title',
+        streamed: true,
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('cancels the active multipart file stream when the Fastify client disconnects', async () => {
+    const fileStreamCancelled = createDeferred<void>();
+    const parserReady = createDeferred<void>();
+    const originalParseMultipartStream = runtimeWeb.parseMultipartStream;
+    let frameworkSignal: AbortSignal | undefined;
+    let parserSignal: AbortSignal | undefined;
+    const parseMultipartStream = vi.spyOn(runtimeWeb, 'parseMultipartStream').mockImplementation((request, options) => {
+      if (!(request instanceof Request)) {
+        parserSignal = request.signal;
+      }
+
+      return originalParseMultipartStream(request, options);
+    });
+
+    @Controller('/streaming-abort')
+    class StreamingAbortController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        frameworkSignal = context.request.signal;
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          stream?: ReadableStream<Uint8Array>;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        if (first.done || first.value.kind !== 'file' || !first.value.stream) {
+          throw new Error('Expected an active multipart file part.');
+        }
+
+        const reader = first.value.stream.getReader();
+        context.request.signal?.addEventListener('abort', () => {
+          void reader.read().then(
+            () => fileStreamCancelled.reject(new Error('Expected the active file stream to reject after disconnect.')),
+            () => fileStreamCancelled.resolve(),
+          );
+        }, { once: true });
+        parserReady.resolve();
+        await fileStreamCancelled.promise;
+
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingAbortController] });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      multipart: { strategy: 'stream' },
+      port: 0,
+    });
+    const port = await listenOnEphemeralPort(app);
+    const request = httpRequest({
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-fastify-disconnect',
+        'transfer-encoding': 'chunked',
+      },
+      host: '127.0.0.1',
+      method: 'POST',
+      path: '/streaming-abort',
+      port,
+    });
+
+    try {
+      request.on('error', () => {});
+      request.write('--fluo-fastify-disconnect\r\ncontent-disposition: form-data; name="file"; filename="file.txt"\r\n\r\n');
+      await parserReady.promise;
+      request.destroy();
+
+      await expect(fileStreamCancelled.promise).resolves.toBeUndefined();
+      expect(parserSignal).toBe(frameworkSignal);
+      expect(parserSignal?.aborted).toBe(true);
+    } finally {
+      request.destroy();
+      try {
+        await app.close();
+      } finally {
+        parseMultipartStream.mockRestore();
+      }
     }
   });
 
@@ -1981,6 +2153,7 @@ describe('@fluojs/platform-fastify', () => {
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
+      host: '127.0.0.1',
       port: 0,
     });
 

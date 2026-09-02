@@ -3,12 +3,19 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import * as metrics from './index.js';
-import { MetricsService, Registry } from './index.js';
-import type { MeterCounter, MeterGauge, MeterHistogram, MeterProvider } from './index.js';
+import {
+  type MeterCounter,
+  type MeterGauge,
+  type MeterHistogram,
+  type MeterProvider,
+  MetricsService,
+  Registry,
+} from './index.js';
 
 describe('@fluojs/metrics public surface', () => {
   it('keeps the documented metrics barrel public while hiding package-only wiring details', () => {
     expect(metrics).toHaveProperty('MetricsModule');
+    expect(metrics).toHaveProperty('METRICS_REGISTRY');
     expect(metrics).toHaveProperty('MetricsService');
     expect(metrics).toHaveProperty('METER_PROVIDER');
     expect(metrics).toHaveProperty('PrometheusMeterProvider');

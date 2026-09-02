@@ -439,6 +439,10 @@ function providerDependencies(provider: Provider): InjectionToken[] {
     return provider.inject ?? [...(getEffectiveClassDiMetadata(provider.useClass)?.inject ?? [])];
   }
 
+  if ('useExisting' in provider) {
+    return [provider.useExisting];
+  }
+
   return [];
 }
 

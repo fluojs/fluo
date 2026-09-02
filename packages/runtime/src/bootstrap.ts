@@ -6,6 +6,7 @@ import {
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
+  type HandlerDescriptor,
   type HandlerSource,
   type HttpApplicationAdapter,
 } from '@fluojs/http';
@@ -20,16 +21,25 @@ import { type BootstrapTimingPhase, createBootstrapTimingDiagnostics } from './h
 import { getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
+import { defineModule } from './module-definition.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
-import { defineModule } from './module-definition.js';
 import {
   createLifecycleCloseError,
   createRetryableShutdownState,
   type RetryableShutdownState,
 } from './retryable-shutdown.js';
 import type { BootstrapReadySignal } from './tokens.js';
-import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
+import {
+  APPLICATION_LOGGER,
+  BOOTSTRAP_PROVIDER_TOKENS,
+  BOOTSTRAP_READY_SIGNAL,
+  COMPILED_MODULES,
+  HTTP_APPLICATION_ADAPTER,
+  PLATFORM_SHELL,
+  RUNTIME_CLEANUP_REGISTRATION,
+  RUNTIME_CONTAINER,
+} from './tokens.js';
 import type {
   Application,
   ApplicationContext,
@@ -46,7 +56,6 @@ import type {
   ExceptionFilterHandler,
   MicroserviceApplication,
   MicroserviceRuntime,
-  ModuleDefinition,
   ModuleType,
   OnApplicationBootstrap,
   OnApplicationShutdown,
@@ -1255,16 +1264,30 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
  * 종료 단계의 hook을 역순으로 실행해 이미 시작한 리소스를 정리한다.
  */
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  const errors: unknown[] = [];
+
   for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
+    try {
+      if (isOnModuleDestroy(instance)) {
+        await instance.onModuleDestroy();
+      }
+    } catch (error) {
+      errors.push(error);
     }
   }
 
   for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
+    try {
+      if (isOnApplicationShutdown(instance)) {
+        await instance.onApplicationShutdown(signal);
+      }
+    } catch (error) {
+      errors.push(error);
     }
+  }
+
+  if (errors.length > 0) {
+    throw createLifecycleCloseError(errors);
   }
 }
 
@@ -1295,7 +1318,7 @@ function logRouteMappings(
   logger: ApplicationLogger,
   descriptors: ReturnType<typeof createHandlerMapping>['descriptors'],
 ): void {
-  const byController = new Map<string, { controllerPath: string; descriptors: typeof descriptors }>();
+  const byController = new Map<string, { controllerPath: string; descriptors: HandlerDescriptor[] }>();
 
   for (const descriptor of descriptors) {
     const key = descriptor.controllerToken.name;
@@ -1325,8 +1348,14 @@ function createRuntimeProviders(
   options: { readonly providers?: Provider[] },
   logger: ApplicationLogger,
 ): Provider[] {
+  const bootstrapProviderTokens = new Set((options.providers ?? []).map(providerToken));
+
   return [
     ...(options.providers ?? []),
+    {
+      provide: BOOTSTRAP_PROVIDER_TOKENS,
+      useValue: bootstrapProviderTokens,
+    },
     {
       provide: APPLICATION_LOGGER,
       useValue: logger,
@@ -1448,6 +1477,12 @@ function createRuntimeDispatcherOptions(
   const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    ...(options.contentNegotiation === undefined
+      ? {}
+      : { contentNegotiation: options.contentNegotiation }),
+    ...(options.conditionalRequest === undefined
+      ? {}
+      : { conditionalRequest: options.conditionalRequest }),
     ...(options.errorRepresentation === undefined
       ? {}
       : { errorRepresentation: options.errorRepresentation }),
@@ -1503,7 +1538,7 @@ function createRuntimeDispatcher(
  * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
+  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
   const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
   const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
@@ -1563,7 +1598,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 
     const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
     lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-    lifecycleInstances.push({
+    lifecycleInstances.unshift({
       onModuleDestroy() {
         return platformShell.stop();
       },
@@ -1680,7 +1715,7 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
+    const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
     const effectiveOptions = applyStudioDevtoolsContextOptions(options, studioDevtools);
     const logger = createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];
@@ -1729,7 +1764,7 @@ export class FluoFactory {
 
       const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-      lifecycleInstances.push({
+      lifecycleInstances.unshift({
         onModuleDestroy() {
           return platformShell.stop();
         },

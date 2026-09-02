@@ -1,4 +1,12 @@
-import { appendVaryHeader, Controller, Get, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  Controller,
+  createStaticAssetsMiddleware,
+  Get,
+  getRequestHeader,
+  type RequestContext,
+  type StaticAssetSource,
+} from '@fluojs/http';
 import { type BunServeOptions, type BunServerLike, bootstrapBunApplication } from '@fluojs/platform-bun';
 import {
   bootstrapCloudflareWorkerApplication,
@@ -133,6 +141,14 @@ type WebRuntimePortabilityApp = {
 type WebRuntimeBootstrap = (
   rootModule: ModuleType,
   options: { cors: false },
+) => Promise<WebRuntimePortabilityApp>;
+
+type WebRuntimeStaticAssetsBootstrap = (
+  rootModule: ModuleType,
+  options: {
+    cors: false;
+    middleware: [ReturnType<typeof createStaticAssetsMiddleware>];
+  },
 ) => Promise<WebRuntimePortabilityApp>;
 
 type BunBootstrap = (
@@ -276,13 +292,16 @@ function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
+    assertSupportsConditionalRequests(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
+    assertSupportsSingleByteRanges(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertSupportsPortableResponseCookies(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   },
 ): void {
@@ -297,6 +316,14 @@ function registerWebRuntimePortabilitySuite(
 
     it('does not commit an error representation after request abort', async () => {
       await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
+    it('preserves conditional response validators and body suppression', async () => {
+      await harness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range metadata and body slicing', async () => {
+      await harness.assertSupportsSingleByteRanges();
     });
 
     it('preserves query arrays and decoding semantics', async () => {
@@ -317,6 +344,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('does not preserve rawBody for multipart requests', async () => {
       await harness.assertExcludesRawBodyForMultipart();
+    });
+
+    it('preserves ordered non-folded portable response cookies', async () => {
+      await harness.assertSupportsPortableResponseCookies();
     });
 
     it('supports SSE streaming', async () => {
@@ -370,6 +401,79 @@ function registerWebRuntimeHeaderHelperPortabilitySuite(
   });
 }
 
+function registerWebRuntimeStaticAssetsPortabilitySuite(
+  name: string,
+  bootstrap: WebRuntimeStaticAssetsBootstrap,
+): void {
+  describe(`${name} static middleware portability`, () => {
+    it('serves precompressed snapshots and preserves HEAD, 304, range, and missing response boundaries', async () => {
+      const identityBytes = Uint8Array.from([0, 1, 2, 3]);
+      const brotliBytes = Uint8Array.from([4, 5, 6, 7]);
+      const source: StaticAssetSource = {
+        async resolve(path, context) {
+          if (path !== 'app.js') {
+            return undefined;
+          }
+
+          const brotli = context.acceptedEncodings.includes('br');
+          const bytes = brotli ? brotliBytes : identityBytes;
+
+          return {
+            contentEncoding: brotli ? 'br' : undefined,
+            contentType: 'application/javascript',
+            size: bytes.byteLength,
+            source: bytes,
+            validators: {
+              etag: { opaqueValue: brotli ? 'br-v1' : 'identity-v1', strength: 'strong' },
+            },
+            variesByEncoding: true,
+          };
+        },
+      };
+      class StaticAssetsModule {}
+      defineModule(StaticAssetsModule, {});
+      const app = await bootstrap(StaticAssetsModule, {
+        cors: false,
+        middleware: [createStaticAssetsMiddleware({
+          source,
+        })],
+      });
+
+      try {
+        const [full, head, notModified, ranged, missing] = await Promise.all([
+          app.dispatch(new Request('https://runtime.test/app.js', {
+            headers: { 'accept-encoding': 'br' },
+          })),
+          app.dispatch(new Request('https://runtime.test/app.js', { method: 'HEAD' })),
+          app.dispatch(new Request('https://runtime.test/app.js', {
+            headers: { 'if-none-match': '"identity-v1"' },
+          })),
+          app.dispatch(new Request('https://runtime.test/app.js', {
+            headers: { range: 'bytes=1-2' },
+          })),
+          app.dispatch(new Request('https://runtime.test/missing.js')),
+        ]);
+
+        expect(full.status).toBe(200);
+        expect(full.headers.get('content-encoding')).toBe('br');
+        expect(full.headers.get('content-length')).toBe(String(brotliBytes.byteLength));
+        await expect(full.bytes()).resolves.toEqual(brotliBytes);
+        expect(head.status).toBe(200);
+        expect(head.headers.get('content-length')).toBe(String(identityBytes.byteLength));
+        await expect(head.bytes()).resolves.toEqual(new Uint8Array());
+        expect(notModified.status).toBe(304);
+        await expect(notModified.bytes()).resolves.toEqual(new Uint8Array());
+        expect(ranged.status).toBe(206);
+        expect(ranged.headers.get('content-range')).toBe('bytes 1-2/4');
+        await expect(ranged.bytes()).resolves.toEqual(Uint8Array.from([1, 2]));
+        expect(missing.status).toBe(404);
+      } finally {
+        await app.close();
+      }
+    });
+  });
+}
+
 registerWebRuntimePortabilitySuite(
   'bun',
   createWebRuntimeHttpAdapterPortabilityHarness({
@@ -377,10 +481,13 @@ registerWebRuntimePortabilitySuite(
       return await createBunPortabilityApp(rootModule, options);
     },
     createErrorRepresentationBootstrapOptions: (options) => options,
+    createConditionalRequestBootstrapOptions: (options) => options,
     name: 'bun',
   }),
 );
 registerWebRuntimeHeaderHelperPortabilitySuite('bun', async (rootModule, options) =>
+  await createBunPortabilityApp(rootModule, options));
+registerWebRuntimeStaticAssetsPortabilitySuite('bun', async (rootModule, options) =>
   await createBunPortabilityApp(rootModule, options));
 
 describe('bun web runtime adapter cleanup', () => {
@@ -450,10 +557,29 @@ registerWebRuntimePortabilitySuite(
       };
     },
     createErrorRepresentationBootstrapOptions: (options) => options,
+    createConditionalRequestBootstrapOptions: (options) => options,
     name: 'deno',
   }),
 );
 registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, options) => {
+  const server = createServeStub();
+  const app = await bootstrapDenoApplication(rootModule, {
+    ...options,
+    serve: server.serve,
+  });
+
+  await app.listen();
+
+  return {
+    close() {
+      return app.close();
+    },
+    async dispatch(request: Request) {
+      return await server.handler!(request);
+    },
+  };
+});
+registerWebRuntimeStaticAssetsPortabilitySuite('deno', async (rootModule, options) => {
   const server = createServeStub();
   const app = await bootstrapDenoApplication(rootModule, {
     ...options,
@@ -488,10 +614,23 @@ registerWebRuntimePortabilitySuite(
       };
     },
     createErrorRepresentationBootstrapOptions: (options) => options,
+    createConditionalRequestBootstrapOptions: (options) => options,
     name: 'cloudflare-workers',
   }),
 );
 registerWebRuntimeHeaderHelperPortabilitySuite('cloudflare-workers', async (rootModule, options) => {
+  const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+
+  return {
+    close() {
+      return worker.close();
+    },
+    async dispatch(request: Request) {
+      return await worker.fetch(request, {}, createExecutionContext());
+    },
+  };
+});
+registerWebRuntimeStaticAssetsPortabilitySuite('cloudflare-workers', async (rootModule, options) => {
   const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
 
   return {

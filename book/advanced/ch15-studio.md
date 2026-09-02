@@ -132,14 +132,14 @@ A report does not replace the raw snapshot. It packages the snapshot with the ex
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency, resolve the packaged static HTML entry, and open it in a browser.
+Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency and launch its packaged HTTP server.
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-The printed path points at the packaged `dist/index.html` artifact. Open that file in a browser, then load your inspect artifact. This viewer resolution step is Node package-resolution based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
+The command prints a `http://127.0.0.1:<port>/` URL that serves the packaged viewer; open that URL in a browser, then load your inspect artifact. Do not open `dist/index.html` directly because browser file-origin module loading can leave the viewer blank. `@fluojs/studio/viewer` remains the packaged HTML entry for integrations that resolve it. This launch step is Node package based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
 
 ```bash
 pnpm --dir packages/studio dev
@@ -233,7 +233,7 @@ The current Studio workflow has two supported paths. `fluo dev --studio` opens a
 
 The CLI also owns live sidecar teardown. `StudioSidecar.close()` ends tracked SSE responses as before, closes sockets only while they are serving authenticated runtime ingestion, and shares one deterministic close operation across repeated or concurrent callers. This keeps an ingestion client that leaves its request body incomplete from holding `fluo dev --studio` shutdown open indefinitely without turning teardown into blanket destruction of completed ordinary request sockets.
 
-Bun, Deno, and Cloudflare Workers are migration/static users for this MVP. Until dedicated bridges are implemented and verified, non-Node projects should generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer instead of expecting live sidecar streams.
+Bun, Deno, and Cloudflare Workers remain migration/static users by default. A host owner can now import the transport-neutral bridge contracts from `@fluojs/runtime/devtools`, create a `StudioDevtoolsRuntime`, and pass it as `studioDevtools` during application or context bootstrap without relying on the legacy process-global. That seam is not a bundled non-Node sidecar: a non-Node live path is supported only when its owner provides executable host integration evidence. Otherwise, generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer.
 
 Live Studio does not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports provide that evidence, while the live devtool gives developers immediate feedback while the app is running.
 

@@ -58,6 +58,10 @@ await app.listen();
 
 Fastify response는 `reply.raw`를 통해 optional `context.response.earlyHints` capability를 노출합니다. `103` 하나마다 `write(...)`를 await하면 독립적으로 설정된 final response보다 먼저 여러 informational response가 전송됩니다. Early field는 Fastify final header를 채우거나 Fluo facade를 committed 상태로 만들지 않습니다. Late/native failure와 client disconnect는 결정적으로 reject됩니다.
 
+### 바이트 범위와 캐시 검증
+
+Fastify는 공유 `@fluojs/http` 단일 byte-range 및 `If-Range` contract를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 portable `206` identity-byte response를 만들고, `If-Range`는 선택된 validator를 재사용합니다. Malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만들며, `HEAD`는 stream을 소비하지 않고 GET metadata를 반영합니다.
+
 ### HTTPS/TLS 시작
 Fastify 프로세스가 TLS를 직접 소유할 때는 Node.js `https.ServerOptions`를 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, 또는 `runFastifyApplication(...)`의 `https` option으로 전달하세요. Adapter는 Fastify를 HTTPS listener로 시작하며 startup log는 `https://host:port` URL을 보고합니다.
 
@@ -212,7 +216,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 ## 적합성 커버리지
 
-`packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 custom `QUERY`/extension-method fallback, malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
+`packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 conditional request, single-byte range 및 `If-Range`, custom `QUERY`/extension-method fallback, malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
 
 같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, concurrent/repeated `listen()` idempotency, shutdown 중 startup retry cancellation, adapter reuse 시 native descriptor refresh, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limit, 기반 Fastify close를 계속 in-flight 상태로 두는 close 대기 timeout, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
 
@@ -234,6 +238,12 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - **Malformed Cookie**: 잘못된 cookie header는 request 실패로 이어지지 않고 보존됩니다.
 - **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js `>=20.19.3 <21 || >=22.2.0 <27`에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
 - **시작 및 종료 실패**: startup과 Fastify `onClose`가 모두 실패하면, `cause`를 읽고 쓰고 다시 읽을 수 있는 경우에만 caller는 원래 startup rejection과 `cause`의 close failure를 받습니다. 그 외에는 caller가 startup rejection을 `errors[0]`, close failure를 `errors[1]`로 갖는 startup-first `AggregateError`를 받습니다.
+
+## Multipart 스트리밍
+
+Fastify를 bootstrap할 때 `multipart: { strategy: 'stream' }`을 설정하면 multipart part가 `RequestContext.request.body`의 `AsyncIterable`로 노출됩니다. Fastify는 iterator를 미리 읽거나 버퍼링하지 않으며, file part를 소비할 때만 바이트를 가져옵니다. 이 mode에서는 file part가 `request.files`의 `UploadedFile` 값으로 materialize되지 않습니다. 버퍼링 multipart parsing은 기본값이며 하나의 request body에서 stream 소비와 함께 사용할 수 없습니다.
+
+Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해 active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접 집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
 
 ## 관련 패키지
 

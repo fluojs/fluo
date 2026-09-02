@@ -8,7 +8,7 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 
 - issuing access tokens with `DefaultJwtSigner`
 - protecting a route with `@UseAuth('jwt')` and `@RequireScopes(...)`
-- verifying bearer tokens through a custom `AuthStrategy`
+- verifying bearer tokens through the built-in `BearerJwtStrategy` preset from `@fluojs/passport`
 - explicit DI token metadata instead of reflection-based injection
 - runtime-owned `/health` and `/ready` endpoints alongside auth routes
 - unit, integration, and e2e-style testing with `@fluojs/testing`
@@ -55,9 +55,9 @@ examples/auth-jwt-passport/
 
 1. `src/auth/login.dto.ts` — explicit request boundary
 2. `src/auth/auth.service.ts` — JWT issuance
-3. `src/auth/bearer.strategy.ts` — bearer token verification through passport core
+3. `src/auth/bearer.strategy.ts` — re-export of the built-in `BearerJwtStrategy` preset
 4. `src/auth/auth.controller.ts` — open token route + protected profile route
-5. `src/auth/auth.module.ts` — module-first registration via `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)`
+5. `src/auth/auth.module.ts` — module-first registration via `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` with the stable `createBearerJwtStrategyRegistration()` helper
 6. `src/app.test.ts` — service/strategy coverage plus e2e-style HTTP checks through `createTestApp(...).request(...).send()`
 
 ## related docs

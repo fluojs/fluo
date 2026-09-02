@@ -58,6 +58,10 @@ await app.listen();
 
 Fastify responses expose the optional `context.response.earlyHints` capability through `reply.raw`. Await one `write(...)` per `103`; multiple informational responses precede the independently configured final response. Early fields never populate Fastify final headers or mark the Fluo facade committed. Late/native failures and client disconnects reject deterministically.
 
+### Byte Ranges and Cache Validation
+
+Fastify preserves the shared `@fluojs/http` single-byte-range and `If-Range` contract. After conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields the portable `206` identity-byte response; `If-Range` reuses those selected validators, while malformed or multi-range fields retain the full response and an unsatisfiable range yields bodyless `416`. `HEAD` mirrors GET metadata without consuming a stream.
+
 ### HTTPS/TLS Startup
 When the Fastify process owns TLS directly, pass Node.js `https.ServerOptions` through the `https` option on `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, or `runFastifyApplication(...)`. The adapter starts Fastify with an HTTPS listener, and startup logs report the `https://host:port` URL.
 
@@ -212,7 +216,7 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 
 ## Conformance Coverage
 
-`packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for custom `QUERY`/extension-method fallback, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+`packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for conditional requests, single-byte ranges and `If-Range`, custom `QUERY`/extension-method fallback, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
 The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, concurrent and repeated `listen()` idempotency, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, close wait timeouts that leave the underlying Fastify close in flight, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
 
@@ -234,6 +238,12 @@ The same file also covers Fastify-specific native route registration with wildca
 - **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
 - **HTTPS startup**: Use Node.js `>=20.19.3 <21 || >=22.2.0 <27` and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
 - **Startup and shutdown failures**: When startup and Fastify `onClose` both fail, callers receive the original startup rejection with the close failure in `cause` only when `cause` can be read, written, and read back. Otherwise, callers receive a startup-first `AggregateError` whose `errors[0]` is the startup rejection and whose `errors[1]` is the close failure.
+
+## Multipart streaming
+
+Set `multipart: { strategy: 'stream' }` when bootstrapping Fastify to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. Fastify creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. In this mode file parts are not materialized as `UploadedFile` values in `request.files`. Buffered multipart parsing remains the default and cannot be combined with stream consumption for the same request body.
+
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
 
 ## Related Packages
 

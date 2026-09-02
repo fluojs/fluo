@@ -791,21 +791,20 @@ function ensureComponentSchema(
 
 function createParameters(
   dto: Constructor | undefined,
+  routePath: string,
   context: BuildSchemaContext,
 ): OpenApiParameterObject[] {
-  if (!dto) {
-    return [];
-  }
-
-  const entries = collectDtoEntries(dto, context).filter(
-    (entry): entry is typeof entry & { binding: DtoBindingEntry } =>
-      entry.binding?.metadata.source === 'path'
-      || entry.binding?.metadata.source === 'query'
-      || entry.binding?.metadata.source === 'header'
-      || entry.binding?.metadata.source === 'cookie',
-  );
-
-  return entries.map((entry) => {
+  const entries = dto
+    ? collectDtoEntries(dto, context)
+      .filter(
+        (entry): entry is typeof entry & { binding: DtoBindingEntry } =>
+          entry.binding?.metadata.source === 'path'
+          || entry.binding?.metadata.source === 'query'
+          || entry.binding?.metadata.source === 'header'
+          || entry.binding?.metadata.source === 'cookie',
+      )
+    : [];
+  const parameters = entries.map((entry) => {
     const source = entry.binding.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
     const inferred = inferPrimitiveTypeFromRules(rules, context) ?? {};
@@ -819,6 +818,25 @@ function createParameters(
       schema,
     };
   });
+  const documentedPathParameters = new Set(
+    parameters.filter((parameter) => parameter.in === 'path').map((parameter) => parameter.name),
+  );
+
+  for (const match of routePath.matchAll(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)) {
+    const name = match[1];
+
+    if (!documentedPathParameters.has(name)) {
+      documentedPathParameters.add(name);
+      parameters.push({
+        in: 'path',
+        name,
+        required: true,
+        schema: { type: 'string' },
+      });
+    }
+  }
+
+  return parameters;
 }
 
 function ensureErrorResponseSchema(componentSchemas: Record<string, OpenApiSchemaObject>): OpenApiSchemaObject {
@@ -1158,7 +1176,10 @@ function createOperationObject(
   context: BuildSchemaContext,
   usedOperationIds: Set<string>,
 ): OpenApiOperationObject {
-  const parameters = mergeOperationParameters(createParameters(descriptor.route.request, context), methodMeta?.parameters);
+  const parameters = mergeOperationParameters(
+    createParameters(descriptor.route.request, descriptor.route.path, context),
+    methodMeta?.parameters,
+  );
   const requestBody = mergeOperationRequestBody(
     createRequestBody(descriptor.route.request, componentSchemas, context),
     methodMeta,

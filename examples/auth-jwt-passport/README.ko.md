@@ -8,7 +8,7 @@
 
 - `DefaultJwtSigner`를 통한 access token 발급
 - `@UseAuth('jwt')`, `@RequireScopes(...)`를 사용한 보호 라우트
-- custom `AuthStrategy`를 통한 bearer token 검증
+- `@fluojs/passport`의 내장 `BearerJwtStrategy` preset을 통한 bearer token 검증
 - reflection 기반 주입 대신 명시적 DI token metadata
 - auth 라우트와 함께 동작하는 runtime-owned `/health`, `/ready`
 - `@fluojs/testing`을 사용한 unit / integration / e2e 스타일 테스트
@@ -55,9 +55,9 @@ examples/auth-jwt-passport/
 
 1. `src/auth/login.dto.ts` — 명시적 request boundary
 2. `src/auth/auth.service.ts` — JWT 발급
-3. `src/auth/bearer.strategy.ts` — passport core를 통한 bearer token 검증
+3. `src/auth/bearer.strategy.ts` — 내장 `BearerJwtStrategy` preset의 re-export
 4. `src/auth/auth.controller.ts` — 토큰 발급 라우트 + 보호된 profile 라우트
-5. `src/auth/auth.module.ts` — `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` 기반 module-first 등록
+5. `src/auth/auth.module.ts` — `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)`와 안정적인 `createBearerJwtStrategyRegistration()` helper 기반 module-first 등록
 6. `src/app.test.ts` — service/strategy coverage와 `createTestApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
 
 ## 관련 문서

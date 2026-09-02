@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -20,6 +20,24 @@ function writePackageChangelog(directory: string, packageDirectory: string, chan
   const targetDirectory = join(directory, packageDirectory);
   mkdirSync(targetDirectory, { recursive: true });
   writeFileSync(join(targetDirectory, 'CHANGELOG.md'), changelog, 'utf8');
+}
+
+function consumedGeneratedMajorDependencies(changelog?: string) {
+  return {
+    collectPackageVersionDeltas: () => [
+      {
+        bump: 'major',
+        filePath: 'packages/generated/package.json',
+        nextVersion: '2.0.0',
+        packageName: '@fluojs/generated',
+        previousVersion: '1.0.0',
+        source: 'generated',
+      },
+    ],
+    collectStableNodeEngineRangeNarrowings: () => [],
+    existsSync: (targetPath: string) => changelog !== undefined && targetPath.endsWith('packages/generated/CHANGELOG.md'),
+    readFileSync: () => changelog ?? '',
+  };
 }
 
 afterEach(() => {
@@ -64,13 +82,14 @@ describe('verifyChangesetReleaseLane', () => {
           },
           {
             bump: 'major',
-            filePath: 'packages/runtime/package.json',
+            filePath: 'packages/generated/package.json',
             nextVersion: '2.0.0',
-            packageName: '@fluojs/runtime',
+            packageName: '@fluojs/generated',
             previousVersion: '1.0.0',
           },
         ],
         collectDependencyOnlyMajorVersionDeltas: () => [],
+        collectStableNodeEngineRangeNarrowings: () => [],
       },
     );
 
@@ -82,9 +101,10 @@ describe('verifyChangesetReleaseLane', () => {
     writeChangeset(directory, 'react-scaffold.md', '"@fluojs/react": minor');
 
     const result = verifyChangesetReleaseLane(
-      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
-      {
-        runGit: (args: string[]) => {
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectStableNodeEngineRangeNarrowings: () => [],
+          runGit: (args: string[]) => {
           const command = args.join(' ');
 
           if (command === 'diff --name-only origin/main -- packages/*/package.json') {
@@ -132,6 +152,7 @@ describe('verifyChangesetReleaseLane', () => {
 
   it('rejects major package version deltas without major changelog evidence', () => {
     const directory = createChangesetDirectory();
+    writeChangeset(directory, 'i18n-major.md', '"@fluojs/i18n": major');
     writePackageChangelog(
       directory,
       'packages/i18n',
@@ -151,12 +172,90 @@ describe('verifyChangesetReleaseLane', () => {
               previousVersion: '1.0.2',
             },
           ],
+          collectStableNodeEngineRangeNarrowings: () => [],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/i18n/CHANGELOG.md'),
-          readFileSync: () =>
-            `# @fluojs/i18n\n\n## 2.0.0\n\n### Patch Changes\n\n- Updated dependencies:\n  - @fluojs/http@1.1.0\n`,
+          readFileSync: (targetPath: string) =>
+            targetPath.endsWith('i18n-major.md')
+              ? '---\n"@fluojs/i18n": major\n---\n\nRemove a deprecated public API.\n'
+              : `# @fluojs/i18n\n\n## 2.0.0\n\n### Patch Changes\n\n- Updated dependencies:\n  - @fluojs/http@1.1.0\n`,
         },
       ),
     ).toThrow(/dependency-only major package version deltas/u);
+  });
+
+  it('accepts a generated major version delta after Changesets consumption', () => {
+    // Given: Changesets has consumed the originating major intent.
+    const directory = createChangesetDirectory();
+    const changelog = '# @fluojs/generated\n\n## 2.0.0\n\n### Major Changes\n\nMigration: Update consumers for the removed API.\n';
+
+    // When: the Version Packages result is checked without pending metadata.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      consumedGeneratedMajorDependencies(changelog),
+    );
+
+    // Then: generated release output is accepted with matching consumer evidence.
+    expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
+  });
+
+  it('accepts indented migration guidance generated inside a major changelog item', () => {
+    // Given: Changesets has indented the migration paragraph under its generated list item.
+    const directory = createChangesetDirectory();
+    const changelog =
+      '# @fluojs/generated\n\n## 2.0.0\n\n### Major Changes\n\n- Preserve shutdown behavior.\n\n  Migration: Make failed cleanup hooks retry-safe.\n';
+
+    // When: the consumed generated major is verified.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      consumedGeneratedMajorDependencies(changelog),
+    );
+
+    // Then: normal Markdown continuation indentation preserves the migration evidence.
+    expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
+  });
+
+  it('rejects a consumed generated major without changelog provenance', () => {
+    // Given: generated major metadata without its generated changelog evidence.
+    const directory = createChangesetDirectory();
+
+    // When: the consumed release output is verified.
+    // Then: source metadata alone cannot bypass major-release evidence.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        consumedGeneratedMajorDependencies(),
+      ),
+    ).toThrow(/consumed generated major package version deltas/u);
+  });
+
+  it('validates consumed generated majors despite unrelated pending intents', () => {
+    // Given: an unrelated pending changeset and a consumed generated major without evidence.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'unrelated.md', '"@fluojs/http": patch');
+
+    // When: the release lane verifies all version deltas.
+    // Then: unrelated pending metadata cannot skip generated-major provenance.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        consumedGeneratedMajorDependencies(),
+      ),
+    ).toThrow(/consumed generated major package version deltas/u);
+  });
+
+  it('rejects a prerelease-prefix changelog heading for a generated major', () => {
+    // Given: only a non-exact prerelease heading that prefixes the generated version.
+    const directory = createChangesetDirectory();
+    const changelog = '# @fluojs/generated\n\n## 2.0.0-preview.1\n\n### Major Changes\n\nMigration: Update consumers.\n';
+
+    // When: the generated 2.0.0 release is checked.
+    // Then: a unique line-exact 2.0.0 heading is required.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        consumedGeneratedMajorDependencies(changelog),
+      ),
+    ).toThrow(/consumed generated major package version deltas/u);
   });
 
   it('rejects patch changesets that describe public CLI feature additions', () => {
@@ -185,6 +284,160 @@ describe('verifyChangesetReleaseLane', () => {
     expect(() => verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' })).toThrow(
       /Studio route-kind input-contract narrowing classified as patch/u,
     );
+  });
+
+  it('rejects patch changesets when a stable Node engine range narrows', () => {
+    // Given: a stable package narrows its supported Node.js range.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'graphql-node-range.md', '"@fluojs/graphql": patch');
+
+    // When: release metadata is verified against the previous package manifest.
+    // Then: the breaking range narrowing requires major release metadata.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectStableNodeEngineRangeNarrowings: () => [
+            {
+              filePath: 'packages/graphql/package.json',
+              nextEngineRange: '>=20.19.3 <21 || >=22.2.0 <27',
+              packageName: '@fluojs/graphql',
+              previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+              previousVersion: '1.1.0',
+            },
+          ],
+          readFileSync: (filePath: string) =>
+            filePath.endsWith('packages/graphql/package.json')
+              ? JSON.stringify({
+                  engines: { node: '>=20.19.3 <21 || >=22.2.0 <27' },
+                  name: '@fluojs/graphql',
+                  version: '1.1.0',
+                })
+              : readFileSync(filePath, 'utf8'),
+          runGit: (args: string[]) => {
+            const command = args.join(' ');
+
+            if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+              return 'packages/graphql/package.json\n';
+            }
+
+            if (command === 'cat-file -e origin/main:packages/graphql/package.json') {
+              return '';
+            }
+
+            if (command === 'show origin/main:packages/graphql/package.json') {
+              return JSON.stringify({
+                engines: { node: '>=20.16.0 <21 || >=22.0.0 <27' },
+                name: '@fluojs/graphql',
+                version: '1.1.0',
+              });
+            }
+
+            throw new Error(`unexpected git command: ${command}`);
+          },
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings without a major changeset/u);
+  });
+
+  it('fails closed when a changed package manifest carries an unparseable version', () => {
+    // Given: a changed stable package manifest whose version cannot be parsed.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'graphql-node-range.md', '"@fluojs/graphql": major');
+
+    // When: release metadata is verified without a published baseline to compare against.
+    // Then: the unparseable version fails closed instead of skipping the narrowing check.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [],
+          readFileSync: (filePath: string) =>
+            filePath.endsWith('packages/graphql/package.json')
+              ? JSON.stringify({
+                  engines: { node: '>=20.19.3 <21' },
+                  name: '@fluojs/graphql',
+                  version: 'not-a-semver',
+                })
+              : readFileSync(filePath, 'utf8'),
+          runGit: (args: string[]) => {
+            const command = args.join(' ');
+
+            if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+              return 'packages/graphql/package.json\n';
+            }
+
+            if (command === 'cat-file -e origin/main:packages/graphql/package.json') {
+              return '';
+            }
+
+            throw new Error(`unexpected git command: ${command}`);
+          },
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings without a major changeset/u);
+  });
+
+  it('rejects Node migration guidance whose replacement range is empty', () => {
+    // Given: a major changeset whose replacement Node range cannot be satisfied.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'graphql-node-range.md',
+      '"@fluojs/graphql": major',
+      'Migration: Node.js 20 support is removed. Upgrade to Node.js >=22 <20.',
+    );
+
+    // When: release metadata is verified for a stable Node engine range narrowing.
+    // Then: the syntactically matched but empty replacement range is not accepted as guidance.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [],
+          collectStableNodeEngineRangeNarrowings: () => [
+            {
+              filePath: 'packages/graphql/package.json',
+              nextEngineRange: '>=22.2.0 <27',
+              packageName: '@fluojs/graphql',
+              previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+              previousVersion: '1.1.0',
+            },
+          ],
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings missing consumer migration notes/u);
+  });
+
+  it('accepts Node migration guidance whose replacement range is satisfiable', () => {
+    // Given: a major changeset whose replacement Node range is bounded and satisfiable.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'graphql-node-range.md',
+      '"@fluojs/graphql": major',
+      'Migration: Node.js 20 support is removed. Upgrade to Node.js >=22.2.0 <27.',
+    );
+
+    // When: release metadata is verified for the same stable Node engine range narrowing.
+    // Then: the bounded replacement range satisfies the consumer migration requirement.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      {
+        collectPackageVersionDeltas: () => [],
+        collectStableNodeEngineRangeNarrowings: () => [
+          {
+            filePath: 'packages/graphql/package.json',
+            nextEngineRange: '>=22.2.0 <27',
+            packageName: '@fluojs/graphql',
+            previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+            previousVersion: '1.1.0',
+          },
+        ],
+      },
+    );
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'major', packageName: '@fluojs/graphql' }]);
   });
 
   it('allows patch changesets that preserve existing CLI behavior without additive feature language', () => {
@@ -288,6 +541,7 @@ describe('verifyChangesetReleaseLane', () => {
               previousVersion: '1.0.6',
             },
           ],
+          collectStableNodeEngineRangeNarrowings: () => [],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/cli/CHANGELOG.md'),
           readFileSync: () =>
             '# @fluojs/cli\n\n## 1.0.7\n\n### Patch Changes\n\n- Support documented TypeScript source module paths in `fluo inspect`.\n',
@@ -312,6 +566,7 @@ describe('verifyChangesetReleaseLane', () => {
               previousVersion: '1.0.8',
             },
           ],
+          collectStableNodeEngineRangeNarrowings: () => [],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/studio/CHANGELOG.md'),
           readFileSync: () =>
             '# @fluojs/studio\n\n## 1.0.9\n\n### Patch Changes\n\n- Reject unknown supplied route kinds in static and live Studio artifacts.\n',
@@ -335,6 +590,7 @@ describe('verifyChangesetReleaseLane', () => {
             previousVersion: '1.0.0',
           },
         ],
+        collectStableNodeEngineRangeNarrowings: () => [],
         existsSync: (targetPath: string) => targetPath.endsWith('packages/runtime/CHANGELOG.md'),
         readFileSync: () =>
           `# @fluojs/runtime\n\n## 2.0.0\n\n### Major Changes\n\n- Remove a deprecated public API.\n`,

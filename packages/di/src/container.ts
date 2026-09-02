@@ -32,10 +32,19 @@ interface StaleDisposalTask {
   error: unknown;
   errorConsumed: boolean;
   failed: boolean;
+  readonly observers: readonly Container[];
   promise: Promise<void>;
+  retryInstance: Disposable | undefined;
+  readonly retryOwner: Container;
 }
 
 type DisposalAttemptOrigin = 'direct' | 'parent';
+
+interface ChildScopeConstruction {
+  readonly parent: Container;
+  readonly requestScopeEnabled: boolean;
+  readonly singletonCache: Map<Token, Promise<unknown>>;
+}
 
 /**
  * Controlled cache adoption seam for framework-owned testing and tooling that
@@ -286,6 +295,8 @@ function linkPendingResolution(
  */
 // allow: SIZE_OK — Container is the package's existing DI lifecycle state machine.
 export class Container {
+  static #childScopeConstruction: ChildScopeConstruction | undefined;
+
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly multiOverriddenTokens = new Set<Token>();
@@ -308,12 +319,44 @@ export class Container {
   private trackedByParent = false;
   private graphRevision = 0;
 
-  constructor(
-    private readonly parent?: Container,
-    private readonly requestScopeEnabled = false,
-    singletonCache?: Map<Token, Promise<unknown>>,
-  ) {
-    this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
+  private readonly parent: Container | undefined;
+  private readonly requestScopeEnabled: boolean;
+
+  /**
+   * Creates a root container that owns its own singleton cache.
+   *
+   * Child request scopes are package-owned and must be created with
+   * {@link Container.createRequestScope}; caller-supplied parent, request-scope,
+   * or singleton-cache wiring is rejected.
+   *
+   * @throws {ContainerResolutionError} When any constructor argument is supplied.
+   */
+  constructor(...construction: never[]) {
+    if (construction.length > 0) {
+      throw new ContainerResolutionError(
+        'Container child-scope construction is package-owned and cannot be invoked directly.',
+        {
+          hint: 'Construct root containers with new Container() and create child scopes with container.createRequestScope().',
+        },
+      );
+    }
+
+    const childScope = Container.#childScopeConstruction;
+
+    this.parent = childScope?.parent;
+    this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
+    this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
+  }
+
+  static #createChildScope(construction: ChildScopeConstruction): Container {
+    const parentConstruction = Container.#childScopeConstruction;
+    Container.#childScopeConstruction = construction;
+
+    try {
+      return new Container();
+    } finally {
+      Container.#childScopeConstruction = parentConstruction;
+    }
   }
 
   /**
@@ -585,7 +628,11 @@ export class Container {
       );
     }
 
-    return new Container(this, true, this.root().singletonCache);
+    return Container.#createChildScope({
+      parent: this,
+      requestScopeEnabled: true,
+      singletonCache: this.root().singletonCache,
+    });
   }
 
   /**
@@ -640,10 +687,15 @@ export class Container {
 
     this.disposed = true;
     this.advanceGraphRevision();
-    this.disposePromise = this.disposeAll(origin);
+    const activeDispose = this.disposeAll(origin);
+    this.disposePromise = activeDispose;
 
     try {
-      await this.disposePromise;
+      await activeDispose;
+
+      if (this.disposePromise === activeDispose && this.hasRetainedStaleDisposalTasksInSubtree()) {
+        this.disposePromise = undefined;
+      }
     } catch (error) {
       this.disposePromise = undefined;
       throw error;
@@ -676,7 +728,13 @@ export class Container {
       this.throwDisposalErrors(errors);
       completed = true;
     } finally {
-      if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
+      const retainsStaleRetries = this.hasRetainedStaleDisposalTasksInSubtree();
+
+      if ((origin === 'direct' || (completed && !retainsStaleRetries)) && this.parent && this.trackedByParent) {
+        if (origin === 'direct') {
+          this.releaseNonOwnerStaleTaskObserversInSubtree();
+        }
+
         this.parent.childScopes?.delete(this);
         this.trackedByParent = false;
       }
@@ -1226,19 +1284,25 @@ export class Container {
   private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
     const errors: unknown[] = [];
 
+    const retryableStaleTasks = this.retainedStaleDisposalTasks();
+    const attemptedStaleInstances = new Set<Disposable>();
+
     try {
       await this.assertStaleDisposalsSettled();
     } catch (error) {
       this.collectDisposalError(error, errors);
     }
 
+    errors.push(...(await this.retryFailedStaleDisposals(retryableStaleTasks, attemptedStaleInstances)));
+
     const {
       disposables: materializedDisposables,
       errors: resolutionErrors,
     } = await this.collectDisposableInstances(entries);
-    const disposables = this.pendingDisposables.length > 0
+    const disposalCandidates = this.pendingDisposables.length > 0
       ? this.pendingDisposables
       : materializedDisposables;
+    const disposables = disposalCandidates.filter((instance) => !attemptedStaleInstances.has(instance));
 
     errors.push(...resolutionErrors);
     errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
@@ -1357,22 +1421,110 @@ export class Container {
 
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
+    const settled = new Set<StaleDisposalTask>();
 
-    while (this.staleDisposalTasks.size > 0) {
-      const tasks = Array.from(this.staleDisposalTasks);
+    while (true) {
+      const tasks = Array.from(this.staleDisposalTasks).filter((task) => !settled.has(task));
+
+      if (tasks.length === 0) {
+        break;
+      }
+
       await Promise.all(tasks.map((task) => task.promise));
 
       for (const task of tasks) {
-        this.staleDisposalTasks.delete(task);
+        settled.add(task);
 
-        if (task.failed && !task.errorConsumed) {
+        if (!task.failed) {
+          this.staleDisposalTasks.delete(task);
+          continue;
+        }
+
+        // A rejected materialization has no hook to retry. Deliver its error
+        // once, then release it from every observer's stale-task ledger.
+        if (!task.errorConsumed) {
           task.errorConsumed = true;
           errors.push(task.error);
+        }
+
+        if (!task.retryInstance) {
+          for (const observer of task.observers) {
+            observer.staleDisposalTasks.delete(task);
+          }
         }
       }
     }
 
     this.throwDisposalErrors(errors);
+  }
+
+  private retainedStaleDisposalTasks(): StaleDisposalTask[] {
+    // Only the scheduling container retries a stale hook, and only when the
+    // failure was already delivered to an earlier caller. A failure first
+    // surfaced by this attempt is reported, not retried within the same pass.
+    return Array.from(this.staleDisposalTasks).filter(
+      (task) => task.retryOwner === this && task.failed && task.errorConsumed,
+    );
+  }
+
+  private hasRetainedStaleDisposalTasksInSubtree(): boolean {
+    return this.retainedStaleDisposalTasks().length > 0
+      || Array.from(this.childScopes ?? []).some((childScope) => childScope.hasRetainedStaleDisposalTasksInSubtree());
+  }
+
+  private releaseNonOwnerStaleTaskObservers(): void {
+    for (const task of this.staleDisposalTasks) {
+      if (task.retryOwner !== this) {
+        continue;
+      }
+
+      for (const observer of task.observers) {
+        if (observer !== this) {
+          observer.staleDisposalTasks.delete(task);
+        }
+      }
+    }
+  }
+
+  private releaseNonOwnerStaleTaskObserversInSubtree(): void {
+    this.releaseNonOwnerStaleTaskObservers();
+
+    for (const childScope of this.childScopes ?? []) {
+      childScope.releaseNonOwnerStaleTaskObserversInSubtree();
+    }
+  }
+
+  private async retryFailedStaleDisposals(
+    tasks: readonly StaleDisposalTask[],
+    attemptedInstances: Set<Disposable>,
+  ): Promise<unknown[]> {
+    const errors: unknown[] = [];
+
+    for (const task of tasks) {
+      const instance = task.retryInstance;
+
+      if (!task.failed || !instance) {
+        continue;
+      }
+
+      attemptedInstances.add(instance);
+
+      try {
+        await instance.onDestroy();
+        task.failed = false;
+        task.retryInstance = undefined;
+
+        for (const observer of task.observers) {
+          observer.staleDisposalTasks.delete(task);
+        }
+      } catch (error) {
+        task.error = error;
+        task.errorConsumed = true;
+        errors.push(error);
+      }
+    }
+
+    return errors;
   }
 
   private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
@@ -1381,19 +1533,33 @@ export class Container {
       error: undefined,
       errorConsumed: false,
       failed: false,
+      observers,
       promise: Promise.resolve(),
+      retryInstance: undefined,
+      retryOwner: this,
     };
 
     task.promise = (async () => {
-      try {
-        const instance = await instancePromise;
+      let instance: unknown;
 
-        if (this.isDisposable(instance)) {
-          await instance.onDestroy();
-        }
+      try {
+        instance = await instancePromise;
       } catch (error) {
         task.error = error;
         task.failed = true;
+        return;
+      }
+
+      if (!this.isDisposable(instance)) {
+        return;
+      }
+
+      try {
+        await instance.onDestroy();
+      } catch (error) {
+        task.error = error;
+        task.failed = true;
+        task.retryInstance = instance;
       }
     })().finally(() => {
       const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);

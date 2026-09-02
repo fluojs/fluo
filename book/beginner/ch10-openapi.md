@@ -177,6 +177,10 @@ Thanks to this reuse, FluoBlog can now automatically express the following. The 
 
 When DTOs use validation Decorators such as `@IsString()`, `@IsEmail()`, or `@MinLength(10)`, `OpenApiModule` automatically converts them into OpenAPI constraints. For example, combine `@IsString()` with `@MinLength(10)` to emit a string schema with `minLength: 10` in the generated JSON. This logic is thoroughly tested in `packages/openapi/src/schema-builder.test.ts`.
 
+### Default Error Contract
+
+The generated document also has a default error contract: fluo adds `400`, `401`, `403`, `404`, and `500` responses and a shared `ErrorResponse` schema unless the response is already declared. Verify those generated responses before client generation. When a legacy client contract must omit them, configure `defaultErrorResponsesPolicy: 'omit'`; explicit `@ApiResponse(...)` declarations still describe the responses you intend to publish.
+
 ### Protected Routes in the Docs
 
 Chapter 9 covered Guards. If a route is protected, the documentation should reflect that too. Otherwise, users will have a hard time understanding why they receive a `403 Forbidden` error.

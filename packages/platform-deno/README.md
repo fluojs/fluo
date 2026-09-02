@@ -57,6 +57,18 @@ Signal listener registration does not require a separate Deno permission. The ad
 
 Deno's Fetch `Response` cannot represent an informational response before the final response, so `context.response.earlyHints` is absent. Check for capability presence before use. The adapter never turns a requested `103` into a silent no-op or a final-response header.
 
+### Streaming multipart consumption
+
+Set `multipart: { strategy: 'stream' }` at application bootstrap to receive multipart data incrementally. For
+multipart routes, `RequestContext.request.body` is an `AsyncIterableIterator<MultipartPart>`: field parts expose
+`kind: 'field'`, `name`, `value`, and `headers`; file parts expose `kind: 'file'`, `name`, `filename`,
+`contentType`, `headers`, and a single-consumer `ReadableStream<Uint8Array>` at `stream`. Finish or cancel each file
+stream before requesting the next part.
+
+Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler
+finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that
+responsibility: consume the iterator to completion or call `return()` when ending early.
+
 ### Host-Owned Deno.serve
 If your application owns `Deno.serve(...)`, bootstrap the fluo application without calling `app.listen()` and create a request handler from its public dispatcher. `createDenoFetchHandler(...)` only translates and dispatches requests; it never starts a server or owns shutdown, signals, or websocket upgrades.
 
@@ -139,7 +151,7 @@ Advanced options include injectable `serve` and `upgradeWebSocket` seams for tes
 
 `packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the managed Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, shutdown-failure ownership until `server.finished`, and the bounded 10-second close timeout. `packages/platform-deno/src/fetch-handler.test.ts` applies the shared web-runtime portability harness to the host-owned handler, covering cookies/query decoding, JSON/text and byte-exact raw bodies, multipart exclusion, SSE framing, and proof that dispatch does not call `Deno.serve(...)`. `packages/platform-deno/src/declaration-surface.test.ts` rebuilds the package and verifies the manifest-exported declarations.
 
-The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
+The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, single byte-range status/header/body semantics, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
 ## Public API Overview
 

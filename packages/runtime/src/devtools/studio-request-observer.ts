@@ -22,16 +22,9 @@ function createRequestId(): string {
   return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-function toErrorPayload(error: unknown): StudioRequestTrace['error'] {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-    };
-  }
-
+function toErrorPayload(_error: unknown): StudioRequestTrace['error'] {
   return {
-    message: String(error),
+    message: 'Request failed',
   };
 }
 

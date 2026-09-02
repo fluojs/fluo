@@ -17,6 +17,12 @@ AppModule
 
 Use this guide when choosing a runtime target or when you need to understand which behavior is portable and which behavior belongs to an adapter.
 
+## Static assets
+
+Static asset policy is portable only when the application supplies a `StaticAssetSource` to `createStaticAssetsMiddleware(...)`. This preserves the same traversal protection, validators, `HEAD`, `Range`, `If-Range`, and stream-cancellation behavior on every adapter without claiming that every host has a filesystem.
+
+On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)` from `@fluojs/runtime/node` for a root-confined filesystem source. It rejects invalid roots during configuration, rejects lexical and symlink escapes, and can select `.br` or `.gz` siblings when precompression is enabled. Bun, Deno, and Cloudflare Workers must provide an application-owned source; fluo does not emulate Node filesystem access on those targets.
+
 ## Adapter families
 
 | Target | Package | Best for |
@@ -82,6 +88,8 @@ const adapter = createFastifyAdapter(
 ```
 
 Raw-body capture is skipped for multipart requests. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
+
+Fastify preserves the shared single-byte-range and `If-Range` policy: after conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields `206`; `If-Range` reuses those validators, malformed or multi-range fields retain the full response, and an unsatisfiable range yields bodyless `416`.
 
 ### Fastify HTTPS/TLS
 
@@ -229,6 +237,8 @@ On Bun `>=1.2.3`, safe static and parameterized fluo routes may be registered th
 
 Bun WebSocket upgrades are provided through `@fluojs/websockets/bun` and must be configured before `listen()` starts the server.
 
+Bun fetch dispatch preserves the shared single-byte-range and `If-Range` policy: after conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields `206`; `If-Range` reuses those validators, malformed or multi-range fields retain the full response, and an unsatisfiable range yields bodyless `416`.
+
 ## Deno
 
 Use the Deno adapter for native `Deno.serve` deployments.
@@ -334,6 +344,8 @@ class EdgeGateway {}
 export class RealtimeModule {}
 ```
 
+Worker fetch dispatch preserves the shared single-byte-range and `If-Range` policy: after conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields `206`; `If-Range` reuses those validators, malformed or multi-range fields retain the full response, and an unsatisfiable range yields bodyless `416`.
+
 Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy entrypoint whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh application.
 
 The Worker `env` object is available per request at `request.cloudflare.env`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. The first `createCloudflareWorkerEntrypoint(...)` request triggers bootstrap only when `ready()` has not already started it. In either path, only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method. Register the provider and controller in the owning module.
@@ -386,6 +398,7 @@ export class WorkerBindingsModule {}
 | Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
 | Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
 | SSE/streaming | Yes | Yes | Yes | Yes | Yes | Yes through fetch response contract |
+| Single-byte ranges and `If-Range` | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy | Shared HTTP policy |
 | WebSockets | Server-backed | Server-backed | Server-backed | Native Bun binding | Native Deno binding | WebSocketPair binding |
 | Native route acceleration | Fastify native safe path | No | Express native safe path | Bun routes safe path | No | No |
 

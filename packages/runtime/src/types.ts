@@ -1,7 +1,9 @@
 import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
+  ContentNegotiationOptions,
   ConverterLike,
+  ConditionalRequestOptions,
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
@@ -13,6 +15,7 @@ import type {
   VersioningOptions,
 } from '@fluojs/http';
 
+import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
 import type { PlatformComponentInput } from './platform-contract.js';
 
@@ -140,8 +143,25 @@ export interface ExceptionFilterHandler {
 /** High-level bootstrap options for creating an HTTP application shell. */
 export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
+  /**
+   * Host-owned Studio bridge used to publish live bootstrap and request events.
+   *
+   * When omitted, runtime preserves the CLI-injected Node.js bridge behavior.
+   * Platform integrations should create this bridge from `@fluojs/runtime/devtools`
+   * instead of mutating the undocumented Studio process-global.
+   */
+  studioDevtools?: StudioDevtoolsRuntime;
+  /** Dispatcher-owned policy for HTTP validators and conditional requests. */
+  conditionalRequest?: ConditionalRequestOptions;
   /** Application-owned HTML provider for HTTP-classified error and not-found outcomes. */
   errorRepresentation?: HttpErrorRepresentationOptions;
+  /**
+   * Response formatter selection owned by the HTTP dispatcher.
+   *
+   * The runtime forwards this contract unchanged; `@Produces(...)`, `Accept`,
+   * success response headers, and 406 handling remain HTTP-owned.
+   */
+  contentNegotiation?: ContentNegotiationOptions;
   /**
    * Enables the opt-in process-local module graph compile result cache for this
    * bootstrap. The default is `false`, so each bootstrap compiles a fresh graph

@@ -95,7 +95,7 @@ ThrottlerModule.forRoot({
 
 ### 커스텀 키 생성
 
-기본적으로 throttler는 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. 배포가 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 덮어쓰는 신뢰 가능한 리버스 프록시 뒤에 있다면 `trustProxyHeaders: true`로 명시적으로 opt-in 하세요. 신뢰 가능한 소켓 식별자나 프록시 식별자가 없으면 서로 다른 호출자를 같은 버킷으로 합치지 않도록 예외를 던집니다. API 키나 사용자 ID 등 다른 식별자를 사용하도록 커스터마이징할 수도 있습니다.
+기본적으로 throttler는 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. 배포가 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 덮어쓰는 신뢰 가능한 리버스 프록시 뒤에 있다면, 애플리케이션이 실제로 관찰하는 프록시 주소로 제한한 `trustProxy` 구성을 우선 권장합니다. `trustProxyHeaders: true`는 광범위한 legacy compatibility 전용이며 새 deployment에는 권장하지 않습니다. 신뢰 가능한 소켓 식별자나 프록시 식별자가 없으면 서로 다른 호출자를 같은 버킷으로 합치지 않도록 예외를 던집니다. API 키나 사용자 ID 등 다른 식별자를 사용하도록 커스터마이징할 수도 있습니다.
 
 카운터는 route identity와 client identity로 구분됩니다. route 부분에는 module, controller, method, path, version과 HTTP route compiler가 할당한 deterministic source/method position이 포함됩니다. 따라서 display name과 emitted source가 같은 서로 다른 compiled handler도 격리되며, 동일한 artifact layout은 애플리케이션 인스턴스 간에 같은 identity를 생성해 distributed bucket 공유를 유지합니다. 요청이 거부되면 `ThrottlerGuard`는 `429`를 반환하고 `Retry-After`를 설정합니다.
 
@@ -103,9 +103,12 @@ ThrottlerModule.forRoot({
 ThrottlerModule.forRoot({
   ttl: 60,
   limit: 100,
-  trustProxyHeaders: true,
+  // 이 알려진 reverse proxy에서 온 forwarding metadata만 허용합니다.
+  trustProxy: ['192.0.2.10/32'],
 });
 ```
+
+`trustProxy`는 기본 client key의 명시적인 forwarding boundary입니다. `false`, trusted-hop 수, address/CIDR rule 또는 predicate를 받을 수 있습니다. 신뢰되지 않았거나 malformed인 forwarding data는 direct transport identity를 대체할 수 없습니다. `trustProxyHeaders: true`는 광범위한 legacy full-header compatibility 전용이며 새 deployment에는 `trustProxy`를 사용하세요.
 
 ```typescript
 ThrottlerModule.forRoot({
@@ -130,8 +133,15 @@ ThrottlerModule.forRoot({
 
 - `ThrottlerModule.forRoot(...)`는 검증된 옵션과 provider를 등록하지만, 모든 route에 throttling을 자동으로 강제하지 않습니다. 보호가 필요한 곳마다 `@UseGuards(ThrottlerGuard)` 같은 Fluo guard metadata로 `ThrottlerGuard`를 활성화하세요.
 - 공개 정책 shape는 하나의 module default와 class 또는 method 수준 `@Throttle({ ttl, limit })` override입니다. burst와 sustained limit을 함께 두는 named multi-window definition은 HTTP middleware, custom `ThrottlerStore`, 또는 애플리케이션이 소유한 guard wrapper로 명시적으로 조합해야 합니다.
-- Forwarded client IP header는 기본적으로 무시됩니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서만 `trustProxyHeaders: true`를 활성화하세요.
+- NestJS `ttl` 값은 밀리초이고 fluo `ttl` 값은 초입니다. 값을 그대로 복사하지 말고 `ttl: 60_000`을 `ttl: 60`으로 변환하세요.
+- `@SkipThrottle()`에는 named 또는 `false` 형식이 없습니다. Class와 method 수준 skip은 additive하게 결합되므로, 다시 활성화할 method는 skipped controller 밖으로 옮기거나 application-owned guard wrapper를 사용하세요.
+- 비동기 secret, configuration, store 생성은 동기 `ThrottlerModule.forRoot(...)` 등록 전에 해결하세요. fluo는 NestJS `forRootAsync(...)` shape을 제공하지 않습니다.
+- `ThrottlerGuard`와 `keyGenerator`는 HTTP 전용입니다. WebSocket, GraphQL, RPC, queue 정책에는 별도 transport-owned guard 또는 middleware를 적용하세요.
+- Bucket key와 storage call contract가 다르므로 persisted NestJS window는 기본적으로 이어지지 않습니다. 연속성이 필요하면 application-owned compatibility store 또는 bounded cutover를 사용하세요.
+- Forwarded client IP header는 기본적으로 무시됩니다. 신뢰할 proxy 경계를 hop count, CIDR 목록, predicate로 선언하는 `trustProxy`를 우선 사용하세요. `trustProxyHeaders: true`는 direct peer만 신뢰하는 설정이 아니라 전체 forwarding chain을 신뢰하는 광범위한 legacy compatibility mode이며 새 deployment에는 권장하지 않습니다.
 - 제한 초과 시 보장되는 응답 계약은 HTTP `429`와 `Retry-After`입니다. 추가 rate-limit header나 response body는 exception filter 같은 애플리케이션 경계에서 더하세요.
+
+마이그레이션 예제와 전체 호환성 맵은 [NestJS → fluo Migration Map](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.ko.md)을 참고하세요.
 
 ## 공개 API 개요
 
@@ -140,7 +150,7 @@ ThrottlerModule.forRoot({
 - `ThrottlerModuleOptions`: `ThrottlerModule.forRoot(...)`가 받는 공개 options shape입니다.
 - 패키지 수준 등록은 `ThrottlerModule.forRoot(options)`를 통해 지원합니다. 내부 프로바이더 조합 헬퍼와 DI 토큰은 공개 계약에 포함되지 않습니다.
 
-`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있으며, `keyGenerator`를 제공할 때는 함수여야 합니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
+`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxy`는 `@fluojs/http`의 `TrustProxyPolicy`를 사용하는 권장 명시적 경계이고, `trustProxyHeaders`는 광범위한 legacy compatibility 전용이며 새 deployment에는 권장하지 않습니다. `keyGenerator`를 제공할 때는 함수여야 합니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
 
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.

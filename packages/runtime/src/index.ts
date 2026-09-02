@@ -15,11 +15,15 @@ export {
 } from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
+  MultipartFieldPart,
+  MultipartFilePart,
   MultipartOptions,
+  MultipartPart,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { MultipartBodyConsumedError } from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,

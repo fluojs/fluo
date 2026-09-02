@@ -20,6 +20,8 @@ Descriptor-driven OpenAPI 3.1.0 document generation for fluo, with standard deco
 pnpm add @fluojs/openapi
 ```
 
+`@fluojs/openapi` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. Its mandatory `@fluojs/runtime` dependency owns that Node listener boundary, so Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Earlier 1.x releases advertised `engines.node >=20.0.0`, which never matched the effective dependency floor.
+
 ## When to Use
 
 - When you want to provide interactive documentation for your REST API using **Swagger UI**.
@@ -78,9 +80,13 @@ When a prebuilt descriptor and a discovered source resolve to the same OpenAPI p
 fluo inspects only the controllers and handler descriptors supplied through `sources` and `descriptors` to build an OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies for that explicit input set; importing a controller into an application module does not add it automatically.
 
 ### OpenAPI 3.1 Path Item Validation
-The builder emits only standard Path Item operations: `get`, `put`, `post`, `delete`, `options`, `head`, and `patch`. Fluo catch-all `ALL` descriptors are runtime routing inputs, not OpenAPI operations, so document generation rejects them instead of serializing a nonstandard `all` key. Unsupported descriptor methods fail with the same path-specific error.
+The builder emits only standard Path Item operations: `get`, `put`, `post`, `delete`, `options`, `head`, `patch`, and `trace`. Fluo catch-all `ALL` descriptors are runtime routing inputs, not OpenAPI operations, so document generation rejects them instead of serializing a nonstandard `all` key. Unsupported descriptor methods fail with the same path-specific error.
 
 After `documentTransform`, every Path Item is validated again. Transforms may use the OpenAPI 3.1 operations (including `trace`), fixed fields (`$ref`, `summary`, `description`, `servers`, and `parameters`), and `x-*` specification extensions. Keys such as `all`, `query`, or other unknown fields fail document generation before the document is exposed.
+
+### Migrating to 2.0
+
+Before upgrading, replace every `@All()` route or custom handler descriptor with separate supported HTTP method routes, or exclude it from OpenAPI input. In `documentTransform`, remove nonstandard Path Item keys such as `all` and `query`; retain only standard operations, fixed fields, and `x-*` extensions. Unsupported input now throws during document generation instead of emitting an invalid document.
 
 ### Response Media Types
 When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated OpenAPI responses use those media types as the response `content` keys. For example, `@Produces('application/json', 'application/problem+json')` on a handler with an `@ApiResponse(...)` schema emits both media types with the same response schema instead of silently falling back to only `application/json`.
@@ -145,6 +151,13 @@ Paths follow the `@fluojs/http` route grammar and normalize duplicate or trailin
 
 ### Async Registration and Options
 Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration comes from DI or async setup. Put registration-time `documentPath` and `uiPath` beside `inject` and `useFactory`; return `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, and `swaggerUiAssets` from the factory. `defaultErrorResponsesPolicy` defaults to injecting standard error responses and an `ErrorResponse` schema, while `documentTransform` runs after document generation and before serving.
+
+### NestJS Migration Contract Differences
+Generated documents are not a one-to-one NestJS Swagger compatibility layer. By default, fluo adds `400`, `401`, `403`, `404`, and `500` responses that do not replace explicitly declared responses, and includes the shared `ErrorResponse` schema. Verify the generated error contract before regenerating clients; set `defaultErrorResponsesPolicy: 'omit'` when the legacy document must not receive those default responses.
+
+Fluo derives each `operationId` deterministically from the controller tag, handler name, HTTP method, and normalized path. Collisions receive numeric suffixes. If generated clients rely on legacy identifiers, rename the generated operation IDs in `documentTransform` before the document is served, then verify the transformed document with the client generator.
+
+With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration options because their routes are compiled before `useFactory(...)` resolves. Keep those paths beside `inject` and `useFactory`; return only document configuration from the factory. A path returned by the factory cannot reconfigure the already-registered routes.
 
 ## Public API
 

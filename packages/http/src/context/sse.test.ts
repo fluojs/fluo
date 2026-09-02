@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
-import { SseResponse, encodeSseComment, encodeSseMessage, isSseMessage } from './sse.js';
+import {
+  SseResponse,
+  encodeSseComment,
+  encodeSseMessage,
+  isSseMessage,
+  waitForSseResponseCompletion,
+} from './sse.js';
+import { isRequestContextAborted } from '../dispatch/request-abort.js';
 
 interface MockSseStream extends FrameworkResponseStream {
   _closed: boolean;
@@ -164,6 +171,19 @@ describe('SseResponse', () => {
     expect(stream.removeCloseListenerCalls).toBe(1);
   });
 
+  it('settles completion while preserving a raw stream close failure', async () => {
+    const stream = createMockSseStream();
+    const response = createMockResponse(stream);
+    const sse = new SseResponse(createContext(response));
+
+    stream.close = () => {
+      throw new Error('stream close failed');
+    };
+
+    expect(() => sse.close()).toThrow('stream close failed');
+    await expect(waitForSseResponseCompletion(sse)).resolves.toBeUndefined();
+  });
+
   it('closes the stream when the request signal aborts', () => {
     const stream = createMockSseStream();
     const response = createMockResponse(stream);
@@ -177,6 +197,19 @@ describe('SseResponse', () => {
     expect(stream.writes).toEqual([]);
     expect(stream.onCloseCalls).toBe(1);
     expect(stream.removeCloseListenerCalls).toBe(1);
+  });
+
+  it('marks a pre-closed stream as cancelled before write-frame admission', () => {
+    const stream = createMockSseStream();
+    const response = createMockResponse(stream);
+    const context = createContext(response);
+    stream._closed = true;
+
+    const sse = new SseResponse(context);
+
+    expect(sse.send('after disconnect')).toBe(false);
+    expect(isRequestContextAborted(context)).toBe(true);
+    expect(stream.writes).toEqual([]);
   });
 
   it('surfaces backpressure from send and comment calls', () => {
