@@ -676,6 +676,130 @@ async function shutdown() {
 }
 ```
 
+### NestJS CQRS 마이그레이션 체크리스트
+
+아래 네 항목은 앞선 CQRS 표 행과 bullet 목록에서 다루지 않으며, 마이그레이션 시 동작이 조용히 달라지기 쉬운 지점입니다.
+
+#### Saga 클래스 재작성
+
+`@nestjs/cqrs` saga는 `Observable<IEvent>`를 받고 `Observable<ICommand>`를 반환합니다. fluo saga는 `ISaga<E>`를 구현하고 비동기 `handle(event, context?)` method를 가지는 singleton provider class이며 factory function이 아닙니다.
+
+```ts
+// Before: NestJS Observable saga
+@Injectable()
+export class UserSaga {
+  @Saga()
+  userCreated = (events$: Observable<any>): Observable<ICommand> =>
+    events$.pipe(
+      ofType(UserCreatedEvent),
+      map((event) => new SendWelcomeEmailCommand(event.userId)),
+    );
+}
+```
+
+```ts
+// After: fluo class-based saga
+import { Inject } from '@fluojs/core';
+import { Saga, ISaga, IEvent, CqrsDispatchContext, CommandBusLifecycleService } from '@fluojs/cqrs';
+
+@Inject(CommandBusLifecycleService)
+@Saga(UserCreatedEvent)
+export class UserSaga implements ISaga<UserCreatedEvent> {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+    await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
+  }
+}
+```
+
+`CqrsModule.forRoot(...)`를 import하는 module에 `UserSaga`를 singleton provider로 등록하세요. singleton이 아닌 provider에서 탐색한 saga는 경고와 함께 건너뛰며 실행되지 않습니다.
+
+같은 provider token에서는 하나의 saga `handle(...)` 호출이 완료된 뒤 다음 호출이 시작됩니다. fluo는 RxJS concurrency operator 대신 token별로 실행을 직렬화합니다. 같은 token의 다른 event route로 nested publication을 수행하면 FIFO continuation으로 직렬화되어 deadlock하지 않습니다. 이미 활성 상태인 provider-token/event-route pair에 다시 진입하거나 중첩 깊이 제한 32를 초과하면 `SagaTopologyError`가 발생합니다.
+
+#### Typed error와 pipeline 전파
+
+fluo CQRS는 routing 및 saga topology 실패에 typed framework error를 제공합니다. 일반적인 error message text에 의존하지 말고 아래 type을 catch하세요.
+
+| 조건 | 발생하는 error |
+| --- | --- |
+| Command type에 등록된 handler가 없음 | `CommandHandlerNotFoundException` |
+| Query type에 등록된 handler가 없음 | `QueryHandlerNotFoundException` |
+| 서로 다른 두 singleton provider가 같은 Command type을 점유 | `DuplicateCommandHandlerError` (bootstrap에서 발생) |
+| 서로 다른 두 singleton provider가 같은 Query type을 점유 | `DuplicateQueryHandlerError` (bootstrap에서 발생) |
+| saga가 `FluoError`가 아닌 error를 throw | `SagaExecutionError` (원인을 wrap) |
+| saga가 활성 provider-token/event-route pair에 재진입하거나 깊이 32 초과 | `SagaTopologyError` |
+
+중첩된 모든 `execute(...)`, `publish(...)`, `publishAll(...)` 호출에는 optional `CqrsDispatchContext` 인자를 변경 없이 전달하세요. CQRS는 Node.js async-local API 없이 이 private context로 saga topology와 active drain state를 추적합니다. 이 값은 opaque하고 frozen이므로 직접 생성, 복제, 검사, mutate하지 말고 호출자가 만든 객체로 대체하지 마세요.
+
+```ts
+// saga handle 또는 event handler 내부:
+async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+  // topology 추적이 유지되도록 모든 nested dispatch에 context를 전달합니다.
+  await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
+  await this.eventBus.publish(new EmailQueuedEvent(event.userId), context);
+}
+```
+
+`DuplicateEventHandlerError`는 호환성을 위해서만 남아 있는 export이며 event-handler discovery는 이를 throw하지 않습니다. 같은 decorated class를 공유하는 서로 다른 singleton token은 별도 fan-out route로 유지됩니다.
+
+#### Event clone 의미
+
+각 로컬 `@EventHandler(...)`와 `@Saga(...)`는 게시된 event의 격리된 clone을 받습니다. mutation은 해당 handler 또는 saga에만 국한되며 다른 handler, saga, 원래 event object, 위임된 `@fluojs/event-bus` subscriber에는 보이지 않습니다. 위임 event-bus publication은 원래 event를 받으므로 `@OnEvent(...)` projection과 transport는 호출자가 소유한 payload를 관찰합니다.
+
+Clone은 `structuredClone(event)`를 사용하고, 실패하면 array, date, regular expression, `Map`, `Set`, typed array, array buffer, plain object, prototype-based instance, symbol-keyed enumerable field, circular reference를 처리하는 fallback을 사용합니다.
+
+Event payload는 serializable하게 설계하세요.
+
+```ts
+// Good: serializable payload
+class OrderPlacedEvent implements IEvent {
+  constructor(
+    public readonly orderId: string,
+    public readonly amount: number,
+  ) {}
+}
+
+// Avoid: non-cloneable resources in event payload
+class OrderPlacedEvent implements IEvent {
+  // socket, stream, function field는 structuredClone을 통과하지 못합니다.
+  // 대신 ID로 표현합니다.
+  constructor(public readonly socketId: string) {}
+}
+```
+
+Fallback은 primitive와 function value를 그대로 유지하지만, open WebSocket이나 stream 같은 host resource를 portable하게 만들지는 않습니다. clone할 수 없는 resource는 identifier로 표현하고 handler에서 resolve하세요.
+
+#### Bootstrap preload와 bounded shutdown 확인
+
+모든 CQRS bus는 `onApplicationBootstrap` 중에 handler instance를 discover하고 preload합니다. Discovery는 singleton provider만 허용하고 서로 다른 두 singleton provider가 같은 Command 또는 Query type을 점유하면 `DuplicateCommandHandlerError` 또는 `DuplicateQueryHandlerError`를 throw합니다. Handler shape은 dispatch 시 검사합니다. Command와 Query handler는 `execute(...)`를, Event handler와 saga는 `handle(...)`를 구현해야 하며, 맞지 않으면 `InvariantError`가 발생합니다. Bootstrap failure는 전파되어 application이 `ready` 상태에 진입하지 못하게 합니다.
+
+`CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`로 handler와 saga class를 한 번에 provider로 등록하세요.
+
+```ts
+CqrsModule.forRoot({
+  commandHandlers: [SendWelcomeEmailHandler],
+  eventHandlers: [UserCreatedProjection],
+  sagas: [UserSaga],
+})
+```
+
+Application shutdown이 시작되면 bus는 새로운 작업을 거부합니다.
+
+- `CommandBusLifecycleService.execute(...)`와 `QueryBusLifecycleService.execute(...)`는 shutdown 시작 후 호출하면 `InvariantError`를 throw합니다.
+- `CqrsEventBusService.publish(...)`와 `publishAll(...)`은 shutdown 시작 후 새 작업을 거부합니다. 단, 이미 활성 pipeline에 속한 `CqrsDispatchContext`를 전달하는 nested publish 호출은 예외입니다.
+- CQRS event bus는 활성 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다리고, saga runtime은 진행 중인 dispatch를 기다린 뒤 각각 stopped 상태가 됩니다.
+
+Shutdown drain은 기본값 `5000`ms인 `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. Timeout이면 warning을 내고 degraded diagnostic을 기록한 뒤 application close를 계속 진행하며 hard-fail하지 않습니다. Saga나 Event handler가 장시간 작업을 수행한다면 예상 가능한 최악의 경우를 포괄하는 timeout을 설정하세요.
+
+```ts
+CqrsModule.forRoot({
+  shutdown: { drainTimeoutMs: 10_000 },
+})
+```
+
+`CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`를 설정하면 위임된 `@OnEvent(...)` subscriber가 위임 publication이 resolve된 뒤에도 실행 중일 수 있습니다. 이 모드에서는 `publish(...)`, `publishAll(...)`, CQRS shutdown drain 완료가 모든 `@fluojs/event-bus` subscriber의 완료를 보장하지 않습니다.
+
 ## Removed Concepts
 
 - 기본 프로바이더 마커로서의 `@Injectable()`. 프로바이더 등록은 모듈의 `providers` 배열에서 수행된다.
