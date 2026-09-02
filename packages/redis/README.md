@@ -180,14 +180,6 @@ import type Redis from 'ioredis';
 const COMMAND_REDIS = getRedisClientToken();
 const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
-  ],
-})
-export class RedisConnectionsModule {}
-
 @Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
 export class PubSubTransportFactory {
   constructor(
@@ -202,7 +194,18 @@ export class PubSubTransportFactory {
     });
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+  providers: [PubSubTransportFactory],
+})
+export class RedisConnectionsModule {}
 ```
+
+`@Inject(...)` only declares the constructor tokens of a class; it does not register that class. fluo resolves providers from explicit module registration, so `PubSubTransportFactory` must be listed in the `providers` array of the module that imports the Redis registrations it depends on. A decorated class that no module lists is not resolvable.
 
 ## Public API Overview
 

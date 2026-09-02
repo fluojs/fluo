@@ -82,14 +82,6 @@ import type Redis from 'ioredis';
 const COMMAND_REDIS = getRedisClientToken();
 const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
-  ],
-})
-export class RedisConnectionsModule {}
-
 @Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
 export class NotificationTransportFactory {
   constructor(
@@ -104,7 +96,18 @@ export class NotificationTransportFactory {
     });
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+  providers: [NotificationTransportFactory],
+})
+export class RedisConnectionsModule {}
 ```
+
+Factory 클래스를 모듈보다 먼저 선언해야 모듈 데코레이터가 참조할 수 있습니다. `@Inject(...)`는 생성자 토큰만 표시하며, 클래스는 `providers` 배열에 나열되기 전까지 resolve할 수 없습니다. fluo는 명시적으로 provider를 탐색하므로, 다른 콴포넌트에 주입되어야 하는 클래스는 반드시 해당 모듈의 `providers`에 나열해야 합니다.
 
 ## 3.2 내구성 있는 전달을 위한 Redis Streams
 

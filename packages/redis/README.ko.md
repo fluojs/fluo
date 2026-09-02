@@ -180,14 +180,6 @@ import type Redis from 'ioredis';
 const COMMAND_REDIS = getRedisClientToken();
 const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
-  ],
-})
-export class RedisConnectionsModule {}
-
 @Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
 export class PubSubTransportFactory {
   constructor(
@@ -202,7 +194,18 @@ export class PubSubTransportFactory {
     });
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+  providers: [PubSubTransportFactory],
+})
+export class RedisConnectionsModule {}
 ```
+
+`@Inject(...)`는 클래스의 생성자 토큰만 선언하며 클래스를 등록하지 않습니다. fluo는 명시적 모듈 등록에서 프로바이더를 resolve하므로 `PubSubTransportFactory`는 Redis 등록을 import하는 모듈의 `providers` 배열에 반드시 나열해야 합니다. 어느 모듈에도 나열되지 않은 decorated 클래스는 resolve할 수 없습니다.
 
 ## 공개 API 개요
 
