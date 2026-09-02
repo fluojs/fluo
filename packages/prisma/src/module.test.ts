@@ -41,6 +41,8 @@ type InferredPrismaServiceFacade = PrismaServiceFacade<GeneratedPrismaClient>;
 type InferredCurrentHandle = ReturnType<InferredPrismaService['current']>;
 type InferredTransactionHandle = PrismaTransactionClient<GeneratedPrismaClient>;
 type InferredFacadeFindUniqueResult = ReturnType<InferredPrismaServiceFacade['user']['findUnique']>;
+type StaticPrismaModuleDefinition = ReturnType<typeof PrismaModule.forRoot<GeneratedPrismaClient>>['definition'];
+type AsyncPrismaModuleDefinition = ReturnType<typeof PrismaModule.forRootAsync<GeneratedPrismaClient>>['definition'];
 
 type _PrismaServiceCurrentInference = Assert<
   IsEqual<InferredCurrentHandle, GeneratedPrismaClient | GeneratedTransactionClient>
@@ -49,14 +51,24 @@ type _PrismaTransactionClientInference = Assert<IsEqual<InferredTransactionHandl
 type _PrismaServiceFacadeDelegateInference = Assert<
   IsEqual<InferredFacadeFindUniqueResult, Promise<{ id: string } | null>>
 >;
+type _StaticPrismaModuleDefinitionCompatibility = Assert<
+  StaticPrismaModuleDefinition extends Parameters<typeof Module>[0] | undefined ? true : false
+>;
+type _AsyncPrismaModuleDefinitionCompatibility = Assert<
+  AsyncPrismaModuleDefinition extends Parameters<typeof Module>[0] | undefined ? true : false
+>;
 
 const prismaServiceCurrentInferenceChecked: _PrismaServiceCurrentInference = true;
 const prismaTransactionClientInferenceChecked: _PrismaTransactionClientInference = true;
 const prismaServiceFacadeDelegateInferenceChecked: _PrismaServiceFacadeDelegateInference = true;
+const staticPrismaModuleDefinitionCompatibilityChecked: _StaticPrismaModuleDefinitionCompatibility = true;
+const asyncPrismaModuleDefinitionCompatibilityChecked: _AsyncPrismaModuleDefinitionCompatibility = true;
 
 void prismaServiceCurrentInferenceChecked;
 void prismaTransactionClientInferenceChecked;
 void prismaServiceFacadeDelegateInferenceChecked;
+void staticPrismaModuleDefinitionCompatibilityChecked;
+void asyncPrismaModuleDefinitionCompatibilityChecked;
 
 describe('@fluojs/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {

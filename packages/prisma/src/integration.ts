@@ -1,9 +1,21 @@
-import { Module, type Constructor } from '@fluojs/core';
+import { Module, type Constructor, type Token } from '@fluojs/core';
+import type { Provider } from '@fluojs/di';
+import type { MiddlewareLike } from '@fluojs/http';
+
+type PrismaModuleDefinition = Parameters<typeof Module>[0] & {
+  controllers?: Constructor[];
+  exports?: Token[];
+  imports?: PrismaModuleType[];
+  middleware?: MiddlewareLike[];
+  providers?: Provider[];
+};
 
 /**
  * Module class accepted by the Fluo runtime module graph.
  */
-export type PrismaModuleType = Constructor;
+export type PrismaModuleType = Constructor & {
+  definition?: PrismaModuleDefinition;
+};
 
 /**
  * Defines the lifecycle hook invoked after module initialization.
