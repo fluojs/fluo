@@ -180,7 +180,7 @@ describe('public CLI package API', () => {
     expect(publicNewSource).not.toContain('repoRoot');
   });
 
-  it('executes runInspectCommand directly through the public facade', async () => {
+  it('routes inspect JSON diagnostics to stderr through the public facade', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
@@ -197,7 +197,7 @@ describe('public CLI package API', () => {
     };
 
     expect(exitCode).toBe(0);
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');

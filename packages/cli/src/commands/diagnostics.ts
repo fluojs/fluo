@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { ApplicationLogger } from '@fluojs/runtime';
+
 type CliStream = {
   write(message: string): unknown;
 };
@@ -19,6 +21,36 @@ type JsonRecord = Record<string, unknown>;
 const DEFAULT_PACKAGE_NAME = '@fluojs/cli';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5_000;
 const EMPTY_ENV: NodeJS.ProcessEnv = {};
+
+/**
+ * Creates the runtime logger used when a CLI command reserves stdout for an artifact.
+ *
+ * @param stderr Stream that receives human-readable runtime diagnostics.
+ * @returns A logger that preserves the default runtime diagnostic format on stderr.
+ */
+export function createCliDiagnosticsLogger(stderr: CliStream): ApplicationLogger {
+  const write = (level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', message: string, context = 'fluo'): void => {
+    stderr.write(`[fluo] ${level} [${context}] ${message}\n`);
+  };
+
+  return {
+    debug(message, context = 'fluo') {
+      write('DEBUG', message, context);
+    },
+    error(message, error, context = 'fluo') {
+      write('ERROR', message, context);
+      if (error) {
+        stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+      }
+    },
+    log(message, context = 'fluo') {
+      write('LOG', message, context);
+    },
+    warn(message, context = 'fluo') {
+      write('WARN', message, context);
+    },
+  };
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null;
@@ -131,6 +163,12 @@ function listScripts(manifest: JsonRecord | undefined): string[] {
   return Object.keys(scripts).sort();
 }
 
+/**
+ * Returns usage text for a diagnostics command.
+ *
+ * @param command Diagnostics command whose usage text is requested.
+ * @returns Usage text for the selected command.
+ */
 export function diagnosticsUsage(command: 'analyze' | 'doctor' | 'info' = 'doctor'): string {
   if (command === 'analyze') {
     return [
@@ -153,6 +191,13 @@ export function diagnosticsUsage(command: 'analyze' | 'doctor' | 'info' = 'docto
   ].join('\n');
 }
 
+/**
+ * Runs the doctor diagnostics command.
+ *
+ * @param argv Command arguments after `doctor`.
+ * @param runtime Runtime overrides for diagnostics output and lookup.
+ * @returns Process-style exit code from the command.
+ */
 export async function runDoctorCommand(argv: string[], runtime: DiagnosticRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${diagnosticsUsage('doctor')}\n`);
@@ -187,6 +232,13 @@ export async function runDoctorCommand(argv: string[], runtime: DiagnosticRuntim
   return 0;
 }
 
+/**
+ * Runs the info diagnostics command.
+ *
+ * @param argv Command arguments after `info`.
+ * @param runtime Runtime overrides for diagnostics output and lookup.
+ * @returns Process-style exit code from the command.
+ */
 export async function runInfoCommand(argv: string[], runtime: DiagnosticRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${diagnosticsUsage('info')}\n`);
@@ -196,6 +248,13 @@ export async function runInfoCommand(argv: string[], runtime: DiagnosticRuntimeO
   return runDoctorCommand(argv, runtime);
 }
 
+/**
+ * Runs the analyze diagnostics command.
+ *
+ * @param argv Command arguments after `analyze`.
+ * @param runtime Runtime overrides for diagnostics output and lookup.
+ * @returns Process-style exit code from the command.
+ */
 export async function runAnalyzeCommand(argv: string[], runtime: DiagnosticRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${diagnosticsUsage('analyze')}\n`);

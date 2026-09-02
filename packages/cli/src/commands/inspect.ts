@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url';
 
 import * as clack from '@clack/prompts';
 import {
+  bootstrapApplication,
   type BootstrapTimingDiagnostics,
   createRuntimeInspectionSnapshot,
-  FluoFactory,
   type ModuleType,
   PLATFORM_SHELL,
   type PlatformDiagnosticIssue,
@@ -20,6 +20,7 @@ import { tsImport } from 'tsx/esm/api';
 
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
 import { inspectUsage } from '../usage.js';
+import { createCliDiagnosticsLogger } from './diagnostics.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -115,6 +116,21 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
 
     if (option === '--json') {
       json = true;
+      continue;
+    }
+
+    if (option === '--format') {
+      const format = argv[index + 1];
+      if (!format || format.startsWith('-')) {
+        throw new Error('Expected --format to have a value of "json".');
+      }
+
+      if (format !== 'json') {
+        throw new Error(`Invalid --format value "${format}". Use "json".`);
+      }
+
+      json = true;
+      index += 1;
       continue;
     }
 
@@ -378,8 +394,10 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
-    const application = await FluoFactory.create(rootModule, {
+    const application = await bootstrapApplication({
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
+      ...(parsed.json || parsed.report ? { logger: createCliDiagnosticsLogger(stderr) } : {}),
+      rootModule,
     });
 
     try {
