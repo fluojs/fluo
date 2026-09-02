@@ -3,6 +3,10 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+## CQRS Status snapshot
+
+`@fluojs/cqrs`는 platform diagnostic을 위해 `createCqrsPlatformStatusSnapshot(...)`과 `CqrsEventBusService.createPlatformStatusSnapshot()`을 공개합니다. `details`에는 Command/Query/Event handler/saga discovery와 lifecycle state, 현재 saga execution, bounded shutdown-drain diagnostic, 위임된 `event-bus.default` dependency를 담고, readiness와 health는 event/saga runtime이 정의합니다. 전체 field와 lifecycle 계약은 [CQRS 계약](./architecture/cqrs.ko.md)에, public package 사용 개요는 [CQRS README](../packages/cqrs/README.ko.md)에 있습니다.
+
 ## 정적 에셋 제공
 
 정적 제공은 [HTTP Runtime Contract](./architecture/http-runtime.ko.md)에 문서화한 portable `@fluojs/http` middleware 계약입니다. 애플리케이션은 `createStaticAssetsMiddleware(...)`에 명시적 `StaticAssetSource`를 전달하므로 fetch-style 및 edge host에 암묵적 filesystem claim이 제공되지 않습니다. `@fluojs/runtime/node`는 Node, Express, Fastify deployment용 `createNodeFileSystemAssetSource(...)`를 소유하며 lexical 및 realpath 해석을 구성된 root에 제한하고 precompressed sibling을 선택할 수 있습니다. API 예제와 deployment configuration은 `@fluojs/http`, `@fluojs/runtime` package README를 사용하세요.

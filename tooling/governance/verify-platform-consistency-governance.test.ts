@@ -215,6 +215,39 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('requires context and governance regression companions for CQRS status contract updates', async () => {
+    // Given: a bilingual CQRS status contract update with runtime-field regression evidence.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/architecture/cqrs.md',
+      'docs/architecture/cqrs.ko.md',
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+      'packages/cqrs/src/status.test.ts',
+    ];
+
+    // When: discoverability and governance companions are added.
+    // Then: platform governance accepts only the complete change.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrow(/CI\/tooling enforcement updates/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('requires context companions for NestJS HTTP pipeline migration updates', async () => {
     // Given: a bilingual NestJS HTTP migration update with its governance regression.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

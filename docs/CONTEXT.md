@@ -3,6 +3,10 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+## CQRS Status Snapshot
+
+`@fluojs/cqrs` exposes `createCqrsPlatformStatusSnapshot(...)` and `CqrsEventBusService.createPlatformStatusSnapshot()` for platform diagnostics. Their `details` report command/query/event-handler/saga discovery and lifecycle state, current saga executions, bounded shutdown-drain diagnostics, and the delegated `event-bus.default` dependency; readiness and health are defined by the event/saga runtime. The complete field and lifecycle contract is [CQRS Contract](./architecture/cqrs.md), and the public-package usage overview is [the CQRS README](../packages/cqrs/README.md).
+
 ## Static Asset Delivery
 
 Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.

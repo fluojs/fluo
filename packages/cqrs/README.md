@@ -228,9 +228,24 @@ class TokenInjectedService {
 - `SagaTopologyError`: Raised when saga orchestration detects an active provider-token/event-route cycle or an over-deep in-process saga graph.
 
 ### Status and metadata
-- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces. Snapshot `details` reports discovered command, query, event-handler, and saga counts alongside their lifecycle summaries. Command and query adapter inputs remain optional for compatibility and default to zero discovered handlers plus the CQRS event lifecycle when omitted.
-- `CqrsEventBusService.createPlatformStatusSnapshot()`: Populates command and query discovery summaries from the live bus state. Snapshot details never expose handler descriptors, provider tokens, or saga topology; command and query summaries do not change the existing event/saga readiness or health semantics.
+- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces. Command and query adapter inputs remain optional for compatibility and default to zero discovered handlers plus the CQRS event lifecycle when omitted.
+- `CqrsEventBusService.createPlatformStatusSnapshot()`: Populates all discovery and lifecycle summaries from live bus state. Snapshot details never expose handler descriptors, provider tokens, or saga topology; command and query summaries do not change the existing event/saga readiness or health semantics.
 - Metadata helpers and symbols are exported for framework packages that need to inspect command, query, event, or saga registrations.
+
+#### Status snapshot fields
+
+Every CQRS snapshot has `readiness`, `health`, `ownership`, and `details`. `ownership` always reports `externallyManaged: false` and `ownsResources: false`: CQRS observes its own in-process lifecycle and does not claim a caller-owned external resource.
+
+| `details` field | Meaning |
+| --- | --- |
+| `dependencies` | Always `['event-bus.default']`, identifying the delegated event-bus dependency. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | The currently discovered singleton handler or saga counts. Command/query adapter inputs default to `0` when omitted; after shutdown, live-bus counts are `0`. |
+| `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | The command, query, event-pipeline, and saga runtime states. When command/query adapter inputs are omitted, their states fall back to `lifecycleState`. |
+| `inFlightSagaExecutions` | Saga executions currently owned by the runtime. |
+| `shutdownDrainTimeoutMs` | The configured bounded shutdown-drain window. |
+| `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | Recorded bounded drain timeouts for the event pipeline and saga runtime. |
+
+The lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness is `ready` only when both the event pipeline and saga runtime are `ready`; it is `degraded` while either is `discovering`, and `not-ready` while either is `created`, `stopping`, `stopped`, or `failed`. Health is `healthy` outside transition or failure states, `degraded` while either runtime is `discovering` or `stopping`, and `unhealthy` when either is `stopped` or `failed`. A nonzero drain-timeout counter takes precedence and reports degraded health. Command and query lifecycle fields remain diagnostic only and do not alter these event/saga readiness or health rules.
 
 ## Related Packages
 
