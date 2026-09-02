@@ -89,14 +89,18 @@ export function createFrameworkResponse(
         return;
       }
 
+      const hasContentType = response.hasHeader('Content-Type');
       const existingContentType = response.getHeader('Content-Type');
       const serialized = serializeResponseBody(
         body,
         typeof existingContentType === 'string' ? existingContentType : undefined,
       );
+      const adapterDefaultContentType = hasContentType
+        ? undefined
+        : serialized.defaultContentType;
 
-      if (!response.hasHeader('Content-Type') && serialized.defaultContentType) {
-        response.setHeader('Content-Type', serialized.defaultContentType);
+      if (adapterDefaultContentType) {
+        response.setHeader('Content-Type', adapterDefaultContentType);
       }
 
       const contentType = response.getHeader('Content-Type') as string | undefined;
@@ -129,6 +133,9 @@ export function createFrameworkResponse(
                 }
               } else {
                 response.removeHeader('Content-Encoding');
+                if (adapterDefaultContentType) {
+                  response.removeHeader('Content-Type');
+                }
                 this.committed = false;
               }
 
