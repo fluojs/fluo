@@ -77,21 +77,6 @@ export class UserService {
     return user;
   }
 }
-
-@Inject(PrismaService)
-export class UserRepository {
-  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
-
-  async create(data: any) {
-    // The facade type exposes standard PrismaClient delegates.
-    // When called inside @Transaction(), they automatically participate in the ambient transaction.
-    return this.prisma.user.create({ data });
-  }
-
-  async initProfile(userId: string) {
-    return this.prisma.profile.create({ data: { userId } });
-  }
-}
 ```
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Prisma transaction.

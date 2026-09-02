@@ -26,6 +26,19 @@ const readmes = [
   { file: 'README.md', locale: 'English' },
   { file: 'README.ko.md', locale: 'Korean' },
 ] as const;
+const userRepositorySource = `
+type CreateUserInput = { readonly email: string };
+
+export class UserRepository {
+  async create(data: CreateUserInput) {
+    return { id: 'user-1', ...data };
+  }
+
+  async initProfile(userId: string) {
+    return { userId };
+  }
+}
+`;
 
 function codeFences(markdown: string): string[] {
   return [...markdown.matchAll(/```typescript\n([\s\S]*?)```/gu)]
@@ -46,13 +59,13 @@ function readmeSnippet(file: string, fragments: readonly string[]): string {
 function readmeSnippetDiagnostics(
   relativePath: string,
   sourceText: string,
-  companionSource?: string,
+  companionSources: ReadonlyMap<string, string> = new Map(),
 ): string[] {
   const sourcePath = join(repoRoot, '.virtual-prisma-readme', relativePath.replace(/\.md$/u, '.ts'));
   const virtualFiles = new Map([[sourcePath, sourceText]]);
 
-  if (companionSource !== undefined) {
-    virtualFiles.set(join(dirname(sourcePath), 'orders.service.ts'), companionSource);
+  for (const [relativePath, companionSource] of companionSources) {
+    virtualFiles.set(join(dirname(sourcePath), relativePath), companionSource);
   }
 
   const options = {
@@ -130,7 +143,10 @@ function expectInjectedConstructorDependency(
     throw new TypeError(`Missing @Inject(...) on ${className}.`);
   }
 
-  expect(injectDecorator.expression.arguments.map((argument) => argument.getText(sourceFile))).toEqual([token]);
+  const injectedTokens = injectDecorator.expression.arguments.map((argument) => argument.getText(sourceFile));
+  if (injectedTokens.length !== 1 || injectedTokens[0] !== token) {
+    throw new TypeError(`Expected @Inject(${token}) on ${className}; received @Inject(${injectedTokens.join(', ')}).`);
+  }
 
   const constructor = declaration.members.find(isConstructorDeclaration);
   const parameter = constructor?.parameters.find(
@@ -141,21 +157,37 @@ function expectInjectedConstructorDependency(
     throw new TypeError(`Missing ${parameterName}: ${token} constructor dependency on ${className}.`);
   }
 
-  expect(parameter.type.typeName.getText(sourceFile)).toBe(token);
+  const parameterType = parameter.type.typeName.getText(sourceFile);
+  if (parameterType !== token) {
+    throw new TypeError(`Expected ${parameterName}: ${token} constructor dependency on ${className}; received ${parameterType}.`);
+  }
 }
 
 describe('@fluojs/prisma README DI snippets', () => {
   for (const { file, locale } of readmes) {
     it(`compiles the ${locale} @Transaction() service example against public package types`, () => {
-      const snippet = readmeSnippet(file, ['class UserService', 'class UserRepository', '@Transaction()']);
+      const snippet = readmeSnippet(file, ['class UserService', "from './user.repository'", '@Transaction()']);
 
       expectInjectedConstructorDependency(snippet, 'UserService', 'repo', 'UserRepository');
       expect(
         readmeSnippetDiagnostics(
           `${file}-transaction`,
           `${snippet}\n\ntype CreateUserDto = { readonly email: string };`,
+          new Map([['user.repository.ts', userRepositorySource]]),
         ),
       ).toEqual([]);
+    });
+
+    it(`rejects the ${locale} @Transaction() service example with the wrong injected token`, () => {
+      const snippet = readmeSnippet(file, ['class UserService', "from './user.repository'", '@Transaction()']);
+      const malformedSnippet = snippet.replace('@Inject(UserRepository)', '@Inject(PrismaService)');
+
+      expect(() => expectInjectedConstructorDependency(
+        malformedSnippet,
+        'UserService',
+        'repo',
+        'UserRepository',
+      )).toThrowError('Expected @Inject(UserRepository) on UserService; received @Inject(PrismaService).');
     });
 
     it(`compiles the ${locale} interceptor compatibility example against public package types`, () => {
@@ -166,7 +198,9 @@ describe('@fluojs/prisma README DI snippets', () => {
         readmeSnippetDiagnostics(
           `${file}-interceptor`,
           snippet,
-          'export class OrdersService { create(): { readonly id: string } { return { id: "order-1" }; } }',
+          new Map([
+            ['orders.service.ts', 'export class OrdersService { create(): { readonly id: string } { return { id: "order-1" }; } }'],
+          ]),
         ),
       ).toEqual([]);
     });

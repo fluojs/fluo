@@ -77,21 +77,6 @@ export class UserService {
     return user;
   }
 }
-
-@Inject(PrismaService)
-export class UserRepository {
-  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
-
-  async create(data: any) {
-    // facade 타입은 표준 PrismaClient delegate를 노출합니다.
-    // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
-    return this.prisma.user.create({ data });
-  }
-
-  async initProfile(userId: string) {
-    return this.prisma.profile.create({ data: { userId } });
-  }
-}
 ```
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Prisma 트랜잭션 안에서 실행됩니다.
