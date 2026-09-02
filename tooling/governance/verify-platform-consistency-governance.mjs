@@ -21,6 +21,7 @@ import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-
 import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
+import { enforcePrismaNestjsMigrationDocs } from './prisma-nestjs-migration-docs.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
@@ -3372,6 +3373,7 @@ export async function main() {
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
   enforceMongooseNestjsMigrationDocs();
+  enforcePrismaNestjsMigrationDocs();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
   enforceRedisStreamsSubpathExportEvidence();

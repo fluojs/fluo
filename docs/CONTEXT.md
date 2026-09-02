@@ -33,6 +33,8 @@ NestJS Mongoose migration and transaction semantics are documented in the [NestJ
 
 The NestJS OpenAPI migration map preserves three generated-document differences: fluo adds `400`, `401`, `403`, `404`, and `500` responses plus `ErrorResponse` unless explicitly declared, with `defaultErrorResponsesPolicy: 'omit'` for legacy clients; generated `operationId` values require `documentTransform` when clients need legacy names; and `OpenApiModule.forRootAsync(...)` keeps `documentPath` and `uiPath` beside `inject` and `useFactory(...)`, because factory-returned paths cannot reconfigure already-registered routes.
 
+The NestJS Prisma migration map requires `strictTransactions: true` whenever a migrated flow needs rollback atomicity: without an interactive `$transaction(...)` client, the default fail-open path runs the callback directly. `PrismaModule.forRootAsync(...)` accepts only `inject` and `useFactory`; expose each dependency through a global-module export or bootstrap runtime provider before options resolution, and resolve NestJS `imports`, `useClass`, and `useExisting` configuration at bootstrap rather than treating them as compatibility fields.
+
 ## Hard Constraints
 
 - NEVER use `experimentalDecorators`.
