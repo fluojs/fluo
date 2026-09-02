@@ -5040,3 +5040,31 @@ describe('mandatory first-party dependency Node engine alignment', () => {
       .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 20\.19\.3.*@fluojs\/core/u);
   });
 });
+
+describe('Terminus NestJS migration discoverability', () => {
+  const terminusContractSentinel =
+    '<!-- fluo-terminus-migration-contract: registration=TerminusModule.forRoot;endpoints=/health,/ready;unhealthy-status=503;report=HealthCheckReport -->';
+
+  it('ties the shipped health module behavior to its English and Korean migration guidance', async () => {
+    const { enforceTerminusMigrationDiscoverability } = (await import(
+      './verify-platform-consistency-governance.mjs'
+    )) as unknown as {
+      enforceTerminusMigrationDiscoverability: (readText?: (path: string) => string) => void;
+    };
+
+    expect(() => enforceTerminusMigrationDiscoverability()).not.toThrow();
+    expect(
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+    ).toContain('enforceTerminusMigrationDiscoverability();');
+
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+
+      return path === 'docs/CONTEXT.ko.md' ? content.replace(terminusContractSentinel, '') : content;
+    };
+
+    expect(() => enforceTerminusMigrationDiscoverability(readText)).toThrow(
+      'docs/CONTEXT.ko.md must preserve the Terminus NestJS migration contract sentinel.',
+    );
+  });
+});

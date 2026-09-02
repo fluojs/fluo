@@ -53,6 +53,12 @@ The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in it
 
 `@fluojs/cqrs` exposes `createCqrsPlatformStatusSnapshot(...)` and `CqrsEventBusService.createPlatformStatusSnapshot()` for platform diagnostics. Their `details` report command/query/event-handler/saga discovery and lifecycle state, current saga executions, bounded shutdown-drain diagnostics, and the delegated `event-bus.default` dependency; readiness and health are defined by the event/saga runtime. The complete field and lifecycle contract is [CQRS Contract](./architecture/cqrs.md), and the public-package usage overview is [the CQRS README](../packages/cqrs/README.md).
 
+## Terminus NestJS Migration
+
+<!-- fluo-terminus-migration-contract: registration=TerminusModule.forRoot;endpoints=/health,/ready;unhealthy-status=503;report=HealthCheckReport -->
+
+`@fluojs/terminus` is application-owned health composition, not a NestJS `@HealthCheck()` decorator replacement: register `TerminusModule.forRoot(...)` in the authored module and let the runtime expose `/health` and `/ready`. An unhealthy indicator or readiness report makes the corresponding endpoint return HTTP `503`, while `HealthCheckReport` preserves the aggregated `status`, `contributors`, `info`, `error`, and `details` report. The package README is the operational source for indicator registration and failure semantics; the [NestJS migration map](./getting-started/migrate-from-nestjs.md) records the migration boundary, and [Chapter 18](../book/beginner/ch18-health.md) explains the learning path.
+
 ## Static Asset Delivery
 
 Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.

@@ -54,6 +54,12 @@ module을 import해야 하며, 이름이 runtime container를 분리하지는 �
 
 `@fluojs/cqrs`는 platform diagnostic을 위해 `createCqrsPlatformStatusSnapshot(...)`과 `CqrsEventBusService.createPlatformStatusSnapshot()`을 공개합니다. `details`에는 Command/Query/Event handler/saga discovery와 lifecycle state, 현재 saga execution, bounded shutdown-drain diagnostic, 위임된 `event-bus.default` dependency를 담고, readiness와 health는 event/saga runtime이 정의합니다. 전체 field와 lifecycle 계약은 [CQRS 계약](./architecture/cqrs.ko.md)에, public package 사용 개요는 [CQRS README](../packages/cqrs/README.ko.md)에 있습니다.
 
+## Terminus NestJS 마이그레이션
+
+<!-- fluo-terminus-migration-contract: registration=TerminusModule.forRoot;endpoints=/health,/ready;unhealthy-status=503;report=HealthCheckReport -->
+
+`@fluojs/terminus`는 NestJS `@HealthCheck()` decorator의 치환물이 아니라 애플리케이션이 소유하는 health composition입니다. 작성한 module에 `TerminusModule.forRoot(...)`를 등록하고 runtime이 `/health`, `/ready`를 노출하게 하세요. 비정상 indicator 또는 readiness report가 있으면 해당 endpoint는 HTTP `503`을 반환하며, `HealthCheckReport`는 집계된 `status`, `contributors`, `info`, `error`, `details` 보고서를 보존합니다. indicator 등록과 failure semantics의 운영 기준은 package README이고, [NestJS 마이그레이션 맵](./getting-started/migrate-from-nestjs.ko.md)은 마이그레이션 경계를, [Chapter 18](../book/beginner/ch18-health.ko.md)은 학습 경로를 설명합니다.
+
 ## 정적 에셋 제공
 
 정적 제공은 [HTTP Runtime Contract](./architecture/http-runtime.ko.md)에 문서화한 portable `@fluojs/http` middleware 계약입니다. 애플리케이션은 `createStaticAssetsMiddleware(...)`에 명시적 `StaticAssetSource`를 전달하므로 fetch-style 및 edge host에 암묵적 filesystem claim이 제공되지 않습니다. `@fluojs/runtime/node`는 Node, Express, Fastify deployment용 `createNodeFileSystemAssetSource(...)`를 소유하며 lexical 및 realpath 해석을 구성된 root에 제한하고 precompressed sibling을 선택할 수 있습니다. API 예제와 deployment configuration은 `@fluojs/http`, `@fluojs/runtime` package README를 사용하세요.
