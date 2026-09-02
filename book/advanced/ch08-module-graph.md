@@ -693,69 +693,13 @@ Second, the runtime resolves singleton instances that may have lifecycle hooks t
 
 This helper intentionally narrows the Providers that can become lifecycle targets.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`
-```typescript
-async function resolveLifecycleInstances(
-  container: Container,
-  providers: Provider[],
-  resolvedInstances: unknown[] = [],
-): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+`path:packages/runtime/src/bootstrap.ts:1085-1164`
 
-  for (const provider of providers) {
-    const token = providerToken(provider);
+Even after graph order, not every Provider is created immediately. Effective single-provider class/factory candidates and hook-bearing values become eager lifecycle targets after Token deduplication. `multi: true` contributions are different: each declared contribution receives its own contribution index. Hook-bearing values enter directly, while eligible singleton class/factory contributions resolve through the token's contribution array and retain the value at that index. This keeps every eligible contribution distinct without letting a later multi-provider declaration disappear behind a shared Token.
 
-    if (seen.has(token)) {
-      continue;
-    }
+The `Promise.allSettled(...)` map starts every top-level lifecycle entry without waiting for the previous entry to finish, so independent singleton resolution overlaps. Multi-provider entries sharing a Token reuse one DI resolution promise, then select their own contribution index. `Promise.allSettled(...)` returns results in input order, and the following loop appends fulfilled instances in that same provider order. Resolution completion order therefore cannot reorder later hooks.
 
-    if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
-      lifecycleEntries.push({ token, useValue: provider.useValue });
-      continue;
-    }
-
-    if (!isDirectSingletonContextProvider(provider)) {
-      continue;
-    }
-
-    seen.add(token);
-    lifecycleEntries.push({ token });
-  }
-
-  const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
-  );
-
-  let resolutionError: unknown;
-  let hasResolutionError = false;
-
-  for (const result of resolutionResults) {
-    if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
-      continue;
-    }
-
-    if (!hasResolutionError) {
-      resolutionError = result.reason;
-      hasResolutionError = true;
-    }
-  }
-
-  if (hasResolutionError) {
-    throw resolutionError;
-  }
-
-  return resolvedInstances;
-}
-```
-
-Even after graph order, not every Provider is created immediately. Only direct singleton class/factory candidates and hook-bearing singleton values become eager lifecycle targets after Token deduplication.
-
-The `Promise.allSettled(...)` map starts every top-level lifecycle entry without waiting for the previous entry to finish, so independent singleton resolution overlaps. DI still resolves each entry's own dependency chain before that entry settles. `Promise.allSettled(...)` returns results in input order, and the following loop appends fulfilled instances in that same provider order. Resolution completion order therefore cannot reorder later hooks.
-
-So Fluo's Bootstrap order is closer to "resolve independent unique singleton lifecycle candidates concurrently, then run their hooks deterministically" than to "instantiate every Provider in every Module sequentially." `path:packages/runtime/src/bootstrap.test.ts:887-936` proves the split directly: the second factory resolves while the first is suspended, but `first:init` still precedes `second:init`. `path:packages/runtime/src/bootstrap.test.ts:938-980` also verifies that fulfilled lifecycle instances remain available for cleanup when a parallel peer fails.
+So Fluo's Bootstrap order is closer to "resolve independent singleton lifecycle candidates concurrently, then run their hooks deterministically" than to "instantiate every Provider in every Module sequentially." `path:packages/runtime/src/bootstrap.test.ts:887-936` proves the split directly: the second factory resolves while the first is suspended, but `first:init` still precedes `second:init`. `path:packages/runtime/src/bootstrap.test.ts:1331-1530` verifies that multi-value, class/factory, runtime, and rollback contributions retain the same startup and reverse-shutdown ordering.
 
 Third, `runBootstrapLifecycle()` at `path:packages/runtime/src/bootstrap.ts:1346-1358` coordinates the actual start sequence. It resets the readiness marker, runs Bootstrap hooks, starts the platform shell, marks readiness, resolves the bootstrap-ready signal, and logs the compiled Modules.
 

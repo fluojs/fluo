@@ -1087,18 +1087,35 @@ async function resolveLifecycleInstances(
   providers: Provider[],
   resolvedInstances: unknown[] = [],
 ): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+  const lifecycleEntries: Array<{ contributionIndex?: number; token: Token; useValue?: unknown }> = [];
+  const seenSingleTokens = new Set<Token>();
+  const multiContributionIndexes = new Map<Token, number>();
 
   for (const provider of providers) {
     const token = providerToken(provider);
 
-    if (seen.has(token)) {
+    if (isMultiProvider(provider)) {
+      const contributionIndex = multiContributionIndexes.get(token) ?? 0;
+      multiContributionIndexes.set(token, contributionIndex + 1);
+
+      if (isHookBearingValueProvider(provider)) {
+        lifecycleEntries.push({ token, useValue: provider.useValue });
+        continue;
+      }
+
+      if (isDirectSingletonContextProvider(provider, true)) {
+        lifecycleEntries.push({ contributionIndex, token });
+      }
+
+      continue;
+    }
+
+    if (seenSingleTokens.has(token)) {
       continue;
     }
 
     if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
+      seenSingleTokens.add(token);
       lifecycleEntries.push({ token, useValue: provider.useValue });
       continue;
     }
@@ -1107,20 +1124,40 @@ async function resolveLifecycleInstances(
       continue;
     }
 
-    seen.add(token);
+    seenSingleTokens.add(token);
     lifecycleEntries.push({ token });
   }
 
+  const multiResolutions = new Map<Token, Promise<unknown>>();
   const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
+    lifecycleEntries.map((entry) => {
+      if (entry.useValue !== undefined) {
+        return entry.useValue;
+      }
+
+      if (entry.contributionIndex === undefined) {
+        return container.resolve(entry.token);
+      }
+
+      const contributionIndex = entry.contributionIndex;
+      const resolution: Promise<unknown> = multiResolutions.get(entry.token) ?? container.resolve<unknown>(entry.token);
+      multiResolutions.set(entry.token, resolution);
+
+      return resolution.then((values: unknown) => Array.isArray(values) ? values[contributionIndex] : undefined);
+    }),
   );
 
-  let resolutionError: unknown;
+  let resolutionError: unknown = undefined;
   let hasResolutionError = false;
 
-  for (const result of resolutionResults) {
+  for (const [index, result] of resolutionResults.entries()) {
     if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
+      const entry = lifecycleEntries[index];
+
+      if (entry.contributionIndex === undefined || hasLifecycleHook(result.value)) {
+        resolvedInstances.push(result.value);
+      }
+
       continue;
     }
 
@@ -1162,8 +1199,8 @@ function createContextCacheableTokenSet(
   return cacheableTokens;
 }
 
-function isDirectSingletonContextProvider(provider: Provider): boolean {
-  if (isMultiProvider(provider)) {
+function isDirectSingletonContextProvider(provider: Provider, includeMulti = false): boolean {
+  if (isMultiProvider(provider) && !includeMulti) {
     return false;
   }
 

@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | 1 | Module bootstrap | `bootstrapApplication(...)` compiles the module graph and creates the DI container before any lifecycle hook runs. | `packages/runtime/src/bootstrap.ts` |
 | 2 | Runtime token registration | Runtime tokens such as `HTTP_APPLICATION_ADAPTER`, `PLATFORM_SHELL`, `RUNTIME_CONTAINER`, and `COMPILED_MODULES` are registered after module compilation succeeds. | `packages/runtime/src/bootstrap.ts` |
-| 3 | Lifecycle instance resolution | Runtime and module providers that implement public lifecycle contracts are resolved before lifecycle execution begins. | `packages/runtime/src/bootstrap.ts` |
+| 3 | Lifecycle instance resolution | Runtime and module providers that implement public lifecycle contracts are resolved before lifecycle execution begins. Every eligible singleton `multi: true` contribution remains a distinct lifecycle instance in contribution order. | `packages/runtime/src/bootstrap.ts` |
 | 4 | Bootstrap lifecycle | `runBootstrapHooks(...)` executes `onModuleInit()` for every resolved lifecycle instance first, then executes `onApplicationBootstrap()` for those same instances. | `packages/runtime/src/bootstrap.ts:693-705` |
 | 5 | Platform start | `platformShell.start()` runs after bootstrap hooks complete. Readiness markers are still in the starting state until this step succeeds. | `packages/runtime/src/bootstrap.ts:830-841` |
 | 6 | Dispatcher creation | The HTTP dispatcher is created after the bootstrap lifecycle path completes. When timing diagnostics are enabled, this appears as the `create_dispatcher` phase. | `packages/runtime/src/bootstrap.ts`, `packages/runtime/src/health/diagnostics.ts` |

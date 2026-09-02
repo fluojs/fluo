@@ -705,75 +705,17 @@ module graph order는 initialization order의 절반에 불과합니다. registr
 
 첫째, runtime context token이 등록됩니다. `path:packages/runtime/src/bootstrap.ts:1280-1300`의 `registerRuntimeBootstrapTokens()`는 full application에 대해 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 추가합니다. `path:packages/runtime/src/bootstrap.ts:1316-1332`의 `registerRuntimeApplicationContextTokens()`는 context-only bootstrap에 `PLATFORM_SHELL`을 추가하지만 HTTP adapter는 추가하지 않습니다.
 
-둘째, runtime은 `path:packages/runtime/src/bootstrap.ts:1334-1344`의 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
+둘째, runtime은 `path:packages/runtime/src/bootstrap.ts:1420-1431`의 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`의 `resolveLifecycleInstances()`가 eager instantiation policy와 concurrency policy를 함께 명시합니다. Provider order대로 token 중복을 제거하고 hook-bearing value provider와 direct singleton class/factory provider만 유지합니다. Runtime은 direct-singleton filtering 전에 hook-bearing value provider를 lifecycle entry에 추가하므로, hook-bearing `multi: true` value provider도 lifecycle entry가 될 수 있습니다. Alias, request-scoped, transient, 그리고 value가 아닌 multi class/factory provider는 direct top-level lifecycle entry가 되지 않습니다.
+`path:packages/runtime/src/bootstrap.ts:1085-1164`의 `resolveLifecycleInstances()`가 eager instantiation policy와 concurrency policy를 함께 명시합니다. Effective single-provider는 token으로 중복 제거하지만 `multi: true` contribution은 선언별 contribution index로 식별합니다. Hook-bearing value는 직접 lifecycle entry가 되고, 적격 singleton class/factory contribution은 해당 token의 contribution 배열에서 자기 index 값을 사용합니다. 따라서 shared Token 뒤에 나중 선언이 사라지지 않으며, alias, request-scoped, transient provider는 lifecycle 대상이 아닙니다.
 
 이 helper는 lifecycle 대상이 될 수 있는 provider를 의도적으로 좁힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`
-```typescript
-async function resolveLifecycleInstances(
-  container: Container,
-  providers: Provider[],
-  resolvedInstances: unknown[] = [],
-): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. Effective single-provider class/factory 후보와 hook-bearing value는 token 중복 제거를 거쳐 eager lifecycle 대상이 됩니다. `multi: true` contribution은 declaration별로 구분되므로 모든 적격 singleton contribution이 lifecycle instance로 유지됩니다.
 
-  for (const provider of providers) {
-    const token = providerToken(provider);
+`Promise.allSettled(...)` map은 앞 entry가 끝날 때까지 기다리지 않고 모든 top-level lifecycle entry를 시작하므로 독립 singleton resolution이 겹칩니다. 같은 Token을 공유하는 multi-provider entry는 하나의 DI resolution promise를 재사용한 뒤 각자의 contribution index를 선택합니다. `Promise.allSettled(...)`는 input order로 result를 반환하고 이어지는 loop도 fulfilled instance를 같은 provider order로 append합니다. 따라서 resolution completion order가 이후 hook order를 바꿀 수 없습니다.
 
-    if (seen.has(token)) {
-      continue;
-    }
-
-    if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
-      lifecycleEntries.push({ token, useValue: provider.useValue });
-      continue;
-    }
-
-    if (!isDirectSingletonContextProvider(provider)) {
-      continue;
-    }
-
-    seen.add(token);
-    lifecycleEntries.push({ token });
-  }
-
-  const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
-  );
-
-  let resolutionError: unknown;
-  let hasResolutionError = false;
-
-  for (const result of resolutionResults) {
-    if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
-      continue;
-    }
-
-    if (!hasResolutionError) {
-      resolutionError = result.reason;
-      hasResolutionError = true;
-    }
-  }
-
-  if (hasResolutionError) {
-    throw resolutionError;
-  }
-
-  return resolvedInstances;
-}
-```
-
-그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. Direct singleton class/factory 후보와 hook-bearing singleton value만 token 중복 제거를 거쳐 eager lifecycle 대상이 됩니다.
-
-`Promise.allSettled(...)` map은 앞 entry가 끝날 때까지 기다리지 않고 모든 top-level lifecycle entry를 시작하므로 독립 singleton resolution이 겹칩니다. DI는 각 entry가 settle되기 전에 해당 entry 자체의 dependency chain을 계속 해석합니다. `Promise.allSettled(...)`는 input order로 result를 반환하고 이어지는 loop도 fulfilled instance를 같은 provider order로 append합니다. 따라서 resolution completion order가 이후 hook order를 바꿀 수 없습니다.
-
-즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 순차적으로 instantiate한다"가 아니라 "독립적인 unique singleton lifecycle candidate를 병렬로 resolve한 뒤 hook을 결정적으로 실행한다"에 가깝습니다. `path:packages/runtime/src/bootstrap.test.ts:887-936`은 이 분리를 직접 증명합니다. 첫 번째 factory가 중단된 동안 두 번째 factory가 resolve되지만, `first:init`은 여전히 `second:init`보다 먼저입니다. `path:packages/runtime/src/bootstrap.test.ts:938-980`은 병렬 peer가 실패해도 fulfilled lifecycle instance가 cleanup에 남는다는 점도 검증합니다.
+즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 순차적으로 instantiate한다"가 아니라 "독립적인 singleton lifecycle candidate를 병렬로 resolve한 뒤 hook을 결정적으로 실행한다"에 가깝습니다. `path:packages/runtime/src/bootstrap.test.ts:887-936`은 이 분리를 직접 증명합니다. 첫 번째 factory가 중단된 동안 두 번째 factory가 resolve되지만, `first:init`은 여전히 `second:init`보다 먼저입니다. `path:packages/runtime/src/bootstrap.test.ts:1331-1530`은 multi-value, class/factory, runtime, rollback contribution이 같은 startup 및 역순 shutdown 순서를 지키는지도 검증합니다.
 
 셋째, `path:packages/runtime/src/bootstrap.ts:1346-1358`의 `runBootstrapLifecycle()`이 실제 start sequence를 조율합니다. readiness marker를 reset하고, bootstrap hook을 실행하고, platform shell을 시작하고, readiness를 표시하고, bootstrap-ready signal을 resolve하고, compiled module 로그를 남깁니다.
 
