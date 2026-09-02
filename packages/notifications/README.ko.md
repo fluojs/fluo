@@ -205,14 +205,16 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 ### 상태 및 에러
 
 - `createNotificationsPlatformStatusSnapshot(...)`
+- `NotificationsOperationMode`
 - `NotificationsPlatformStatusSnapshot`
 - `NotificationsStatusAdapterInput`
+- `NotificationsStatusDetails`
 - `NotificationsConfigurationError`
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
 
 상태 snapshot은 platform diagnostics를 위해 `readiness`, `health`, `ownership`, 그리고 `details` object를 포함합니다.
-`operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`는 `details` 아래에 있으며 top-level snapshot field가 아닙니다. Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 발행되면 `notifications.event-publisher`가 포함됩니다. 이러한 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 create/close/drain하지 않으므로 `ownsResources: false`를 유지합니다.
+`operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, `eventPublicationEnabled`는 `details` 아래에 있으며 top-level snapshot field가 아닙니다. `eventPublisherConfigured`는 publisher wiring을, `eventPublicationEnabled`는 해당 publisher가 lifecycle event를 실제로 발행하는지를 기록합니다. Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 활성화되면 `notifications.event-publisher`가 포함됩니다. `publishLifecycleEvents: false`인 configured publisher는 configured 상태로 남지만 active dependency, event-backed operation mode, external ownership을 추가하지 않습니다. 활성화된 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 create/close/drain하지 않으므로 `ownsResources: false`를 유지합니다.
 
 ## 관련 패키지
 

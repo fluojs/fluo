@@ -1196,6 +1196,7 @@ describe('NotificationsModule', () => {
       details: {
         bulkQueueThreshold: 7,
         dependencies: ['notifications.queue-adapter', 'notifications.event-publisher'],
+        eventPublicationEnabled: true,
         eventPublisherConfigured: true,
         operationMode: 'queue-backed-with-events',
         queueConfigured: true,
@@ -1208,6 +1209,45 @@ describe('NotificationsModule', () => {
     expect(Object.hasOwn(snapshot, 'bulkQueueThreshold')).toBe(false);
     expect(Object.hasOwn(snapshot, 'queueConfigured')).toBe(false);
     expect(Object.hasOwn(snapshot, 'eventPublisherConfigured')).toBe(false);
+    expect(Object.hasOwn(snapshot, 'eventPublicationEnabled')).toBe(false);
+  });
+
+  it('reports a configured-but-disabled event publisher as inactive in status diagnostics', async () => {
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            return { externalId: 'status-delivery' };
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: false,
+        publisher,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const snapshot = service.createPlatformStatusSnapshot();
+
+    expect(snapshot.details).toMatchObject({
+      dependencies: [],
+      eventPublicationEnabled: false,
+      eventPublisherConfigured: true,
+      operationMode: 'direct-only',
+    });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: false,
+    });
+
+    await service.dispatch({ channel: 'email', payload: { subject: 'disabled' } });
+
+    expect(publisher.events).toEqual([]);
   });
 
   it('uses the optional queue seam for bulk delivery when the threshold is met', async () => {

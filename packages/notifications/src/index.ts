@@ -5,8 +5,13 @@ export {
 } from './errors.js';
 export { NotificationsModule } from './module.js';
 export { NotificationsService } from './service.js';
+export type {
+  NotificationsOperationMode,
+  NotificationsPlatformStatusSnapshot,
+  NotificationsStatusAdapterInput,
+  NotificationsStatusDetails,
+} from './status.js';
 export { createNotificationsPlatformStatusSnapshot } from './status.js';
-export type { NotificationsPlatformStatusSnapshot, NotificationsStatusAdapterInput } from './status.js';
 export { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 export type {
   NotificationChannel,

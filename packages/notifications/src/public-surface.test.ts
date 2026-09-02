@@ -14,6 +14,7 @@ import type {
   NotificationsQueueJob,
   NotificationsQueueOptions,
   NotificationsStatusAdapterInput,
+  NotificationsStatusDetails,
 } from './index.js';
 
 describe('@fluojs/notifications public API surface', () => {
@@ -72,9 +73,19 @@ describe('@fluojs/notifications public API surface', () => {
     expectTypeOf<NotificationsStatusAdapterInput>().toMatchTypeOf<{
       bulkQueueThreshold: number;
       channelsRegistered: number;
+      eventPublicationEnabled?: boolean;
       eventPublisherConfigured: boolean;
       queueConfigured: boolean;
     }>();
+    expectTypeOf<NotificationsStatusDetails>().toMatchTypeOf<{
+      bulkQueueThreshold: number;
+      channelsRegistered: number;
+      dependencies: readonly string[];
+      eventPublicationEnabled: boolean;
+      eventPublisherConfigured: boolean;
+      queueConfigured: boolean;
+    }>();
+    expectTypeOf<NotificationsStatusDetails>().toMatchTypeOf<Record<string, unknown>>();
   });
 
   it('hides internal normalized options token from the root barrel', () => {

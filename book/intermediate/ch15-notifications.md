@@ -258,12 +258,13 @@ export class NotificationsDiagnostics {
 const standaloneStatus = createNotificationsPlatformStatusSnapshot({
   bulkQueueThreshold: 50,
   channelsRegistered: 2,
+  eventPublicationEnabled: true,
   eventPublisherConfigured: true,
   queueConfigured: true,
 });
 ```
 
-`NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include top-level `readiness`, `health`, and `ownership`. Diagnostics such as `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, and `eventPublisherConfigured` live under `details`, including dependency entries such as `notifications.queue-adapter` and `notifications.event-publisher`. Optional seams set `ownership.externallyManaged: true`, and `ownsResources: false` stays top-level under `ownership` because the foundation package does not create, close, or drain concrete queue or event-bus resources.
+`NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include top-level `readiness`, `health`, and `ownership`. Diagnostics such as `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, and `eventPublicationEnabled` live under `details`, including dependency entries such as `notifications.queue-adapter` and `notifications.event-publisher`. Publisher configuration and lifecycle enablement are separate: a publisher with `publishLifecycleEvents: false` remains configured but does not produce an active event dependency, event-backed operation mode, or external ownership. Active optional seams set `ownership.externallyManaged: true`, and `ownsResources: false` stays top-level under `ownership` because the foundation package does not create, close, or drain concrete queue or event-bus resources.
 
 ## 15.9 FluoShop Context: Order Success Flow
 
