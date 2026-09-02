@@ -9,6 +9,7 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
@@ -68,6 +69,7 @@ export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-m
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+export { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 export { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
@@ -3346,6 +3348,7 @@ export async function main() {
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
+  enforceExpressSseDocumentationContract();
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();

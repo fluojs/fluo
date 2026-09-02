@@ -190,9 +190,11 @@ The adapter constructs and owns its Express application. Adopting or reusing an 
 Express supports the shared SSE and streaming response contract.
 
 ```ts
-@Get('events')
-async streamEvents(@Res() res: FrameworkResponse) {
-  const events = new SseResponse();
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+
+@Sse('events')
+async streamEvents(_input: undefined, context: RequestContext) {
+  const events = new SseResponse(context);
   events.send({ data: 'hello' });
   return events;
 }
