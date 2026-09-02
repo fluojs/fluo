@@ -306,6 +306,7 @@ Studio bridge discoverability is split between [`packages/runtime/README.md`](..
 | Public API authoring and documentation baseline | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output modes and artifact ownership | `docs/reference/toolchain-contract-matrix.md` | `packages/cli/README.md` and `docs/reference/package-surface.md` |
 | Bootstrap path or startup sequence facts | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
+| JWT `iat` validation and verifier migration semantics | `docs/architecture/auth-and-jwt.md` | `packages/jwt/README.md` for verified claims from `JwtService.verify(...)`; use `DefaultJwtVerifier.verifyAccessToken(...)` for `JwtPrincipal`, or `verifyAccessTokenWithOverrides(...)` to preserve per-call verifier options |
 | NestJS throttler migration boundaries | `docs/getting-started/migrate-from-nestjs.md` | `packages/throttler/README.md` and `book/beginner/ch16-throttler.md` |
 | Human learning flow or tutorial material | `book/README.md` | relevant chapters under `book/` |
 

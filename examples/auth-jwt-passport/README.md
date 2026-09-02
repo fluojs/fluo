@@ -16,7 +16,7 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 ## trust boundaries
 
 - `@fluojs/jwt` is a Node-runtime auth package. The root import surface loads lazily, but signing, verification, JWKS key parsing, and refresh-token id generation all require a Node.js-compatible `node:crypto` implementation. Bun satisfies this through its Node compatibility layer; Deno and Cloudflare Workers are not supported JWT signing/verification runtimes.
-- `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input and must never be used for authorization decisions. Use `JwtService.verify(token, options)` or `DefaultJwtVerifier.verifyAccessToken(token)` first, and read identity from the normalized `JwtPrincipal`. `decode()` is for diagnostics and non-authoritative inspection only.
+- `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input and must never be used for authorization decisions. `JwtService.verify(token, options)` returns verified claims; it does not return a `JwtPrincipal`. Use `DefaultJwtVerifier.verifyAccessToken(token)` when the normalized `JwtPrincipal` identity is required without per-call overrides, or `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` when preserving per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp`. `decode()` is for diagnostics and non-authoritative inspection only.
 
 ## routes
 

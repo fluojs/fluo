@@ -305,6 +305,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
+| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(...)`의 검증된 claims는 `packages/jwt/README.ko.md`에서 확인합니다. `JwtPrincipal`에는 `DefaultJwtVerifier.verifyAccessToken(...)`을, 호출별 verifier options 보존에는 `verifyAccessTokenWithOverrides(...)`을 사용합니다. |
 | NestJS throttler 마이그레이션 경계 | `docs/getting-started/migrate-from-nestjs.ko.md` | `packages/throttler/README.ko.md` 및 `book/beginner/ch16-throttler.ko.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 

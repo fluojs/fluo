@@ -512,7 +512,7 @@ export class TokenService {
 - **토큰 폐기 검증**: 중요한 애플리케이션의 경우, 사용자가 로그아웃하거나 토큰이 만료되기 전에 계정이 침해된 경우를 처리하기 위해 폐기된 토큰의 "거부 목록(denylist)"(예: Redis에 저장)을 유지하십시오.
 - **JTI (JWT ID) 구현**: 개별 토큰을 추적하고 세밀한 폐기를 가능하게 하려면 모든 토큰에 고유 식별자를 사용하십시오.
 - **토큰 발급 감사**: 사고 후 분석에 도움이 되도록 토큰이 누구에게 언제 발급되었는지 로그를 남기십시오.
-- **`decode()` 출력을 권한 결정에 신뢰하지 마세요**: `JwtService.decode(token)`는 서명이나 클레임을 검증하지 않고 payload를 읽습니다. 반환된 객체는 검증되지 않은 입력(unverified input)입니다. 먼저 `JwtService.verify(token, options)` 또는 `DefaultJwtVerifier.verifyAccessToken(token)`을 호출하고, 검증이 반환하는 정규화된 `JwtPrincipal`에서 신원을 읽으세요. `decode()`는 로깅을 위한 토큰 메타데이터 읽기나 `verify()` 호출 전 검증 키 선택처럼 진단 및 비권위적 검사에만 사용됩니다.
+- **`decode()` 출력을 권한 결정에 신뢰하지 마세요**: `JwtService.decode(token)`는 서명이나 클레임을 검증하지 않고 payload를 읽습니다. 반환된 객체는 검증되지 않은 입력(unverified input)입니다. 검증된 클레임은 `JwtService.verify(token, options)`로 얻으세요. 정규화된 `JwtPrincipal`이 필요하면 호출 단위 재정의 없이 `DefaultJwtVerifier.verifyAccessToken(token)`을 사용하고, 호출 단위 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`를 보존해야 하면 `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`을 사용하세요. `decode()`는 로깅을 위한 토큰 메타데이터 읽기나 `verify()` 호출 전 검증 키 선택처럼 진단 및 비권위적 검사에만 사용됩니다.
 - **`@fluojs/jwt`를 Node-runtime auth 패키지로 취급하세요**: 루트 import surface는 lazy load되어 runtime-specific 인증 경로를 선택하기 전에도 안전하게 import할 수 있지만, 서명, 검증, JWKS key parsing, refresh-token id 생성은 모두 Node.js 호환 `node:crypto` 구현을 필요로 합니다. Bun은 Node 호환성 레이어로 이를 만족하지만, Deno와 Cloudflare Workers는 지원되는 JWT 서명/검증 runtime이 아닙니다.
 
 ## 14.9 Summary
@@ -534,7 +534,7 @@ JWT는 상태 비저장 방식이지만, 사용자가 비밀번호를 변경하�
 ### Scaling Auth with Multi-Tenancy
 단일 Fluo 애플리케이션이 여러 조직에 서비스를 제공하는 멀티테넌트(multi-tenant) 환경에서는 지원되는 module contract를 기준으로 JWT 설정을 설계해야 합니다. `JwtModule.forRootAsync(...)`는 부트스트랩 시 전역 JWT 정책을 로드하는 config service처럼 module startup 시점에 주입된 provider에서 서명 및 검증 설정을 resolve할 수 있지만, factory는 커스텀 헤더의 테넌트 ID 같은 요청별 context를 받지 않습니다. request-context tenant routing은 애플리케이션 수준 strategy 또는 guard logic으로 취급하세요.
 
-테넌트별 키가 필요하다면 request-aware routing은 애플리케이션 인증 계층에 두고 token-bound key selection을 우선 사용하세요. 일반적인 패턴은 요청에서 테넌트를 해석하고, guard나 strategy에서 허용되는 issuer/audience 정책을 선택한 다음, 호출 단위 claim-policy override와 함께 `JwtService.verify(...)`를 호출하는 것입니다. `@fluojs/jwt` 내부의 key selection은 설정된 key source와 `kid` 같은 token-header 데이터를 기준으로 동작합니다. `secretOrKeyProvider`는 request object가 아니라 디코딩된 JWT header를 받습니다. 테넌트를 별도 키에 매핑해야 한다면 token header에 안정적인 key identifier를 넣거나, JWT service를 호출하기 전에 올바른 verifier 설정을 선택하는 application-level wrapper를 통해 요청을 라우팅하세요.
+테넌트별 키가 필요하다면 request-aware routing은 애플리케이션 인증 계층에 두고 token-bound key selection을 우선 사용하세요. 일반적인 패턴은 요청에서 테넌트를 해석하고, guard나 strategy에서 허용되는 issuer/audience 정책을 선택한 다음, 호출 단위 claim-policy override와 함께 `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`를 호출하는 것입니다. `@fluojs/jwt` 내부의 key selection은 설정된 key source와 `kid` 같은 token-header 데이터를 기준으로 동작합니다. `secretOrKeyProvider`는 request object가 아니라 디코딩된 JWT header를 받습니다. 테넌트를 별도 키에 매핑해야 한다면 token header에 안정적인 key identifier를 넣거나, JWT service를 호출하기 전에 올바른 verifier 설정을 선택하는 application-level wrapper를 통해 요청을 라우팅하세요.
 
 이러한 정교함이 Fluo를 SaaS 백엔드를 위한 전문적인 선택지로 만듭니다. 단일 전역 비밀 키로 간단하게 시작하여, Fluo 생태계를 벗어나지 않고도 복잡한 다중 공급자, 다중 테넌트 인증 시스템으로 확장할 수 있습니다. 앞서 논의한 `JwtPrincipal` 정규화는 여기서 특히 강력한데, 통합하는 ID 소스가 얼마나 많든 상관없이 멀티테넌트 비즈니스 로직에 안정적인 인터페이스를 제공하기 때문입니다.
 

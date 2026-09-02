@@ -11,6 +11,7 @@ import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contra
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
+import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -65,6 +66,7 @@ export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contra
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
+export { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -3307,6 +3309,7 @@ export async function main() {
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
+  enforceJwtVerifiedClaimsContract((relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'));
   await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
