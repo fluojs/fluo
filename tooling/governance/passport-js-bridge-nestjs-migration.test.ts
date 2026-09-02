@@ -30,6 +30,21 @@ function passportBridgeMigrationSection(content: string): string {
   return content.slice(start, end);
 }
 
+function countTypeScriptFences(markdown: string): number {
+  return [...markdown.matchAll(/```(?:ts|typescript)\r?\n[\s\S]*?```/gu)].length;
+}
+
+function replaceTypeScriptFenceAt(markdown: string, targetIndex: number): string {
+  let fenceIndex = 0;
+
+  return markdown.replace(/```(?:ts|typescript)\r?\n[\s\S]*?```/gu, (fence) => {
+    if (fenceIndex++ !== targetIndex) {
+      return fence;
+    }
+    return '```ts\nconst = ;\n```';
+  });
+}
+
 describe('Passport.js bridge NestJS migration contract', () => {
   it('enforces the current migration and book contract', () => {
     // Given
@@ -61,21 +76,24 @@ describe('Passport.js bridge NestJS migration contract', () => {
   });
 
   it.each(migrationDocuments)(
-    'rejects invalid TypeScript in the Passport.js bridge example from %s',
+    'rejects invalid TypeScript in every fence from %s',
     (targetPath) => {
       // Given
-      const readWithInvalidExample = (relativePath: string): string => {
-        const content = read(relativePath);
-        return relativePath === targetPath
-          ? content.replace("createPassportJsStrategyBridge('google', GoogleStrategy, {", "createPassportJsStrategyBridge('google',, GoogleStrategy, {")
-          : content;
-      };
+      const fenceCount = countTypeScriptFences(read(targetPath));
+      expect(fenceCount).toBeGreaterThan(0);
 
-      // When
-      const runGovernanceGuard = () => enforcePassportJsBridgeNestjsMigration(readWithInvalidExample);
+      for (let fenceIndex = 0; fenceIndex < fenceCount; fenceIndex++) {
+        const readWithInvalidFence = (relativePath: string): string =>
+          relativePath === targetPath
+            ? replaceTypeScriptFenceAt(read(relativePath), fenceIndex)
+            : read(relativePath);
 
-      // Then
-      expect(runGovernanceGuard).toThrowError(/valid TypeScript/u);
+        // When
+        const runGovernanceGuard = () => enforcePassportJsBridgeNestjsMigration(readWithInvalidFence);
+
+        // Then
+        expect(runGovernanceGuard).toThrowError(targetPath);
+      }
     },
   );
 

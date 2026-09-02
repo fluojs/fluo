@@ -678,6 +678,130 @@ async function shutdown() {
 }
 ```
 
+### NestJS CQRS Migration Checklist
+
+The four items below are not covered by the CQRS table row or the bullet list above and represent the most likely sources of silent behavior changes during migration.
+
+#### Saga class rewrite
+
+`@nestjs/cqrs` sagas receive an `Observable<IEvent>` and return an `Observable<ICommand>`. fluo sagas implement `ISaga<E>` with an async `handle(event, context?)` method and are singleton provider classes, not factory functions.
+
+```ts
+// Before: NestJS Observable saga
+@Injectable()
+export class UserSaga {
+  @Saga()
+  userCreated = (events$: Observable<any>): Observable<ICommand> =>
+    events$.pipe(
+      ofType(UserCreatedEvent),
+      map((event) => new SendWelcomeEmailCommand(event.userId)),
+    );
+}
+```
+
+```ts
+// After: fluo class-based saga
+import { Inject } from '@fluojs/core';
+import { Saga, ISaga, IEvent, CqrsDispatchContext, CommandBusLifecycleService } from '@fluojs/cqrs';
+
+@Inject(CommandBusLifecycleService)
+@Saga(UserCreatedEvent)
+export class UserSaga implements ISaga<UserCreatedEvent> {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+    await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
+  }
+}
+```
+
+Register `UserSaga` as a singleton provider in the module that imports `CqrsModule.forRoot(...)`. Sagas discovered from non-singleton providers are skipped with a warning and will not execute.
+
+One saga `handle(...)` call runs to completion before the next invocation begins for the same provider token; fluo serializes execution per token rather than using RxJS concurrency operators. Nested publication to a different event route on the same token is serialized as a FIFO continuation and does not deadlock. Re-entering an already-active provider-token/event-route pair fails with `SagaTopologyError`, and exceeding the nested depth limit of 32 also fails with `SagaTopologyError`.
+
+#### Typed error and pipeline propagation
+
+fluo CQRS exposes typed framework errors for routing and saga-topology failures. Catch those types rather than relying on generic error-message text:
+
+| Condition | Error thrown |
+| --- | --- |
+| No handler registered for a command type | `CommandHandlerNotFoundException` |
+| No handler registered for a query type | `QueryHandlerNotFoundException` |
+| Two distinct singleton providers claim the same command type | `DuplicateCommandHandlerError` (thrown at bootstrap) |
+| Two distinct singleton providers claim the same query type | `DuplicateQueryHandlerError` (thrown at bootstrap) |
+| A saga throws a non-`FluoError` | `SagaExecutionError` (wraps the original) |
+| A saga re-enters an active provider-token/event-route pair, or exceeds depth 32 | `SagaTopologyError` |
+
+Pass the optional `CqrsDispatchContext` argument through every nested `execute(...)`, `publish(...)`, and `publishAll(...)` call unchanged. CQRS uses this private context to track saga topology and active drain state without Node.js async-local APIs. The value is opaque and frozen; do not construct, clone, inspect, or mutate it, and do not pass a caller-created object in its place.
+
+```ts
+// In a saga handle or event handler:
+async function handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+  // Pass context through every nested dispatch so topology tracking stays intact.
+  await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
+  await this.eventBus.publish(new EmailQueuedEvent(event.userId), context);
+}
+```
+
+`DuplicateEventHandlerError` is retained as a compatibility export only; event-handler discovery does not throw it. Distinct singleton tokens sharing the same decorated class remain separate fan-out routes.
+
+#### Event clone semantics
+
+Each local `@EventHandler(...)` and `@Saga(...)` receives an isolated clone of the published event; mutations are local to that handler or saga and are not visible to other handlers, sagas, the original event object, or the delegated `@fluojs/event-bus` subscribers. The delegated event-bus publication receives the original event, so `@OnEvent(...)` projections and transports observe the caller-owned payload.
+
+The clone uses `structuredClone(event)` with a fallback that handles arrays, dates, regular expressions, `Map`, `Set`, typed arrays, array buffers, plain objects, prototype-based instances, symbol-keyed enumerable fields, and circular references.
+
+Design event payloads to be serializable:
+
+```ts
+// Good: serializable payload
+class OrderPlacedEvent implements IEvent {
+  constructor(
+    public readonly orderId: string,
+    public readonly amount: number,
+  ) {}
+}
+
+// Avoid: non-cloneable resources in event payload
+class OrderPlacedEvent implements IEvent {
+  // socket, stream, or function fields will not survive structuredClone.
+  // Represent them as an ID instead:
+  constructor(public readonly socketId: string) {}
+}
+```
+
+The fallback preserves primitives and function values as-is, but it does not make host resources such as open WebSockets or streams portable. Prefer representing every non-cloneable resource as an identifier and resolving it in the handler.
+
+#### Bootstrap preload and bounded shutdown checks
+
+All CQRS buses discover and preload handler instances during `onApplicationBootstrap`. Discovery accepts singleton providers only and throws `DuplicateCommandHandlerError` or `DuplicateQueryHandlerError` when the same command or query type is claimed by two distinct singleton providers. Handler shapes are checked at dispatch: command and query handlers must implement `execute(...)`, while event handlers and sagas must implement `handle(...)`; a mismatch throws `InvariantError`. Bootstrap failures propagate and prevent the application from entering the `ready` state.
+
+Use `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })` to register handler and saga classes as providers in one step:
+
+```ts
+CqrsModule.forRoot({
+  commandHandlers: [SendWelcomeEmailHandler],
+  eventHandlers: [UserCreatedProjection],
+  sagas: [UserSaga],
+})
+```
+
+Once application shutdown begins, the buses reject new work:
+
+- `CommandBusLifecycleService.execute(...)` and `QueryBusLifecycleService.execute(...)` throw `InvariantError` when called after shutdown starts.
+- `CqrsEventBusService.publish(...)` and `publishAll(...)` reject new work after shutdown starts, except for nested publish calls that pass a `CqrsDispatchContext` belonging to an already-active pipeline.
+- The CQRS event bus waits for active `publish(...)` pipelines and `publishAll(...)` sequences to settle, and the saga runtime waits for in-flight dispatches, before each marks itself stopped.
+
+The shutdown drain is bounded by `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`, which defaults to `5000`ms. A timeout emits a warning, records degraded diagnostics, and lets application close continue; it does not hard-fail. If your sagas or event handlers perform long-running work, set a timeout that covers the expected worst case:
+
+```ts
+CqrsModule.forRoot({
+  shutdown: { drainTimeoutMs: 10_000 },
+})
+```
+
+When `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })` is configured, delegated `@OnEvent(...)` subscribers may still be running after delegated publication resolves. In that mode, `publish(...)`, `publishAll(...)`, and CQRS shutdown drain completion do not guarantee that every `@fluojs/event-bus` subscriber has finished.
+
 ## Removed Concepts
 
 - `@Injectable()` as the default provider marker. Provider registration happens through the module `providers` array.
