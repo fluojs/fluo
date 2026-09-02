@@ -177,6 +177,8 @@ class UserRegisteredEvent {
 
 Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. Shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
 
+Handler discovery는 normalized effective singleton provider registration과 controller를 사용하므로, duplicate provider token의 DI winner만 발견되고 factory-provider scope도 canonical DI normalization을 따릅니다. `@OnEvent(...)`는 public instance 메서드에만 적용할 수 있습니다. Handler와 transport 실패는 기록되고 log되지만 `publish()`는 attempt가 settle되면 resolve하며, `waitForHandlers: false`에서는 shutdown-tracked background work를 scheduling한 뒤 resolve합니다.
+
 ## 런타임별 및 통합 서브패스
 
 | 관심사 | 서브패스 | 내보내는 항목 |

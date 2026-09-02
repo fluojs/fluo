@@ -34,7 +34,7 @@ npm install @fluojs/event-bus ioredis
 
 ### 1. Define an Event and Handler
 
-Create an event class and a handler method decorated with `@OnEvent`.
+Create an event class and a public instance handler method decorated with `@OnEvent`. Private and static methods are not supported.
 
 ```typescript
 import { OnEvent } from '@fluojs/event-bus';
@@ -159,14 +159,14 @@ class UserRegisteredEvent {
 }
 ```
 
-Handlers are discovered from singleton providers and controllers across imported modules. Discovery keeps distinct singleton provider identities even when multiple providers share the same implementation class; duplicate registration of the same provider token and handler method is invoked only once. Event-bus bootstrap resolves every discovered handler target before reporting ready, and a real handler target resolution failure fails bootstrap instead of silently reporting ready with skipped handlers. Discovery inspects singleton `useValue` instances that already carry handler metadata and singleton `useFactory` providers only when their provider token is the handler class with `@OnEvent(...)` metadata, so unrelated factory providers are not invoked during event-bus bootstrap. Each handler receives an isolated cloned payload, and class inheritance is supported through `instanceof` matching. With an external transport configured, publishing a subclass event fans out to the subclass channel and every inherited event channel in its prototype chain, even when the publisher process has no matching local handlers for those types. A subclass uses its own `static eventKey` only when it declares one directly; otherwise its class name remains the subclass channel while base classes keep their own stable keys.
+Handlers are discovered from normalized effective singleton provider registrations and controllers across imported modules. When duplicate provider tokens are registered, only the DI winner is discovered; factory-provider scope follows the same canonical normalization as container resolution. Event-bus bootstrap resolves every discovered handler target before reporting ready, and a real handler target resolution failure fails bootstrap instead of silently reporting ready with skipped handlers. Discovery inspects singleton `useValue` instances that already carry handler metadata and singleton `useFactory` providers only when their provider token is the handler class with `@OnEvent(...)` metadata, so unrelated factory providers are not invoked during event-bus bootstrap. Each handler receives an isolated cloned payload, and class inheritance is supported through `instanceof` matching. With an external transport configured, publishing a subclass event fans out to the subclass channel and every inherited event channel in its prototype chain, even when the publisher process has no matching local handlers for those types. A subclass uses its own `static eventKey` only when it declares one directly; otherwise its class name remains the subclass channel while base classes keep their own stable keys. `publish()` records and logs handler and transport failures but resolves after attempts settle; with `waitForHandlers: false`, it resolves after scheduling shutdown-tracked background work.
 
 ## Public API Overview
 
 ### Core
 - `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: Main entry point for event bus registration. `global` defaults to `true`; set `global: false` to keep event-bus providers visible only through the module that imports the event-bus module.
 - `EventBusLifecycleService`: Primary service for publishing events (`publish(event, options?)`) and creating platform status snapshots.
-- `@OnEvent(EventClass)`: Decorator to mark a method as an event handler.
+- `@OnEvent(EventClass)`: Decorator to mark a public instance method as an event handler.
 - `EVENT_BUS`: Compatibility injection token for the publish facade.
 - `createEventBusPlatformStatusSnapshot(...)`: Status snapshot helper used by diagnostics and health surfaces.
 

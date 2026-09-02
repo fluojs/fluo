@@ -28,7 +28,7 @@ function createEventBusProviders(options: EventBusModuleOptions = {}): Provider[
  */
 export class EventBusModule {
   /**
-   * Registers the event-bus providers as a global module.
+   * Registers event-bus providers globally by default, or locally when `options.global` is `false`.
    *
    * @param options Event bus module options for publish defaults and optional transport integration.
    * @returns A module definition that exports `EventBusLifecycleService` and the compatibility token `EVENT_BUS`.

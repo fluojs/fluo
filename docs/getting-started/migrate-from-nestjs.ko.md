@@ -975,6 +975,10 @@ const files = assertRequestContext().request.files ?? [];
 
 각 file은 `fieldname`, `originalname`, `mimetype`, `buffer`, `size`를 가진 portable `FrameworkRequestFile`입니다. storage, validation, application policy는 adapter-specific upload interceptor 밖에 두세요.
 
+## Event-bus migration limits
+
+`@OnEvent(...)`는 public instance 메서드만 지원합니다. `EventBusModule.forRoot()`는 기본 global이며 provider를 모듈-local로 유지하려면 `{ global: false }`를 전달하세요. Handler와 transport 실패는 log되고 격리되므로 `publish()`는 attempt가 settle된 뒤 resolve하며(`waitForHandlers: false`이면 shutdown-tracked background work를 scheduling한 뒤 resolve), 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.ko.md)

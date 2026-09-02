@@ -2232,12 +2232,17 @@ describe('@fluojs/event-bus', () => {
     it('records transport close failures in the lifecycle status snapshot', async () => {
       const loggerEvents: string[] = [];
       const transport = {
+        closeCalls: 0,
         async close() {
-          throw new Error('close failed');
+          this.closeCalls += 1;
+
+          if (this.closeCalls === 1) {
+            throw new Error('close failed');
+          }
         },
         async publish(_channel: string, _payload: unknown) {},
         async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
-      } satisfies EventBusTransport;
+      } satisfies EventBusTransport & { closeCalls: number };
 
       class AppModule {}
       defineModule(AppModule, {
@@ -2250,7 +2255,7 @@ describe('@fluojs/event-bus', () => {
       });
       const service = await app.container.resolve(EventBusLifecycleService);
 
-      await expect(closeApplication(app)).resolves.toBeUndefined();
+      await expect(closeApplication(app)).rejects.toThrow('close failed');
 
       expect(loggerEvents.some((event) => event.includes('EventBusTransport failed to close.'))).toBe(true);
       expect(service.createPlatformStatusSnapshot()).toMatchObject({
@@ -2266,6 +2271,10 @@ describe('@fluojs/event-bus', () => {
           status: 'not-ready',
         },
       });
+
+      await expect(closeApplication(app)).resolves.toBeUndefined();
+      expect(transport.closeCalls).toBe(2);
+      expect(service.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopped');
     });
 
     it('does not call transport when no transport is configured (backward compat)', async () => {

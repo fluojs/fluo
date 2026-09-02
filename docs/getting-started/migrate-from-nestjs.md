@@ -977,6 +977,10 @@ const files = assertRequestContext().request.files ?? [];
 
 Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`, `mimetype`, `buffer`, and `size`. Keep storage, validation, and application policy outside adapter-specific upload interceptors.
 
+## Event-bus migration limits
+
+`@OnEvent(...)` supports public instance methods only. `EventBusModule.forRoot()` is global by default; pass `{ global: false }` to keep providers module-local. Handler and transport failures are logged and isolated, so `publish()` resolves after attempts settle (or after shutdown-tracked background work is scheduled with `waitForHandlers: false`). The package requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.md)
