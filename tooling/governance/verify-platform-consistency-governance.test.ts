@@ -140,7 +140,10 @@ async function loadGovernanceInternals() {
   return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
     changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
     enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
-    enforceContractCompanionUpdates: (changedFiles: string[]) => void;
+    enforceContractCompanionUpdates: (
+      changedFiles: string[],
+      migrationGuideSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
+    ) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
     enforceOpenApiMigrationDocumentStructure: (readText?: (relativePath: string) => string) => void;

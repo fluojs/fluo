@@ -1195,6 +1195,10 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
   return snapshots;
 }
 
+/**
+ * @param {string[]} changedFiles
+ * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
+ */
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
   const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path)) && !bootstrapOnlyMigrationGuideUpdate;
