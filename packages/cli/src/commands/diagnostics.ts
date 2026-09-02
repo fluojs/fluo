@@ -163,6 +163,12 @@ function listScripts(manifest: JsonRecord | undefined): string[] {
   return Object.keys(scripts).sort();
 }
 
+/**
+ * Returns usage text for a diagnostics command.
+ *
+ * @param command Diagnostics command whose usage text is requested.
+ * @returns Usage text for the selected command.
+ */
 export function diagnosticsUsage(command: 'analyze' | 'doctor' | 'info' = 'doctor'): string {
   if (command === 'analyze') {
     return [
@@ -185,6 +191,13 @@ export function diagnosticsUsage(command: 'analyze' | 'doctor' | 'info' = 'docto
   ].join('\n');
 }
 
+/**
+ * Runs the doctor diagnostics command.
+ *
+ * @param argv Command arguments after `doctor`.
+ * @param runtime Runtime overrides for diagnostics output and lookup.
+ * @returns Process-style exit code from the command.
+ */
 export async function runDoctorCommand(argv: string[], runtime: DiagnosticRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${diagnosticsUsage('doctor')}\n`);
@@ -219,6 +232,13 @@ export async function runDoctorCommand(argv: string[], runtime: DiagnosticRuntim
   return 0;
 }
 
+/**
+ * Runs the info diagnostics command.
+ *
+ * @param argv Command arguments after `info`.
+ * @param runtime Runtime overrides for diagnostics output and lookup.
+ * @returns Process-style exit code from the command.
+ */
 export async function runInfoCommand(argv: string[], runtime: DiagnosticRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${diagnosticsUsage('info')}\n`);
@@ -228,6 +248,13 @@ export async function runInfoCommand(argv: string[], runtime: DiagnosticRuntimeO
   return runDoctorCommand(argv, runtime);
 }
 
+/**
+ * Runs the analyze diagnostics command.
+ *
+ * @param argv Command arguments after `analyze`.
+ * @param runtime Runtime overrides for diagnostics output and lookup.
+ * @returns Process-style exit code from the command.
+ */
 export async function runAnalyzeCommand(argv: string[], runtime: DiagnosticRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${diagnosticsUsage('analyze')}\n`);
