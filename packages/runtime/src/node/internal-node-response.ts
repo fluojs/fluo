@@ -1,21 +1,16 @@
-import {
-  type ServerResponse,
-  validateHeaderName,
-  validateHeaderValue,
-} from 'node:http';
+import type { ServerResponse } from 'node:http';
 
 import {
   createErrorResponse,
-  type EarlyHintsHeaders,
-  EarlyHintsWriteError,
   type FrameworkResponse,
   type FrameworkResponseCompression,
-  type FrameworkResponseEarlyHints,
   type FrameworkResponseStream,
   HttpException,
   InternalServerErrorException,
-  RequestAbortedError,
 } from '@fluojs/http';
+
+import { createNodeEarlyHintsCapability } from './internal-node-early-hints.js';
+import { createFrameworkResponseStream } from './internal-node-response-stream.js';
 
 /**
  * Defines the mutable framework response type.
@@ -23,204 +18,6 @@ import {
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
 type FrameworkResponseCompressionFactory = () => FrameworkResponseCompression | undefined;
-
-/**
- * Create the request-scoped Early Hints writer shared by Node-backed adapters.
- *
- * @param response Native Node response that emits HTTP 103 informational responses.
- * @param isCommitted Probe for facade-level final response ownership.
- * @returns An Early Hints capability that settles on native write, error, or disconnect.
- */
-export function createNodeEarlyHintsCapability(
-  response: ServerResponse,
-  isCommitted: () => boolean,
-): FrameworkResponseEarlyHints {
-  return {
-    write(headers: EarlyHintsHeaders): Promise<void> {
-      if (isCommitted() || response.headersSent || response.writableEnded) {
-        return Promise.reject(new EarlyHintsWriteError(
-          'Cannot write HTTP 103 Early Hints after the final response is committed.',
-        ));
-      }
-
-      if (response.destroyed || response.socket?.destroyed) {
-        return Promise.reject(new RequestAbortedError(
-          'Request aborted before HTTP 103 Early Hints could be written.',
-        ));
-      }
-
-      let nativeHeaders: Record<string, string | string[]>;
-      try {
-        nativeHeaders = cloneEarlyHintsHeaders(headers);
-      } catch (cause: unknown) {
-        return Promise.reject(new EarlyHintsWriteError(
-          'HTTP 103 Early Hints contains an invalid header name or value.',
-          { cause },
-        ));
-      }
-
-      if (!hasNonEmptyLink(nativeHeaders.link)) {
-        return Promise.reject(new EarlyHintsWriteError(
-          'HTTP 103 Early Hints requires at least one non-empty link value.',
-        ));
-      }
-
-      return new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const cleanup = () => {
-          response.removeListener('close', onClose);
-          response.removeListener('error', onError);
-        };
-        const settle = (action: () => void) => {
-          if (settled) {
-            return;
-          }
-
-          settled = true;
-          cleanup();
-          action();
-        };
-        const onClose = () => {
-          settle(() => reject(new RequestAbortedError(
-            'Request aborted while HTTP 103 Early Hints were being written.',
-          )));
-        };
-        const onError = (cause: Error) => {
-          settle(() => reject(new EarlyHintsWriteError(
-            'Native HTTP transport failed to write HTTP 103 Early Hints.',
-            { cause },
-          )));
-        };
-        const onWritten = () => {
-          settle(resolve);
-        };
-
-        response.once('close', onClose);
-        response.once('error', onError);
-
-        try {
-          response.writeEarlyHints(nativeHeaders, onWritten);
-        } catch (cause: unknown) {
-          settle(() => reject(new EarlyHintsWriteError(
-            'Native HTTP transport rejected HTTP 103 Early Hints.',
-            { cause },
-          )));
-        }
-      });
-    },
-  };
-}
-
-function hasNonEmptyLink(link: unknown): link is EarlyHintsHeaders['link'] {
-  return typeof link === 'string'
-    ? link.length > 0
-    : Array.isArray(link)
-      && link.length > 0
-      && link.every((value) => typeof value === 'string' && value.length > 0);
-}
-
-function cloneEarlyHintsHeaders(
-  headers: EarlyHintsHeaders,
-): Record<string, string | string[]> {
-  const cloned: Record<string, string | string[]> = Object.create(null);
-  const names = new Set<string>();
-
-  for (const [name, value] of Object.entries(headers)) {
-    validateHeaderName(name);
-    const normalizedName = name.toLowerCase();
-    if (normalizedName === 'content-length' || normalizedName === 'transfer-encoding') {
-      throw new TypeError(`Header is not permitted in HTTP 103 Early Hints: ${name}`);
-    }
-    if (names.has(normalizedName)) {
-      throw new TypeError(`Duplicate Early Hints header name: ${name}`);
-    }
-    names.add(normalizedName);
-
-    if (typeof value === 'string') {
-      validateHeaderValue(name, value);
-      cloned[normalizedName] = value;
-      continue;
-    }
-
-    if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
-      throw new TypeError(`Invalid Early Hints header value: ${name}`);
-    }
-    for (const entry of value) {
-      validateHeaderValue(name, entry);
-    }
-    cloned[normalizedName] = [...value];
-  }
-
-  return cloned;
-}
-
-function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
-  return {
-    close() {
-      if (!response.writableEnded) {
-        response.end();
-      }
-    },
-    get closed() {
-      return response.writableEnded;
-    },
-    disableCompression() {
-      disableNativeCompression(response);
-    },
-    flush() {
-      response.flushHeaders?.();
-    },
-    onClose(listener: () => void) {
-      response.on('close', listener);
-      return () => {
-        response.removeListener('close', listener);
-      };
-    },
-    onError(listener: (error: unknown) => void) {
-      response.on('error', listener);
-      return () => {
-        response.removeListener('error', listener);
-      };
-    },
-    waitForDrain() {
-      if (response.writableEnded || response.destroyed) {
-        return Promise.resolve();
-      }
-
-      return new Promise<void>((resolve, reject) => {
-        const cleanup = () => {
-          response.removeListener('drain', resolveDrain);
-          response.removeListener('close', resolveDrain);
-          response.removeListener('error', rejectError);
-        };
-        const rejectError = (error: Error) => {
-          cleanup();
-          reject(error);
-        };
-        const resolveDrain = () => {
-          cleanup();
-          resolve();
-        };
-
-        response.once('drain', resolveDrain);
-        response.once('close', resolveDrain);
-        response.once('error', rejectError);
-      });
-    },
-    write(chunk: string | Uint8Array) {
-      return response.write(chunk);
-    },
-  };
-}
-
-function disableNativeCompression(response: ServerResponse): void {
-  const cacheControl = response.getHeader('cache-control');
-  const value = Array.isArray(cacheControl) ? cacheControl.join(', ') : String(cacheControl ?? '');
-
-  if (!/\bno-transform\b/i.test(value)) {
-    response.setHeader('Cache-Control', value ? `${value}, no-transform` : 'no-transform');
-  }
-}
 
 /**
  * Create framework response.
@@ -292,14 +89,18 @@ export function createFrameworkResponse(
         return;
       }
 
+      const hasContentType = response.hasHeader('Content-Type');
       const existingContentType = response.getHeader('Content-Type');
       const serialized = serializeResponseBody(
         body,
         typeof existingContentType === 'string' ? existingContentType : undefined,
       );
+      const adapterDefaultContentType = hasContentType
+        ? undefined
+        : serialized.defaultContentType;
 
-      if (!response.hasHeader('Content-Type') && serialized.defaultContentType) {
-        response.setHeader('Content-Type', serialized.defaultContentType);
+      if (adapterDefaultContentType) {
+        response.setHeader('Content-Type', adapterDefaultContentType);
       }
 
       const contentType = response.getHeader('Content-Type') as string | undefined;
@@ -318,16 +119,27 @@ export function createFrameworkResponse(
         if (activeCompression) {
           this.committed = true;
 
-          return Promise.resolve(activeCompression.write(payload, { contentType }))
+          return Promise.resolve()
+            .then(() => activeCompression.write(payload, { contentType }))
             .then((handled) => {
               if (!handled && !response.writableEnded) {
                 response.end(payload);
               }
             })
-            .catch(() => {
-              if (!response.writableEnded) {
-                response.end();
+            .catch((error: unknown) => {
+              if (response.headersSent || response.writableEnded || response.destroyed) {
+                if (!response.writableEnded && !response.destroyed) {
+                  response.destroy();
+                }
+              } else {
+                response.removeHeader('Content-Encoding');
+                if (adapterDefaultContentType) {
+                  response.removeHeader('Content-Type');
+                }
+                this.committed = false;
               }
+
+              throw error;
             });
         }
       }

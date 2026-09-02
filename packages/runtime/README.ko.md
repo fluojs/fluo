@@ -24,6 +24,8 @@ npm install @fluojs/runtime
 
 배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가 아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면 peer, host, port가 없고 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
 
+mandatory runtime consumer인 `@fluojs/cli`도 같은 Node 범위를 선언합니다. CLI host는 Node 20에서 `>=20.19.3`으로, Node 22에서 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상 host는 지원되는 Node 20 또는 Node 22 line으로 옮겨야 합니다.
+
 ## Node 정적 에셋 source
 
 `@fluojs/http`는 portable static middleware와 representation-selection contract를 소유합니다. `@fluojs/runtime/node`는 Node filesystem `StaticAssetSource` 구현인 `createNodeFileSystemAssetSource(...)`를 export합니다. 이 helper는 configuration 단계에서 root directory를 검증하고 symlink 검사를 포함한 lexical 및 realpath 해석을 root 내부로 제한하며 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. 선택된 각 regular-file representation은 검증된 파일을 열어 전체 파일을 immutable byte snapshot으로 즉시 복사하고 response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열거나 lazy stream하지 않습니다. 따라서 애플리케이션 owner는 선택된 전체 파일 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 byte를 설명합니다. Raw Node, Express, Fastify adapter는 이 portable middleware/source seam을 공유하고 adapter-specific re-encoding 대신 선택된 representation boundary를 보존합니다. 이 Node 전용 helper는 의도적으로 `@fluojs/runtime/web`에 없으며 Web 및 edge deployment는 애플리케이션이 소유한 source를 제공해야 합니다.
@@ -438,6 +440,20 @@ const jsonLogger = createJsonApplicationLogger();
 ```
 
 개발 명령의 raw child-process 출력이 필요하면 대신 `fluo dev --verbose` 같은 CLI reporter flag를 사용하세요.
+
+### Node 압축 실패 마이그레이션
+
+**호환성 깨짐:** Node response가 commit되기 전에 압축이 실패하면
+`FrameworkResponse.send()`는 reject됩니다. 어댑터 integration은 이 promise를 await하고
+rejection을 처리해야 하며, 압축되지 않은 성공 response가 전송되었다고 가정하거나 오류를
+무시하면 안 됩니다.
+
+dispatcher가 관리하는 request는 runtime의 JSON 500 envelope로 복구됩니다. 어댑터는 실패한
+body에 자신이 추가한 `Content-Type`만 제거하므로 envelope는 `application/json`을 사용하고,
+애플리케이션 코드가 명시한 `Content-Type`은 변경되지 않습니다. fulfilled `send()`나
+adapter가 추가한 오래된 `text/plain` 또는 `application/octet-stream` header에 의존한
+consumer는 rejection 또는 fallback을 명시적으로 처리하고 필요한 application-owned header를
+직접 설정해야 합니다.
 
 더 저수준의 Node compression internals는 공개 `@fluojs/runtime/node` 계약이 아니라 `@fluojs/runtime/internal-node` seam 뒤에 둡니다.
 

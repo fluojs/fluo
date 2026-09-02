@@ -24,6 +24,8 @@ npm install @fluojs/runtime
 
 The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
 
+`@fluojs/cli`, a mandatory runtime consumer, declares the same Node range. Upgrade CLI hosts from Node 20 to `>=20.19.3` or from Node 22 to `>=22.2.0`; Node 21 and Node 27+ hosts must move to a supported Node 20 or Node 22 line.
+
 ## Node Static Asset Source
 
 `@fluojs/http` owns portable static middleware and representation-selection contracts. `@fluojs/runtime/node` exports `createNodeFileSystemAssetSource(...)`, its Node filesystem `StaticAssetSource` implementation: it validates the root directory during configuration, keeps lexical and realpath resolution inside that root (including symlink checks), and can select `.br` or `.gz` siblings. For each selected regular-file representation, it opens the verified file, eagerly copies the entire file into an immutable byte snapshot, and closes its `FileHandle` before response writing. Its returned `source()` replays only that snapshot and never reopens or lazily streams the pathname; application owners therefore bound memory by the selected whole-file size, and `size` plus the strong `ETag` describe those exact bytes. Raw Node, Express, and Fastify adapters share this portable middleware/source seam and preserve the selected representation boundary rather than applying adapter-specific re-encoding. This Node-only helper is intentionally absent from `@fluojs/runtime/web`; Web and edge deployments must provide an application-owned source.
@@ -439,6 +441,19 @@ const jsonLogger = createJsonApplicationLogger();
 ```
 
 Use CLI reporter flags such as `fluo dev --verbose` when you need raw child-process output from the development command instead.
+
+### Node Compression Failure Migration
+
+**Breaking change:** When response compression fails before a Node response commits,
+`FrameworkResponse.send()` rejects. Adapter integrations must await that promise and handle the
+rejection; they must not swallow it or assume that an uncompressed success response was sent.
+
+For dispatcher-managed requests, the runtime recovers by writing its JSON 500 envelope. The
+adapter removes a `Content-Type` it assigned for the failed body so the envelope uses
+`application/json`; an explicit `Content-Type` set by application code remains unchanged.
+Consumers that relied on a fulfilled `send()` or a stale adapter-assigned `text/plain` or
+`application/octet-stream` header must handle the rejection or fallback explicitly and set any
+required application-owned header themselves.
 
 Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
 

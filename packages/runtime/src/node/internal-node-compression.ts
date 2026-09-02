@@ -1,5 +1,5 @@
-import { createBrotliCompress, createGzip, type BrotliCompress, type Gzip } from 'node:zlib';
 import type { ServerResponse } from 'node:http';
+import { type BrotliCompress, createBrotliCompress, createGzip, type Gzip } from 'node:zlib';
 
 import type {
   FrameworkResponseCompression,
@@ -69,17 +69,56 @@ export function compressNodeResponse(
   body: Uint8Array,
   encoding: Exclude<Encoding, 'identity'>,
 ): Promise<void> {
+  if (response.destroyed || response.socket?.destroyed) {
+    return Promise.reject(new Error('Node response closed before compression completed.'));
+  }
+
   const stream: BrotliCompress | Gzip = encoding === 'br' ? createBrotliCompress() : createGzip();
 
   response.setHeader('Content-Encoding', encoding);
   response.removeHeader('Content-Length');
 
-  return new Promise((resolve, reject) => {
-    stream.on('error', reject);
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      response.removeListener('close', rejectClosedResponse);
+      response.removeListener('error', rejectFailure);
+      response.removeListener('finish', resolveResponse);
+      stream.removeListener('error', rejectFailure);
+    };
+    const settle = (action: () => void, terminateStream = false) => {
+      if (settled) {
+        return;
+      }
 
+      settled = true;
+      if (terminateStream) {
+        stream.unpipe(response);
+        stream.destroy();
+      }
+      cleanup();
+      action();
+    };
+    const rejectFailure = (error: Error) => {
+      settle(() => reject(error), true);
+    };
+    const rejectClosedResponse = () => {
+      settle(() => reject(new Error('Node response closed before compression completed.')), true);
+    };
+    const resolveResponse = () => {
+      if (response.destroyed || !response.writableEnded) {
+        rejectClosedResponse();
+        return;
+      }
+
+      settle(resolve);
+    };
+
+    response.once('close', rejectClosedResponse);
+    response.once('error', rejectFailure);
+    response.once('finish', resolveResponse);
+    stream.once('error', rejectFailure);
     stream.pipe(response);
-    stream.on('finish', resolve);
-
     stream.end(body);
   });
 }
