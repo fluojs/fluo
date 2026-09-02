@@ -613,6 +613,38 @@ export class CheckoutController {
 
 Do not migrate every NestJS interceptor into this shape. Request-wide transactions can keep locks open through unrelated controller work; prefer a focused service `@Transaction()` whenever it represents the actual business unit of work.
 
+### Prisma Async Registration and Rollback Guarantees
+
+`PrismaModule.forRootAsync(...)` supports the injected-factory shape only: list dependencies in `inject` and return the final Prisma options from `useFactory`. Register each injected dependency in the fluo application graph before the Prisma options provider resolves:
+
+```typescript
+import { Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+class DatabaseConfig {
+  readonly url = 'postgresql://localhost/app';
+}
+
+@Module({
+  imports: [
+    PrismaModule.forRootAsync({
+      inject: [DatabaseConfig],
+      useFactory: (config: DatabaseConfig) => ({
+        client: new PrismaClient({ datasources: { db: { url: config.url } } }),
+        strictTransactions: true,
+      }),
+    }),
+  ],
+  providers: [DatabaseConfig],
+})
+class AppModule {}
+```
+
+NestJS `imports`, `useClass`, and `useExisting` are not `forRootAsync(...)` compatibility fields. Resolve their configuration, class construction, and provider aliases at application bootstrap or through explicit fluo provider registration, then pass the ready dependencies through `inject`.
+
+Set `strictTransactions: true` whenever migrated business work requires rollback atomicity. With its default `false` value, fluo runs the callback directly when the registered client does not expose interactive `$transaction(...)`, so `@Transaction()` and `requestTransaction(...)` do not provide rollback in that case.
+
 ### GraphQL Resolver Migration
 
 GraphQL migration keeps schema and discovery wiring explicit. Register every resolver class as a provider or controller in an authored module so it is discoverable from the compiled module graph. `GraphqlModule.forRoot({ resolvers: [...] })` does not register those classes; when supplied, `resolvers` filters discovery to that allowlist. Omit `resolvers` or pass an empty list to discover every decorated resolver class already registered as a provider or controller. Neither TypeScript return types nor NestJS design metadata register providers or build output types.
