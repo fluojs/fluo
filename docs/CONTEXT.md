@@ -335,3 +335,9 @@ Chapter 14's executable JWT learning path imports `ConfigModule.forRoot()` and a
 - Changing documented behavior in `1.0+` without a major bump, this violates release governance.
 
 Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
+
+## Notifications Status Contract
+
+`@fluojs/notifications` distinguishes configured publisher infrastructure from enabled lifecycle publication in platform status.
+
+<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

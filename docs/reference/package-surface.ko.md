@@ -145,3 +145,9 @@ Studio의 Node.js `>=20.0.0` engine floor는 consumer-side snapshot, diagnostic,
 아키텍처 정의는 [glossary-and-mental-model.ko.md](./glossary-and-mental-model.ko.md)를 참조하세요.
 
 Microservices transport 학습 경로는 패키지 계약 원천으로 다시 연결됩니다. [TCP](../../book/intermediate/ch02-tcp.ko.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.ko.md), [gRPC](../../book/intermediate/ch08-grpc.ko.md)는 `packages/microservices/README.ko.md`를 보완하지만 facade, shutdown, transport ownership 계약의 기준을 대체하지 않습니다.
+
+### Notifications 상태 계약
+
+`@fluojs/notifications`는 구성된 publisher infrastructure와 활성화된 lifecycle publication을 독립적으로 보고합니다.
+
+<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

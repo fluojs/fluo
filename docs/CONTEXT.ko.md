@@ -334,3 +334,9 @@ Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)
 - major bump 없이 `1.0+`의 문서화된 동작을 변경하는 것, release governance를 위반한다.
 
 전체 안티패턴 목록 경로: `docs/guides/anti-patterns.md`.
+
+## Notifications 상태 계약
+
+`@fluojs/notifications`는 platform status에서 구성된 publisher infrastructure와 활성화된 lifecycle publication을 구분합니다.
+
+<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

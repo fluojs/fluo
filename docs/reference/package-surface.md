@@ -145,3 +145,9 @@ Module and provider registration APIs use namespace facades rather than public `
 Refer to [glossary-and-mental-model.md](./glossary-and-mental-model.md) for architectural definitions.
 
 Microservices transport learning paths link back to the package contract source: [TCP](../../book/intermediate/ch02-tcp.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.md), and [gRPC](../../book/intermediate/ch08-grpc.md) complement `packages/microservices/README.md` without replacing its facade, shutdown, and transport ownership contracts.
+
+### Notifications status contract
+
+`@fluojs/notifications` reports configured publisher infrastructure independently from enabled lifecycle publication.
+
+<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

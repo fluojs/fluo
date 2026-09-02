@@ -3291,6 +3291,26 @@ export function enforceStudioRuntimeBridgeDiscoverability(readText = read) {
   }
 }
 
+export function enforceNotificationsStatusDocumentationContract(readText = read) {
+  const contractSentinel =
+    '<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->';
+  const documentationPaths = [
+    'packages/notifications/README.md',
+    'packages/notifications/README.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+  ];
+
+  for (const documentationPath of documentationPaths) {
+    assert(
+      readText(documentationPath).includes(contractSentinel),
+      `${documentationPath} must preserve the notifications configured-disabled status contract sentinel.`,
+    );
+  }
+}
+
 export async function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -3319,6 +3339,7 @@ export async function main() {
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
+  enforceNotificationsStatusDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();

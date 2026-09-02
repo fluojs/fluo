@@ -110,7 +110,7 @@ function createHealth(input: ResolvedNotificationsStatusInput): PlatformHealthRe
     };
   }
 
-  if (input.queueConfigured || input.eventPublicationEnabled) {
+  if (input.queueConfigured || input.eventPublisherConfigured) {
     return {
       reason: 'Notifications infrastructure is configured, but no delivery channels are registered yet.',
       status: 'degraded',

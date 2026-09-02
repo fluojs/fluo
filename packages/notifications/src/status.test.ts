@@ -165,7 +165,7 @@ describe('createNotificationsPlatformStatusSnapshot', () => {
       });
     });
 
-    it('reports degraded health while a disabled publisher is the only configured integration', () => {
+    it('reports configured infrastructure health while a disabled publisher is the only configured integration', () => {
       const snapshot = createNotificationsPlatformStatusSnapshot({
         bulkQueueThreshold: 0,
         channelsRegistered: 0,
@@ -174,7 +174,10 @@ describe('createNotificationsPlatformStatusSnapshot', () => {
         queueConfigured: false,
       });
 
-      expect(snapshot.health.status).toBe('unhealthy');
+      expect(snapshot.health).toEqual({
+        reason: 'Notifications infrastructure is configured, but no delivery channels are registered yet.',
+        status: 'degraded',
+      });
     });
   });
 
