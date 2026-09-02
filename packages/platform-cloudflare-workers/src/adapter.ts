@@ -137,6 +137,24 @@ export interface CloudflareWorkerEntrypoint<Env = unknown>
   ready(): Promise<CloudflareWorkerApplication<Env>>;
 }
 
+/** Root module and final bootstrap options selected from a Worker environment. */
+export interface CloudflareWorkerEnvBootstrap {
+  readonly options?: BootstrapCloudflareWorkerApplicationOptions;
+  readonly rootModule: ModuleType;
+}
+
+/** Factory that derives one Worker bootstrap configuration from the first supplied environment. */
+export type CloudflareWorkerEnvEntrypointFactory<Env = unknown> = (
+  env: Env,
+) => CloudflareWorkerEnvBootstrap;
+
+/** Lazy Cloudflare Worker entrypoint whose readiness requires an explicit environment. */
+export interface CloudflareWorkerEnvEntrypoint<Env = unknown>
+  extends CloudflareWorkerHandler<Env> {
+  close(signal?: string): Promise<void>;
+  ready(env: Env): Promise<CloudflareWorkerApplication<Env>>;
+}
+
 /**
  * Cloudflare Workers HTTP adapter with waitUntil-aware request tracking and graceful close behavior.
  */
@@ -387,12 +405,64 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
   rootModule: ModuleType,
   options: BootstrapCloudflareWorkerApplicationOptions = {},
 ): CloudflareWorkerEntrypoint<Env> {
+  const entrypoint = createLazyCloudflareWorkerEntrypoint<Env, undefined>({
+    createApplication() {
+      return bootstrapCloudflareWorkerApplication<Env>(rootModule, options);
+    },
+    getReadyArgument() {
+      return undefined;
+    },
+  });
+
+  return {
+    close: entrypoint.close,
+    fetch: entrypoint.fetch,
+    ready() {
+      return entrypoint.ready(undefined);
+    },
+  };
+}
+
+/**
+ * Create a lazy Cloudflare Worker entrypoint configured from its first supplied environment.
+ *
+ * @param factory Factory that derives the root module and final bootstrap options from one Worker environment.
+ * @returns A Worker entrypoint exposing env-aware lazy `fetch(...)`, `ready(env)`, and `close(...)` helpers.
+ */
+export function createCloudflareWorkerEnvEntrypoint<Env = unknown>(
+  factory: CloudflareWorkerEnvEntrypointFactory<Env>,
+): CloudflareWorkerEnvEntrypoint<Env> {
+  return createLazyCloudflareWorkerEntrypoint<Env, Env>({
+    createApplication(env) {
+      const bootstrap = factory(env);
+      return bootstrapCloudflareWorkerApplication<Env>(bootstrap.rootModule, bootstrap.options);
+    },
+    getReadyArgument(env) {
+      return env;
+    },
+  });
+}
+
+interface LazyCloudflareWorkerEntrypointOptions<Env, ReadyArgument> {
+  readonly createApplication: (
+    readyArgument: ReadyArgument,
+  ) => Promise<CloudflareWorkerApplication<Env>>;
+  readonly getReadyArgument: (env: Env) => ReadyArgument;
+}
+
+function createLazyCloudflareWorkerEntrypoint<Env, ReadyArgument>(
+  options: LazyCloudflareWorkerEntrypointOptions<Env, ReadyArgument>,
+): {
+  readonly close: (signal?: string) => Promise<void>;
+  readonly fetch: CloudflareWorkerHandler<Env>['fetch'];
+  readonly ready: (readyArgument: ReadyArgument) => Promise<CloudflareWorkerApplication<Env>>;
+} {
   let closeError: unknown;
   let closeInFlight: Promise<void> | undefined;
   let closeRecovery: Promise<void> | undefined;
   let runningApplication: Promise<CloudflareWorkerApplication<Env>> | undefined;
 
-  const ready = async (): Promise<CloudflareWorkerApplication<Env>> => {
+  const ready = async (readyArgument: ReadyArgument): Promise<CloudflareWorkerApplication<Env>> => {
     if (closeRecovery) {
       await closeRecovery;
     }
@@ -402,7 +472,7 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
     }
 
     if (!runningApplication) {
-      runningApplication = bootstrapCloudflareWorkerApplication<Env>(rootModule, options);
+      runningApplication = Promise.resolve().then(() => options.createApplication(readyArgument));
     }
 
     return await runningApplication;
@@ -472,7 +542,7 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
         return createShutdownResponse();
       }
 
-      return await (await ready()).fetch(request, env, executionContext);
+      return await (await ready(options.getReadyArgument(env))).fetch(request, env, executionContext);
     },
     ready,
   };

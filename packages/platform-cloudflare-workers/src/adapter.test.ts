@@ -20,6 +20,7 @@ import {
   type CloudflareWorkerWebSocketBinding,
   type CloudflareWorkerWebSocketPair,
   createCloudflareWorkerAdapter,
+  createCloudflareWorkerEnvEntrypoint,
   createCloudflareWorkerEntrypoint,
 } from './adapter.js';
 
@@ -1001,6 +1002,60 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       expect(restartedResponse.status).toBe(200);
       expect(singletonConstructionCount).toBe(2);
       expect(bootstrapCount).toBe(2);
+    } finally {
+      await entrypoint.close();
+    }
+  });
+
+  it('configures a lazy Worker entrypoint once from the first explicit environment', async () => {
+    type WorkerEnv = {
+      readonly prefix: string;
+    };
+    const configuredEnvironments: WorkerEnv[] = [];
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
+      configuredEnvironments.push(env);
+
+      return {
+        options: {
+          cors: false,
+          globalPrefix: env.prefix,
+        },
+        rootModule: AppModule,
+      };
+    });
+
+    expectTypeOf(entrypoint.ready).parameter(0).toEqualTypeOf<WorkerEnv>();
+
+    try {
+      const firstEnvironment = { prefix: '/configured' };
+      const secondEnvironment = { prefix: '/ignored-for-bootstrap' };
+
+      const response = await entrypoint.fetch(
+        new Request('https://worker.test/configured/health'),
+        firstEnvironment,
+        createExecutionContext(),
+      );
+
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      const firstApplication = await entrypoint.ready(firstEnvironment);
+      expect(await entrypoint.ready(secondEnvironment)).toBe(firstApplication);
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
     } finally {
       await entrypoint.close();
     }
