@@ -66,6 +66,7 @@ import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/pr
 import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
+@Inject(UserRepository)
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
@@ -74,21 +75,6 @@ export class UserService {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
     return user;
-  }
-}
-
-@Inject(PrismaService)
-export class UserRepository {
-  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
-
-  async create(data: any) {
-    // The facade type exposes standard PrismaClient delegates.
-    // When called inside @Transaction(), they automatically participate in the ambient transaction.
-    return this.prisma.user.create({ data });
-  }
-
-  async initProfile(userId: string) {
-    return this.prisma.profile.create({ data: { userId } });
   }
 }
 ```
@@ -100,11 +86,16 @@ Calls to `@Transaction()` methods are reentrant. If a decorated method calls ano
 `PrismaTransactionInterceptor` is restored as a deprecated 1.x compatibility export for existing `@UseInterceptors(...)` request-wide boundaries. The unnamed `PrismaModule.forRoot(...)` and `forRootAsync(...)` registrations provide and export it. It delegates to `PrismaService.requestTransaction(...)` and forwards the request `AbortSignal`.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Controller, Post, UseInterceptors } from '@fluojs/http';
 import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+import { OrdersService } from './orders.service';
 
 @Controller('/orders')
+@Inject(OrdersService)
 export class OrdersController {
+  constructor(private readonly orders: OrdersService) {}
+
   @Post('/')
   @UseInterceptors(PrismaTransactionInterceptor)
   createOrder() {

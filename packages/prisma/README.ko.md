@@ -66,6 +66,7 @@ import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/pr
 import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
+@Inject(UserRepository)
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
@@ -74,21 +75,6 @@ export class UserService {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
     return user;
-  }
-}
-
-@Inject(PrismaService)
-export class UserRepository {
-  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
-
-  async create(data: any) {
-    // facade 타입은 표준 PrismaClient delegate를 노출합니다.
-    // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
-    return this.prisma.user.create({ data });
-  }
-
-  async initProfile(userId: string) {
-    return this.prisma.profile.create({ data: { userId } });
   }
 }
 ```
@@ -100,11 +86,16 @@ export class UserRepository {
 `PrismaTransactionInterceptor`는 기존 `@UseInterceptors(...)` request-wide boundary를 위한 deprecated 1.x 호환성 export로 복원되었습니다. 이름 없는 `PrismaModule.forRoot(...)`와 `forRootAsync(...)` 등록이 이 interceptor를 provider 및 export로 제공하며, `PrismaService.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Controller, Post, UseInterceptors } from '@fluojs/http';
 import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+import { OrdersService } from './orders.service';
 
 @Controller('/orders')
+@Inject(OrdersService)
 export class OrdersController {
+  constructor(private readonly orders: OrdersService) {}
+
   @Post('/')
   @UseInterceptors(PrismaTransactionInterceptor)
   createOrder() {
