@@ -7,6 +7,7 @@ Transport-driven microservices for fluo. Build scalable, message-driven architec
 ## Table of Contents
 
 - [Installation](#installation)
+- [Requirements](#requirements)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Core Capabilities](#core-capabilities)
@@ -27,6 +28,10 @@ Optional transport-specific dependencies:
 - Caller-owned broker clients passed explicitly to transports: `nats`, `kafkajs`, `amqplib`
 
 The gRPC transport requires `@grpc/grpc-js@^1.14.4` and `@grpc/proto-loader@^0.8.0`. Consumers using an older `@grpc/grpc-js` release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/microservices` release. A refreshed install must resolve the proto-loader chain to `protobufjs@7.6.5` or newer so its patched UTF-8 helper is included; the fluo transport API is unchanged.
+
+## Requirements
+
+`@fluojs/microservices` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded.
 
 ## When to Use
 
