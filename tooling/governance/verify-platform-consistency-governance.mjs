@@ -4081,38 +4081,39 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
 }
 
 export function enforceStudioStaticGraphLimitsContract(readText = read) {
+  const staticLiveContractSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
   const documentationContracts = [
     [
       'docs/CONTEXT.md',
-      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio'],
+      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio', staticLiveContractSentinel],
     ],
     [
       'docs/CONTEXT.ko.md',
-      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio'],
+      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio', staticLiveContractSentinel],
     ],
     [
       'packages/studio/README.md',
-      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio'],
+      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio', staticLiveContractSentinel],
     ],
     [
       'packages/studio/README.ko.md',
-      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio'],
+      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio', staticLiveContractSentinel],
     ],
     [
       'book/advanced/ch15-studio.md',
-      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph'],
+      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph', staticLiveContractSentinel],
     ],
     [
       'book/advanced/ch15-studio.ko.md',
-      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph'],
+      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph', staticLiveContractSentinel],
     ],
     [
       'docs/getting-started/migrate-from-nestjs.md',
-      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio'],
+      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio', staticLiveContractSentinel],
     ],
     [
       'docs/getting-started/migrate-from-nestjs.ko.md',
-      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio'],
+      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio', staticLiveContractSentinel],
     ],
   ];
   const forbiddenClaims = [

@@ -4803,6 +4803,14 @@ describe('Studio public docs and migration expectations', () => {
   const koreanReadme = readFileSync(join(repoRoot, 'packages/studio/README.ko.md'), 'utf8');
   const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const staticLiveSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const swappedStaticLiveSentinel = '<!-- studio-static-live-contract: static=node-compiled-di-graph; live=inspect-successful-bootstrap-no-compiled-di-graph -->';
+  const staticLiveCompanionPairs = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ] as const;
 
   it('keeps Studio sidecar, fallback, dependency, and exported type docs discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
@@ -4874,6 +4882,23 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
   });
 
+  it.each(staticLiveCompanionPairs)(
+    'rejects missing English and swapped Korean static/live contract sentinels in %s and %s',
+    (englishPath, koreanPath) => {
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === englishPath ? content.replace(staticLiveSentinel, '') : content;
+      })).toThrowError(englishPath);
+
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === koreanPath
+          ? content.replace(staticLiveSentinel, swappedStaticLiveSentinel)
+          : content;
+      })).toThrowError(koreanPath);
+    },
+  );
+
   const staticGraphContradictionCases = [
     [
       'book/advanced/ch15-studio.md',
@@ -4912,12 +4937,32 @@ describe('Studio public docs and migration expectations', () => {
   );
 
   it('keeps the Studio static graph contract registered from main', () => {
-    const governanceSource = readFileSync(
-      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
-      'utf8',
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
     );
+    let mainCallsStudioGuard = false;
 
-    expect(governanceSource).toContain('enforceStudioStaticGraphLimitsContract();');
+    // When
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)
+          && node.expression.text === 'enforceStudioStaticGraphLimitsContract') {
+          mainCallsStudioGuard = true;
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    // Then
+    expect(mainCallsStudioGuard).toBe(true);
   });
 });
 

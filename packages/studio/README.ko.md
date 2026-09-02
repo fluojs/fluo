@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 fluo 진단을 위한 CLI sidecar 및 React viewer workflow입니다. Node dev-runner live MVP와 기존 static/report artifact 로딩을 함께 지원합니다.
 
 ## 목차

@@ -1,5 +1,6 @@
 <!-- packages: @fluojs/studio, @fluojs/runtime, @fluojs/cli -->
 <!-- project-state: FluoBlog v0 -->
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
 # 15장. Studio: 시각적 진단과 관찰성
 
