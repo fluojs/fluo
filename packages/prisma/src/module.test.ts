@@ -1414,6 +1414,7 @@ describe('@fluojs/prisma', () => {
 
   it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
     const snapshot = createPrismaPlatformStatusSnapshot({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 1,
       lifecycleState: 'ready',
       strictTransactions: false,
@@ -1427,6 +1428,7 @@ describe('@fluojs/prisma', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 1,
       strictTransactions: false,
       transactionContext: 'als',
@@ -1435,6 +1437,7 @@ describe('@fluojs/prisma', () => {
 
   it('marks created and pre-connect snapshots as not-ready', () => {
     const createdSnapshot = createPrismaPlatformStatusSnapshot({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 0,
       lifecycleState: 'created',
       strictTransactions: false,
@@ -1465,6 +1468,7 @@ describe('@fluojs/prisma', () => {
 
   it('marks strict transaction mismatch as not-ready', () => {
     const snapshot = createPrismaPlatformStatusSnapshot({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 0,
       lifecycleState: 'ready',
       strictTransactions: true,
@@ -1481,6 +1485,7 @@ describe('@fluojs/prisma', () => {
 
   it('marks shutdown state as not-ready and degraded health', () => {
     const snapshot = createPrismaPlatformStatusSnapshot({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 0,
       lifecycleState: 'shutting-down',
       strictTransactions: false,
