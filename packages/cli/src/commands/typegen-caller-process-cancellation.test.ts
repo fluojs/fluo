@@ -21,6 +21,24 @@ function createDeferred<T>(): { readonly promise: Promise<T>; readonly resolve: 
   return { promise, resolve: resolveResult };
 }
 
+async function waitForSignal(signal: Promise<void>, description: string): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      signal,
+      new Promise<void>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`Timed out waiting for ${description}.`));
+        }, 1_000);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 function createSignalTarget(): TypegenWatchSignalTarget & { emit(signal: 'SIGINT' | 'SIGTERM'): void } {
   const listeners = new Map<'SIGINT' | 'SIGTERM', () => void>();
   return {
@@ -40,22 +58,21 @@ function createSignalTarget(): TypegenWatchSignalTarget & { emit(signal: 'SIGINT
 
 describe('fluo typegen caller-process cancellation', () => {
   it('waits for application cleanup before ending a cancelled watch', async () => {
-    // Given: caller-process generation is paused before bootstrap, then its application close is held.
+    // Given: caller-process generation has reached application close, which remains explicitly pending.
     const signalTarget = createSignalTarget();
-    const bootstrapStarted = createDeferred<void>();
-    const releaseBootstrap = createDeferred<void>();
-    const cleanupStarted = createDeferred<void>();
-    const releaseCleanup = createDeferred<void>();
+    const applicationCloseStarted = createDeferred<void>();
+    const releaseApplicationClose = createDeferred<void>();
     const cancellationRequested = createDeferred<void>();
     const generationStarted = createDeferred<void>();
     const stderr: string[] = [];
     const watcher: TypegenWatcher = { close: vi.fn(), on: vi.fn(() => watcher) };
     let callerGeneration: TypegenWatchGeneration | undefined;
-    let cleanupFinished = false;
+    let runTypegenWatchResult: Promise<number> | undefined;
+    let applicationClosed = false;
     const close = vi.fn(async () => {
-      cleanupStarted.resolve();
-      await releaseCleanup.promise;
-      cleanupFinished = true;
+      applicationCloseStarted.resolve();
+      await releaseApplicationClose.promise;
+      applicationClosed = true;
     });
     vi.resetModules();
     vi.doMock('./typegen-watch.js', async (importOriginal) => {
@@ -63,7 +80,7 @@ describe('fluo typegen caller-process cancellation', () => {
       return {
         ...actual,
         runTypegenWatch(options: TypegenWatchOptions) {
-          return actual.runTypegenWatch({
+          const result = actual.runTypegenWatch({
             ...options,
             signalTarget,
             startGeneration() {
@@ -80,6 +97,8 @@ describe('fluo typegen caller-process cancellation', () => {
             },
             watchTarget: () => watcher,
           });
+          runTypegenWatchResult = result;
+          return result;
         },
       };
     });
@@ -92,14 +111,10 @@ describe('fluo typegen caller-process cancellation', () => {
           react: { createReactPageCatalog: () => [] },
           runtime: {
             FluoFactory: Object.assign(() => undefined, {
-              create: async () => {
-                bootstrapStarted.resolve();
-                await releaseBootstrap.promise;
-                return {
-                  close,
-                  dispatcher: { describeRoutes: () => [] },
-                };
-              },
+              create: async () => ({
+                close,
+                dispatcher: { describeRoutes: () => [] },
+              }),
             }),
           },
           typegen: { generateReactPageTypes: () => 'source' },
@@ -112,28 +127,32 @@ describe('fluo typegen caller-process cancellation', () => {
         '/project/generated/react-pages.ts',
         '--watch',
       ], runtime);
-      await generationStarted.promise;
-      if (callerGeneration === undefined) {
+      await waitForSignal(generationStarted.promise, 'caller-process generation startup');
+      if (callerGeneration === undefined || runTypegenWatchResult === undefined) {
         throw new Error('Caller-process generation did not start.');
       }
-      let generationRejectedBeforeCleanup = false;
-      void callerGeneration.result.catch(() => {
-        generationRejectedBeforeCleanup = !cleanupFinished;
+      let watchSettled = false;
+      void runTypegenWatchResult.then(() => {
+        watchSettled = true;
       });
-      await bootstrapStarted.promise;
+      await waitForSignal(applicationCloseStarted.promise, 'application.close() to start');
 
-      // When: shutdown reaches the active caller-process generation before it can finish bootstrap.
+      // When: shutdown reaches the pending application close lifecycle.
       signalTarget.emit('SIGTERM');
-      await cancellationRequested.promise;
-      releaseBootstrap.resolve();
-      await cleanupStarted.promise;
+      await waitForSignal(cancellationRequested.promise, 'caller-process cancellation');
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
 
-      // Then: watch ownership is retained until the application's asynchronous close completes.
-      releaseCleanup.resolve();
+      // Then: cancellation cannot settle the watch before application close releases generation ownership.
+      expect(applicationClosed).toBe(false);
+      expect(watchSettled).toBe(false);
+      releaseApplicationClose.resolve();
       await expect(callerGeneration.result).rejects.toThrow('Typegen generation was cancelled.');
+      await expect(runTypegenWatchResult).resolves.toBe(0);
       await expect(action).resolves.toBe(0);
-      expect(generationRejectedBeforeCleanup).toBe(false);
       expect(close).toHaveBeenCalledOnce();
+      expect(watcher.close).toHaveBeenCalledOnce();
       expect(stderr).toEqual([]);
     } finally {
       vi.doUnmock('./typegen-watch.js');
