@@ -32,7 +32,13 @@ function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'trans
     return provider.scope ?? getRuntimeClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
   }
 
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
+  if ('useFactory' in provider) {
+    const resolverClass = provider.resolverClass;
+
+    return provider.scope ?? (resolverClass ? getRuntimeClassDiMetadata(resolverClass)?.scope : undefined) ?? 'singleton';
+  }
+
+  return 'singleton';
 }
 
 function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {

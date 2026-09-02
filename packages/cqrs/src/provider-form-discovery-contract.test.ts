@@ -105,31 +105,48 @@ describe('CQRS provider-form discovery contracts', () => {
     await app.close();
   });
 
-  it('discovers event handlers and sagas registered as singleton factory and value providers', async () => {
+  it('discovers event handlers and sagas across singleton factory and value providers', async () => {
     const seen: string[] = [];
 
     @EventHandler(UserArchivedEvent)
-    class ArchiveEventHandler implements IEventHandler<UserArchivedEvent> {
+    class FactoryArchiveEventHandler implements IEventHandler<UserArchivedEvent> {
       handle(event: UserArchivedEvent): void {
         seen.push(`factory-event:${event.name}`);
       }
     }
 
+    @EventHandler(UserArchivedEvent)
+    class ValueArchiveEventHandler implements IEventHandler<UserArchivedEvent> {
+      handle(event: UserArchivedEvent): void {
+        seen.push(`value-event:${event.name}`);
+      }
+    }
+
     @Saga(UserArchivedEvent)
-    class ArchiveSaga implements ISaga<UserArchivedEvent> {
+    class FactoryArchiveSaga implements ISaga<UserArchivedEvent> {
+      handle(event: UserArchivedEvent): void {
+        seen.push(`factory-saga:${event.name}`);
+      }
+    }
+
+    @Saga(UserArchivedEvent)
+    class ValueArchiveSaga implements ISaga<UserArchivedEvent> {
       handle(event: UserArchivedEvent): void {
         seen.push(`value-saga:${event.name}`);
       }
     }
 
+    const EVENT_HANDLER_TOKEN = Symbol('EVENT_HANDLER_TOKEN');
     const SAGA_TOKEN = Symbol('SAGA_TOKEN');
 
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
       providers: [
-        { provide: ArchiveEventHandler, useFactory: () => new ArchiveEventHandler() },
-        { provide: SAGA_TOKEN, useValue: new ArchiveSaga() },
+        { provide: FactoryArchiveEventHandler, useFactory: () => new FactoryArchiveEventHandler() },
+        { provide: EVENT_HANDLER_TOKEN, useValue: new ValueArchiveEventHandler() },
+        { provide: FactoryArchiveSaga, useFactory: () => new FactoryArchiveSaga() },
+        { provide: SAGA_TOKEN, useValue: new ValueArchiveSaga() },
       ],
     });
 
@@ -138,7 +155,7 @@ describe('CQRS provider-form discovery contracts', () => {
 
     await eventBus.publish(new UserArchivedEvent('carol'));
 
-    expect(seen).toEqual(['factory-event:carol', 'value-saga:carol']);
+    expect(seen).toEqual(['factory-event:carol', 'value-event:carol', 'factory-saga:carol', 'value-saga:carol']);
 
     await app.close();
   });

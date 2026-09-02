@@ -1,4 +1,4 @@
-import { Inject } from '@fluojs/core';
+import { Scope } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { type ApplicationLogger, bootstrapApplication, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
@@ -82,9 +82,11 @@ describe('CQRS provider-form discovery edge contracts', () => {
     expect(invoked).toEqual([]);
   });
 
-  it('skips non-singleton factory handler registrations with warnings', async () => {
+  it('inherits resolverClass scope metadata to skip and block non-singleton factory handlers', async () => {
     const loggerEvents: string[] = [];
+    const factoryCalls: string[] = [];
 
+    @Scope('transient')
     @CommandHandler(ArchiveUserCommand)
     class TransientArchiveHandler implements ICommandHandler<ArchiveUserCommand, string> {
       execute(command: ArchiveUserCommand): string {
@@ -92,6 +94,7 @@ describe('CQRS provider-form discovery edge contracts', () => {
       }
     }
 
+    @Scope('request')
     @QueryHandler(CountUsersQuery)
     class RequestCountHandler implements IQueryHandler<CountUsersQuery, number> {
       execute(): number {
@@ -105,13 +108,19 @@ describe('CQRS provider-form discovery edge contracts', () => {
       providers: [
         {
           provide: TransientArchiveHandler,
-          scope: 'transient',
-          useFactory: () => new TransientArchiveHandler(),
+          resolverClass: TransientArchiveHandler,
+          useFactory: () => {
+            factoryCalls.push('transient-command');
+            return new TransientArchiveHandler();
+          },
         },
         {
           provide: RequestCountHandler,
-          scope: 'request',
-          useFactory: () => new RequestCountHandler(),
+          resolverClass: RequestCountHandler,
+          useFactory: () => {
+            factoryCalls.push('request-query');
+            return new RequestCountHandler();
+          },
         },
       ],
     });
@@ -135,6 +144,18 @@ describe('CQRS provider-form discovery edge contracts', () => {
           entry.includes('RequestCountHandler') && entry.includes('@QueryHandler()') && entry.includes('request scope'),
       ),
     ).toBe(true);
+    expect(factoryCalls).toEqual([]);
+
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+
+    await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('dave'))).rejects.toThrow(
+      'No command handler registered for ArchiveUserCommand.',
+    );
+    await expect(queryBus.execute<CountUsersQuery, number>(new CountUsersQuery())).rejects.toThrow(
+      'No query handler registered for CountUsersQuery.',
+    );
+    expect(factoryCalls).toEqual([]);
 
     await app.close();
   });
@@ -160,31 +181,6 @@ describe('CQRS provider-form discovery edge contracts', () => {
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('frank'))).resolves.toBe(
       'alias-command:frank',
-    );
-
-    await app.close();
-  });
-
-  it('discovers singleton-defaulted factory tokens with class DI metadata', async () => {
-    @Inject()
-    @CommandHandler(ArchiveUserCommand)
-    class ScopedArchiveHandler implements ICommandHandler<ArchiveUserCommand, string> {
-      execute(command: ArchiveUserCommand): string {
-        return `scoped-command:${command.name}`;
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CqrsModule.forRoot()],
-      providers: [{ provide: ScopedArchiveHandler, useFactory: () => new ScopedArchiveHandler() }],
-    });
-
-    const app = await bootstrapApplication({ rootModule: AppModule });
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
-
-    await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('gina'))).resolves.toBe(
-      'scoped-command:gina',
     );
 
     await app.close();
