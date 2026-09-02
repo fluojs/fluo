@@ -1,5 +1,5 @@
+import { IncomingMessage, request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders, InformationEvent } from 'node:http';
-import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { type AddressInfo, createServer } from 'node:net';
 import { Container } from '@fluojs/di';
@@ -254,6 +254,53 @@ describe('@fluojs/platform-fastify', () => {
         protocol: 'http',
         remoteAddress: '127.0.0.1',
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('exposes asymmetric native raw request and response objects', async () => {
+    let observedFastifyRequest: FastifyRequest | undefined;
+    let observedFastifyReply: FastifyReply | undefined;
+    let observedRequestContext: RequestContext | undefined;
+
+    @Controller('/raw-objects')
+    class RawObjectsController {
+      @Get('/')
+      read(_input: undefined, context: RequestContext) {
+        observedRequestContext = context;
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [RawObjectsController] });
+
+    const adapter = createFastifyAdapter({
+      configureFastify(app) {
+        app.addHook('onRequest', (request, reply, done) => {
+          observedFastifyRequest = request;
+          observedFastifyReply = reply;
+          done();
+        });
+      },
+      host: '127.0.0.1',
+      port: 0,
+    });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await fetch(`http://127.0.0.1:${String(getBoundPort((adapter as { getServer(): unknown }).getServer()))}/raw-objects`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(observedFastifyRequest).toBeDefined();
+      expect(observedFastifyReply).toBeDefined();
+      expect(observedRequestContext).toBeDefined();
+      expect(observedRequestContext?.request.raw).toBe(observedFastifyRequest?.raw);
+      expect(observedRequestContext?.request.raw).toBeInstanceOf(IncomingMessage);
+      expect(observedRequestContext?.response.raw).toBe(observedFastifyReply);
     } finally {
       await app.close();
     }

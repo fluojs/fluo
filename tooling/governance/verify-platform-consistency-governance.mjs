@@ -1091,6 +1091,24 @@ function enforceSsotMirrorStructure() {
 export function enforceContractCompanionUpdates(changedFiles) {
   const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
+  const fastifyRawContextDocumentation = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ];
+  const touchedFastifyRawContextDocumentation = fastifyRawContextDocumentation.some((path) => hasChanged(changedFiles, path));
+
+  if (touchedFastifyRawContextDocumentation) {
+    assert(
+      fastifyRawContextDocumentation.every((path) => hasChanged(changedFiles, path)),
+      'Fastify raw request and response migration docs must include all governed Fastify documentation.',
+    );
+    assert(
+      hasChanged(changedFiles, 'packages/platform-fastify/src/adapter.test.ts'),
+      'Fastify raw request and response migration docs must include packages/platform-fastify/src/adapter.test.ts.',
+    );
+  }
 
   if (!touchedContractGate) {
     return;

@@ -312,6 +312,10 @@ transform tokens (`injectable` and `testing`) in `transforms` and per-file
 
 Studio bridge discoverability is split between [`packages/runtime/README.md`](../packages/runtime/README.md) and [`docs/reference/package-surface.md`](./reference/package-surface.md): package integrations import `StudioDevtoolsRuntime`, `StudioDevtoolsRuntimeTransport`, and `StudioLiveEvent` from `@fluojs/runtime/devtools`, then pass their host-owned bridge as `studioDevtools` to `bootstrapApplication`, `FluoFactory.create`, or `FluoFactory.createApplicationContext`. Delivery is observational: synchronous transport throws and async rejections never change application behavior. An explicit bridge takes precedence over CLI-injected Studio configuration; without either bridge or injected configuration, Studio remains inactive.
 
+## Fastify `RequestContext` Native Objects
+
+[`@fluojs/platform-fastify`](../packages/platform-fastify/README.md) documents the intentionally asymmetric native objects in `RequestContext`: `context.request.raw` is Node.js `IncomingMessage`, while `context.response.raw` is `FastifyReply`. Controller code should use portable `FrameworkRequest` and `FrameworkResponse` operations by default; the adapter has no typed Fastify-native request accessor, so shared code must not rely on unsafe `unknown` casts. The full NestJS migration guidance is in [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md).
+
 ## Navigation
 
 | Need | Read first | Follow with |
