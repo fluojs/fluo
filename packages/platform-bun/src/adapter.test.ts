@@ -2835,7 +2835,7 @@ describe('@fluojs/platform-bun', () => {
       throw new TypeError('Expected realtime binding installation to throw an Error.');
     }
 
-    expect(thrown).toBeInstanceOf(TypeError);
+    expect(thrown.constructor).toBe(TypeError);
     expect(thrown).toMatchObject({
       code: 'BUN_ADAPTER_REALTIME_BINDING_INVALID',
     });
