@@ -47,7 +47,7 @@ For a NestJS migration, start with the [NestJS migration map](./getting-started/
 
 For NestJS HTTP pipeline migration, portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`; keep Express `(req, res, next)` handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`.
 
-For NestJS migrations, `fluo migrate` preserves adapter-unknown `NestFactory.create(AppModule)` bootstraps and emits a required adapter-selection warning. Use `fluo migrate <path> --apply --platform express` only when Express is the explicitly selected target; it then emits `createExpressAdapter({ port })`. Adapter-independent transform selections leave bootstrap unchanged.
+For NestJS migrations, `fluo migrate` rewrites default one-argument `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while unsupported bootstrap variants remain unchanged with a diagnostic and explicit adapter-independent transform selections leave bootstrap unchanged.
 
 Queue duplicate-worker migration discoverability is split across `packages/queue/README.md`, [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), and [the Queue chapter](../book/intermediate/ch11-queue.md): each job class and effective `jobName` has one singleton worker owner, and duplicates fail bootstrap before BullMQ resources are created regardless of discovery order. Give each migrated NestJS `@Process(...)` handler a distinct job class and `jobName`, or consolidate handlers behind one worker's `handle(job)`.
 
