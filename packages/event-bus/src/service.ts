@@ -1,6 +1,6 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback } from '@fluojs/core/internal';
-import type { Container, NormalizedProvider, Provider } from '@fluojs/di';
+import type { Container, NormalizedProvider } from '@fluojs/di';
 import type {
   ApplicationLogger,
   CompiledModule,
@@ -30,11 +30,6 @@ interface DiscoveryCandidate {
   scope: 'request' | 'singleton' | 'transient';
   targetType: Function;
   token: Token;
-}
-
-interface ProviderDiscoveryCandidate {
-  moduleName: string;
-  provider: Provider;
 }
 
 interface ResolvedPublishOptions {
@@ -831,18 +826,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       }
 
       for (const controller of compiledModule.definition.controllers ?? []) {
-        const registration = registrations.get(controller);
-
-        if (!registration) {
-          continue;
-        }
-
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: registration.scope,
-          targetType: controller,
-          token: controller,
-        });
+        moduleNames.set(controller, compiledModule.type.name);
       }
     }
 
@@ -868,7 +852,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     const token = provider.provide;
 
     if (scope !== 'singleton') {
-      return this.createUnresolvedProviderDiscoveryCandidate(moduleName, token, scope);
+      return this.createUnresolvedProviderDiscoveryCandidate(moduleName, provider);
     }
 
     if (provider.type === 'value') {
@@ -912,20 +896,23 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   private createUnresolvedProviderDiscoveryCandidate(
     moduleName: string,
-    token: Token,
-    scope: 'request' | 'transient',
+    provider: NormalizedProvider,
   ): DiscoveryCandidate | undefined {
-    const tokenType = typeof token === 'function' ? token : undefined;
+    const targetType = provider.type === 'class'
+      ? provider.useClass
+      : typeof provider.provide === 'function'
+        ? provider.provide
+        : undefined;
 
-    if (!tokenType) {
+    if (!targetType) {
       return undefined;
     }
 
     return {
       moduleName,
-      scope,
-      targetType: tokenType,
-      token,
+      scope: provider.scope,
+      targetType,
+      token: provider.provide,
     };
   }
 

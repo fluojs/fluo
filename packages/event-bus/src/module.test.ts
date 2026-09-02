@@ -1004,19 +1004,68 @@ describe('@fluojs/event-bus', () => {
 
     await eventBus.publish(new UserCreatedEvent('user-8'));
 
-    const requestWarnings = loggerEvents.filter((event) =>
-      event.includes(
-        'warn:EventBusLifecycleService:RequestScopedProvider in module AppModule declares @OnEvent() methods but is registered with request scope.',
-      ),
-    );
-    const controllerWarnings = loggerEvents.filter((event) =>
-      event.includes(
-        'warn:EventBusLifecycleService:TransientController in module AppModule declares @OnEvent() methods but is registered with transient scope.',
-      ),
+    const scopeWarnings = loggerEvents.filter((event) =>
+      event.startsWith('warn:EventBusLifecycleService:')
+      && event.includes('declares @OnEvent() methods but is registered with'),
     );
 
-    expect(requestWarnings).toHaveLength(1);
-    expect(controllerWarnings).toHaveLength(1);
+    expect(scopeWarnings).toEqual([
+      'warn:EventBusLifecycleService:RequestScopedProvider in module AppModule declares @OnEvent() methods but is registered with request scope. Event handlers are registered only for singleton providers.',
+      'warn:EventBusLifecycleService:TransientController in module AppModule declares @OnEvent() methods but is registered with transient scope. Event handlers are registered only for singleton providers.',
+    ]);
+
+    await app.close();
+  });
+
+  it('uses normalized class implementations for non-singleton event handler diagnostics', async () => {
+    const loggerEvents: string[] = [];
+    const calls: string[] = [];
+    const symbolHandler = Symbol('symbol-handler');
+
+    @Scope('request')
+    class DecoratedSymbolHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent): void {
+        calls.push(`symbol:${event.userId}`);
+      }
+    }
+
+    @Scope('transient')
+    class DecoratedClassToken {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent): void {
+        calls.push(`token:${event.userId}`);
+      }
+    }
+
+    class UndecoratedImplementation {}
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot()],
+      providers: [
+        { provide: symbolHandler, scope: 'request', useClass: DecoratedSymbolHandler },
+        { provide: DecoratedClassToken, scope: 'transient', useClass: UndecoratedImplementation },
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('user-normalized-class'));
+
+    const scopeWarnings = loggerEvents.filter((event) =>
+      event.startsWith('warn:EventBusLifecycleService:')
+      && event.includes('declares @OnEvent() methods but is registered with'),
+    );
+
+    expect(calls).toEqual([]);
+    expect(scopeWarnings).toEqual([
+      'warn:EventBusLifecycleService:DecoratedSymbolHandler in module AppModule declares @OnEvent() methods but is registered with request scope. Event handlers are registered only for singleton providers.',
+    ]);
 
     await app.close();
   });
