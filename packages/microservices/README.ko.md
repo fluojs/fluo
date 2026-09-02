@@ -126,6 +126,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 - Redis Streams는 요청/이벤트 엔트리를 핸들러 처리가 끝난 뒤에만 ACK합니다. 실패한 이벤트는 조기 ACK로 유실하지 않고 broker 복구/재전달 경로에 남겨 둡니다.
 - Kafka와 RabbitMQ는 inbound event/request 처리와 response publish가 끝날 때까지 consumer delivery completion을 pending 상태로 유지합니다. Event-handler와 response-publish 실패는 consumer callback을 reject해 broker adapter가 ACK를 보류하거나 재시도할 수 있게 하며, request-handler 오류는 error response를 publish할 수 있으면 기존처럼 호출자에게 전달합니다.
 - Redis Streams는 기본적으로 live request/event stream에 publish-time trimming을 적용하지 않으므로, pending 엔트리가 `xack` 또는 consumer-group 복구 경로가 끝나기 전에 잘리지 않습니다. ACK가 끝난 request/reply 엔트리는 정리되고, 인스턴스별 response stream은 기본적으로 bounded retention(`responseRetentionMaxLen: 1_000`)을 유지한 뒤 `close()` 중 삭제됩니다.
+- `readerClient.xautoclaim`을 제공하면 Redis Streams는 `pendingReclaimIdleMs` 동안 유휴 상태인 pending request/event 엔트리를 reclaim합니다(기본값: `60_000`). 이 옵션을 0 또는 음수로 설정하면 reclaim을 끌 수 있으며, adapter는 다음 `close()`까지 consumer group별 `XAUTOCLAIM` cursor를 유지합니다.
 - Redis Streams는 `close()` 중 인스턴스별 response stream은 항상 삭제하지만, 활성 fleet 전체에서 ownership를 증명할 수 없으면 공유 request consumer group은 보수적으로 유지합니다. lease-capable listener는 coordination metadata만 정리하고, mixed/fallback fleet에서는 살아 있는 다른 listener가 여전히 필요로 할 수 있으므로 공유 request group을 제거하지 않습니다.
 - `messageRetentionMaxLen`과 `eventRetentionMaxLen`은 고급 opt-in 설정으로 남아 있습니다. 이를 켜면 Redis가 ACK 전 pending live-stream 엔트리를 먼저 trim할 수 있으므로 broker-managed recovery 보장을 일부 포기하는 운영 판단이 됩니다.
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.

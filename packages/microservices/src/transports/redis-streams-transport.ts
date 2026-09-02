@@ -21,6 +21,14 @@ export interface RedisStreamClientLike {
     streams: readonly string[],
     options?: { blockMs?: number; count?: number },
   ): Promise<readonly StreamReadGroupResult[] | null>;
+  xautoclaim?(
+    stream: string,
+    group: string,
+    consumer: string,
+    minIdleTimeMs: number,
+    startId: string,
+    options?: { count?: number },
+  ): Promise<{ readonly entries: readonly StreamReadGroupResult[]; readonly nextStartId: string }>;
   xack(stream: string, group: string, id: string): Promise<void>;
   get?(key: string): Promise<string | null>;
   incr?(key: string): Promise<number>;
@@ -52,6 +60,13 @@ export interface RedisStreamsMicroserviceTransportOptions {
   responseRetentionMaxLen?: number;
   consumerGroup?: string;
   namespace?: string;
+  /**
+   * Minimum pending-entry idle time before recovery with `XAUTOCLAIM`.
+   *
+   * Defaults to `60_000`; set a non-positive value to disable recovery. The reader client must
+   * implement {@link RedisStreamClientLike.xautoclaim} for recovery to run.
+   */
+  pendingReclaimIdleMs?: number;
   requestTimeoutMs?: number;
   pollBlockMs?: number;
 }
@@ -93,10 +108,12 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private messageGroupLeaseRegistered = false;
   private ownsMessageGroup = false;
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly pendingReclaimStartIds = new Map<string, string>();
   private pollPromises: Promise<void>[] = [];
 
   private readonly namespace: string;
   private readonly consumerGroup: string;
+  private readonly pendingReclaimIdleMs: number;
   private readonly requestTimeoutMs: number;
   private readonly pollBlockMs: number;
   private readonly messageRetentionMaxLen: number | undefined;
@@ -112,6 +129,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     this.consumerId = crypto.randomUUID();
     this.namespace = options.namespace ?? 'fluo:streams';
     this.consumerGroup = options.consumerGroup ?? 'fluo-handlers';
+    this.pendingReclaimIdleMs = options.pendingReclaimIdleMs ?? 60_000;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.pollBlockMs = options.pollBlockMs ?? 500;
     this.messageRetentionMaxLen = options.messageRetentionMaxLen;
@@ -367,6 +385,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
         this.handler = undefined;
         this.messageGroupLeaseRegistered = false;
         this.ownsMessageGroup = false;
+        this.pendingReclaimStartIds.clear();
         this.pollPromises = [];
 
         for (const pending of [...this.pending.values()]) {
@@ -461,10 +480,13 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private async pollStream(stream: string, group: string): Promise<void> {
     while (!this.closing) {
       try {
-        const entries = await this.options.readerClient.xreadgroup(group, this.consumerId, [stream], {
-          blockMs: this.pollBlockMs,
-          count: 10,
-        });
+        const reclaimedEntries = await this.reclaimPendingEntries(stream, group);
+        const entries = reclaimedEntries.length > 0
+          ? reclaimedEntries
+          : await this.options.readerClient.xreadgroup(group, this.consumerId, [stream], {
+              blockMs: this.pollBlockMs,
+              count: 10,
+            });
 
         if (!entries || entries.length === 0) {
           await delay(this.pollBlockMs);
@@ -492,6 +514,27 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
         }
       }
     }
+  }
+
+  private async reclaimPendingEntries(stream: string, group: string): Promise<readonly StreamReadGroupResult[]> {
+    const { readerClient } = this.options;
+
+    if (stream === this.responseStream || this.pendingReclaimIdleMs <= 0 || !readerClient.xautoclaim) {
+      return [];
+    }
+
+    const groupKey = `${stream}::${group}`;
+    const result = await readerClient.xautoclaim(
+      stream,
+      group,
+      this.consumerId,
+      this.pendingReclaimIdleMs,
+      this.pendingReclaimStartIds.get(groupKey) ?? '0-0',
+      { count: 10 },
+    );
+
+    this.pendingReclaimStartIds.set(groupKey, result.nextStartId);
+    return result.entries;
   }
 
   private async handleStreamEntry(stream: string, message: RedisStreamTransportMessage): Promise<boolean> {

@@ -214,6 +214,284 @@ class InMemoryStreamBus implements RedisStreamClientLike {
   }
 }
 
+interface PendingEntryRecord {
+  consumer: string;
+  readonly deliveredAtMs: number;
+  readonly id: string;
+}
+
+/**
+ * Stream client double that tracks a per-group Pending Entries List so abandoned-entry
+ * recovery can be asserted without a live Redis server.
+ */
+class PendingEntriesListBus implements RedisStreamClientLike {
+  private autoClaimCalls = 0;
+  private readonly claimedConsumers: string[] = [];
+  private readonly drainedWaiters = new Map<string, Set<() => void>>();
+  private readonly groups = new Map<string, Map<string, PendingEntryRecord>>();
+  private readonly readGroupKeys = new Set<string>();
+  private readonly readWaiters = new Map<string, Set<() => void>>();
+  private readonly readPositions = new Map<string, number>();
+  private nextSequence = 0;
+  private readonly streams = new Map<string, InMemoryStreamEntry[]>();
+
+  async xadd(stream: string, fields: Record<string, string>): Promise<string> {
+    const entries = this.streams.get(stream) ?? [];
+    this.nextSequence += 1;
+    const id = `0-${String(this.nextSequence)}`;
+    entries.push({ id, fields: { ...fields } });
+    this.streams.set(stream, entries);
+    return id;
+  }
+
+  async xreadgroup(
+    group: string,
+    consumer: string,
+    streams: readonly string[],
+    options?: { blockMs?: number; count?: number },
+  ): Promise<readonly InMemoryStreamEntry[] | null> {
+    const count = options?.count ?? 1;
+    const results: InMemoryStreamEntry[] = [];
+
+    for (const stream of streams) {
+      const groupKey = `${stream}::${group}`;
+      const pending = this.groups.get(groupKey);
+
+      if (!pending) {
+        throw new Error(`NOGROUP ${groupKey}`);
+      }
+
+      this.readGroupKeys.add(groupKey);
+      this.resolveWaiters(this.readWaiters, groupKey);
+
+      const entries = this.streams.get(stream) ?? [];
+      let position = this.readPositions.get(groupKey) ?? 0;
+
+      while (position < entries.length && results.length < count) {
+        const entry = entries[position];
+        position += 1;
+
+        if (!entry) {
+          continue;
+        }
+
+        pending.set(entry.id, { consumer, deliveredAtMs: Date.now(), id: entry.id });
+        results.push({ id: entry.id, fields: { ...entry.fields } });
+      }
+
+      this.readPositions.set(groupKey, position);
+    }
+
+    return results.length > 0 ? results : null;
+  }
+
+  async xautoclaim(
+    stream: string,
+    group: string,
+    consumer: string,
+    minIdleTimeMs: number,
+    startId: string,
+    options?: { count?: number },
+  ): Promise<{ readonly entries: readonly InMemoryStreamEntry[]; readonly nextStartId: string }> {
+    this.autoClaimCalls += 1;
+
+    const groupKey = `${stream}::${group}`;
+    const pending = this.groups.get(groupKey);
+
+    if (!pending) {
+      throw new Error(`NOGROUP ${groupKey}`);
+    }
+
+    const count = options?.count ?? 10;
+    const entries = this.streams.get(stream) ?? [];
+    const claimed: InMemoryStreamEntry[] = [];
+    const now = Date.now();
+    const startSequence = Number.parseInt(startId.split('-')[1] ?? '0', 10);
+    let nextStartId = '0-0';
+
+    for (const record of [...pending.values()].sort((left, right) => left.id.localeCompare(right.id, undefined, { numeric: true }))) {
+      if (claimed.length >= count) {
+        nextStartId = record.id;
+        break;
+      }
+
+      if (Number.parseInt(record.id.split('-')[1] ?? '0', 10) < startSequence) {
+        continue;
+      }
+
+      if (now - record.deliveredAtMs < minIdleTimeMs) {
+        continue;
+      }
+
+      this.claimedConsumers.push(record.consumer);
+      record.consumer = consumer;
+
+      const entry = entries.find((candidate) => candidate.id === record.id);
+
+      if (entry) {
+        claimed.push({ id: entry.id, fields: { ...entry.fields } });
+      }
+    }
+
+    return { entries: claimed, nextStartId };
+  }
+
+  async xack(stream: string, group: string, id: string): Promise<void> {
+    const groupKey = `${stream}::${group}`;
+    const pending = this.groups.get(groupKey);
+
+    pending?.delete(id);
+
+    if (pending?.size === 0) {
+      this.resolveWaiters(this.drainedWaiters, groupKey);
+    }
+  }
+
+  async xdel(stream: string, id: string): Promise<void> {
+    const entries = this.streams.get(stream);
+
+    if (!entries) {
+      return;
+    }
+
+    const index = entries.findIndex((entry) => entry.id === id);
+
+    if (index >= 0) {
+      entries.splice(index, 1);
+    }
+  }
+
+  async del(stream: string): Promise<void> {
+    this.streams.delete(stream);
+  }
+
+  async xgroupCreate(stream: string, group: string, startId: string, mkstream: boolean): Promise<void> {
+    if (!this.streams.has(stream)) {
+      if (!mkstream) {
+        throw new Error(`NOSTREAM ${stream}`);
+      }
+
+      this.streams.set(stream, []);
+    }
+
+    const groupKey = `${stream}::${group}`;
+
+    if (this.groups.has(groupKey)) {
+      throw new Error(`BUSYGROUP Consumer Group name already exists for ${groupKey}`);
+    }
+
+    this.groups.set(groupKey, new Map<string, PendingEntryRecord>());
+    this.readPositions.set(groupKey, startId === '$' ? (this.streams.get(stream) ?? []).length : 0);
+  }
+
+  async xgroupDestroy(stream: string, group: string): Promise<void> {
+    const groupKey = `${stream}::${group}`;
+    this.groups.delete(groupKey);
+    this.readPositions.delete(groupKey);
+  }
+
+  /** Marks one entry as delivered to `consumer` without acknowledgement, simulating a crash. */
+  async deliverTo(stream: string, group: string, consumer: string, id: string): Promise<void> {
+    const pending = this.groups.get(`${stream}::${group}`);
+
+    if (!pending) {
+      throw new Error(`NOGROUP ${stream}::${group}`);
+    }
+
+    pending.set(id, { consumer, deliveredAtMs: 0, id });
+
+    const entries = this.streams.get(stream) ?? [];
+    const index = entries.findIndex((entry) => entry.id === id);
+    this.readPositions.set(`${stream}::${group}`, index >= 0 ? index + 1 : entries.length);
+  }
+
+  pendingIds(stream: string, group: string): readonly string[] {
+    return [...(this.groups.get(`${stream}::${group}`)?.keys() ?? [])];
+  }
+
+  claimedByConsumers(): readonly string[] {
+    return [...this.claimedConsumers];
+  }
+
+  autoClaimCallCount(): number {
+    return this.autoClaimCalls;
+  }
+
+  /** Resolves when the group's Pending Entries List transitions to empty. */
+  async waitForPendingDrain(stream: string, group: string, timeoutMs = 2_000): Promise<void> {
+    const groupKey = `${stream}::${group}`;
+
+    if (this.pendingIds(stream, group).length === 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const waiters = this.drainedWaiters.get(groupKey) ?? new Set<() => void>();
+      this.drainedWaiters.set(groupKey, waiters);
+
+      const onDrain = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(() => {
+        waiters.delete(onDrain);
+
+        if (waiters.size === 0) {
+          this.drainedWaiters.delete(groupKey);
+        }
+
+        reject(new Error(`Pending entries for ${groupKey} were not reclaimed within ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+
+      waiters.add(onDrain);
+    });
+  }
+
+  /** Resolves once the transport has attempted a group read. */
+  async waitForGroupRead(stream: string, group: string, timeoutMs = 2_000): Promise<void> {
+    const groupKey = `${stream}::${group}`;
+
+    if (this.readGroupKeys.has(groupKey)) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const waiters = this.readWaiters.get(groupKey) ?? new Set<() => void>();
+      this.readWaiters.set(groupKey, waiters);
+
+      const onRead = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(() => {
+        waiters.delete(onRead);
+
+        if (waiters.size === 0) {
+          this.readWaiters.delete(groupKey);
+        }
+
+        reject(new Error(`No Redis group read occurred for ${groupKey} within ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+
+      waiters.add(onRead);
+    });
+  }
+
+  private resolveWaiters(waitersByGroup: Map<string, Set<() => void>>, groupKey: string): void {
+    const waiters = waitersByGroup.get(groupKey);
+
+    if (!waiters) {
+      return;
+    }
+
+    waitersByGroup.delete(groupKey);
+
+    for (const resolve of waiters) {
+      resolve();
+    }
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -1318,6 +1596,134 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await sleep(30);
 
     expect(consoleError).not.toHaveBeenCalled();
+
+    await transport.close();
+  });
+
+  it('reclaims request entries abandoned by a crashed consumer of the shared request group by default', async () => {
+    const pel = new PendingEntriesListBus();
+    const abandonedId = await pel.xadd('fluo:streams:messages', {
+      kind: 'message',
+      pattern: 'payment.capture',
+      payload: JSON.stringify({ orderId: 'order-1' }),
+      replyStream: 'fluo:streams:responses:crashed-consumer',
+      requestId: 'request-1',
+    });
+
+    await pel.xgroupCreate('fluo:streams:messages', 'payments', '0', true);
+    await pel.deliverTo('fluo:streams:messages', 'payments', 'crashed-consumer', abandonedId);
+
+    expect(pel.pendingIds('fluo:streams:messages', 'payments')).toEqual([abandonedId]);
+
+    const patterns: string[] = [];
+    const transport = new RedisStreamsMicroserviceTransport({
+      consumerGroup: 'payments',
+      pollBlockMs: 1,
+      readerClient: pel,
+      requestTimeoutMs: 1_000,
+      writerClient: pel,
+    });
+
+    await transport.listen(async (packet) => {
+      patterns.push(packet.pattern);
+      return 'captured';
+    });
+
+    await pel.waitForPendingDrain('fluo:streams:messages', 'payments');
+
+    expect(patterns).toContain('payment.capture');
+    expect(pel.claimedByConsumers()).toContain('crashed-consumer');
+
+    await transport.close();
+  });
+
+  it('follows the XAUTOCLAIM cursor until every abandoned request entry is acknowledged', async () => {
+    const pel = new PendingEntriesListBus();
+    await pel.xgroupCreate('fluo:streams:messages', 'payments', '0', true);
+
+    const expectedPatterns = Array.from({ length: 11 }, (_, index) => `payment.capture.${String(index + 1)}`);
+
+    for (const [index, pattern] of expectedPatterns.entries()) {
+      const id = await pel.xadd('fluo:streams:messages', {
+        kind: 'message',
+        pattern,
+        payload: JSON.stringify({ orderId: `order-${String(index + 1)}` }),
+        replyStream: 'fluo:streams:responses:crashed-consumer',
+        requestId: `request-${String(index + 1)}`,
+      });
+
+      await pel.deliverTo('fluo:streams:messages', 'payments', 'crashed-consumer', id);
+    }
+
+    const receivedPatterns: string[] = [];
+    const transport = new RedisStreamsMicroserviceTransport({
+      consumerGroup: 'payments',
+      pendingReclaimIdleMs: 1,
+      pollBlockMs: 1,
+      readerClient: pel,
+      requestTimeoutMs: 1_000,
+      writerClient: pel,
+    });
+
+    await transport.listen(async (packet) => {
+      receivedPatterns.push(packet.pattern);
+      return 'captured';
+    });
+
+    await pel.waitForPendingDrain('fluo:streams:messages', 'payments');
+
+    expect(receivedPatterns).toEqual(expectedPatterns);
+    expect(pel.autoClaimCallCount()).toBeGreaterThanOrEqual(2);
+
+    await transport.close();
+  });
+
+  it('skips pending reclaim when the client does not implement xautoclaim', async () => {
+    const bus = new InMemoryStreamBus();
+    const { transport } = createTransport(bus, {
+      consumerGroup: 'payments',
+      requestTimeoutMs: 1_000,
+    });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.send('audit.message', { value: 1 })).resolves.toEqual({ value: 1 });
+
+    await transport.close();
+  });
+
+  it('disables pending reclaim when pendingReclaimIdleMs is not positive', async () => {
+    const pel = new PendingEntriesListBus();
+    const abandonedId = await pel.xadd('fluo:streams:messages', {
+      kind: 'message',
+      pattern: 'payment.capture',
+      payload: JSON.stringify({ orderId: 'order-1' }),
+      requestId: 'request-1',
+    });
+
+    await pel.xgroupCreate('fluo:streams:messages', 'payments', '0', true);
+    await pel.deliverTo('fluo:streams:messages', 'payments', 'crashed-consumer', abandonedId);
+
+    const transport = new RedisStreamsMicroserviceTransport({
+      consumerGroup: 'payments',
+      pendingReclaimIdleMs: 0,
+      pollBlockMs: 1,
+      readerClient: pel,
+      requestTimeoutMs: 1_000,
+      writerClient: pel,
+    });
+
+    await transport.listen(async () => 'captured');
+    await pel.waitForGroupRead('fluo:streams:messages', 'payments');
+
+    expect(pel.pendingIds('fluo:streams:messages', 'payments')).toEqual([abandonedId]);
+    expect(pel.autoClaimCallCount()).toBe(0);
 
     await transport.close();
   });
