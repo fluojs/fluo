@@ -4,7 +4,7 @@
 
 # 15장. Studio: 시각적 진단과 관찰성
 
-이 장은 런타임이 만든 모듈 그래프 snapshot, 진단, 타이밍 데이터, inspect report를 사람이 읽을 수 있는 artifact로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 내보내고 저장하고 보고 해석하는 도구로 넘어갑니다.
+이 장은 Node live Studio가 컴파일한 그래프 snapshot, 진단, 타이밍 데이터, inspect report를 사람이 읽을 수 있는 artifact로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 내보내고 저장하고 보고 해석하는 도구로 넘어갑니다.
 
 ## 학습 목표
 
