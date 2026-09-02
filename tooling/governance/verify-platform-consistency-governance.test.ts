@@ -223,6 +223,7 @@ async function loadGovernanceInternals() {
     enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
+    enforceStudioStaticGraphLimitsContract: (readText?: (relativePath: string) => string) => void;
   };
 
   return {
