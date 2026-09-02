@@ -162,9 +162,9 @@ export type NotificationSnapshot<T> =
         ? NotificationSnapshotUrl
         : T extends URLSearchParams
           ? NotificationSnapshotUrlSearchParams
-          : T extends Map<infer TKey, infer TValue>
+          : T extends ReadonlyMap<infer TKey, infer TValue>
             ? NotificationSnapshotMap<TKey, TValue>
-            : T extends Set<infer TValue>
+            : T extends ReadonlySet<infer TValue>
               ? NotificationSnapshotSet<TValue>
               : T extends readonly (infer TValue)[]
                 ? readonly NotificationSnapshot<TValue>[]

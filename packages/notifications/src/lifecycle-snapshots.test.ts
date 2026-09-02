@@ -345,4 +345,213 @@ describe('NotificationsService lifecycle snapshots', () => {
       kind: 'Date',
     });
   });
+
+  it('preserves cyclic lifecycle snapshots as isolated immutable graphs', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const deliveries: NotificationDispatchRequest[] = [];
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send(notification) {
+        deliveries.push(notification);
+
+        return { externalId: 'delivered:email' };
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+      },
+      [channel],
+    );
+    const payload: Record<string, unknown> = { template: 'original' };
+    payload.self = payload;
+    const notification = {
+      channel: 'email',
+      id: 'original-id',
+      payload,
+    };
+    const dispatch = service.dispatch(notification);
+
+    await publisher.waitForRequested();
+    payload.template = 'caller-mutated';
+    publisher.continueRequestedPublication();
+
+    await dispatch;
+
+    const requested = publisher.events[0];
+    const delivered = publisher.events[1];
+    const requestedPayload = requested?.notification.payload;
+    const deliveredPayload = delivered?.notification.payload;
+
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.delivered',
+    ]);
+    expect(publisher.mutationResults).toEqual([false, false, false, false, false, false]);
+    expect(requestedPayload?.self).toBe(requestedPayload);
+    expect(deliveredPayload?.self).toBe(deliveredPayload);
+    expect(requestedPayload).not.toBe(payload);
+    expect(requestedPayload).not.toBe(deliveries[0]?.payload);
+    expect(requestedPayload).not.toBe(deliveredPayload);
+    expect(Object.isFrozen(requested)).toBe(true);
+    expect(Object.isFrozen(requested?.notification)).toBe(true);
+    expect(Object.isFrozen(requestedPayload)).toBe(true);
+    expect(Reflect.set(requestedPayload ?? {}, 'template', 'observer-mutated')).toBe(false);
+    expect(requestedPayload?.template).toBe('original');
+    expect(deliveredPayload?.template).toBe('original');
+  });
+
+  it('admits every queued batch envelope before requested publication can yield', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const queue = new RecordingQueueAdapter();
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send() {
+        throw new Error('direct delivery should not run for queued dispatch');
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+        queue: {
+          adapter: queue,
+          bulkThreshold: 10,
+        },
+      },
+      [channel],
+    );
+    const first: NotificationDispatchRequest = {
+      channel: 'email',
+      payload: { template: 'first' },
+    };
+    const second: NotificationDispatchRequest = {
+      channel: 'email',
+      id: 'batch-two',
+      payload: { template: 'second' },
+    };
+    const dispatch = service.dispatchMany([first, second], { queue: true });
+
+    await publisher.waitForRequested();
+    first.channel = 'discord';
+    first.id = 'caller-mutated-first';
+    first.payload.template = 'caller-mutated-first';
+    second.channel = 'discord';
+    second.id = 'caller-mutated-second';
+    second.payload.template = 'caller-mutated-second';
+    publisher.continueRequestedPublication();
+
+    await expect(dispatch).resolves.toMatchObject({
+      failed: 0,
+      queued: 2,
+      results: [
+        { channel: 'email', queued: true, status: 'queued' },
+        { channel: 'email', queued: true, status: 'queued' },
+      ],
+      succeeded: 2,
+    });
+    expect(queue.jobs).toMatchObject([
+      {
+        channel: 'email',
+        notification: {
+          channel: 'email',
+          payload: { template: 'first' },
+        },
+      },
+      {
+        channel: 'email',
+        id: 'batch-two',
+        notification: {
+          channel: 'email',
+          id: 'batch-two',
+          payload: { template: 'second' },
+        },
+      },
+    ]);
+    expect(queue.jobs[0]?.id).toMatch(/^notification:email:/);
+    expect(queue.jobs[0]?.id).not.toBe('caller-mutated-first');
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.queued',
+      'notification.dispatch.queued',
+    ]);
+    expect(publisher.mutationResults).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it('rejects own and prototype accessors before they can expose mutable state', async () => {
+    const publisher = new MutatingLifecyclePublisher();
+    const deliveries: NotificationDispatchRequest[] = [];
+    const channel: NotificationChannel = {
+      channel: 'email',
+      async send(notification) {
+        deliveries.push(notification);
+
+        return { externalId: 'delivered:email' };
+      },
+    };
+    const service = new NotificationsService(
+      {
+        channels: [channel],
+        events: {
+          publishLifecycleEvents: true,
+          publisher,
+        },
+      },
+      [channel],
+    );
+    let ownAccessorReads = 0;
+    const ownAccessorPayload: Record<string, unknown> = {};
+    Object.defineProperty(ownAccessorPayload, 'template', {
+      enumerable: true,
+      get() {
+        ownAccessorReads += 1;
+
+        return 'unsafe';
+      },
+    });
+    let prototypeAccessorReads = 0;
+    const prototype = {};
+    Object.defineProperty(prototype, 'template', {
+      enumerable: true,
+      get() {
+        prototypeAccessorReads += 1;
+
+        return 'unsafe';
+      },
+    });
+    const prototypeAccessorPayload = Object.create(prototype) as Record<string, unknown>;
+
+    await expect(
+      service.dispatch({ channel: 'email', payload: ownAccessorPayload }),
+    ).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
+    await expect(
+      service.dispatch({ channel: 'email', payload: prototypeAccessorPayload }),
+    ).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
+
+    expect(ownAccessorReads).toBe(0);
+    expect(prototypeAccessorReads).toBe(0);
+    expect(publisher.events).toEqual([]);
+    expect(deliveries).toEqual([]);
+  });
 });

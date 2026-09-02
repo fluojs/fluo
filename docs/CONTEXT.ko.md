@@ -362,4 +362,15 @@ NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 �
 
 Lifecycle publisher는 channel resolution, queue job, generated identity, provider delivery에 쓰이는 별도 snapshot dispatch envelope을 수정할 수 없는 immutable observer snapshot을 받습니다.
 
+### Notifications lifecycle 내장 표현
+
+| 인터페이스 | 불변 필드 |
+| --- | --- |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
+
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

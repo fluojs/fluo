@@ -76,8 +76,12 @@ describe('@fluojs/notifications public API surface', () => {
     expectTypeOf<NotificationSnapshot<Map<string, number>>>().toEqualTypeOf<
       NotificationSnapshotMap<string, number>
     >();
+    expectTypeOf<NotificationSnapshot<ReadonlyMap<string, number>>>().toEqualTypeOf<
+      NotificationSnapshotMap<string, number>
+    >();
     expectTypeOf<NotificationSnapshot<RegExp>>().toEqualTypeOf<NotificationSnapshotRegExp>();
     expectTypeOf<NotificationSnapshot<Set<string>>>().toEqualTypeOf<NotificationSnapshotSet<string>>();
+    expectTypeOf<NotificationSnapshot<ReadonlySet<string>>>().toEqualTypeOf<NotificationSnapshotSet<string>>();
     expectTypeOf<NotificationSnapshot<URL>>().toEqualTypeOf<NotificationSnapshotUrl>();
     expectTypeOf<NotificationSnapshot<URLSearchParams>>().toEqualTypeOf<
       NotificationSnapshotUrlSearchParams

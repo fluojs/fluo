@@ -268,6 +268,17 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 
 `NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include top-level `readiness`, `health`, and `ownership`. Diagnostics such as `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, and `eventPublicationEnabled` live under `details`, including dependency entries such as `notifications.queue-adapter` and `notifications.event-publisher`. Publisher configuration and lifecycle enablement are separate: a publisher with `publishLifecycleEvents: false` remains configured but does not produce an active event dependency, event-backed operation mode, or external ownership. Active optional seams set `ownership.externallyManaged: true`, and `ownsResources: false` stays top-level under `ownership` because the foundation package does not create, close, or drain concrete queue or event-bus resources.
 
+### Lifecycle snapshot built-in representations
+
+| Interface | Immutable fields |
+| --- | --- |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
+
 ## 15.9 FluoShop Context: Order Success Flow
 
 FluoShop uses notifications for order confirmations. This sits on top of the event-driven work built in Part 2. When `OrderPlacedEvent` is captured by `OrderSaga`, notification dispatch is triggered, and order processing and user notification become loosely connected follow-up responsibilities.

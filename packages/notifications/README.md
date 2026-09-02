@@ -156,6 +156,17 @@ Published event names:
 
 If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. The service snapshots the dispatch envelope at admission for channel resolution, queue jobs, generated identity, and provider delivery, then publishes a separate immutable lifecycle event snapshot. Lifecycle snapshots never expose native mutable built-ins: `Map` and `Set` become ordered entry/value data, `Date` stores epoch milliseconds (`null` for an invalid date), `URL` stores `href`, `URLSearchParams` stores its query string, and `RegExp` stores source, flags, and `lastIndex`. Publishers must treat lifecycle events as observation-only and must not mutate them to influence delivery. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id so dispatch results remain stable for callers without relying on time or random data. Generated fallback ids use the same locale-independent key ordering and 64-bit runtime-neutral digest as queue job ids, while caller-provided `notification.id` remains authoritative. They are keys for the current envelope shape, not a documented full-payload hash contract; set `notification.id` when callers need durable identity across releases. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error. Publication failures for success-path lifecycle events remain best-effort so a delivered notification is not converted into an application failure. Publication failures for `notification.dispatch.failed` are caller-visible as `AggregateError` values that include both the original dispatch error and the publisher error so failed-event guarantees are not silently weakened.
 
+### Lifecycle built-in representations
+
+| Interface | Immutable fields |
+| --- | --- |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
+
 ### Intentional limitations
 
 The foundation package intentionally does **not**:

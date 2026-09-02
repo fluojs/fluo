@@ -268,6 +268,17 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 
 `NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 top-level `readiness`, `health`, `ownership`을 포함합니다. `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, `eventPublicationEnabled` 같은 diagnostics는 `details` 아래에 있으며, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency entry도 여기에 포함됩니다. Publisher configuration과 lifecycle enablement는 분리됩니다. `publishLifecycleEvents: false`인 publisher는 configured 상태로 남지만 active event dependency, event-backed operation mode, external ownership을 만들지 않습니다. 활성화된 선택적 seam은 `ownership.externallyManaged: true`로 표시되고, foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`는 `ownership` 아래에 유지됩니다.
 
+### Lifecycle snapshot 내장 표현
+
+| 인터페이스 | 불변 필드 |
+| --- | --- |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
+
 ## 15.9 FluoShop Context: Order Success Flow
 
 FluoShop은 주문 확인을 위해 알림을 사용합니다. 이는 Part 2에서 구축한 event-driven 작업 위에 놓입니다. `OrderPlacedEvent`가 `OrderSaga`에 의해 포착되면 알림 dispatch가 트리거되고, 주문 처리와 사용자 알림은 느슨하게 연결된 후속 책임으로 분리됩니다.

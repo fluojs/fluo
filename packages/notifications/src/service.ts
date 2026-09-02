@@ -164,30 +164,37 @@ export class NotificationsService implements Notifications {
     }
 
     if (this.shouldQueue(notifications.length, options)) {
-      const requestedPublicationErrors = await this.publishRequestedLifecycleEvents(notifications, options);
+      const dispatchNotifications = notifications.map((notification) => createNotificationDispatchSnapshot(notification));
+      const requestedPublicationErrors = await this.publishRequestedLifecycleEvents(dispatchNotifications, options);
 
       let queue: ReturnType<NotificationsService['requireQueueAdapter']>;
 
       try {
         queue = this.requireQueueAdapter();
       } catch (error) {
-        await this.publishFailureLifecycleEvents(notifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
 
       try {
-        for (const notification of notifications) {
+        for (const notification of dispatchNotifications) {
           this.requireChannel(notification.channel);
         }
       } catch (error) {
-        await this.publishFailureLifecycleEvents(notifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
 
-      const jobs = notifications.map((notification) => this.createQueueJob(notification));
+      const jobs = dispatchNotifications.map((notification) => this.createQueueJob(notification));
 
       if (!queue.enqueueMany) {
-        return this.dispatchManyThroughSequentialQueueFallback(notifications, jobs, options, requestedPublicationErrors);
+        return this.dispatchManyThroughSequentialQueueFallback(
+          dispatchNotifications,
+          jobs,
+          options,
+          requestedPublicationErrors,
+          notifications,
+        );
       }
 
       let ids: readonly string[];
@@ -195,19 +202,19 @@ export class NotificationsService implements Notifications {
       try {
         ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs), jobs.length);
       } catch (error) {
-        await this.publishFailureLifecycleEvents(notifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
 
-      const results = notifications.map((notification, index) => ({
+      const results = dispatchNotifications.map((notification, index) => ({
         channel: notification.channel,
         deliveryId: this.normalizeDeliveryId(ids[index], notification),
         queued: true,
         status: 'queued' as const,
       }));
 
-      for (let index = 0; index < notifications.length; index += 1) {
-        const notification = notifications[index];
+      for (let index = 0; index < dispatchNotifications.length; index += 1) {
+        const notification = dispatchNotifications[index];
         await this.publishLifecycleEventBestEffort('notification.dispatch.queued', notification, options, results[index]?.deliveryId);
       }
 
@@ -448,6 +455,7 @@ export class NotificationsService implements Notifications {
     jobs: readonly NotificationsQueueJob<TRequest>[],
     options: NotificationDispatchManyOptions,
     requestedPublicationErrors: readonly unknown[],
+    failureNotifications: readonly TRequest[],
   ): Promise<NotificationDispatchBatchResult<TRequest>> {
     const queue = this.requireQueueAdapter();
     const results: NotificationDispatchResult[] = [];
@@ -456,8 +464,9 @@ export class NotificationsService implements Notifications {
     for (let index = 0; index < jobs.length; index += 1) {
       const job = jobs[index];
       const notification = notifications[index];
+      const failureNotification = failureNotifications[index];
 
-      if (!job || !notification) {
+      if (!job || !notification || !failureNotification) {
         continue;
       }
 
@@ -475,7 +484,7 @@ export class NotificationsService implements Notifications {
       } catch (error) {
         const failure: { error: Error; notification: TRequest } = {
           error: error instanceof Error ? error : new Error('Notification queue enqueue failed.'),
-          notification,
+          notification: failureNotification,
         };
 
         if (!(options.continueOnError ?? false)) {

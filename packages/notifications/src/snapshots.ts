@@ -88,6 +88,25 @@ function cloneSnapshot<T>(value: T, seen: Map<object, object>): T {
     return clone as T;
   }
 
+  if (value instanceof ArrayBuffer) {
+    const clone = value.slice(0);
+    seen.set(value, clone);
+
+    return clone as T;
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    if (!(value.buffer instanceof ArrayBuffer)) {
+      throw new TypeError('Notification snapshots only support ArrayBuffer-backed views.');
+    }
+
+    const buffer = cloneSnapshot(value.buffer, seen);
+    const clone = cloneArrayBufferView(value, buffer);
+    seen.set(value, clone);
+
+    return clone as T;
+  }
+
   if (value instanceof Map) {
     const clone = new Map();
     seen.set(value, clone);
@@ -110,9 +129,8 @@ function cloneSnapshot<T>(value: T, seen: Map<object, object>): T {
     return clone as T;
   }
 
-  const clone: object = Array.isArray(value)
-    ? []
-    : Object.create(Object.getPrototypeOf(value));
+  assertSnapshotObjectIsDataOnly(value);
+  const clone: object = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value));
   seen.set(value, clone);
 
   for (const key of Reflect.ownKeys(value)) {
@@ -182,6 +200,20 @@ function createLifecycleSnapshot<T>(value: T, seen: Map<object, object>): Notifi
     return snapshot as NotificationSnapshot<T>;
   }
 
+  if (value instanceof ArrayBuffer) {
+    const snapshot = Array.from(new Uint8Array(value));
+    seen.set(value, snapshot);
+
+    return snapshot as NotificationSnapshot<T>;
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    const snapshot = Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    seen.set(value, snapshot);
+
+    return snapshot as NotificationSnapshot<T>;
+  }
+
   if (value instanceof Map) {
     const snapshot: { entries: unknown[]; kind: 'Map' } = { entries: [], kind: 'Map' };
     seen.set(value, snapshot);
@@ -207,9 +239,8 @@ function createLifecycleSnapshot<T>(value: T, seen: Map<object, object>): Notifi
     return snapshot as NotificationSnapshotSet<unknown> as NotificationSnapshot<T>;
   }
 
-  const snapshot: object = Array.isArray(value)
-    ? []
-    : Object.create(Object.getPrototypeOf(value));
+  assertSnapshotObjectIsDataOnly(value);
+  const snapshot: object = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value));
   seen.set(value, snapshot);
 
   for (const key of Reflect.ownKeys(value)) {
@@ -236,6 +267,10 @@ function freezeSnapshot<T>(value: T, seen = new WeakSet<object>()): T {
 
   seen.add(value);
 
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    return value;
+  }
+
   if (value instanceof Map) {
     for (const [key, entry] of value) {
       freezeSnapshot(key, seen);
@@ -256,4 +291,40 @@ function freezeSnapshot<T>(value: T, seen = new WeakSet<object>()): T {
   }
 
   return Object.freeze(value);
+}
+
+interface TypedArrayConstructor {
+  new (buffer: ArrayBuffer, byteOffset?: number, length?: number): ArrayBufferView;
+}
+
+function cloneArrayBufferView(value: ArrayBufferView, buffer: ArrayBuffer): ArrayBufferView {
+  if (value instanceof DataView) {
+    return new DataView(buffer, value.byteOffset, value.byteLength);
+  }
+
+  const typedArray = value as ArrayBufferView & {
+    readonly constructor: TypedArrayConstructor;
+    readonly length: number;
+  };
+
+  return new typedArray.constructor(buffer, typedArray.byteOffset, typedArray.length);
+}
+
+function assertSnapshotObjectIsDataOnly(value: object): void {
+  const prototype = Object.getPrototypeOf(value);
+
+  if (
+    (Array.isArray(value) && prototype !== Array.prototype)
+    || (!Array.isArray(value) && prototype !== null && prototype !== Object.prototype)
+  ) {
+    throw new TypeError('Notification snapshots only support data properties on plain objects.');
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+    if (descriptor && !('value' in descriptor)) {
+      throw new TypeError('Notification snapshots only support data properties on plain objects.');
+    }
+  }
 }
