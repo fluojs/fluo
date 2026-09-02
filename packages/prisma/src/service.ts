@@ -1,12 +1,15 @@
 import { Inject } from '@fluojs/core';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 import {
+  type ActiveRequestTransaction,
+  type ActiveRequestTransactionHandle,
   createAbortError,
   createRequestAbortContext,
+  type OnApplicationShutdown,
+  type OnModuleInit,
   raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@fluojs/runtime';
+} from './integration.js';
 
 import { markPrismaServiceHandle } from './prisma-service-brand.js';
 import { createPrismaPlatformStatusSnapshot } from './status.js';
@@ -28,16 +31,6 @@ const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
 interface PrismaServiceOptions {
   strictTransactions: boolean;
 }
-
-type ActiveRequestTransaction = {
-  abort(reason?: unknown): void;
-  settled: Promise<void>;
-};
-
-type ActiveRequestTransactionHandle = {
-  active: ActiveRequestTransaction;
-  settle(): void;
-};
 
 type ActiveTransactionBoundary = {
   settled: Promise<void>;

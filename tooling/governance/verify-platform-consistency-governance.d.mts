@@ -19,6 +19,10 @@ export function collectNodeGlobalBufferViolations(
   relativePaths: readonly string[],
   readSource: (relativePath: string) => string,
 ): NodeGlobalBufferViolation[];
+export function enforceMandatoryFirstPartyDependencyEngineAlignment(
+  readText?: (relativePath: string) => string,
+  packageNames?: ReadonlySet<string>,
+): void;
 export function enforceCliMigrationTransformDocs(
   readText?: (relativePath: string) => string,
 ): void;

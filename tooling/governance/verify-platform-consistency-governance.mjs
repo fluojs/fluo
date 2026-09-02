@@ -98,6 +98,176 @@ const nodeListenerEngineRange = nodeListenerEngineWindows
   .join(' || ');
 const nodeListenerEngineMarker = `engines.node ${nodeListenerEngineRange}`;
 
+function parseNodeEngineVersion(value) {
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/u.exec(value);
+  assert(match !== null, `Unsupported Node engine version "${value}".`);
+
+  return {
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2] ?? '0', 10),
+    patch: Number.parseInt(match[3] ?? '0', 10),
+  };
+}
+
+function compareNodeEngineVersions(left, right) {
+  for (const key of ['major', 'minor', 'patch']) {
+    if (left[key] !== right[key]) {
+      return left[key] < right[key] ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function parseNodeEngineComparator(value) {
+  const match = /^(>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
+  assert(match !== null, `Unsupported Node engine comparator "${value}".`);
+
+  return {
+    operator: match[1] ?? '=',
+    version: parseNodeEngineVersion(match[2]),
+  };
+}
+
+function parseNodeEngineRange(range) {
+  assert(typeof range === 'string' && range.trim().length > 0, 'engines.node must be a non-empty string.');
+
+  return range.split('||').map((group) => {
+    const comparators = group.trim().split(/\s+/u).filter(Boolean);
+    assert(comparators.length > 0, `Unsupported empty Node engine range "${range}".`);
+    return comparators.map(parseNodeEngineComparator);
+  });
+}
+
+function nodeEngineRangeIncludes(range, version) {
+  return parseNodeEngineRange(range).some((comparators) =>
+    comparators.every(({ operator, version: boundary }) => {
+      const comparison = compareNodeEngineVersions(version, boundary);
+
+      switch (operator) {
+        case '>':
+          return comparison > 0;
+        case '>=':
+          return comparison >= 0;
+        case '<':
+          return comparison < 0;
+        case '<=':
+          return comparison <= 0;
+        case '=':
+          return comparison === 0;
+        default:
+          return false;
+      }
+    }));
+}
+
+function previousNodeEngineVersion({ major, minor, patch }) {
+  if (patch > 0) {
+    return { major, minor, patch: patch - 1 };
+  }
+
+  if (minor > 0) {
+    return { major, minor: minor - 1, patch: 999 };
+  }
+
+  return { major: Math.max(0, major - 1), minor: 999, patch: 999 };
+}
+
+function nextNodeEngineVersion({ major, minor, patch }) {
+  return { major, minor, patch: patch + 1 };
+}
+
+function nodeEngineCandidates(...ranges) {
+  const candidates = new Map();
+  const addCandidate = (version) => {
+    candidates.set(`${version.major}.${version.minor}.${version.patch}`, version);
+  };
+
+  for (const range of ranges) {
+    for (const comparators of parseNodeEngineRange(range)) {
+      for (const { version } of comparators) {
+        addCandidate(previousNodeEngineVersion(version));
+        addCandidate(version);
+        addCandidate(nextNodeEngineVersion(version));
+      }
+    }
+  }
+
+  return [...candidates.values()];
+}
+
+function formatNodeEngineVersion({ major, minor, patch }) {
+  return `${major}.${minor}.${patch}`;
+}
+
+function changedPackageNames(changedFiles) {
+  return new Set(changedFiles.flatMap((relativePath) => {
+    const match = /^packages\/([^/]+)\//u.exec(relativePath);
+    return match === null ? [] : [`@fluojs/${match[1]}`];
+  }));
+}
+
+export function enforceMandatoryFirstPartyDependencyEngineAlignment(
+  readText = read,
+  packageNames = changedPackageNames(changedFilesFromGit()),
+) {
+  const packageManifests = new Map();
+
+  for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const relativePath = `packages/${entry.name}/package.json`;
+    if (!existsSync(join(repoRoot, relativePath))) {
+      continue;
+    }
+
+    const manifest = JSON.parse(readText(relativePath));
+    packageManifests.set(manifest.name, { manifest, relativePath });
+  }
+
+  for (const { manifest: packageManifest, relativePath } of packageManifests.values()) {
+    if (
+      packageManifest.private ||
+      typeof packageManifest.name !== 'string' ||
+      !packageNames.has(packageManifest.name)
+    ) {
+      continue;
+    }
+
+    const packageRange = packageManifest.engines?.node;
+    assert(
+      typeof packageRange === 'string' && packageRange.length > 0,
+      `${packageManifest.name} (${relativePath}) must declare engines.node.`,
+    );
+
+    for (const dependencyName of Object.keys(packageManifest.dependencies ?? {})) {
+      const dependency = packageManifests.get(dependencyName);
+      if (dependency === undefined) {
+        continue;
+      }
+
+      const dependencyRange = dependency.manifest.engines?.node;
+      assert(
+        typeof dependencyRange === 'string' && dependencyRange.length > 0,
+        `${dependencyName} (${dependency.relativePath}) must declare engines.node.`,
+      );
+
+      const incompatibleVersion = nodeEngineCandidates(packageRange, dependencyRange).find((version) =>
+        nodeEngineRangeIncludes(packageRange, version) &&
+        !nodeEngineRangeIncludes(dependencyRange, version));
+
+      if (incompatibleVersion !== undefined) {
+        throw new Error(
+          `${packageManifest.name} engines.node ${packageRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
+            `but mandatory ${dependencyName} engines.node is ${dependencyRange}.`,
+        );
+      }
+    }
+  }
+}
+
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
   const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
   const canonicalNodeRange = runtimeManifest.engines?.node;
@@ -3298,6 +3468,7 @@ export async function main() {
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
+  enforceMandatoryFirstPartyDependencyEngineAlignment(read, changedPackageNames(changedFiles));
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();

@@ -22,6 +22,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
+  enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePassportJsBridgeNestjsMigration,
@@ -3762,5 +3763,45 @@ describe('Auth & JWT contract gate triggers', () => {
     expect(() => enforceContractCompanionUpdates([changedPath])).toThrow(
       'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
     );
+  });
+});
+
+describe('mandatory first-party dependency Node engine alignment', () => {
+  it('rejects a public package that advertises Node versions its required dependency excludes', () => {
+    // Given: Prisma's Node 20+ package contract and a required runtime dependency with a higher floor.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/prisma/package.json') {
+        const manifest = JSON.parse(content);
+
+        return JSON.stringify({
+          ...manifest,
+          dependencies: {
+            ...manifest.dependencies,
+            '@fluojs/runtime': 'workspace:^',
+          },
+        });
+      }
+
+      return content;
+    };
+
+    // When: release governance evaluates the mandatory first-party graph.
+    // Then: it rejects the false Node 20+ compatibility claim before release.
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/prisma']))).toThrow(
+      /@fluojs\/prisma engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@fluojs\/runtime/u,
+    );
+  });
+
+  it('accepts the current mandatory first-party dependency Node engine graph', () => {
+    // Given: the checked-in public package manifests.
+    // When: release governance evaluates their mandatory first-party dependency graph.
+    // Then: every advertised Node version is executable through the required first-party packages.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
   });
 });

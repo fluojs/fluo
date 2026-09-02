@@ -1,7 +1,7 @@
 import type { AsyncModuleOptions, Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
-import { defineModule, type ModuleType } from '@fluojs/runtime';
 
+import { definePrismaModule, type PrismaModuleType } from './integration.js';
 import { PrismaService } from './service.js';
 import {
   getPrismaClientToken,
@@ -164,15 +164,14 @@ function buildPrismaModule<
   TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 >(
   options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-): ModuleType {
-  class PrismaRootModuleDefinition {}
+): PrismaModuleType {
   const normalizedOptions = normalizePrismaModuleOptions(options);
 
   if (normalizedOptions.name !== undefined && normalizedOptions.global) {
     throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
   }
 
-  return defineModule(PrismaRootModuleDefinition, {
+  return definePrismaModule({
     exports: normalizedOptions.name === undefined
       ? [
         PrismaService,
@@ -200,9 +199,7 @@ function buildPrismaModuleAsync<
   TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 >(
   options: PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-): ModuleType {
-  class PrismaAsyncModuleDefinition {}
-
+): PrismaModuleType {
   const factory = options.useFactory;
   const normalizedName = normalizePrismaRegistrationName(options.name);
 
@@ -225,7 +222,7 @@ function buildPrismaModuleAsync<
     },
   };
 
-  return defineModule(PrismaAsyncModuleDefinition, {
+  return definePrismaModule({
     exports: normalizedName === undefined
       ? [
         PrismaService,
@@ -256,7 +253,7 @@ export class PrismaModule {
     TTransactionOptions = InferPrismaTransactionOptions<TClient>,
   >(
     options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-  ): ModuleType {
+  ): PrismaModuleType {
     return buildPrismaModule<TClient, TTransactionClient, TTransactionOptions>(options);
   }
 
@@ -272,7 +269,7 @@ export class PrismaModule {
     TTransactionOptions = InferPrismaTransactionOptions<TClient>,
   >(
     options: PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-  ): ModuleType {
+  ): PrismaModuleType {
     return buildPrismaModuleAsync<TClient, TTransactionClient, TTransactionOptions>(options);
   }
 }
