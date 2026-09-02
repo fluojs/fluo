@@ -5,6 +5,7 @@ import {
   createSourceFile,
   forEachChild,
   isCallExpression,
+  isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
   ScriptKind,
@@ -154,6 +155,27 @@ async function loadGovernanceInternals() {
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
     enforceStudioReportBootstrapFailureCompanions: (changedFiles: string[]) => void;
   };
+}
+
+function hasDirectMainCall(sourceText: string, calleeName: string): boolean {
+  const source = createSourceFile(
+    'verify-platform-consistency-governance.mjs',
+    sourceText,
+    ScriptTarget.Latest,
+    true,
+    ScriptKind.JS,
+  );
+
+  return source.statements.some((statement) =>
+    isFunctionDeclaration(statement) &&
+    statement.name?.text === 'main' &&
+    statement.body?.statements.some((mainStatement) =>
+      isExpressionStatement(mainStatement) &&
+      isCallExpression(mainStatement.expression) &&
+      isIdentifier(mainStatement.expression.expression) &&
+      mainStatement.expression.expression.text === calleeName,
+    ),
+  );
 }
 
 describe('isGovernedPackageSourcePath', () => {
@@ -1810,29 +1832,19 @@ describe('enforceContractCompanionUpdates', () => {
   });
 
   it('registers the #3338 companion gate in the central governance path', () => {
-    const source = createSourceFile(
-      'verify-platform-consistency-governance.mjs',
-      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
-      ScriptTarget.Latest,
-      true,
-      ScriptKind.JS,
+    const source = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
     );
-    let mainCallsStudioReportBootstrapFailureCompanions = false;
 
-    for (const statement of source.statements) {
-      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
-        continue;
-      }
-      forEachChild(statement.body, function visit(node): void {
-        if (isCallExpression(node) && isIdentifier(node.expression)
-          && node.expression.text === 'enforceStudioReportBootstrapFailureCompanions') {
-          mainCallsStudioReportBootstrapFailureCompanions = true;
-        }
-        forEachChild(node, visit);
-      });
-    }
+    expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(true);
+  });
 
-    expect(mainCallsStudioReportBootstrapFailureCompanions).toBe(true);
+  it.each([
+    'export function main() { if (false) { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { const deferred = () => enforceStudioReportBootstrapFailureCompanions([]); }',
+  ])('rejects a nested or unreachable #3338 companion-call decoy', (source) => {
+    expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(false);
   });
 
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
