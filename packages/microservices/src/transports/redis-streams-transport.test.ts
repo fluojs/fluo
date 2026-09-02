@@ -1698,6 +1698,62 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('continues consuming requests when xautoclaim rejects', async () => {
+    const bus = new InMemoryStreamBus();
+    const operationTrace: string[] = [];
+    const readerClient = {
+      xadd: async (stream: string, fields: Record<string, string>, options?: RedisStreamWriteOptions) => {
+        return await bus.xadd(stream, fields, options);
+      },
+      xreadgroup: async (group: string, consumer: string, streams: readonly string[], options?: { blockMs?: number; count?: number }) => {
+        if (streams.includes('fluo:streams:messages')) {
+          operationTrace.push('xreadgroup:messages');
+        }
+
+        return await bus.xreadgroup(group, consumer, streams, options);
+      },
+      xautoclaim: async (stream: string) => {
+        if (stream === 'fluo:streams:messages') {
+          operationTrace.push('xautoclaim:messages');
+        }
+
+        throw new Error('NOPERM this user has no permissions to run the xautoclaim command');
+      },
+      xack: async (stream: string, group: string, id: string) => {
+        await bus.xack(stream, group, id);
+      },
+      xdel: async (stream: string, id: string) => {
+        await bus.xdel(stream, id);
+      },
+      xgroupCreate: async (stream: string, group: string, startId: string, mkstream: boolean) => {
+        await bus.xgroupCreate(stream, group, startId, mkstream);
+      },
+      xgroupDestroy: async (stream: string, group: string) => {
+        await bus.xgroupDestroy(stream, group);
+      },
+    } satisfies RedisStreamClientLike;
+    const transport = new RedisStreamsMicroserviceTransport({
+      pollBlockMs: 1,
+      readerClient,
+      requestTimeoutMs: 100,
+      writerClient: bus,
+    });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.send('reclaim.rejected', { accepted: true })).resolves.toEqual({ accepted: true });
+    expect(operationTrace).toContain('xautoclaim:messages');
+    expect(operationTrace.indexOf('xautoclaim:messages')).toBeLessThan(operationTrace.indexOf('xreadgroup:messages'));
+
+    await transport.close();
+  });
+
   it('disables pending reclaim when pendingReclaimIdleMs is not positive', async () => {
     const pel = new PendingEntriesListBus();
     const abandonedId = await pel.xadd('fluo:streams:messages', {

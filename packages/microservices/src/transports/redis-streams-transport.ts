@@ -61,7 +61,8 @@ export interface RedisStreamsMicroserviceTransportOptions {
   consumerGroup?: string;
   namespace?: string;
   /**
-   * Minimum pending-entry idle time before recovery with `XAUTOCLAIM`.
+   * Minimum pending-entry idle time before `XAUTOCLAIM` recovery in the shared request group
+   * or this listener's instance-scoped event group.
    *
    * Defaults to `60_000`; set a non-positive value to disable recovery. The reader client must
    * implement {@link RedisStreamClientLike.xautoclaim} for recovery to run.
@@ -108,6 +109,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private messageGroupLeaseRegistered = false;
   private ownsMessageGroup = false;
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly pendingReclaimFailureGroups = new Set<string>();
   private readonly pendingReclaimStartIds = new Map<string, string>();
   private pollPromises: Promise<void>[] = [];
 
@@ -385,6 +387,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
         this.handler = undefined;
         this.messageGroupLeaseRegistered = false;
         this.ownsMessageGroup = false;
+        this.pendingReclaimFailureGroups.clear();
         this.pendingReclaimStartIds.clear();
         this.pollPromises = [];
 
@@ -524,17 +527,32 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     }
 
     const groupKey = `${stream}::${group}`;
-    const result = await readerClient.xautoclaim(
-      stream,
-      group,
-      this.consumerId,
-      this.pendingReclaimIdleMs,
-      this.pendingReclaimStartIds.get(groupKey) ?? '0-0',
-      { count: 10 },
-    );
 
-    this.pendingReclaimStartIds.set(groupKey, result.nextStartId);
-    return result.entries;
+    try {
+      const result = await readerClient.xautoclaim(
+        stream,
+        group,
+        this.consumerId,
+        this.pendingReclaimIdleMs,
+        this.pendingReclaimStartIds.get(groupKey) ?? '0-0',
+        { count: 10 },
+      );
+
+      this.pendingReclaimFailureGroups.delete(groupKey);
+      this.pendingReclaimStartIds.set(groupKey, result.nextStartId);
+      return result.entries;
+    } catch (error) {
+      if (!this.pendingReclaimFailureGroups.has(groupKey)) {
+        this.logger?.error(
+          'Redis Streams pending reclaim failed; continuing normal consumption.',
+          error,
+          'RedisStreamsMicroserviceTransport',
+        );
+        this.pendingReclaimFailureGroups.add(groupKey);
+      }
+
+      return [];
+    }
   }
 
   private async handleStreamEntry(stream: string, message: RedisStreamTransportMessage): Promise<boolean> {
