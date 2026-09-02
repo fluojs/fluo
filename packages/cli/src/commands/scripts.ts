@@ -432,7 +432,7 @@ function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRun
   }
 
   if (projectRuntime !== 'node') {
-    throw new Error(`fluo dev --studio currently supports Node dev runner projects only. ${projectRuntime} Studio support remains experimental until a dedicated bridge is implemented and verified.`);
+    throw new Error(`fluo dev --studio supports Node dev runner projects only. ${projectRuntime} projects can generate Studio-compatible artifacts with fluo inspect <module-path> --json --output <path> or fluo inspect <module-path> --report --output <path>.`);
   }
 
   if (devRunner !== 'fluo' || rawWatch) {
@@ -667,7 +667,7 @@ export function scriptUsage(command: ScriptCommand): string {
     '  --dry-run                              Print the command without running it.',
     command === 'dev' ? '  --raw-watch                            Use the runtime-native Node watcher instead of the fluo restart runner.' : undefined,
     command === 'dev' ? '  --runner <fluo|native>                 Select fluo restart supervision or runtime-native watch (default: fluo for Node, native for non-Node runtimes).' : undefined,
-    command === 'dev' ? '  --studio                              Start the local Fluo Studio sidecar and inject runtime devtool env.' : undefined,
+    command === 'dev' ? '  --studio                              Start the local Fluo Studio sidecar for Node dev runner projects only.' : undefined,
     command === 'dev' ? '  --studio-port <port>                  Bind the Studio sidecar to a specific local port (default: 0).' : undefined,
     '  --reporter <auto|pretty|stream|silent> Choose lifecycle reporter output mode (default: auto).',
     '  --verbose                             Expose raw child process output; also honored by FLUO_VERBOSE=1.',

@@ -154,6 +154,40 @@ afterEach(() => {
 });
 
 describe('CLI command runner', () => {
+  it('states the Node-only Studio live-mode scope and gives Bun projects complete inspect-artifact fallbacks', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(projectDirectory);
+    writeFileSync(
+      join(projectDirectory, 'package.json'),
+      JSON.stringify({ name: 'bun-project', dependencies: { '@fluojs/platform-bun': 'workspace:*' } }, null, 2),
+    );
+    const helpOutput: string[] = [];
+    const errorOutput: string[] = [];
+
+    const helpExitCode = await runCli(['dev', '--help'], {
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => helpOutput.push(message) },
+    });
+    const studioExitCode = await runCli(['dev', '--studio', '--dry-run'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => errorOutput.push(message) },
+      stdout: { write: () => undefined },
+    });
+    const fluoRunnerExitCode = await runCli(['dev', '--studio', '--dry-run', '--runner', 'fluo'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => errorOutput.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(helpExitCode).toBe(0);
+    expect(helpOutput.join('')).toContain('Start the local Fluo Studio sidecar for Node dev runner projects only.');
+    expect(studioExitCode).toBe(1);
+    expect(fluoRunnerExitCode).toBe(1);
+    expect(errorOutput.join('')).toContain('fluo dev --studio supports Node dev runner projects only.');
+    expect(errorOutput.join('')).toContain('fluo inspect <module-path> --json --output <path>');
+    expect(errorOutput.join('')).toContain('fluo inspect <module-path> --report --output <path>');
+  });
+
   it('publishes fluo as the canonical bin', () => {
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
@@ -2048,33 +2082,6 @@ void bootstrap();
     expect(nativeEnvExitCode).toBe(1);
     expect(spawnedCommands).toEqual([]);
     expect(stderrBuffer.join('')).toContain('fluo dev --studio requires the fluo-owned Node restart runner.');
-  });
-
-  it('keeps Studio dev support Node-only until non-Node bridges are verified', async () => {
-    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
-    createdDirectories.push(workspaceDirectory);
-    writeFileSync(
-      join(workspaceDirectory, 'package.json'),
-      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
-    );
-    const stderrBuffer: string[] = [];
-
-    const nativeExitCode = await runCli(['dev', '--dry-run', '--studio'], {
-      cwd: workspaceDirectory,
-      env: {},
-      stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: () => undefined },
-    });
-    const fluoExitCode = await runCli(['dev', '--dry-run', '--studio', '--runner', 'fluo'], {
-      cwd: workspaceDirectory,
-      env: {},
-      stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: () => undefined },
-    });
-
-    expect(nativeExitCode).toBe(1);
-    expect(fluoExitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('fluo dev --studio currently supports Node dev runner projects only');
   });
 
   it('prints development lifecycle dry-runs with Next.js-like env defaults', async () => {
@@ -4127,7 +4134,7 @@ exit 7
     ]);
   });
 
-  it('writes inspect JSON artifacts to an explicit output path without stdout payloads', async () => {
+  it('executes the JSON artifact fallback with a module fixture without stdout payloads', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     const stdoutBuffer: string[] = [];
@@ -4143,17 +4150,21 @@ exit 7
     const payload = JSON.parse(readFileSync(outputPath, 'utf8')) as {
       components: unknown[];
       diagnostics: unknown[];
+      generatedAt: string;
       health: { status: string };
       readiness: { status: string };
+      routes: unknown[];
     };
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
     expect(stderrBuffer.join('')).toBe('');
+    expect(payload.generatedAt).toEqual(expect.any(String));
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+    expect(payload.routes).toEqual([]);
   });
 
   it('emits snapshot JSON with timing diagnostics when --json and --timing are combined', async () => {
