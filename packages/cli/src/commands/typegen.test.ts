@@ -371,4 +371,5 @@ describe('fluo typegen', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(fixture.stderr).toEqual([`${projectionError.message}\n`]);
   });
+
 });
