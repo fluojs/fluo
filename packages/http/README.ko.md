@@ -67,12 +67,12 @@ class CreateUserDto {
   @FromBody()
   @IsString()
   @MinLength(3)
-  name!: string;
+  name = '';
 }
 
 class FindUserParamsDto {
   @FromPath('id')
-  id!: string;
+  id = '';
 }
 
 @Controller('/users')
@@ -90,6 +90,8 @@ export class UserController {
   }
 }
 ```
+
+데코레이터가 붙은 DTO 필드는 위 예시처럼 초기화하거나 optional로 선언하세요. `name!: string` 같은 definite assignment assertion은 Fluo가 제공하는 Babel decorator 설정에서 컴파일되지 않습니다. 해당 설정은 데코레이터가 붙은 클래스의 definitely assigned field를 `Definitely assigned fields cannot be initialized here, but only in the constructor` 오류로 거부합니다.
 
 ### 라우트 경로 계약
 
