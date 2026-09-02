@@ -32,3 +32,14 @@ it('runs scoped PR package scripts serially to prevent shared artifact build rac
     /run: pnpm --workspace-concurrency=1 -r --if-present \$\{\{ needs\.resolve-pr-verification-scope\.outputs\.test_filter_args \}\} run test/u,
   );
 });
+
+it('requires the Deno platform job before the Verify aggregate can pass', () => {
+  // Given
+  const workflow = readFileSync(resolve(import.meta.dirname, '../../.github/workflows/ci.yml'), 'utf8');
+
+  // When
+  const verifyJob = workflow.slice(workflow.indexOf('  verify:\n'));
+
+  // Then
+  expect(verifyJob).toMatch(/\n      - deno-platform\n/u);
+});

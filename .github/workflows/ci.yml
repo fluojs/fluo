@@ -471,6 +471,7 @@ jobs:
       - build-and-typecheck
       - lint
       - test
+      - deno-platform
       - studio-browser
       - official-web-runtime-adapter-portability
       - native-response-cookie-conformance
