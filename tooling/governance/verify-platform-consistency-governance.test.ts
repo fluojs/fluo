@@ -5,6 +5,7 @@ import {
   createSourceFile,
   forEachChild,
   isCallExpression,
+  isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
   ScriptKind,
@@ -4812,6 +4813,22 @@ describe('Studio public docs and migration expectations', () => {
     ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
   ] as const;
 
+  function mainHasDirectStudioStaticGraphContractRegistration(source: ReturnType<typeof createSourceFile>): boolean {
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+
+      return statement.body.statements.some((bodyStatement) =>
+        isExpressionStatement(bodyStatement) &&
+        isCallExpression(bodyStatement.expression) &&
+        isIdentifier(bodyStatement.expression.expression) &&
+        bodyStatement.expression.expression.text === 'enforceStudioStaticGraphLimitsContract');
+    }
+
+    return false;
+  }
+
   it('keeps Studio sidecar, fallback, dependency, and exported type docs discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
       expect(content).toContain('@fluojs/studio');
@@ -4945,24 +4962,45 @@ describe('Studio public docs and migration expectations', () => {
       true,
       ScriptKind.JS,
     );
-    let mainCallsStudioGuard = false;
-
     // When
-    for (const statement of source.statements) {
-      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
-        continue;
-      }
-      forEachChild(statement.body, function visit(node): void {
-        if (isCallExpression(node) && isIdentifier(node.expression)
-          && node.expression.text === 'enforceStudioStaticGraphLimitsContract') {
-          mainCallsStudioGuard = true;
-        }
-        forEachChild(node, visit);
-      });
-    }
+    const mainCallsStudioGuard = mainHasDirectStudioStaticGraphContractRegistration(source);
 
     // Then
     expect(mainCallsStudioGuard).toBe(true);
+  });
+
+  it.each([
+    [
+      'a comment',
+      '// enforceStudioStaticGraphLimitsContract();',
+    ],
+    [
+      'an uncalled nested closure',
+      'const registerStudioContract = () => {\n    enforceStudioStaticGraphLimitsContract();\n  };',
+    ],
+    [
+      'an unreachable branch',
+      'if (false) {\n    enforceStudioStaticGraphLimitsContract();\n  }',
+    ],
+    [
+      'an uncalled nested function',
+      'function registerStudioContract() {\n    enforceStudioStaticGraphLimitsContract();\n  }',
+    ],
+  ])('rejects %s as Studio static graph contract registration', (_description, replacement) => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8')
+        .replace('  enforceStudioStaticGraphLimitsContract();', `  ${replacement}`),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    // When
+    const mainCallsStudioGuard = mainHasDirectStudioStaticGraphContractRegistration(source);
+
+    // Then
+    expect(mainCallsStudioGuard).toBe(false);
   });
 });
 
