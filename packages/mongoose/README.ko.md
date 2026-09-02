@@ -89,18 +89,6 @@ type UserDocument = { readonly _id: string; readonly name: string };
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
-@Inject(UserRepository)
-export class UserService {
-  constructor(private readonly repo: UserRepository) {}
-
-  @Transaction()
-  async onboardUser(dto: CreateUserDto) {
-    const [user] = await this.repo.create(dto);
-    await this.repo.initProfile(user._id);
-    return user;
-  }
-}
-
 @Inject(MongooseConnection)
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
@@ -114,6 +102,18 @@ export class UserRepository {
 
   async initProfile(userId: string) {
     return this.conn.model<ProfileCreateModel>('Profile').create([{ userId }]);
+  }
+}
+
+@Inject(UserRepository)
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: CreateUserDto) {
+    const [user] = await this.repo.create(dto);
+    await this.repo.initProfile(user._id);
+    return user;
   }
 }
 ```
