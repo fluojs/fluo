@@ -180,7 +180,7 @@ Each CQRS event handler and saga receives an isolated event copy with the matche
 
 Event classes should keep their payload state cloneable and enumerable. String-keyed and symbol-keyed enumerable payload fields are preserved by the shared core clone fallback, while intentionally non-cloneable resources such as open sockets, functions, or process-local handles should be represented by IDs or other serializable boundaries before publishing.
 
-CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
+CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Discovery supports direct class and `useClass` providers, `useFactory` providers whose class token carries CQRS metadata, and `useValue` providers whose instance constructor carries CQRS metadata. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
 
 ### Symbol Tokens
 
