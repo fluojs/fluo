@@ -7,6 +7,7 @@ fluo용 트랜스포트 기반 마이크로서비스 패키지입니다. TCP, Re
 ## 목차
 
 - [설치](#설치)
+- [요구 사항](#요구-사항)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 기능](#주요-기능)
@@ -27,6 +28,10 @@ pnpm add @fluojs/microservices
 - 애플리케이션이 transport에 명시적으로 넘겨야 하는 caller-owned broker client: `nats`, `kafkajs`, `amqplib`
 
 gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요구합니다. 더 오래된 `@grpc/grpc-js` release를 사용하던 consumer는 이 major `@fluojs/microservices` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. 갱신된 install은 proto-loader chain을 `protobufjs@7.6.5` 이상으로 resolve해 수정된 UTF-8 helper를 포함해야 합니다. fluo transport API는 그대로입니다.
+
+## 요구 사항
+
+`@fluojs/microservices`는 필수 `@fluojs/runtime` 의존성과 동일한 Node.js `>=20.19.3 <21 || >=22.2.0 <27`를 요구합니다. Node 21, 22.2.0 미만의 Node 22, 검증되지 않은 Node 27 이상은 지원하지 않습니다.
 
 ## 사용 시점
 
