@@ -1,5 +1,5 @@
 ---
-'@fluojs/platform-deno': patch
+'@fluojs/platform-deno': minor
 ---
 
-Verify the published Deno adapter journey under native Deno 2, including request dispatch and managed server shutdown.
+Add the public host-owned `createDenoFetchHandler(...)` entrypoint and verify the published Deno adapter journey under native Deno 2, including request dispatch and managed server shutdown.
