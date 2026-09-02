@@ -59,6 +59,8 @@ export class OrderWorker {
 
 `QueueModule.forRoot(...)`는 애플리케이션 수준 큐 등록을 위한 지원되는 루트 엔트리포인트입니다.
 
+Producer는 job class instance를 넣어 `enqueue(new JobClass(...))`를 호출합니다. `add(name, payload)` 형태의 producer signature는 없습니다. `enqueue(job)`은 `job.constructor`로 대상 worker를 찾고, queue와 named job은 그 worker에 등록된 `jobName`에서 가져옵니다.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
 import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
@@ -91,7 +93,45 @@ NestJS queue integration에서 이동하는 consumer는 metadata 기반 processo
 2. `@Processor(...)`, `@Process(...)` 또는 그 밖의 NestJS/Bull provider metadata를 TC39 표준 class decorator인 `@QueueWorker(JobClass, options?)`로 바꿉니다. 각 worker는 호출 가능한 `handle(job)` 메서드를 노출해야 합니다.
 3. Decorated worker class를 singleton으로 `@Module({ providers: [...] })`에 추가합니다. Queue는 compiled provider/controller registration을 scan하며, `@Injectable()` metadata, emit된 constructor type, 임의로 import된 class는 scan하지 않습니다. Constructor dependency는 `@Inject(...)`로 명시적으로 선언합니다.
 4. Worker가 queue registration에서 도달 가능하도록 유지합니다. 기본 global `QueueModule.forRoot()`는 compiled application graph 전체의 singleton worker를 discovery할 수 있습니다. `global: false`에서는 authored imports/exports를 통해 해당 registration에 도달할 수 있는 module로 discovery가 제한되며, 일치하는 Redis provider도 같은 module tree에서 도달 가능해야 합니다.
-5. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
+5. Processor뿐 아니라 producer도 변환합니다. `@InjectQueue('name')`과 `queue.add('job', payload)`를 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)와 `queue.enqueue(new JobClass(...))`로 바꿉니다. Queue에는 name과 payload를 받는 producer signature가 없으며, plain payload object는 constructor가 `Object`이므로 등록된 JobClass worker를 식별할 수 없습니다.
+6. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
+
+### Producer 마이그레이션: Bull/BullMQ에서 Queue로
+
+NestJS Bull 또는 BullMQ에서는 producer가 queue와 named job을 모두 선택합니다.
+
+```typescript
+// 이전: NestJS Bull/BullMQ
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+
+export class OrdersProducer {
+  constructor(@InjectQueue('orders') private readonly queue: Queue) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.add('process-order', { orderId });
+  }
+}
+```
+
+fluo에서는 `ProcessOrderJob`을 `@QueueWorker(ProcessOrderJob, { jobName: 'process-order' })`로 선언하고 등록한 뒤, 정확히 그 exported class의 instance를 enqueue합니다. Worker registration이 BullMQ queue와 named job을 결정하므로 producer는 두 문자열을 제공하지 않습니다.
+
+```typescript
+// 이후: fluo
+import { Inject } from '@fluojs/core';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+@Inject(QueueLifecycleService)
+export class OrdersProducer {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.enqueue(new ProcessOrderJob(orderId));
+  }
+}
+```
+
+`ProcessOrderJob`은 `@QueueWorker`에 전달한 것과 동일한 constructor reference여야 하며, 복사해서 선언한 class나 plain `{ orderId }` object가 아니어야 합니다. 후자는 `enqueue<TJob extends object>`가 object를 받으므로 type-check는 통과하지만 runtime에서 `No @QueueWorker() registered for job type Object.`로 거부됩니다.
 
 Cutover 전에는 persistence identity 차이를 반영하세요. NestJS Bull/BullMQ는 하나의 `queueName` 아래 여러 named job 값을 영속화할 수 있습니다. 반면 fluo는 job type마다 queue/worker pair 하나를 만들면서 worker의 `jobName`을 BullMQ queue name과 named job 양쪽에 사용합니다. 따라서 `jobName`만 설정해서는 여러 named job이 하나의 `queueName`을 공유하는 legacy topology를 보존할 수 없고, `@fluojs/queue`는 NestJS decorator metadata를 해석하거나 기존 serialized payload를 자동 변환하지 않습니다.
 
@@ -187,7 +227,27 @@ for (const record of inspection.records) {
 
 Inspection은 read-only이며 유효한 record를 최신순으로 반환합니다. Redis read를 worker lifecycle state로 gate하지 않으므로 inspection이 worker를 시작하지 않으며, backing Redis client에 접근 가능한 동안에는 Queue가 `idle`이거나 worker startup이 `failed`에 도달한 뒤에도 사용할 수 있습니다. Queue는 shared Redis client를 소유하지 않습니다. `RedisModule`이 해당 client를 종료한 뒤에는 post-shutdown availability를 보장하지 않고 backing Redis operation error를 그대로 전달합니다. Limit은 기본적으로 저장된 entry `100`개이며 최대 `1_000`개로 제한되고, 잘못된 limit은 기본값으로 대체됩니다. Malformed stored value는 결과에서 제외되고 해당 inspection window의 `malformedRecordCount`에 집계됩니다. `payload`는 `unknown`으로 유지되므로 애플리케이션 코드가 자신의 job data를 직접 narrow해야 합니다. Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.
 
-Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object를 입력으로 받습니다. Enqueue 전에 Queue는 job을 JSON으로 직렬화하며, 직렬화 결과는 `null`이나 array가 아닌 JSON object여야 합니다. Worker 측에서는 그 직렬화된 object 위에 등록된 job prototype을 다시 입힙니다.
+### Producer dispatch 계약
+
+`enqueue(job)`은 job의 정확한 constructor로 dispatch합니다. Queue는 `@QueueWorker(JobClass, options?)`로 discovery한 worker 집합에서 `job.constructor`를 조회하며, 그 constructor가 등록되지 않았으면 `No @QueueWorker() registered for job type <name>.`으로 호출을 거부합니다.
+
+Plain payload object가 아니라 등록된 job class의 instance를 전달하세요.
+
+```typescript
+// 정상: instance의 constructor가 등록된 ProcessOrderJob class입니다.
+await queue.enqueue(new ProcessOrderJob(id));
+
+// runtime에서 거부: object literal의 constructor는 `Object`이므로
+// 등록된 JobClass worker를 식별할 수 없습니다.
+await queue.enqueue({ orderId: id });
+
+// 같이 거부: 구조가 동일하더라도 등록되지 않은 class입니다.
+await queue.enqueue(new UnregisteredOrderJob(id));
+```
+
+`enqueue<TJob extends object>(job: TJob)`은 임의의 object를 허용하므로 plain payload도 TypeScript 검사를 통과하고 runtime에서만 실패합니다. Worker 선택 기준은 payload shape, field 이름, job name 문자열이 아니라 constructor identity이므로, class 정의를 복사하거나 다른 module에서 job class를 다시 선언하면 서로 다른 constructor가 되어 등록된 것으로 간주되지 않습니다.
+
+Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object를 입력으로 받습니다. Enqueue 전에 Queue는 job을 JSON으로 직렬화하며, 직렬화 결과는 `null`이나 array가 아닌 JSON object여야 합니다. Worker 측에서는 그 직렬화된 object 위에 등록된 job prototype을 다시 입힙니다. 직렬화는 constructor 조회가 성공한 뒤에 생기므로, 직렬화 가능한 plain object도 payload 검사 전에 거부됩니다.
 
 저수준 provider 조합을 루트 barrel API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다. 저수준 provider helper는 문서화된 루트 barrel 계약에 포함되지 않습니다.
 

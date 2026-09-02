@@ -59,6 +59,8 @@ Import `QueueModule` and inject `QueueLifecycleService` to enqueue jobs.
 
 `QueueModule.forRoot(...)` is the supported root entrypoint for application-level queue registration.
 
+Producers call `enqueue(new JobClass(...))` with a job class instance. There is no `add(name, payload)` producer signature: `enqueue(job)` resolves the target worker from `job.constructor` and the queue/named job comes from that worker's registered `jobName`.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
 import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
@@ -91,7 +93,45 @@ Consumers moving from NestJS queue integrations must replace metadata-driven pro
 2. Replace `@Processor(...)`, `@Process(...)`, or other NestJS/Bull provider metadata with the TC39 standard class decorator `@QueueWorker(JobClass, options?)`. Each worker must expose a callable `handle(job)` method.
 3. Add the decorated worker class to `@Module({ providers: [...] })` as a singleton. Queue scans compiled provider/controller registrations; it does not scan `@Injectable()` metadata, emitted constructor types, or arbitrary imported classes. Declare constructor dependencies explicitly with `@Inject(...)`.
 4. Keep the worker reachable from the queue registration. The default global `QueueModule.forRoot()` can discover singleton workers across the compiled application graph. With `global: false`, discovery is limited to modules that can reach that specific registration through their authored imports/exports, and the matching Redis provider must be reachable from the same module tree.
-5. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and gives graceful close plus any required force-close their own `workerShutdownTimeoutMs` budgets.
+5. Convert producers as well as processors. Replace `@InjectQueue('name')` plus `queue.add('job', payload)` with `@Inject(QueueLifecycleService)` (or the `QUEUE` / `getQueueToken(scope)` facade) and `queue.enqueue(new JobClass(...))`. Queue has no name-and-payload producer signature, and a plain payload object has `Object` as its constructor, so it cannot identify a registered JobClass worker.
+6. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and gives graceful close plus any required force-close their own `workerShutdownTimeoutMs` budgets.
+
+### Producer migration: Bull/BullMQ to Queue
+
+In NestJS Bull or BullMQ, the producer selects both the queue and the named job:
+
+```typescript
+// Before: NestJS Bull/BullMQ
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+
+export class OrdersProducer {
+  constructor(@InjectQueue('orders') private readonly queue: Queue) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.add('process-order', { orderId });
+  }
+}
+```
+
+In fluo, declare and register `ProcessOrderJob` with `@QueueWorker(ProcessOrderJob, { jobName: 'process-order' })`, then enqueue an instance of that exact exported class. The worker registration selects the BullMQ queue and named job; the producer does not supply either string:
+
+```typescript
+// After: fluo
+import { Inject } from '@fluojs/core';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+@Inject(QueueLifecycleService)
+export class OrdersProducer {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.enqueue(new ProcessOrderJob(orderId));
+  }
+}
+```
+
+`ProcessOrderJob` must be the same constructor reference passed to `@QueueWorker`, not a copied declaration or a plain `{ orderId }` object. The latter type-checks because `enqueue<TJob extends object>` accepts objects, but it is rejected at runtime as `No @QueueWorker() registered for job type Object.`.
 
 Before cutover, account for the persistence identity mismatch. NestJS Bull/BullMQ can persist multiple named job values under one `queueName`. fluo instead uses the worker's `jobName` as both the BullMQ queue name and the named job when it creates one queue/worker pair for each job type. Setting `jobName` alone therefore cannot preserve a legacy topology in which multiple named jobs share one `queueName`, and `@fluojs/queue` does not interpret NestJS decorator metadata or transform an existing serialized payload.
 
@@ -187,7 +227,27 @@ for (const record of inspection.records) {
 
 Inspection is read-only and returns valid records in newest-first order. It reads Redis without lifecycle-gating the operation, so inspection does not start workers and remains usable while Queue is `idle` or after worker startup reaches `failed`, as long as the backing Redis client is reachable. Queue does not own the shared Redis client; after `RedisModule` shuts that client down, inspection propagates the backing Redis operation error instead of promising post-shutdown availability. The limit defaults to `100` stored entries and is capped at `1_000`; invalid limits fall back to the default. Malformed stored values are omitted and counted in `malformedRecordCount` for the inspected window, and `payload` remains `unknown` so application code must narrow its own job data. Inspection does not delete, replay, or mutate jobs or dead-letter records.
 
-Queue accepts job objects, including class instances such as `new ProcessOrderJob(id)`. Before enqueueing, Queue JSON-serializes the job and requires the serialized payload to be a non-null, non-array JSON object. On the worker side, Queue rehydrates the registered job prototype over that serialized object.
+### Producer Dispatch Contract
+
+`enqueue(job)` dispatches by the job's exact constructor. Queue looks up `job.constructor` in the workers discovered from `@QueueWorker(JobClass, options?)` and rejects the call with `No @QueueWorker() registered for job type <name>.` when that exact constructor is not registered.
+
+Pass an instance of the registered job class, not a plain payload object:
+
+```typescript
+// Correct: the instance's constructor is the registered ProcessOrderJob class.
+await queue.enqueue(new ProcessOrderJob(id));
+
+// Rejected at runtime: a plain object literal has `Object` as its constructor,
+// so it cannot identify any registered JobClass worker.
+await queue.enqueue({ orderId: id });
+
+// Also rejected: a structurally identical class that was never registered.
+await queue.enqueue(new UnregisteredOrderJob(id));
+```
+
+Because `enqueue<TJob extends object>(job: TJob)` accepts any object, a plain payload satisfies TypeScript and fails only at runtime. Constructor identity — not payload shape, field names, or a job-name string — selects the worker, so a copied class definition or a re-declared job class in another module is a different constructor and is not registered.
+
+Queue accepts job objects, including class instances such as `new ProcessOrderJob(id)`. Before enqueueing, Queue JSON-serializes the job and requires the serialized payload to be a non-null, non-array JSON object. On the worker side, Queue rehydrates the registered job prototype over that serialized object. Serialization runs after the constructor lookup succeeds, so a serializable plain object is still rejected before any payload validation.
 
 Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
 
