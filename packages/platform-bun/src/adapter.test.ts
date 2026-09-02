@@ -68,6 +68,20 @@ function captureError(operation: () => unknown): Error {
   throw new TypeError('Expected the operation to throw.');
 }
 
+async function captureRejectedError(operation: Promise<unknown>): Promise<Error> {
+  try {
+    await operation;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return error;
+    }
+
+    throw new TypeError('Expected the operation to reject with an Error.');
+  }
+
+  throw new TypeError('Expected the operation to reject.');
+}
+
 async function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -414,10 +428,10 @@ describe('@fluojs/platform-bun', () => {
     ];
 
     expect(failures.map((error) => error.message)).toEqual([
-      expect.stringMatching(/idleTimeout/i),
-      expect.stringMatching(/maxBodySize/i),
-      expect.stringMatching(/port/i),
-      expect.stringMatching(/maxBodySize/i),
+      'Invalid idleTimeout value: -1. Expected a non-negative integer.',
+      'Invalid maxBodySize value: 1.5. Expected a non-negative integer.',
+      'Invalid port value: 65536. Expected an integer between 0 and 65535.',
+      'Invalid maxBodySize value: NaN. Expected a non-negative integer.',
     ]);
     expect(failures).toEqual([
       expect.objectContaining({ code: 'BUN_ADAPTER_INVALID_OPTION' }),
@@ -434,15 +448,18 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const failure = runBunApplication(AppModule, {
+    const failure = await captureRejectedError(runBunApplication(AppModule, {
       forceExitTimeoutMs: Number.NaN,
       shutdownSignals: false,
-    });
+    }));
 
-    await expect(failure).rejects.toThrow(/forceExitTimeoutMs/i);
-    await expect(failure).rejects.toMatchObject({
+    expect(failure.constructor).toBe(Error);
+    expect(failure).toMatchObject({
       code: 'BUN_ADAPTER_INVALID_OPTION',
     });
+    expect(failure.message).toBe(
+      'Invalid forceExitTimeoutMs value: NaN. Expected a non-negative integer.',
+    );
   });
 
   it('keeps the Bun adapter runtime import path free of the Node runtime subpath', () => {
@@ -2282,16 +2299,20 @@ describe('@fluojs/platform-bun', () => {
         websocket: {},
       }));
 
+      expect(realtimeFailure.constructor).toBe(Error);
+      expect(websocketFailure.constructor).toBe(Error);
       expect(realtimeFailure).toMatchObject({
         code: 'BUN_ADAPTER_REALTIME_BINDING_LOCKED',
-        message: expect.stringMatching(/before Bun adapter listen\(\) starts/i),
       });
       expect(websocketFailure).toMatchObject({
         code: 'BUN_ADAPTER_REALTIME_BINDING_LOCKED',
-        message: expect.stringMatching(/before Bun adapter listen\(\) starts/i),
       });
-      expect(realtimeFailure.constructor).toBe(Error);
-      expect(websocketFailure.constructor).toBe(Error);
+      expect(realtimeFailure.message).toBe(
+        'Bun websocket binding must be configured before Bun adapter listen() starts the server.',
+      );
+      expect(websocketFailure.message).toBe(
+        'Bun websocket binding must be configured before Bun adapter listen() starts the server.',
+      );
     } finally {
       await adapter.close();
     }
@@ -2352,14 +2373,18 @@ describe('@fluojs/platform-bun', () => {
       await requestAccepted.promise;
       const closeResultPromise = adapter.close();
       void closeResultPromise.catch(() => {});
+      const closeFailurePromise = captureRejectedError(closeResultPromise);
       const closeSettlementPromise = Reflect.get(adapter, 'closeInFlight') as Promise<void>;
 
       await vi.advanceTimersByTimeAsync(10_001);
 
-      await expect(closeResultPromise).rejects.toThrow('Bun adapter shutdown timeout exceeded 10000ms.');
-      await expect(closeResultPromise).rejects.toMatchObject({
+      const closeFailure = await closeFailurePromise;
+
+      expect(closeFailure.constructor).toBe(Error);
+      expect(closeFailure).toMatchObject({
         code: 'BUN_ADAPTER_SHUTDOWN_TIMEOUT',
       });
+      expect(closeFailure.message).toBe('Bun adapter shutdown timeout exceeded 10000ms.');
       expect(adapter.getServer()).toBe(server);
       expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
       expect(Reflect.get(adapter, 'closeInFlight')).toBe(closeSettlementPromise);
@@ -2756,15 +2781,17 @@ describe('@fluojs/platform-bun', () => {
 
     const adapter = createBunAdapter();
 
-    const failure = adapter.listen({ dispatch: async () => undefined });
+    const failure = await captureRejectedError(Promise.resolve(
+      adapter.listen({ dispatch: async () => undefined }),
+    ));
 
-    await expect(failure).rejects.toThrow(
-      'Bun adapter requires globalThis.Bun.serve()',
-    );
-    await expect(failure).rejects.toMatchObject({
+    expect(failure.constructor).toBe(Error);
+    expect(failure).toMatchObject({
       code: 'BUN_ADAPTER_RUNTIME_UNAVAILABLE',
     });
-    await expect(failure).rejects.not.toBeInstanceOf(TypeError);
+    expect(failure.message).toBe(
+      'Bun adapter requires globalThis.Bun.serve(). Run this package inside Bun or provide a Bun-compatible test double.',
+    );
   });
 
   it('reports supported fetch-style websocket hosting for the official Bun binding seam', () => {
