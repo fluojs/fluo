@@ -92,12 +92,18 @@ function observeActiveTransactionBoundaryDrain(prisma: object): Promise<void> {
   });
   const settled = activeTransactionBoundary.settled;
 
-  activeTransactionBoundary.settled = {
-    then(onfulfilled, onrejected) {
-      markDrainStarted();
-      return settled.then(onfulfilled, onrejected);
+  activeTransactionBoundary.settled = new Proxy(settled, {
+    get(target, property) {
+      if (property === 'then') {
+        return (...args: Parameters<PromiseLike<void>['then']>) => {
+          markDrainStarted();
+          return target.then(...args);
+        };
+      }
+
+      return Reflect.get(target, property);
     },
-  };
+  });
 
   return drainStarted;
 }
