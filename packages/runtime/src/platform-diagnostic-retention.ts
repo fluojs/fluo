@@ -18,6 +18,16 @@ export function createPlatformFailureIssue(
   };
 }
 
+export function createPlatformValidationFailureIssue(componentId: string): PlatformDiagnosticIssue {
+  return {
+    code: 'RUNTIME_PLATFORM_VALIDATION_FAILED',
+    componentId,
+    fixHint: 'Return at least one error-severity issue from validate() so the failure cause is diagnosable.',
+    message: 'Platform component reported validation failure without diagnostic issues.',
+    severity: 'error',
+  };
+}
+
 export class PlatformDiagnosticRetention {
   private readonly retained: PlatformDiagnosticIssue[] = [];
   private readonly probeIndexesByComponent = new Map<string, Map<PlatformProbePhase, number>>();
