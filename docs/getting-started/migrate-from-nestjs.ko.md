@@ -609,28 +609,67 @@ Handler discovery와 NestJS `ClientProxy` migration을 하나의 opaque reflecti
 - 각 handler class를 compiled module의 `providers` 또는 `controllers`에 명시적으로 나열합니다. Class import, method decoration, 남아 있는 NestJS provider metadata만으로는 handler가 등록되지 않습니다.
 - 선택한 adapter를 root `MicroservicesModule.forRoot({ transport })`로 등록합니다.
 - `listen()`, `send()`, `emit()`, `close()`를 위해 root `MICROSERVICE`를 `Microservice`로 주입합니다. 이 token은 raw adapter가 아니라 lifecycle facade로 resolve됩니다.
-- 가능하면 transport 구현을 명시적인 subpath에서 import합니다: `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq`. `RedisStreamsMicroserviceTransport`는 문서화된 root-barrel-only 예외로 남습니다.
+- 가능하면 transport 구현을 명시적인 subpath에서 import합니다: `@fluojs/microservices/tcp`, `@fluojs/microservices/redis`, `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq`, `@fluojs/microservices/grpc`, `@fluojs/microservices/mqtt`. 모든 adapter는 root barrel에서도 re-export됩니다. `RedisStreamsMicroserviceTransport`는 dedicated subpath가 없는 유일한 adapter입니다: `@fluojs/microservices/redis-streams` export는 없으므로 root barrel에서 import하세요.
+- NestJS transport enum을 구체적인 fluo adapter class로 매핑하세요. `Transport.REDIS` 같은 enum은 없습니다. 특히 NestJS `Transport.REDIS`는 Redis Pub/Sub이며 `RedisPubSubMicroserviceTransport`(`@fluojs/microservices/redis` subpath)로 매핑되고, durable consumer-group transport는 별개의 `RedisStreamsMicroserviceTransport`입니다. Redis라는 이름을 공유한다는 이유가 아니라 의존하던 delivery 의미에 맞는 것을 선택하세요.
+- Streaming handler는 명시적으로 매핑하세요. NestJS gRPC streaming method는 fluo streaming pattern decorator가 됩니다: server streaming은 `ServerStreamWriter`와 함께 `@ServerStreamPattern`, client streaming은 async-iterable reader 위의 `@ClientStreamPattern`, bidirectional streaming은 `@BidiStreamPattern`을 사용합니다. Streaming은 transport 기능입니다: `serverStream()`, `clientStream()`, `bidiStream()`은 configured transport가 이를 구현하지 않으면 throw하며, 현재는 gRPC adapter만 이를 구현합니다.
+- Event pattern은 서로 다른 모든 matching handler에 fan out됩니다. 겹치는 message handler는 임의의 handler를 호출하지 않고 결정론적으로 실패합니다. 같은 target method, handler kind, pattern을 반복 발견한 경우만 경고 로그와 함께 무시하며, 이 route-level dedupe가 다른 matching handler를 억제하지는 않습니다.
+- `close()`가 시작된 뒤에는 `send()`, `emit()`, `listen()`이 reject됩니다. `serverStream()`, `clientStream()`, `bidiStream()`은 stream을 열기 전에 동기적으로 throw합니다. facade는 shutdown이 시작되면 늦게 도착한 호출을 조용히 버리지 않고 이 terminal ingress gate를 적용합니다.
+- `RedisPubSubMicroserviceTransport`는 event 전용입니다: Redis Pub/Sub에는 request/reply correlation이 없으므로 `send(...)`는 항상 reject된 Promise를 반환합니다. NestJS Redis `ClientProxy.send(...)`는 `emit(...)`으로 옮기거나 Redis Streams, NATS, Kafka, RabbitMQ, gRPC, TCP처럼 request/reply를 지원하는 transport로 옮기세요.
 - `await microservice.send(...)`는 상관관계가 유지된 원격 응답을 기다리며, 원격 오류, abort, timeout, shutdown 시 reject합니다.
-- `await microservice.emit(...)`은 outbound transport publish 연산만 기다립니다. 원격 event handler가 실행되었다는 뜻은 아니며, broker acknowledgement는 caller-provided publish collaborator 자체가 약속하는 범위로 제한됩니다.
+- `await microservice.emit(...)`은 transport별로 다릅니다. broker 및 TCP transport는 publication 또는 write boundary에서 resolve되고 원격 event handler 실행을 증명하지 않지만, gRPC는 remote unary acknowledgement를 받은 뒤에만 resolve됩니다.
 - `await microservice.close()`는 transport listener/subscription teardown과 pending-request cleanup을 기다립니다. NATS, Kafka, RabbitMQ adapter는 caller-provided collaborator에서 detach하지만 해당 client, producer, consumer, publisher, channel, connection을 close/disconnect하지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import {
+  BidiStreamPattern,
+  MessagePattern,
+  MicroservicesModule,
+  ServerStreamPattern,
+  type ServerStreamWriter,
+} from '@fluojs/microservices';
+import { GrpcMicroserviceTransport } from '@fluojs/microservices/grpc';
+
+const transport = new GrpcMicroserviceTransport({
+  protoPath: new URL('./orders.proto', import.meta.url).pathname,
+  packageName: 'orders',
+  url: '0.0.0.0:50051',
+});
 
 class OrdersHandler {
   @MessagePattern('orders.find')
   public findOrder(payload: { orderId: string }) {
     return { id: payload.orderId };
   }
+
+  @ServerStreamPattern('orders.stream')
+  public streamOrders(payload: { customerId: string }, writer: ServerStreamWriter): void {
+    writer.write({ customerId: payload.customerId, order: 1 });
+    writer.end();
+  }
+
+  @BidiStreamPattern('orders.sync')
+  public async syncOrders(
+    reader: AsyncIterable<{ orderId: string }>,
+    writer: ServerStreamWriter,
+  ): Promise<void> {
+    for await (const message of reader) {
+      writer.write({ acknowledged: message.orderId });
+    }
+    writer.end();
+  }
 }
 
 @Module({
-  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4000 }) })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [OrdersHandler],
 })
 class OrdersMicroserviceModule {}
 ```
+
+Streaming은 transport 기능이므로, 마이그레이션한 handler가 `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`을 사용하면 gRPC adapter(`@fluojs/microservices/grpc` 또는 root `GrpcMicroserviceTransport`)를 등록하세요. 필수 `protoPath`, `packageName`, `url` option은 마이그레이션한 pattern을 protobuf service definition 및 endpoint에 연결합니다. TCP 같은 non-streaming transport도 handler는 등록하지만, 이에 대한 stream 요청은 조용히 degrade하지 않고 동기적으로 "does not support ... streaming" 오류를 throw합니다. Bidi handler는 `ServerStreamWriter`를 통해 write해야 하며, 반환한 async iterable은 outbound message로 소비되지 않습니다.
+
+gRPC adapter를 사용하기 전에 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 설치하세요. 오래된 gRPC peer에서 업그레이드한다면 lockfile을 갱신하고 proto-loader dependency chain이 `protobufjs@7.6.5` 이상으로 resolve되는지 확인하세요.
 
 Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할 때까지 inbound consumer callback을 pending 상태로 유지하므로 broker adapter가 acknowledgement 또는 retry를 선택할 수 있습니다. 이 consumer-side boundary는 producer-side `emit()` promise와 분리되어 있습니다. Shutdown 시에는 먼저 `Microservice` facade를 닫고, caller-owned broker resource는 application bootstrap layer에서 close 또는 drain하세요.
 

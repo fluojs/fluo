@@ -24,6 +24,8 @@ NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 one
 
 NestJS metrics migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있으며, [NestJS parity map](./contracts/nestjs-parity-gaps.ko.md)은 구현된 metrics coverage와 migration boundary를 기록한다.
 
+NestJS microservices migration boundary는 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에 문서화되어 있다. Public decorated handler를 compiled module에 명시적으로 등록하고 `MicroservicesModule.forRoot(...)`로 concrete adapter를 구성하며 `MICROSERVICE` lifecycle facade를 주입한다. 이 map은 Redis Pub/Sub event delivery와 Redis Streams request/reply를 구분하고, streaming handler에는 `protoPath`, `packageName`, `url`을 갖춘 `GrpcMicroserviceTransport`를 요구한다.
+
 NestJS OpenAPI migration map은 생성 문서의 세 가지 차이를 보존한다. fluo는 명시적으로 선언한 응답을 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 `ErrorResponse`를 추가하며 legacy client에는 `defaultErrorResponsesPolicy: 'omit'`을 사용한다. 생성된 `operationId`가 legacy name과 달라 client가 이를 요구하면 `documentTransform`을 사용한다. `OpenApiModule.forRootAsync(...)`에서는 이미 등록한 route를 factory-returned path로 다시 구성할 수 없으므로 `documentPath`와 `uiPath`를 `inject`, `useFactory(...)`와 같은 바깥 registration object에 둔다.
 
 ## Hard Constraints
