@@ -50,7 +50,7 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 | `shutdownDrainTimeoutMs` | Configured bounded shutdown-drain window. |
 | `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | Recorded bounded drain timeouts for the event pipeline and saga runtime. |
 
-The valid lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness is `ready` only when both the event pipeline and saga runtime are `ready`; it is `degraded` during discovery and `not-ready` before readiness, during stopping, and after a stop or failure. Health is `healthy` outside transition or failure states, `degraded` during discovery or stopping, and `unhealthy` after a stop or failure. Any nonzero drain-timeout counter takes precedence and reports degraded health. Command and query lifecycle details are additive diagnostics and do not change the existing event/saga readiness or health semantics.
+The valid lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness evaluates event and saga state in this order: both `ready` reports `ready`; otherwise any `discovering` reports `degraded`; otherwise any `stopping` reports `not-ready`; otherwise any `stopped` or `failed` reports `not-ready`; every remaining combination, including `created`, reports `not-ready`. Health evaluates in this order: any nonzero drain-timeout counter reports `degraded`; otherwise any `stopped` or `failed` reports `unhealthy`; otherwise any `discovering` or `stopping` reports `degraded`; every remaining combination reports `healthy`. Command and query lifecycle details are additive diagnostics and do not change the existing event/saga readiness or health semantics.
 
 ## Constraints
 

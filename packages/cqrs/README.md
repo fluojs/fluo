@@ -245,7 +245,7 @@ Every CQRS snapshot has `readiness`, `health`, `ownership`, and `details`. `owne
 | `shutdownDrainTimeoutMs` | The configured bounded shutdown-drain window. |
 | `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | Recorded bounded drain timeouts for the event pipeline and saga runtime. |
 
-The lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness is `ready` only when both the event pipeline and saga runtime are `ready`; it is `degraded` while either is `discovering`, and `not-ready` while either is `created`, `stopping`, `stopped`, or `failed`. Health is `healthy` outside transition or failure states, `degraded` while either runtime is `discovering` or `stopping`, and `unhealthy` when either is `stopped` or `failed`. A nonzero drain-timeout counter takes precedence and reports degraded health. Command and query lifecycle fields remain diagnostic only and do not alter these event/saga readiness or health rules.
+The lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness evaluates event and saga state in this order: both `ready` reports `ready`; otherwise any `discovering` reports `degraded`; otherwise any `stopping` reports `not-ready`; otherwise any `stopped` or `failed` reports `not-ready`; every remaining combination, including `created`, reports `not-ready`. Health evaluates in this order: any nonzero drain-timeout counter reports `degraded`; otherwise any `stopped` or `failed` reports `unhealthy`; otherwise any `discovering` or `stopping` reports `degraded`; every remaining combination reports `healthy`. Command and query lifecycle fields remain diagnostic only and do not alter these event/saga readiness or health rules.
 
 ## Related Packages
 

@@ -50,7 +50,7 @@
 | `shutdownDrainTimeoutMs` | 설정된 bounded shutdown-drain window입니다. |
 | `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | event pipeline과 saga runtime에서 기록된 bounded drain timeout입니다. |
 
-유효한 lifecycle state는 `created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`입니다. Readiness는 event pipeline과 saga runtime이 모두 `ready`일 때만 `ready`, discovery 중에는 `degraded`, readiness 전·stopping 중·stop 또는 failure 뒤에는 `not-ready`입니다. Health는 transition이나 failure state 밖에서는 `healthy`, discovery 또는 stopping 중에는 `degraded`, stop 또는 failure 뒤에는 `unhealthy`입니다. 0이 아닌 drain-timeout counter는 이 판단보다 우선해 degraded health를 보고합니다. Command와 Query lifecycle detail은 additive diagnostic이며 기존 event/saga readiness 또는 health semantic을 바꾸지 않습니다.
+유효한 lifecycle state는 `created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`입니다. Readiness는 event와 saga state를 다음 순서로 평가합니다. 둘 다 `ready`이면 `ready`, 그 외에는 하나라도 `discovering`이면 `degraded`, 그 외에는 하나라도 `stopping`이면 `not-ready`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `not-ready`, `created`를 포함한 나머지 조합은 `not-ready`입니다. Health는 다음 순서로 평가합니다. 0이 아닌 drain-timeout counter가 하나라도 있으면 `degraded`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `unhealthy`, 그 외에는 하나라도 `discovering` 또는 `stopping`이면 `degraded`, 나머지 조합은 `healthy`입니다. Command와 Query lifecycle detail은 additive diagnostic이며 기존 event/saga readiness 또는 health semantic을 바꾸지 않습니다.
 
 ## 제약 사항
 
