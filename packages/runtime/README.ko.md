@@ -458,6 +458,15 @@ consumer는 rejection 또는 fallback을 명시적으로 처리하고 필요한 
 
 더 저수준의 Node compression internals는 공개 `@fluojs/runtime/node` 계약이 아니라 `@fluojs/runtime/internal-node` seam 뒤에 둡니다.
 
+### Runtime cleanup callback
+
+내부 `RUNTIME_CLEANUP_REGISTRATION` token을 받는 provider는 `void` 또는 `Promise<void>`를
+반환하는 cleanup callback을 등록할 수 있습니다. Runtime close와 bootstrap-failure cleanup은
+registration 순서대로 callback을 실행하고, 이후 cleanup phase로 넘어가기 전에 각각을 await합니다.
+실패해도 이후 callback은 계속 실행합니다. `close()`는 cleanup failure를 aggregate하고 완료되지 않은
+phase를 명시적 retry 대상으로 남기며, bootstrap은 원래 failure를 보존하고 cleanup failure를
+`ApplicationLogger`로 보고합니다.
+
 ## 관련 패키지
 
 - [@fluojs/core](../core): 핵심 데코레이터 및 메타데이터 시스템.

@@ -3,6 +3,14 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+## Runtime cleanup settlement
+
+`RUNTIME_CLEANUP_REGISTRATION` callback은 동기 또는 비동기일 수 있습니다. Runtime close와
+bootstrap-failure cleanup은 각 registration을 순서대로 await하고 failure 뒤에도 계속 실행하며,
+cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 자세한 내용은
+[Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.ko.md)와
+[`@fluojs/runtime` README](../packages/runtime/README.ko.md)를 참고하세요.
+
 ## Cloudflare Worker close 소유권
 
 `@fluojs/platform-cloudflare-workers` lifecycle contract는 package README, [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md), [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.ko.md)에 문서화합니다. Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로 애플리케이션이 close trigger를 소유합니다. `worker.fetch` 밖의 trigger는 `await worker.close()`를 직접 호출할 수 있지만, 그 fetch 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 이후의 `fetch(...)`는 새 application을 bootstrap하고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.

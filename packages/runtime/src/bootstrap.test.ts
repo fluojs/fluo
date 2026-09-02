@@ -1068,9 +1068,15 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
-  it('preserves the original application bootstrap error when a runtime cleanup callback fails', async () => {
+  it('awaits runtime cleanup failure before preserving the original application bootstrap error', async () => {
     const bootstrapFailure = new Error('application bootstrap failed');
     const cleanupFailure = new Error('application cleanup failed');
+    const cleanupCanFinish = createDeferred<void>();
+    const cleanupStarted = createDeferred<void>();
+    const cleanupFailurePromise = cleanupCanFinish.promise.then(() => {
+      throw cleanupFailure;
+    });
+    void cleanupFailurePromise.catch(() => undefined);
     const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
 
     @Inject(RUNTIME_CLEANUP_REGISTRATION)
@@ -1079,7 +1085,8 @@ describe('FluoFactory.createApplicationContext', () => {
 
       onModuleInit() {
         this.registerCleanup(() => {
-          throw cleanupFailure;
+          cleanupStarted.resolve();
+          return cleanupFailurePromise;
         });
       }
     }
@@ -1095,7 +1102,31 @@ describe('FluoFactory.createApplicationContext', () => {
       providers: [CleanupRegistrant, FailingBootstrapHook],
     });
 
-    await expect(bootstrapApplication({ logger, rootModule: AppModule })).rejects.toBe(bootstrapFailure);
+    let bootstrapSettled = false;
+    const bootstrapResult = bootstrapApplication({ logger, rootModule: AppModule });
+    const observedBootstrapResult = bootstrapResult.then(
+      () => {
+        bootstrapSettled = true;
+        return undefined;
+      },
+      (error: unknown) => {
+        bootstrapSettled = true;
+        return error;
+      },
+    );
+
+    try {
+      await cleanupStarted.promise;
+      await Promise.resolve();
+      expect(bootstrapSettled).toBe(false);
+
+      cleanupCanFinish.resolve();
+      expect(await observedBootstrapResult).toBe(bootstrapFailure);
+    } finally {
+      cleanupCanFinish.resolve();
+      await observedBootstrapResult;
+    }
+
     expect(logger.error).toHaveBeenCalledWith(
       'Failed to clean up after application bootstrap failure.',
       cleanupFailure,

@@ -574,8 +574,18 @@ describe('bootstrapApplication', () => {
     ]);
   });
 
-  it('runs internally registered runtime cleanup callbacks on close', async () => {
+  it('awaits runtime cleanup callbacks before later shutdown phases and retries failed cleanup', async () => {
     const events: string[] = [];
+    const cleanupCanFinish = createDeferred<void>();
+    const cleanupStarted = createDeferred<void>();
+    const cleanupFailure = new Error('runtime cleanup failed');
+    let failCleanup = true;
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        events.push('adapter:close');
+      },
+      async listen() {},
+    };
 
     @Inject(RUNTIME_CLEANUP_REGISTRATION)
     class RuntimeCleanupProbe implements OnModuleInit {
@@ -583,23 +593,154 @@ describe('bootstrapApplication', () => {
 
       onModuleInit() {
         this.registerCleanup(() => {
-          events.push('runtime:cleanup');
+          events.push('runtime:waiting:start');
+          cleanupStarted.resolve();
+
+          return cleanupCanFinish.promise.then(() => {
+            events.push('runtime:waiting:end');
+          });
         });
+        this.registerCleanup(() => {
+          events.push('runtime:failing');
+
+          if (failCleanup) {
+            failCleanup = false;
+            throw cleanupFailure;
+          }
+        });
+        this.registerCleanup(() => {
+          events.push('runtime:after-failure');
+        });
+      }
+    }
+
+    class AppService {
+      onApplicationShutdown() {
+        events.push('application:shutdown');
+      }
+
+      onModuleDestroy() {
+        events.push('module:destroy');
       }
     }
 
     class AppModule {}
     defineModule(AppModule, {
-      providers: [RuntimeCleanupProbe],
+      providers: [RuntimeCleanupProbe, AppService],
     });
 
     const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
       rootModule: AppModule,
     }));
 
-    await app.close('SIGTERM');
+    const closePromise = app.close('SIGTERM');
 
-    expect(events).toEqual(['runtime:cleanup']);
+    try {
+      await cleanupStarted.promise;
+      expect(events).toEqual(['runtime:waiting:start']);
+
+      cleanupCanFinish.resolve();
+
+      await expect(closePromise).rejects.toBe(cleanupFailure);
+      expect(events).toEqual([
+        'runtime:waiting:start',
+        'runtime:waiting:end',
+        'runtime:failing',
+        'runtime:after-failure',
+        'module:destroy',
+        'application:shutdown',
+        'adapter:close',
+      ]);
+
+      await expect(app.close('SIGTERM')).resolves.toBeUndefined();
+      expect(events).toEqual([
+        'runtime:waiting:start',
+        'runtime:waiting:end',
+        'runtime:failing',
+        'runtime:after-failure',
+        'module:destroy',
+        'application:shutdown',
+        'adapter:close',
+        'runtime:waiting:start',
+        'runtime:waiting:end',
+        'runtime:failing',
+        'runtime:after-failure',
+      ]);
+    } finally {
+      cleanupCanFinish.resolve();
+      await closePromise.catch(() => undefined);
+    }
+  });
+
+  it('aggregates runtime cleanup failures while continuing later callbacks', async () => {
+    const events: string[] = [];
+    const firstFailure = new Error('first runtime cleanup failed');
+    const secondFailure = new Error('second runtime cleanup failed');
+    const secondFailurePromise = Promise.reject(secondFailure);
+    void secondFailurePromise.catch(() => undefined);
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        events.push('adapter:close');
+      },
+      async listen() {},
+    };
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class RuntimeCleanupProbe implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          events.push('runtime:first-failure');
+          throw firstFailure;
+        });
+        this.registerCleanup(() => {
+          events.push('runtime:second-failure');
+          return secondFailurePromise;
+        });
+        this.registerCleanup(() => {
+          events.push('runtime:after-failures');
+        });
+      }
+    }
+
+    class AppService {
+      onApplicationShutdown() {
+        events.push('application:shutdown');
+      }
+
+      onModuleDestroy() {
+        events.push('module:destroy');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [RuntimeCleanupProbe, AppService],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const closeError = await app.close('SIGTERM').then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(closeError).toBeInstanceOf(AggregateError);
+    if (closeError instanceof AggregateError) {
+      expect(closeError.errors).toEqual([firstFailure, secondFailure]);
+    }
+    expect(events).toEqual([
+      'runtime:first-failure',
+      'runtime:second-failure',
+      'runtime:after-failures',
+      'module:destroy',
+      'application:shutdown',
+      'adapter:close',
+    ]);
   });
 
   it('retries only a failed shutdown hook without repeating completed adapter cleanup', async () => {

@@ -118,7 +118,7 @@ class FluoApplicationContext implements ApplicationContext {
     readonly rootModule: ModuleType,
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
-    private readonly runtimeCleanup: Array<() => void>,
+    private readonly runtimeCleanup: Array<() => MaybePromise<void>>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -427,6 +427,12 @@ class FluoApplication implements Application {
 이 구조 때문에 application shell은 context 기능을 포함하면서도 HTTP adapter와 dispatcher state를 관리합니다. context와 같은 baseline을 쓰지만, 같은 contract는 아닙니다.
 
 `ApplicationState`는 `path:packages/runtime/src/types.ts`에 선언되어 있습니다. 허용 값은 계속 `'bootstrapped'`, `'ready'`, `'closed'`입니다. `closeStarted`는 새 public state가 아니라 private admission gate입니다. Pending 또는 failed teardown은 이전 public state를 유지하지만 일반 application operation은 shutdown 시작부터 reject됩니다. Public state는 teardown이 성공적으로 완료된 뒤에만 `closed`가 됩니다.
+
+Runtime-owned cleanup callback은 `void` 또는 `Promise<void>`를 받을 수 있습니다. close와
+bootstrap-failure cleanup은 lifecycle hook, adapter, container disposal로 넘어가기 전에 registration을
+순서대로 await합니다. callback failure가 나도 이후 registration은 건너뛰지 않습니다. close는 failure를
+aggregate하여 완료되지 않은 phase를 명시적으로 retry하게 하고, bootstrap은 원래 error를 보존하며
+cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:437-443`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 

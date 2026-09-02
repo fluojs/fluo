@@ -118,7 +118,7 @@ class FluoApplicationContext implements ApplicationContext {
     readonly rootModule: ModuleType,
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
-    private readonly runtimeCleanup: Array<() => void>,
+    private readonly runtimeCleanup: Array<() => MaybePromise<void>>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -427,6 +427,12 @@ class FluoApplication implements Application {
 Because of this structure, the application shell includes context functionality while also managing HTTP adapter and dispatcher state. It uses the same baseline as a context, but it is not the same contract.
 
 `ApplicationState` is declared in `path:packages/runtime/src/types.ts`. The allowed values remain `'bootstrapped'`, `'ready'`, and `'closed'`. `closeStarted` is a private admission gate rather than a new public state: pending or failed teardown preserves the previous public state, while normal application operations reject from shutdown start. The public state becomes `closed` only after teardown completes successfully.
+
+Runtime-owned cleanup callbacks accept `void` or `Promise<void>`. Close and bootstrap-failure
+cleanup await registrations in order before moving to lifecycle hooks, adapters, or container
+disposal. A callback failure does not skip later registrations; close aggregates it for explicit
+retry of that incomplete phase, while bootstrap preserves its original error and reports cleanup
+failures through `ApplicationLogger`.
 
 The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:437-443`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
 

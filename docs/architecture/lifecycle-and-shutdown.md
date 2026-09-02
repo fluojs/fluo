@@ -51,6 +51,14 @@ These guarantees separate bootstrap completion from listener binding. A compiled
 
 The runtime exposes shutdown hooks as explicit contracts only. Signal registration is owned by the surrounding host or adapter helper, not by the universal runtime surface.
 
+## Runtime Cleanup Settlement
+
+Runtime-owned cleanup registrations accept synchronous or asynchronous callbacks. Close and
+bootstrap-failure cleanup execute registrations in order and await every callback before the next
+cleanup phase. A failure does not skip later registrations: close aggregates failures and leaves
+only its incomplete cleanup phase retryable, while bootstrap keeps the original bootstrap error and
+reports cleanup failures through `ApplicationLogger`.
+
 ## Related Docs
 
 - [Package Architecture Reference](./architecture-overview.md)
