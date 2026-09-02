@@ -8,6 +8,8 @@ import {
   isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
+  isReturnStatement,
+  isThrowStatement,
   ScriptKind,
   ScriptTarget,
 } from 'typescript';
@@ -109,7 +111,10 @@ function hasDirectMainCall(sourceText: string, calleeName: string): boolean {
   return source.statements.some((statement) =>
     isFunctionDeclaration(statement) &&
     statement.name?.text === 'main' &&
-    statement.body?.statements.some((mainStatement) =>
+    statement.body?.statements.some((mainStatement, index, mainStatements) =>
+      !mainStatements.slice(0, index).some(
+        (previousStatement) => isReturnStatement(previousStatement) || isThrowStatement(previousStatement),
+      ) &&
       isExpressionStatement(mainStatement) &&
       isCallExpression(mainStatement.expression) &&
       isIdentifier(mainStatement.expression.expression) &&
@@ -816,8 +821,17 @@ describe('enforceContractCompanionUpdates', () => {
   });
 
   it.each([
+    'export function main() { /* enforceStudioReportBootstrapFailureCompanions([]); */ }',
     'export function main() { if (false) { enforceStudioReportBootstrapFailureCompanions([]); } }',
     'export function main() { const deferred = () => enforceStudioReportBootstrapFailureCompanions([]); }',
+    'export function main() { function deferred() { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { switch (kind) { default: enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { for (;;) { enforceStudioReportBootstrapFailureCompanions([]); break; } }',
+    'export function main() { while (true) { enforceStudioReportBootstrapFailureCompanions([]); break; } }',
+    'export function main() { try { enforceStudioReportBootstrapFailureCompanions([]); } catch {} }',
+    'export function main() { try {} finally { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { return; enforceStudioReportBootstrapFailureCompanions([]); }',
+    'export function main() { throw new Error(); enforceStudioReportBootstrapFailureCompanions([]); }',
   ])('rejects a nested or unreachable #3338 companion-call decoy', (source) => {
     expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(false);
   });
