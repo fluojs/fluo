@@ -1,0 +1,10 @@
+{
+  "name": "@fluojs/platform-deno-native-test",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fluojs/http": "file:../../http",
+    "@fluojs/platform-deno": "file:..",
+    "@fluojs/runtime": "file:../../runtime"
+  }
+}

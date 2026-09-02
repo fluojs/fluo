@@ -153,6 +153,8 @@ Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, 단일 byte-range status/header/body semantic, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
+Deno 2 smoke lane은 public `npm:@fluojs/platform-deno` root import를 검사하고 built adapter closure를 네이티브로 실행합니다. Listener 없이 host-owned `createDenoFetchHandler(...)` request를 dispatch한 뒤, port `0`과 `shutdownSignals: false`로 `runDenoApplication(...)`을 시작하고 실제 route를 fetch한 다음 애플리케이션을 닫습니다. 이 managed-listener test에서는 signal ownership을 의도적으로 비활성화하며, signal registration은 별도의 package-local contract suite에서 다룹니다.
+
 ## 공개 API 개요
 
 - `createDenoAdapter(options)`: Deno HTTP 어댑터를 위한 팩토리이며, 직접 생성과 같은 validation 및 normalization을 공유합니다.
