@@ -137,11 +137,13 @@ FluoBlog와 같은 실제 애플리케이션은 단순한 데이터베이스 그
 
 ```typescript
 const report = await this.health.check();
-await this.databaseIndicator.check('database');
-await this.cacheIndicator.check('cache');
-await this.externalApiIndicator.check('external-api');
-await this.memoryIndicator.check('memory_heap');
-return report;
+
+return {
+  database: report.details.database,
+  cache: report.details.cache,
+  externalApi: report.details['external-api'],
+  memoryHeap: report.details.memory_heap,
+};
 ```
 
 ### 18.4.1 Strategic Monitoring
@@ -283,9 +285,9 @@ Fluo의 디버거는 종료 단계에서 이러한 "누수(Leakage)" 문제를 �
 이 시퀀스는 현대적인 백엔드 운영의 표준입니다. 이 장의 도구들을 프로젝트에 맞게 적용하면 Fluo로 구축하는 서비스에서도 이 수준의 신뢰성을 목표로 삼을 수 있습니다.
 
 ### 18.6.7 Graceful Shutdown and Global State
-전 세계적으로 분산된 시스템에서 우아한 종료 프로세스는 **글로벌 상태(Global State)**도 고려해야 합니다. 만약 사용자를 가장 가까운 건강한 리전으로 안내하는 글로벌 트래픽 매니저를 사용하고 있다면, 개별 인스턴스를 종료하기 전에 해당 리전이 "드레이닝(draining, 트래픽 유입 차단)" 상태로 표시되도록 보장해야 합니다. Terminus는 이러한 글로벌 컨트롤 플레인(Control Planes)과 통합될 수 있어, 로컬 정리 시퀀스를 시작하기 전에 글로벌 레벨에서 종료 의사를 알릴 수 있습니다.
+전 세계적으로 분산된 시스템에서는 우아한 종료에 **글로벌 컨트롤 플레인(Global Control Plane)**이 필요할 수 있습니다. 트래픽 매니저가 사용자를 가장 가까운 정상 리전으로 보낸다면, 개별 인스턴스를 종료하기 전에 배포 시스템이 해당 리전을 draining 상태로 표시해야 합니다. Terminus는 글로벌 컨트롤 플레인을 운영하거나, 여기에 종료 의사를 알리거나, 이를 조율하지 않습니다. 각 애플리케이션의 로컬 health와 readiness 상태만 노출합니다.
 
-이러한 리전 간의 조율된 종료는 사용자가 점검 중인 데이터 센터로 안내되어 "오래된 리전(Stale Region)" 에러를 경험하는 것을 방지합니다. 우아한 종료의 개념을 전체 글로벌 인프라로 확장하면 리전 전환 중에도 신뢰성과 사용자 경험을 더 안정적으로 유지할 수 있습니다.
+리전 간 draining, 트래픽 매니저 갱신, rollout 순서는 배포 플랫폼에서 소유하세요. 이 분리는 Terminus가 글로벌 종료 조율을 소유한다고 주장하지 않으면서 점검 중인 데이터 센터로 사용자가 라우팅되는 문제를 방지합니다.
 
 ### 18.6.8 Automated Post-Mortem and Feedback Loops
 계획된 배포가 아닌 실패로 인해 애플리케이션이 종료될 때, **자동화된 사후 분석(Automated Post-Mortem)**은 보통 애플리케이션 레벨 또는 플랫폼 레벨 workflow입니다. Terminus는 현재 health report와 readiness signal을 제공할 수 있지만, post-mortem hook이나 webhook automation surface를 제공하지는 않습니다. 이러한 workflow가 필요하다면 자체 shutdown/error handling code에서 health report를 캡처하고, 생성한 snapshot을 중수 편에서 다룰 Slack 또는 Discord 모듈을 통해 전송하세요.

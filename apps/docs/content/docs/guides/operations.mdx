@@ -152,7 +152,7 @@ TerminusModule.forRoot({
 });
 ```
 
-`/health` returns HTTP `503` if any health indicator fails. `/ready` returns HTTP `503` if any readiness check fails. Responses include structured `status`, `contributors`, `info`, `error`, and `details` fields.
+`/health` returns HTTP `503` if any health indicator fails and carries the aggregated `status`, `contributors`, `info`, `error`, and `details` report. `/ready` is a separate binary readiness route: it returns `{ status: 'ready' }` with HTTP `200`, or `{ status: 'starting' }` / `{ status: 'unavailable' }` with HTTP `503`; it does not return the `/health` aggregation fields.
 
 ## Diagnostics and Studio
 

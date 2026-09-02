@@ -152,7 +152,7 @@ TerminusModule.forRoot({
 });
 ```
 
-`/health`는 health indicator가 하나라도 실패하면 HTTP `503`을 반환합니다. `/ready`는 readiness check가 실패하면 HTTP `503`을 반환합니다. Response에는 structured `status`, `contributors`, `info`, `error`, `details` field가 포함됩니다.
+`/health`는 health indicator가 하나라도 실패하면 HTTP `503`을 반환하며, 집계된 `status`, `contributors`, `info`, `error`, `details` 보고서를 담습니다. `/ready`는 별도의 binary readiness route입니다. HTTP `200`과 함께 `{ status: 'ready' }`를 반환하거나, HTTP `503`과 함께 `{ status: 'starting' }` 또는 `{ status: 'unavailable' }`를 반환하며 `/health`의 집계 field는 반환하지 않습니다.
 
 ## Diagnostics and Studio
 
