@@ -225,13 +225,14 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 
 - `@fluojs/microservices/tcp`
 - `@fluojs/microservices/redis` (Redis Pub/Sub 트랜스포트)
+- `@fluojs/microservices/redis-streams`
 - `@fluojs/microservices/nats`
 - `@fluojs/microservices/kafka`
 - `@fluojs/microservices/rabbitmq`
 - `@fluojs/microservices/grpc`
 - `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport`는 현재 루트 배럴에서만 지원하며, `@fluojs/microservices/redis-streams` 전용 export는 없습니다.
+`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`는 루트 배럴과 전용 `@fluojs/microservices/redis-streams` 서브패스에서 모두 사용할 수 있습니다.
 
 정식 transport 학습 자료는 [TCP](../../book/intermediate/ch02-tcp.ko.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.ko.md), [gRPC](../../book/intermediate/ch08-grpc.ko.md) 책 장에 있으며, 이 README는 패키지 수준 동작 계약 기준으로 남습니다.
 

@@ -36,6 +36,10 @@ describe('@fluojs/microservices transport subpath exports', () => {
         import: './dist/transports/redis-transport.js',
         types: './dist/transports/redis-transport.d.ts',
       },
+      './redis-streams': {
+        import: './dist/transports/redis-streams-transport.js',
+        types: './dist/transports/redis-streams-transport.d.ts',
+      },
       './rabbitmq': {
         import: './dist/transports/rabbitmq-transport.js',
         types: './dist/transports/rabbitmq-transport.d.ts',
