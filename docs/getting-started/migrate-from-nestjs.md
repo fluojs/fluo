@@ -613,6 +613,53 @@ export class CheckoutController {
 
 Do not migrate every NestJS interceptor into this shape. Request-wide transactions can keep locks open through unrelated controller work; prefer a focused service `@Transaction()` whenever it represents the actual business unit of work.
 
+### Prisma Async Registration and Rollback Guarantees
+
+<!-- fluo-prisma-contract: injected-factory-only, top-level-name-global, global-export-visibility, bootstrap-provider-visibility, no-nest-dynamic-options, strict-transaction-rollback -->
+
+`PrismaModule.forRootAsync(...)` supports only the injected `inject` / `useFactory` factory strategy.
+Its top-level `name` and `global` options remain supported.
+List dependencies in `inject` and return the final Prisma options from `useFactory`.
+Register each injected dependency through a surface visible to the async Prisma module before its options provider resolves:
+
+```typescript
+import { Global, Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+class DatabaseConfig {
+  readonly url = 'postgresql://localhost/app';
+}
+
+@Global()
+@Module({
+  providers: [DatabaseConfig],
+  exports: [DatabaseConfig],
+})
+class DatabaseConfigModule {}
+
+@Module({
+  imports: [
+    DatabaseConfigModule,
+    PrismaModule.forRootAsync({
+      inject: [DatabaseConfig],
+      useFactory: (config: DatabaseConfig) => ({
+        client: new PrismaClient({ datasources: { db: { url: config.url } } }),
+        strictTransactions: true,
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Registering `DatabaseConfig` only in the importing `AppModule`'s `providers` is insufficient: the async child module can see only its local tokens, exports from its own imports, global module exports, and bootstrap runtime providers.
+Export injected dependencies from an imported `@Global()` module as above, or supply them as bootstrap runtime providers.
+
+NestJS `imports`, `useClass`, and `useExisting` are not `forRootAsync(...)` compatibility fields. Resolve their configuration, class construction, and provider aliases at application bootstrap or through explicit fluo provider registration, then pass the ready dependencies through `inject`.
+
+Set `strictTransactions: true` whenever migrated business work requires rollback atomicity. With its default `false` value, fluo runs the callback directly when the registered client does not expose interactive `$transaction(...)`, so `@Transaction()` and `requestTransaction(...)` do not provide rollback in that case.
+
 ### GraphQL Resolver Migration
 
 GraphQL migration keeps schema and discovery wiring explicit. Register every resolver class as a provider or controller in an authored module so it is discoverable from the compiled module graph. `GraphqlModule.forRoot({ resolvers: [...] })` does not register those classes; when supplied, `resolvers` filters discovery to that allowlist. Omit `resolvers` or pass an empty list to discover every decorated resolver class already registered as a provider or controller. Neither TypeScript return types nor NestJS design metadata register providers or build output types.

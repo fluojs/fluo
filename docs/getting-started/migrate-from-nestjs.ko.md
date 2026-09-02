@@ -610,6 +610,53 @@ export class CheckoutController {
 
 모든 NestJS interceptor를 이 형태로 옮기지 마세요. Request-wide transaction은 관련 없는 controller 작업 동안에도 lock을 유지할 수 있으므로, 실제 비즈니스 작업 단위를 나타낼 수 있다면 집중된 서비스 `@Transaction()`을 우선 사용하세요.
 
+### Prisma 비동기 등록과 롤백 보장
+
+<!-- fluo-prisma-contract: injected-factory-only, top-level-name-global, global-export-visibility, bootstrap-provider-visibility, no-nest-dynamic-options, strict-transaction-rollback -->
+
+`PrismaModule.forRootAsync(...)`는 injected `inject` / `useFactory` factory strategy만 지원합니다.
+Top-level `name`, `global` option은 계속 지원합니다.
+의존성은 `inject`에 나열하고 `useFactory`에서 최종 Prisma option을 반환하세요.
+Prisma option provider가 resolve되기 전에 주입할 각 의존성을 async Prisma module에서 볼 수 있는 surface를 통해 등록합니다.
+
+```typescript
+import { Global, Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+class DatabaseConfig {
+  readonly url = 'postgresql://localhost/app';
+}
+
+@Global()
+@Module({
+  providers: [DatabaseConfig],
+  exports: [DatabaseConfig],
+})
+class DatabaseConfigModule {}
+
+@Module({
+  imports: [
+    DatabaseConfigModule,
+    PrismaModule.forRootAsync({
+      inject: [DatabaseConfig],
+      useFactory: (config: DatabaseConfig) => ({
+        client: new PrismaClient({ datasources: { db: { url: config.url } } }),
+        strictTransactions: true,
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Import하는 `AppModule`의 `providers`에만 `DatabaseConfig`를 등록하는 것으로는 충분하지 않습니다. Async child module은 자신의 local token, 자신의 import가 export한 token, global module export, bootstrap runtime provider만 볼 수 있습니다.
+위 예시처럼 주입 의존성을 import한 `@Global()` module에서 export하거나 bootstrap runtime provider로 제공하세요.
+
+NestJS의 `imports`, `useClass`, `useExisting`은 `forRootAsync(...)` 호환 field가 아닙니다. 해당 configuration, class construction, provider alias는 application bootstrap 또는 명시적인 fluo provider registration에서 해석하고, 준비된 의존성을 `inject`로 전달하세요.
+
+마이그레이션한 비즈니스 작업에 rollback 원자성이 필요하면 항상 `strictTransactions: true`를 설정하세요. 기본값 `false`에서는 등록한 client가 interactive `$transaction(...)`을 노출하지 않을 경우 fluo가 callback을 직접 실행하므로, 그 경우 `@Transaction()`과 `requestTransaction(...)`은 rollback을 보장하지 않습니다.
+
 ### GraphQL Resolver Migration
 
 GraphQL migration에서는 schema와 discovery wiring을 명시적으로 유지한다. 모든 resolver class를 authored module의 provider 또는 controller로 등록해 compiled module graph에서 discovery할 수 있게 한다. `GraphqlModule.forRoot({ resolvers: [...] })`는 이 class들을 등록하지 않으며, `resolvers`를 전달하면 해당 allowlist로 discovery를 제한한다. `resolvers`를 생략하거나 빈 list를 전달하면 provider 또는 controller로 이미 등록된 decorated resolver class를 모두 discovery한다. TypeScript 반환 타입이나 NestJS design metadata가 provider를 등록하거나 output type을 만들지 않는다.
