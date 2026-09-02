@@ -180,7 +180,7 @@ Saga, command handler, query handler, event handler 안에서 다시 CQRS `execu
 
 Event class는 payload state를 clone 가능하고 enumerable하게 유지해야 합니다. 문자열 key와 symbol key를 가진 enumerable payload field는 shared core clone fallback으로 보존되지만, 열린 socket, function, process-local handle처럼 의도적으로 clone할 수 없는 resource는 발행 전에 ID나 다른 serializable boundary로 표현해야 합니다.
 
-CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
+CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Discovery는 direct class와 `useClass` provider, class token이 CQRS metadata를 가진 `useFactory` provider, instance constructor가 CQRS metadata를 가진 `useValue` provider를 지원합니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
 
 ### 심볼 토큰
 
