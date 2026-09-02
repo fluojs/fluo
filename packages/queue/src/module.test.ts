@@ -772,6 +772,48 @@ describe('@fluojs/queue', () => {
     ).rejects.toThrow('Duplicate @fluojs/queue scope "jobs" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.');
   });
 
+  it('ignores unrelated application values that structurally resemble queue registration metadata', async () => {
+    class LookalikeModuleType {}
+
+    const LOOKALIKE_TOKEN = Symbol('app.lookalike-queue-context');
+
+    class LookalikeContextModule {}
+    defineModule(LookalikeContextModule, {
+      providers: [
+        {
+          provide: LOOKALIKE_TOKEN,
+          useValue: {
+            moduleType: LookalikeModuleType,
+            options: {},
+            registrationTokens: [],
+            scope: 'jobs',
+          },
+        },
+      ],
+    });
+
+    class QueueFeatureModule {}
+    defineModule(QueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false, scope: 'jobs' })],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [LookalikeContextModule, QueueFeatureModule],
+    });
+
+    const redis = new MockRedisClient();
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await expect(app.container.resolve(getQueueToken('jobs'))).resolves.toBeDefined();
+
+    await app.close();
+  });
+
   it('keeps distinct explicit queue scopes isolated through public scoped token helpers', async () => {
     class FirstScopedJob {
       constructor(public readonly id: string) {}
