@@ -3,6 +3,7 @@ import { Inject } from '@fluojs/core';
 import {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
+  NotificationQueueResultIntegrityError,
 } from './errors.js';
 import {
   createNotificationDispatchSnapshot,
@@ -53,6 +54,7 @@ export class NotificationsService implements Notifications {
    * @returns A normalized dispatch result describing direct vs queued delivery.
    * @throws {NotificationChannelNotFoundError} When no registered channel matches `notification.channel`.
    * @throws {NotificationQueueNotConfiguredError} When queue delivery is requested without a queue adapter.
+   * @throws {NotificationQueueResultIntegrityError} When a queue adapter returns an invalid delivery identifier.
    *
    * @example
    * ```ts
@@ -93,10 +95,10 @@ export class NotificationsService implements Notifications {
 
       const job = this.createQueueJob(dispatchNotification);
       try {
-        const deliveryId = await this.requireQueueAdapter().enqueue(job);
+        const deliveryId = validateQueueDeliveryId(await this.requireQueueAdapter().enqueue(job));
         const result: NotificationDispatchResult = {
           channel: dispatchNotification.channel,
-          deliveryId: this.normalizeDeliveryId(deliveryId, dispatchNotification),
+          deliveryId,
           queued: true,
           status: 'queued',
         };
@@ -156,6 +158,7 @@ export class NotificationsService implements Notifications {
    * @param options Optional queue preference and tolerant error-handling controls.
    * @returns A batch summary containing successes and captured failures.
    * @throws {NotificationQueueNotConfiguredError} When queue-backed bulk delivery is requested without a queue adapter.
+   * @throws {NotificationQueueResultIntegrityError} When a queue adapter returns invalid delivery identifiers.
    */
   async dispatchMany<TRequest extends NotificationDispatchRequest>(
     notifications: readonly TRequest[],
@@ -477,7 +480,7 @@ export class NotificationsService implements Notifications {
       }
 
       try {
-        const deliveryId = this.normalizeDeliveryId(await queue.enqueue(job), notification);
+        const deliveryId = validateQueueDeliveryId(await queue.enqueue(job));
         const result: NotificationDispatchResult = {
           channel: notification.channel,
           deliveryId,
@@ -522,24 +525,24 @@ export class NotificationsService implements Notifications {
 
 function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): readonly string[] {
   if (!Array.isArray(value)) {
-    throw createQueueBatchResultIntegrityError(`expected ${expectedCount} queue ids but received a non-array result`);
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received a non-array result`);
   }
 
   if (value.length !== expectedCount) {
-    throw createQueueBatchResultIntegrityError(`expected ${expectedCount} queue ids but received ${value.length}`);
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received ${value.length}`);
   }
 
   const ids: string[] = [];
 
   for (let index = 0; index < value.length; index += 1) {
     if (!Object.hasOwn(value, index)) {
-      throw createQueueBatchResultIntegrityError(`queue id at index ${index} must be present`);
+      throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be present`);
     }
 
     const entry = value[index];
 
     if (typeof entry !== 'string' || entry.length === 0) {
-      throw createQueueBatchResultIntegrityError(`queue id at index ${index} must be a non-empty string`);
+      throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be a non-empty string`);
     }
 
     ids.push(entry);
@@ -548,11 +551,19 @@ function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): r
   return ids;
 }
 
-function createQueueBatchResultIntegrityError(message: string): Error {
-  const error = new Error(`Notifications queue adapter returned an invalid enqueueMany() result: ${message}.`);
-  error.name = 'NotificationQueueResultIntegrityError';
+function validateQueueDeliveryId(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw createQueueResultIntegrityError('enqueue', 'queue id must be a non-empty string');
+  }
 
-  return error;
+  return value;
+}
+
+function createQueueResultIntegrityError(
+  operation: 'enqueue' | 'enqueueMany',
+  message: string,
+): NotificationQueueResultIntegrityError {
+  return new NotificationQueueResultIntegrityError(operation, message);
 }
 
 function createLifecyclePublicationFailureError(dispatchError: unknown, ...publicationErrors: unknown[]): AggregateError {

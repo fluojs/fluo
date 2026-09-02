@@ -1,6 +1,7 @@
 export {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
+  NotificationQueueResultIntegrityError,
   NotificationsConfigurationError,
 } from './errors.js';
 export { NotificationsModule } from './module.js';

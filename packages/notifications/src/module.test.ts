@@ -1420,6 +1420,157 @@ describe('NotificationsModule', () => {
     ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: queue id at index 1 must be a non-empty string.');
   });
 
+  it('rejects non-string enqueueMany ids without substituting fallback delivery ids', async () => {
+    const queue = new MalformedEnqueueManyQueueAdapter(['queued:1', 42]);
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany([
+        { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+        { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+      ]),
+    ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: queue id at index 1 must be a non-empty string.');
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['non-string value', 42],
+  ])('rejects %s single enqueue results without fabricating queued successes', async (_label, invalidDeliveryId) => {
+    const queue = new EnqueueOnlyQueueAdapter();
+    const publisher = new RecordingPublisher();
+    Object.defineProperty(queue, 'enqueue', {
+      value: async (job: NotificationsQueueJob): Promise<unknown> => {
+        queue.jobs.push(job);
+        return invalidDeliveryId;
+      },
+    });
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatch(
+        { channel: 'email', id: 'caller-id', payload: { template: 'digest', userId: 'u1' } },
+        { queue: true },
+      ),
+    ).rejects.toMatchObject({
+      message: 'Notifications queue adapter returned an invalid enqueue() result: queue id must be a non-empty string.',
+      name: 'NotificationQueueResultIntegrityError',
+    });
+
+    expect(queue.jobs).toHaveLength(1);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['non-string value', 42],
+  ])(
+    'captures %s sequential fallback enqueue results as failures when continueOnError is enabled',
+    async (_label, invalidDeliveryId) => {
+      const queue = new EnqueueOnlyQueueAdapter();
+      const publisher = new RecordingPublisher();
+      Object.defineProperty(queue, 'enqueue', {
+        value: async (job: NotificationsQueueJob): Promise<unknown> => {
+          queue.jobs.push(job);
+          return queue.jobs.length === 1 ? invalidDeliveryId : 'queued:2';
+        },
+      });
+      const container = new Container();
+      const moduleType = NotificationsModule.forRoot({
+        channels: [
+          {
+            channel: 'email',
+            async send() {
+              throw new Error('direct delivery should not be used for queued bulk dispatch');
+            },
+          },
+        ],
+        events: {
+          publisher,
+        },
+        queue: {
+          adapter: queue,
+          bulkThreshold: 2,
+        },
+      });
+
+      container.register(...moduleProviders(moduleType));
+      const service = await container.resolve(NotificationsService);
+      const result = await service.dispatchMany(
+        [
+          { channel: 'email', id: 'first-job', payload: { template: 'digest', userId: 'u1' } },
+          { channel: 'email', id: 'second-job', payload: { template: 'digest', userId: 'u2' } },
+        ],
+        { continueOnError: true },
+      );
+
+      expect(queue.jobs.map((job) => job.id)).toEqual(['first-job', 'second-job']);
+      expect(result).toMatchObject({
+        failed: 1,
+        queued: 1,
+        succeeded: 1,
+      });
+      expect(result.results).toEqual([
+        {
+          channel: 'email',
+          deliveryId: 'queued:2',
+          queued: true,
+          status: 'queued',
+        },
+      ]);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.error).toMatchObject({
+        message: 'Notifications queue adapter returned an invalid enqueue() result: queue id must be a non-empty string.',
+        name: 'NotificationQueueResultIntegrityError',
+      });
+      expect(result.failures[0]?.notification).toMatchObject({ id: 'first-job' });
+      expect(publisher.events.map((event) => event.name)).toEqual([
+        'notification.dispatch.requested',
+        'notification.dispatch.requested',
+        'notification.dispatch.failed',
+        'notification.dispatch.queued',
+      ]);
+    },
+  );
+
   it('rejects sparse enqueueMany results without substituting fallback delivery ids', async () => {
     const queue = new MalformedEnqueueManyQueueAdapter(new Array<string>(2));
     const container = new Container();
