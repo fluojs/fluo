@@ -5,17 +5,22 @@ import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, QueryHandler } from './decorators.js';
 import { CqrsBusBase, type DiscoveryCandidate } from './discovery.js';
+import { CommandHandlerNotFoundException, QueryHandlerNotFoundException } from './errors.js';
 import { CqrsModule } from './module.js';
 import { COMMAND_BUS, QUERY_BUS } from './tokens.js';
 import type { CommandBus, ICommand, ICommandHandler, IQuery, IQueryHandler, QueryBus } from './types.js';
 
-function createLogger(events: string[]): ApplicationLogger {
+interface WarningEvent {
+  readonly context: string | undefined;
+}
+
+function createLogger(warnings: WarningEvent[]): ApplicationLogger {
   return {
     debug() {},
     error() {},
     log() {},
-    warn(message: string, context?: string) {
-      events.push(`warn:${context ?? 'none'}:${message}`);
+    warn(_message: string, context?: string) {
+      warnings.push({ context });
     },
   };
 }
@@ -71,19 +76,19 @@ describe('CQRS provider-form discovery edge contracts', () => {
     };
     const discoveryBus = new DiscoveryBus(new Container(), [compiledModule], createLogger([]));
 
-    expect(discoveryBus.discover()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          targetType: ArchiveUserHandler,
-          token: ArchiveUserHandler,
-        }),
-      ]),
-    );
+    expect(discoveryBus.discover()).toEqual([
+      {
+        moduleName: AppModule.name,
+        scope: 'singleton',
+        targetType: ArchiveUserHandler,
+        token: ArchiveUserHandler,
+      },
+    ]);
     expect(invoked).toEqual([]);
   });
 
   it('inherits resolverClass scope metadata to skip and block non-singleton factory handlers', async () => {
-    const loggerEvents: string[] = [];
+    const warnings: WarningEvent[] = [];
     const factoryCalls: string[] = [];
 
     @Scope('transient')
@@ -126,35 +131,30 @@ describe('CQRS provider-form discovery edge contracts', () => {
     });
 
     const app = await bootstrapApplication({
-      logger: createLogger(loggerEvents),
+      logger: createLogger(warnings),
       rootModule: AppModule,
     });
 
-    expect(
-      loggerEvents.some(
-        (entry) =>
-          entry.includes('TransientArchiveHandler') &&
-          entry.includes('@CommandHandler()') &&
-          entry.includes('transient scope'),
-      ),
-    ).toBe(true);
-    expect(
-      loggerEvents.some(
-        (entry) =>
-          entry.includes('RequestCountHandler') && entry.includes('@QueryHandler()') && entry.includes('request scope'),
-      ),
-    ).toBe(true);
+    expect(warnings).toEqual([
+      { context: 'CommandBusLifecycleService' },
+      { context: 'QueryBusLifecycleService' },
+    ]);
     expect(factoryCalls).toEqual([]);
 
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
-    await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('dave'))).rejects.toThrow(
-      'No command handler registered for ArchiveUserCommand.',
-    );
-    await expect(queryBus.execute<CountUsersQuery, number>(new CountUsersQuery())).rejects.toThrow(
-      'No query handler registered for CountUsersQuery.',
-    );
+    const [commandError, queryError] = await Promise.all([
+      commandBus
+        .execute<ArchiveUserCommand, string>(new ArchiveUserCommand('dave'))
+        .then(() => undefined, (error: unknown) => error),
+      queryBus.execute<CountUsersQuery, number>(new CountUsersQuery()).then(() => undefined, (error: unknown) => error),
+    ]);
+
+    expect(commandError).toBeInstanceOf(CommandHandlerNotFoundException);
+    expect(commandError).toMatchObject({ code: 'CQRS_COMMAND_HANDLER_NOT_FOUND' });
+    expect(queryError).toBeInstanceOf(QueryHandlerNotFoundException);
+    expect(queryError).toMatchObject({ code: 'CQRS_QUERY_HANDLER_NOT_FOUND' });
     expect(factoryCalls).toEqual([]);
 
     await app.close();
