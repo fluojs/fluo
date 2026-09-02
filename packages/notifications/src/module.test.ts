@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
+  NotificationQueueResultIntegrityError,
   NotificationsConfigurationError,
 } from './errors.js';
 import { NotificationsModule } from './module.js';
@@ -1383,6 +1384,147 @@ describe('NotificationsModule', () => {
     ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: expected 2 queue ids but received 1.');
 
     expect(queue.jobs).toHaveLength(2);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it('rejects enqueueMany results after the adapter mutates the admitted jobs length', async () => {
+    const publisher = new RecordingPublisher();
+    const queue: NotificationsQueueAdapter = {
+      async enqueue() {
+        return 'queued:unexpected';
+      },
+      async enqueueMany(jobs) {
+        Object.defineProperty(jobs, 'length', { value: 1 });
+
+        return ['queued:1'];
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(NotificationQueueResultIntegrityError);
+    await expect(dispatch).rejects.toMatchObject({ operation: 'enqueueMany' });
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it('rejects accessor-backed enqueueMany entries without invoking the mutating accessor', async () => {
+    const result = ['queued:1', 'queued:2'];
+    Object.defineProperty(result, '0', {
+      configurable: true,
+      get() {
+        result.length = 1;
+
+        return 'queued:1';
+      },
+    });
+
+    const queue = new MalformedEnqueueManyQueueAdapter(result);
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(NotificationQueueResultIntegrityError);
+    await expect(dispatch).rejects.toMatchObject({ operation: 'enqueueMany' });
+    expect(result).toHaveLength(2);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it.each([
+    ['null', null],
+    ['object', { id: 'queued:1' }],
+    ['string', 'queued:1'],
+  ])('rejects %s enqueueMany results without fabricating queued successes', async (_label, result) => {
+    const queue = new MalformedEnqueueManyQueueAdapter(result);
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(NotificationQueueResultIntegrityError);
+    await expect(dispatch).rejects.toMatchObject({ operation: 'enqueueMany' });
     expect(publisher.events.map((event) => event.name)).toEqual([
       'notification.dispatch.requested',
       'notification.dispatch.requested',

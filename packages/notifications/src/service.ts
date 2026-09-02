@@ -208,21 +208,29 @@ export class NotificationsService implements Notifications {
         );
       }
 
-      let ids: readonly string[];
+      const admittedJobCount = jobs.length;
+      let results: NotificationDispatchResult[];
 
       try {
-        ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs), jobs.length);
+        const ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs), admittedJobCount);
+        results = dispatchNotifications.map((notification, index) => {
+          const deliveryId = ids[index];
+
+          if (deliveryId === undefined) {
+            throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be present`);
+          }
+
+          return {
+            channel: notification.channel,
+            deliveryId,
+            queued: true,
+            status: 'queued' as const,
+          };
+        });
       } catch (error) {
         await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
-
-      const results = dispatchNotifications.map((notification, index) => ({
-        channel: notification.channel,
-        deliveryId: this.normalizeDeliveryId(ids[index], notification),
-        queued: true,
-        status: 'queued' as const,
-      }));
 
       for (let index = 0; index < dispatchNotifications.length; index += 1) {
         const notification = dispatchNotifications[index];
@@ -528,18 +536,31 @@ function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): r
     throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received a non-array result`);
   }
 
-  if (value.length !== expectedCount) {
-    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received ${value.length}`);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+
+  if (!isOwnDataPropertyDescriptor(lengthDescriptor)) {
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received an invalid length descriptor`);
+  }
+
+  if (lengthDescriptor.value !== expectedCount) {
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received ${String(lengthDescriptor.value)}`);
   }
 
   const ids: string[] = [];
 
-  for (let index = 0; index < value.length; index += 1) {
-    if (!Object.hasOwn(value, index)) {
+  for (let index = 0; index < expectedCount; index += 1) {
+    const descriptor = descriptors[String(index)];
+
+    if (!descriptor) {
       throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be present`);
     }
 
-    const entry = value[index];
+    if (!isOwnDataPropertyDescriptor(descriptor)) {
+      throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be an own data property`);
+    }
+
+    const entry = descriptor.value;
 
     if (typeof entry !== 'string' || entry.length === 0) {
       throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be a non-empty string`);
@@ -548,7 +569,16 @@ function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): r
     ids.push(entry);
   }
 
-  return ids;
+  return Object.freeze(ids);
+}
+
+function isOwnDataPropertyDescriptor(
+  descriptor: PropertyDescriptor | undefined,
+): descriptor is PropertyDescriptor & { value: unknown } {
+  return descriptor !== undefined
+    && Object.hasOwn(descriptor, 'value')
+    && !Object.hasOwn(descriptor, 'get')
+    && !Object.hasOwn(descriptor, 'set');
 }
 
 function validateQueueDeliveryId(value: unknown): string {

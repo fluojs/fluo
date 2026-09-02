@@ -96,8 +96,8 @@ export interface NotificationsQueueAdapter {
    * Enqueues multiple notification delivery jobs in one operation when supported.
    *
    * @param jobs Ordered notification envelopes to enqueue.
-   * @returns Ordered non-empty queue identifiers aligned with the input order.
-   * @throws {NotificationQueueResultIntegrityError} When the adapter resolves with malformed identifiers.
+   * @returns A dense array of own-data-property, non-empty queue identifiers aligned with the admitted input order.
+   * @throws {NotificationQueueResultIntegrityError} When the adapter resolves with a malformed result or identifiers.
    */
   enqueueMany?(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]>;
 }
