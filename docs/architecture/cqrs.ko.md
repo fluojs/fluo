@@ -37,6 +37,21 @@
 | saga 런타임 | saga token별 실행을 직렬화합니다. 활성 token의 다른 route로 향하는 context-preserving nested publication은 현재 `handle(...)`이 반환된 뒤 실행하는 FIFO continuation이 되므로 nested publication이 deadlock하지 않고 singleton saga instance가 동시에 여러 execution owner를 갖지 않습니다. Node.js async-local API 없이 opaque, frozen fieldless `CqrsDispatchContext`를 nested CQRS 호출로 전달하며, 진단용 런타임 snapshot data를 제공합니다. 신뢰하는 topology와 continuation state는 writable context field로 노출하지 않고 private state로 유지합니다. | `packages/cqrs/src/dispatch-context.ts`, `packages/cqrs/src/buses/saga-topology.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | 종료 동작 | CQRS 이벤트 버스는 진행 중인 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. CQRS가 제공한 `CqrsDispatchContext`를 전달하는 nested `publish(...)`와 `publishAll(...)` 호출은 활성 drain의 일부로 유지되며, shutdown 시작 후 brand-new external publish는 계속 거부됩니다. Command bus와 query bus는 애플리케이션 shutdown 시작 window부터 `execute(...)` 호출을 거부하고, 각 bus의 shutdown hook이 실행될 때 cached handler instance를 정리합니다. saga 런타임도 종료 시 진행 중인 디스패치를 기다린 뒤 descriptor와 캐시된 핸들러 인스턴스를 정리합니다. Shutdown drain은 `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한되며, `shutdown.drainTimeoutMs` 기본값은 `5000ms`입니다. 이 bound를 초과하면 degraded diagnostic을 기록하고 경고를 남긴 뒤 애플리케이션 close를 무기한 hang시키지 않고 계속 진행합니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 
+## Status snapshot 계약
+
+`createCqrsPlatformStatusSnapshot(...)`과 `CqrsEventBusService.createPlatformStatusSnapshot()`은 `readiness`, `health`, `ownership`, `details`를 반환합니다. `ownership`은 항상 `externallyManaged: false`, `ownsResources: false`를 보고합니다. CQRS는 in-process lifecycle을 관찰하며 caller-owned external resource를 소유한다고 주장하지 않습니다.
+
+| `details` field | 계약 |
+| --- | --- |
+| `dependencies` | 위임된 event-bus dependency를 나타내는 항상 `['event-bus.default']` 값입니다. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Command/Query adapter input을 생략하면 `0`을 사용하며, live-bus count는 shutdown 후 `0`입니다. |
+| `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, Query, event-pipeline, saga runtime의 lifecycle state입니다. Command/Query adapter input이 없으면 `lifecycleState`로 fallback합니다. |
+| `inFlightSagaExecutions` | 현재 runtime이 소유한 saga execution 수입니다. |
+| `shutdownDrainTimeoutMs` | 설정된 bounded shutdown-drain window입니다. |
+| `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | event pipeline과 saga runtime에서 기록된 bounded drain timeout입니다. |
+
+유효한 lifecycle state는 `created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`입니다. Readiness는 event와 saga state를 다음 순서로 평가합니다. 둘 다 `ready`이면 `ready`, 그 외에는 하나라도 `discovering`이면 `degraded`, 그 외에는 하나라도 `stopping`이면 `not-ready`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `not-ready`, `created`를 포함한 나머지 조합은 `not-ready`입니다. Health는 다음 순서로 평가합니다. 0이 아닌 drain-timeout counter가 하나라도 있으면 `degraded`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `unhealthy`, 그 외에는 하나라도 `discovering` 또는 `stopping`이면 `degraded`, 나머지 조합은 `healthy`입니다. Command와 Query lifecycle detail은 additive diagnostic이며 기존 event/saga readiness 또는 health semantic을 바꾸지 않습니다.
+
 ## 제약 사항
 
 - Command와 Query 라우팅은 생성자 기반 point-to-point 모델입니다. 하나의 메시지 타입이 의도적으로 여러 singleton 핸들러로 해석될 수 없습니다.

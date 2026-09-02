@@ -37,6 +37,21 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 | Saga runtime | Serializes execution per saga token. Context-preserving nested publication to a different route on the active token becomes a FIFO continuation that runs after the current `handle(...)` returns, so nested publication does not deadlock and a singleton saga instance never has concurrent execution owners. It threads an opaque, frozen fieldless `CqrsDispatchContext` through nested CQRS calls without Node.js async-local APIs and reports runtime snapshot data for diagnostics. Trusted topology and continuation state remains private rather than exposed as writable context fields. | `packages/cqrs/src/dispatch-context.ts`, `packages/cqrs/src/buses/saga-topology.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | Shutdown behavior | The CQRS event bus waits for active `publish(...)` pipelines and `publishAll(...)` sequences to settle before marking itself stopped. Nested `publish(...)` and `publishAll(...)` calls that pass through a CQRS-provided `CqrsDispatchContext` remain part of the active drain; brand-new external publishes are still rejected after shutdown starts. Command and query buses reject `execute(...)` calls from the application shutdown start window and clear cached handler instances when their own shutdown hooks run. The saga runtime also waits for in-flight dispatches during shutdown before clearing descriptors and cached handler instances. Shutdown drain is bounded by `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`; `shutdown.drainTimeoutMs` defaults to `5000ms`, and an exceeded bound records degraded diagnostics, logs a warning, and lets application close continue instead of hanging indefinitely. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 
+## Status Snapshot Contract
+
+`createCqrsPlatformStatusSnapshot(...)` and `CqrsEventBusService.createPlatformStatusSnapshot()` return `readiness`, `health`, `ownership`, and `details`. `ownership` always reports `externallyManaged: false` and `ownsResources: false`; CQRS observes its in-process lifecycle and does not claim caller-owned external resources.
+
+| `details` field | Contract |
+| --- | --- |
+| `dependencies` | Always `['event-bus.default']`, identifying the delegated event-bus dependency. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | Current discovered singleton handler or saga counts. Command/query adapter inputs default to `0` when absent; live-bus counts are `0` after shutdown. |
+| `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, query, event-pipeline, and saga-runtime lifecycle states. Absent command/query adapter inputs fall back to `lifecycleState`. |
+| `inFlightSagaExecutions` | Saga executions currently owned by the runtime. |
+| `shutdownDrainTimeoutMs` | Configured bounded shutdown-drain window. |
+| `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | Recorded bounded drain timeouts for the event pipeline and saga runtime. |
+
+The valid lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness evaluates event and saga state in this order: both `ready` reports `ready`; otherwise any `discovering` reports `degraded`; otherwise any `stopping` reports `not-ready`; otherwise any `stopped` or `failed` reports `not-ready`; every remaining combination, including `created`, reports `not-ready`. Health evaluates in this order: any nonzero drain-timeout counter reports `degraded`; otherwise any `stopped` or `failed` reports `unhealthy`; otherwise any `discovering` or `stopping` reports `degraded`; every remaining combination reports `healthy`. Command and query lifecycle details are additive diagnostics and do not change the existing event/saga readiness or health semantics.
+
 ## Constraints
 
 - Command and query routing is constructor-based and point-to-point. One message type cannot intentionally resolve to multiple singleton handlers.
