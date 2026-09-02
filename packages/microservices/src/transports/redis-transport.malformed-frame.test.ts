@@ -7,6 +7,7 @@ type MessageListener = (channel: string, message: string) => void;
 class FrameInjectingRedisBus {
   unsubscribeCalled = false;
   private readonly listeners = new Set<MessageListener>();
+  private subscribed = false;
 
   readonly publishClient = {
     on: () => undefined,
@@ -27,13 +28,20 @@ class FrameInjectingRedisBus {
       }
     },
     publish: async () => undefined,
-    subscribe: async () => undefined,
+    subscribe: async () => {
+      this.subscribed = true;
+    },
     unsubscribe: async () => {
       this.unsubscribeCalled = true;
+      this.subscribed = false;
     },
   };
 
   deliver(channel: string, rawMessage: string): void {
+    if (!this.subscribed) {
+      return;
+    }
+
     if (this.listeners.size === 0) {
       throw new Error('Expected a Redis message listener to be registered.');
     }
@@ -45,6 +53,10 @@ class FrameInjectingRedisBus {
 
   listenerCount(): number {
     return this.listeners.size;
+  }
+
+  isSubscribed(): boolean {
+    return this.subscribed;
   }
 }
 
@@ -193,6 +205,8 @@ describe('RedisPubSubMicroserviceTransport malformed frame containment', () => {
     // Then
     expect(received).toEqual([{ kind: 'event', pattern: 'audit.value', payload: { value: 9 } }]);
     expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(bus.unsubscribeCalled).toBe(false);
+    expect(bus.isSubscribed()).toBe(true);
 
     await transport.close();
   });
