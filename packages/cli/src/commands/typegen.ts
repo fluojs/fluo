@@ -7,7 +7,10 @@ import {
   type TypegenArtifactCheck,
   writeTypegenArtifact,
 } from './typegen-artifact.js';
-import { runTypegenGenerationProcess } from './typegen-generation-process.js';
+import {
+  runTypegenGenerationProcess,
+  startTypegenGenerationProcess,
+} from './typegen-generation-process.js';
 import { parseTypegenArgs, TypegenCommandError } from './typegen-options.js';
 import {
   createTypegenSource,
@@ -96,14 +99,12 @@ export async function runTypegenCommand(
     const generateSource = async () => customModules === undefined
       ? runTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
       : createTypegenSource({ cwd, modules: await customModules, parsed });
-    const generateAndWrite = async () => {
-      const source = await generateSource();
-      const action = await writeTypegenArtifact(outputPath, source);
-      stdout.write(`${action} ${outputPath}\n`);
-    };
     if (parsed.watch) {
       return await runTypegenWatch({
-        generate: generateAndWrite,
+        async commit(source, signal) {
+          const action = await writeTypegenArtifact(outputPath, source, undefined, signal);
+          stdout.write(`${action} ${outputPath}\n`);
+        },
         modulePath,
         onError(error) {
           stderr.write(`ERROR ${outputPath}: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -112,6 +113,26 @@ export async function runTypegenCommand(
           stdout.write(`WATCHING ${watchRoot}\n`);
         },
         outputPath,
+        startGeneration: customModules === undefined
+          ? () => startTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
+          : () => {
+            let cancelled = false;
+            const result = generateSource().then((source) => {
+              if (cancelled) {
+                throw new TypegenCommandError('Typegen generation was cancelled.');
+              }
+              return source;
+            });
+            return {
+              cancel() {
+                if (cancelled) {
+                  return;
+                }
+                cancelled = true;
+              },
+              result,
+            };
+          },
       });
     }
 
