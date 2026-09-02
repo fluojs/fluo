@@ -4276,6 +4276,52 @@ describe('Studio public docs and migration expectations', () => {
 
     expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
   });
+
+  const staticGraphContradictionCases = [
+    [
+      'book/advanced/ch15-studio.md',
+      'Static reports diagnose provider deadlocks.',
+    ],
+    [
+      'book/advanced/ch15-studio.ko.md',
+      'Static report는 provider deadlock을 진단합니다.',
+    ],
+    [
+      'book/advanced/ch15-studio.md',
+      'Mermaid output tracks the actual compiled Module Graph.',
+    ],
+    [
+      'book/advanced/ch15-studio.ko.md',
+      'Mermaid output은 실제 compiled Module Graph를 추적합니다.',
+    ],
+    [
+      'packages/studio/README.md',
+      'The Node live snapshot provides lifecycle diagnostics.',
+    ],
+    [
+      'packages/studio/README.ko.md',
+      'Node live snapshot은 lifecycle diagnostics를 제공합니다.',
+    ],
+  ] as const;
+
+  it.each(staticGraphContradictionCases)(
+    'rejects contradictory static graph claims in %s',
+    (targetPath, contradictoryClaim) => {
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath ? `${content}\n${contradictoryClaim}\n` : content;
+      })).toThrowError(targetPath);
+    },
+  );
+
+  it('keeps the Studio static graph contract registered from main', () => {
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(governanceSource).toContain('enforceStudioStaticGraphLimitsContract();');
+  });
 });
 
 describe('Notifications configured-disabled status contract', () => {

@@ -314,7 +314,7 @@ input alias가 이 report contract를 바꾸지 않습니다.
 
 ## Studio Static-Graph Limits
 
-Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)로 나뉩니다. Static artifact는 Node live snapshot이 런타임에 만드는 compiled module/provider graph가 아니라 file-first inspection이 찾은 platform component를 보고합니다. Non-Node fallback workflow는 inspect/static artifact를 생성하고 열며 live sidecar event를 약속하지 않습니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 유지합니다.
+Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)로 나뉩니다. successful bootstrap 뒤 file-first inspection은 보고된 platform component, 그 dependencies, `routes`가 담긴 `PlatformShellSnapshot`을 내보내며, Node live Studio가 런타임에 만드는 compiled module/provider graph는 만들지 않습니다. Non-Node fallback workflow는 inspect/static artifact를 생성하고 열며 live sidecar event를 약속하지 않습니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 유지합니다.
 
 ## File Structure
 

@@ -104,7 +104,7 @@ payload는 `PlatformShellSnapshot`입니다. 큰 흐름에서 다음 정보를 �
 - `components`, file-first inspection이 보고한 platform components. 이는 Node live snapshot이 런타임에 만드는 compiled module/provider graph가 아닙니다.
 - `diagnostics`, platform shell을 만들거나 검사하는 동안 발견된 구조화된 issue.
 
-Studio는 이 파일을 직접 로드할 수 있습니다. `parseStudioPayload(rawJson)`로 JSON을 파싱하고, 지원하는 version 및 schema expectation을 검증한 뒤, graph, diagnostics, filtering view에 snapshot을 전달합니다. Static artifact는 compiled module/provider node, provider scope, lifecycle diagnostics를 재구성하지 않으므로, DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로를 사용합니다.
+Studio는 이 파일을 직접 로드할 수 있습니다. `parseStudioPayload(rawJson)`로 JSON을 파싱하고, 지원하는 version 및 schema expectation을 검증한 뒤, graph, diagnostics, filtering view에 snapshot을 전달합니다. Static artifact는 compiled module/provider node나 provider scope metadata를 재구성하지 않으므로, DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로를 사용합니다.
 
 ### 타이밍 envelope 이해하기
 
@@ -161,26 +161,26 @@ Viewer가 열리면 inspect artifact를 브라우저로 drag and drop합니다. 
 
 ### 스코프와 생명주기 시각화하기
 
-Node live Studio의 중요한 역할 중 하나는 scope와 lifecycle 문제를 보이게 만드는 것입니다. 복잡한 애플리케이션에서는 request-scoped provider를 singleton path에 잘못 주입하거나, dependency chain만 봐서는 분명하지 않은 느린 provider를 도입하기 쉽습니다. Static inspect artifact에는 이 분석에 필요한 compiled DI graph, provider scope, lifecycle diagnostics가 없습니다.
+Node live Studio의 중요한 역할 중 하나는 provider scope와 dependency graph 문제를 보이게 만드는 것입니다. 복잡한 애플리케이션에서는 request-scoped provider를 singleton path에 잘못 주입하거나, dependency chain만 봐서는 분명하지 않은 느린 provider를 도입하기 쉽습니다. Static inspect artifact에는 이 분석에 필요한 compiled DI graph나 provider scope metadata가 없습니다.
 
-Live snapshot은 Studio에 해석된 component graph와 diagnostics를 제공합니다. Timing data는 bootstrap phase cost를 제공합니다. 이 live artifact를 함께 보면 viewer는 구조와 startup behavior를 모두 설명할 수 있습니다. Graph는 어떤 component가 느린 provider에 의존하는지 보여주고, timing view는 지연이 graph construction, instance resolution, lifecycle hooks 중 어디에서 발생했는지 보여줄 수 있습니다. File-first artifact는 보고된 component, route, timing, diagnostics에는 유용하지만 같은 수준의 compiled-DI 분석을 제공하지 않습니다.
+successful bootstrap 뒤 Node live 경로는 compiled module, provider, controller, route node가 담긴 snapshot을 내보내며 provider node에는 scope metadata가 포함됩니다. Bootstrap timing은 별도로 내보내고 request observer는 request trace event를 내보냅니다. 이 source-backed live artifact를 함께 보면 viewer는 graph structure, bootstrap timing, request progress를 설명할 수 있습니다. File-first artifact는 보고된 component, route, timing, diagnostics에는 유용하지만 같은 수준의 compiled-DI 분석을 제공하지 않습니다.
 
-## 15.6 시나리오: Provider deadlock 진단하기
+## 15.6 시나리오: Successful-Bootstrap Inspect Artifact 검토하기
 
-애플리케이션이 startup 중 멈추거나 실패한다고 가정해 봅니다. 로그에만 의존하지 말고 report artifact를 생성합니다.
+`fluo inspect`는 `FluoFactory.create(...)`가 successful bootstrap을 마친 뒤에만 artifact를 만듭니다. 그 뒤 `PlatformShell.snapshot()`과 dispatcher `routes`를 읽어 `PlatformShellSnapshot`을 만듭니다. 따라서 bootstrap 중 멈추거나 실패한 애플리케이션은 provider deadlock 진단용 static report를 만들 수 없으며, 그 startup failure는 runtime failure output으로 조사해야 합니다.
 
 ```bash
-fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-그다음 artifact trail을 따라갑니다.
+successful inspection에서는 다음 artifact trail을 따릅니다.
 
 1. **Check the summary**: `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, `summary.timingTotalMs`를 읽어 failure shape를 파악합니다.
-2. **Open the snapshot in Studio**: Viewer로 graph와 diagnostics를 검사합니다. Diagnostics tab은 가능한 경우 `dependsOn`, `cause`, `fixHint`를 포함한 structured issue를 보여줍니다.
-3. **Render a diagram if needed**: Architecture review가 PR이나 decision record 안의 text diagram을 필요로 하면 `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd`를 사용합니다.
+2. **Open the snapshot in Studio**: Viewer로 보고된 platform component, 그 dependencies, routes, diagnostics를 검사합니다. 이는 compiled DI graph가 아닙니다.
+3. **Render a diagram if needed**: Architecture review가 PR이나 decision record 안의 text diagram을 필요로 하면 `fluo inspect --mermaid --output artifacts/platform-components.mmd`를 사용합니다.
 4. **Keep the artifact**: 다른 개발자가 같은 inspection view를 재현할 수 있도록 report를 CI log나 support ticket에 첨부합니다.
 
-이 workflow는 터미널 출력을 채팅에 복사하는 방식보다 반복 가능합니다. Report는 summary, snapshot, diagnostics, timing을 함께 보관합니다. Studio는 그 사실들을 reviewer가 직접 앱을 bootstrap하지 않아도 검사할 수 있는 graph와 issue list로 바꿉니다.
+이 workflow는 터미널 출력을 채팅에 복사하는 방식보다 반복 가능합니다. Report는 summary, snapshot, diagnostics, timing을 함께 보관합니다. Studio는 그 사실들을 reviewer가 직접 앱을 bootstrap하지 않아도 검사할 수 있는 component/dependency graph와 issue list로 바꿉니다.
 
 ## 15.7 Inspect artifact를 프로그래밍 방식으로 소비하기
 
@@ -217,7 +217,7 @@ Studio는 `renderMermaid(snapshot)`을 통해 snapshot-to-Mermaid 계약을 소�
 fluo inspect ./src/app.module.ts --mermaid --output docs/generated/module-graph.mmd
 ```
 
-Mermaid output은 architecture decision records, README diagrams, review threads에 유용합니다. 텍스트이므로 일반 version control에서 graph 변화를 시간에 따라 보여줄 수 있습니다. 이는 architecture diagram과 실제 Module Graph 사이의 drift를 줄입니다.
+Mermaid output은 architecture decision records, README diagrams, review threads에 유용합니다. 텍스트이므로 일반 version control에서 graph 변화를 시간에 따라 보여줄 수 있습니다. `renderMermaid(snapshot)`은 static `PlatformShellSnapshot`의 components and their dependencies를 순회하고 필요하면 external dependency node를 만듭니다. 이는 actual compiled Module Graph를 추적하지 않습니다.
 
 Mermaid는 raw snapshot이나 report와 같은 artifact가 아닙니다. Graph를 렌더링한 view입니다. Diagnostics, readiness, health, timing, machine-readable details가 필요하면 raw JSON이나 report artifact를 보관합니다. 독자가 빠르게 훑을 수 있는 diagram이 필요하면 Mermaid를 보관합니다.
 
@@ -229,7 +229,7 @@ Studio artifact는 CI/CD pipeline 안의 architecture guard가 될 수 있습니
 
 ### 라이브 Studio
 
-현재 Studio workflow에는 두 가지 supported path가 있습니다. `fluo dev --studio`는 snapshot, request trace, timing, diagnostic, restart/disconnect lifecycle, heartbeat를 위한 sidecar event를 소비하는 runtime-connected local devtool을 엽니다. Live MVP는 의도적으로 Node dev-runner에 한정됩니다. CLI가 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio runtime config를 Node 앱 child에 주입할 수 있기 때문입니다.
+현재 Studio workflow에는 두 가지 supported path가 있습니다. successful bootstrap 뒤 `fluo dev --studio`는 provider scope metadata를 포함한 compiled module, provider, controller, route graph data snapshot을 받는 runtime-connected local devtool을 엽니다. Bootstrap timing은 별도 event로 받고 `StudioRequestObserver`는 request trace를 publish합니다. Live MVP는 의도적으로 Node dev-runner에 한정됩니다. CLI가 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio runtime config를 Node 앱 child에 주입할 수 있기 때문입니다.
 
 CLI는 live sidecar teardown도 소유합니다. `StudioSidecar.close()`는 기존처럼 추적 중인 SSE response를 종료하고, 인증된 runtime ingestion을 처리 중인 socket만 닫으며, 반복되거나 동시에 호출된 caller가 하나의 결정적인 close 작업을 공유하게 합니다. 따라서 request body를 완료하지 않은 ingestion client가 `fluo dev --studio` shutdown을 무기한 열어 두지 못하며, teardown이 완료된 일반 요청 socket까지 일괄 파괴하지도 않습니다.
 

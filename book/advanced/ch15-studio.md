@@ -104,7 +104,7 @@ The payload is a `PlatformShellSnapshot`. At a high level, it includes:
 - `components`, the platform components reported by file-first inspection. This is not the compiled module/provider graph that the Node live snapshot derives at runtime.
 - `diagnostics`, the structured issues found while the platform shell was built or inspected.
 
-Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views. Static artifacts do not reconstruct compiled module/provider nodes, provider scopes, or lifecycle diagnostics; use the supported Node live path with `fluo dev --studio` when a workflow needs that DI graph.
+Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views. Static artifacts do not reconstruct compiled module/provider nodes or provider scope metadata; use the supported Node live path with `fluo dev --studio` when a workflow needs that DI graph.
 
 ### Timing envelope
 
@@ -161,26 +161,26 @@ These features give teams a shared artifact review flow. The CLI exports the fil
 
 ### Visualizing Scopes and Lifecycles
 
-One important role of Node live Studio is making scope and lifecycle problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious. Static inspect artifacts do not contain the compiled DI graph, provider scopes, or lifecycle diagnostics needed for that analysis.
+One important role of Node live Studio is making provider scope and dependency-graph problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious. Static inspect artifacts do not contain the compiled DI graph or provider scope metadata needed for that analysis.
 
-The live snapshot gives Studio the resolved component graph and diagnostics. Timing data gives it bootstrap phase cost. Together, those live artifacts let the viewer explain both structure and startup behavior. A graph can show which component depends on a slow provider, while the timing view can show whether the delay happened during graph construction, instance resolution, or lifecycle hooks. File-first artifacts remain useful for their reported components, routes, timing, and diagnostics, but they do not provide equivalent compiled-DI analysis.
+After a successful bootstrap, the Node live path emits a snapshot with compiled module, provider, controller, and route nodes; provider nodes include scope metadata. It emits bootstrap timing separately, and its request observer emits request trace events. Together, those source-backed live artifacts let the viewer explain graph structure, bootstrap timing, and request progress. File-first artifacts remain useful for their reported components, routes, timing, and diagnostics, but they do not provide equivalent compiled-DI analysis.
 
-## 15.6 Scenario: Diagnosing a Provider Deadlock
+## 15.6 Scenario: Reviewing a Successful-Bootstrap Inspect Artifact
 
-Assume an application hangs or fails during startup. Instead of relying only on logs, generate a report artifact.
+`fluo inspect` creates its artifact only after `FluoFactory.create(...)` has completed a successful bootstrap. It then reads `PlatformShell.snapshot()` and the dispatcher `routes` to create a `PlatformShellSnapshot`. An application that hangs or fails during bootstrap therefore cannot produce a static report for provider-deadlock diagnosis; investigate that startup failure through its runtime failure output instead.
 
 ```bash
-fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-Then follow the artifact trail.
+For a successful inspection, follow the artifact trail.
 
 1. **Check the summary**: Read `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, and `summary.timingTotalMs` to understand the failure shape.
-2. **Open the snapshot in Studio**: Use the viewer to inspect the graph and diagnostics. The Diagnostics tab shows structured issues, including `dependsOn`, `cause`, and `fixHint` when available.
-3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd` when an architecture review needs a text diagram in a PR or decision record.
+2. **Open the snapshot in Studio**: Use the viewer to inspect reported platform components, their dependencies, routes, and diagnostics. This is not the compiled DI graph.
+3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/platform-components.mmd` when an architecture review needs a text diagram in a PR or decision record.
 4. **Keep the artifact**: Attach the report to CI logs or a support ticket so another developer can reproduce the same inspection view.
 
-This workflow is more repeatable than copying terminal output into chat. The report keeps summary, snapshot, diagnostics, and timing together. Studio then turns those facts into a graph and issue list that reviewers can inspect without bootstrapping the app themselves.
+This workflow is more repeatable than copying terminal output into chat. The report keeps summary, snapshot, diagnostics, and timing together. Studio then turns those facts into a component/dependency graph and issue list that reviewers can inspect without bootstrapping the app themselves.
 
 ## 15.7 Consuming Inspect Artifacts Programmatically
 
@@ -217,7 +217,7 @@ Studio owns the snapshot-to-Mermaid contract through `renderMermaid(snapshot)`. 
 fluo inspect ./src/app.module.ts --mermaid --output docs/generated/module-graph.mmd
 ```
 
-Mermaid output is useful for architecture decision records, README diagrams, and review threads. Because it is text, normal version control can show graph changes over time. That reduces drift between architecture diagrams and the actual Module Graph.
+Mermaid output is useful for architecture decision records, README diagrams, and review threads. Because it is text, normal version control can show graph changes over time. `renderMermaid(snapshot)` traverses the static `PlatformShellSnapshot` components and their dependencies, including external dependency nodes when needed; it does not track the actual compiled Module Graph.
 
 Mermaid is not the same artifact as a raw snapshot or report. It is a rendered view of the graph. Keep raw JSON or report artifacts when you need diagnostics, readiness, health, timing, or machine-readable details. Keep Mermaid when you need a diagram that readers can scan quickly.
 
@@ -229,7 +229,7 @@ This approach catches architecture regressions before they reach production. It 
 
 ### Live Studio
 
-The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
+The current Studio workflow has two supported paths. After a successful bootstrap, `fluo dev --studio` opens a runtime-connected local devtool that receives a snapshot of compiled module, provider, controller, and route graph data, including provider scope metadata. It receives bootstrap timing as a separate event, and `StudioRequestObserver` publishes request traces. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
 
 The CLI also owns live sidecar teardown. `StudioSidecar.close()` ends tracked SSE responses as before, closes sockets only while they are serving authenticated runtime ingestion, and shares one deterministic close operation across repeated or concurrent callers. This keeps an ingestion client that leaves its request body incomplete from holding `fluo dev --studio` shutdown open indefinitely without turning teardown into blanket destruction of completed ordinary request sockets.
 

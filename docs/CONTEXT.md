@@ -315,7 +315,7 @@ transform tokens (`injectable` and `testing`) in `transforms` and per-file
 
 ## Studio Static-Graph Limits
 
-Studio static-graph limit discoverability is split across `packages/studio/README.md`, [`book/advanced/ch15-studio.md`](../book/advanced/ch15-studio.md), and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): static artifacts report the platform components found by file-first inspection, not the compiled module/provider graph that the Node live snapshot derives at runtime. Non-Node fallback workflows generate and open inspect/static artifacts; they do not promise live sidecar events. Workflows that require the compiled DI graph stay on the supported Node live path with `fluo dev --studio`.
+Studio static-graph limit discoverability is split across `packages/studio/README.md`, [`book/advanced/ch15-studio.md`](../book/advanced/ch15-studio.md), and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): after a successful bootstrap, file-first inspection emits a `PlatformShellSnapshot` with reported platform components, their dependencies, and `routes`; it does not produce the compiled module/provider graph that Node live Studio derives at runtime. Non-Node fallback workflows generate and open inspect/static artifacts; they do not promise live sidecar events. Workflows that require the compiled DI graph stay on the supported Node live path with `fluo dev --studio`.
 
 ## File Structure
 

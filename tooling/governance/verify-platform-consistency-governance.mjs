@@ -3687,27 +3687,62 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
 }
 
 export function enforceStudioStaticGraphLimitsContract(readText = read) {
-  const englishContractSources = [
-    'docs/CONTEXT.md',
-    'packages/studio/README.md',
-    'book/advanced/ch15-studio.md',
-    'docs/getting-started/migrate-from-nestjs.md',
+  const documentationContracts = [
+    [
+      'docs/CONTEXT.md',
+      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio'],
+    ],
+    [
+      'docs/CONTEXT.ko.md',
+      ['file-first inspection', 'successful bootstrap', 'platformshellsnapshot', 'routes', 'fluo dev --studio'],
+    ],
+    [
+      'packages/studio/README.md',
+      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio'],
+    ],
+    [
+      'packages/studio/README.ko.md',
+      ['platformshellsnapshot', 'provider scope', 'request trace', 'fluo dev --studio'],
+    ],
+    [
+      'book/advanced/ch15-studio.md',
+      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph'],
+    ],
+    [
+      'book/advanced/ch15-studio.ko.md',
+      ['successful bootstrap', 'platformshellsnapshot', 'components and their dependencies', 'actual compiled module graph'],
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio'],
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ['serializedgraph', 'platformshellsnapshot', 'routes', 'provider scope', 'fluo dev --studio'],
+    ],
   ];
-  const koreanContractSources = [
-    'docs/CONTEXT.ko.md',
-    'packages/studio/README.ko.md',
-    'book/advanced/ch15-studio.ko.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
+  const forbiddenClaims = [
+    'static reports diagnose provider deadlocks.',
+    'static report는 provider deadlock을 진단합니다.',
+    'mermaid output tracks the actual compiled module graph.',
+    'mermaid output은 실제 compiled module graph를 추적합니다.',
+    'the node live snapshot provides lifecycle diagnostics.',
+    'node live snapshot은 lifecycle diagnostics를 제공합니다.',
   ];
 
-  for (const relativePath of [...englishContractSources, ...koreanContractSources]) {
+  for (const [relativePath, requiredMarkers] of documentationContracts) {
     const documentation = readText(relativePath).toLowerCase();
     assert(
-      documentation.includes('file-first') &&
-        documentation.includes('compiled module/provider graph') &&
-        documentation.includes('fluo dev --studio'),
-      `${relativePath} must preserve the Studio file-first artifact limit and Node live compiled-graph path.`,
+      requiredMarkers.every((marker) => documentation.includes(marker)),
+      `${relativePath} must name the source-backed static or live Studio artifact boundary.`,
     );
+
+    for (const forbiddenClaim of forbiddenClaims) {
+      assert(
+        !documentation.includes(forbiddenClaim),
+        `${relativePath} must not claim unsupported static deadlock, Mermaid Module Graph, or live lifecycle diagnostics behavior.`,
+      );
+    }
   }
 }
 
