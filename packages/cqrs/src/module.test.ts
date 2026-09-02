@@ -210,6 +210,52 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
+  it('reports discovered command and query handlers without topology details across shutdown', async () => {
+    @CommandHandler(CreateUserCommand)
+    class StatusCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      execute(command: CreateUserCommand): string {
+        return `created:${command.name}`;
+      }
+    }
+
+    @QueryHandler(GetUserQuery)
+    class StatusGetUserHandler implements IQueryHandler<GetUserQuery, { id: string; name: string | undefined }> {
+      execute(query: GetUserQuery): { id: string; name: string | undefined } {
+        return { id: query.id, name: 'status-user' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [StatusCreateUserHandler, StatusGetUserHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve(CqrsEventBusService);
+
+    try {
+      expect(eventBus.createPlatformStatusSnapshot().details).toMatchObject({
+        commandHandlersDiscovered: 1,
+        commandLifecycleState: 'ready',
+        queryHandlersDiscovered: 1,
+        queryLifecycleState: 'ready',
+      });
+      expect(eventBus.createPlatformStatusSnapshot().details).not.toHaveProperty('commandHandlerDescriptors');
+      expect(eventBus.createPlatformStatusSnapshot().details).not.toHaveProperty('queryHandlerDescriptors');
+      expect(eventBus.createPlatformStatusSnapshot().details).not.toHaveProperty('providerTokens');
+    } finally {
+      await app.close();
+    }
+
+    expect(eventBus.createPlatformStatusSnapshot().details).toMatchObject({
+      commandHandlersDiscovered: 0,
+      commandLifecycleState: 'stopped',
+      queryHandlersDiscovered: 0,
+      queryLifecycleState: 'stopped',
+    });
+  });
+
   it('ignores CQRS decorators on module controllers during handler discovery', async () => {
     const seen: string[] = [];
 

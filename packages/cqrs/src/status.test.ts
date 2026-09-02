@@ -32,8 +32,12 @@ describe('createCqrsPlatformStatusSnapshot', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
+      commandHandlersDiscovered: 0,
+      commandLifecycleState: 'ready',
       dependencies: ['event-bus.default'],
       eventHandlersDiscovered: 2,
+      queryHandlersDiscovered: 0,
+      queryLifecycleState: 'ready',
       sagasDiscovered: 1,
     });
   });

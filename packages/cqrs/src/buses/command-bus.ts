@@ -73,6 +73,25 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
   }
 
   /**
+   * Returns command-handler discovery and lifecycle state for CQRS diagnostics.
+   *
+   * @returns Current discovery state, lifecycle state, and discovered command-handler count.
+   */
+  getRuntimeSnapshot(): {
+    discovered: boolean;
+    commandHandlersDiscovered: number;
+    lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
+  } {
+    const stopped = this.lifecycleState === 'stopped';
+
+    return {
+      commandHandlersDiscovered: stopped ? 0 : this.descriptors.size,
+      discovered: stopped ? false : this.discovered,
+      lifecycleState: this.lifecycleState,
+    };
+  }
+
+  /**
    * Executes one command by dispatching it to the discovered handler for its constructor.
    *
    * @param command Command instance to execute.
