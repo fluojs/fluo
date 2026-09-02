@@ -2,6 +2,10 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./package-surface.ko.md"><kbd>한국어</kbd></a></p>
 
+## Cloudflare Worker close ownership
+
+`@fluojs/platform-cloudflare-workers` exposes no host-invoked shutdown callback through its exported `fetch` handler. Applications own the explicit trigger for `await worker.close()`. A successful lazy-entrypoint close is restartable: the next `fetch(...)` creates a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
+
 ## public package families
 
 | family | description | packages |

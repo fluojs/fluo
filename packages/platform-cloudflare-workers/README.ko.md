@@ -66,6 +66,12 @@ export default {
 };
 ```
 
+### close 소유권과 lazy 재시작
+
+Cloudflare Workers는 exported `fetch` 핸들러에 host가 호출하는 shutdown callback을 제공하지 않습니다. NestJS shutdown hook을 마이그레이션할 때는 operator가 제어하는 management path나 애플리케이션이 소유한 다른 lifecycle처럼 application-owned close trigger를 선택하고, 그 trigger에서 `await worker.close()`를 호출하세요. `worker.fetch`만 export한다고 해서 close 호출이 마련되지는 않습니다.
+
+성공한 `worker.close()`는 의도적으로 재시작 가능합니다. 현재 lazy application을 해제하며, 이후의 `worker.fetch(...)`는 isolate 안에서 새 application을 bootstrap하여 bootstrap lifecycle hook을 다시 실행하고 application singleton provider를 다시 생성합니다. `close()`를 terminal Worker shutdown signal로 취급하지 마세요. Application에 terminal behavior가 필요하면 해당 상태를 명시적으로 소유하고 강제해야 합니다.
+
 ## 주요 패턴
 
 ### Early Hints 미지원

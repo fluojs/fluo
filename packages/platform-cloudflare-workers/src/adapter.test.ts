@@ -908,6 +908,64 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
+  it('reboots a lazy Worker entrypoint after successful close and reconstructs application singletons', async () => {
+    let bootstrapCount = 0;
+    let singletonConstructionCount = 0;
+
+    class StartupProbe {
+      constructor() {
+        singletonConstructionCount += 1;
+      }
+
+      onApplicationBootstrap() {
+        bootstrapCount += 1;
+      }
+    }
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      providers: [StartupProbe],
+    });
+
+    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+      cors: false,
+    });
+
+    try {
+      // Given a bootstrapped lazy entrypoint.
+      const firstResponse = await entrypoint.fetch(
+        new Request('https://worker.test/health'),
+        {},
+        createExecutionContext(),
+      );
+
+      // When its application closes successfully and the host dispatches another fetch.
+      await entrypoint.close();
+      const restartedResponse = await entrypoint.fetch(
+        new Request('https://worker.test/health'),
+        {},
+        createExecutionContext(),
+      );
+
+      // Then the fetch succeeds through a newly bootstrapped application instance.
+      expect(firstResponse.status).toBe(200);
+      expect(restartedResponse.status).toBe(200);
+      expect(singletonConstructionCount).toBe(2);
+      expect(bootstrapCount).toBe(2);
+    } finally {
+      await entrypoint.close();
+    }
+  });
+
   it('does not reopen a lazy Worker entrypoint while close is draining the current application', async () => {
     let bootstrapCount = 0;
     const deferred = createDeferred<void>();

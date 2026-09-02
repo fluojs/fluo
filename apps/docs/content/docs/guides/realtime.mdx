@@ -10,6 +10,10 @@ fluo exposes two official realtime paths:
 - `@fluojs/websockets` for decorator-based WebSocket gateways across Node.js, Bun, Deno, and Cloudflare Workers.
 - `@fluojs/socket.io` for Socket.IO v4 features such as rooms, namespaces, broadcasting, and automatic reconnection.
 
+## Cloudflare Worker close ownership
+
+Cloudflare Workers does not send a shutdown callback through the exported `fetch` handler. An application-owned explicit trigger must call `await worker.close()` when migrated NestJS shutdown work is required. A successful lazy-entrypoint close is restartable: the next `fetch(...)` creates a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
+
 ## Choosing a realtime package
 
 | Need | Choose | Reason |

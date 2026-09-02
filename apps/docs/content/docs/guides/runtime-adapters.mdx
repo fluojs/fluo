@@ -17,6 +17,10 @@ AppModule
 
 Use this guide when choosing a runtime target or when you need to understand which behavior is portable and which behavior belongs to an adapter.
 
+## Cloudflare Worker close ownership
+
+The exported Cloudflare Worker `fetch` handler has no host-invoked shutdown callback. Move NestJS shutdown hooks to an application-owned explicit trigger that calls `await worker.close()`. A successful lazy-entrypoint close is restartable: a later `fetch(...)` creates a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
+
 ## Static assets
 
 Static asset policy is portable only when the application supplies a `StaticAssetSource` to `createStaticAssetsMiddleware(...)`. This preserves the same traversal protection, validators, `HEAD`, `Range`, `If-Range`, and stream-cancellation behavior on every adapter without claiming that every host has a filesystem.

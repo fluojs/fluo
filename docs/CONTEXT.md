@@ -3,6 +3,10 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+## Cloudflare Worker Close Ownership
+
+The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback, so applications own the explicit trigger that calls `await worker.close()`. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
+
 ## Static Asset Delivery
 
 Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.

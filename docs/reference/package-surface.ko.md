@@ -2,6 +2,10 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./package-surface.md"><kbd>English</kbd></a></p>
 
+## Cloudflare Worker close 소유권
+
+`@fluojs/platform-cloudflare-workers`의 exported `fetch` handler에는 host가 호출하는 shutdown callback이 없습니다. 애플리케이션이 `await worker.close()`를 위한 explicit trigger를 소유합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 다음 `fetch(...)`는 새 application을 만들고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
+
 ## 공개 패키지 패밀리
 
 | 패밀리 | 설명 | 패키지 |
