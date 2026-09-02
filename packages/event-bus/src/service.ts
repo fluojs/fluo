@@ -96,6 +96,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private readonly activeDispatches = new Set<Promise<void>>();
   private readonly transport: EventBusTransport | undefined;
   private transportClosed = false;
+  private shutdownDeadlineAtMs: number | undefined;
 
   constructor(
     private readonly runtimeContainer: Container,
@@ -173,6 +174,16 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     await this.trackActiveDispatch(this.executePublish(event, options));
   }
 
+  /**
+   * Caps this event bus shutdown drain at a deadline coordinated by an owning integration.
+   *
+   * @internal
+   * @param deadlineAtMs Absolute timestamp in milliseconds.
+   */
+  adoptShutdownDeadline(deadlineAtMs: number): void {
+    this.shutdownDeadlineAtMs = Math.min(this.shutdownDeadlineAtMs ?? deadlineAtMs, deadlineAtMs);
+  }
+
   private async executePublish(event: object, options?: EventPublishOptions): Promise<void> {
     await this.ensureDiscovered();
     const matchingDescriptors = this.matchEventDescriptors(event);
@@ -245,6 +256,10 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private async awaitShutdownDrain(timeoutMs: number): Promise<boolean> {
+    if (timeoutMs <= 0) {
+      return false;
+    }
+
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<false>((resolve) => {
       timeoutId = setTimeout(() => resolve(false), timeoutMs);
@@ -269,7 +284,12 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private resolveShutdownDrainTimeoutMs(): number {
-    return this.normalizeTimeoutMs(this.moduleOptions.shutdown?.drainTimeoutMs) ?? DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
+    const timeoutMs =
+      this.normalizeTimeoutMs(this.moduleOptions.shutdown?.drainTimeoutMs) ?? DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
+    const remainingTimeoutMs =
+      this.shutdownDeadlineAtMs === undefined ? undefined : Math.max(0, this.shutdownDeadlineAtMs - Date.now());
+
+    return remainingTimeoutMs === undefined ? timeoutMs : Math.min(timeoutMs, remainingTimeoutMs);
   }
 
   private matchEventDescriptors(event: object): EventHandlerDescriptor[] {

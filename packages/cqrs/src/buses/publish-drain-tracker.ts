@@ -74,6 +74,10 @@ export class CqrsPublishDrainTracker {
   }
 
   private async awaitDrain(timeoutMs: number): Promise<boolean> {
+    if (timeoutMs <= 0) {
+      return false;
+    }
+
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<false>((resolve) => {
       timeoutId = setTimeout(() => resolve(false), timeoutMs);

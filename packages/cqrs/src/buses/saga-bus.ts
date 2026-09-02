@@ -11,6 +11,7 @@ import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor 
 import { drainSagaContinuations, runSerializedSagaContinuationTasks, type SagaDispatchOptions } from './saga-continuation.js';
 import { discoverSagaDescriptors } from './saga-discovery.js';
 import { drainPendingSagaDispatches } from './saga-drain.js';
+import { CqrsShutdownDeadline } from './shutdown-deadline.js';
 import { enterSagaTopology, type SagaTopologyEntry } from './saga-topology.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
@@ -40,7 +41,14 @@ function toErrorMessage(error: unknown): string {
  * The service prevents re-entrant dispatch loops within the same explicit dispatch context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
-@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS, RUNTIME_CLEANUP_REGISTRATION)
+@Inject(
+  RUNTIME_CONTAINER,
+  COMPILED_MODULES,
+  APPLICATION_LOGGER,
+  CQRS_MODULE_OPTIONS,
+  RUNTIME_CLEANUP_REGISTRATION,
+  CqrsShutdownDeadline,
+)
 export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
   private discoveryPromise: Promise<void> | undefined;
@@ -48,6 +56,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private readonly executionChains = new Map<Token, Promise<void>>();
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly pendingDispatches = new Set<Promise<void>>();
+  private authorizedPipelineLeaseCount = 0;
   private shutdownDrainTimeouts = 0;
   private unregisterShutdownStartCleanup: (() => void) | undefined;
 
@@ -57,6 +66,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
+    private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
   ) {
     super(runtimeContainer, compiledModules, logger);
 
@@ -84,12 +94,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
     await this.drainActiveSagaWork();
 
-    this.executionChains.clear();
-    this.handlerInstances.clear();
-    this.descriptorsByEvent.clear();
-    this.discovered = false;
-    this.discoveryPromise = undefined;
     this.lifecycleState = 'stopped';
+    this.clearStoppedSagaGraphIfQuiescent();
   }
 
   /**
@@ -104,11 +110,15 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     sagasDiscovered: number;
     shutdownDrainTimeouts: number;
   } {
+    const stopped = this.lifecycleState === 'stopped';
+
     return {
-      discovered: this.discovered,
+      discovered: stopped ? false : this.discovered,
       inFlightSagaExecutions: this.pendingDispatches.size,
       lifecycleState: this.lifecycleState,
-      sagasDiscovered: new Set(Array.from(this.descriptorsByEvent.values()).flatMap((descriptors) => descriptors.map((d) => d.token))).size,
+      sagasDiscovered: stopped
+        ? 0
+        : new Set(Array.from(this.descriptorsByEvent.values()).flatMap((descriptors) => descriptors.map((d) => d.token))).size,
       shutdownDrainTimeouts: this.shutdownDrainTimeouts,
     };
   }
@@ -125,6 +135,34 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     options: SagaDispatchOptions<typeof CQRS_SAGA_DRAIN_AUTHORIZATION> = {},
   ): Promise<void> {
     this.assertAcceptingNewWork(options.drainAuthorization);
+    return this.trackPendingDispatch(this.runDispatch(event, context, options));
+  }
+
+  /**
+   * Retains the discovered saga graph for one active CQRS publish pipeline.
+   *
+   * @returns A release function that must run after the authorized pipeline settles.
+   */
+  acquireAuthorizedPipelineLease(): () => void {
+    this.authorizedPipelineLeaseCount += 1;
+    let released = false;
+
+    return () => {
+      if (released) {
+        return;
+      }
+
+      released = true;
+      this.authorizedPipelineLeaseCount -= 1;
+      this.clearStoppedSagaGraphIfQuiescent();
+    };
+  }
+
+  private async runDispatch<TEvent extends IEvent>(
+    event: TEvent,
+    context: CqrsDispatchContext | undefined,
+    options: SagaDispatchOptions<typeof CQRS_SAGA_DRAIN_AUTHORIZATION>,
+  ): Promise<void> {
     await this.ensureDiscovered();
 
     const entries = this.matchSagaDescriptors(event).map((descriptor) => ({
@@ -173,6 +211,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private markApplicationShutdownStarted(): void {
+    this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
+
     if (this.lifecycleState !== 'stopped') {
       this.lifecycleState = 'stopping';
     }
@@ -200,7 +240,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     const settled = current.catch(() => undefined);
 
     this.executionChains.set(descriptor.token, settled);
-    this.pendingDispatches.add(current);
 
     try {
       await current;
@@ -209,16 +248,41 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
         await drainSagaContinuations(topology.continuationScope);
       }
     } finally {
-      this.pendingDispatches.delete(current);
-
       if (this.executionChains.get(descriptor.token) === settled) {
         this.executionChains.delete(descriptor.token);
       }
     }
   }
 
+  private async trackPendingDispatch(dispatch: Promise<void>): Promise<void> {
+    this.pendingDispatches.add(dispatch);
+
+    try {
+      await dispatch;
+    } finally {
+      this.pendingDispatches.delete(dispatch);
+      this.clearStoppedSagaGraphIfQuiescent();
+    }
+  }
+
+  private clearStoppedSagaGraphIfQuiescent(): void {
+    if (
+      this.lifecycleState !== 'stopped'
+      || this.pendingDispatches.size > 0
+      || this.authorizedPipelineLeaseCount > 0
+    ) {
+      return;
+    }
+
+    this.executionChains.clear();
+    this.handlerInstances.clear();
+    this.descriptorsByEvent.clear();
+    this.discovered = false;
+    this.discoveryPromise = undefined;
+  }
+
   private async drainActiveSagaWork(): Promise<void> {
-    const timeoutMs = this.resolveShutdownDrainTimeoutMs();
+    const timeoutMs = this.shutdownDeadline.remainingTimeoutMs() ?? this.resolveShutdownDrainTimeoutMs();
     const activeWorkCount = this.pendingDispatches.size;
     const drained = await drainPendingSagaDispatches(this.pendingDispatches, timeoutMs);
 
