@@ -1,18 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  createSourceFile,
-  forEachChild,
-  isCallExpression,
-  isFunctionDeclaration,
-  isIdentifier,
-  ScriptKind,
-  ScriptTarget,
-} from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
+import {
+  enforceMicroservicesNestjsMigrationDocs,
+  hasDirectMainBodyMigrationGuardCall,
+} from './microservices-nestjs-migration-docs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -21,7 +15,7 @@ function read(relativePath: string): string {
 }
 
 describe('NestJS microservices migration documentation', () => {
-  it('keeps the source-backed migration identifiers synchronized', () => {
+  it('keeps the source-backed migration structure synchronized', () => {
     // Given
     const runGovernanceGuard = () => enforceMicroservicesNestjsMigrationDocs();
 
@@ -29,72 +23,72 @@ describe('NestJS microservices migration documentation', () => {
     expect(runGovernanceGuard).not.toThrow();
   });
 
-  it.each([
-    [
-      'packages/microservices/src/transports/redis-transport.ts',
-      'RedisPubSubMicroserviceTransport does not support request/reply send()',
-    ],
-    [
-      'packages/microservices/src/service.ts',
-      'after shutdown has started',
-    ],
-    ['packages/microservices/package.json', '"./mqtt"'],
-  ] as const)('reports source drift in %s', (driftedPath, expectedMarker) => {
+  it('rejects a source comment that imitates gRPC emit acknowledgement', () => {
     // Given
-    const readWithoutSourceContract = (relativePath: string): string =>
-      relativePath === driftedPath ? '' : read(relativePath);
+    const grpcTransportPath = 'packages/microservices/src/transports/grpc-transport.ts';
+    const readWithCommentDecoy = (relativePath: string): string =>
+      relativePath === grpcTransportPath
+        ? read(relativePath).replace(
+          'await this.callUnary(parsed, payload, grpcKinds.event, undefined);',
+          '// await this.callUnary(parsed, payload, grpcKinds.event, undefined);',
+        )
+        : read(relativePath);
 
     // When
-    const runGovernanceGuard = () => enforceMicroservicesNestjsMigrationDocs(readWithoutSourceContract);
+    const runGovernanceGuard = () => enforceMicroservicesNestjsMigrationDocs(readWithCommentDecoy);
 
     // Then
-    expect(runGovernanceGuard).toThrow(driftedPath);
-    expect(runGovernanceGuard).toThrow(expectedMarker);
+    expect(runGovernanceGuard).toThrow('GrpcMicroserviceTransport.emit()');
   });
 
-  it.each([
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-  ] as const)('reports documentation drift in %s', (driftedPath) => {
+  it('rejects a claim moved outside the microservices section', () => {
     // Given
-    const readWithoutMigrationSection = (relativePath: string): string =>
-      relativePath === driftedPath ? '' : read(relativePath);
+    const documentationPath = 'docs/getting-started/migrate-from-nestjs.md';
+    const claim = 'Event patterns fan out to all distinct matching handlers.';
+    const readWithOutOfSectionDecoy = (relativePath: string): string =>
+      relativePath === documentationPath
+        ? read(relativePath)
+          .replace(claim, '')
+          .replace('### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration', [
+            '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration',
+            '',
+            `- ${claim}`,
+          ].join('\n'))
+        : read(relativePath);
 
     // When
-    const runGovernanceGuard = () => enforceMicroservicesNestjsMigrationDocs(readWithoutMigrationSection);
+    const runGovernanceGuard = () => enforceMicroservicesNestjsMigrationDocs(readWithOutOfSectionDecoy);
 
     // Then
-    expect(runGovernanceGuard).toThrow(driftedPath);
-    expect(runGovernanceGuard).toThrow('### Microservices Handler and Transport Migration');
+    expect(runGovernanceGuard).toThrow('substantive list item');
   });
 
-  it('invokes the migration guard through central platform governance', () => {
+  it('rejects an HTML-comment documentation decoy', () => {
     // Given
-    const governanceSource = createSourceFile(
-      'verify-platform-consistency-governance.mjs',
-      read('tooling/governance/verify-platform-consistency-governance.mjs'),
-      ScriptTarget.Latest,
-      true,
-      ScriptKind.JS,
+    const documentationPath = 'docs/getting-started/migrate-from-nestjs.md';
+    const claim = 'Event patterns fan out to all distinct matching handlers.';
+    const readWithCommentDecoy = (relativePath: string): string =>
+      relativePath === documentationPath
+        ? read(relativePath).replaceAll(claim, `<!-- ${claim} -->`)
+        : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceMicroservicesNestjsMigrationDocs(readWithCommentDecoy);
+
+    // Then
+    expect(runGovernanceGuard).toThrow('substantive list item');
+  });
+
+  it('requires a direct migration-guard call in the main body', () => {
+    // Given
+    const governanceSource = read('tooling/governance/verify-platform-consistency-governance.mjs');
+    const sourceWithNestedUncalledGuard = governanceSource.replace(
+      '  enforceMicroservicesNestjsMigrationDocs();',
+      '  const runMigrationGuardLater = () => enforceMicroservicesNestjsMigrationDocs();',
     );
-    let callsMigrationGuard = false;
 
-    // When
-    for (const statement of governanceSource.statements) {
-      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
-        continue;
-      }
-
-      forEachChild(statement.body, function visit(node): void {
-        if (isCallExpression(node) && isIdentifier(node.expression)
-          && node.expression.text === 'enforceMicroservicesNestjsMigrationDocs') {
-          callsMigrationGuard = true;
-        }
-        forEachChild(node, visit);
-      });
-    }
-
-    // Then
-    expect(callsMigrationGuard).toBe(true);
+    // When / Then
+    expect(hasDirectMainBodyMigrationGuardCall(governanceSource)).toBe(true);
+    expect(hasDirectMainBodyMigrationGuardCall(sourceWithNestedUncalledGuard)).toBe(false);
   });
 });
