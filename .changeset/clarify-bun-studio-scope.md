@@ -1,5 +1,5 @@
 ---
-'@fluojs/cli': patch
+'@fluojs/cli': minor
 ---
 
-Clarify that live `fluo dev --studio` support is limited to Node dev-runner projects and direct Bun projects to Studio-compatible `fluo inspect` artifacts.
+Add live `fluo dev --studio` support for Node dev-runner projects and clear Bun project error guidance to export Studio-compatible artifacts with `fluo inspect`.
