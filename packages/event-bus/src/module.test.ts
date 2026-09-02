@@ -782,35 +782,53 @@ describe('@fluojs/event-bus', () => {
     await app.close();
   });
 
-  it('deduplicates duplicate handler registration for the same token and method', async () => {
-    class SharedHandler {
-      static calls = 0;
+  it('discovers the effective duplicate handler implementation with its source module', async () => {
+    const calls: string[] = [];
 
+    class SharedHandler {}
+
+    class LosingSharedHandler {
       @OnEvent(UserCreatedEvent)
-      onUserCreated(_event: UserCreatedEvent) {
-        SharedHandler.calls += 1;
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(`losing:${event.userId}`);
       }
     }
 
-    SharedHandler.calls = 0;
+    class WinningSharedHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(`winning:${event.userId}`);
+      }
+    }
 
     class FeatureModule {}
     defineModule(FeatureModule, {
-      providers: [SharedHandler],
+      providers: [{ provide: SharedHandler, useClass: LosingSharedHandler }],
     });
 
     class AppModule {}
     defineModule(AppModule, {
       imports: [FeatureModule, EventBusModule.forRoot()],
-      providers: [SharedHandler],
+      providers: [{ provide: SharedHandler, useClass: WinningSharedHandler }],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const service = await app.container.resolve(EventBusLifecycleService);
 
     await eventBus.publish(new UserCreatedEvent('user-7'));
 
-    expect(SharedHandler.calls).toBe(1);
+    expect(calls).toEqual(['winning:user-7']);
+    expect(service['descriptors']).toEqual([
+      {
+        eventType: UserCreatedEvent,
+        methodKey: 'onUserCreated',
+        methodName: 'onUserCreated',
+        moduleName: 'AppModule',
+        targetName: 'WinningSharedHandler',
+        token: SharedHandler,
+      },
+    ]);
 
     await app.close();
   });
@@ -1004,19 +1022,68 @@ describe('@fluojs/event-bus', () => {
 
     await eventBus.publish(new UserCreatedEvent('user-8'));
 
-    const requestWarnings = loggerEvents.filter((event) =>
-      event.includes(
-        'warn:EventBusLifecycleService:RequestScopedProvider in module AppModule declares @OnEvent() methods but is registered with request scope.',
-      ),
-    );
-    const controllerWarnings = loggerEvents.filter((event) =>
-      event.includes(
-        'warn:EventBusLifecycleService:TransientController in module AppModule declares @OnEvent() methods but is registered with transient scope.',
-      ),
+    const scopeWarnings = loggerEvents.filter((event) =>
+      event.startsWith('warn:EventBusLifecycleService:')
+      && event.includes('declares @OnEvent() methods but is registered with'),
     );
 
-    expect(requestWarnings).toHaveLength(1);
-    expect(controllerWarnings).toHaveLength(1);
+    expect(scopeWarnings).toEqual([
+      'warn:EventBusLifecycleService:RequestScopedProvider in module AppModule declares @OnEvent() methods but is registered with request scope. Event handlers are registered only for singleton providers.',
+      'warn:EventBusLifecycleService:TransientController in module AppModule declares @OnEvent() methods but is registered with transient scope. Event handlers are registered only for singleton providers.',
+    ]);
+
+    await app.close();
+  });
+
+  it('uses normalized class implementations for non-singleton event handler diagnostics', async () => {
+    const loggerEvents: string[] = [];
+    const calls: string[] = [];
+    const symbolHandler = Symbol('symbol-handler');
+
+    @Scope('request')
+    class DecoratedSymbolHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent): void {
+        calls.push(`symbol:${event.userId}`);
+      }
+    }
+
+    @Scope('transient')
+    class DecoratedClassToken {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent): void {
+        calls.push(`token:${event.userId}`);
+      }
+    }
+
+    class UndecoratedImplementation {}
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot()],
+      providers: [
+        { provide: symbolHandler, scope: 'request', useClass: DecoratedSymbolHandler },
+        { provide: DecoratedClassToken, scope: 'transient', useClass: UndecoratedImplementation },
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('user-normalized-class'));
+
+    const scopeWarnings = loggerEvents.filter((event) =>
+      event.startsWith('warn:EventBusLifecycleService:')
+      && event.includes('declares @OnEvent() methods but is registered with'),
+    );
+
+    expect(calls).toEqual([]);
+    expect(scopeWarnings).toEqual([
+      'warn:EventBusLifecycleService:DecoratedSymbolHandler in module AppModule declares @OnEvent() methods but is registered with request scope. Event handlers are registered only for singleton providers.',
+    ]);
 
     await app.close();
   });
@@ -2232,12 +2299,17 @@ describe('@fluojs/event-bus', () => {
     it('records transport close failures in the lifecycle status snapshot', async () => {
       const loggerEvents: string[] = [];
       const transport = {
+        closeCalls: 0,
         async close() {
-          throw new Error('close failed');
+          this.closeCalls += 1;
+
+          if (this.closeCalls === 1) {
+            throw new Error('close failed');
+          }
         },
         async publish(_channel: string, _payload: unknown) {},
         async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
-      } satisfies EventBusTransport;
+      } satisfies EventBusTransport & { closeCalls: number };
 
       class AppModule {}
       defineModule(AppModule, {
@@ -2250,7 +2322,7 @@ describe('@fluojs/event-bus', () => {
       });
       const service = await app.container.resolve(EventBusLifecycleService);
 
-      await expect(closeApplication(app)).resolves.toBeUndefined();
+      await expect(closeApplication(app)).rejects.toThrow('close failed');
 
       expect(loggerEvents.some((event) => event.includes('EventBusTransport failed to close.'))).toBe(true);
       expect(service.createPlatformStatusSnapshot()).toMatchObject({
@@ -2266,6 +2338,10 @@ describe('@fluojs/event-bus', () => {
           status: 'not-ready',
         },
       });
+
+      await expect(closeApplication(app)).resolves.toBeUndefined();
+      expect(transport.closeCalls).toBe(2);
+      expect(service.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopped');
     });
 
     it('does not call transport when no transport is configured (backward compat)', async () => {

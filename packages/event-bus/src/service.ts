@@ -1,8 +1,17 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
-import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
-import type { Container, Provider } from '@fluojs/di';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import { cloneWithFallback } from '@fluojs/core/internal';
+import type { Container, NormalizedProvider } from '@fluojs/di';
+import type {
+  ApplicationLogger,
+  CompiledModule,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+} from '@fluojs/runtime';
+import {
+  APPLICATION_LOGGER,
+  COMPILED_MODULES,
+  RUNTIME_CONTAINER,
+} from '@fluojs/runtime/internal';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
 import { createEventBusPlatformStatusSnapshot } from './status.js';
@@ -21,11 +30,6 @@ interface DiscoveryCandidate {
   scope: 'request' | 'singleton' | 'transient';
   targetType: Function;
   token: Token;
-}
-
-interface ProviderDiscoveryCandidate {
-  moduleName: string;
-  provider: Provider;
 }
 
 interface ResolvedPublishOptions {
@@ -63,28 +67,8 @@ class EventPublishAbortError extends Error {
   }
 }
 
-function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
-  if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
-}
-
 function methodKeyToName(methodKey: MetadataPropertyKey): string {
   return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
-}
-
-function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
-}
-
-function isFactoryOrValueProvider(provider: Provider): provider is Extract<Provider, { useFactory: unknown } | { useValue: unknown }> {
-  return typeof provider === 'object' && provider !== null && ('useFactory' in provider || 'useValue' in provider);
 }
 
 function hasEventHandlerMetadata(targetType: Function): boolean {
@@ -137,19 +121,16 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
-    let transportClosedCleanly = true;
 
     if (this.activeDispatches.size > 0) {
       await this.drainActiveDispatches();
     }
 
     if (this.transport) {
-      transportClosedCleanly = await this.closeTransportOrRecordFailure('EventBusTransport failed to close.');
+      await this.closeTransportOrRecordFailure('EventBusTransport failed to close.');
     }
 
-    if (transportClosedCleanly) {
-      this.lifecycleState = 'stopped';
-    }
+    this.lifecycleState = 'stopped';
   }
 
   /**
@@ -177,7 +158,8 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
    *
    * @param event Event instance to publish.
    * @param options Optional bounds for matching local handlers and transport publication.
-   * @returns A promise that resolves once the configured local/transport publication completes.
+   * @returns A promise that resolves after publication attempts settle, or after background work is scheduled when
+   * `waitForHandlers` is `false`. Handler and transport failures are recorded without rejecting the caller.
    */
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
     if (!this.canPublishInCurrentLifecycle()) {
@@ -522,19 +504,22 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private async rollbackTransportSubscriptionsAfterBootstrapFailure(): Promise<void> {
-    await this.closeTransportOrRecordFailure('EventBusTransport failed to close after bootstrap subscription failure.');
+    try {
+      await this.closeTransportOrRecordFailure('EventBusTransport failed to close after bootstrap subscription failure.');
+    } catch {
+      // Preserve the original subscription failure while runtime cleanup retries this incomplete close.
+    }
   }
 
-  private async closeTransportOrRecordFailure(message: string): Promise<boolean> {
+  private async closeTransportOrRecordFailure(message: string): Promise<void> {
     try {
       await this.closeTransport();
-      return true;
     } catch (error) {
       this.transportCloseFailures += 1;
       this.lifecycleState = 'failed';
       this.logger.error(message, error, 'EventBusLifecycleService');
 
-      return false;
+      throw error;
     }
   }
 
@@ -831,47 +816,25 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   private async discoveryCandidates(): Promise<DiscoveryCandidate[]> {
     const candidates: DiscoveryCandidate[] = [];
-    const providerCandidates: ProviderDiscoveryCandidate[] = [];
+    const moduleNames = new Map<Token, string>();
+    const registrations = this.runtimeContainer.inspectResolutionState().registrations;
 
     for (const compiledModule of this.compiledModules) {
       for (const provider of compiledModule.definition.providers ?? []) {
-        if (typeof provider === 'function') {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider,
-            token: provider,
-          });
-          continue;
-        }
-
-        if (isClassProvider(provider)) {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider.useClass,
-            token: provider.provide,
-          });
-          continue;
-        }
-
-        if (isFactoryOrValueProvider(provider)) {
-          providerCandidates.push({ moduleName: compiledModule.type.name, provider });
-        }
+        const token = typeof provider === 'function' ? provider : provider.provide;
+        moduleNames.set(token, compiledModule.type.name);
       }
 
       for (const controller of compiledModule.definition.controllers ?? []) {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(controller),
-          targetType: controller,
-          token: controller,
-        });
+        moduleNames.set(controller, compiledModule.type.name);
       }
     }
 
-    for (const candidate of providerCandidates) {
-      const resolvedCandidate = await this.resolveProviderDiscoveryCandidate(candidate);
+    for (const [token, provider] of registrations) {
+      const resolvedCandidate = this.resolveProviderDiscoveryCandidate(
+        moduleNames.get(token) ?? 'BootstrapProviders',
+        provider,
+      );
 
       if (resolvedCandidate) {
         candidates.push(resolvedCandidate);
@@ -881,21 +844,18 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return candidates;
   }
 
-  private resolveProviderDiscoveryCandidate(candidate: ProviderDiscoveryCandidate): DiscoveryCandidate | undefined {
-    const provider = candidate.provider;
-
-    if (!('provide' in provider)) {
-      return undefined;
-    }
-
-    const scope = scopeFromProvider(provider);
+  private resolveProviderDiscoveryCandidate(
+    moduleName: string,
+    provider: NormalizedProvider,
+  ): DiscoveryCandidate | undefined {
+    const scope = provider.scope;
     const token = provider.provide;
 
     if (scope !== 'singleton') {
-      return this.createUnresolvedProviderDiscoveryCandidate(candidate.moduleName, token, scope);
+      return this.createUnresolvedProviderDiscoveryCandidate(moduleName, provider);
     }
 
-    if ('useValue' in provider) {
+    if (provider.type === 'value') {
       const instance = provider.useValue;
 
       if (typeof instance !== 'object' || instance === null) {
@@ -909,41 +869,50 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       }
 
       return {
-        moduleName: candidate.moduleName,
+        moduleName,
         scope,
         targetType,
         token,
       };
     }
 
-    if (typeof token !== 'function' || !hasEventHandlerMetadata(token)) {
-      return undefined;
-    }
+    const targetType = provider.type === 'class'
+      ? provider.useClass
+      : typeof token === 'function'
+        ? token
+        : undefined;
 
-    return {
-      moduleName: candidate.moduleName,
-      scope,
-      targetType: token,
-      token,
-    };
-  }
-
-  private createUnresolvedProviderDiscoveryCandidate(
-    moduleName: string,
-    token: Token,
-    scope: 'request' | 'transient',
-  ): DiscoveryCandidate | undefined {
-    const tokenType = typeof token === 'function' ? token : undefined;
-
-    if (!tokenType) {
+    if (!targetType || !hasEventHandlerMetadata(targetType)) {
       return undefined;
     }
 
     return {
       moduleName,
       scope,
-      targetType: tokenType,
+      targetType,
       token,
+    };
+  }
+
+  private createUnresolvedProviderDiscoveryCandidate(
+    moduleName: string,
+    provider: NormalizedProvider,
+  ): DiscoveryCandidate | undefined {
+    const targetType = provider.type === 'class'
+      ? provider.useClass
+      : typeof provider.provide === 'function'
+        ? provider.provide
+        : undefined;
+
+    if (!targetType) {
+      return undefined;
+    }
+
+    return {
+      moduleName,
+      scope: provider.scope,
+      targetType,
+      token: provider.provide,
     };
   }
 

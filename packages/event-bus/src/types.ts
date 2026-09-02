@@ -92,7 +92,8 @@ export interface EventBus {
    *
    * @param event Event instance to publish.
    * @param options Optional bounds for matching local handlers and transport publication.
-   * @returns A promise that resolves once the configured publish workflow completes.
+   * @returns A promise that resolves after the configured workflow completes, or after background work is scheduled
+   * when `waitForHandlers` is `false`.
    */
   publish(event: object, options?: EventPublishOptions): Promise<void>;
 }

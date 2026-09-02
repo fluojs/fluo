@@ -147,7 +147,7 @@ export function createEventBusPlatformStatusSnapshot(input: EventBusStatusAdapte
     health: createHealth(input),
     ownership: {
       externallyManaged: input.transportConfigured,
-      ownsResources: false,
+      ownsResources: input.transportConfigured,
     },
     readiness: createReadiness(input),
   };

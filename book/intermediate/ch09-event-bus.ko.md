@@ -248,7 +248,9 @@ Part 1은 FluoShop이 boundary를 넘어 통신하는 방법을 정리했습니�
 - stable `eventKey` 값은 refactor를 넘어 routing contract를 유지하는 데 도움이 됩니다.
 - in-process publish and subscribe가 기본이며, Redis transport는 같은 모델을 process boundary 너머로 확장합니다.
 - `EventPublishOptions`는 local handler와 transport publication 모두에 호출자 관점의 bound를 적용합니다.
+- `@OnEvent(...)` handler는 normalized effective singleton registration의 public instance 메서드이며, `EventBusModule.forRoot()`는 기본 global이고 module-local visibility에는 `{ global: false }`를 사용합니다.
 - Local 및 inbound transport listener 실패는 log되고 격리되며, 다른 matching listener는 계속 실행됩니다. Local listener 실패만으로 `publish(...)`를 reject하지 않으며, inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않습니다. Publisher completion은 모든 listener가 성공했음을 증명하지 않습니다. Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있습니다. 해당 실패는 각각 별도로 문서화된 동작을 유지합니다.
+- Event-bus에는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요하며, `waitForHandlers: false`는 shutdown-tracked background work를 scheduling한 뒤 resolve합니다.
 - Redis 서브패스에는 optional `ioredis` peer와 transport 전용 `publishClient`, `subscribeClient` instance가 각각 필요합니다.
 - 잘못된 JSON을 버리는 동작은 Redis adapter에만 해당하며, 애플리케이션은 event-bus teardown 후 자신의 Redis client를 닫을 책임을 계속 가집니다.
 - Redis fan-out에는 idempotent handler가 필요하며, 느리거나 retry 가능한 reaction은 durable work를 Queue로 넘겨야 합니다.

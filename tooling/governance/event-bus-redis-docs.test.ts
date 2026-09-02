@@ -297,3 +297,21 @@ describe('Event Bus handler failure isolation documentation', () => {
     ]);
   });
 });
+
+describe('event-bus lifecycle contract documentation', () => {
+  it('keeps effective discovery, fail-soft delivery, and runtime support discoverable', () => {
+    const documents = [
+      'packages/event-bus/README.md',
+      'packages/event-bus/README.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+    ];
+
+    for (const path of documents) {
+      assertMarkers(path, 'event-bus lifecycle contract', readDocument(path), [
+        '>=20.19.3 <21 || >=22.2.0 <27',
+        'effective',
+      ]);
+    }
+  });
+});
