@@ -2,4 +2,4 @@
 "@fluojs/cli": patch
 ---
 
-Keep `fluo inspect --json` stdout parseable as one JSON document by writing runtime diagnostics to stderr.
+Support `fluo inspect --format json` as an explicit equivalent of `--json`, keeping stdout parseable as one JSON document while runtime diagnostics are written to stderr.

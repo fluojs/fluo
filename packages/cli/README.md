@@ -318,7 +318,7 @@ Export your application structure and troubleshoot initialization issues without
 fluo inspect ./src/app.module.ts --mermaid
 
 # Export snapshot for @fluojs/studio
-fluo inspect ./src/app.module.ts --json > snapshot.json
+fluo inspect ./src/app.module.ts --format json > snapshot.json
 
 # Write the same JSON snapshot to a CI artifact path without shell redirection
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
@@ -332,6 +332,8 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 # Inspect a named module export; defaults to AppModule
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
+
+`--format json` is explicitly equivalent to `--json`: either writes exactly one JSON document to stdout while runtime diagnostics go to stderr, and any other `--format` value is rejected.
 
 The runtime produces the inspection snapshot. `fluo inspect` accepts generated TypeScript source modules such as `./src/app.ts` or `./src/app.module.ts` through an explicit TypeScript loader boundary, while existing `.js` and `.mjs` module paths continue to load through native Node.js ESM. The CLI bootstraps an adapterless application so the authoritative HTTP dispatcher descriptors are available, then adds the runtime-owned `routes` projection to JSON, timing envelopes, and report snapshots. The CLI owns inspect orchestration, JSON serialization, report wrapping, and `--output <path>` artifact writes; Studio owns snapshot parsing, filtering, connection inspection, viewer rendering, and Mermaid graph semantics. `fluo inspect` serializes the snapshot as JSON by default when no output mode flag is provided, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. `--export <name>` selects the module export to bootstrap and defaults to `AppModule`; `--timing` records bootstrap timing diagnostics next to the JSON snapshot output, including when `--timing` is provided without an explicit `--json` flag, and `--report` wraps the runtime-produced snapshot with a stable summary for CI/support triage. `--timing` cannot be combined with Mermaid output. `--output <path>` writes the selected inspect payload to an explicit artifact path instead of stdout; it does not make the inspected application writable or change module graph state beyond the normal bootstrap/close cycle.
 
