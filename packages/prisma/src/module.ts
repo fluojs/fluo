@@ -27,7 +27,14 @@ interface NormalizedPrismaModuleOptions<
   strictTransactions: boolean;
 }
 
-type PrismaAsyncModuleOptions<
+/**
+ * Configures an async Prisma module registration through an injected factory.
+ *
+ * @typeParam TClient Root Prisma client shape registered in the module.
+ * @typeParam TTransactionClient Transaction-scoped client resolved inside transaction callbacks.
+ * @typeParam TTransactionOptions Options forwarded to Prisma interactive transactions.
+ */
+export type PrismaAsyncModuleOptions<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient,
   TTransactionOptions,

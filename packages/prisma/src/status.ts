@@ -23,7 +23,14 @@ type PersistencePlatformStatusSnapshot = {
 
 type PrismaPlatformLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
 
-type PrismaPlatformStatusSnapshotInput = {
+/**
+ * Supplies lifecycle and transaction state for a Prisma platform status snapshot.
+ *
+ * @remarks
+ * Omit `activeTransactionBoundaries` when no outer service or manual transaction boundary is open;
+ * the snapshot reports it as `0`.
+ */
+export type PrismaPlatformStatusSnapshotInput = {
   activeTransactionBoundaries?: number;
   activeRequestTransactions: number;
   lifecycleState: PrismaPlatformLifecycleState;

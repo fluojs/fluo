@@ -309,6 +309,7 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 ### 관련 export 타입
 
+- `PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>`
 - `PrismaModuleOptions`
 - `PrismaClientLike`
 - `PrismaHandleProvider`
@@ -316,6 +317,8 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
+- `PrismaPlatformStatusSnapshotInput`
+  - `createPrismaPlatformStatusSnapshot(...)`의 입력 계약입니다. 바깥 service 또는 manual transaction boundary가 열려 있지 않다면 `activeTransactionBoundaries`를 생략할 수 있으며 snapshot은 `0`으로 보고합니다.
 
 ## 관련 패키지
 

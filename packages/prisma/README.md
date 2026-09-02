@@ -312,6 +312,7 @@ token are deliberately not exported.
 
 ### Related exported types
 
+- `PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>`
 - `PrismaModuleOptions`
 - `PrismaClientLike`
 - `PrismaHandleProvider`
@@ -319,6 +320,8 @@ token are deliberately not exported.
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
+- `PrismaPlatformStatusSnapshotInput`
+  - The input contract for `createPrismaPlatformStatusSnapshot(...)`; omit `activeTransactionBoundaries` when no outer service or manual transaction boundary is open and the snapshot reports `0`.
 
 ## Related Packages
 
