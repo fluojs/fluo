@@ -74,12 +74,43 @@ export function compressNodeResponse(
   response.setHeader('Content-Encoding', encoding);
   response.removeHeader('Content-Length');
 
-  return new Promise((resolve, reject) => {
-    stream.on('error', reject);
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      response.removeListener('close', rejectClosedResponse);
+      response.removeListener('error', rejectFailure);
+      response.removeListener('finish', resolveResponse);
+      stream.removeListener('error', rejectFailure);
+    };
+    const settle = (action: () => void) => {
+      if (settled) {
+        return;
+      }
 
+      settled = true;
+      cleanup();
+      action();
+    };
+    const rejectFailure = (error: Error) => {
+      settle(() => reject(error));
+    };
+    const rejectClosedResponse = () => {
+      settle(() => reject(new Error('Node response closed before compression completed.')));
+    };
+    const resolveResponse = () => {
+      if (response.destroyed || !response.writableEnded) {
+        rejectClosedResponse();
+        return;
+      }
+
+      settle(resolve);
+    };
+
+    response.once('close', rejectClosedResponse);
+    response.once('error', rejectFailure);
+    response.once('finish', resolveResponse);
+    stream.once('error', rejectFailure);
     stream.pipe(response);
-    stream.on('finish', resolve);
-
     stream.end(body);
   });
 }
