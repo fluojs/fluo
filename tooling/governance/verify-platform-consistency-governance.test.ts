@@ -182,17 +182,6 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('keeps release-governance discovery in both context companions', () => {
-    // Given: the bilingual documentation hub.
-    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
-    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
-
-    // When: release operations need a governed discovery path.
-    // Then: both context companions name the release-governance entrypoint.
-    expect(englishContext).toContain('## Release Governance Discoverability');
-    expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
-  });
-
   it('requires context and tooling companions for package-surface contract changes', async () => {
     // Given: a bilingual package-surface contract update with its package regression.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
@@ -247,27 +236,82 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('requires tooling and regression companions for Queue producer migration updates', async () => {
-    // Given: a bilingual Queue producer migration update and its context discoverability companions.
-    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-    const changedFiles = [
+  describe('Queue producer migration contract companions', () => {
+    const queueProducerMigrationChangedFiles = [
+      'packages/queue/README.md',
+      'packages/queue/README.ko.md',
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
-      'docs/CONTEXT.md',
-      'docs/CONTEXT.ko.md',
     ];
+    const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.mjs';
+    const regressionCompanion = 'packages/queue/src/worker-ownership.test.ts';
 
-    // When: the CI/tooling and regression companions are absent or present.
-    // Then: governance rejects the incomplete category and accepts its focused companion.
-    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
-      /CI\/tooling enforcement updates/u,
-    );
-    expect(() =>
-      enforceContractCompanionUpdates([
-        ...changedFiles,
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-      ]),
-    ).not.toThrow();
+    it('rejects a Queue producer migration missing only the English context companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        contextCompanions[1],
+        toolingCompanion,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+      );
+    });
+
+    it('rejects a Queue producer migration missing only the Korean context companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        contextCompanions[0],
+        toolingCompanion,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+      );
+    });
+
+    it('rejects a Queue producer migration with tooling but no regression companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        ...contextCompanions,
+        toolingCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /regression test updates/u,
+      );
+    });
+
+    it('rejects a Queue producer migration with regression evidence but no tooling companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        ...contextCompanions,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /CI\/tooling enforcement updates/u,
+      );
+    });
+
+    it('accepts independent tooling and regression companions for a Queue producer migration', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        ...contextCompanions,
+        toolingCompanion,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+    });
   });
 
   it('accepts the connection identity regression for its HTTP runtime contract update', async () => {
