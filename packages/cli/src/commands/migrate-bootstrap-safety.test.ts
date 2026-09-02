@@ -15,6 +15,72 @@ afterEach(() => {
 });
 
 describe('migrate bootstrap safety boundary', () => {
+  it('rewrites only the safe bootstrap when a callback bootstrap shares its NestFactory import', async () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    temporaryDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const callbackBootstrap = `async function bootstrapCallback() {
+  const callbackApp = await NestFactory.create(CallbackModule);
+  await callbackApp.listen(4000, () => {
+    console.log('listening');
+  });
+}`;
+    const source = `import { NestFactory } from '@nestjs/core';
+import { CallbackModule } from './callback.module';
+import { SafeModule } from './safe.module';
+
+async function bootstrapSafe() {
+  const safeApp = await NestFactory.create(SafeModule);
+  await safeApp.listen(3000);
+}
+
+${callbackBootstrap}
+
+void bootstrapSafe();
+void bootstrapCallback();
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runMigrateCommand(
+      ['./src', '--apply', '--platform', 'express', '--only', 'bootstrap', '--json'],
+      {
+        cwd: workspaceDirectory,
+        stderr: { write: () => undefined },
+        stdout: { write: (message) => stdoutBuffer.push(message) },
+      },
+    );
+
+    // Then
+    const report = JSON.parse(stdoutBuffer.join('')) as {
+      changedFiles: number;
+      warningCount: number;
+      files: { filePath: string; warnings: { category: string }[] }[];
+    };
+    const transformed = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(transformed).toContain('import { NestFactory } from \'@nestjs/core\';');
+    expect(transformed).toMatch(
+      /async function bootstrapCallback\(\) \{\s+const callbackApp = await NestFactory\.create\(CallbackModule\);\s+await callbackApp\.listen\(4000, \(\) => \{\s+console\.log\('listening'\);\s+\}\);\s+\}/,
+    );
+    expect(transformed).toContain('import { FluoFactory } from "@fluojs/runtime";');
+    expect(transformed).toContain('adapter: createExpressAdapter({');
+    expect(transformed).toMatch(/port:\s*3000/);
+    expect(transformed).toContain('await safeApp.listen();');
+    expect(transformed.match(/adapter: createExpressAdapter/g)).toHaveLength(1);
+    expect(report.changedFiles).toBe(1);
+    expect(report.warningCount).toBe(1);
+    expect(report.files).toContainEqual(
+      expect.objectContaining({
+        filePath: sourceFilePath,
+        warnings: [expect.objectContaining({ category: 'bootstrap-port' })],
+      }),
+    );
+  });
+
   it('preserves a Nest callback listen bootstrap and reports manual migration', async () => {
     // Given
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
