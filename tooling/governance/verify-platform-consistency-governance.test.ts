@@ -315,6 +315,31 @@ describe('enforceContractCompanionUpdates', () => {
     });
   });
 
+  it.each([
+    ['English Queue README', 'packages/queue/README.md'],
+    ['Korean Queue README', 'packages/queue/README.ko.md'],
+  ])('requires context companions for %s contract updates', async (_label, queueReadmePath) => {
+    // Given: one Queue contract README and the governance regression that changes with it.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      queueReadmePath,
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: bilingual documentation-hub companions are absent or present.
+    // Then: either Queue contract surface requires both discoverability updates.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts the connection identity regression for its HTTP runtime contract update', async () => {
     // Given: a bilingual HTTP runtime update backed by its focused connection regression.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

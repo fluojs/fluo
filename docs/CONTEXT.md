@@ -22,6 +22,8 @@ For NestJS HTTP pipeline migration, portable bootstrap `middleware` implements `
 
 For NestJS migrations, `fluo migrate` rewrites default one-argument `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while unsupported bootstrap variants remain unchanged with a diagnostic and explicit adapter-independent transform selections leave bootstrap unchanged.
 
+Queue duplicate-worker migration discoverability is split across `packages/queue/README.md`, [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), and [the Queue chapter](../book/intermediate/ch11-queue.md): each job class and effective `jobName` has one singleton worker owner, and duplicates fail bootstrap before BullMQ resources are created regardless of discovery order. Give each migrated NestJS `@Process(...)` handler a distinct job class and `jobName`, or consolidate handlers behind one worker's `handle(job)`.
+
 NestJS metrics migration boundaries are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md); the [NestJS parity map](./contracts/nestjs-parity-gaps.md) records implemented metrics coverage and migration boundaries.
 
 NestJS microservices migration boundaries are documented in the [NestJS migration map](./getting-started/migrate-from-nestjs.md): explicitly register public decorated handlers in a compiled module, configure a concrete adapter with `MicroservicesModule.forRoot(...)`, and inject the `MICROSERVICE` lifecycle facade. The map distinguishes Redis Pub/Sub event delivery from Redis Streams request/reply and requires `GrpcMicroserviceTransport` with `protoPath`, `packageName`, and `url` for streaming handlers.

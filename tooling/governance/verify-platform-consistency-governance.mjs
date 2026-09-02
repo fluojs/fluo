@@ -277,6 +277,9 @@ const contractGateTriggers = new Set([
   // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
+  // Queue worker ownership and NestJS/Bull migration boundaries.
+  'packages/queue/README.md',
+  'packages/queue/README.ko.md',
   'docs/architecture/transactions.md',
   'docs/architecture/transactions.ko.md',
   'docs/reference/package-chooser.md',
