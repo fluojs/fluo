@@ -16,7 +16,11 @@ import type {
   PlatformShellSnapshot,
   PlatformValidationResult,
 } from './platform-contract.js';
-import { createPlatformFailureIssue, PlatformDiagnosticRetention } from './platform-diagnostic-retention.js';
+import {
+  createPlatformFailureIssue,
+  createPlatformValidationFailureIssue,
+  PlatformDiagnosticRetention,
+} from './platform-diagnostic-retention.js';
 import { PlatformShellProbeCollector } from './platform-shell-probes.js';
 
 interface PlatformLifecycleTransition {
@@ -191,8 +195,10 @@ export class RuntimePlatformShell implements PlatformShell {
       }
 
       if (!result.ok || result.issues.some((issue) => issue.severity === 'error')) {
-        this.diagnostics.append(result.issues);
-        failures.push(...result.issues);
+        const reportedIssues =
+          result.issues.length > 0 ? result.issues : [createPlatformValidationFailureIssue(registration.component.id)];
+        this.diagnostics.append(reportedIssues);
+        failures.push(...reportedIssues);
       }
     }
 
