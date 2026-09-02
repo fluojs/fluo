@@ -238,6 +238,132 @@ describe('runNestJsMigration', () => {
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
   });
 
+  it('retains multi-argument Nest listen bootstraps and reports a port warning', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@nestjs', 'core'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'app.module.ts'), 'export class AppModule {}\n');
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@nestjs', 'core', 'index.d.ts'),
+      'export declare const NestFactory: { create(module: unknown): Promise<{ listen(port: number, host: string): Promise<void> }> };\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000, '127.0.0.1');
+}
+
+void bootstrap();
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      bootstrapPlatform: 'express',
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+    const program = ts.createProgram([join(workspaceDirectory, 'src', 'main.ts')], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+
+    // Then
+    expect(report.changedFiles).toBe(0);
+    expect(mainContent).toContain("import { NestFactory } from '@nestjs/core';");
+    expect(mainContent).toContain('NestFactory.create(AppModule)');
+    expect(mainContent).toContain("await app.listen(3000, '127.0.0.1');");
+    expect(mainContent).not.toContain('@fluojs/runtime');
+    expect(mainContent).not.toContain('@fluojs/platform-express');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-port' &&
+      warning.message.includes('exactly one numeric port argument'),
+    )).toBe(true);
+    expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
+  });
+
+  it('retains unsafe single-argument Nest listen bootstraps and reports port warnings', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@nestjs', 'core'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'app.module.ts'), 'export class AppModule {}\n');
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@nestjs', 'core', 'index.d.ts'),
+      'export declare const NestFactory: { create(module: unknown): Promise<{ listen(port: number | string | undefined): Promise<void> }> };\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+declare const process: { readonly env: { readonly PORT?: string } };
+
+async function bootstrap() {
+  const stringApp = await NestFactory.create(AppModule);
+  await stringApp.listen('3000');
+
+  const environmentApp = await NestFactory.create(AppModule);
+  await environmentApp.listen(process.env.PORT);
+
+  const mixedApp = await NestFactory.create(AppModule);
+  await mixedApp.listen(3000);
+  await mixedApp.listen(process.env.PORT);
+}
+
+void bootstrap();
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      bootstrapPlatform: 'express',
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+    const program = ts.createProgram([join(workspaceDirectory, 'src', 'main.ts')], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+
+    // Then
+    expect(report.changedFiles).toBe(0);
+    expect(mainContent).toContain("import { NestFactory } from '@nestjs/core';");
+    expect(mainContent).toContain("await stringApp.listen('3000');");
+    expect(mainContent).toContain('await environmentApp.listen(process.env.PORT);');
+    expect(mainContent).toContain('NestFactory.create(AppModule)');
+    expect(mainContent).toContain('await mixedApp.listen(3000);');
+    expect(mainContent).toContain('await mixedApp.listen(process.env.PORT);');
+    expect(mainContent).not.toContain('@fluojs/runtime');
+    expect(mainContent).not.toContain('@fluojs/platform-express');
+    expect(report.fileResults.flatMap((result) => result.warnings).filter((warning) =>
+      warning.category === 'bootstrap-port' &&
+      warning.message.includes('exactly one numeric port argument'),
+    )).toHaveLength(2);
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-unsupported' &&
+      warning.message.includes('Multiple app.listen(...) calls'),
+    )).toBe(true);
+    expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
+  });
+
   it('keeps a clause-level type-only import type-only after migration', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);

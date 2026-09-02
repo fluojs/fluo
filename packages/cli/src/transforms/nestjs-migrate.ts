@@ -1145,7 +1145,7 @@ function rewriteBootstrap(
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
   const createCalls = new Map<string, ts.CallExpression>();
-  const listenCalls = new Map<string, ts.CallExpression>();
+  const listenCalls = new Map<string, ts.CallExpression[]>();
   const portFoldedApps = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
@@ -1163,6 +1163,52 @@ function rewriteBootstrap(
 
     warnedCreateCallKeys.add(key);
     warnings.push(buildWarning(filePath, sourceFile, callExpression, 'bootstrap-unsupported', `${reason} Keep this Nest bootstrap path and migrate manually.`));
+  }
+
+  function getSupportedListenCall(
+    appVariable: string,
+    createCall: ts.CallExpression,
+  ): { portExpression: ts.NumericLiteral } | { category: 'bootstrap-port' | 'bootstrap-unsupported'; node: ts.Node; reason: string } {
+    const appListenCalls = listenCalls.get(appVariable) ?? [];
+    if (appListenCalls.length === 0) {
+      return {
+        category: 'bootstrap-unsupported',
+        node: createCall,
+        reason: 'Unable to find an app.listen(...) call for this NestFactory.create result.',
+      };
+    }
+
+    const [listenCall] = appListenCalls;
+    if (!listenCall) {
+      return {
+        category: 'bootstrap-unsupported',
+        node: createCall,
+        reason: 'Unable to resolve an app.listen(...) call for this NestFactory.create result.',
+      };
+    }
+
+    if (appListenCalls.length > 1) {
+      return {
+        category: 'bootstrap-unsupported',
+        node: listenCall,
+        reason: 'Multiple app.listen(...) calls are associated with this NestFactory.create result.',
+      };
+    }
+
+    const [portExpression] = listenCall.arguments;
+    if (listenCall.arguments.length !== 1 || !portExpression || !ts.isNumericLiteral(portExpression)) {
+      return {
+        category: 'bootstrap-port',
+        node: listenCall,
+        reason: 'Expected exactly one numeric port argument for app.listen(...).',
+      };
+    }
+
+    return { portExpression };
+  }
+
+  function warnUnsupportedListen(node: ts.Node, category: 'bootstrap-port' | 'bootstrap-unsupported', reason: string): void {
+    warnings.push(buildWarning(filePath, sourceFile, node, category, `${reason} Keep this Nest bootstrap path and migrate manually.`));
   }
 
   function isSupportedCreateCall(callExpression: ts.CallExpression): { supported: true } | { supported: false; reason: string } {
@@ -1256,7 +1302,10 @@ function rewriteBootstrap(
       && ts.isIdentifier(node.expression.expression)
       && node.expression.name.text === 'listen'
     ) {
-      listenCalls.set(node.expression.expression.text, node);
+      const appVariable = node.expression.expression.text;
+      const calls = listenCalls.get(appVariable) ?? [];
+      calls.push(node);
+      listenCalls.set(appVariable, calls);
     }
 
     ts.forEachChild(node, inspect);
@@ -1274,38 +1323,36 @@ function rewriteBootstrap(
             return node;
           }
 
-          let nextArgs = [...node.arguments];
           const ownerEntry = [...createCalls.entries()].find(([, callExpression]) => callExpression.pos === node.pos && callExpression.end === node.end);
-
-          if (ownerEntry) {
-            const [appVariable] = ownerEntry;
-            const listenCall = listenCalls.get(appVariable);
-
-            if (listenCall && listenCall.arguments.length === 1) {
-              const [portExpression] = listenCall.arguments;
-
-              if (nextArgs.length === 1) {
-                nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
-                  ts.factory.createPropertyAssignment(
-                    'adapter',
-                    createExpressAdapter(
-                      ts.factory.createObjectLiteralExpression([
-                        ts.factory.createPropertyAssignment('port', portExpression),
-                      ], true),
-                    ),
-                  ),
-                ], true)];
-                portFoldedApps.add(appVariable);
-              }
-            }
+          if (!ownerEntry) {
+            warnUnsupportedCreate(node, 'Unable to associate this NestFactory.create call with a named application variable and app.listen(...) call.');
+            return node;
           }
 
-          if (nextArgs.length === 1) {
-            nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
-              ts.factory.createPropertyAssignment('adapter', createExpressAdapter()),
-            ], true)];
+          const [appVariable] = ownerEntry;
+          const listenCall = getSupportedListenCall(appVariable, node);
+          if ('reason' in listenCall) {
+            warnUnsupportedListen(listenCall.node, listenCall.category, listenCall.reason);
+            return node;
           }
 
+          const [rootModule] = node.arguments;
+          if (!rootModule) {
+            warnUnsupportedCreate(node, 'NestFactory.create requires a root module argument.');
+            return node;
+          }
+
+          const nextArgs = [rootModule, ts.factory.createObjectLiteralExpression([
+            ts.factory.createPropertyAssignment(
+              'adapter',
+              createExpressAdapter(
+                ts.factory.createObjectLiteralExpression([
+                  ts.factory.createPropertyAssignment('port', listenCall.portExpression),
+                ], true),
+              ),
+            ),
+          ], true)];
+          portFoldedApps.add(appVariable);
           rewrittenCreateCallKeys.add(toCallKey(node));
 
           return ts.factory.updateCallExpression(
