@@ -134,6 +134,14 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     options: SagaDispatchOptions<typeof CQRS_SAGA_DRAIN_AUTHORIZATION> = {},
   ): Promise<void> {
     this.assertAcceptingNewWork(options.drainAuthorization);
+    return this.trackPendingDispatch(this.runDispatch(event, context, options));
+  }
+
+  private async runDispatch<TEvent extends IEvent>(
+    event: TEvent,
+    context: CqrsDispatchContext | undefined,
+    options: SagaDispatchOptions<typeof CQRS_SAGA_DRAIN_AUTHORIZATION>,
+  ): Promise<void> {
     await this.ensureDiscovered();
 
     const entries = this.matchSagaDescriptors(event).map((descriptor) => ({
@@ -211,7 +219,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     const settled = current.catch(() => undefined);
 
     this.executionChains.set(descriptor.token, settled);
-    this.pendingDispatches.add(current);
 
     try {
       await current;
@@ -220,11 +227,19 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
         await drainSagaContinuations(topology.continuationScope);
       }
     } finally {
-      this.pendingDispatches.delete(current);
-
       if (this.executionChains.get(descriptor.token) === settled) {
         this.executionChains.delete(descriptor.token);
       }
+    }
+  }
+
+  private async trackPendingDispatch(dispatch: Promise<void>): Promise<void> {
+    this.pendingDispatches.add(dispatch);
+
+    try {
+      await dispatch;
+    } finally {
+      this.pendingDispatches.delete(dispatch);
     }
   }
 

@@ -202,11 +202,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
     const deadlineAtMs = this.shutdownDeadline.deadlineAtMs();
 
-    if (
-      deadlineAtMs !== undefined &&
-      this.delegatedEventBus &&
-      this.moduleOptions.eventBus?.shutdown?.drainTimeoutMs === undefined
-    ) {
+    if (deadlineAtMs !== undefined && this.delegatedEventBus) {
       this.delegatedEventBus.adoptShutdownDeadline(deadlineAtMs);
     }
 

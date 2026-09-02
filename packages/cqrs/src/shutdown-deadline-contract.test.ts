@@ -3,6 +3,7 @@ import { type ApplicationLogger, bootstrapApplication, defineModule } from '@flu
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CqrsEventBusService } from './buses/event-bus.js';
+import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { EventHandler, Saga } from './decorators.js';
 import { CqrsModule } from './module.js';
 import { EVENT_BUS } from './tokens.js';
@@ -30,24 +31,12 @@ function createLogger(events: string[]): ApplicationLogger {
   };
 }
 
-async function settleWithinOneDrainWindow(closePromise: Promise<void>, windowMs: number): Promise<'blocked' | 'settled'> {
-  let settled = false;
-  const observed = closePromise.then(() => {
-    settled = true;
-  });
-
-  await vi.advanceTimersByTimeAsync(windowMs);
-  await Promise.race([observed, Promise.resolve()]);
-
-  return settled ? 'settled' : 'blocked';
-}
-
 describe('CQRS single shutdown deadline contract', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('bounds a stuck delegated publish inside one CQRS drain window', async () => {
+  it('caps an explicit delegated event-bus timeout at one CQRS drain window', async () => {
     vi.useFakeTimers();
     const loggerEvents: string[] = [];
     const releaseSubscriber = createDeferred<void>();
@@ -67,7 +56,12 @@ describe('CQRS single shutdown deadline contract', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [CqrsModule.forRoot({ shutdown: { drainTimeoutMs: DRAIN_TIMEOUT_MS } })],
+      imports: [
+        CqrsModule.forRoot({
+          eventBus: { shutdown: { drainTimeoutMs: 5000 } },
+          shutdown: { drainTimeoutMs: DRAIN_TIMEOUT_MS },
+        }),
+      ],
       providers: [StuckSubscriber],
     });
 
@@ -77,15 +71,72 @@ describe('CQRS single shutdown deadline contract', () => {
 
     await subscriberStarted.promise;
 
+    let closeSettled = false;
+    const closePromise = app.close().then(() => {
+      closeSettled = true;
+    });
+
+    try {
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
+
+      expect(closeSettled).toBe(true);
+      expect(loggerEvents).toEqual([
+        'warn:CqrsEventBusService:CQRS event shutdown drain exceeded 20ms with 1 active publish pipeline(s); continuing shutdown.',
+        'warn:CqrsSagaLifecycleService:CQRS saga shutdown drain exceeded 0ms with 1 active saga task(s); continuing shutdown.',
+        'warn:EventBusLifecycleService:Event bus shutdown drain exceeded 0ms with 2 active dispatch workflow(s); continuing shutdown.',
+      ]);
+    } finally {
+      releaseSubscriber.resolve();
+      await vi.runAllTimersAsync();
+      await Promise.allSettled([publishPromise, closePromise]);
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  });
+
+  it('drains an accepted saga dispatch suspended in discovery before shutdown clears state', async () => {
+    const discoverySuspended = createDeferred<void>();
+    const releaseDiscovery = createDeferred<void>();
+
+    class DiscoveryRaceEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
+    const ensureDiscovered = sagaBus['ensureDiscovered'].bind(sagaBus);
+
+    sagaBus['ensureDiscovered'] = async (): Promise<void> => {
+      discoverySuspended.resolve();
+      await releaseDiscovery.promise;
+      await ensureDiscovered();
+    };
+
+    const dispatchPromise = sagaBus.dispatch(new DiscoveryRaceEvent('suspended-discovery'));
+    await discoverySuspended.promise;
+
+    const suspendedSnapshot = sagaBus.getRuntimeSnapshot();
     const closePromise = app.close();
 
-    expect(await settleWithinOneDrainWindow(closePromise, DRAIN_TIMEOUT_MS)).toBe('settled');
-    expect(loggerEvents.some((event) => event.includes(`exceeded ${String(DRAIN_TIMEOUT_MS)}ms`))).toBe(true);
-    expect(loggerEvents.some((event) => event.includes('exceeded 5000ms'))).toBe(false);
+    try {
+      expect(suspendedSnapshot.inFlightSagaExecutions).toBe(1);
+      expect(sagaBus.getRuntimeSnapshot().inFlightSagaExecutions).toBe(1);
+    } finally {
+      releaseDiscovery.resolve();
+      await Promise.allSettled([dispatchPromise, closePromise]);
+    }
 
-    releaseSubscriber.resolve();
-    await publishPromise;
-    await closePromise;
+    expect(sagaBus.getRuntimeSnapshot()).toEqual({
+      discovered: false,
+      inFlightSagaExecutions: 0,
+      lifecycleState: 'stopped',
+      sagasDiscovered: 0,
+      shutdownDrainTimeouts: 0,
+    });
   });
 
   it('shares one drain window between CQRS event and saga shutdown hooks', async () => {
@@ -120,11 +171,15 @@ describe('CQRS single shutdown deadline contract', () => {
 
     const closePromise = app.close();
 
-    expect(await settleWithinOneDrainWindow(closePromise, DRAIN_TIMEOUT_MS)).toBe('settled');
-
-    releaseSaga.resolve();
-    await publishPromise;
-    await closePromise;
+    try {
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
+      await closePromise;
+    } finally {
+      releaseSaga.resolve();
+      await vi.runAllTimersAsync();
+      await Promise.allSettled([publishPromise, closePromise]);
+      expect(vi.getTimerCount()).toBe(0);
+    }
   });
 
   it('reports degraded status counters for both stuck handler and saga drains', async () => {
@@ -168,23 +223,40 @@ describe('CQRS single shutdown deadline contract', () => {
     const app = await bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule });
     const cqrsEventBus = await app.container.resolve(CqrsEventBusService);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    void eventBus.publish(new DegradedHandlerEvent('degraded-handler'));
-    void eventBus.publish(new DegradedSagaEvent('degraded-saga'));
+    const handlerPublishPromise = eventBus.publish(new DegradedHandlerEvent('degraded-handler'));
+    const sagaPublishPromise = eventBus.publish(new DegradedSagaEvent('degraded-saga'));
 
     await handlerStarted.promise;
     await sagaStarted.promise;
 
     const closePromise = app.close();
 
-    expect(await settleWithinOneDrainWindow(closePromise, DRAIN_TIMEOUT_MS)).toBe('settled');
+    try {
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
+      await closePromise;
 
-    const snapshot = cqrsEventBus.createPlatformStatusSnapshot();
+      const cleanup = Promise.allSettled([handlerPublishPromise, sagaPublishPromise]);
+      releaseHandler.resolve();
+      releaseSaga.resolve();
+      await cleanup;
 
-    expect(snapshot.details.shutdownDrainTimeouts).toBe(1);
-    expect(snapshot.details.sagaShutdownDrainTimeouts).toBe(1);
-    expect(snapshot.health.status).toBe('degraded');
-    expect(snapshot.details.shutdownDrainTimeoutMs).toBe(DRAIN_TIMEOUT_MS);
+      const snapshot = cqrsEventBus.createPlatformStatusSnapshot();
 
-    await closePromise;
+      expect(snapshot.details.shutdownDrainTimeouts).toBe(1);
+      expect(snapshot.details.sagaShutdownDrainTimeouts).toBe(1);
+      expect(snapshot.health.status).toBe('degraded');
+      expect(snapshot.details.shutdownDrainTimeoutMs).toBe(DRAIN_TIMEOUT_MS);
+      expect(loggerEvents).toEqual([
+        'warn:CqrsEventBusService:CQRS event shutdown drain exceeded 20ms with 2 active publish pipeline(s); continuing shutdown.',
+        'warn:CqrsSagaLifecycleService:CQRS saga shutdown drain exceeded 0ms with 1 active saga task(s); continuing shutdown.',
+        'warn:EventBusLifecycleService:EventBus.publish() was ignored because the event bus is stopped.',
+      ]);
+    } finally {
+      releaseHandler.resolve();
+      releaseSaga.resolve();
+      await vi.runAllTimersAsync();
+      await Promise.allSettled([handlerPublishPromise, sagaPublishPromise, closePromise]);
+      expect(vi.getTimerCount()).toBe(0);
+    }
   });
 });
