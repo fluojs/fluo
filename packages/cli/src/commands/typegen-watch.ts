@@ -33,7 +33,7 @@ type TypegenWatchTarget = (
 
 /** Dependencies and callbacks for one bounded typegen watch lifecycle. */
 export type TypegenWatchOptions = {
-  readonly commit: (source: string) => Promise<void>;
+  readonly commit: (source: string, signal: AbortSignal) => Promise<void>;
   readonly debounceMs?: number;
   readonly modulePath: string;
   readonly onError?: (error: unknown) => void;
@@ -96,6 +96,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   const signalTarget = options.signalTarget ?? process;
   const watchTarget = options.watchTarget ?? defaultWatchTarget;
   const watchRoot = dirname(options.modulePath);
+  let activeCommit: AbortController | undefined;
   let activeGeneration: TypegenWatchGeneration | undefined;
   let cleanedUp = false;
   let rerunRequested = false;
@@ -138,6 +139,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
     if (!stopping) {
       stopping = true;
       cleanup();
+      activeCommit?.abort();
       activeGeneration?.cancel();
     }
     settleIfIdle();
@@ -153,11 +155,19 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
       generation = options.startGeneration();
       activeGeneration = generation;
       const source = await generation.result;
-      if (!stopping) {
-        await options.commit(source);
+      if (!stopping && !rerunRequested) {
+        const commit = new AbortController();
+        activeCommit = commit;
+        try {
+          await options.commit(source, commit.signal);
+        } finally {
+          if (activeCommit === commit) {
+            activeCommit = undefined;
+          }
+        }
       }
     } catch (error: unknown) {
-      if (stopping) {
+      if (stopping || rerunRequested) {
         return;
       }
       if (reportError) {
@@ -192,6 +202,11 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
 
   const scheduleRegeneration = (changedPath: string) => {
     if (stopping || isOwnArtifactEvent(changedPath, options.outputPath)) {
+      return;
+    }
+    if (activeGeneration !== undefined) {
+      rerunRequested = true;
+      activeCommit?.abort();
       return;
     }
     if (!startupComplete) {

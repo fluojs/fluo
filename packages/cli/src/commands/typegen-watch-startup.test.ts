@@ -24,7 +24,7 @@ function createSignalTarget(): TypegenWatchSignalTarget & { emit(signal: 'SIGINT
 }
 
 describe('fluo typegen watch startup barrier', () => {
-  it('publishes a change observed during initial generation before reporting ready', async () => {
+  it('withholds a change-invalidated initial generation before reporting ready', async () => {
     // Given: initial generation has captured stale source while the watcher can observe a newer save.
     const signalTarget = createSignalTarget();
     const publishedSources: string[] = [];
@@ -32,6 +32,18 @@ describe('fluo typegen watch startup barrier', () => {
     let currentSource = 'stale source';
     let listener: ((event: string, filename: string | Buffer | null) => void) | undefined;
     let releaseInitialGeneration: (() => void) | undefined;
+    let signalInitialGenerationStarted: (() => void) | undefined;
+    let signalCurrentSourcePublished: (() => void) | undefined;
+    let signalReady: (() => void) | undefined;
+    const initialGenerationStarted = new Promise<void>((resolve) => {
+      signalInitialGenerationStarted = resolve;
+    });
+    const currentSourcePublished = new Promise<void>((resolve) => {
+      signalCurrentSourcePublished = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      signalReady = resolve;
+    });
     const watcher: TypegenWatcher = { close: vi.fn(), on: vi.fn(() => watcher) };
     const watchTarget = vi.fn((_target, _options, nextListener) => {
       listener = nextListener;
@@ -40,6 +52,7 @@ describe('fluo typegen watch startup barrier', () => {
     const generate = vi.fn(async () => {
       const capturedSource = currentSource;
       if (generate.mock.calls.length === 1) {
+        signalInitialGenerationStarted?.();
         await new Promise<void>((resolve) => {
           releaseInitialGeneration = resolve;
         });
@@ -49,10 +62,14 @@ describe('fluo typegen watch startup barrier', () => {
     const runPromise = runTypegenWatch({
       commit: async (source) => {
         publishedSources.push(source);
+        if (source === 'current source') {
+          signalCurrentSourcePublished?.();
+        }
       },
       modulePath: '/project/src/app.ts',
       onReady() {
         readySources.push(publishedSources.at(-1) ?? 'missing');
+        signalReady?.();
       },
       outputPath: '/project/src/generated/react-pages.ts',
       signalTarget,
@@ -63,19 +80,24 @@ describe('fluo typegen watch startup barrier', () => {
     });
 
     try {
-      await vi.waitFor(() => expect(generate).toHaveBeenCalledOnce());
+      await initialGenerationStarted;
+      if (listener === undefined || releaseInitialGeneration === undefined) {
+        throw new Error('Typegen watch startup generation did not install its event boundary.');
+      }
 
       // When: source changes before the initial generation can publish its captured bytes.
       currentSource = 'current source';
-      listener?.('change', 'page.tsx');
-      releaseInitialGeneration?.();
+      listener('change', 'page.tsx');
+      releaseInitialGeneration();
 
       // Then: startup performs a buffered rerun and reports ready only after current bytes publish.
-      await vi.waitFor(() => expect(publishedSources).toEqual(['stale source', 'current source']));
+      await currentSourcePublished;
+      await ready;
+      expect(publishedSources).toEqual(['current source']);
       expect(readySources).toEqual(['current source']);
     } finally {
       releaseInitialGeneration?.();
-      await vi.waitFor(() => expect(watchTarget).toHaveBeenCalledOnce());
+      expect(watchTarget).toHaveBeenCalledOnce();
       signalTarget.emit('SIGTERM');
       await runPromise;
     }

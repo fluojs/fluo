@@ -101,8 +101,8 @@ export async function runTypegenCommand(
       : createTypegenSource({ cwd, modules: await customModules, parsed });
     if (parsed.watch) {
       return await runTypegenWatch({
-        async commit(source) {
-          const action = await writeTypegenArtifact(outputPath, source);
+        async commit(source, signal) {
+          const action = await writeTypegenArtifact(outputPath, source, undefined, signal);
           stdout.write(`${action} ${outputPath}\n`);
         },
         modulePath,
