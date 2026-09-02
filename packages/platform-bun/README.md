@@ -138,6 +138,20 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - **Realtime seam**: `getRealtimeCapability()` preserves fetch-style version 1 and exposes its optional version 1 `bindingInstallation` contract. Bun websocket bindings must be configured before `listen()` starts the server. The capability installer is the canonical configuration path for protocol packages and rejects values without `fetch` and `websocket` host contracts. After startup the binding remains frozen for the live server; the adapter `close()` boundary clears its retained binding state after Bun termination and request drain settle. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch while the adapter is accepting new ingress; an accepted request keeps its dispatcher available if shutdown begins during asynchronous binding evaluation, and HTTP fallback is suppressed only after the binding returns a response or successfully upgrades the request. The binding host exposes only `upgrade(...)`, so adapter-owned `stop()` and raw `fetch()` control remain outside the realtime seam.
 - **Adapter instance helpers**: `BunHttpApplicationAdapter` exposes `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, and `close()`.
 
+### Stable diagnostic codes
+
+Package-generated caller-visible failures retain their existing `Error` or `TypeError` class and message while exposing a stable string through `error.code`:
+
+| Code | Error class | Failure |
+| --- | --- | --- |
+| `BUN_ADAPTER_INVALID_OPTION` | `Error` | A numeric adapter or shutdown option is outside its documented range. |
+| `BUN_ADAPTER_REALTIME_BINDING_INVALID` | `TypeError` | The realtime capability installer receives a value without the required `fetch` and `websocket` contracts. |
+| `BUN_ADAPTER_REALTIME_BINDING_LOCKED` | `Error` | A caller attempts to change the realtime/websocket binding after `listen()` starts the Bun server. |
+| `BUN_ADAPTER_RUNTIME_UNAVAILABLE` | `Error` | `listen()` cannot find a callable `globalThis.Bun.serve()`. |
+| `BUN_ADAPTER_SHUTDOWN_TIMEOUT` | `Error` | The caller-facing `close()` wait exceeds its bounded shutdown timeout. |
+
+Errors propagated from Bun or application code keep their original class, message, and metadata instead of receiving a package-owned code.
+
 ## Conformance Coverage
 
 `packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for conditional requests, single-byte ranges and `If-Range`, custom `QUERY`/extension-method fallback, malformed cookies, byte-exact JSON/text raw-body preservation, multipart raw-body exclusion for managed and custom fetch handlers, SSE framing, native-route param parity, same-path multi-method handoff, stale native handoff rematching after middleware rewrites the request path or method, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, and TLS listen-target reporting, plus focused tests for startup logging, duplicate listen idempotency, shutdown listener cleanup, in-flight drain behavior, close during asynchronous realtime binding evaluation, HTTP fallback after binding completion, timeout validation/reporting, shutdown 503 ingress rejection, signal-driven close rejection reporting, and websocket binding delegation/short-circuit behavior through an upgrade-only host.
