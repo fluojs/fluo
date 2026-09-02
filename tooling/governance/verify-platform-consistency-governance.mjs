@@ -503,9 +503,6 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'apps/docs/content/docs/guides/auth.mdx',
   'apps/docs/content/docs/guides/auth.ko.mdx',
-  // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
-  'docs/getting-started/migrate-from-nestjs.md',
-  'docs/getting-started/migrate-from-nestjs.ko.md',
   // Queue worker ownership and NestJS/Bull migration boundaries.
   'packages/queue/README.md',
   'packages/queue/README.ko.md',
@@ -1099,7 +1096,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
     'packages/platform-fastify/README.md',
     'packages/platform-fastify/README.ko.md',
   ];
-  const touchedFastifyRawContextDocumentation = fastifyRawContextDocumentation.some((path) => hasChanged(changedFiles, path));
+  const touchedFastifyRawContextDocumentation = [
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ].some((path) => hasChanged(changedFiles, path));
 
   if (touchedFastifyRawContextDocumentation) {
     assert(

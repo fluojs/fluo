@@ -253,8 +253,8 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('requires context companions for NestJS HTTP pipeline migration updates', async () => {
-    // Given: a bilingual NestJS HTTP migration update with its governance regression.
+  it('accepts NestJS HTTP pipeline migration updates without generic context companions', async () => {
+    // Given: a bilingual NestJS HTTP migration update with complete Fastify raw-object coverage.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const changedFiles = [
       'docs/getting-started/migrate-from-nestjs.md',
@@ -263,18 +263,9 @@ describe('enforceContractCompanionUpdates', () => {
       'tooling/governance/verify-platform-consistency-governance.test.ts',
     ];
 
-    // When: one or both documentation-hub companions are absent.
-    // Then: governance rejects the incomplete changed-file category.
-    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
-    );
-    expect(() =>
-      enforceContractCompanionUpdates([
-        ...changedFiles,
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).not.toThrow();
+    // When: the migration guide changes independently of a generic contract surface.
+    // Then: it does not require unrelated documentation-hub companions.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
   });
 
   it('requires Fastify raw-object regression coverage for its migration documentation', async () => {
@@ -305,8 +296,8 @@ describe('enforceContractCompanionUpdates', () => {
   });
 
   it.each([
-    ['NestJS migration guide', 'docs/getting-started/migrate-from-nestjs.md'],
     ['Fastify package README', 'packages/platform-fastify/README.md'],
+    ['Korean Fastify package README', 'packages/platform-fastify/README.ko.md'],
   ])('rejects partial Fastify raw-object documentation updates for the %s', async (_label, partialDocumentationPath) => {
     // Given: one governed Fastify raw-object document and the ordinary contract companions.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
@@ -323,6 +314,21 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
       /Fastify raw request and response migration docs must include all governed Fastify documentation/u,
     );
+  });
+
+  it('accepts Nest bootstrap migration evidence without Fastify raw-object companions', async () => {
+    // Given: a Nest bootstrap migration update with its focused CLI regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+    ];
+
+    // When: Fastify package documentation is unchanged.
+    // Then: unrelated Fastify raw-object companions are not required.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
   });
 
   describe('Queue producer migration contract companions', () => {
@@ -1570,7 +1576,7 @@ describe('enforceContractCompanionUpdates', () => {
     expect(enforceCompanions).not.toThrow();
   });
 
-  it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
+  it('accepts metadata preload guidance without unrelated generic companions', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const guidanceFiles = [
       'packages/core/README.md',
@@ -1582,34 +1588,7 @@ describe('enforceContractCompanionUpdates', () => {
       'book/advanced/ch16-custom-package.ko.md',
     ];
 
-    expect(() => enforceContractCompanionUpdates(guidanceFiles)).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
-    );
-    expect(() =>
-      enforceContractCompanionUpdates([
-        ...guidanceFiles,
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).toThrowError(/CI\/tooling enforcement updates/);
-    expect(() =>
-      enforceContractCompanionUpdates([
-        ...guidanceFiles,
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        'tooling/governance/verify-platform-consistency-governance.mjs',
-      ]),
-    ).not.toThrow();
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        ...guidanceFiles,
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        'tooling/governance/verify-platform-consistency-governance.mjs',
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-      ]),
-    ).not.toThrow();
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
   });
 
   it('accepts i18n catalog migration guidance with required governance companions', async () => {
@@ -2106,22 +2085,18 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('treats Cron lifecycle and NestJS migration docs as contract-governing updates', async () => {
+  it('treats Cron lifecycle contract surfaces as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const cronLifecycleTriggers = [
       'docs/architecture/lifecycle-and-shutdown.md',
       'docs/architecture/lifecycle-and-shutdown.ko.md',
       'docs/contracts/nestjs-parity-gaps.md',
       'docs/contracts/nestjs-parity-gaps.ko.md',
-      'docs/getting-started/migrate-from-nestjs.md',
-      'docs/getting-started/migrate-from-nestjs.ko.md',
     ];
 
     for (const trigger of cronLifecycleTriggers) {
       expect(() => enforceContractCompanionUpdates([trigger])).toThrowError(
-        trigger.startsWith('docs/getting-started/migrate-from-nestjs')
-          ? /Fastify raw request and response migration docs must include all governed Fastify documentation/
-          : /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+        /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
       );
     }
   });
