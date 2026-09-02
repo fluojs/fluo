@@ -11,6 +11,7 @@ import {
   PRISMA_OPTIONS,
   PrismaModule,
   PrismaService,
+  Transaction,
   type PrismaServiceFacade,
   type PrismaTransactionClient,
 } from './index.js';
@@ -1064,6 +1065,124 @@ describe('@fluojs/prisma', () => {
 
       expect(events).toEqual(['connect', 'transaction:start', 'transaction:end', 'disconnect']);
     } finally {
+      await app.close();
+    }
+  });
+
+  it('waits for fallback manual transaction callbacks to settle before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client, strictTransactions: false })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const openTransaction = prisma.transaction(async () => {
+        events.push('manual:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('manual:callback-settled');
+        return 'settled';
+      });
+
+      await callbackStarted;
+      const shutdown = app.close();
+
+      expect(events).toEqual(['connect', 'manual:callback-start']);
+
+      releaseCallback();
+
+      await expect(openTransaction).resolves.toBe('settled');
+      await shutdown;
+
+      expect(events).toEqual(['connect', 'manual:callback-start', 'manual:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
+  it('waits for fallback service transaction callbacks to settle before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    @Inject(PrismaService)
+    class UserService {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client>) {}
+
+      @Transaction()
+      async holdOpen() {
+        void this.prisma;
+        events.push('service:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('service:callback-settled');
+        return 'settled';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client, strictTransactions: false })],
+      providers: [UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(UserService);
+      const openTransaction = service.holdOpen();
+
+      await callbackStarted;
+      const shutdown = app.close();
+
+      expect(events).toEqual(['connect', 'service:callback-start']);
+
+      releaseCallback();
+
+      await expect(openTransaction).resolves.toBe('settled');
+      await shutdown;
+
+      expect(events).toEqual(['connect', 'service:callback-start', 'service:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
       await app.close();
     }
   });
