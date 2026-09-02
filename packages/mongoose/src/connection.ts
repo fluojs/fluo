@@ -73,9 +73,17 @@ function resolveCreateOptionsIndex(operationArgs: unknown[]): number | undefined
   return undefined;
 }
 
+function resolveAggregateOptionsIndex(): number {
+  return 1;
+}
+
 function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number | undefined {
   if (operation === 'create') {
     return resolveCreateOptionsIndex(operationArgs);
+  }
+
+  if (operation === 'aggregate') {
+    return resolveAggregateOptionsIndex();
   }
 
   if (!MODEL_OPERATIONS_WITH_PROJECTION.has(operation)) {
