@@ -17,6 +17,7 @@ import {
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
 import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
+import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
@@ -73,6 +74,7 @@ export {
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
 export { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
+export { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
@@ -3341,6 +3343,7 @@ export async function main() {
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
+  enforceMongooseNestjsMigrationDocs();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
   enforcePlatformNodejsEngineDocumentation();
