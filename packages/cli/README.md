@@ -252,7 +252,7 @@ Runtime support for the MVP is explicit:
 | Runtime target | `fluo dev --studio` status |
 | --- | --- |
 | Node dev runner | Full support target. |
-| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. |
+| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. Export Studio-compatible static artifacts with `fluo inspect --json --output <path>` or `fluo inspect --report --output <path>` instead. |
 | Deno | Not enabled for this MVP; `fluo dev --studio` rejects Deno projects until a dedicated bridge is implemented and verified. |
 | Cloudflare Workers | Unsupported for this MVP unless a worker bridge is added and tested. |
 

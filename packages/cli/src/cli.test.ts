@@ -154,6 +154,33 @@ afterEach(() => {
 });
 
 describe('CLI command runner', () => {
+  it('states the Node-only Studio live-mode scope and gives Bun projects an inspect-artifact path', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(projectDirectory);
+    writeFileSync(
+      join(projectDirectory, 'package.json'),
+      JSON.stringify({ name: 'bun-project', dependencies: { '@fluojs/platform-bun': 'workspace:*' } }, null, 2),
+    );
+    const helpOutput: string[] = [];
+    const errorOutput: string[] = [];
+
+    const helpExitCode = await runCli(['dev', '--help'], {
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => helpOutput.push(message) },
+    });
+    const studioExitCode = await runCli(['dev', '--studio', '--dry-run'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => errorOutput.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(helpExitCode).toBe(0);
+    expect(helpOutput.join('')).toContain('Start the local Fluo Studio sidecar for Node dev runner projects only.');
+    expect(studioExitCode).toBe(1);
+    expect(errorOutput.join('')).toContain('fluo dev --studio supports Node dev runner projects only.');
+    expect(errorOutput.join('')).toContain('fluo inspect --json --output <path>');
+  });
+
   it('publishes fluo as the canonical bin', () => {
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
@@ -2074,7 +2101,8 @@ void bootstrap();
 
     expect(nativeExitCode).toBe(1);
     expect(fluoExitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('fluo dev --studio currently supports Node dev runner projects only');
+    expect(stderrBuffer.join('')).toContain('fluo dev --studio supports Node dev runner projects only.');
+    expect(stderrBuffer.join('')).toContain('fluo inspect --json --output <path>');
   });
 
   it('prints development lifecycle dry-runs with Next.js-like env defaults', async () => {
