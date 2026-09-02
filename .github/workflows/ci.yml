@@ -390,6 +390,37 @@ jobs:
         if: matrix.runtime == 'cloudflare-workers'
         run: node --test tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs
 
+  bun-native-routing-and-lifecycle-conformance:
+    name: Bun native routing and lifecycle conformance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.3"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Bun adapter dependency closure
+        run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-bun
+
+      - name: Run Bun native routing and lifecycle conformance
+        run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
+
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
     runs-on: ubuntu-latest
@@ -426,6 +457,7 @@ jobs:
       - studio-browser
       - official-web-runtime-adapter-portability
       - native-response-cookie-conformance
+      - bun-native-routing-and-lifecycle-conformance
       - verify-platform-consistency-governance
       - resolve-pr-verification-scope
     runs-on: ubuntu-latest
