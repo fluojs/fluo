@@ -1,9 +1,21 @@
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
-import { dispatchWebRequest } from './web.js';
+import {
+  createWebFrameworkRequest,
+  createWebRequestResponseFactory,
+  dispatchWebRequest,
+  startWebRequestDispatch,
+} from './web.js';
 
 const TEXT_ENCODER = new TextEncoder();
+const INVALID_MAX_BODY_SIZES = [
+  ['NaN', Number.NaN],
+  ['Infinity', Number.POSITIVE_INFINITY],
+  ['-Infinity', Number.NEGATIVE_INFINITY],
+  ['a negative integer', -1],
+  ['a fractional value', 1.5],
+] as const satisfies ReadonlyArray<readonly [string, number]>;
 
 describe('Web JSON body limits', () => {
   it('settles a default cloned request with 413 while the original body remains unread', async () => {
@@ -263,6 +275,77 @@ describe('Web JSON body limits', () => {
     // Then
     expect(parsedBody).toEqual({ ok: true });
     await expect(response.json()).resolves.toEqual({ accepted: true });
+  });
+
+  it.each(INVALID_MAX_BODY_SIZES)('rejects %s as maxBodySize when creating the Web request factory', (_label, maxBodySize) => {
+    // Given / When / Then
+    expect(() => createWebRequestResponseFactory({ maxBodySize })).toThrow(/maxBodySize/i);
+  });
+
+  it.each(INVALID_MAX_BODY_SIZES)('rejects %s as maxBodySize when creating a Web framework request', async (_label, maxBodySize) => {
+    // Given
+    const request = new Request('https://runtime.test/json', {
+      body: '{"ok":true}',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    // When / Then
+    await expect(createWebFrameworkRequest(
+      request,
+      new AbortController().signal,
+      undefined,
+      maxBodySize,
+    )).rejects.toThrow(/maxBodySize/i);
+  });
+
+  it.each(INVALID_MAX_BODY_SIZES)('fails an invalid %s maxBodySize dispatch before reaching the dispatcher', async (_label, maxBodySize) => {
+    // Given
+    const dispatch = vi.fn();
+
+    // When / Then
+    await expect(dispatchWebRequest({
+      dispatcher: { dispatch },
+      maxBodySize,
+      request: new Request('https://runtime.test/json', {
+        body: '{"ok":true}',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+    })).rejects.toThrow(/maxBodySize/i);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each(INVALID_MAX_BODY_SIZES)('fails fast synchronously when starting a dispatch with %s as maxBodySize', (_label, maxBodySize) => {
+    // Given
+    const dispatch = vi.fn();
+
+    // When / Then
+    expect(() => startWebRequestDispatch({
+      dispatcher: { dispatch },
+      maxBodySize,
+      request: new Request('https://runtime.test/json', {
+        body: '{"ok":true}',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+    })).toThrow(/maxBodySize/i);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('accepts zero as an explicit maxBodySize at both Web request factory boundaries', async () => {
+    // Given / When
+    const factory = createWebRequestResponseFactory({ maxBodySize: 0 });
+    const frameworkRequest = await createWebFrameworkRequest(
+      new Request('https://runtime.test/json'),
+      new AbortController().signal,
+      undefined,
+      0,
+    );
+
+    // Then
+    expect(factory.createRequest).toBeTypeOf('function');
+    expect(frameworkRequest.body).toBeUndefined();
   });
 
   it('rejects JSON when Content-Length exceeds maxBodySize', async () => {

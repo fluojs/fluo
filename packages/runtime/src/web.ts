@@ -309,13 +309,15 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
 export function createWebRequestResponseFactory(
   options: CreateWebRequestResponseFactoryOptions = {},
 ): RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse> {
+  const maxBodySize = resolveWebMaxBodySize(options.maxBodySize);
+
   return {
     async createRequest(request: Request, signal: AbortSignal) {
       return createDeferredWebFrameworkRequest(
         request,
         signal,
         options.multipart,
-        options.maxBodySize ?? DEFAULT_MAX_BODY_SIZE,
+        maxBodySize,
         options.rawBody ?? false,
         options.consumeOriginalBody ?? false,
       );
@@ -413,11 +415,12 @@ export async function createWebFrameworkRequest(
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
+  const resolvedMaxBodySize = resolveWebMaxBodySize(maxBodySize);
   const frameworkRequest = createDeferredWebFrameworkRequest(
     request,
     signal,
     multipartOptions,
-    maxBodySize,
+    resolvedMaxBodySize,
     preserveRawBody,
   );
   await materializeWebFrameworkRequestBody(frameworkRequest);
@@ -567,6 +570,18 @@ function validateWebRequestContentLength(request: Request, maxBodySize: number):
   if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
     throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
   }
+}
+
+function resolveWebMaxBodySize(value: number | undefined): number {
+  const maxBodySize = value ?? DEFAULT_MAX_BODY_SIZE;
+
+  if (!Number.isInteger(maxBodySize) || maxBodySize < 0) {
+    throw new Error(
+      `Invalid maxBodySize value: ${String(maxBodySize)}. Expected a non-negative integer number of bytes.`,
+    );
+  }
+
+  return maxBodySize;
 }
 
 /**
