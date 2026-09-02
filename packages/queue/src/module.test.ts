@@ -3,6 +3,7 @@ import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT, RedisModule } from '@fluojs/redis';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withTimeout } from './helpers.js';
 
 interface MockQueueConnection {
   closeCalls: number;
@@ -57,6 +58,8 @@ const bullmqState = vi.hoisted(() => {
   const failWorkerRun = new Set<string>();
   const forceCloseHangs = new Set<string>();
   const pendingForceCloses = new Map<string, () => void>();
+  const deferredWorkerRunRejections = new Map<string, (error: Error) => void>();
+  const pendingWorkerRunRejections = new Set<string>();
 
   function attemptsFor(job: MockQueueJob): number {
     if (typeof job.opts.attempts === 'number' && Number.isFinite(job.opts.attempts) && job.opts.attempts > 0) {
@@ -118,6 +121,11 @@ const bullmqState = vi.hoisted(() => {
         resolve();
       }
       pendingForceCloses.clear();
+      for (const reject of deferredWorkerRunRejections.values()) {
+        reject(new Error('bullmq mock cleared'));
+      }
+      deferredWorkerRunRejections.clear();
+      pendingWorkerRunRejections.clear();
       sequence = 0;
     },
     createQueue(name: string) {
@@ -160,6 +168,20 @@ const bullmqState = vi.hoisted(() => {
     failWorkerCreation,
     failWorkerRun,
     forceCloseHangs,
+    pendingWorkerRunRejections,
+    captureDeferredWorkerRunRejection(name: string, reject: (error: Error) => void): void {
+      deferredWorkerRunRejections.set(name, reject);
+    },
+    rejectWorkerRun(name: string, error: Error): void {
+      const reject = deferredWorkerRunRejections.get(name);
+
+      if (!reject) {
+        throw new Error(`No deferred BullMQ Worker.run() rejection is pending for ${name}.`);
+      }
+
+      deferredWorkerRunRejections.delete(name);
+      reject(error);
+    },
     releaseForceClose(name: string): void {
       forceCloseHangs.delete(name);
       pendingForceCloses.get(name)?.();
@@ -275,6 +297,12 @@ vi.mock('bullmq', () => ({
         throw new Error(`worker run fail:${this.worker.name}`);
       }
 
+      if (bullmqState.pendingWorkerRunRejections.has(this.worker.name)) {
+        return new Promise<void>((_resolve, reject) => {
+          bullmqState.captureDeferredWorkerRunRejection(this.worker.name, reject);
+        });
+      }
+
       return bullmqState.runWorker(this.worker);
     }
 
@@ -295,6 +323,7 @@ import type { Queue } from './types.js';
 
 class MockRedisClient {
   private duplicateSequence = 0;
+  private readonly duplicateCloseObservers: (() => void)[] = [];
   failConnectOnDuplicate: number | undefined;
 
   readonly deadLetters = new Map<string, string[]>();
@@ -305,6 +334,36 @@ class MockRedisClient {
 
   disconnect(): void {
     this.disconnectCalls.push('shared');
+  }
+
+  /**
+   * Resolves on the transition that closes the last queue-owned duplicate.
+   * Queue-owned connections are the final resource that startup-failure
+   * rollback releases, so subscribing before the failure is triggered turns
+   * rollback completion into an observed signal instead of a timed wait.
+   */
+  whenAllDuplicatesClosed(): Promise<void> {
+    if (this.allDuplicatesClosed()) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.duplicateCloseObservers.push(resolve);
+    });
+  }
+
+  private allDuplicatesClosed(): boolean {
+    return this.duplicates.length > 0 && this.duplicates.every((connection) => connection.status === 'end');
+  }
+
+  private notifyDuplicateClosed(): void {
+    if (!this.allDuplicatesClosed()) {
+      return;
+    }
+
+    for (const resolve of this.duplicateCloseObservers.splice(0)) {
+      resolve();
+    }
   }
 
   duplicate(options: MockRedisDuplicateOptions = {}): MockRedisConnection {
@@ -322,11 +381,13 @@ class MockRedisClient {
       },
       disconnect: () => {
         connection.status = 'end';
+        this.notifyDuplicateClosed();
       },
       id,
       maxRetriesPerRequest: Object.hasOwn(options, 'maxRetriesPerRequest') ? options.maxRetriesPerRequest : 20,
       quit: async () => {
         connection.status = 'end';
+        this.notifyDuplicateClosed();
         return 'OK';
       },
       status: 'wait',
@@ -770,6 +831,48 @@ describe('@fluojs/queue', () => {
         rootModule: AppModule,
       }),
     ).rejects.toThrow('Duplicate @fluojs/queue scope "jobs" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.');
+  });
+
+  it('ignores unrelated application values that structurally resemble queue registration metadata', async () => {
+    class LookalikeModuleType {}
+
+    const LOOKALIKE_TOKEN = Symbol('app.lookalike-queue-context');
+
+    class LookalikeContextModule {}
+    defineModule(LookalikeContextModule, {
+      providers: [
+        {
+          provide: LOOKALIKE_TOKEN,
+          useValue: {
+            moduleType: LookalikeModuleType,
+            options: {},
+            registrationTokens: [],
+            scope: 'jobs',
+          },
+        },
+      ],
+    });
+
+    class QueueFeatureModule {}
+    defineModule(QueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false, scope: 'jobs' })],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [LookalikeContextModule, QueueFeatureModule],
+    });
+
+    const redis = new MockRedisClient();
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await expect(app.container.resolve(getQueueToken('jobs'))).resolves.toBeDefined();
+
+    await app.close();
   });
 
   it('keeps distinct explicit queue scopes isolated through public scoped token helpers', async () => {
@@ -1633,6 +1736,86 @@ describe('@fluojs/queue', () => {
     await waitForRedisDuplicatesClosed(redis);
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
     await expect(service.enqueue(new RunFailureJob('after-failure'))).rejects.toThrow('Queue lifecycle state is failed.');
+
+    await app.close();
+  });
+
+  it('marks queue lifecycle failed when BullMQ worker run rejects after the call returns', async () => {
+    const loggerEvents: string[] = [];
+
+    class AsyncRunFailureJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(AsyncRunFailureJob)
+    class AsyncRunFailureWorker {
+      async handle(_job: AsyncRunFailureJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [AsyncRunFailureWorker],
+    });
+
+    bullmqState.pendingWorkerRunRejections.add('AsyncRunFailureJob');
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const service = await app.container.resolve(QueueLifecycleService);
+
+    // Worker.run() already returned a still-pending Promise and startup
+    // completed, so only the post-startup rejection path can fail below.
+    expect(bullmqState.workers.get('AsyncRunFailureJob')?.closeCalls).toBe(0);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'started', workerStartFailures: 0, workersReady: 1 },
+    });
+
+    // Subscribe to the terminal rollback signal before triggering the
+    // rejection so completion is observed, never waited out.
+    const rollbackCompleted = redis.whenAllDuplicatesClosed();
+
+    bullmqState.rejectWorkerRun('AsyncRunFailureJob', new Error('worker run rejected:AsyncRunFailureJob'));
+
+    await expect(
+      withTimeout(rollbackCompleted, 1_000, () => new Error('Queue startup failure did not roll back initialized resources.')),
+    ).resolves.toBeUndefined();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lastWorkerStartFailure: 'worker run rejected:AsyncRunFailureJob',
+        lifecycleState: 'failed',
+        queuesReady: 0,
+        workerStartFailures: 1,
+        workersDiscovered: 1,
+        workersReady: 0,
+      },
+      health: {
+        reason: 'Queue worker startup failed.',
+        status: 'unhealthy',
+      },
+      readiness: {
+        reason: 'Queue worker startup failed.',
+        status: 'not-ready',
+      },
+    });
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'error:QueueLifecycleService:Failed to start queue worker AsyncRunFailureWorker after application bootstrap.:worker run rejected:AsyncRunFailureJob',
+        ),
+      ),
+    ).toBe(true);
+    expect(bullmqState.queues.get('AsyncRunFailureJob')?.closeCalls).toBe(1);
+    expect(bullmqState.workers.get('AsyncRunFailureJob')?.closeCalls).toBe(1);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    await expect(service.enqueue(new AsyncRunFailureJob('after-async-failure'))).rejects.toThrow(
+      'Queue lifecycle state is failed.',
+    );
 
     await app.close();
   });
