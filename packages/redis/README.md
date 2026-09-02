@@ -77,7 +77,7 @@ export class CacheRepository {
 
 ### Lifecycle Ownership
 
-Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs/redis` owns, including named clients registered through `RedisModule.forRoot({ name, ... })`. The module never adopts an existing client instance.
+Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs/redis` owns, including named clients registered through `RedisModule.forRoot({ name, ... })`. The module never adopts an existing client instance. Registration identity is application-wide: only one unnamed default registration and one registration for each trimmed name are allowed. Bootstrap rejects duplicate identities before creating a Redis client.
 
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
@@ -89,7 +89,7 @@ Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs
 
 `RedisModuleOptions` is the caller-facing input to `RedisModule.forRoot(...)`, not the final `ioredis` constructor shape. It accepts ordinary `ioredis` options except `lazyConnect` and `name`, then adds four Fluo-only fields:
 
-- `name` identifies the Fluo registration and its DI tokens. It never becomes the `ioredis` constructor `name`.
+- `name` identifies the Fluo registration and its DI tokens. It never becomes the `ioredis` constructor `name`. Each trimmed name is an application-wide ownership identity and can be registered only once.
 - `global` controls module visibility. The default registration is global unless set to `false`; named registrations are always scoped and reject `global: true`.
 - `lifecycle` configures Fluo-owned `connect()` and `quit()` timeout guardrails.
 - `sentinelName` supplies the ioredis Sentinel master name because the input `name` field is reserved for Fluo registration identity.

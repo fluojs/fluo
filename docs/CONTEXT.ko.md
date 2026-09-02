@@ -68,6 +68,8 @@ NestJS codemod import-safety discoverability는 [`docs/getting-started/migrate-f
 | UI | React 통합 | `@fluojs/react` |
 | Tooling | CLI, 진단 도구, Vite 빌드 통합 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
+Redis 등록 ownership은 [`packages/redis/README.ko.md`](../packages/redis/README.ko.md)에 정의되어 있습니다. bootstrap은 client를 만들기 전에 중복된 이름 없는 기본 등록 또는 trim한 이름이 같은 등록을 거부하므로, 추가 `RedisModule.forRoot(...)` 등록마다 서로 다른 `name`이 필요합니다.
+
 JWT refresh-policy discoverability는 `packages/jwt/README.ko.md`와 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 나뉜다. `RefreshTokenOptions.algorithms`는 refresh-token 서명과 검증에만 사용되는 선택적 HMAC 전용 allowlist다. 기존 derivation을 유지하려면 설정하지 않고, HMAC refresh token을 구성하기 위해 좁은 비대칭 access-token policy를 넓히지 않는다.
 
 Fastify 네이티브 확장 마이그레이션은 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)와 `packages/platform-fastify/README.ko.md`에 문서화되어 있다. 기본적으로 이식 가능한 fluo middleware를 사용하고, fluo가 internal registration을 소유하기 전에 유지해야 하는 Fastify 전용 plugin, hook 또는 instance customisation에만 한 번 실행되는 `configureFastify` construction hook을 사용한다.

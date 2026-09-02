@@ -68,6 +68,8 @@ NestJS codemod import-safety discoverability is split across [`docs/getting-star
 | UI | React integration | `@fluojs/react` |
 | Tooling | CLI, diagnostics, and Vite build integration | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
+Redis registration ownership is defined in [`packages/redis/README.md`](../packages/redis/README.md): bootstrap rejects a duplicate unnamed default registration or duplicate trimmed named registration before creating a client, so every additional `RedisModule.forRoot(...)` registration needs a distinct `name`.
+
 JWT refresh-policy discoverability is split across `packages/jwt/README.md` and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): `RefreshTokenOptions.algorithms` is an optional HMAC-only allowlist used only for refresh-token signing and verification. Leave it unset to preserve the legacy derivation from top-level HMAC algorithms, and do not widen a narrow asymmetric access-token policy merely to configure HMAC refresh tokens.
 
 Fastify-native extension migration is documented in [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md) and `packages/platform-fastify/README.md`: use portable fluo middleware by default, and use the one-time `configureFastify` construction hook only for retained Fastify-native plugins, hooks, or instance customization before fluo owns internal registration.

@@ -193,6 +193,37 @@ describe('enforceContractCompanionUpdates', () => {
     expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
   });
 
+  it('requires context and tooling companions for package-surface contract changes', async () => {
+    // Given: a bilingual package-surface contract update with its package regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+      'packages/redis/src/duplicate-registration.test.ts',
+    ];
+
+    // When: required discoverability and tooling companions are added incrementally.
+    // Then: governance accepts only the complete contract change.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrow(/CI\/tooling enforcement updates/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('requires context companions for NestJS HTTP pipeline migration updates', async () => {
     // Given: a bilingual NestJS HTTP migration update with its governance regression.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
