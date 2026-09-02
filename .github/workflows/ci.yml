@@ -318,7 +318,7 @@ jobs:
 
       - name: Test published Deno adapter journey
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        run: deno test --no-lock --config packages/platform-deno/deno/deno.json --allow-net --allow-read packages/platform-deno/deno/native-adapter.test.ts
+        run: deno test --no-lock --config packages/platform-deno/deno/deno.json --allow-net --allow-read packages/platform-deno/deno/native-adapter.test.js
 
       - name: Skip Deno platform verification outside scoped Deno changes
         if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')

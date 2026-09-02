@@ -1,18 +1,27 @@
-import { Controller, Get } from 'npm:@fluojs/http';
-import { defineModule } from 'npm:@fluojs/runtime';
-import {
-  bootstrapDenoApplication,
-  createDenoFetchHandler,
-  runDenoApplication,
-} from 'npm:@fluojs/platform-deno';
+const resolvePublishedPackage = (name) => `npm:@fluojs/${name}`;
 
-@Controller('/health')
+const [
+  { Controller, Get },
+  { defineModule },
+  {
+    bootstrapDenoApplication,
+    createDenoFetchHandler,
+    runDenoApplication,
+  },
+] = await Promise.all([
+  import(resolvePublishedPackage('http')),
+  import(resolvePublishedPackage('runtime')),
+  import(resolvePublishedPackage('platform-deno')),
+]);
+
 class HealthController {
-  @Get('/status')
   status() {
     return { status: 'ok' };
   }
 }
+
+Get('/status')(HealthController.prototype, 'status');
+Controller('/health')(HealthController);
 
 class AppModule {}
 defineModule(AppModule, { controllers: [HealthController] });
@@ -38,7 +47,7 @@ Deno.test('createDenoFetchHandler dispatches a request through the published ada
 
 Deno.test('runDenoApplication serves and closes a native Deno listener', async () => {
   // Given: a Deno listener whose address is reported without signal registration.
-  const listening = Promise.withResolvers<{ hostname: string; port: number }>();
+  const listening = Promise.withResolvers();
   const app = await runDenoApplication(AppModule, {
     hostname: '127.0.0.1',
     onListen: listening.resolve,
