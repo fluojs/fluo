@@ -1275,6 +1275,20 @@ export function enforceContractCompanionUpdates(changedFiles) {
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
   );
+  const touchedCliBootstrapMigration = includesAny(
+    changedFiles,
+    (path) => path === 'packages/cli/src/transforms/nestjs-migrate.ts' || path === 'packages/cli/src/commands/migrate.ts',
+  ) && includesAny(
+    changedFiles,
+    (path) => path === 'docs/getting-started/migrate-from-nestjs.md' || path === 'docs/getting-started/migrate-from-nestjs.ko.md',
+  );
+  if (touchedCliBootstrapMigration) {
+    assert(
+      hasChanged(changedFiles, 'packages/cli/src/transforms/nestjs-migrate.test.ts') ||
+        hasChanged(changedFiles, 'packages/cli/src/commands/migrate.test.ts'),
+      'CLI bootstrap migration contract updates must include bootstrap migration regression coverage.',
+    );
+  }
   assert(
     !touchedHttpLifecycleContract || hasChanged(changedFiles, manualSseLifecycleRegressionTest),
     `HTTP lifecycle contract docs must include ${manualSseLifecycleRegressionTest}.`,

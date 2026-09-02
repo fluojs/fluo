@@ -47,7 +47,7 @@ NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-fr
 
 NestJS HTTP pipeline migration에서 portable bootstrap `middleware`는 `handle(MiddlewareContext, next)`를 구현하며, Express `(req, res, next)` handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 둔다.
 
-NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 one-argument `NestFactory.create(AppModule)` bootstrap을 재작성하며, 지원하지 않는 bootstrap variant는 diagnostic과 함께 변경하지 않고 명시적으로 선택한 adapter-independent transform은 bootstrap을 변경하지 않는다.
+NestJS migration에서 `fluo migrate`는 adapter를 알 수 없는 `NestFactory.create(AppModule)` bootstrap을 유지하고 필요한 adapter-selection warning을 출력한다. Express가 명시적으로 선택한 대상일 때만 `fluo migrate <path> --apply --platform express`를 사용하며, 이 경우 `createExpressAdapter({ port })`를 생성한다. Adapter-independent transform 선택은 bootstrap을 변경하지 않는다.
 
 Queue 중복 worker 마이그레이션 탐색은 `packages/queue/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [Queue chapter](../book/intermediate/ch11-queue.ko.md)에 나뉘어 있다. 각 job class와 실제 `jobName`은 singleton worker owner 하나만 가지며, 중복은 discovery 순서와 무관하게 BullMQ resource를 만들기 전 bootstrap을 실패시킨다. 마이그레이션하는 NestJS `@Process(...)` handler마다 별도 job class와 `jobName`을 부여하거나, handler를 worker 하나의 `handle(job)` 뒤로 통합한다.
 

@@ -13,6 +13,8 @@ export const MIGRATION_TRANSFORMS = ['imports', 'injectable', 'scope', 'bootstra
  */
 export type MigrationTransformKind = typeof MIGRATION_TRANSFORMS[number];
 
+type BootstrapPlatform = 'express';
+
 type ImportBinding = {
   imported: string;
   isTypeOnly: boolean;
@@ -116,6 +118,7 @@ export type MigrationReport = {
  */
 export type RunNestJsMigrationOptions = {
   apply: boolean;
+  bootstrapPlatform?: BootstrapPlatform;
   enabledTransforms: ReadonlySet<MigrationTransformKind>;
   targetPath: string;
 };
@@ -1134,7 +1137,11 @@ function rewriteInjectableAndScope(
   };
 }
 
-function rewriteBootstrap(source: string, filePath: string): { changed: boolean; source: string; warnings: MigrationWarning[] } {
+function rewriteBootstrap(
+  source: string,
+  filePath: string,
+  bootstrapPlatform: BootstrapPlatform | undefined,
+): { changed: boolean; source: string; warnings: MigrationWarning[] } {
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
   const createCalls = new Map<string, ts.CallExpression>();
@@ -1142,7 +1149,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
   const portFoldedApps = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
-  let usesDefaultExpressAdapter = false;
+  let usesExpressAdapter = false;
 
   function toCallKey(callExpression: ts.CallExpression): string {
     return `${callExpression.pos}:${callExpression.end}`;
@@ -1187,11 +1194,18 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
       };
     }
 
+    if (bootstrapPlatform !== 'express') {
+      return {
+        reason: 'Select a Fluo platform adapter before rewriting this bootstrap. For Express, rerun with --platform express.',
+        supported: false,
+      };
+    }
+
     return { supported: true };
   }
 
-  function createDefaultExpressAdapter(options?: ts.ObjectLiteralExpression): ts.CallExpression {
-    usesDefaultExpressAdapter = true;
+  function createExpressAdapter(options?: ts.ObjectLiteralExpression): ts.CallExpression {
+    usesExpressAdapter = true;
     return ts.factory.createCallExpression(
       ts.factory.createIdentifier('createExpressAdapter'),
       undefined,
@@ -1274,7 +1288,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
                 nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
                   ts.factory.createPropertyAssignment(
                     'adapter',
-                    createDefaultExpressAdapter(
+                    createExpressAdapter(
                       ts.factory.createObjectLiteralExpression([
                         ts.factory.createPropertyAssignment('port', portExpression),
                       ], true),
@@ -1288,7 +1302,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
           if (nextArgs.length === 1) {
             nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
-              ts.factory.createPropertyAssignment('adapter', createDefaultExpressAdapter()),
+              ts.factory.createPropertyAssignment('adapter', createExpressAdapter()),
             ], true)];
           }
 
@@ -1338,7 +1352,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
     nextSourceFile,
     mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'FluoFactory', isTypeOnly: false, local: 'FluoFactory' }]),
   );
-  const withPlatformImport = usesDefaultExpressAdapter
+  const withPlatformImport = usesExpressAdapter
     ? printSourceFile(
       parseSource(withRuntimeImport, filePath),
       mergeNamedImport(
@@ -1740,6 +1754,7 @@ function runTypeScriptTransforms(
   source: string,
   filePath: string,
   enabledTransforms: ReadonlySet<MigrationTransformKind>,
+  bootstrapPlatform: BootstrapPlatform | undefined,
 ): { appliedTransforms: MigrationTransformKind[]; source: string; warnings: MigrationWarning[] } {
   let nextSource = source;
   const appliedTransforms: MigrationTransformKind[] = [];
@@ -1788,7 +1803,7 @@ function runTypeScriptTransforms(
   }
 
   if (enabledTransforms.has('bootstrap')) {
-    const rewritten = rewriteBootstrap(nextSource, filePath);
+    const rewritten = rewriteBootstrap(nextSource, filePath, bootstrapPlatform);
     nextSource = rewritten.source;
     warnings.push(...rewritten.warnings);
 
@@ -1853,7 +1868,7 @@ export function runNestJsMigration(options: RunNestJsMigrationOptions): Migratio
       continue;
     }
 
-    const rewritten = runTypeScriptTransforms(source, filePath, options.enabledTransforms);
+    const rewritten = runTypeScriptTransforms(source, filePath, options.enabledTransforms, options.bootstrapPlatform);
     const changed = rewritten.source !== source;
 
     if (changed && options.apply) {

@@ -53,7 +53,7 @@ describe('runMigrateCommand', () => {
     expect(stderrBuffer.join('')).toContain('No transforms remain');
   });
 
-  it('returns adapterless bootstrap rewrite summary in dry-run mode', async () => {
+  it('reports adapter selection for an unselected bootstrap in dry-run mode', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
     tempDirectories.push(workspaceDirectory);
 
@@ -80,12 +80,12 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Mode: dry-run');
-    expect(stdoutBuffer.join('')).toContain('Changed files: 1');
-    expect(stdoutBuffer.join('')).toContain('Warnings: 0');
-    expect(stdoutBuffer.join('')).toContain('Run again with --apply to write transformed files.');
+    expect(stdoutBuffer.join('')).toContain('Changed files: 0');
+    expect(stdoutBuffer.join('')).toContain('Warnings: 1');
+    expect(stdoutBuffer.join('')).toContain('Select a Fluo platform adapter');
   });
 
-  it('applies the default Express-backed bootstrap rewrite', async () => {
+  it('retains adapter-unknown bootstraps and reports adapter selection', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
     tempDirectories.push(workspaceDirectory);
 
@@ -105,6 +105,38 @@ void bootstrap();
     );
 
     const exitCode = await runMigrateCommand(['./src', '--apply'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(migratedSource).toContain('NestFactory.create(AppModule)');
+    expect(migratedSource).toContain('await app.listen(3000);');
+    expect(migratedSource).not.toContain('FluoFactory.create');
+  });
+
+  it('applies an Express-backed bootstrap rewrite only when explicitly selected', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    tempDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },
@@ -204,21 +236,26 @@ void bootstrap();
     expect(output).not.toContain('Mode: dry-run');
     expect(report).toMatchObject({
       apply: false,
-      changedFiles: 1,
+      changedFiles: 0,
       command: 'migrate',
       dryRun: true,
       mode: 'dry-run',
       scannedFiles: 1,
-      warningCount: 0,
+      warningCount: 1,
     });
     expect(report.transforms).toContain('bootstrap');
     expect(report.files).toEqual([
       {
-        appliedTransforms: ['bootstrap'],
-        changed: true,
+        appliedTransforms: [],
+        changed: false,
         filePath: sourceFilePath,
-        warningCount: 0,
-        warnings: [],
+        warningCount: 1,
+        warnings: [
+          expect.objectContaining({
+            category: 'bootstrap-unsupported',
+            message: expect.stringContaining('Select a Fluo platform adapter'),
+          }),
+        ],
       },
     ]);
   });

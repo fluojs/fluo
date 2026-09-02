@@ -148,7 +148,7 @@ describe('runNestJsMigration', () => {
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toBe(beforeMain);
   });
 
-  it('applies safe transforms and folds a default Express bootstrap port', () => {
+  it('retains an adapter-unknown bootstrap and reports the required platform selection', () => {
     const workspaceDirectory = createMigrationFixture();
 
     const firstReport = runNestJsMigration({
@@ -171,12 +171,14 @@ describe('runNestJsMigration', () => {
     };
 
     expect(firstReport.changedFiles).toBeGreaterThan(0);
-    expect(mainContent).toContain('FluoFactory.create(AppModule, {');
-    expect(mainContent).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
-    expect(mainContent).toContain('adapter: createExpressAdapter({');
-    expect(mainContent).toMatch(/port:\s*3000/);
-    expect(mainContent).toContain('await app.listen();');
-    expect(firstReport.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
+    expect(mainContent).toContain('NestFactory.create(AppModule)');
+    expect(mainContent).toContain('await app.listen(3000);');
+    expect(mainContent).not.toContain('FluoFactory.create');
+    expect(mainContent).not.toContain('@fluojs/platform-express');
+    expect(firstReport.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-unsupported' &&
+      warning.message.includes('Select a Fluo platform adapter'),
+    )).toBe(true);
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
     expect(serviceContent).toContain("from \"@fluojs/core\"");
@@ -214,6 +216,26 @@ describe('runNestJsMigration', () => {
     });
 
     expect(secondReport.changedFiles).toBe(0);
+  });
+
+  it('folds a static port into an explicitly selected Express adapter', () => {
+    const workspaceDirectory = createMigrationFixture();
+
+    const report = runNestJsMigration({
+      apply: true,
+      bootstrapPlatform: 'express',
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(mainContent).toContain('FluoFactory.create(AppModule, {');
+    expect(mainContent).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
+    expect(mainContent).toContain('adapter: createExpressAdapter({');
+    expect(mainContent).toMatch(/port:\s*3000/);
+    expect(mainContent).toContain('await app.listen();');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
   });
 
   it('keeps a clause-level type-only import type-only after migration', () => {
@@ -374,6 +396,7 @@ void bootstrap();
 
     const report = runNestJsMigration({
       apply: true,
+      bootstrapPlatform: 'express',
       enabledTransforms: new Set(['bootstrap']),
       targetPath: workspaceDirectory,
     });
@@ -433,6 +456,7 @@ void bootstrap();
 
     const report = runNestJsMigration({
       apply: true,
+      bootstrapPlatform: 'express',
       enabledTransforms: new Set(['bootstrap']),
       targetPath: workspaceDirectory,
     });
