@@ -736,7 +736,7 @@ Pass the optional `CqrsDispatchContext` argument through every nested `execute(.
 
 ```ts
 // In a saga handle or event handler:
-async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+async function handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
   // Pass context through every nested dispatch so topology tracking stays intact.
   await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
   await this.eventBus.publish(new EmailQueuedEvent(event.userId), context);

@@ -734,7 +734,7 @@ fluo CQRS는 routing 및 saga topology 실패에 typed framework error를 제공
 
 ```ts
 // saga handle 또는 event handler 내부:
-async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+async function handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
   // topology 추적이 유지되도록 모든 nested dispatch에 context를 전달합니다.
   await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
   await this.eventBus.publish(new EmailQueuedEvent(event.userId), context);

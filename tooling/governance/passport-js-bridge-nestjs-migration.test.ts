@@ -61,13 +61,13 @@ describe('Passport.js bridge NestJS migration contract', () => {
   });
 
   it.each(migrationDocuments)(
-    'rejects invalid TypeScript in the Passport.js bridge example from %s',
+    'rejects invalid TypeScript in any fence from %s',
     (targetPath) => {
       // Given
       const readWithInvalidExample = (relativePath: string): string => {
         const content = read(relativePath);
         return relativePath === targetPath
-          ? content.replace("createPassportJsStrategyBridge('google', GoogleStrategy, {", "createPassportJsStrategyBridge('google',, GoogleStrategy, {")
+          ? `${content}\n\`\`\`ts\nasync handle(event: UserCreatedEvent): Promise<void> {}\n\`\`\`\n`
           : content;
       };
 
