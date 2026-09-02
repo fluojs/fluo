@@ -942,6 +942,24 @@ CqrsModule.forRoot({
 
 When `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })` is configured, delegated `@OnEvent(...)` subscribers may still be running after delegated publication resolves. In that mode, `publish(...)`, `publishAll(...)`, and CQRS shutdown drain completion do not guarantee that every `@fluojs/event-bus` subscriber has finished.
 
+## Mongoose Document Saves Inside Transactions
+
+Create the concrete connection and compile models in the application before registering that connection with `MongooseModule`. Use `MongooseConnection.model(...)` for the supported session-aware model facade operations. When migrating a NestJS service that saves an already-loaded Mongoose document, use `MongooseConnection.saveDocument(...)` inside the explicit transaction boundary:
+
+```ts
+@Inject(MongooseConnection)
+class ProfileService {
+  constructor(private readonly conn: MongooseConnection) {}
+
+  @Transaction()
+  async updateProfile(document: ProfileDocument) {
+    return this.conn.saveDocument(document, { validateBeforeSave: false });
+  }
+}
+```
+
+`MongooseConnection.saveDocument(...)` is opt-in: it forwards native Mongoose save options, attaches the active transaction session, and preserves the original document instance. It fails outside a transaction and rejects a supplied `session` that differs from the ambient session. `doc.save()` itself is unchanged, so direct calls remain native Mongoose behavior and require manual session handling when used outside this helper.
+
 ## Removed Concepts
 
 - `@Injectable()` as the default provider marker. Provider registration happens through the module `providers` array.

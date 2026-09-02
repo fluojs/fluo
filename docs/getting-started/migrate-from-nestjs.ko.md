@@ -939,6 +939,24 @@ CqrsModule.forRoot({
 
 `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`를 설정하면 위임된 `@OnEvent(...)` subscriber가 위임 publication이 resolve된 뒤에도 실행 중일 수 있습니다. 이 모드에서는 `publish(...)`, `publishAll(...)`, CQRS shutdown drain 완료가 모든 `@fluojs/event-bus` subscriber의 완료를 보장하지 않습니다.
 
+## 트랜잭션 안에서 Mongoose 문서 저장
+
+concrete connection을 생성하고 애플리케이션에서 model을 compile한 뒤 해당 connection을 `MongooseModule`에 등록하세요. 지원되는 세션 인지형 model facade 작업에는 `MongooseConnection.model(...)`을 사용합니다. 이미 로드한 Mongoose document를 저장하는 NestJS 서비스를 마이그레이션할 때는 명시적 트랜잭션 경계 안에서 `MongooseConnection.saveDocument(...)`를 사용하세요.
+
+```ts
+@Inject(MongooseConnection)
+class ProfileService {
+  constructor(private readonly conn: MongooseConnection) {}
+
+  @Transaction()
+  async updateProfile(document: ProfileDocument) {
+    return this.conn.saveDocument(document, { validateBeforeSave: false });
+  }
+}
+```
+
+`MongooseConnection.saveDocument(...)`는 opt-in입니다. native Mongoose save option을 전달하고 활성 트랜잭션 session을 붙이며 원본 document instance를 보존합니다. 트랜잭션 밖에서는 실패하고 ambient session과 다른 `session` 전달을 거부합니다. `doc.save()` 자체는 변경되지 않으므로 direct 호출은 계속 native Mongoose 동작이며 이 helper 밖에서는 수동 session 처리가 필요합니다.
+
 ## Removed Concepts
 
 - 기본 프로바이더 마커로서의 `@Injectable()`. 프로바이더 등록은 모듈의 `providers` 배열에서 수행된다.

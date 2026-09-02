@@ -343,6 +343,10 @@ Queue producer migration discoverability is split across `packages/queue/README.
 
 [`docs/architecture/http-runtime.md`](./architecture/http-runtime.md) is the canonical conditional-request lifecycle contract. It defines the explicit `ConditionalRequestResolver` representation-existence result, middleware-and-guard ordering before evaluation, RFC validator precedence, independent `@Head` routing, framework-managed `HEAD` body suppression, and custom-writer ownership. `packages/http/README.md`, `packages/runtime/README.md`, and `packages/testing/README.md` list the supported resolver, bootstrap, and real-listener conformance APIs.
 
+## Mongoose Transaction Document Saves
+
+NestJS Mongoose migration and transaction semantics are documented in [Transaction Context Contract](./architecture/transactions.md) and [NestJS → fluo Migration Map](./getting-started/migrate-from-nestjs.md). `MongooseConnection.model(...)` facade operations merge the ambient session for supported methods; `MongooseConnection.saveDocument(...)` is the opt-in path for an existing document, preserves native save options and document identity, fails closed without an ambient session, and leaves direct `doc.save()` unchanged.
+
 ## Anti-Patterns at a Glance
 
 - Enabling `experimentalDecorators` or `emitDecoratorMetadata`, this violates fluo's standard-decorator baseline.

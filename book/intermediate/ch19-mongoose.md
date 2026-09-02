@@ -70,7 +70,16 @@ In Fluo, you usually interact with MongoDB through repositories. Instead of depe
 import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
 import { Inject } from '@fluojs/core';
 
-type ProductDocument = { readonly _id: string; readonly name: string; readonly price: number };
+type ProductDocumentSaveOptions = {
+  readonly validateBeforeSave?: boolean;
+  readonly session?: object | null;
+};
+type ProductDocument = {
+  readonly _id: string;
+  readonly name: string;
+  readonly price: number;
+  save(options?: ProductDocumentSaveOptions): Promise<ProductDocument>;
+};
 type ProductLookupModel = MongooseModelFacade<unknown, unknown, Promise<ProductDocument | null>>;
 type InventoryWriteModel = MongooseModelFacade<
   unknown,
@@ -105,6 +114,19 @@ In version 1, fluo's Mongoose integration supports automatic session injection f
 When these methods are called inside a `@Transaction()`, `transaction()`, or `requestTransaction()` boundary through `MongooseConnection.model(...)`, fluo attaches the ambient session to the options. For `create(...)`, session injection is available only through the array overload `create([docs], options?)`; positional `create(docA, docB)` calls are forwarded unchanged and do not receive an automatic session. The raw model returned by `conn.current().model(...)` is not wrapped, and `doc.save()` is currently NOT supported for automatic session injection; both paths require manual session passing if used inside a transaction.
 
 If you explicitly provide a `session` in the options while a transaction is active, fluo will throw a conflict error if the provided session does not match the ambient transaction session. This prevents accidental cross-transaction leaks.
+
+### Saving Existing Documents Explicitly
+
+`doc.save()` remains native Mongoose behavior and is not patched by fluo. When an existing document must participate in an active Fluo transaction, use the explicit helper instead:
+
+```ts
+@Transaction()
+async renameProduct(document: ProductDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+`saveDocument(...)` preserves the document instance and native save options, attaches the ambient session, and rejects calls outside a transaction or with a conflicting explicit session.
 
 ## 19.5 Transaction Management
 

@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const mongooseContract = 'fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target';
+const mongooseContract =
+  'fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target';
 const governedDocumentationPaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
@@ -30,6 +31,28 @@ const explicitDiExamplePaths = [
   'packages/mongoose/README.md',
   'packages/mongoose/README.ko.md',
 ] as const;
+const saveDocumentContract =
+  'fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document';
+const saveDocumentRequirements = [
+  {
+    path: 'packages/mongoose/README.md',
+    typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
+  },
+  {
+    path: 'packages/mongoose/README.ko.md',
+    typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
+  },
+] as const;
+const saveDocumentMigrationRequirements = [
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+    injection: '@Inject(MongooseConnection)\nclass ProfileService',
+  },
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    injection: '@Inject(MongooseConnection)\nclass ProfileService',
+  },
+] as const;
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -41,19 +64,18 @@ function mongooseContractMarkerFor(relativePath: string): string {
     : `<!-- ${mongooseContract} -->`;
 }
 
+function saveDocumentContractMarker(): string {
+  return `<!-- ${saveDocumentContract} -->`;
+}
+
 describe('NestJS Mongoose migration documentation', () => {
   it('keeps the Mongoose migration and transaction contracts synchronized', () => {
-    // Given
-    const runGovernanceGuard = () => enforceMongooseNestjsMigrationDocs();
-
-    // When / Then
-    expect(runGovernanceGuard).not.toThrow();
+    expect(() => enforceMongooseNestjsMigrationDocs()).not.toThrow();
   });
 
   it.each(governedDocumentationPaths)(
     'rejects a removed machine contract anchor in %s',
     (driftedPath) => {
-      // Given
       const readWithoutContractAnchor = (relativePath: string): string =>
         relativePath === driftedPath
           ? read(relativePath).replace(
@@ -62,19 +84,18 @@ describe('NestJS Mongoose migration documentation', () => {
             )
           : read(relativePath);
 
-      // When
-      const runGovernanceGuard = () => enforceMongooseNestjsMigrationDocs(readWithoutContractAnchor);
-
-      // Then
-      expect(runGovernanceGuard).toThrow(driftedPath);
-      expect(runGovernanceGuard).toThrow('fluo-mongoose-contract');
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutContractAnchor)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutContractAnchor)).toThrow(
+        'fluo-mongoose-contract',
+      );
     },
   );
 
   it.each(migrationExamplePaths)(
     'rejects a duplicated marker or heading decoy in %s',
     (driftedPath) => {
-      // Given
       const readWithDuplicateMarker = (relativePath: string): string =>
         relativePath === driftedPath
           ? read(relativePath).replace(
@@ -87,21 +108,16 @@ describe('NestJS Mongoose migration documentation', () => {
           ? read(relativePath).replace(/^## (Mongoose .+)$/mu, '### $1')
           : read(relativePath);
 
-      // When
-      const runDuplicateMarkerGuard = () =>
-        enforceMongooseNestjsMigrationDocs(readWithDuplicateMarker);
-      const runHeadingDecoyGuard = () => enforceMongooseNestjsMigrationDocs(readWithHeadingDecoy);
-
-      // Then
-      expect(runDuplicateMarkerGuard).toThrow(driftedPath);
-      expect(runHeadingDecoyGuard).toThrow(driftedPath);
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDuplicateMarker)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithHeadingDecoy)).toThrow(driftedPath);
     },
   );
 
   it.each(migrationExamplePaths)(
     'requires both ambient-session merge and option-preservation anchors in %s',
     (driftedPath) => {
-      // Given
       const readWithoutAmbientSessionMerge = (relativePath: string): string =>
         relativePath === driftedPath
           ? read(relativePath).replace('ambient-session-merge', 'removed-session-merge')
@@ -111,14 +127,12 @@ describe('NestJS Mongoose migration documentation', () => {
           ? read(relativePath).replace('preserves-operation-options', 'removed-option-preservation')
           : read(relativePath);
 
-      // When
-      const runMergeGuard = () => enforceMongooseNestjsMigrationDocs(readWithoutAmbientSessionMerge);
-      const runPreservationGuard = () =>
-        enforceMongooseNestjsMigrationDocs(readWithoutOptionPreservation);
-
-      // Then
-      expect(runMergeGuard).toThrow(driftedPath);
-      expect(runPreservationGuard).toThrow(driftedPath);
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutAmbientSessionMerge)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutOptionPreservation)).toThrow(
+        driftedPath,
+      );
     },
   );
 
@@ -130,7 +144,6 @@ describe('NestJS Mongoose migration documentation', () => {
   ] as const)(
     'rejects missing explicit DI or swapped declaration order in %s',
     (driftedPath, exportPrefix) => {
-      // Given
       const repositoryDecorator = `@Inject(MongooseConnection)\n${exportPrefix}class UserRepository`;
       const serviceDecorator = `@Inject(UserRepository)\n${exportPrefix}class UserService`;
       const readWithoutRepositoryDecorator = (relativePath: string): string =>
@@ -145,15 +158,89 @@ describe('NestJS Mongoose migration documentation', () => {
               .replace('[repository declaration]', serviceDecorator)
           : read(relativePath);
 
-      // When
-      const runMissingDecoratorGuard = () =>
-        enforceMongooseNestjsMigrationDocs(readWithoutRepositoryDecorator);
-      const runSwappedDeclarationsGuard = () =>
-        enforceMongooseNestjsMigrationDocs(readWithSwappedDeclarations);
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutRepositoryDecorator)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithSwappedDeclarations)).toThrow(
+        driftedPath,
+      );
+    },
+  );
 
-      // Then
-      expect(runMissingDecoratorGuard).toThrow(driftedPath);
-      expect(runSwappedDeclarationsGuard).toThrow(driftedPath);
+  it.each(saveDocumentRequirements)(
+    'rejects a removed saveDocument machine marker in $path',
+    ({ path: driftedPath }) => {
+      const readWithoutSaveDocumentMarker = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(
+              saveDocumentContractMarker(),
+              '[removed Mongoose saveDocument contract anchor]',
+            )
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutSaveDocumentMarker)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutSaveDocumentMarker)).toThrow(
+        'fluo-mongoose-save-document-contract',
+      );
+    },
+  );
+
+  it.each(saveDocumentRequirements)(
+    'rejects a duplicated saveDocument machine marker in $path',
+    ({ path: driftedPath }) => {
+      const readWithDuplicateSaveDocumentMarker = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(
+              saveDocumentContractMarker(),
+              `${saveDocumentContractMarker()}\n${saveDocumentContractMarker()}`,
+            )
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDuplicateSaveDocumentMarker)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDuplicateSaveDocumentMarker)).toThrow(
+        'fluo-mongoose-save-document-contract',
+      );
+    },
+  );
+
+  it.each(saveDocumentRequirements)(
+    'rejects a non-save-compatible saveDocument example in $path',
+    ({ path: driftedPath, typeConstraint }) => {
+      const readWithoutSaveCompatibleType = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(
+              typeConstraint,
+              '  [removed save-compatible document type constraint]',
+            )
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutSaveCompatibleType)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutSaveCompatibleType)).toThrow(
+        'save-compatible document type',
+      );
+    },
+  );
+
+  it.each(saveDocumentMigrationRequirements)(
+    'rejects missing explicit ProfileService MongooseConnection injection in $path',
+    ({ path: driftedPath, injection }) => {
+      const readWithoutProfileServiceInjection = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(injection, 'class ProfileService')
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutProfileServiceInjection)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithoutProfileServiceInjection)).toThrow(
+        'ProfileService',
+      );
     },
   );
 });

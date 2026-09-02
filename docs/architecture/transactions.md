@@ -41,6 +41,7 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | --- | --- | --- |
 | Service -> Repository flow | Decorators on services establish the boundary; repositories consume the client without needing to pass sessions or access `current()` explicitly. | `packages/core/src/decorators/transaction.ts` (abstract), `packages/mongoose/src/connection.ts` (auto-session) |
 | Root vs ambient handle | Prisma and Drizzle persistence handles resolve the active transaction handle when one exists, otherwise the root client/database. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| Mongoose document save helper | `MongooseConnection.saveDocument(document, options?)` is an opt-in path for an existing document: it merges the ambient session with native save options, preserves document identity, and rejects missing or conflicting sessions. It does not change direct `doc.save()` behavior. | `packages/mongoose/src/connection.ts` |
 | Mongoose session auto-binding | Supported `MongooseConnection.model(...)` facade operations (`create`, `find`, `findOne`, `aggregate`, `bulkWrite`) automatically attach the ambient transaction session. Unsupported model methods, `doc.save()`, raw `conn.current().model(...)` calls, and advanced cross-connection scenarios require explicit session passing. | `packages/mongoose/src/connection.ts` |
 | Mongoose decorator target selection | Mongoose `@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It rejects multiple nested candidates rather than selecting one arbitrarily; pass an accessor such as `@Transaction((self) => self.analytics.conn)` for multi-connection services or nonstandard fields. | `packages/mongoose/src/transaction.ts` |
 | Nested boundary reuse | If a transaction is already active, `@Transaction()` reuses the existing boundary instead of opening a new one. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
@@ -80,5 +81,6 @@ When migrating NestJS controller or interceptor transaction patterns, keep norma
 ## Constraints
 
 - The primary path for transaction management is the Service layer via `@Transaction()`.
+- `MongooseConnection.saveDocument(...)` is opt-in and requires an active ambient session; it fails closed outside a transaction, rejects a conflicting explicit `session`, and leaves native `doc.save()` unmodified.
 - Supported Mongoose facade operations automatically participate in the ambient transaction session; explicit session passing is discouraged for those standard flows and still required for unsupported model methods.
 - Rollback is exception-driven. If the method wrapped by `@Transaction()` throws, the transaction is aborted.

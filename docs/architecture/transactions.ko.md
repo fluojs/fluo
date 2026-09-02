@@ -41,6 +41,7 @@ fluo 에코시스템에 추가되는 모든 새로운 ORM 연동 패키지는 �
 | --- | --- | --- |
 | 서비스 -> 레포지토리 흐름 | 서비스의 데코레이터가 경계를 설정하며, 레포지토리는 세션을 전달하거나 `current()`에 명시적으로 접근할 필요 없이 클라이언트를 사용합니다. | `packages/core/src/decorators/transaction.ts` (추상), `packages/mongoose/src/connection.ts` (자동 세션) |
 | 루트 vs ambient 핸들 | Prisma와 Drizzle 영속성 핸들은 활성 트랜잭션 핸들이 있으면 그 값을, 없으면 루트 client/database를 해석합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| Mongoose 문서 저장 helper | `MongooseConnection.saveDocument(document, options?)`는 기존 문서를 위한 opt-in 경로입니다. ambient session과 native save option을 병합하고 document identity를 보존하며, 누락되거나 충돌하는 session을 거부합니다. 직접 `doc.save()` 동작은 바꾸지 않습니다. | `packages/mongoose/src/connection.ts` |
 | Mongoose 세션 자동 바인딩 | 지원되는 `MongooseConnection.model(...)` facade 작업(`create`, `find`, `findOne`, `aggregate`, `bulkWrite`)은 ambient 트랜잭션 세션을 자동으로 첨부합니다. 지원되지 않는 model 메서드, `doc.save()`, raw `conn.current().model(...)` 호출, 고급 교차 연결 시나리오에는 명시적인 세션 전달이 필요합니다. | `packages/mongoose/src/connection.ts` |
 | Mongoose decorator 대상 선택 | Mongoose `@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 여러 중첩 후보 중 하나를 임의로 선택하지 않고 거부하므로, multi-connection service 또는 비표준 field에는 `@Transaction((self) => self.analytics.conn)` 같은 accessor를 전달하세요. | `packages/mongoose/src/transaction.ts` |
 | 중첩 경계 재사용 | 이미 트랜잭션이 활성화되어 있으면 `@Transaction()`은 새 경계를 열지 않고 기존 경계를 재사용합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
@@ -80,5 +81,6 @@ NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할
 ## 제약 사항
 
 - 트랜잭션 관리의 기본 경로는 `@Transaction()`을 통한 서비스 계층입니다.
+- `MongooseConnection.saveDocument(...)`는 opt-in이며 활성 ambient session이 필요합니다. 트랜잭션 밖에서는 fail-closed하고 충돌하는 명시적 `session`을 거부하며 native `doc.save()`는 수정하지 않습니다.
 - 지원되는 Mongoose facade 작업은 자동으로 ambient 트랜잭션 세션에 참여합니다. 해당 표준 흐름에서는 명시적인 세션 전달이 권장되지 않으며, 지원되지 않는 model 메서드에는 여전히 명시적인 세션 전달이 필요합니다.
 - 롤백은 예외 기반입니다. `@Transaction()`으로 감싸진 메서드가 예외를 던지면 트랜잭션이 중단됩니다.

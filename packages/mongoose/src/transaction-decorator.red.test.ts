@@ -30,6 +30,12 @@ type TestMongooseOperationOptions = {
   timestamps?: boolean;
 };
 
+type TestMongooseDocumentSaveOptions = {
+  session?: MongooseSessionLike | null;
+  timestamps?: boolean;
+  validateBeforeSave?: boolean;
+};
+
 function createFakeConnection(
   events: string[],
   session: MongooseSessionLike,
@@ -1084,10 +1090,75 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       }
     });
 
-    // v1: doc.save() auto-session is NOT in scope
-    it.skip('doc.save() auto-session — excluded from v1 (not a requirement)', () => {
-      // v1: doc.save() auto-session is NOT in scope
-      // This test is intentionally skipped; doc.save() interception is deferred to a future version.
+    it('saveDocument() preserves document identity and forwards caller options with the ambient session', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const conn = new MongooseConnection(createFakeConnection(events, session));
+      const savedOptions: TestMongooseDocumentSaveOptions[] = [];
+      const document = {
+        async save(options?: TestMongooseDocumentSaveOptions) {
+          savedOptions.push(options ?? {});
+          return document;
+        },
+      };
+
+      const saved = await conn.transaction(() =>
+        conn.saveDocument(document, { timestamps: false, validateBeforeSave: false }),
+      );
+
+      expect(saved).toBe(document);
+      expect(savedOptions).toEqual([
+        { session, timestamps: false, validateBeforeSave: false },
+      ]);
+    });
+
+    it('saveDocument() fails closed without an ambient transaction session', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const conn = new MongooseConnection(createFakeConnection(events, session));
+      const document = {
+        async save() {
+          events.push('document:save');
+          return document;
+        },
+      };
+
+      await expect(conn.saveDocument(document)).rejects.toThrow(
+        'Mongoose document saves require an active transaction session.',
+      );
+      expect(events).not.toContain('document:save');
+    });
+
+    it('saveDocument() propagates document validation errors unchanged', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const conn = new MongooseConnection(createFakeConnection(events, session));
+      const validationError = new Error('validation failed');
+      const document = {
+        async save(_options?: TestMongooseDocumentSaveOptions) {
+          throw validationError;
+        },
+      };
+
+      await expect(conn.transaction(() => conn.saveDocument(document))).rejects.toBe(validationError);
+    });
+
+    it('saveDocument() rejects an explicit session that conflicts with the ambient transaction', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const differentSession = { ...createFakeSession(events), id: 'session-2' };
+      const conn = new MongooseConnection(createFakeConnection(events, session));
+      const document = {
+        async save(_options?: TestMongooseDocumentSaveOptions) {
+          events.push('document:save');
+          return document;
+        },
+      };
+
+      await expect(
+        conn.transaction(() => conn.saveDocument(document, { session: differentSession })),
+      ).rejects.toThrow('Explicit session conflicts with ambient transaction session');
+      expect(events).not.toContain('document:save');
     });
   });
 
