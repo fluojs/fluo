@@ -247,6 +247,8 @@ defineModule(ManualDrizzleModule, {
 
 `DRIZZLE_HANDLE_PROVIDER`는 lifecycle-aware `DrizzleDatabase` wrapper를 가리키는 alias token입니다. `@fluojs/terminus` 같은 health integration은 이 token을 통해 raw database ping으로 fallback하기 전에 `createPlatformStatusSnapshot()`을 읽습니다.
 
+`DrizzleModule`은 importing module을 위해 `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`를 export합니다. `DRIZZLE_DATABASE`는 설정된 raw Drizzle handle을 주입하므로 lifecycle-aware facade와 ambient transaction handle 선택을 우회합니다. 애플리케이션 repository에는 `DrizzleDatabase` 또는 `DrizzleDatabaseFacade`를 우선 사용하고, 설정된 driver handle이 꼭 필요한 integration에만 raw token을 주입하세요. `DRIZZLE_DISPOSE`는 설정된 선택적 cleanup hook을, `DRIZZLE_OPTIONS`는 정규화된 runtime option을 노출합니다.
+
 provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다. `DrizzleDatabase.createFacade(...)`는 module provider wiring을 위한 low-level compatibility helper로 유지됩니다. 애플리케이션 코드는 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용하세요.
 
 `Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 transaction-capable 대상을 resolve한 뒤, 후보가 없으면 데코레이터가 붙은 인스턴스 자체로 fallback합니다. 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.

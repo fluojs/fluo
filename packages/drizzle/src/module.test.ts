@@ -5,6 +5,7 @@ import type { DrizzleHandleProvider } from './index.js';
 import {
   createDrizzlePlatformStatusSnapshot,
   DRIZZLE_DATABASE,
+  DRIZZLE_DISPOSE,
   DRIZZLE_HANDLE_PROVIDER,
   DRIZZLE_OPTIONS,
   DrizzleDatabase,
@@ -23,6 +24,76 @@ function createDeferred() {
 }
 
 describe('@fluojs/drizzle', () => {
+  it('exports raw Drizzle token providers to importing modules', async () => {
+    const database = {};
+    const dispose = vi.fn();
+
+    @Inject(DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS)
+    class ConsumerService {
+      constructor(
+        readonly rawDatabase: typeof database,
+        readonly rawDispose: typeof dispose,
+        readonly options: { strictTransactions: boolean },
+      ) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      imports: [DrizzleModule.forRoot({ database, dispose })],
+      providers: [ConsumerService],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, { imports: [FeatureModule] });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const consumer = await app.container.resolve(ConsumerService);
+
+      expect(consumer.rawDatabase).toBe(database);
+      expect(consumer.rawDispose).toBe(dispose);
+      expect(consumer.options).toEqual({ strictTransactions: false });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('exports raw Drizzle token providers to global-module siblings', async () => {
+    const database = {};
+    const dispose = vi.fn();
+
+    @Inject(DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS)
+    class ConsumerService {
+      constructor(
+        readonly rawDatabase: typeof database,
+        readonly rawDispose: typeof dispose,
+        readonly options: { strictTransactions: boolean },
+      ) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, { providers: [ConsumerService] });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRoot({ database, dispose, global: true }),
+        FeatureModule,
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const consumer = await app.container.resolve(ConsumerService);
+
+      expect(consumer.rawDatabase).toBe(database);
+      expect(consumer.rawDispose).toBe(dispose);
+      expect(consumer.options).toEqual({ strictTransactions: false });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('exposes current database handles, transaction callbacks, and optional disposal', async () => {
     const events: string[] = [];
     const transactionDatabase = {

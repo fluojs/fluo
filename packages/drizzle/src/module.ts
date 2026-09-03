@@ -26,7 +26,13 @@ type DrizzleAsyncModuleOptions<
   Pick<DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>, 'global'>;
 
 const DRIZZLE_NORMALIZED_OPTIONS = Symbol('fluo.drizzle.normalized-options');
-const DRIZZLE_MODULE_EXPORTS = [DrizzleDatabase, DRIZZLE_HANDLE_PROVIDER];
+const DRIZZLE_MODULE_EXPORTS = [
+  DrizzleDatabase,
+  DRIZZLE_HANDLE_PROVIDER,
+  DRIZZLE_DATABASE,
+  DRIZZLE_DISPOSE,
+  DRIZZLE_OPTIONS,
+];
 
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
