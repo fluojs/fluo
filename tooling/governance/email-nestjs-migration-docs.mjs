@@ -9,6 +9,7 @@ const emailMigrationMarkerPattern = new RegExp(
   `<!-- ${emailMigrationMarkerName}:\\s*([\\s\\S]*?) -->`,
   'gu',
 );
+export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;
 
 const migrationDocuments = [
   'packages/email/README.md',
@@ -35,7 +36,7 @@ function assert(condition, message) {
   }
 }
 
-function headingBoundedSection(markdown, markerPrefix, relativePath) {
+export function headingBoundedSection(markdown, markerPrefix, relativePath) {
   const headings = [...markdown.matchAll(/^#{1,6}\s.+$/gmu)];
   const sections = headings.map((heading, index) =>
     markdown.slice(heading.index, headings[index + 1]?.index ?? markdown.length),

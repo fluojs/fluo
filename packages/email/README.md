@@ -35,10 +35,10 @@ Install `@fluojs/notifications` and `@fluojs/queue` only when you want the built
 npm install @fluojs/notifications @fluojs/queue
 ```
 
-Install `nodemailer` only when you use the explicit `@fluojs/email/node` subpath for Node-only SMTP delivery.
+Install `nodemailer` and its `@types/nodemailer` declarations only when you use the explicit `@fluojs/email/node` subpath for Node-only SMTP delivery.
 
 ```bash
-npm install @fluojs/email nodemailer@^9.0.1
+npm install @fluojs/email nodemailer@^9.0.1 @types/nodemailer@^8.0.0
 ```
 
 Node-specific SMTP delivery is available from the explicit `@fluojs/email/node` subpath. Queue-backed notifications integration is available from `@fluojs/email/queue`, and `@fluojs/queue` is declared as an optional peer for that subpath. The root `@fluojs/email` entrypoint stays transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only or queue-specific behavior.
@@ -484,7 +484,7 @@ These limitations are part of the package contract so transport selection, templ
 - `@fluojs/notifications`: Shared orchestration layer that consumes `EMAIL_CHANNEL`.
 - `@fluojs/queue`: Recommended when bulk email delivery should run in the background.
 - `@fluojs/config`: Recommended for resolving transport credentials and sender defaults without direct environment access.
-- `nodemailer`: The Node-only SMTP implementation consumed by `@fluojs/email/node`.
+- `nodemailer` and `@types/nodemailer`: The Node-only SMTP implementation and declarations consumed by `@fluojs/email/node`.
 
 ## Example Sources
 
