@@ -236,13 +236,37 @@ function isSubset(candidate, previous) {
   return candidate.every((interval) => previous.some((container) => contains(container, interval)));
 }
 
+function intersectLower(left, right) {
+  if (!left || !right) {
+    return left ?? right;
+  }
+
+  const comparison = compareVersions(left.parts, right.parts);
+
+  if (comparison !== 0) {
+    return comparison > 0 ? left : right;
+  }
+
+  return { inclusive: left.inclusive && right.inclusive, parts: left.parts };
+}
+
+function intersectUpper(left, right) {
+  if (!left || !right) {
+    return left ?? right;
+  }
+
+  const comparison = compareVersions(left.parts, right.parts);
+
+  if (comparison !== 0) {
+    return comparison < 0 ? left : right;
+  }
+
+  return { inclusive: left.inclusive && right.inclusive, parts: left.parts };
+}
+
 function intervalsIntersect(left, right) {
-  const lower = !left.lower || (right.lower && compareLower(left.lower, right.lower) < 0)
-    ? right.lower
-    : left.lower;
-  const upper = !left.upper || (right.upper && compareVersions(left.upper.parts, right.upper.parts) > 0)
-    ? right.upper
-    : left.upper;
+  const lower = intersectLower(left.lower, right.lower);
+  const upper = intersectUpper(left.upper, right.upper);
 
   if (!lower || !upper) {
     return true;
