@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
-import { EmailNotificationQueueJob, EmailNotificationsQueueWorker } from './queue.js';
+import { createEmailNotificationsQueueAdapter, EmailNotificationQueueJob, EmailNotificationsQueueWorker } from './queue.js';
 import { EmailService } from './service.js';
 import type { EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
+import type { Queue } from '@fluojs/queue';
 
 function createQueueTestFixture(channel = 'email'): {
   readonly delivered: readonly NormalizedEmailMessage[];
@@ -42,6 +43,44 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
+  it('forwards the notification id through the public queue deduplication seam', async () => {
+    // Given
+    const queuedJobs: object[] = [];
+    const deduplicationKeys: string[] = [];
+    const queue = {
+      async enqueue<TJob extends object>(job: TJob, options?: { readonly deduplicationKey?: string }): Promise<string> {
+        queuedJobs.push(job);
+        if (options?.deduplicationKey) {
+          deduplicationKeys.push(options.deduplicationKey);
+        }
+        return options?.deduplicationKey ?? '';
+      },
+      async inspectDeadLetters() {
+        return { malformedRecordCount: 0, records: [] };
+      },
+    } satisfies Queue;
+    const adapter = createEmailNotificationsQueueAdapter(queue);
+    const notificationId = 'notification:email:payment-received';
+
+    // When
+    const queueId = await adapter.enqueue({
+      channel: 'email',
+      id: notificationId,
+      notification: {
+        channel: 'email',
+        payload: { text: 'Payment received.' },
+        recipients: ['user@example.com'],
+        subject: 'Payment received',
+      },
+      queuedAt: '2026-09-03T00:00:00.000Z',
+    });
+
+    // Then
+    expect(queueId).toBe(notificationId);
+    expect(deduplicationKeys).toEqual([notificationId]);
+    expect(queuedJobs).toMatchObject([{ id: notificationId }]);
+  });
+
   it('rejects another notification channel before email transport handoff', async () => {
     // Given
     const { delivered, worker } = createQueueTestFixture();

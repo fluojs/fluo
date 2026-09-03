@@ -234,6 +234,12 @@ Inspection is read-only and returns valid records in newest-first order. It read
 
 `enqueue(job)` dispatches by the job's exact constructor. Queue looks up `job.constructor` in the workers discovered from `@QueueWorker(JobClass, options?)` and rejects the call with `No @QueueWorker() registered for job type <name>.` when that exact constructor is not registered.
 
+Pass an optional `deduplicationKey` as the second `enqueue` argument when one caller-owned identity must survive uncertain delivery or repeated dispatch. Queue deterministically maps it to a BullMQ-safe backing job id, so callers do not inherit BullMQ's colon or numeric-only custom-id restrictions and BullMQ can deduplicate repeated enqueue attempts for the same worker queue.
+
+```typescript
+await queue.enqueue(new ProcessOrderJob(id), { deduplicationKey: `order:${id}` });
+```
+
 Pass an instance of the registered job class, not a plain payload object:
 
 ```typescript
@@ -259,7 +265,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
+- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job, options?)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
@@ -268,7 +274,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 
 ### Types
-- `Queue`: Application facade with `enqueue(job)` and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `Queue`: Application facade with `enqueue(job, options?)` and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `QueueEnqueueOptions`: Optional producer controls, including a caller-owned `deduplicationKey` that Queue maps to a BullMQ-safe job id for idempotent enqueue attempts.
 - `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection settings (`limit`).
 - `QueueDeadLetterInspectionResult`: Newest-first valid records plus `malformedRecordCount` for the inspected window.
 - `QueueDeadLetterRecord`: Typed dead-letter metadata with an `unknown` application payload.

@@ -75,6 +75,10 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
         throw new Error('RabbitMqMicroserviceTransport is closing. Wait for close() to complete before listen().');
       }
 
+      if (this.subscribedQueues.size > 0) {
+        throw new Error('RabbitMQ consumer cleanup is incomplete. Call close() again before listen().');
+      }
+
       this.closing = false;
     }
 
@@ -281,17 +285,15 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
       }
 
       try {
-        if (this.listening) {
-          for (const queue of this.subscribedQueues) {
-            try {
-              await this.options.consumer.cancel(queue);
-            } catch (error) {
-              closeError ??= error;
-            }
+        for (const queue of [...this.subscribedQueues]) {
+          try {
+            await this.options.consumer.cancel(queue);
+            this.subscribedQueues.delete(queue);
+          } catch (error) {
+            closeError ??= error;
           }
         }
       } finally {
-        this.subscribedQueues.clear();
         this.rejectPendingRequests(new Error('RabbitMQ microservice transport closed before response.'));
         this.listening = false;
         this.handler = undefined;

@@ -30,6 +30,8 @@
 
 ## 16.2 Registering the Email Module
 
+<!-- fluo-email-nestjs-learning-path: registration=injected-factory;transport-ownership=explicit;delivery=direct-and-template -->
+
 모듈을 등록할 때는 transport를 반드시 제공해야 합니다. 아래의 완전한 Node.js 예제는 fluo의 1st-party Nodemailer factory를 사용합니다. 다른 런타임에서는 transport를 생략하지 말고 애플리케이션이 소유한 `EmailTransport` 또는 `EmailTransportFactory`를 전달하세요.
 
 ```typescript
@@ -225,6 +227,8 @@ export class AppModule {}
 ```
 
 큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 내장 `EmailNotificationsQueueWorker`는 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되는 고정 기본값으로 이를 소비합니다. 기본값은 3회 시도, 1초부터 시작하는 exponential backoff, concurrency 5, 초당 50건 rate limiter, `fluo.email.notification` job name입니다. 큐에 쌓인 이메일 작업이 실제로 소비되도록 같은 애플리케이션 모듈의 provider에 `EmailNotificationsQueueWorker`를 등록해야 합니다. 내장 worker 대신 커스텀 queue adapter 또는 worker를 사용한다면 동일한 retry, backoff, concurrency, rate-limit, job-name 계약이 필요할 때 이 기본값을 명시적으로 미러링하세요.
+
+내장 adapter는 결정적인 notification queue identity를 Queue의 `deduplicationKey`로 전달합니다. Queue가 이를 BullMQ에 유효한 job id로 매핑하므로, 같은 notification dispatch를 반복해도 두 번째 email job을 만들지 않고 해당 backing queue identity를 재사용합니다.
 
 ## 16.7 Template Rendering
 

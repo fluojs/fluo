@@ -20,6 +20,7 @@
 | Cache manager module, service, decorators, and metadata helpers | `@fluojs/cache-manager`의 동기 `CacheModule.forRoot(...)`, injected-factory `CacheModule.forRootAsync({ inject, useFactory, global? })`, 주입 가능한 `CacheService`, response-cache decorator, function-valued `httpKeyStrategy`, `@CacheKey(...)`, exported cache metadata helper function으로 구현되어 있습니다. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 | Cron scheduling decorators and runtime registry | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, Redis distributed lock, bounded shutdown, `SCHEDULING_REGISTRY` descriptor snapshot으로 구현되어 있습니다. | `packages/cron/README.md`, `book/intermediate/ch12-cron.md`, `docs/getting-started/migrate-from-nestjs.md` |
 | Prometheus metrics, HTTP instrumentation, and runtime telemetry | 동기 `MetricsModule.forRoot(...)`, `MetricsService`, 선택적 HTTP instrumentation, 명시적 `Registry` 공유, 설정 가능한 scrape endpoint를 갖춘 `@fluojs/metrics`로 구현되어 있습니다. | `packages/metrics/README.md`, `docs/getting-started/migrate-from-nestjs.md` |
+| Email transport ownership과 direct/template-backed delivery | 명시적 `EmailTransport` 선택, Node 전용 `@fluojs/email/node` factory와 기존 transporter wrapper, pre-rendered message용 `EmailService.send(...)`, renderer-backed notification용 `sendNotification(...)`으로 구현되어 있습니다. | `packages/email/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch16-email.md` |
 
 ## Not Implemented
 

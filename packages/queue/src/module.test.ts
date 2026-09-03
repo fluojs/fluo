@@ -18,6 +18,7 @@ interface MockQueueJob {
   opts: {
     attempts?: number;
     backoff?: { delay?: number; type?: 'fixed' | 'exponential' };
+    jobId?: string;
   };
 }
 
@@ -264,10 +265,24 @@ vi.mock('bullmq', () => ({
     }
 
     async add(_jobName: string, data: Record<string, unknown>, opts: MockQueueJob['opts'] = {}): Promise<{ id: string }> {
+      if (opts.jobId !== undefined && `${parseInt(opts.jobId, 10)}` === opts.jobId) {
+        throw new Error('Custom Id cannot be integers');
+      }
+
+      if (opts.jobId?.includes(':')) {
+        throw new Error('Custom Id cannot contain :');
+      }
+
+      const existing = opts.jobId === undefined ? undefined : this.queue.jobs.find((job) => job.id === opts.jobId);
+
+      if (existing?.id) {
+        return { id: existing.id };
+      }
+
       const job: MockQueueJob = {
         attemptsMade: 0,
         data,
-        id: bullmqState.nextId(),
+        id: opts.jobId ?? bullmqState.nextId(),
         opts,
       };
 
@@ -726,6 +741,94 @@ describe('@fluojs/queue', () => {
       expect(jobId).toBe('1');
       expect(workerStore.isPrototypeRehydrated).toBe(true);
       expect(workerStore.subject).toBe('welcome:user-1');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maps a colon-bearing deduplication key to a stable BullMQ-safe job id', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      const deduplicationKey = 'notification:email:payment-received';
+      const expectedJobId = 'fluo-fe7e6f032c190d2e815ccd9f0afb2da5dc02548f90254460b1a00706a081818b';
+      await waitForApplicationQueueWorkers(app);
+
+      // When
+      const result = await Promise.all([
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+      ]);
+
+      // Then
+      expect(result).toEqual([expectedJobId, expectedJobId]);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toHaveLength(1);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toMatchObject([{ opts: { jobId: expectedJobId } }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maps a numeric-only deduplication key to a stable BullMQ-safe job id', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      const deduplicationKey = '3167';
+      const expectedJobId = 'fluo-dcd0ea5b0fea71aa19678a266ac3620df54c68aef9e329a31f969a3862ba9168';
+      await waitForApplicationQueueWorkers(app);
+
+      // When
+      const result = await Promise.all([
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+      ]);
+
+      // Then
+      expect(result).toEqual([expectedJobId, expectedJobId]);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toHaveLength(1);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toMatchObject([{ opts: { jobId: expectedJobId } }]);
     } finally {
       await app.close();
     }
