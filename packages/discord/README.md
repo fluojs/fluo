@@ -18,6 +18,7 @@ Migration boundary: the module API is intentionally Nest-like but not a NestJS d
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
   - [Template rendering with payload overrides](#template-rendering-with-payload-overrides)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
+  - [Configurable webhook retry policy](#configurable-webhook-retry-policy)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -244,9 +245,26 @@ await discord.send({
 
 For richer API integrations such as bot-backed REST delivery, implement the exported `DiscordTransport` contract and inject it through `DiscordModule.forRoot(...)` or `forRootAsync(...)`.
 
+### Configurable webhook retry policy
+
+The built-in webhook transport retries transient `408`, `429`, and `5xx` responses and transport-level exceptions. Omit `retry` to preserve the default of three total attempts with a 250ms exponential-backoff base delay. Configure one workload-specific policy at transport construction when its latency or tolerance differs:
+
+```typescript
+const transport = createDiscordWebhookTransport({
+  fetch: runtime.fetch,
+  retry: {
+    attempts: 5,
+    baseDelayMs: 500,
+  },
+  webhookUrl: config.discordWebhookUrl,
+});
+```
+
+`attempts` includes the initial request and must be an integer from `1` through `10`. `baseDelayMs` must be an integer from `0` through `60000`; later waits double from that base. The retry policy applies only to this bounded in-process webhook send. When a notification must survive process restarts, require durable scheduling, or need delivery managed independently of request latency, use `@fluojs/notifications` with queue-backed delivery instead of increasing webhook attempts.
+
 Behavioral contract notes:
 
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
+- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using the configured bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
 - Retry backoff observes `DiscordSendOptions.signal`; an already-aborted signal rejects immediately instead of waiting for the next backoff timer.
 - Successful webhook responses are exposed through `DiscordSendResult.response`; caller-visible `DiscordTransportError` messages still omit raw upstream response bodies by default, including after rate-limit retries fail.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
@@ -288,6 +306,7 @@ The package intentionally keeps `createDiscordProviders(...)`, `DISCORD_OPTIONS`
 
 - `DiscordMessage`
 - `NormalizedDiscordMessage`
+- `DiscordWebhookRetryOptions`
 - `DiscordWebhookTransportOptions`
 - `DiscordFetchLike`
 - `DiscordFetchResponse`

@@ -10,6 +10,8 @@ import type {
 
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 250;
+const MAX_RETRY_ATTEMPTS = 10;
+const MAX_RETRY_DELAY_MS = 60_000;
 
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -98,6 +100,29 @@ function isTransientStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 
+function resolveRetryPolicy(retry: DiscordWebhookTransportOptions['retry']): {
+  attempts: number;
+  baseDelayMs: number;
+} {
+  const attempts = retry?.attempts ?? DEFAULT_RETRY_ATTEMPTS;
+
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > MAX_RETRY_ATTEMPTS) {
+    throw new DiscordConfigurationError(
+      `Discord webhook transport \`retry.attempts\` must be an integer between 1 and ${String(MAX_RETRY_ATTEMPTS)}.`,
+    );
+  }
+
+  const baseDelayMs = retry?.baseDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+
+  if (!Number.isInteger(baseDelayMs) || baseDelayMs < 0 || baseDelayMs > MAX_RETRY_DELAY_MS) {
+    throw new DiscordConfigurationError(
+      `Discord webhook transport \`retry.baseDelayMs\` must be an integer between 0 and ${String(MAX_RETRY_DELAY_MS)}.`,
+    );
+  }
+
+  return { attempts, baseDelayMs };
+}
+
 async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
   if (delayMs <= 0) {
     return;
@@ -164,11 +189,12 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
 
   const parsedWebhookUrl = parseWebhookUrl(webhookUrl);
   const fetchLike = resolveFetch(options.fetch);
+  const retry = resolveRetryPolicy(options.retry);
   const wait = options.wait ?? true;
 
   return {
     async send(message: NormalizedDiscordMessage, context: DiscordTransportContext) {
-      for (let attempt = 1; attempt <= DEFAULT_RETRY_ATTEMPTS; attempt += 1) {
+      for (let attempt = 1; attempt <= retry.attempts; attempt += 1) {
         let response: DiscordFetchResponse;
 
         try {
@@ -185,8 +211,8 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
             throw error;
           }
 
-          if (attempt < DEFAULT_RETRY_ATTEMPTS) {
-            await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+          if (attempt < retry.attempts) {
+            await waitForRetry(retry.baseDelayMs * 2 ** (attempt - 1), context.signal);
             continue;
           }
 
@@ -196,8 +222,8 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
         const body = await readResponseBody(response);
 
         if (!response.ok) {
-          if (attempt < DEFAULT_RETRY_ATTEMPTS && isTransientStatus(response.status)) {
-            await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+          if (attempt < retry.attempts && isTransientStatus(response.status)) {
+            await waitForRetry(retry.baseDelayMs * 2 ** (attempt - 1), context.signal);
             continue;
           }
 
@@ -223,7 +249,7 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
         };
       }
 
-      throw new DiscordTransportError(createTransportFailureMessage(DEFAULT_RETRY_ATTEMPTS));
+      throw new DiscordTransportError(createTransportFailureMessage(retry.attempts));
     },
   };
 }
