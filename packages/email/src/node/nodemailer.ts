@@ -101,12 +101,8 @@ function createSendMailOptions(message: NormalizedEmailMessage): Mail.Options {
   };
 }
 
-function normalizeAddressList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.map((entry) => String(entry));
+function normalizeAddressList(value: readonly (string | Mail.Address)[] | undefined): string[] {
+  return value?.map((entry) => (typeof entry === 'string' ? entry : entry.address)) ?? [];
 }
 
 /**
