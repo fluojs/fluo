@@ -8,7 +8,11 @@ import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-m
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
-import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.mjs';
+import {
+  emailNestjsMigrationMarkerPrefix,
+  enforceEmailNestjsMigrationDocs,
+  headingBoundedSection,
+} from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
@@ -1281,6 +1285,12 @@ const nestMigrationGuidePaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ];
+const emailMigrationDocumentPaths = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+];
+const emailMigrationEnforcementTool =
+  'tooling/governance/email-nestjs-migration-docs.mjs';
 const bootstrapMigrationImplementationEvidence = [
   'packages/cli/src/transforms/nestjs-migrate.ts',
   'packages/cli/src/transforms/nestjs-migrate.test.ts',
@@ -1368,7 +1378,11 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
 
   const mergeBase = mergeBaseResult.stdout.trim();
   const snapshots = {};
-  for (const path of nestMigrationGuidePaths) {
+  for (const path of [
+    ...nestMigrationGuidePaths,
+    ...emailMigrationDocumentPaths,
+    emailMigrationEnforcementTool,
+  ]) {
     const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
     if (baseResult.status !== 0) {
       return undefined;
@@ -1402,8 +1416,7 @@ const emailMigrationCompanions = [
   'tooling/governance/verify-platform-consistency-governance.test.ts',
 ];
 const governedEmailMigrationDocuments = new Set([
-  'packages/email/README.md',
-  'packages/email/README.ko.md',
+  ...emailMigrationDocumentPaths,
 ]);
 
 export function enforceEmailMigrationCompanions(changedFiles) {
@@ -1414,10 +1427,59 @@ export function enforceEmailMigrationCompanions(changedFiles) {
   );
 }
 
+function emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) {
+  if (!changedFiles.some((path) => governedEmailMigrationDocuments.has(path))) {
+    return false;
+  }
+
+  if (
+    !migrationGuideSnapshots ||
+    !emailMigrationDocumentPaths.every((path) => {
+      const snapshot = migrationGuideSnapshots[path];
+      return typeof snapshot?.base === 'string' && typeof snapshot.head === 'string';
+    })
+  ) {
+    return true;
+  }
+
+  return emailMigrationDocumentPaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    return headingBoundedSection(
+      snapshot.base,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    ) !== headingBoundedSection(
+      snapshot.head,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    );
+  });
+}
+
+function sourceWithoutSharedEmailMigrationParserExports(source) {
+  return source
+    .replace(/^export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;\n/mu, '')
+    .replace(/\bexport function headingBoundedSection\(/u, 'function headingBoundedSection(');
+}
+
+function emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots) {
+  if (!hasChanged(changedFiles, emailMigrationEnforcementTool)) {
+    return false;
+  }
+
+  const snapshot = migrationGuideSnapshots?.[emailMigrationEnforcementTool];
+  if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') {
+    return true;
+  }
+
+  return sourceWithoutSharedEmailMigrationParserExports(snapshot.base) !==
+    sourceWithoutSharedEmailMigrationParserExports(snapshot.head);
+}
+
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
   const touchedEmailMigrationDocumentation =
-    changedFiles.some((path) => governedEmailMigrationDocuments.has(path)) ||
-    hasChanged(changedFiles, 'tooling/governance/email-nestjs-migration-docs.mjs');
+    emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
+    emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots);
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
