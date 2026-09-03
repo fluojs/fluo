@@ -69,23 +69,25 @@ describe('Kafka and RabbitMQ event handler failure signals', () => {
   it('reports Kafka event handler failures to the configured logger while preserving broker rejection', async () => {
     const broker = new InMemoryBroker();
     const transport = createKafkaTransport(broker);
+    const handlerError = new Error('kafka event failed');
     const logger = { error: vi.fn() };
 
     transport.setLogger(logger);
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
-        throw new Error('kafka event failed');
+        throw handlerError;
       }
 
       return undefined;
     });
 
-    await expect(transport.emit('audit.value', { value: 9 })).rejects.toThrow('kafka event failed');
+    await expect(transport.emit('audit.value', { value: 9 })).rejects.toBe(handlerError);
 
+    expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith(
       'Event handler failed.',
-      expect.objectContaining({ message: 'kafka event failed' }),
+      handlerError,
       'KafkaMicroserviceTransport',
     );
 
@@ -95,23 +97,25 @@ describe('Kafka and RabbitMQ event handler failure signals', () => {
   it('reports RabbitMQ event handler failures to the configured logger while preserving broker rejection', async () => {
     const broker = new InMemoryBroker();
     const transport = createRabbitMqTransport(broker);
+    const handlerError = new Error('rabbitmq event failed');
     const logger = { error: vi.fn() };
 
     transport.setLogger(logger);
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
-        throw new Error('rabbitmq event failed');
+        throw handlerError;
       }
 
       return undefined;
     });
 
-    await expect(transport.emit('audit.value', { value: 9 })).rejects.toThrow('rabbitmq event failed');
+    await expect(transport.emit('audit.value', { value: 9 })).rejects.toBe(handlerError);
 
+    expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith(
       'Event handler failed.',
-      expect.objectContaining({ message: 'rabbitmq event failed' }),
+      handlerError,
       'RabbitMqMicroserviceTransport',
     );
 
@@ -199,22 +203,31 @@ describe('Kafka and RabbitMQ event handler failure signals', () => {
   it('preserves the Kafka event failure when the configured logger itself throws', async () => {
     const broker = new InMemoryBroker();
     const transport = createKafkaTransport(broker);
+    const handlerError = new Error('kafka event failed');
+    const loggerFailure = new Error('logger exploded');
+    const logger = {
+      error: vi.fn(() => {
+        throw loggerFailure;
+      }),
+    };
 
-    transport.setLogger({
-      error: () => {
-        throw new Error('logger exploded');
-      },
-    });
+    transport.setLogger(logger);
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
-        throw new Error('kafka event failed');
+        throw handlerError;
       }
 
       return undefined;
     });
 
-    await expect(transport.emit('audit.value', { value: 9 })).rejects.toThrow('kafka event failed');
+    await expect(transport.emit('audit.value', { value: 9 })).rejects.toBe(handlerError);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      handlerError,
+      'KafkaMicroserviceTransport',
+    );
 
     await transport.close();
   });
@@ -222,22 +235,31 @@ describe('Kafka and RabbitMQ event handler failure signals', () => {
   it('preserves the RabbitMQ event failure when the configured logger itself throws', async () => {
     const broker = new InMemoryBroker();
     const transport = createRabbitMqTransport(broker);
+    const handlerError = new Error('rabbitmq event failed');
+    const loggerFailure = new Error('logger exploded');
+    const logger = {
+      error: vi.fn(() => {
+        throw loggerFailure;
+      }),
+    };
 
-    transport.setLogger({
-      error: () => {
-        throw new Error('logger exploded');
-      },
-    });
+    transport.setLogger(logger);
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
-        throw new Error('rabbitmq event failed');
+        throw handlerError;
       }
 
       return undefined;
     });
 
-    await expect(transport.emit('audit.value', { value: 9 })).rejects.toThrow('rabbitmq event failed');
+    await expect(transport.emit('audit.value', { value: 9 })).rejects.toBe(handlerError);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      handlerError,
+      'RabbitMqMicroserviceTransport',
+    );
 
     await transport.close();
   });
