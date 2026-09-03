@@ -210,6 +210,30 @@ export class CheckoutController {
 
 ### 종료와 상태 계약
 
+### 이름 있는 클라이언트
+
+추가 client는 비어 있지 않은 `name`으로 등록하고 `DrizzleDatabase` class token 대신 package-owned token을 주입합니다.
+
+```ts
+const ANALYTICS_DRIZZLE = getDrizzleHandleProviderToken('analytics');
+
+DrizzleModule.forRoot({ database: primaryDatabase });
+DrizzleModule.forRoot({ database: analyticsDatabase, name: 'analytics' });
+
+@Inject(ANALYTICS_DRIZZLE)
+class AnalyticsService {
+  constructor(private readonly analytics: DrizzleDatabase<AnalyticsDatabase>) {}
+
+  @Transaction((self: AnalyticsService) => self.analytics)
+  async rebuild() {}
+}
+```
+
+`getDrizzleDatabaseToken`, `getDrizzleDisposeToken`, `getDrizzleOptionsToken`,
+`getDrizzleHandleProviderToken`은 trim된 이름마다 서로 다른 안정적인 identity를 반환합니다. 이름 있는 client는
+module-scoped이며 `global`일 수 없고 ALS transaction context, shutdown drain, disposal, status를 독립적으로 소유합니다.
+`name`을 생략하면 기존 default token, `DrizzleDatabase` class token, interceptor 동작이 유지됩니다.
+
 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 여기에는 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`일 때의 fail-open 수동 `transaction(...)` callback도 포함되므로, 직접 실행 fallback도 pool이나 외부 관리 리소스를 닫기 전에 drain됩니다.
 상속한 owner가 settle된 뒤 새 boundary를 시작하는 transaction continuation은 닫힌 transaction handle을 더 이상 재사용하지 않습니다. 이 continuation은 독립적으로 tracking되는 root가 되며, shutdown은 disposal 전에 해당 continuation root를 기다립니다.
 기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 두 번째 Drizzle transaction을 열지 않고 shutdown settlement tracking에 참여하며, 해당 settlement handle은 바깥 수동 transaction이 settle될 때까지 tracking에 남아 shutdown이 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain하게 합니다. 단, platform status activity count는 더 짧게 유지됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
@@ -251,6 +275,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
+- `getDrizzleDatabaseToken(name?)`, `getDrizzleDisposeToken(name?)`, `getDrizzleHandleProviderToken(name?)`, `getDrizzleOptionsToken(name?)`
 - `DrizzleDatabase.createFacade(...)` (호환성 전용 provider wiring helper; 애플리케이션 등록은 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -271,6 +296,7 @@ provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `forRootAsync(...)`는 database/dispose/transaction 설정을 factory에서 반환하는 DI-aware Drizzle 옵션을 받습니다. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요.
 - `forRootAsync(...)`는 애플리케이션 container마다 옵션을 한 번 resolve합니다. 테스트나 multi-app process에서 같은 module definition을 재사용해도 memoized factory result를 공유하지 않고 각 container가 독립적인 database/dispose 결과를 받습니다.
 - `strictTransactions: true`를 설정하면 transaction 지원이 없는 database handle에서 예외를 던집니다.
+- 추가 이름 있는 등록은 module-scoped이며 해당 `getDrizzle*Token(name)` helper로 주입합니다. 독립 ALS transaction context, drain, disposal, status를 소유하고 `@Transaction((self) => self.analytics)`로 명시적으로 선택합니다.
 - sync 및 async 등록 모두에서 `database`는 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
 
 ## 관련 패키지

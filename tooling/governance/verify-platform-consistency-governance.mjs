@@ -3706,6 +3706,57 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
   }
 }
 
+function enforceDrizzleNamedClientContract() {
+  const tokens = read('packages/drizzle/src/tokens.ts');
+  const module = read('packages/drizzle/src/module.ts');
+  const types = read('packages/drizzle/src/types.ts');
+
+  assert(
+    /name\?: string;/.test(types),
+    'packages/drizzle/src/types.ts must expose the optional named-client registration identity.',
+  );
+  assert(
+    [
+      'getDrizzleDatabaseToken',
+      'getDrizzleDisposeToken',
+      'getDrizzleHandleProviderToken',
+      'getDrizzleOptionsToken',
+    ].every((token) => tokens.includes(`function ${token}`)),
+    'packages/drizzle/src/tokens.ts must expose all named-client DI token helpers.',
+  );
+  assert(
+    module.includes('function getNormalizedOptionsToken(name?: string)') &&
+      module.includes('Named Drizzle registrations are scoped and cannot be registered globally.'),
+    'packages/drizzle/src/module.ts must isolate named client options and reject named global registrations.',
+  );
+
+  for (const contractPath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('getDrizzleDatabaseToken') && contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document explicit named-client injection and transaction selection.`,
+    );
+  }
+
+  for (const contractPath of [
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('Drizzle') &&
+        contract.includes('ALS') &&
+        contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document named-client transaction selection.`,
+    );
+  }
+}
+
 const queueWorkerOwnershipContractPaths = [
   'packages/queue/README.md',
   'packages/queue/README.ko.md',
@@ -4057,6 +4108,7 @@ export async function main() {
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
   enforceMongooseNestjsMigrationDocs();
