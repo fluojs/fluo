@@ -30,6 +30,8 @@ The email package is designed to stay lightweight without reducing runtime porta
 
 ## 16.2 Registering the Email Module
 
+<!-- fluo-email-nestjs-learning-path: registration=injected-factory;transport-ownership=explicit;delivery=direct-and-template -->
+
 To register the Module, you must provide a transport. This complete Node.js example uses fluo's first-party Nodemailer factory; other runtimes must pass an application-owned `EmailTransport` or `EmailTransportFactory` instead of omitting the transport.
 
 ```typescript
