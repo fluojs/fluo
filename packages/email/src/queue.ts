@@ -54,12 +54,13 @@ export function createEmailNotificationsQueueAdapter(queue: Queue): Notification
       });
     },
     enqueueMany(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]> {
-      return Promise.all(
-        jobs.map((job) =>
-          queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt, job.id), {
+      return queue.enqueueMany(
+        jobs.map((job) => ({
+          job: new EmailNotificationQueueJob(job.notification, job.queuedAt, job.id),
+          options: {
             deduplicationKey: job.id,
-          }),
-        ),
+          },
+        })),
       );
     },
   };

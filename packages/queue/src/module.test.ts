@@ -11,6 +11,14 @@ interface MockQueueConnection {
   name: string;
 }
 
+interface MockQueueState {
+  addBulkCalls: number;
+  addCalls: number;
+  closeCalls: number;
+  jobs: MockQueueJob[];
+  name: string;
+}
+
 interface MockQueueJob {
   attemptsMade: number;
   data: Record<string, unknown>;
@@ -50,7 +58,7 @@ interface MockRedisDuplicateOptions {
 type FailedListener = (job: MockQueueJob | undefined, error: Error) => void
 
 const bullmqState = vi.hoisted(() => {
-  const queues = new Map<string, { closeCalls: number; jobs: MockQueueJob[]; name: string }>();
+  const queues = new Map<string, MockQueueState>();
   const workers = new Map<string, MockWorkerState>();
 
   let sequence = 0;
@@ -139,7 +147,7 @@ const bullmqState = vi.hoisted(() => {
       sequence = 0;
     },
     createQueue(name: string) {
-      const queue = { closeCalls: 0, jobs: [] as MockQueueJob[], name };
+      const queue: MockQueueState = { addBulkCalls: 0, addCalls: 0, closeCalls: 0, jobs: [], name };
       queues.set(name, queue);
       return queue;
     },
@@ -265,6 +273,8 @@ vi.mock('bullmq', () => ({
     }
 
     async add(_jobName: string, data: Record<string, unknown>, opts: MockQueueJob['opts'] = {}): Promise<{ id: string }> {
+      this.queue.addCalls += 1;
+
       if (opts.jobId !== undefined && `${parseInt(opts.jobId, 10)}` === opts.jobId) {
         throw new Error('Custom Id cannot be integers');
       }
@@ -290,6 +300,51 @@ vi.mock('bullmq', () => ({
       await bullmqState.dispatch(this.name, job);
 
       return { id: job.id ?? '' };
+    }
+
+    async addBulk(
+      jobs: readonly { readonly data: Record<string, unknown>; readonly name: string; readonly opts: MockQueueJob['opts'] }[],
+    ): Promise<readonly { id: string }[]> {
+      this.queue.addBulkCalls += 1;
+
+      for (const { opts } of jobs) {
+        if (opts.jobId !== undefined && `${parseInt(opts.jobId, 10)}` === opts.jobId) {
+          throw new Error('Custom Id cannot be integers');
+        }
+
+        if (opts.jobId?.includes(':')) {
+          throw new Error('Custom Id cannot contain :');
+        }
+      }
+
+      const stagedJobs: MockQueueJob[] = [];
+      const results: Array<{ id: string }> = [];
+
+      for (const { data, opts } of jobs) {
+        const existing = opts.jobId === undefined
+          ? undefined
+          : [...this.queue.jobs, ...stagedJobs].find((job) => job.id === opts.jobId);
+
+        if (existing?.id) {
+          results.push({ id: existing.id });
+          continue;
+        }
+
+        const job: MockQueueJob = {
+          attemptsMade: 0,
+          data,
+          id: opts.jobId ?? bullmqState.nextId(),
+          opts,
+        };
+
+        stagedJobs.push(job);
+        results.push({ id: job.id ?? '' });
+      }
+
+      this.queue.jobs.push(...stagedJobs);
+      await Promise.all(stagedJobs.map((job) => bullmqState.dispatch(this.name, job)));
+
+      return results;
     }
 
     async close(): Promise<void> {
@@ -741,6 +796,103 @@ describe('@fluojs/queue', () => {
       expect(jobId).toBe('1');
       expect(workerStore.isPrototypeRehydrated).toBe(true);
       expect(workerStore.subject).toBe('welcome:user-1');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('enqueues ordered batches through BullMQ addBulk with per-job deduplication keys', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      await waitForApplicationQueueWorkers(app);
+
+      // When
+      const result = await queue.enqueueMany([
+        { job: new SendReceiptJob('receipt-first'), options: { deduplicationKey: 'notification:email:first' } },
+        { job: new SendReceiptJob('receipt-second'), options: { deduplicationKey: 'notification:email:second' } },
+      ]);
+
+      // Then
+      const bullQueue = bullmqState.queues.get('SendReceiptJob');
+      expect(result).toEqual(bullQueue?.jobs.map((job) => job.id));
+      expect(bullQueue).toMatchObject({
+        addBulkCalls: 1,
+        addCalls: 0,
+        jobs: [
+          { data: { receiptId: 'receipt-first' }, opts: { jobId: expect.stringMatching(/^fluo-/) } },
+          { data: { receiptId: 'receipt-second' }, opts: { jobId: expect.stringMatching(/^fluo-/) } },
+        ],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects an invalid later batch job before persisting earlier jobs', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    class UnregisteredJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      await waitForApplicationQueueWorkers(app);
+
+      // When / Then
+      await expect(
+        queue.enqueueMany([
+          { job: new SendReceiptJob('receipt-first') },
+          { job: new UnregisteredJob('receipt-invalid') },
+        ]),
+      ).rejects.toThrow('No @QueueWorker() registered for job type UnregisteredJob.');
+      expect(bullmqState.queues.get('SendReceiptJob')).toMatchObject({
+        addBulkCalls: 0,
+        addCalls: 0,
+        jobs: [],
+      });
     } finally {
       await app.close();
     }

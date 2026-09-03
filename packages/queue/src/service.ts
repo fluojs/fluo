@@ -28,6 +28,7 @@ import type {
   QueueBackoffOptions,
   QueueDeadLetterInspectionOptions,
   QueueDeadLetterInspectionResult,
+  QueueEnqueueManyEntry,
   QueueEnqueueOptions,
   QueueJobType,
   QueueWorkerDescriptor,
@@ -230,25 +231,64 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
     }
 
-    const descriptor = this.descriptorsByJobType.get(job.constructor as QueueJobType);
+    const { descriptor, queue } = this.resolveEnqueueTarget(job);
 
-    if (!descriptor) {
-      throw new Error(`No @QueueWorker() registered for job type ${job.constructor.name}.`);
-    }
-
-    const queue = this.queuesByJobName.get(descriptor.jobName);
-
-    if (!queue) {
-      throw new Error(`Queue ${descriptor.jobName} is not initialized.`);
-    }
-
-    const queuedJob = await queue.add(descriptor.jobName, serializeJobPayload(job), {
-      attempts: descriptor.attempts,
-      backoff: toBullBackoff(descriptor.backoff),
-      ...(options?.deduplicationKey === undefined ? {} : { jobId: createBullMqJobId(options.deduplicationKey) }),
-    });
+    const queuedJob = await queue.add(
+      descriptor.jobName,
+      serializeJobPayload(job),
+      this.createBullMqJobOptions(descriptor, options),
+    );
 
     return queuedJob.id ?? '';
+  }
+
+  /**
+   * Atomically enqueues ordered jobs that resolve to one registered worker queue.
+   *
+   * @param entries Ordered job instances and per-job producer controls.
+   * @returns Backing BullMQ job ids aligned with the input order.
+   * @throws {Error} When any entry has no registered worker, targets another queue, or the queue is unavailable.
+   */
+  async enqueueMany<TJob extends object>(entries: readonly QueueEnqueueManyEntry<TJob>[]): Promise<readonly string[]> {
+    if (entries.length === 0) {
+      return [];
+    }
+
+    await this.ensureStarted();
+
+    if (this.lifecycleState !== 'started') {
+      throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
+    }
+
+    const resolvedEntries = entries.map((entry) => {
+      const target = this.resolveEnqueueTarget(entry.job);
+
+      return {
+        descriptor: target.descriptor,
+        options: entry.options,
+        payload: serializeJobPayload(entry.job),
+        queue: target.queue,
+      };
+    });
+    const targetQueue = resolvedEntries[0]?.queue;
+
+    if (!targetQueue) {
+      return [];
+    }
+
+    if (resolvedEntries.some((entry) => entry.queue !== targetQueue)) {
+      throw new Error('Queue batch jobs must target one registered worker queue.');
+    }
+
+    const queuedJobs = await targetQueue.addBulk(
+      resolvedEntries.map((entry) => ({
+        data: entry.payload,
+        name: entry.descriptor.jobName,
+        opts: this.createBullMqJobOptions(entry.descriptor, entry.options),
+      })),
+    );
+
+    return queuedJobs.map((queuedJob) => queuedJob.id ?? '');
   }
 
   /**
@@ -288,6 +328,33 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       workersDiscovered: this.descriptorsByJobType.size,
       workersReady: this.runningWorkerJobNames.size,
     });
+  }
+
+  private resolveEnqueueTarget<TJob extends object>(job: TJob): {
+    readonly descriptor: QueueWorkerDescriptor;
+    readonly queue: QueueInstance;
+  } {
+    const descriptor = this.descriptorsByJobType.get(job.constructor as QueueJobType);
+
+    if (!descriptor) {
+      throw new Error(`No @QueueWorker() registered for job type ${job.constructor.name}.`);
+    }
+
+    const queue = this.queuesByJobName.get(descriptor.jobName);
+
+    if (!queue) {
+      throw new Error(`Queue ${descriptor.jobName} is not initialized.`);
+    }
+
+    return { descriptor, queue };
+  }
+
+  private createBullMqJobOptions(descriptor: QueueWorkerDescriptor, options: QueueEnqueueOptions | undefined): JobsOptions {
+    return {
+      attempts: descriptor.attempts,
+      backoff: toBullBackoff(descriptor.backoff),
+      ...(options?.deduplicationKey === undefined ? {} : { jobId: createBullMqJobId(options.deduplicationKey) }),
+    };
   }
 
   private async ensureStarted(): Promise<void> {
