@@ -131,6 +131,14 @@ export interface QueueEnqueueOptions {
   readonly deduplicationKey?: string;
 }
 
+/** One ordered job and its producer controls for an atomic queue batch. */
+export interface QueueEnqueueManyEntry<TJob extends object = object> {
+  /** Job instance whose constructor identifies the target worker. */
+  readonly job: TJob;
+  /** Optional producer controls applied only to this batch entry. */
+  readonly options?: QueueEnqueueOptions;
+}
+
 /** Queue facade exposed to application code and compatibility tokens. */
 export interface Queue {
   /**
@@ -141,6 +149,15 @@ export interface Queue {
    * @returns The backing BullMQ job id for the enqueued payload.
    */
   enqueue<TJob extends object>(job: TJob, options?: QueueEnqueueOptions): Promise<string>;
+
+  /**
+   * Atomically enqueues ordered jobs that resolve to one registered worker queue.
+   *
+   * @param entries Ordered job instances and per-job producer controls.
+   * @returns Backing BullMQ job ids aligned with the input order.
+   * @throws {Error} When any entry has no registered worker, targets another queue, or the queue is unavailable.
+   */
+  enqueueMany<TJob extends object>(entries: readonly QueueEnqueueManyEntry<TJob>[]): Promise<readonly string[]>;
 
   /**
    * Reads a bounded snapshot of dead-letter records for one queue job name.

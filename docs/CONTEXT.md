@@ -19,6 +19,14 @@ Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 supported range before upgrading. See the [`@fluojs/cron` README](../packages/cron/README.md)
 and [package surface](./reference/package-surface.md).
 
+## Drizzle named-client contract
+
+`@fluojs/drizzle` named registrations are non-global and each owns independent transaction ALS,
+shutdown drain, disposal, and status. Consumers import a module that exports the matching package-owned
+named tokens; names do not create isolated runtime containers. Use those helpers and an explicit
+`@Transaction((self) => self.client)` accessor; see [Transaction Context](./architecture/transactions.md)
+and the [Drizzle README](../packages/drizzle/README.md).
+
 ## Cloudflare Worker Close Ownership
 
 The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback. A trigger outside `worker.fetch` may call `await worker.close()` directly; a management route inside that fetch must return its current response, then use `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
@@ -397,6 +405,10 @@ NestJS Mongoose migration and transaction semantics are documented in [Transacti
 - Changing documented behavior in `1.0+` without a major bump, this violates release governance.
 
 Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
+
+## Email queue batch contract
+
+`Queue` and `QueueLifecycleService` expose compatible `enqueueMany(entries)` producer APIs. Ordered `QueueEnqueueManyEntry` values must target one registered BullMQ queue; Queue validates before one atomic `addBulk(...)` persistence call, returns IDs in input order, and preserves each entry's `deduplicationKey`. The `@fluojs/email/queue` notification adapter delegates bulk delivery to this seam rather than parallel `enqueue(...)` calls, while the single-job `enqueue(job, options?)` contract is unchanged.
 
 ## Notifications Queue Cancellation
 

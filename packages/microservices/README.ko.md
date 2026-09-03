@@ -121,7 +121,7 @@ Redis Pub/Sub은 동일한 등록 경로를 사용하기 위해 공통 transport
 | --- | --- |
 | `await microservice.send(...)` | transport가 상관관계가 유지된 원격 응답을 반환할 때 settle하며, 원격 오류, abort, timeout, shutdown 시 reject합니다. |
 | `await microservice.emit(...)` | transport의 publish 연산이 outbound event를 accept/complete할 때 settle합니다. 원격 event handler를 기다리거나 collaborator의 publish 계약을 넘어선 delivery/redelivery 보장을 추가하지는 않습니다. |
-| `await microservice.close()` | transport-owned listener/subscription teardown과 pending-request cleanup을 기다립니다. Caller-owned NATS, Kafka, RabbitMQ collaborator의 경우 전달받은 broker resource를 close/disconnect하지 않습니다. |
+| `await microservice.close()` | 반복 호출은 하나의 shutdown 결과를 공유합니다. 이미 수락된 inbound handler가 settle할 때까지 기다린 뒤 transport-owned listener/subscription teardown과 pending-request cleanup을 수행합니다. Caller-owned NATS, Kafka, RabbitMQ collaborator의 경우 전달받은 broker resource를 close/disconnect하지 않습니다. |
 
 Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle할 때까지 각 inbound consumer callback을 pending 상태로 유지합니다. 이 consumer-side completion boundary를 통해 broker adapter가 delivery를 acknowledge할지 retry할지 결정할 수 있지만, producer-side `emit()` promise가 end-to-end handler completion signal로 바뀌는 것은 아닙니다. 애플리케이션 shutdown에서는 먼저 `Microservice` facade를 닫아 transport callback을 detach한 다음, caller-owned client, producer, consumer, publisher, channel, connection을 application bootstrap layer에서 close 또는 drain하세요.
 

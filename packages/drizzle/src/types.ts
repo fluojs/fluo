@@ -33,6 +33,14 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
   /** Whether Drizzle providers should be visible globally. Defaults to `false`. */
   global?: boolean;
   /**
+   * Optional identity for an additional Drizzle registration.
+   *
+   * @remarks
+   * Named registrations are non-global. Consumers must import a module that exports the matching token;
+   * names do not create isolated runtime containers.
+   */
+  name?: string;
+  /**
    * Throws when transaction helpers are used against a database that does not expose `transaction(...)`.
    *
    * @remarks

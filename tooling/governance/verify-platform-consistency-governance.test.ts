@@ -194,15 +194,15 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
     ],
     [
       'module providers registration',
-      'packages/drizzle/src/module.ts',
+      'packages/drizzle/src/registration-providers.ts',
       (source: string) => source.replace(
-        '    DrizzleTransactionInterceptor,\n  ];\n}\n\nfunction createDrizzleProvidersAsync',
-        '  ];\n}\n\nfunction createDrizzleProvidersAsync',
+        '        DrizzleTransactionInterceptor,\n      ]\n      : [',
+        '      ]\n      : [',
       ),
     ],
     [
       'module exports registration',
-      'packages/drizzle/src/module.ts',
+      'packages/drizzle/src/named-registration.ts',
       (source: string) => source.replace(
         '  DrizzleTransactionInterceptor,\n  DRIZZLE_HANDLE_PROVIDER,',
         '  DRIZZLE_HANDLE_PROVIDER,',
@@ -2492,7 +2492,9 @@ describe('enforceContractCompanionUpdates', () => {
       'tooling/governance/verify-platform-consistency-governance.test.ts',
     ];
 
-    expect(() => enforceEmailMigrationCompanions(completeCompanions.filter((path) => path !== missingCompanion))).toThrow();
+    expect(() => enforceEmailMigrationCompanions(completeCompanions.filter((path) => path !== missingCompanion))).toThrow(
+      /Email NestJS migration documentation/u,
+    );
   });
 
   it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {
