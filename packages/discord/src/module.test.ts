@@ -143,6 +143,48 @@ class SelectiveFailureDiscordTransport implements DiscordTransport {
   }
 }
 
+class DeferredFirstSendDiscordTransport implements DiscordTransport {
+  private resolveFirstSend = (): void => {
+    throw new Error('First send resolver was not initialized.');
+  };
+
+  private resolveFirstSendStarted = (): void => {
+    throw new Error('First send start resolver was not initialized.');
+  };
+
+  private readonly firstSend = new Promise<void>((resolve) => {
+    this.resolveFirstSend = resolve;
+  });
+
+  readonly firstSendStarted = new Promise<void>((resolve) => {
+    this.resolveFirstSendStarted = resolve;
+  });
+
+  readonly sent: string[] = [];
+
+  releaseFirstSend(): void {
+    this.resolveFirstSend();
+  }
+
+  async send(message: NormalizedDiscordMessage) {
+    this.sent.push(message.content ?? '');
+
+    if (this.sent.length === 1) {
+      this.resolveFirstSendStarted();
+      await this.firstSend;
+    }
+
+    return {
+      messageId: `deferred-${this.sent.length}`,
+      ok: true,
+      response: 'ok',
+      statusCode: 200,
+      threadId: message.threadId,
+      warnings: [],
+    };
+  }
+}
+
 class AbortAfterFirstDiscordTransport implements DiscordTransport {
   readonly sent: string[] = [];
 
@@ -793,22 +835,30 @@ describe('DiscordModule', () => {
     );
   });
 
-  it('delivers sendMany messages sequentially as direct Discord message batches', async () => {
+  it('waits for each sendMany delivery to settle before starting the next message', async () => {
+    const transport = new DeferredFirstSendDiscordTransport();
     const container = new Container();
     const moduleType = DiscordModule.forRoot({
       defaultThreadId: 'thread-ops',
-      transport: createRecordingTransportFactory({ responsePrefix: 'batch' }),
+      transport,
     });
 
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(DiscordService);
     await service.onModuleInit();
 
-    const result = await service.sendMany([{ content: 'one' }, { content: 'two' }, { content: 'three' }]);
+    const batch = service.sendMany([{ content: 'one' }, { content: 'two' }, { content: 'three' }]);
+    await transport.firstSendStarted;
+
+    expect(transport.sent).toEqual(['one']);
+
+    transport.releaseFirstSend();
+
+    const result = await batch;
 
     expect(result).toMatchObject({ failed: 0, succeeded: 3 });
-    expect(result.results.map((entry) => entry.messageId)).toEqual(['batch-1', 'batch-2', 'batch-3']);
-    expect(transportState.sent.map((entry) => entry.content)).toEqual(['one', 'two', 'three']);
+    expect(result.results.map((entry) => entry.messageId)).toEqual(['deferred-1', 'deferred-2', 'deferred-3']);
+    expect(transport.sent).toEqual(['one', 'two', 'three']);
   });
 
   it('stops sendMany at the first provider error by default', async () => {

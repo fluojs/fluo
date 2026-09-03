@@ -8,6 +8,8 @@ import { DiscordService } from './service.js';
 import type {
   DiscordTemplateRenderInput,
   DiscordTransport,
+  DiscordTransportContext,
+  DiscordTransportReceipt,
   NormalizedDiscordMessage,
 } from './types.js';
 
@@ -244,5 +246,48 @@ describe('DiscordService lifecycle regressions', () => {
       }),
     ).rejects.toThrowError(new DiscordTransportError('Discord transport is shutting down or already stopped.'));
     expect(renderInputs).toHaveLength(1);
+  });
+
+  it('passes a live caller signal to custom transport delivery and preserves its in-flight abort', async () => {
+    let resolveTransportSignal = (_signal: AbortSignal | undefined): void => {
+      throw new Error('Transport signal resolver was not initialized.');
+    };
+    const transportSignal = new Promise<AbortSignal | undefined>((resolve) => {
+      resolveTransportSignal = resolve;
+    });
+    const transport: DiscordTransport = {
+      send(_message: NormalizedDiscordMessage, context: DiscordTransportContext): Promise<DiscordTransportReceipt> {
+        resolveTransportSignal(context.signal);
+
+        return new Promise<DiscordTransportReceipt>((_resolve, reject) => {
+          context.signal?.addEventListener(
+            'abort',
+            () => {
+              reject(context.signal?.reason);
+            },
+            { once: true },
+          );
+        });
+      },
+    };
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        transport,
+      }),
+    );
+    const controller = new AbortController();
+    const abortReason = new DOMException('Caller cancelled Discord delivery.', 'AbortError');
+    await service.onModuleInit();
+
+    const pending = service.send(
+      { content: 'In-flight cancellation' },
+      { signal: controller.signal },
+    );
+
+    await expect(transportSignal).resolves.toBe(controller.signal);
+
+    controller.abort(abortReason);
+
+    await expect(pending).rejects.toBe(abortReason);
   });
 });
