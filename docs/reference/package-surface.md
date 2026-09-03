@@ -168,4 +168,12 @@ Microservices transport learning paths link back to the package contract source:
 | `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
 | `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
+### Drizzle named-client ownership
+
+`@fluojs/drizzle` supports one default registration plus module-scoped named registrations. Every named
+registration exposes package-owned raw database, normalized options, disposal-hook, and lifecycle-handle
+tokens; it owns an independent ALS transaction context, shutdown drain, disposal, and status snapshot.
+The default `DrizzleDatabase` class token and `DrizzleTransactionInterceptor` remain default-only compatibility
+surfaces, so multi-client services inject a named handle token and select it explicitly with `@Transaction(...)`.
+
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

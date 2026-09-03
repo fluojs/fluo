@@ -196,8 +196,8 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
       'module providers registration',
       'packages/drizzle/src/module.ts',
       (source: string) => source.replace(
-        '    DrizzleTransactionInterceptor,\n  ];\n}\n\nfunction createDrizzleProvidersAsync',
-        '  ];\n}\n\nfunction createDrizzleProvidersAsync',
+        '        DrizzleTransactionInterceptor,\n      ]\n      : [',
+        '      ]\n      : [',
       ),
     ],
     [

@@ -169,4 +169,12 @@ Microservices transport 학습 경로는 패키지 계약 원천으로 다시 �
 | `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
 | `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
+### Drizzle 이름 있는 client 소유권
+
+`@fluojs/drizzle`은 하나의 default 등록과 module-scoped 이름 있는 등록을 지원합니다. 각 이름 있는
+등록은 package-owned raw database, normalized options, disposal-hook, lifecycle-handle token을 노출하고,
+독립 ALS transaction context, shutdown drain, disposal, status snapshot을 소유합니다. default
+`DrizzleDatabase` class token과 `DrizzleTransactionInterceptor`는 default-only compatibility surface로 유지되므로,
+multi-client service는 이름 있는 handle token을 주입하고 `@Transaction(...)`으로 명시적으로 선택합니다.
+
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->

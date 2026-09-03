@@ -210,6 +210,30 @@ export class CheckoutController {
 
 ### Shutdown and status contracts
 
+### Named clients
+
+Register each additional client with a non-empty `name` and inject its package-owned token instead of the `DrizzleDatabase` class token:
+
+```ts
+const ANALYTICS_DRIZZLE = getDrizzleHandleProviderToken('analytics');
+
+DrizzleModule.forRoot({ database: primaryDatabase });
+DrizzleModule.forRoot({ database: analyticsDatabase, name: 'analytics' });
+
+@Inject(ANALYTICS_DRIZZLE)
+class AnalyticsService {
+  constructor(private readonly analytics: DrizzleDatabase<AnalyticsDatabase>) {}
+
+  @Transaction((self: AnalyticsService) => self.analytics)
+  async rebuild() {}
+}
+```
+
+`getDrizzleDatabaseToken`, `getDrizzleDisposeToken`, `getDrizzleOptionsToken`, and
+`getDrizzleHandleProviderToken` return distinct stable identities for each trimmed name. Named clients are
+module-scoped, cannot be `global`, and independently own ALS transaction context, shutdown drain, disposal, and status.
+Omitting `name` preserves the existing default tokens, `DrizzleDatabase` class token, and interceptor behavior.
+
 During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for open request and manual transaction callbacks to settle or roll back, and only then runs the optional `dispose(database)` hook. This includes fail-open manual `transaction(...)` callbacks when `database.transaction(...)` is unavailable and `strictTransactions` is `false`, so direct-execution fallbacks still drain before pools or externally managed resources are closed.
 Transaction continuations that start a new boundary after their inherited owner settles no longer reuse the closed transaction handle. They become independently tracked roots, and shutdown waits for those continuation roots before disposal.
 Nested `requestTransaction(...)` calls opened inside an existing request boundary observe the ambient request abort signal while still reusing the active Drizzle transaction. Nested `requestTransaction(...)` calls opened inside an existing manual transaction boundary also join shutdown settlement tracking without opening a second Drizzle transaction, and their settlement handle remains tracked until the outer manual transaction settles so shutdown drains that outer boundary before `dispose(database)` runs. The platform status activity count is intentionally shorter lived: once the nested request callback settles, `details.activeRequestTransactions` is decremented even if the outer manual transaction continues running.
@@ -251,6 +275,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
+- `getDrizzleDatabaseToken(name?)`, `getDrizzleDisposeToken(name?)`, `getDrizzleHandleProviderToken(name?)`, `getDrizzleOptionsToken(name?)`
 - `DrizzleDatabase.createFacade(...)` (compatibility-only provider wiring helper; prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)` for application registration)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -271,6 +296,7 @@ Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such
 - `forRootAsync(...)` accepts DI-aware Drizzle options whose factory returns the database/dispose/transaction settings; pass `global` on the top-level async registration when the providers should be visible globally.
 - `forRootAsync(...)` resolves options once per application container. Reusing the same module definition across tests or multi-app processes creates isolated database/dispose results for each container instead of sharing a memoized factory result.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
+- Additional named registrations are module-scoped and inject through the matching `getDrizzle*Token(name)` helper. They own independent ALS transaction context, drain, disposal, and status; select them explicitly with `@Transaction((self) => self.analytics)`.
 - `database` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
 
 ## Related Packages

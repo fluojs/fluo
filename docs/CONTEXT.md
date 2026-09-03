@@ -11,6 +11,13 @@ the original bootstrap failure while reporting cleanup failures. See the [Lifecy
 Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 [`@fluojs/runtime` README](../packages/runtime/README.md).
 
+## Drizzle named-client contract
+
+`@fluojs/drizzle` named registrations are module-scoped and each owns independent transaction ALS,
+shutdown drain, disposal, and status. Use the package-owned named token helpers and an explicit
+`@Transaction((self) => self.client)` accessor; see [Transaction Context](./architecture/transactions.md)
+and the [Drizzle README](../packages/drizzle/README.md).
+
 ## Cloudflare Worker Close Ownership
 
 The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback. A trigger outside `worker.fetch` may call `await worker.close()` directly; a management route inside that fetch must return its current response, then use `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.
