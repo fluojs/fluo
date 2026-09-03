@@ -2650,22 +2650,15 @@ describe('enforceContractCompanionUpdates', () => {
     },
   );
 
-  it.each([
-    [
-      'README',
-      'packages/email/README.md',
-    ],
-    [
-      'migration guide',
-      'docs/getting-started/migrate-from-nestjs.md',
-    ],
-  ] as const)('requires all Email migration companions when the %s marker section changes', async (_label, path) => {
+  it.each(emailMigrationDocumentPaths)(
+    'requires all Email migration companions when the %s marker section changes',
+    async (path) => {
     // Given: a marker-bounded migration section mutation with only one document declared.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const snapshots = emailMigrationSnapshots({
       [path]: emailMigrationDocuments[path].replace(
-        'Use `EmailService.send(...)` for direct delivery.',
-        'Use `EmailService.send(...)` for templated delivery.',
+        'delivery=direct->pre-rendered,template->rendered',
+        'delivery=direct->pre-rendered',
       ),
     });
 
@@ -2676,7 +2669,8 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() =>
       enforceContractCompanionUpdates(completeEmailMigrationCompanions, snapshots),
     ).not.toThrow();
-  });
+    },
+  );
 
   it.each(emailMigrationDocumentPaths)('fails closed for a governed %s edit without snapshots', async (path) => {
     // Given: a governed Email document path without Git content snapshots.
