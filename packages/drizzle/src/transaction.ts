@@ -31,7 +31,9 @@ function findNestedTransactionTarget<TTransactionOptions>(value: unknown): Trans
     if (isTransactionCapableDrizzle<TTransactionOptions>(propertyValue)) {
       return propertyValue;
     }
+  }
 
+  for (const propertyValue of Object.values(value)) {
     const nestedDatabase = (propertyValue as { db?: unknown } | null)?.db;
     if (isTransactionCapableDrizzle<TTransactionOptions>(nestedDatabase)) {
       return nestedDatabase;
