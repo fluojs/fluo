@@ -9,6 +9,11 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+import {
+  emailNestjsMigrationMarkerPrefix,
+  enforceEmailNestjsMigrationDocs,
+  headingBoundedSection,
+} from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
@@ -1282,6 +1287,14 @@ const nestMigrationGuidePaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ];
+const emailMigrationDocumentPaths = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const emailMigrationEnforcementTool =
+  'tooling/governance/email-nestjs-migration-docs.mjs';
 const bootstrapMigrationImplementationEvidence = [
   'packages/cli/src/transforms/nestjs-migrate.ts',
   'packages/cli/src/transforms/nestjs-migrate.test.ts',
@@ -1369,7 +1382,11 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
 
   const mergeBase = mergeBaseResult.stdout.trim();
   const snapshots = {};
-  for (const path of nestMigrationGuidePaths) {
+  for (const path of [
+    ...nestMigrationGuidePaths,
+    ...emailMigrationDocumentPaths,
+    emailMigrationEnforcementTool,
+  ]) {
     const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
     if (baseResult.status !== 0) {
       return undefined;
@@ -1388,7 +1405,85 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
  * @param {string[]} changedFiles
  * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
  */
+const emailMigrationCompanions = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/contracts/nestjs-parity-gaps.md',
+  'docs/contracts/nestjs-parity-gaps.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'book/intermediate/ch16-email.md',
+  'book/intermediate/ch16-email.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+];
+const governedEmailMigrationDocuments = new Set([
+  ...emailMigrationDocumentPaths,
+]);
+
+export function enforceEmailMigrationCompanions(changedFiles) {
+  // Public Email contracts stay migration-safe only when every companion changes together.
+  assert(
+    emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
+    'Email NestJS migration documentation must include every governed Email companion.',
+  );
+}
+
+function emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) {
+  if (!changedFiles.some((path) => governedEmailMigrationDocuments.has(path))) {
+    return false;
+  }
+
+  if (
+    !migrationGuideSnapshots ||
+    !emailMigrationDocumentPaths.every((path) => {
+      const snapshot = migrationGuideSnapshots[path];
+      return typeof snapshot?.base === 'string' && typeof snapshot.head === 'string';
+    })
+  ) {
+    return true;
+  }
+
+  return emailMigrationDocumentPaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    return headingBoundedSection(
+      snapshot.base,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    ) !== headingBoundedSection(
+      snapshot.head,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    );
+  });
+}
+
+function sourceWithoutSharedEmailMigrationParserExports(source) {
+  return source
+    .replace(/^export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;\n/mu, '')
+    .replace(/\bexport function headingBoundedSection\(/u, 'function headingBoundedSection(');
+}
+
+function emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots) {
+  if (!hasChanged(changedFiles, emailMigrationEnforcementTool)) {
+    return false;
+  }
+
+  const snapshot = migrationGuideSnapshots?.[emailMigrationEnforcementTool];
+  if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') {
+    return true;
+  }
+
+  return sourceWithoutSharedEmailMigrationParserExports(snapshot.base) !==
+    sourceWithoutSharedEmailMigrationParserExports(snapshot.head);
+}
+
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const touchedEmailMigrationDocumentation =
+    emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
+    emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots);
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
@@ -1404,6 +1499,10 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
     'packages/platform-fastify/README.md',
     'packages/platform-fastify/README.ko.md',
   ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
+
+  if (touchedEmailMigrationDocumentation) {
+    enforceEmailMigrationCompanions(changedFiles);
+  }
 
   if (touchedFastifyRawContextDocumentation) {
     assert(
@@ -3587,7 +3686,7 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
 export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
     ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
-    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/module.ts', 'packages/drizzle/src/transaction.ts'],
+    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
     ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [
@@ -3619,7 +3718,10 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
 
     if (interceptor === 'DrizzleTransactionInterceptor') {
       const exportSection = /const DRIZZLE_MODULE_EXPORTS = \[([\s\S]*?)\];/.exec(moduleSource)?.[1];
-      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(moduleSource)?.[1];
+      const providerPath = 'packages/drizzle/src/registration-providers.ts';
+      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(
+        readText(providerPath),
+      )?.[1];
 
       assert(
         exportSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(exportSection),
@@ -3627,7 +3729,7 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
       );
       assert(
         providerSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(providerSection),
-        `${modulePath} must register DrizzleTransactionInterceptor as a runtime provider.`,
+        `${providerPath} must register DrizzleTransactionInterceptor as a runtime provider.`,
       );
       assert(
         /return this\.database\.requestTransaction\(\s*\(\) => next\.handle\(\),\s*context\.requestContext\.request\.signal\s*,?\s*\);/.test(source),
@@ -3669,6 +3771,57 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
         drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
         drizzlePublicApiRow.includes('deprecated'),
       `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+    );
+  }
+}
+
+function enforceDrizzleNamedClientContract() {
+  const tokens = read('packages/drizzle/src/tokens.ts');
+  const namedRegistration = read('packages/drizzle/src/named-registration.ts');
+  const types = read('packages/drizzle/src/types.ts');
+
+  assert(
+    /name\?: string;/.test(types),
+    'packages/drizzle/src/types.ts must expose the optional named-client registration identity.',
+  );
+  assert(
+    [
+      'getDrizzleDatabaseToken',
+      'getDrizzleDisposeToken',
+      'getDrizzleHandleProviderToken',
+      'getDrizzleOptionsToken',
+    ].every((token) => tokens.includes(`function ${token}`)),
+    'packages/drizzle/src/tokens.ts must expose all named-client DI token helpers.',
+  );
+  assert(
+    namedRegistration.includes('getNormalizedOptionsToken(name)') &&
+      namedRegistration.includes('Named Drizzle registrations are scoped and cannot be registered globally.'),
+    'packages/drizzle/src/named-registration.ts must isolate named client options and reject named global registrations.',
+  );
+
+  for (const contractPath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('getDrizzleDatabaseToken') && contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document explicit named-client injection and transaction selection.`,
+    );
+  }
+
+  for (const contractPath of [
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('Drizzle') &&
+        contract.includes('ALS') &&
+        contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document named-client transaction selection.`,
     );
   }
 }
@@ -3985,6 +4138,7 @@ export async function main() {
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
+  enforceEmailNestjsMigrationDocs();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
@@ -4024,6 +4178,7 @@ export async function main() {
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
   enforceMongooseNestjsMigrationDocs();

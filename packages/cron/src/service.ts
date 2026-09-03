@@ -758,11 +758,11 @@ export class CronLifecycleService
   private async handleTaskTick(taskName: string, token: object): Promise<void> {
     const taskState = this.tasks.get(taskName);
 
-    if (!this.started || !taskState?.enabled || taskState.running || taskState.activeScheduleToken !== token) {
+    if (!this.started || !this.isTaskTickCurrent(taskName, token, taskState) || taskState.running) {
       return;
     }
 
-    const task = this.runTaskTick(taskState.descriptor, taskState);
+    const task = this.runTaskTick(taskState.descriptor, taskState, token);
     taskState.running = true;
     this.activeTasks.add(task);
 
@@ -774,23 +774,53 @@ export class CronLifecycleService
     }
   }
 
-  private async runTaskTick(descriptor: CronTaskDescriptor, taskState: RuntimeTaskState): Promise<void> {
+  private isTaskTickCurrent(
+    taskName: string,
+    token: object,
+    taskState: RuntimeTaskState | undefined,
+  ): taskState is RuntimeTaskState {
+    return (
+      this.lifecycleState !== 'stopping' &&
+      this.lifecycleState !== 'stopped' &&
+      taskState?.enabled === true &&
+      this.tasks.get(taskName) === taskState &&
+      taskState.activeScheduleToken === token
+    );
+  }
+
+  private async runTaskTick(
+    descriptor: CronTaskDescriptor,
+    taskState: RuntimeTaskState,
+    token: object,
+  ): Promise<void> {
     if (!this.shouldUseDistributedExecution(descriptor)) {
       await this.executeTask(descriptor, taskState);
       return;
     }
 
-    await this.runDistributedTaskTick(descriptor, taskState);
+    await this.runDistributedTaskTick(descriptor, taskState, token);
   }
 
   private shouldUseDistributedExecution(descriptor: CronTaskDescriptor): boolean {
     return this.options.distributed.enabled && descriptor.distributed && this.distributedLocks.resolvedClient !== undefined;
   }
 
-  private async runDistributedTaskTick(descriptor: CronTaskDescriptor, taskState: RuntimeTaskState): Promise<void> {
+  private async runDistributedTaskTick(
+    descriptor: CronTaskDescriptor,
+    taskState: RuntimeTaskState,
+    token: object,
+  ): Promise<void> {
     const lease = await this.distributedLocks.tryAcquireLock(descriptor);
 
     if (!lease) {
+      return;
+    }
+
+    if (this.lifecycleState !== 'failed' && !this.isTaskTickCurrent(descriptor.taskName, token, taskState)) {
+      await this.distributedLocks.releaseLock(
+        lease,
+        this.shutdownPromise ? this.getRemainingShutdownTimeoutMs() : undefined,
+      );
       return;
     }
 

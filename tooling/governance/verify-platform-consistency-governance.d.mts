@@ -43,6 +43,7 @@ export function enforceContractCompanionUpdates(
   changedFiles: readonly string[],
   migrationGuideSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
 ): void;
+export function enforceEmailMigrationCompanions(changedFiles: readonly string[]): void;
 export function enforceReactClientSubpathContract(): void;
 export function enforceReactPageCatalogContract(readText?: (relativePath: string) => string): void;
 export function enforceReactPageMetadataIdentityContract(): void;
