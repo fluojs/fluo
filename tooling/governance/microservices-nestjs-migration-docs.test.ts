@@ -178,7 +178,7 @@ describe('NestJS microservices migration documentation', () => {
       expectedError: 'MicroserviceLifecycleService must suppress only repeated',
       mutate: (source: string) => source.replace(
         [
-          '        if (this.isDuplicate(seen, candidate.targetType, entry.propertyKey, dedupeKey)) {',
+          '        if (this.isDuplicate(seen, candidate.targetType, candidate.token, entry.propertyKey, dedupeKey)) {',
         ].join('\n'),
         [
           '        const shouldDedupeLater = () =>',
