@@ -11,6 +11,7 @@ Transport-agnostic email delivery core for fluo. It provides a Nest-like module 
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Registration scope and async factories](#registration-scope-and-async-factories)
+  - [NestJS mailer migration](#nestjs-mailer-migration)
   - [Node-only SMTP with `@fluojs/email/node`](#node-only-smtp-with-fluojs-email-node)
   - [Standalone delivery with `EmailService`](#standalone-delivery-with-emailservice)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
@@ -130,6 +131,14 @@ EmailModule.forRootAsync({
 ```
 
 `global` belongs on the top-level `forRootAsync(...)` options object, not in the factory result. The supported async registration shape is `inject` plus `useFactory`; NestJS dynamic-module forms such as `imports`, `useClass`, and `useExisting` are not part of the `@fluojs/email` contract. Register dependencies in the surrounding application module graph first, then list the tokens the factory needs in `inject`.
+
+### NestJS mailer migration
+
+For the complete NestJS migration path, start with the [migration map](../../docs/getting-started/migrate-from-nestjs.md#email-transport-ownership-and-delivery-migration). Choose one explicit transport boundary: an application-owned portable `EmailTransport` / `EmailTransportFactory`, the factory-owned Node SMTP transport created by `createNodemailerEmailTransportFactory(...)`, or `createNodemailerEmailTransport({ transporter })` around an existing caller-owned Nodemailer transporter. The existing-transporter wrapper does not transfer shutdown ownership to `EmailService`.
+
+Replace a pre-rendered `MailerService.sendMail(...)` call with `EmailService.send(...)`; its `EmailMessage` carries delivery fields, not template fields. For template-backed delivery, call `EmailService.sendNotification(...)` with a template key and renderer-specific `payload.templateData`. The renderer runs only when both `template` and a module renderer are present; its output is fallback content, so notification `subject` and payload `text` / `html` remain authoritative.
+
+Do not migrate NestJS `imports`, `useClass`, `useExisting`, `MailerService` compatibility, or implicit transport discovery. Resolve dependencies in the application module graph, then use `forRootAsync({ inject, useFactory })`.
 
 ### Node-only SMTP with `@fluojs/email/node`
 

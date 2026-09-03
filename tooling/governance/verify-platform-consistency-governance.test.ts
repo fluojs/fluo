@@ -2080,23 +2080,19 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
-  it('accepts Email async-registration migration guidance when context, package, and governance tests change together', async () => {
+  it('accepts Email migration contract guidance when context, contract, package, and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
     expect(() =>
       enforceContractCompanionUpdates([
         'packages/email/README.md',
         'packages/email/README.ko.md',
-        'book/intermediate/ch16-email.md',
-        'book/intermediate/ch16-email.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
-        ...fastifyRawContextCompanions,
-        'docs/reference/package-surface.md',
-        'docs/reference/package-surface.ko.md',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
-        'packages/email/src/module.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -2157,11 +2153,13 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('keeps Email async-registration and visibility guidance present in governed docs', () => {
+  it('keeps Email transport ownership and delivery migration guidance present in governed docs', () => {
     const englishEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8');
     const koreanEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8');
     const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
     const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
 
     for (const document of [englishEmailReadme, koreanEmailReadme, englishMigration, koreanMigration]) {
       expect(document).toContain('EmailModule.forRootAsync');
@@ -2171,6 +2169,19 @@ describe('enforceContractCompanionUpdates', () => {
       expect(document).toContain('imports');
       expect(document).toContain('useClass');
       expect(document).toContain('useExisting');
+      expect(document).toContain('EmailTransport');
+      expect(document).toContain('createNodemailerEmailTransportFactory');
+      expect(document).toContain('createNodemailerEmailTransport');
+      expect(document).toContain('EmailService.send(...)');
+      expect(document).toContain('sendNotification(...)');
+      expect(document).toContain('payload.templateData');
+    }
+
+    for (const document of [englishContext, koreanContext]) {
+      expect(document).toContain('EmailTransport');
+      expect(document).toContain('EmailService.send(...)');
+      expect(document).toContain('sendNotification(...)');
+      expect(document).toContain('payload.templateData');
     }
   });
 

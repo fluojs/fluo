@@ -107,10 +107,46 @@ await import('./bootstrap.js');
 | `@Processor(...)`, `@Process(...)` 또는 provider metadata를 통한 `@nestjs/bull` / `@nestjs/bullmq` processor discovery | `@fluojs/queue`, `@fluojs/redis`, `@fluojs/core`의 `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` provider, 명시적 `@Inject(...)` | fluo는 compiled module graph의 decorated singleton provider/controller만 discovery한다. Worker는 `handle(job)`을 노출해야 하며, Queue는 NestJS metadata를 읽거나 legacy Bull/BullMQ `queueName`, named job, 영속 payload 또는 그 topology를 자동 보존하지 않는다. Queue는 필수 runtime dependency와 일치하는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요하다. |
 | `@InjectQueue('queue')` producer의 `queue.add('job', payload)` 또는 `queue.add(payload)` 호출 | `@fluojs/queue`의 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)에서 `queue.enqueue(new JobClass(...))` 호출 | fluo에는 name과 payload를 받는 producer signature가 없다. `enqueue(job)`은 job instance의 정확한 constructor로 worker를 찾고, BullMQ queue/named job은 해당 worker에 등록된 `jobName`에서 가져오므로 job-name 문자열은 더 이상 producer argument가 아니다. Plain payload object의 constructor는 `Object`이므로 등록된 JobClass worker를 식별할 수 없다. `enqueue<TJob extends object>`는 모든 object를 허용하므로 이 실수는 type-check를 통과하지만 runtime에서 `No @QueueWorker() registered for job type Object.`로 거부된다. |
 | `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | NestJS `timeZone`을 fluo `timezone`으로 바꾼다. fluo에는 `waitForCompletion` 옵션이 없고 같은 task instance가 아직 실행 중이면 항상 해당 tick을 건너뛰므로 이 옵션을 옮기지 않는다. fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
-| `imports`, `useClass`, `useExisting`를 사용하는 NestJS-style email async module registration | `@fluojs/email`의 `EmailModule.forRootAsync({ inject, useFactory, global? })` | fluo email async registration은 injected factory option만 지원한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열하며, 기본 global provider visibility에서 벗어나야 할 때만 `global: false`를 설정한다. |
+| NestJS mailer async registration, implicit transporter discovery, 또는 `MailerService.sendMail(...)` | `@fluojs/email`의 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, 명시적 `EmailTransport` 선택, `EmailService.send(...)` 또는 `sendNotification(...)` | fluo email async registration은 injected factory option만 지원한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열하며, 기본 global provider visibility에서 벗어나야 할 때만 `global: false`를 설정한다. 애플리케이션이 소유한 이식 가능한 transport, `@fluojs/email/node`의 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter wrapper 중 하나를 선택한다. `MailerService` 호환 API나 implicit transport discovery는 없다. |
 | NestJS-style notification module, decorator-discovered channel provider, 또는 implicit queue/event integration | `@fluojs/notifications`의 `NotificationsModule.forRoot({ channels, queue?, events?, global? })` 또는 `NotificationsModule.forRootAsync({ inject, useFactory, global? })` | fluo notifications registration은 `channels`에 전달된 명시적 `NotificationChannel` 값을 사용한다. Queue adapter와 event publisher는 module-owned resource가 아니라 애플리케이션 소유 seam이며, `global: false`를 설정하지 않으면 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`가 기본 global로 export된다. |
 | `imports`, `useClass`, `useExisting`, package-level multi-client registry 또는 `isGlobal`을 가정하는 NestJS Slack module | `@fluojs/slack`의 `SlackModule.forRoot({ ..., global? })` 또는 `SlackModule.forRootAsync({ inject, useFactory, global? })` | fluo Slack async registration은 injected factory option만 소비한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환한다. 여러 client에는 app-owned module/provider 또는 facade를 조합한다. |
 | `imports`, `useClass`, `useExisting`, `isGlobal`, 또는 custom internal provider token을 가정하는 NestJS Discord module | `@fluojs/discord`의 `DiscordModule.forRoot({ ..., global? })` 또는 `DiscordModule.forRootAsync({ inject, useFactory, global? })` | fluo Discord registration은 singleton 중심이며 async setup은 injected factory만 지원한다. 이 패키지는 `global: false`가 설정되지 않으면 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export하고, 내부 provider helper와 option token은 의도적으로 private으로 유지한다. |
+
+## 이메일 Transport, Ownership, Delivery 마이그레이션
+
+NestJS mailer 설정은 구성 조회, transporter 생성, template rendering, delivery 호출을 한데 섞는 경우가 많습니다. fluo에서는 이 결정을 애플리케이션 경계에서 명시적으로 유지합니다.
+
+1. 이식 가능한 HTTP, API, Bun, Deno, Cloudflare, custom 구현에는 루트 `@fluojs/email` 패키지에 `EmailTransport` 또는 `EmailTransportFactory`를 전달합니다. 애플리케이션이 `kind`를 정하고 transport를 만들며, email module이 factory가 만든 resource를 닫아야 할 때 `ownsResources`를 설정합니다.
+2. email module이 소유할 1st-party Node SMTP transporter에는 `@fluojs/email/node`의 `createNodemailerEmailTransportFactory(...)`를 사용합니다. 이 factory는 ownership을 알리므로 bootstrap verification과 shutdown close가 자신이 만든 transporter에 적용됩니다.
+3. 다른 애플리케이션 component가 만들고 닫는 기존 Nodemailer transporter에는 `createNodemailerEmailTransport({ transporter })`로 감쌉니다. 이 wrapper는 resource ownership을 넘기지 않고 shared transport contract를 만족하므로 `EmailService`를 통한 두 번째 close 경로를 만들지 마세요.
+
+```ts
+import { EmailModule, type EmailTransport } from '@fluojs/email';
+import {
+  createNodemailerEmailTransport,
+  type NodemailerTransporter,
+} from '@fluojs/email/node';
+
+declare const providerTransport: EmailTransport;
+declare const existingTransporter: NodemailerTransporter;
+
+const portableTransport = {
+  kind: 'transactional-http',
+  create: () => providerTransport,
+  ownsResources: false,
+};
+
+EmailModule.forRoot({ transport: portableTransport });
+EmailModule.forRoot({
+  transport: createNodemailerEmailTransport({ transporter: existingTransporter }),
+});
+```
+
+호출자가 수신자, subject, body, 선택적 attachment 또는 header를 포함한 완전한 pre-rendered `EmailMessage`를 이미 가지고 있다면 `EmailService.send(...)`로 직접 `MailerService.sendMail(...)` 호출을 대체합니다. `EmailMessage`에 template field를 추가하지 마세요.
+
+Template-backed delivery에는 `EmailService.sendNotification(...)`을 사용합니다. Notification에 template key를 넣고 renderer 전용 값은 `payload.templateData`에 두며, `EmailModule`에 `EmailTemplateRenderer`를 등록합니다. Template과 renderer가 모두 있을 때만 rendering이 실행됩니다. Rendering 결과의 `subject`, `text`, `html`은 fallback입니다. 명시적 notification `subject`는 rendered subject보다 우선하고, `payload.text`와 `payload.html`은 rendered body보다 우선합니다. `payload.to`는 notification `recipients`보다 우선합니다. 실행 가능한 등록 및 renderer 예제는 [email chapter](../../book/intermediate/ch16-email.ko.md)를 참고하세요.
+
+이 경계에 NestJS `imports`, `useClass`, `useExisting`, `MailerService` 호환, implicit transport discovery, implicit template field를 가져오지 마세요.
 
 ## Mongoose 루트와 feature 마이그레이션
 
