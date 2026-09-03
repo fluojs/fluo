@@ -8,6 +8,16 @@
 <!-- fluo:cron-nestjs-migration: async-configuration -->
 <!-- fluo:cron-nestjs-migration: global-visibility -->
 <!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone` maps to `timezone`; `CronTaskOptions.timezone` is a string. |
+| `wait-for-completion` | `protect: true` prevents overlapping Croner invocations, and `CronLifecycleService` rejects a tick while its task is running. |
+| `unsupported-options` | NestJS scheduler options other than the documented fluo options are unsupported. |
+| `absolute-time` | `@Cron` accepts a cron-expression string only; `Date` and `DateTime` overloads are unsupported. |
+| `named-interval-timeout` | `@Interval(ms, options)` and `@Timeout(ms, options)` accept milliseconds and optional named task options. |
+| `async-configuration` | `CronModule.forRoot(...)` is synchronous; resolve async configuration before calling it. |
+| `global-visibility` | `CronModule.forRoot(...)` is local by default; pass `global: true` explicitly when needed. |
+| `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 
 # Chapter 12. Scheduling and Distributed Locks
 

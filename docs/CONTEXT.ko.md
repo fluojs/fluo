@@ -7,6 +7,16 @@
 <!-- fluo:cron-nestjs-migration: async-configuration -->
 <!-- fluo:cron-nestjs-migration: global-visibility -->
 <!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone`은 `timezone`으로 매핑되며 `CronTaskOptions.timezone`은 문자열입니다. |
+| `wait-for-completion` | `protect: true`가 Croner 호출의 중복을 막고 `CronLifecycleService`는 작업 실행 중 tick을 거부합니다. |
+| `unsupported-options` | 문서화된 fluo 옵션 외 NestJS scheduler 옵션은 지원되지 않습니다. |
+| `absolute-time` | `@Cron`은 cron-expression 문자열만 받고 `Date`와 `DateTime` overload는 지원되지 않습니다. |
+| `named-interval-timeout` | `@Interval(ms, options)`와 `@Timeout(ms, options)`는 millisecond와 선택적 named task option을 받습니다. |
+| `async-configuration` | `CronModule.forRoot(...)`는 동기식이며 async configuration은 호출 전에 해석합니다. |
+| `global-visibility` | `CronModule.forRoot(...)`는 기본적으로 local이고 필요할 때 `global: true`를 명시합니다. |
+| `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.

@@ -9,6 +9,16 @@
 <!-- fluo:cron-nestjs-migration: async-configuration -->
 <!-- fluo:cron-nestjs-migration: global-visibility -->
 <!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone` maps to `timezone`; `CronTaskOptions.timezone` is a string. |
+| `wait-for-completion` | `protect: true` prevents overlapping Croner invocations, and `CronLifecycleService` rejects a tick while its task is running. |
+| `unsupported-options` | NestJS scheduler options other than the documented fluo options are unsupported. |
+| `absolute-time` | `@Cron` accepts a cron-expression string only; `Date` and `DateTime` overloads are unsupported. |
+| `named-interval-timeout` | `@Interval(ms, options)` and `@Timeout(ms, options)` accept milliseconds and optional named task options. |
+| `async-configuration` | `CronModule.forRoot(...)` is synchronous; resolve async configuration before calling it. |
+| `global-visibility` | `CronModule.forRoot(...)` is local by default; pass `global: true` explicitly when needed. |
+| `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 
 This document maps current fluo coverage against common NestJS expectations.
 
@@ -53,3 +63,7 @@ This document maps current fluo coverage against common NestJS expectations.
 | `@nestjs/cache-manager` `imports`/`useClass`/`useExisting` async registration and interceptor subclassing as migration defaults | Intentionally replaced by synchronous `CacheModule.forRoot(...)`, injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, explicit `CacheService` injection, and documented key seams through `httpKeyStrategy`, `@CacheKey(...)`, and exported metadata helpers. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 | `SchedulerRegistry` / `CronJob` live handle mutation and private scheduled methods | Intentionally replaced by public instance method decorators and descriptor-based `SCHEDULING_REGISTRY` controls. `get` and `getAll` describe tasks rather than exposing mutable scheduler-engine handles. | `packages/cron/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch12-cron.md` |
 | `@nestjs/schedule` option parity, absolute-time `@Cron` inputs, named interval/timeout overloads, and async/global/category module registration | Intentionally not one-to-one. fluo accepts `timezone` but not `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`; `@Cron` accepts only cron-expression strings, so NestJS `Date` / Luxon `DateTime` schedules remain application-owned absolute-time plans rather than startup-relative `@Timeout` rewrites. Rewrite `@Interval(name, ms)` / `@Timeout(name, ms)` as `(ms, { name })`. Resolve async configuration before synchronous `CronModule.forRoot(...)`, pass `global: true` explicitly when required, and own `cronJobs` / `intervals` / `timeouts` category alternatives through application composition or dynamic registration. | `packages/cron/src/types.ts`, `packages/cron/src/decorators.ts`, `packages/cron/src/module.ts`, `packages/cron/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch12-cron.md` |
+
+## Cron Overlap Admission Boundary
+
+NestJS `waitForCompletion` has no fluo option because overlap is not configurable. `CronLifecycleService` always schedules cron tasks with scheduler-level no-overlap protection and additionally keeps an in-process running guard, so a tick that arrives while the same task instance is still running is skipped rather than queued. A NestJS task with `waitForCompletion: true` therefore omits the option when migrated, and a task that relied on `waitForCompletion: false` or the NestJS overlapping default must move its concurrent work to an application-owned queue or worker instead of expecting an overlap opt-out. This guard covers one task instance in one process; excluding the same task across application instances still requires Redis distributed locking.
