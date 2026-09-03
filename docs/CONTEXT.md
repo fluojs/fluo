@@ -11,6 +11,14 @@ the original bootstrap failure while reporting cleanup failures. See the [Lifecy
 Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 [`@fluojs/runtime` README](../packages/runtime/README.md).
 
+## Cron Runtime 3 Compatibility
+
+`@fluojs/cron` 3 has a mandatory `@fluojs/runtime` 3 dependency and requires Node.js
+`>=20.19.3 <21 || >=22.2.0 <27`. Consumers upgrading from Cron 2 must move Node.js
+`20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ hosts to that
+supported range before upgrading. See the [`@fluojs/cron` README](../packages/cron/README.md)
+and [package surface](./reference/package-surface.md).
+
 ## Cloudflare Worker Close Ownership
 
 The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in its package README, the [NestJS migration map](./getting-started/migrate-from-nestjs.md), and [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.md). A Worker `fetch` handler has no host-invoked shutdown callback. A trigger outside `worker.fetch` may call `await worker.close()` directly; a management route inside that fetch must return its current response, then use `executionContext.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism. A successful lazy-entrypoint close is restartable: a later `fetch(...)` bootstraps a fresh application, reruns bootstrap lifecycle hooks, and reconstructs application singleton providers.

@@ -7,6 +7,7 @@ fluo 애플리케이션을 위한 데코레이터 기반 스케줄링 패키지�
 ## 목차
 
 - [설치](#설치)
+- [Node.js 호환성](#nodejs-호환성)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [공통 패턴](#공통-패턴)
@@ -27,6 +28,14 @@ npm install @fluojs/cron
 `@fluojs/cron`이 `croner`를 runtime dependency로 소유하므로 소비자가 scheduler engine을 직접 설치할 필요가 없습니다.
 
 `@fluojs/redis`는 Redis distributed locking을 활성화할 때만 필요합니다. Non-distributed scheduling 경로는 package import, module registration, bootstrap, status snapshot 생성 중 Redis integration을 로드하지 않습니다.
+
+## Node.js 호환성
+
+`@fluojs/cron` 3은 `@fluojs/runtime` 3에 의존하므로 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 지원하지 않습니다.
+
+### 3으로 마이그레이션
+
+`@fluojs/cron` 2에서 업그레이드하기 전에 배포 host를 Node.js `>=20.19.3 <21 || >=22.2.0 <27`로 옮기세요. `@fluojs/cron` 3을 설치하기 전에 제거된 Node.js version을 사용하는 runtime image, CI matrix, local development environment를 업데이트해야 합니다.
 
 ## 사용 시점
 

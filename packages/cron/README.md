@@ -7,6 +7,7 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 ## Table of Contents
 
 - [Installation](#installation)
+- [Node.js Compatibility](#nodejs-compatibility)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
@@ -27,6 +28,14 @@ npm install @fluojs/cron
 `@fluojs/cron` owns `croner` as a runtime dependency, so consumers do not need to install the scheduler engine directly.
 
 `@fluojs/redis` is needed only when Redis distributed locking is enabled. Non-distributed scheduling paths do not load the Redis integration during package import, module registration, bootstrap, or status snapshot creation.
+
+## Node.js Compatibility
+
+`@fluojs/cron` 3 requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` because it depends on `@fluojs/runtime` 3. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are not supported.
+
+### Migration to 3
+
+Before upgrading from `@fluojs/cron` 2, move deployment hosts to Node.js `>=20.19.3 <21 || >=22.2.0 <27`. Update any runtime image, CI matrix, or local development environment that still uses a removed Node.js version before installing `@fluojs/cron` 3.
 
 ## When to Use
 

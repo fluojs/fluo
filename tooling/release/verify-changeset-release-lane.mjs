@@ -724,6 +724,38 @@ function collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(ver
   });
 }
 
+function hasMajorReleaseIntent(intents, packageName) {
+  return intents.some((intent) => intent.packageName === packageName && intent.bump === 'major');
+}
+
+function hasMajorVersionDelta(versionDeltas, packageName) {
+  return versionDeltas.some((delta) => delta.packageName === packageName && delta.bump === 'major');
+}
+
+function collectCronRuntimeMajorCompatibilityBreaks(intents, versionDeltas) {
+  const runtimePackageName = '@fluojs/runtime';
+  const cronPackageName = '@fluojs/cron';
+  const breaks = [];
+
+  if (hasMajorReleaseIntent(intents, runtimePackageName) && !hasMajorReleaseIntent(intents, cronPackageName)) {
+    breaks.push({
+      cronPackageName,
+      runtimePackageName,
+      source: 'changeset',
+    });
+  }
+
+  if (hasMajorVersionDelta(versionDeltas, runtimePackageName) && !hasMajorVersionDelta(versionDeltas, cronPackageName)) {
+    breaks.push({
+      cronPackageName,
+      runtimePackageName,
+      source: 'package version delta',
+    });
+  }
+
+  return breaks;
+}
+
 export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const baseRef = options.baseRef;
   const changesetDirectory = options.changesetDirectory ?? defaultChangesetDirectory;
@@ -772,6 +804,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ...collectPatchStudioRouteKindInputContractNarrowingsFromChangesets(intents),
     ...collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(versionDeltas, dependencies),
   ];
+  const cronRuntimeMajorCompatibilityBreaks = collectCronRuntimeMajorCompatibilityBreaks(intents, versionDeltas);
   const allStableNodeEngineRangeNarrowings = typeof dependencies.collectStableNodeEngineRangeNarrowings === 'function'
     ? dependencies.collectStableNodeEngineRangeNarrowings()
     : collectStableNodeEngineRangeNarrowings(baseRef, dependencies);
@@ -794,6 +827,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     invalidConsumedGeneratedMajorVersionDeltas.length > 0 ||
     patchCliFeatureDowngrades.length > 0 ||
     patchStudioRouteKindInputContractNarrowings.length > 0 ||
+    cronRuntimeMajorCompatibilityBreaks.length > 0 ||
     stableNodeEngineRangeNarrowings.length > 0 ||
     missingNodeEngineMigrationNotes.length > 0
   ) {
@@ -845,6 +879,11 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
             })
             .join('\n  - ')}`
         : '',
+      cronRuntimeMajorCompatibilityBreaks.length > 0
+        ? `Cron releases must be major when mandatory Runtime releases major:\n  - ${cronRuntimeMajorCompatibilityBreaks
+            .map((breakage) => `${breakage.cronPackageName} with ${breakage.runtimePackageName} (${breakage.source})`)
+            .join('\n  - ')}`
+        : '',
       stableNodeEngineRangeNarrowings.length > 0
         ? `stable Node engine range narrowings without a major changeset:\n  - ${stableNodeEngineRangeNarrowings
             .map(
@@ -875,6 +914,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     checkedIntents: intents,
     checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,
     checkedPatchStudioRouteKindInputContractNarrowings: patchStudioRouteKindInputContractNarrowings,
+    checkedCronRuntimeMajorCompatibilityBreaks: cronRuntimeMajorCompatibilityBreaks,
     checkedStableNodeEngineRangeNarrowings: stableNodeEngineRangeNarrowings,
     checkedVersionDeltas: versionDeltas,
     lane,
