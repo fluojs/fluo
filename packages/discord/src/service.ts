@@ -90,6 +90,7 @@ type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping
  */
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
+  private readonly acceptedDeliveryPromises = new Set<Promise<unknown>>();
   private lifecycleFailurePhase: DiscordServiceLifecycleFailurePhase | undefined;
   private lifecycleState: DiscordServiceLifecycleState = 'created';
   private ownedTransportCleanupPromise: Promise<void> | undefined;
@@ -118,6 +119,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
   private async closeOwnedTransport(): Promise<void> {
     try {
+      await this.drainAcceptedDeliveries();
       await this.closeOwnedTransportResources();
 
       this.lifecycleState = 'stopped';
@@ -242,8 +244,15 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     this.assertReadyForSend();
 
-    const transport = await this.ensureTransport();
-    this.assertReadyForSend();
+    return this.trackAcceptedDelivery(this.sendAccepted(message, options, this.ensureTransport()));
+  }
+
+  private async sendAccepted(
+    message: DiscordMessage,
+    options: DiscordSendOptions,
+    transportPromise: Promise<DiscordTransport>,
+  ): Promise<DiscordSendResult> {
+    const transport = await transportPromise;
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
     const result = await transport.send(normalized, options);
@@ -330,10 +339,20 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     this.assertReadyForSend();
 
+    return this.trackAcceptedDelivery(
+      this.sendNotificationAccepted(notification, options, this.ensureTransport()),
+    );
+  }
+
+  private async sendNotificationAccepted(
+    notification: DiscordNotificationDispatchRequest,
+    options: DiscordSendOptions,
+    transportPromise: Promise<DiscordTransport>,
+  ): Promise<DiscordSendResult> {
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification, options.signal);
 
-    return this.send(
+    return this.sendAccepted(
       {
         allowedMentions: payload.allowedMentions,
         attachments: payload.attachments ?? [],
@@ -355,6 +374,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
         username: payload.username,
       },
       options,
+      transportPromise,
     );
   }
 
@@ -385,6 +405,24 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     this.resolvedTransport = undefined;
     this.transportPromise = undefined;
     this.transportVerificationPromise = undefined;
+  }
+
+  private async drainAcceptedDeliveries(): Promise<void> {
+    await Promise.allSettled(this.acceptedDeliveryPromises);
+  }
+
+  private trackAcceptedDelivery<T>(delivery: Promise<T>): Promise<T> {
+    this.acceptedDeliveryPromises.add(delivery);
+    void delivery.then(
+      () => {
+        this.acceptedDeliveryPromises.delete(delivery);
+      },
+      () => {
+        this.acceptedDeliveryPromises.delete(delivery);
+      },
+    );
+
+    return delivery;
   }
 
   private async handleTransportInitializationFailure(error: unknown): Promise<never> {
