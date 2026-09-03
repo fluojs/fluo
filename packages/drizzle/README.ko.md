@@ -180,13 +180,16 @@ Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, ro
 비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { CheckoutService } from './checkout.service';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 export class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,

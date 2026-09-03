@@ -180,13 +180,16 @@ Async work created inside a transaction can inherit its ALS context even when it
 Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { CheckoutService } from './checkout.service';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 export class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,
