@@ -64,6 +64,179 @@ describe('DiscordService lifecycle regressions', () => {
     });
   });
 
+  it('drains a direct delivery accepted before shutdown before closing a factory-owned transport', async () => {
+    let resolveDelivery = (): void => {
+      throw new Error('Delivery resolver was not initialized.');
+    };
+    let resolveDeliveryStarted = (): void => {
+      throw new Error('Delivery-start resolver was not initialized.');
+    };
+    let deliverySettled = false;
+    const delivery = new Promise<void>((resolve) => {
+      resolveDelivery = resolve;
+    });
+    const deliveryStarted = new Promise<void>((resolve) => {
+      resolveDeliveryStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(deliverySettled).toBe(true);
+    });
+    const transport: DiscordTransport = {
+      close,
+      async send() {
+        resolveDeliveryStarted();
+        await delivery;
+        deliverySettled = true;
+        return { ok: true, warnings: [] };
+      },
+    };
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        transport: {
+          create: async () => transport,
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.send({ content: 'Accepted before shutdown.' });
+    await deliveryStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    resolveDelivery();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('drains notification rendering accepted before shutdown before closing a factory-owned transport', async () => {
+    let resolveRendering = (): void => {
+      throw new Error('Rendering resolver was not initialized.');
+    };
+    let resolveRenderingStarted = (): void => {
+      throw new Error('Rendering-start resolver was not initialized.');
+    };
+    let renderingSettled = false;
+    const rendering = new Promise<void>((resolve) => {
+      resolveRendering = resolve;
+    });
+    const renderingStarted = new Promise<void>((resolve) => {
+      resolveRenderingStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(renderingSettled).toBe(true);
+    });
+    const send = vi.fn(async (_message: NormalizedDiscordMessage) => ({ ok: true, warnings: [] }));
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        renderer: {
+          async render() {
+            resolveRenderingStarted();
+            await rendering;
+            renderingSettled = true;
+            return { content: 'Rendered before shutdown.' };
+          },
+        },
+        transport: {
+          create: async () => ({
+            close,
+            send,
+          }),
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.sendNotification({
+      channel: 'discord',
+      payload: {},
+      template: 'deploy.finished',
+    });
+    await renderingStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    resolveRendering();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('drains a notification admitted during synchronous renderer-triggered shutdown before closing transport', async () => {
+    let resolveRendering = (): void => {
+      throw new Error('Rendering resolver was not initialized.');
+    };
+    let resolveRenderingStarted = (): void => {
+      throw new Error('Rendering-start resolver was not initialized.');
+    };
+    let deliverySettled = false;
+    let renderingSettled = false;
+    let shutdown: Promise<void> | undefined;
+    let service: DiscordService | undefined;
+    const rendering = new Promise<void>((resolve) => {
+      resolveRendering = resolve;
+    });
+    const renderingStarted = new Promise<void>((resolve) => {
+      resolveRenderingStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(deliverySettled).toBe(true);
+      expect(renderingSettled).toBe(true);
+    });
+    const send = vi.fn(async (_message: NormalizedDiscordMessage) => {
+      deliverySettled = true;
+      return { ok: true, warnings: [] };
+    });
+    service = await resolveService(
+      DiscordModule.forRoot({
+        renderer: {
+          async render() {
+            if (!service) {
+              throw new Error('DiscordService was not initialized before rendering.');
+            }
+
+            shutdown = service.onApplicationShutdown();
+            resolveRenderingStarted();
+            await rendering;
+            renderingSettled = true;
+            return { content: 'Rendered during shutdown.' };
+          },
+        },
+        transport: {
+          create: async () => ({
+            close,
+            send,
+          }),
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.sendNotification({
+      channel: 'discord',
+      payload: {},
+      template: 'deploy.finished',
+    });
+    await renderingStarted;
+    const activeShutdown = shutdown;
+
+    if (!activeShutdown) {
+      throw new Error('Renderer did not initiate shutdown.');
+    }
+
+    resolveRendering();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(activeShutdown).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it('passes the delivery signal to renderers and checks lifecycle before rendering', async () => {
     const renderInputs: DiscordTemplateRenderInput[] = [];
     const send = vi.fn(async (_message: NormalizedDiscordMessage) => ({ ok: true, warnings: [] }));

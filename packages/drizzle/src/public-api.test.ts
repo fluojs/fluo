@@ -22,6 +22,23 @@ describe('@fluojs/drizzle public API surface', () => {
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_DISPOSE');
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_HANDLE_PROVIDER');
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_OPTIONS');
+    expect(drizzlePublicApi).toHaveProperty('getDrizzleDatabaseToken');
+    expect(drizzlePublicApi).toHaveProperty('getDrizzleDisposeToken');
+    expect(drizzlePublicApi).toHaveProperty('getDrizzleHandleProviderToken');
+    expect(drizzlePublicApi).toHaveProperty('getDrizzleOptionsToken');
+  });
+
+  it('exports stable named-token helpers without changing default tokens', () => {
+    expect(drizzlePublicApi.getDrizzleDatabaseToken()).toBe(drizzlePublicApi.DRIZZLE_DATABASE);
+    expect(drizzlePublicApi.getDrizzleDisposeToken()).toBe(drizzlePublicApi.DRIZZLE_DISPOSE);
+    expect(drizzlePublicApi.getDrizzleHandleProviderToken()).toBe(drizzlePublicApi.DRIZZLE_HANDLE_PROVIDER);
+    expect(drizzlePublicApi.getDrizzleOptionsToken()).toBe(drizzlePublicApi.DRIZZLE_OPTIONS);
+    expect(drizzlePublicApi.getDrizzleDatabaseToken(' analytics ')).toBe(
+      drizzlePublicApi.getDrizzleDatabaseToken('analytics'),
+    );
+    expect(drizzlePublicApi.getDrizzleDatabaseToken('analytics')).not.toBe(
+      drizzlePublicApi.getDrizzleHandleProviderToken('analytics'),
+    );
   });
 
   it('does not expose internal module wiring values from the root barrel', () => {

@@ -11,6 +11,14 @@ cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.ko.md)와
 [`@fluojs/runtime` README](../packages/runtime/README.ko.md)를 참고하세요.
 
+## Drizzle 이름 있는 client 계약
+
+`@fluojs/drizzle` 이름 있는 등록은 non-global이며 각각 독립 transaction ALS, shutdown drain,
+disposal, status를 소유합니다. Consumer는 일치하는 package-owned 이름 있는 token을 export하는
+module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. 해당 helper와 명시적
+`@Transaction((self) => self.client)` accessor를 사용하세요. [Transaction Context](./architecture/transactions.ko.md)와
+[Drizzle README](../packages/drizzle/README.ko.md)를 참고하세요.
+
 ## Cloudflare Worker close 소유권
 
 `@fluojs/platform-cloudflare-workers` lifecycle contract는 package README, [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md), [Cloudflare Workers Edge Deployment](../book/intermediate/ch24-cloudflare.ko.md)에 문서화합니다. Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로 애플리케이션이 close trigger를 소유합니다. `worker.fetch` 밖의 trigger는 `await worker.close()`를 직접 호출할 수 있지만, 그 fetch 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 이후의 `fetch(...)`는 새 application을 bootstrap하고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
@@ -44,6 +52,8 @@ Structured HTTP access logging은 `@fluojs/http`의 `createAccessLogObserver(...
 ## Migration Reference
 
 NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에서 시작한다. i18n handoff는 각 custom resolver를 `HttpLocaleResolver`로 mapping하고, application-owned `Middleware` 하나를 `fluoFactory.create(AppModule, { middleware })`로 등록하며, 선택된 locale은 현재 `RequestContext`에만 저장한다. global locale fallback은 없다.
+
+Queue producer idempotency는 `packages/queue/README.md`와 `packages/queue/README.ko.md`에 문서화되어 있다. 공개 Queue facade는 호출자 소유 `deduplicationKey`를 받고 이를 BullMQ에 유효한 job id로 결정적으로 매핑하므로, 콜론을 포함하거나 숫자만으로 이루어진 notification identity도 deduplicate할 수 있다.
 
 NestJS HTTP pipeline migration에서 portable bootstrap `middleware`는 `handle(MiddlewareContext, next)`를 구현하며, Express `(req, res, next)` handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 둔다.
 
@@ -212,7 +222,7 @@ JWT auth 및 NestJS migration discoverability는 package README, governed packag
 
 Passport auth 및 NestJS migration discoverability는 `packages/passport/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch15-passport.ko.md`](../book/beginner/ch15-passport.ko.md)로 나뉜다. Package README는 `PassportModule.forRoot(...)` strategy registry wiring, `AuthGuard`, optional auth/scope decorator, Passport.js strategy bridge provider bundle, cookie-auth 및 refresh-token preset, account-linking helper, 공개 auth metadata helper, `createPassportPlatformStatusSnapshot(...)`를 문서화하고, governed package surface는 `createPassportJsStrategyBridge(...)` namespace-facade 예외와 compatibility-only `createCookieAuthPreset(...)` provider bundle을 기록한다. Migration/book companion은 명시적 `bridge.providers`, named `bridge.strategy` registration, `requestContext.principal`로 향하는 `mapPrincipal(...)` mapping을 요구한다. Bridge는 full NestJS Passport compatibility, middleware, sessions, serializers/deserializers, automatic strategy discovery를 제공하지 않고 implicit guards, principal mapping을 넘어서는 request augmentation, host middleware ownership도 추가하지 않는다. Session, serializer/deserializer, host 책임은 application-owned 상태로 남는다.
 
-Email discoverability도 패키지 README, governed package-surface docs, NestJS migration docs, intermediate book으로 나뉜다. `packages/email/README.ko.md`는 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider의 기본 global visibility, 명시적인 `global: false` local-visibility opt-out, 지원하지 않는 NestJS `imports` / `useClass` / `useExisting` async-registration 형태, 직접 `EmailService` 전달, `@fluojs/notifications` channel 통합, queue-backed worker 등록, `stopping`/`stopped`/`failed` 상태에서 항상 적용되는 `EmailLifecycleError` 거부, `created`/`starting` 전달이 성공적인 bootstrap 검증을 기다리게 하는 opt-in `verifyOnModuleInit` gate와 이 옵션이 없으면 전달이 진행될 수 있다는 경계, caller-owned transport shutdown boundary, notification email field forwarding, 그리고 caller가 queue detail을 명시적으로 제공할 때만 queue metadata가 포함되는 platform status snapshot을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/email` responsibility boundary를 기록한다. [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)는 NestJS dynamic-module async 형태를 fluo injected factory로 옮기는 migration boundary를 기록하고, [`book/intermediate/ch16-email.ko.md`](../book/intermediate/ch16-email.ko.md)는 FluoShop 학습 경로에서 동일한 registration 및 visibility 규칙을 설명한다.
+Email discoverability도 패키지 README, governed package-surface docs, NestJS migration docs, intermediate book으로 나뉜다. `packages/email/README.ko.md`는 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider의 기본 global visibility, 명시적인 `global: false` local-visibility opt-out, 지원하지 않는 NestJS `imports` / `useClass` / `useExisting` async-registration 형태, 직접 `EmailService` 전달, `@fluojs/notifications` channel 통합, queue-backed worker 등록, `stopping`/`stopped`/`failed` 상태에서 항상 적용되는 `EmailLifecycleError` 거부, `created`/`starting` 전달이 성공적인 bootstrap 검증을 기다리게 하는 opt-in `verifyOnModuleInit` gate와 이 옵션이 없으면 전달이 진행될 수 있다는 경계, caller-owned transport shutdown boundary, notification email field forwarding, 그리고 caller가 queue detail을 명시적으로 제공할 때만 queue metadata가 포함되는 platform status snapshot을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/email` responsibility boundary를 기록한다. [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)는 애플리케이션이 소유한 이식 가능한 `EmailTransport`, factory가 소유하는 Node SMTP transport, 기존 호출자 소유 Nodemailer transporter를 구분하고, pre-rendered `EmailService.send(...)` 전달과 `payload.templateData`를 사용하는 renderer-backed `sendNotification(...)` 전달을 별도로 매핑한다. [`book/intermediate/ch16-email.ko.md`](../book/intermediate/ch16-email.ko.md)는 FluoShop 학습 경로에서 이에 대응하는 registration 및 renderer 규칙을 설명한다.
 
 Slack discoverability도 패키지 README, governed package-surface docs, NestJS migration docs, intermediate chat book chapter로 나뉜다. `packages/slack/README.ko.md`는 `SlackModule.forRoot(...)` / `forRootAsync(...)`, application graph에 의존성을 등록한 뒤 `inject`와 `useFactory`로 구성하는 injected-factory-only async registration, `global: false` local opt-out을 포함한 기본 global provider visibility, singleton compatibility token `SLACK`과 `SLACK_CHANNEL`, `createSlackProviders(...)`를 통한 수동 singleton provider composition, 여러 Slack client를 위한 app-owned composition, 직접 `SlackService` 전달, `@fluojs/notifications` channel 통합, abort-signal 전파, lifecycle-gated send, optional `verify()`를 노출하는 transport를 위한 `verifyOnModuleInit` bootstrap 검증, verification이 settle될 때까지 factory-owned transport를 열어 두는 공유 bootstrap/shutdown 순서, bootstrap 실패와 shutdown 사이에서 직렬화되는 factory-owned transport cleanup, payload-over-rendered merge precedence를 따르는 `SlackTemplateRenderer` template rendering, platform status snapshot을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 직접 `process.env`를 읽지 않는 webhook-first, singleton, transport-agnostic Slack delivery에 대한 정식 `@fluojs/slack` responsibility boundary를 기록하고, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)는 NestJS `imports` / `useClass` / `useExisting`, multi-client assumption, `isGlobal`에서 Slack injected factory, application graph 의존성 등록, singleton token, `global?: boolean`로 옮기는 migration boundary를 기록하며, [`book/intermediate/ch17-slack-discord.ko.md`](../book/intermediate/ch17-slack-discord.ko.md)는 FluoShop 학습 경로에서 같은 module visibility, async registration, singleton token, bootstrap 검증, template-backed notification dispatch surface를 설명한다.
 
@@ -338,6 +348,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | Need | Read first | Follow with |
 | --- | --- | --- |
 | Passport refresh-token module 소유권과 alias visibility | `packages/passport/README.ko.md` | `apps/docs/content/docs/guides/auth.ko.mdx` 및 `packages/passport/src/refresh/refresh-token.ts` |
+| `@fluojs/email` NestJS 마이그레이션 | `packages/email/README.ko.md` | `docs/getting-started/migrate-from-nestjs.ko.md` 및 `book/intermediate/ch16-email.ko.md` |
 | 저장소 정체성과 위반 불가 규칙 확인 | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | 아키텍처 모델, 요청 흐름, 런타임 경계 확인 | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar 결정과 재검토 gate 확인 | `docs/architecture/http-catch-all-route-grammar.ko.md` | 활성 explicit-route contract는 `packages/http/README.ko.md` 및 `packages/react/README.ko.md` |
@@ -391,6 +402,10 @@ NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 �
 - major bump 없이 `1.0+`의 문서화된 동작을 변경하는 것, release governance를 위반한다.
 
 전체 안티패턴 목록 경로: `docs/guides/anti-patterns.md`.
+
+## Email queue batch 계약
+
+`Queue`와 `QueueLifecycleService`는 호환되는 `enqueueMany(entries)` producer API를 제공합니다. 순서가 있는 `QueueEnqueueManyEntry` 값은 하나의 등록된 BullMQ queue를 대상으로 해야 하며, Queue는 한 번의 atomic `addBulk(...)` persist 전에 검증하고 입력 순서대로 ID를 반환하며 각 entry의 `deduplicationKey`를 보존합니다. `@fluojs/email/queue` notification adapter는 parallel `enqueue(...)` 호출 대신 이 seam에 bulk 전달을 위임하고, single-job `enqueue(job, options?)` 계약은 바뀌지 않습니다.
 
 ## Notifications 상태 계약
 

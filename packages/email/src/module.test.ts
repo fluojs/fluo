@@ -734,10 +734,16 @@ describe('EmailModule', () => {
 
   it('provides a notifications queue adapter that enqueues bulk email delivery through QueueModule', async () => {
     const enqueued: object[] = [];
-    const fakeQueue: Pick<Queue, 'enqueue'> = {
+    const fakeQueue: Pick<Queue, 'enqueue' | 'enqueueMany'> = {
       async enqueue(job: object): Promise<string> {
         enqueued.push(job);
         return `queued:${enqueued.length}`;
+      },
+      async enqueueMany(entries): Promise<readonly string[]> {
+        return entries.map((entry) => {
+          enqueued.push(entry.job);
+          return `queued:${enqueued.length}`;
+        });
       },
     };
     const emailContainer = new Container();
@@ -789,11 +795,17 @@ describe('EmailModule', () => {
 
   it('preserves Uint8Array email attachment bytes across a deferred notification lifecycle publication', async () => {
     const enqueued: object[] = [];
-    const fakeQueue: Pick<Queue, 'enqueue'> = {
+    const fakeQueue: Pick<Queue, 'enqueue' | 'enqueueMany'> = {
       async enqueue(job: object): Promise<string> {
         enqueued.push(job);
 
         return `queued:${enqueued.length}`;
+      },
+      async enqueueMany(entries): Promise<readonly string[]> {
+        return entries.map((entry) => {
+          enqueued.push(entry.job);
+          return `queued:${enqueued.length}`;
+        });
       },
     };
     let publishRequested: (() => void) | undefined;
