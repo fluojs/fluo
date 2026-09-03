@@ -114,9 +114,11 @@ await import('./bootstrap.js');
 
 ## 이메일 Transport, Ownership, Delivery 마이그레이션
 
-<!-- fluo-email-nestjs-migration: async=injected-factory-supported;async-negative=imports-useClass-useExisting-unsupported;ownership=portable-application,node-factory-email-module,nodemailer-caller;delivery=direct-pre-rendered,template-rendered;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
 
 NestJS mailer 설정은 구성 조회, transporter 생성, template rendering, delivery 호출을 한데 섞는 경우가 많습니다. fluo에서는 이 결정을 애플리케이션 경계에서 명시적으로 유지합니다.
+
+주입형 async configuration에는 `EmailModule.forRootAsync({ inject, useFactory, global: false })`를 사용하세요. `global: false`는 선택 사항이며 반환된 module을 local로 유지합니다.
 
 1. 이식 가능한 HTTP, API, Bun, Deno, Cloudflare, custom 구현에는 루트 `@fluojs/email` 패키지에 `EmailTransport` 또는 `EmailTransportFactory`를 전달합니다. 애플리케이션이 `kind`를 정하고 transport를 만들며, email module이 factory가 만든 resource를 닫아야 할 때 `ownsResources`를 설정합니다.
 2. email module이 소유할 1st-party Node SMTP transporter에는 `@fluojs/email/node`의 `createNodemailerEmailTransportFactory(...)`를 사용합니다. 이 factory는 ownership을 알리므로 bootstrap verification과 shutdown close가 자신이 만든 transporter에 적용됩니다.

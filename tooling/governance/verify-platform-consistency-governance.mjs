@@ -1200,21 +1200,26 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
  * @param {string[]} changedFiles
  * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
  */
+const emailMigrationCompanions = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/contracts/nestjs-parity-gaps.md',
+  'docs/contracts/nestjs-parity-gaps.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'book/intermediate/ch16-email.md',
+  'book/intermediate/ch16-email.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+];
+const governedEmailMigrationDocuments = new Set([
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+]);
+
 export function enforceEmailMigrationCompanions(changedFiles) {
-  const emailMigrationCompanions = [
-    'packages/email/README.md',
-    'packages/email/README.ko.md',
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    'docs/contracts/nestjs-parity-gaps.md',
-    'docs/contracts/nestjs-parity-gaps.ko.md',
-    'docs/CONTEXT.md',
-    'docs/CONTEXT.ko.md',
-    'book/intermediate/ch16-email.md',
-    'book/intermediate/ch16-email.ko.md',
-    'tooling/governance/verify-platform-consistency-governance.mjs',
-    'tooling/governance/verify-platform-consistency-governance.test.ts',
-  ];
 
   assert(
     emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
@@ -1223,10 +1228,9 @@ export function enforceEmailMigrationCompanions(changedFiles) {
 }
 
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
-  const touchedEmailMigrationDocumentation = hasChanged(
-    changedFiles,
-    'tooling/governance/email-nestjs-migration-docs.mjs',
-  );
+  const touchedEmailMigrationDocumentation =
+    changedFiles.some((path) => governedEmailMigrationDocuments.has(path)) ||
+    hasChanged(changedFiles, 'tooling/governance/email-nestjs-migration-docs.mjs');
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),

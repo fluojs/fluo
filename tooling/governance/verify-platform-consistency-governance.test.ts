@@ -2170,35 +2170,74 @@ describe('enforceContractCompanionUpdates', () => {
       const source = readFileSync(join(repoRoot, relativePath), 'utf8');
       return relativePath === 'packages/email/README.md'
         ? source.replace(
-            'ownership=portable-application,node-factory-email-module,nodemailer-caller',
-            'ownership=portable-email-module,node-factory-application,nodemailer-caller',
+            'ownership=portable->application,node-factory->email-module,nodemailer->caller',
+            'ownership=portable->email-module,node-factory->application,nodemailer->caller',
           )
         : source;
     };
 
-    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow();
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/ownership/u);
   });
 
   it('rejects Email async-factory guidance that denies the supported form', () => {
     const readText = (relativePath: string) => {
       const source = readFileSync(join(repoRoot, relativePath), 'utf8');
       return relativePath === 'packages/email/README.md'
-        ? source.replace('async=injected-factory-supported', 'async=injected-factory-unsupported')
+        ? source.replace('async=injected-factory->supported', 'async=injected-factory->unsupported')
         : source;
     };
 
-    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow();
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/async/u);
   });
 
-  it('rejects Email migration guidance without direct and template delivery APIs', () => {
+  it('rejects Email migration guidance with an incomplete delivery marker', () => {
     const readText = (relativePath: string) => {
       const source = readFileSync(join(repoRoot, relativePath), 'utf8');
       return relativePath === 'packages/email/README.md'
-        ? source.replaceAll('EmailService.send(...)', '').replaceAll('EmailService.sendNotification(...)', '')
+        ? source.replace(
+            'delivery=direct->pre-rendered,template->rendered',
+            'delivery=direct->pre-rendered',
+          )
         : source;
     };
 
-    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow();
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/delivery/u);
+  });
+
+  it('rejects Email migration guidance with incomplete delivery precedence', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace(
+            'precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients',
+            'precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.to->notification.recipients',
+          )
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/precedence/u);
+  });
+
+  it('rejects an Email API identifier that appears only in its marker', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? source.replace(
+            '`EmailService.send(...)` replaces a direct `MailerService.sendMail(...)` call',
+            '`direct delivery` replaces a direct `MailerService.sendMail(...)` call',
+          )
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/EmailService\.send/u);
+  });
+
+  it('requires all Email companions for a governed-document-only edit', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates(['packages/email/README.md']),
+    ).toThrow(/Email NestJS migration documentation/u);
   });
 
   it.each([

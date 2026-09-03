@@ -109,8 +109,6 @@ export class WelcomeService {
 
 ## 일반적인 패턴
 
-<!-- fluo-email-nestjs-migration: async=injected-factory-supported;async-negative=imports-useClass-useExisting-unsupported;ownership=portable-application,node-factory-email-module,nodemailer-caller;delivery=direct-pre-rendered,template-rendered;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
-
 ### 등록 범위와 async factory
 
 `EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 한 번 import하면 export된 `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider가 애플리케이션 module graph에 표시됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다.
@@ -136,11 +134,13 @@ EmailModule.forRootAsync({
 
 ### NestJS mailer 마이그레이션
 
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
 완전한 NestJS 마이그레이션 경로는 [마이그레이션 맵](../../docs/getting-started/migrate-from-nestjs.ko.md#이메일-transport-ownership-delivery-마이그레이션)에서 시작하세요. 명시적인 transport 경계 하나를 선택합니다. 애플리케이션이 소유한 이식 가능한 `EmailTransport` / `EmailTransportFactory`, `createNodemailerEmailTransportFactory(...)`로 만든 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter를 감싼 `createNodemailerEmailTransport({ transporter })`입니다. 기존 transporter wrapper는 shutdown ownership을 `EmailService`로 넘기지 않습니다.
 
 Pre-rendered `MailerService.sendMail(...)` 호출은 `EmailService.send(...)`로 대체합니다. 이때 `EmailMessage`에는 delivery field만 넣고 template field는 넣지 않습니다. Template-backed delivery에는 template key와 renderer 전용 `payload.templateData`를 포함한 `EmailService.sendNotification(...)`을 호출하세요. Template과 module renderer가 모두 있을 때만 renderer가 실행되며, 결과는 fallback content이므로 notification `subject`와 payload `text` / `html`이 계속 우선합니다.
 
-NestJS `imports`, `useClass`, `useExisting`, `MailerService` 호환, implicit transport discovery를 옮기지 마세요. 애플리케이션 module graph에서 의존성을 해석한 다음 `forRootAsync({ inject, useFactory })`를 사용하세요.
+NestJS `imports`, `useClass`, `useExisting`, `MailerService` 호환, implicit transport discovery를 옮기지 마세요. 애플리케이션 module graph에서 의존성을 해석한 다음 module-local visibility가 필요할 때 `EmailModule.forRootAsync({ inject, useFactory, global: false })`를 사용하세요.
 
 ### `@fluojs/email/node`를 이용한 Node 전용 SMTP
 
