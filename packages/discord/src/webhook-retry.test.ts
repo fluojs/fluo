@@ -157,6 +157,134 @@ describe('Discord webhook retries', () => {
     }
   });
 
+  it('accepts the minimum retry attempt and delay boundaries', async () => {
+    const fetchLike = vi.fn<DiscordFetchLike>().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      async text() {
+        return 'temporary provider response';
+      },
+    });
+    const transport = createDiscordWebhookTransport({
+      fetch: fetchLike,
+      retry: {
+        attempts: 1,
+        baseDelayMs: 0,
+      },
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+
+    await expect(
+      transport.send(
+        { attachments: [], components: [], content: 'Minimum retry boundaries', embeds: [] },
+        {},
+      ),
+    ).rejects.toThrowError(
+      new DiscordTransportError(
+        'Discord webhook delivery failed with status 503 Service Unavailable after 1 attempt(s). Upstream response body was omitted from the caller-visible error.',
+      ),
+    );
+    expect(fetchLike).toHaveBeenCalledOnce();
+  });
+
+  it('accepts the maximum retry attempt boundary', async () => {
+    let requestCount = 0;
+    const fetchLike = vi.fn<DiscordFetchLike>().mockImplementation(async () => {
+      requestCount += 1;
+
+      if (requestCount < 10) {
+        return {
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          async text() {
+            return 'temporary provider response';
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ id: 'max-attempt-boundary' });
+        },
+      };
+    });
+    const transport = createDiscordWebhookTransport({
+      fetch: fetchLike,
+      retry: {
+        attempts: 10,
+        baseDelayMs: 0,
+      },
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+
+    await expect(
+      transport.send(
+        { attachments: [], components: [], content: 'Maximum retry attempt boundary', embeds: [] },
+        {},
+      ),
+    ).resolves.toMatchObject({
+      messageId: 'max-attempt-boundary',
+      ok: true,
+      statusCode: 200,
+    });
+    expect(fetchLike).toHaveBeenCalledTimes(10);
+  });
+
+  it('accepts the maximum retry delay boundary', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi
+        .fn<DiscordFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          async text() {
+            return 'temporary provider response';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ id: 'max-delay-boundary' });
+          },
+        });
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        retry: {
+          attempts: 2,
+          baseDelayMs: 60_000,
+        },
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send(
+        { attachments: [], components: [], content: 'Maximum retry delay boundary', embeds: [] },
+        {},
+      );
+      await vi.advanceTimersByTimeAsync(59_999);
+
+      expect(fetchLike).toHaveBeenCalledOnce();
+
+      const expectation = expect(pending).resolves.toMatchObject({
+        messageId: 'max-delay-boundary',
+        ok: true,
+        statusCode: 200,
+      });
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expectation;
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     {
       retry: { attempts: 0 },
@@ -167,11 +295,19 @@ describe('Discord webhook retries', () => {
       message: 'Discord webhook transport `retry.attempts` must be an integer between 1 and 10.',
     },
     {
+      retry: { attempts: 1.5 },
+      message: 'Discord webhook transport `retry.attempts` must be an integer between 1 and 10.',
+    },
+    {
       retry: { baseDelayMs: -1 },
       message: 'Discord webhook transport `retry.baseDelayMs` must be an integer between 0 and 60000.',
     },
     {
       retry: { baseDelayMs: 60_001 },
+      message: 'Discord webhook transport `retry.baseDelayMs` must be an integer between 0 and 60000.',
+    },
+    {
+      retry: { baseDelayMs: 0.5 },
       message: 'Discord webhook transport `retry.baseDelayMs` must be an integer between 0 and 60000.',
     },
   ])('rejects an out-of-bounds retry configuration', ({ retry, message }) => {

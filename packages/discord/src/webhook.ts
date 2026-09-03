@@ -124,12 +124,12 @@ function resolveRetryPolicy(retry: DiscordWebhookTransportOptions['retry']): {
 }
 
 async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
-  if (delayMs <= 0) {
-    return;
-  }
-
   if (signal?.aborted) {
     throw signal.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+  }
+
+  if (delayMs <= 0) {
+    return;
   }
 
   await new Promise<void>((resolve, reject) => {
