@@ -350,40 +350,18 @@ function isModuleNotFoundError(error: unknown): boolean {
 }
 
 async function loadRuntimeInspectionModule(cwd: string): Promise<RuntimeInspectionModule | undefined> {
-  if (typeof import.meta.resolve !== 'function') {
-    try {
-      return await import(RUNTIME_ENTRYPOINT) as RuntimeInspectionModule;
-    } catch (error: unknown) {
-      if (isModuleNotFoundError(error)) {
-        return undefined;
-      }
+  const resolver = createRequire(resolve(cwd, 'package.json'));
 
-      throw error;
-    }
-  }
-
-  const parentUrls = [
-    pathToFileURL(resolve(cwd, 'package.json')).href,
-    import.meta.url,
-  ];
-
-  for (const parentUrl of parentUrls) {
-    let resolvedEntrypoint: string;
-
-    try {
-      resolvedEntrypoint = import.meta.resolve(RUNTIME_ENTRYPOINT, parentUrl);
-    } catch (error: unknown) {
-      if (isModuleNotFoundError(error)) {
-        continue;
-      }
-
-      throw error;
+  try {
+    const resolvedEntrypoint = resolver.resolve(RUNTIME_ENTRYPOINT);
+    return await import(pathToFileURL(resolvedEntrypoint).href) as RuntimeInspectionModule;
+  } catch (error: unknown) {
+    if (isModuleNotFoundError(error)) {
+      return undefined;
     }
 
-    return import(resolvedEntrypoint) as Promise<RuntimeInspectionModule>;
+    throw error;
   }
-
-  return undefined;
 }
 
 async function resolveRuntimeInspectionModule(
@@ -474,9 +452,9 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     if (outputPath !== undefined) {
       await assertOutputDoesNotAliasModule(modulePath, outputPath);
     }
+    const { createRuntimeInspectionSnapshot, FluoFactory, PLATFORM_SHELL } = await resolveRuntimeInspectionModule(cwd, runtime);
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
-    const { createRuntimeInspectionSnapshot, FluoFactory, PLATFORM_SHELL } = await resolveRuntimeInspectionModule(cwd, runtime);
 
     const application = await FluoFactory.create(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,

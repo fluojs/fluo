@@ -33,7 +33,7 @@ pnpm dlx @fluojs/cli new my-app
 
 - `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
 - `@fluojs/cli`는 Node.js `>=20.0.0`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 독립적인 `>=20.0.0` 하한을 유지합니다.
-- `inspect`는 검사를 실행할 때만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=20.0.0` 범위에서 계속 사용할 수 있습니다.
+- `inspect`는 검사를 실행할 때만, 그리고 검사 대상 프로젝트의 dependency tree에서만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=20.0.0` 범위에서 계속 사용할 수 있습니다.
 - 대화형 `new` 흐름과 선택적인 대화형 `inspect --mermaid` 안내는 필요할 때만 `@clack/prompts`를 해석합니다. `@clack/prompts`는 현재 Node.js `>=20.12.0`을 요구하므로 Node.js `20.0.0`부터 `20.11.x`까지는 CLI의 비대화형 명령만 지원합니다.
 - CLI와 생성된 Node.js starter toolchain은 `tsx@^4.23.1`을 사용하며, 생성된 gRPC starter는 `@grpc/grpc-js@^1.14.4`를 요구합니다. 이 패치된 floor를 적용할 때 기존 project lockfile을 갱신하세요.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.

@@ -326,6 +326,78 @@ function changedPackageNames(changedFiles) {
   }));
 }
 
+function mandatoryProductionImporterSections(lockfileText) {
+  const importersStart = lockfileText.indexOf('\nimporters:\n');
+  const packagesStart = lockfileText.indexOf('\npackages:\n', importersStart);
+  const importersText = lockfileText.slice(
+    importersStart === -1 ? 0 : importersStart + '\nimporters:\n'.length,
+    packagesStart === -1 ? lockfileText.length : packagesStart,
+  );
+  const sections = new Map();
+  let importerPath;
+  let dependencyLines;
+
+  const commit = () => {
+    if (importerPath !== undefined && dependencyLines !== undefined) {
+      sections.set(importerPath, dependencyLines.join('\n'));
+    }
+  };
+
+  for (const line of importersText.split('\n')) {
+    const importerMatch = /^[ ]{2}(?<path>\S[^:\n]*):$/u.exec(line);
+    if (importerMatch !== null) {
+      commit();
+      importerPath = importerMatch.groups.path.replace(/^['"]|['"]$/gu, '');
+      dependencyLines = undefined;
+      continue;
+    }
+
+    if (importerPath === undefined) {
+      continue;
+    }
+
+    if (line === '    dependencies:') {
+      dependencyLines = [line];
+      continue;
+    }
+
+    if (dependencyLines === undefined) {
+      continue;
+    }
+
+    if (/^[ ]{4}\S/u.test(line)) {
+      commit();
+      dependencyLines = undefined;
+      continue;
+    }
+
+    dependencyLines.push(line);
+  }
+
+  commit();
+  return sections;
+}
+
+export function mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfileText, currentLockfileText) {
+  const previousSections = mandatoryProductionImporterSections(previousLockfileText);
+  const currentSections = mandatoryProductionImporterSections(currentLockfileText);
+  const importerPaths = new Set([...previousSections.keys(), ...currentSections.keys()]);
+  const packageNames = new Set();
+
+  for (const importerPath of importerPaths) {
+    if (previousSections.get(importerPath) === currentSections.get(importerPath)) {
+      continue;
+    }
+
+    const match = /^packages\/([^/]+)$/u.exec(importerPath);
+    if (match !== null) {
+      packageNames.add(`@fluojs/${match[1]}`);
+    }
+  }
+
+  return packageNames;
+}
+
 export function enforceMandatoryProductionDependencyEngineAlignment(
   readText = read,
   packageNames = changedPackageNames(changedFilesFromGit()),
@@ -704,6 +776,27 @@ export function changedFilesFromGit(runCommand = run, env = process.env) {
   throw new Error(
     `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
   );
+}
+
+function lockfileTextAtMergeBase(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    throw new Error(
+      `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
+    );
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const lockfileResult = runCommand('git', ['show', `${mergeBase}:pnpm-lock.yaml`], { allowFailure: true });
+  if (lockfileResult.status !== 0) {
+    throw new Error(
+      'Platform consistency governance check failed: unable to read pnpm-lock.yaml at the merge-base. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.',
+    );
+  }
+
+  return lockfileResult.stdout;
 }
 
 function normalizeHeading(line) {
@@ -3822,7 +3915,16 @@ export async function main() {
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
-  enforceMandatoryProductionDependencyEngineAlignment(read, changedPackageNames(changedFiles));
+  const engineGovernancePackageNames = changedPackageNames(changedFiles);
+  if (changedFiles.includes('pnpm-lock.yaml')) {
+    for (const packageName of mandatoryProductionImporterPackageNamesForLockfileChange(
+      lockfileTextAtMergeBase(),
+      read('pnpm-lock.yaml'),
+    )) {
+      engineGovernancePackageNames.add(packageName);
+    }
+  }
+  enforceMandatoryProductionDependencyEngineAlignment(read, engineGovernancePackageNames);
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();

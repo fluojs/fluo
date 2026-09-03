@@ -35,6 +35,7 @@ import {
   enforceReactServerFunctionContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
+  mandatoryProductionImporterPackageNamesForLockfileChange,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
@@ -826,6 +827,65 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 });
 
 describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
+  it('selects only mandatory production importers when a lockfile-only resolution changes', () => {
+    const previousLockfile = [
+      'lockfileVersion: "9.0"',
+      '',
+      'importers:',
+      '',
+      '  packages/cli:',
+      '    dependencies:',
+      "      '@clack/prompts':",
+      '        specifier: 1.3.0',
+      '        version: 1.3.0',
+      '    devDependencies:',
+      '      vitest:',
+      '        specifier: 3.2.4',
+      '        version: 3.2.4',
+      '',
+      'packages:',
+      '',
+      "  '@clack/prompts@1.3.0':",
+      "    engines: {node: '>=20.0.0'}",
+      '',
+      'snapshots:',
+      '',
+    ].join('\n');
+    const lockfileOnlyMutation = previousLockfile
+      .replace('version: 1.3.0', 'version: 1.4.0')
+      .replace("'@clack/prompts@1.3.0'", "'@clack/prompts@1.4.0'")
+      .replace("engines: {node: '>=20.0.0'}", "engines: {node: '>=20.12.0'}");
+    const devDependencyOnlyMutation = previousLockfile.replace('version: 3.2.4', 'version: 3.2.5');
+    const readText = (relativePath: string): string => {
+      if (relativePath === 'pnpm-lock.yaml') {
+        return lockfileOnlyMutation;
+      }
+
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      if (relativePath !== 'packages/cli/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        dependencies: { '@clack/prompts': '1.3.0' },
+        engines: { node: '>=20.0.0' },
+      });
+    };
+
+    const affectedPackageNames = mandatoryProductionImporterPackageNamesForLockfileChange(
+      previousLockfile,
+      lockfileOnlyMutation,
+    );
+
+    expect(affectedPackageNames).toEqual(new Set(['@fluojs/cli']));
+    expect(mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfile, devDependencyOnlyMutation))
+      .toEqual(new Set());
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, affectedPackageNames))
+      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@clack\/prompts locked/u);
+  });
+
   it('rejects a direct third-party production dependency that excludes an advertised Node version', () => {
     const readText = (relativePath: string): string => {
       if (relativePath === 'pnpm-lock.yaml') {

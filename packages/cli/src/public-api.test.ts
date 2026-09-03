@@ -17,7 +17,7 @@ import {
   newUsage,
   runCli,
   runGenerateCommand,
-  runInspectCommand,
+  runInspectCommand as runInspectCommandImplementation,
   runNewCommand,
   runTypegenCommand,
   TYPEGEN_EXIT_CODES,
@@ -26,6 +26,7 @@ import {
 } from './index.js';
 
 const tempDirectories: string[] = [];
+const cliPackageDirectory = dirname(fileURLToPath(import.meta.url));
 const inspectFixtureModulePath = join(
   dirname(fileURLToPath(import.meta.url)),
   'fixtures',
@@ -36,6 +37,22 @@ const inspectBootstrapFailureFixtureModulePath = join(
   'fixtures',
   'inspect-bootstrap-failure.module.mjs',
 );
+const inspectApplicationImportFailureFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-application-import-failure.module.mjs',
+);
+
+function runInspectCommand(
+  argv: Parameters<typeof runInspectCommandImplementation>[0],
+  runtime?: Parameters<typeof runInspectCommandImplementation>[1],
+) {
+  if (runtime?.cwd === process.cwd()) {
+    return runInspectCommandImplementation(argv, { ...runtime, cwd: cliPackageDirectory });
+  }
+
+  return runInspectCommandImplementation(argv, runtime);
+}
 
 function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new' | 'typegen'): void {
   const eagerCommandLink = new RegExp(
@@ -218,6 +235,36 @@ describe('public CLI package API', () => {
     expect(stdoutBuffer.join('')).toBe('');
     expect(stderrBuffer.join('')).toContain('Runtime inspection requires @fluojs/runtime');
     expect(stderrBuffer.join('')).toContain('pnpm add -D @fluojs/runtime');
+  });
+
+  it('preflights runtime availability before importing the application module', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runInspectCommand([inspectApplicationImportFailureFixtureModulePath, '--json'], {
+      cwd: process.cwd(),
+      loadRuntimeInspectionModule: async () => undefined,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('Runtime inspection requires @fluojs/runtime');
+    expect(stderrBuffer.join('')).not.toContain('non-Fluo inspect application import failed');
+  });
+
+  it('preserves application import failures after runtime availability preflight', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runInspectCommand([inspectApplicationImportFailureFixtureModulePath, '--json'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('non-Fluo inspect application import failed');
   });
 
   it('closes the inspect context exactly once when bootstrap fails through the public facade', async () => {

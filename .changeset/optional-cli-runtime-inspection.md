@@ -1,5 +1,6 @@
 ---
 "@fluojs/cli": patch
+"@fluojs/runtime": patch
 ---
 
-Resolve runtime and interactive prompt dependencies only at their command boundaries so the CLI installs and runs non-interactive commands across its documented Node.js `>=20.0.0` range.
+Resolve `@fluojs/runtime` from the inspected project's dependency tree at the `inspect` command boundary, preflight its availability before importing the application module, and preserve command-scoped missing-runtime guidance across the CLI's documented Node.js `>=20.0.0` range.
