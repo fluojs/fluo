@@ -244,7 +244,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     this.assertReadyForSend();
 
-    return this.trackAcceptedDelivery(this.sendAccepted(message, options, this.ensureTransport()));
+    return this.trackAcceptedDelivery(() => this.sendAccepted(message, options, this.ensureTransport()));
   }
 
   private async sendAccepted(
@@ -339,7 +339,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     this.assertReadyForSend();
 
-    return this.trackAcceptedDelivery(
+    return this.trackAcceptedDelivery(() =>
       this.sendNotificationAccepted(notification, options, this.ensureTransport()),
     );
   }
@@ -411,7 +411,14 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     await Promise.allSettled(this.acceptedDeliveryPromises);
   }
 
-  private trackAcceptedDelivery<T>(delivery: Promise<T>): Promise<T> {
+  private trackAcceptedDelivery<T>(startDelivery: () => Promise<T>): Promise<T> {
+    let rejectDelivery: ((reason?: unknown) => void) | undefined;
+    let resolveDelivery: ((value: T | PromiseLike<T>) => void) | undefined;
+    const delivery = new Promise<T>((resolve, reject) => {
+      rejectDelivery = reject;
+      resolveDelivery = resolve;
+    });
+
     this.acceptedDeliveryPromises.add(delivery);
     void delivery.then(
       () => {
@@ -421,6 +428,12 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
         this.acceptedDeliveryPromises.delete(delivery);
       },
     );
+
+    if (!resolveDelivery || !rejectDelivery) {
+      throw new Error('Discord delivery tracker failed to initialize.');
+    }
+
+    void startDelivery().then(resolveDelivery, rejectDelivery);
 
     return delivery;
   }

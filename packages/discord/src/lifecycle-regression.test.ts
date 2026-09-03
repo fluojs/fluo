@@ -306,6 +306,77 @@ describe('DiscordService lifecycle regressions', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('drains a notification admitted during synchronous renderer-triggered shutdown before closing transport', async () => {
+    let resolveRendering = (): void => {
+      throw new Error('Rendering resolver was not initialized.');
+    };
+    let resolveRenderingStarted = (): void => {
+      throw new Error('Rendering-start resolver was not initialized.');
+    };
+    let deliverySettled = false;
+    let renderingSettled = false;
+    let shutdown: Promise<void> | undefined;
+    let service: DiscordService | undefined;
+    const rendering = new Promise<void>((resolve) => {
+      resolveRendering = resolve;
+    });
+    const renderingStarted = new Promise<void>((resolve) => {
+      resolveRenderingStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(deliverySettled).toBe(true);
+      expect(renderingSettled).toBe(true);
+    });
+    const send = vi.fn(async (_message: NormalizedDiscordMessage) => {
+      deliverySettled = true;
+      return { ok: true, warnings: [] };
+    });
+    service = await resolveService(
+      DiscordModule.forRoot({
+        renderer: {
+          async render() {
+            if (!service) {
+              throw new Error('DiscordService was not initialized before rendering.');
+            }
+
+            shutdown = service.onApplicationShutdown();
+            resolveRenderingStarted();
+            await rendering;
+            renderingSettled = true;
+            return { content: 'Rendered during shutdown.' };
+          },
+        },
+        transport: {
+          create: async () => ({
+            close,
+            send,
+          }),
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.sendNotification({
+      channel: 'discord',
+      payload: {},
+      template: 'deploy.finished',
+    });
+    await renderingStarted;
+    const activeShutdown = shutdown;
+
+    if (!activeShutdown) {
+      throw new Error('Renderer did not initiate shutdown.');
+    }
+
+    resolveRendering();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(activeShutdown).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it('passes the delivery signal to renderers and checks lifecycle before rendering', async () => {
     const renderInputs: DiscordTemplateRenderInput[] = [];
     const send = vi.fn(async (_message: NormalizedDiscordMessage) => ({ ok: true, warnings: [] }));
