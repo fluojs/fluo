@@ -1,5 +1,6 @@
 ---
 '@fluojs/microservices': patch
+'@fluojs/runtime': patch
 ---
 
-Make microservice shutdown idempotent and wait for already-admitted inbound handlers before transport cleanup.
+Make microservice shutdown terminally idempotent, wait for already-admitted inbound handlers before transport cleanup, and preserve failed close results without retrying teardown.

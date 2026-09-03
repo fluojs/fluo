@@ -239,6 +239,9 @@ export interface ApplicationContext {
   readonly modules: CompiledModule[];
   readonly rootModule: ModuleType;
 
+  /**
+   * Closes the shell once; later calls share the terminal success or failure result.
+   */
   close(signal?: string): Promise<void>;
   get<T>(token: Token<T>): Promise<T>;
 }

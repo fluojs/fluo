@@ -1069,12 +1069,7 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
       this.microserviceState = 'closed';
     })();
 
-    try {
-      await this.closingPromise;
-    } catch (error) {
-      this.closingPromise = undefined;
-      throw error;
-    }
+    await this.closingPromise;
   }
 
   private assertTransportIngressOpen(operation: 'emit' | 'send'): void {

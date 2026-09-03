@@ -152,7 +152,13 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       return this.closePromise;
     }
 
-    this.closePromise = this.closeTransport();
+    let resolveClose!: () => void;
+    let rejectClose!: (reason?: unknown) => void;
+    this.closePromise = new Promise<void>((resolve, reject) => {
+      resolveClose = resolve;
+      rejectClose = reject;
+    });
+    void this.closeTransport().then(resolveClose, rejectClose);
 
     return this.closePromise;
   }
