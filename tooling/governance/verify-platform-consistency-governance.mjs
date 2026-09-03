@@ -3458,6 +3458,30 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
       );
     }
   }
+
+  for (const guidePath of [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+  ]) {
+    const guide = readText(guidePath);
+    const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];
+    const drizzlePublicApiRow = /^\| `@fluojs\/drizzle` \|.*$/mu.exec(guide)?.[0];
+
+    assert(
+      requestTransactionsRow !== undefined &&
+        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+          .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('deprecated') &&
+        requestTransactionsRow.includes('1.x'),
+      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+    );
+    assert(
+      drizzlePublicApiRow !== undefined &&
+        drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
+        drizzlePublicApiRow.includes('deprecated'),
+      `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+    );
+  }
 }
 
 const queueWorkerOwnershipContractPaths = [

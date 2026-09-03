@@ -337,7 +337,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Topic | Rule |
 | --- | --- |
 | Repository access | Use the package's `current()` seam (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`). |
-| Request transactions | Keep restored Prisma and Mongoose interceptors only for 1.x compatibility; prefer service `@Transaction()` or explicit request transaction calls, especially for named/multiple clients. |
+| Request transactions | Keep restored `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor` only as deprecated 1.x compatibility exports; prefer service `@Transaction()` or explicit request transaction calls, especially for named/multiple clients. |
 | Nested transactions | Active boundaries are reused; nested options that would be ignored are rejected. |
 | Shutdown | Packages drain or abort active request transactions before disposing underlying resources. |
 | Strict transactions | Enable strict mode when direct execution fallback would hide a missing driver capability. |
@@ -350,7 +350,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Package | Public API |
 | --- | --- |
 | `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` compatibility export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
-| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `requestTransaction(...)`, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, deprecated `DrizzleTransactionInterceptor` compatibility export, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `requestTransaction(...)`, status snapshot helper |
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, deprecated `MongooseTransactionInterceptor` compatibility export, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |

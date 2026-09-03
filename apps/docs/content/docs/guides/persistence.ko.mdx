@@ -337,7 +337,7 @@ Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue �
 | 주제 | 규칙 |
 | --- | --- |
 | Repository access | Package별 `current()` seam을 사용하세요. (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`) |
-| Request transactions | 복원된 Prisma/Mongoose interceptor는 1.x 호환성에만 유지하고, 특히 named/multiple client에서는 서비스 `@Transaction()` 또는 명시적 request transaction call을 우선 사용합니다. |
+| Request transactions | 복원된 `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`는 deprecated 1.x 호환성 export로만 유지하고, 특히 named/multiple client에서는 서비스 `@Transaction()` 또는 명시적 request transaction call을 우선 사용합니다. |
 | Nested transactions | Active boundary는 재사용됩니다. 무시될 nested option은 rejected됩니다. |
 | Shutdown | Package는 underlying resource를 dispose하기 전에 active request transaction을 drain 또는 abort합니다. |
 | Strict transactions | Driver capability 누락이 direct execution fallback으로 숨겨지면 안 될 때 strict mode를 켜세요. |
@@ -350,7 +350,7 @@ Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue �
 | 패키지 | Public API |
 | --- | --- |
 | `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` 호환성 export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
-| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, 명시적 `requestTransaction(...)`, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, deprecated `DrizzleTransactionInterceptor` 호환성 export, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, 명시적 `requestTransaction(...)`, status snapshot helper |
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, deprecated `MongooseTransactionInterceptor` 호환성 export, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |

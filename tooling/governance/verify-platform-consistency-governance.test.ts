@@ -218,6 +218,48 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
     // Then: unrelated mentions cannot satisfy the structural registration requirement.
     expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
   });
+
+  it.each([
+    [
+      'request transaction lifecycle table entry',
+      'apps/docs/content/docs/guides/persistence.mdx',
+      (source: string) => source.replace(
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor` and `MongooseTransactionInterceptor`',
+      ),
+    ],
+    [
+      'Korean request transaction lifecycle table entry',
+      'apps/docs/content/docs/guides/persistence.ko.mdx',
+      (source: string) => source.replace(
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor`, `MongooseTransactionInterceptor`',
+      ),
+    ],
+    [
+      'English Drizzle public API summary entry',
+      'apps/docs/content/docs/guides/persistence.mdx',
+      (source: string) => source.replace(
+        'deprecated `DrizzleTransactionInterceptor` compatibility export',
+        'compatibility export',
+      ),
+    ],
+    [
+      'Korean Drizzle public API summary entry',
+      'apps/docs/content/docs/guides/persistence.ko.mdx',
+      (source: string) => source.replace(
+        'deprecated `DrizzleTransactionInterceptor` 호환성 export',
+        '호환성 export',
+      ),
+    ],
+  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
+    // Given: the compatibility contract with one required documentation placement removed.
+    const readText = readWithMutation(path, mutate);
+
+    // When: the governance contract evaluates the mutated documentation.
+    // Then: a mention elsewhere cannot satisfy the specific table row requirement.
+    expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
+  });
 });
 
 describe('enforceContractCompanionUpdates', () => {
