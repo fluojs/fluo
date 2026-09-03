@@ -35,10 +35,10 @@ npm install @fluojs/email
 npm install @fluojs/notifications @fluojs/queue
 ```
 
-명시적인 `@fluojs/email/node` 서브패스로 Node 전용 SMTP 전달을 사용할 때만 `nodemailer`를 설치하면 됩니다.
+명시적인 `@fluojs/email/node` 서브패스로 Node 전용 SMTP 전달을 사용할 때만 `nodemailer`와 `@types/nodemailer` 선언을 설치하면 됩니다.
 
 ```bash
-npm install @fluojs/email nodemailer@^9.0.1
+npm install @fluojs/email nodemailer@^9.0.1 @types/nodemailer@^8.0.0
 ```
 
 Node 전용 SMTP 전달은 명시적인 `@fluojs/email/node` 서브패스에서 사용할 수 있습니다. queue 기반 notifications 통합은 `@fluojs/email/queue` 서브패스에 있으며, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
@@ -483,7 +483,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `@fluojs/notifications`: `EMAIL_CHANNEL`을 소비하는 공통 오케스트레이션 계층입니다.
 - `@fluojs/queue`: 대량 이메일 전달을 백그라운드에서 처리하려는 경우 권장됩니다.
 - `@fluojs/config`: 환경 직접 접근 없이 transport 자격 증명과 sender 기본값을 해석하려는 경우 권장됩니다.
-- `nodemailer`: `@fluojs/email/node`가 소비하는 Node 전용 SMTP 구현체입니다.
+- `nodemailer`와 `@types/nodemailer`: `@fluojs/email/node`가 소비하는 Node 전용 SMTP 구현체와 선언입니다.
 
 ## 예제 소스
 
