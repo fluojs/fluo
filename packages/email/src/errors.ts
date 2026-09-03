@@ -19,7 +19,7 @@ export class EmailMessageValidationError extends Error {
 }
 
 /**
- * Thrown when email delivery is requested after the service lifecycle has started shutting down.
+ * Thrown when email transport initialization or shutdown fails, or delivery is requested outside an active service lifecycle.
  */
 export class EmailLifecycleError extends Error {
   constructor(message: string, options?: ErrorOptions) {
