@@ -169,6 +169,110 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
     }
   });
 
+  it('rolls back a staged service write when the service throws after it', async () => {
+    type UserRecord = {
+      email: string;
+      id: string;
+      name: string;
+    };
+    type TransactionDatabase = {
+      insert(_table: 'users'): {
+        values(value: { email: string; name: string }): Promise<UserRecord>;
+      };
+    };
+
+    const users = new Map<string, UserRecord>();
+    const events: string[] = [];
+    let sequence = 0;
+    const database = {
+      insert(_table: 'users') {
+        return {
+          async values(value: { email: string; name: string }) {
+            events.push(`root:insert:${value.email}`);
+            const record = { ...value, id: `root-user-${++sequence}` };
+            users.set(record.id, record);
+            return record;
+          },
+        };
+      },
+      async transaction<T>(callback: (value: TransactionDatabase) => Promise<T>): Promise<T> {
+        const stagedUsers = new Map<string, UserRecord>();
+        const transactionDatabase: TransactionDatabase = {
+          insert(_table: 'users') {
+            return {
+              async values(value: { email: string; name: string }) {
+                events.push(`tx:stage:${value.email}`);
+                const record = { ...value, id: `user-${++sequence}` };
+                stagedUsers.set(record.id, record);
+                return record;
+              },
+            };
+          },
+        };
+
+        events.push('transaction:start');
+        try {
+          const result = await callback(transactionDatabase);
+
+          for (const record of stagedUsers.values()) {
+            users.set(record.id, record);
+          }
+          events.push('transaction:commit');
+          return result;
+        } catch (error) {
+          events.push('transaction:rollback');
+          throw error;
+        }
+      },
+    };
+
+    @Inject(DrizzleDatabase)
+    class UserRepository {
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, TransactionDatabase>) {}
+
+      async create(input: { email: string; name: string }) {
+        return this.db.insert('users').values(input);
+      }
+    }
+
+    @Inject(UserRepository)
+    class UserService {
+      constructor(private readonly repo: UserRepository) {}
+
+      @Transaction()
+      async createThenFail(input: { email: string; name: string }, failure: Error): Promise<never> {
+        await this.repo.create(input);
+        throw failure;
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [DrizzleModule.forRoot<typeof database, TransactionDatabase>({ database })],
+      providers: [UserRepository, UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const service = await app.container.resolve(UserService);
+      const failure = new Error('write failed after staging');
+
+      await expect(
+        service.createThenFail({ email: 'ada@example.com', name: 'Ada' }, failure),
+      ).rejects.toBe(failure);
+
+      expect(users).toEqual(new Map<string, UserRecord>());
+      expect(events).toEqual([
+        'transaction:start',
+        'tx:stage:ada@example.com',
+        'transaction:rollback',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps controller-level method decoration as a compatibility path only', async () => {
     const events: string[] = [];
     const transactionDatabase = {
