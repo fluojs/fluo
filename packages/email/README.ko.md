@@ -11,6 +11,7 @@ fluo를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-like
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
   - [등록 범위와 async factory](#등록-범위와-async-factory)
+  - [NestJS mailer 마이그레이션](#nestjs-mailer-마이그레이션)
   - [`@fluojs/email/node`를 이용한 Node 전용 SMTP](#fluojs-email-node를-이용한-node-전용-smtp)
   - [`EmailService`를 이용한 standalone 전달](#emailservice를-이용한-standalone-전달)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
@@ -130,6 +131,16 @@ EmailModule.forRootAsync({
 ```
 
 `global`은 factory result가 아니라 `forRootAsync(...)` options object의 최상위에 둡니다. 지원되는 async 등록 형태는 `inject`와 `useFactory`뿐입니다. NestJS dynamic-module 형태인 `imports`, `useClass`, `useExisting`는 `@fluojs/email` 계약에 포함되지 않습니다. 필요한 의존성은 주변 애플리케이션 module graph에 먼저 등록한 뒤, factory가 필요로 하는 token을 `inject`에 나열하세요.
+
+### NestJS mailer 마이그레이션
+
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
+완전한 NestJS 마이그레이션 경로는 [마이그레이션 맵](../../docs/getting-started/migrate-from-nestjs.ko.md#이메일-transport-ownership-delivery-마이그레이션)에서 시작하세요. 명시적인 transport 경계 하나를 선택합니다. 애플리케이션이 소유한 이식 가능한 `EmailTransport` / `EmailTransportFactory`, `createNodemailerEmailTransportFactory(...)`로 만든 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter를 감싼 `createNodemailerEmailTransport({ transporter })`입니다. 기존 transporter wrapper는 shutdown ownership을 `EmailService`로 넘기지 않습니다.
+
+Pre-rendered `MailerService.sendMail(...)` 호출은 `EmailService.send(...)`로 대체합니다. 이때 `EmailMessage`에는 delivery field만 넣고 template field는 넣지 않습니다. Template-backed delivery에는 template key와 renderer 전용 `payload.templateData`를 포함한 `EmailService.sendNotification(...)`을 호출하세요. Template과 module renderer가 모두 있을 때만 renderer가 실행되며, 결과는 fallback content이므로 notification `subject`와 payload `text` / `html`이 계속 우선합니다.
+
+NestJS `imports`, `useClass`, `useExisting`, `MailerService` 호환, implicit transport discovery를 옮기지 마세요. 애플리케이션 module graph에서 의존성을 해석한 다음 module-local visibility가 필요할 때 `EmailModule.forRootAsync({ inject, useFactory, global: false })`를 사용하세요.
 
 ### `@fluojs/email/node`를 이용한 Node 전용 SMTP
 
@@ -387,6 +398,8 @@ Behavioral contract 메모:
 
 - Queue 지원은 opt-in입니다. 루트 `@fluojs/email` 엔트리포인트와 `EmailModule`은 `@fluojs/queue`를 import하거나 `EmailNotificationsQueueWorker`를 등록하거나 queue peer 설치를 요구하지 않습니다.
 - `EmailNotificationsQueueWorker`는 `@fluojs/email/queue`에서 export되며, queue 기반 전달을 활성화하는 애플리케이션이 직접 등록해야 합니다.
+- 내장 adapter는 결정적인 `NotificationsQueueJob.id`를 queued email payload에 보존하고 Queue의 `deduplicationKey`로 전달합니다. Queue가 이를 BullMQ에 유효한 job id로 매핑하므로 BullMQ가 반복 notification dispatch 시도를 deduplicate할 수 있습니다.
+- Notification bulk adapter는 parallel single-job enqueue 대신 Queue의 atomic `enqueueMany(...)` seam에 위임하고, 각 notification ID를 해당 entry의 `deduplicationKey`로 유지합니다.
 - worker는 transport handoff 전에 queued notification channel이 구성된 `EmailChannel.channel`과 정확히 일치하는지 확인합니다. 일치하지 않으면 `EmailMessageValidationError`로 실패하므로 non-email 작업이 email transport에 도달하지 않습니다.
 - worker는 `EmailChannel` 전달 semantics를 재사용하므로 transport가 수락된 수신자 0명 또는 `pending`/`rejected` 수신자를 보고하면 queued job이 실패합니다. 따라서 incomplete delivery는 성공한 job으로 승인되지 않고 `@fluojs/queue`의 retry/dead-letter 흐름으로 넘어갑니다.
 

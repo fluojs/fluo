@@ -10,6 +10,11 @@ import {
   DRIZZLE_OPTIONS,
   DrizzleDatabase,
   DrizzleModule,
+  getDrizzleDatabaseToken,
+  getDrizzleDisposeToken,
+  getDrizzleHandleProviderToken,
+  getDrizzleOptionsToken,
+  Transaction,
 } from './index.js';
 
 function createDeferred() {
@@ -1878,5 +1883,315 @@ describe('DrizzleModule.forRootAsync', () => {
     defineModule(AppModule, { imports: [drizzleModule] });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('db config fetch failed');
+  });
+});
+
+describe('DrizzleModule named registrations', () => {
+  it('exports distinct static named raw database, dispose, options, and lifecycle handle tokens', async () => {
+    const primaryDatabase = {};
+    const analyticsDatabase = {};
+    const primaryDispose = vi.fn();
+    const analyticsDispose = vi.fn();
+
+    @Inject(
+      getDrizzleDatabaseToken('primary'),
+      getDrizzleDisposeToken('primary'),
+      getDrizzleOptionsToken('primary'),
+      getDrizzleHandleProviderToken('primary'),
+      getDrizzleDatabaseToken('analytics'),
+      getDrizzleDisposeToken('analytics'),
+      getDrizzleOptionsToken('analytics'),
+      getDrizzleHandleProviderToken('analytics'),
+    )
+    class NamedClientConsumer {
+      constructor(
+        readonly primaryRaw: typeof primaryDatabase,
+        readonly primaryDisposeHook: typeof primaryDispose,
+        readonly primaryOptions: { strictTransactions: boolean },
+        readonly primary: DrizzleDatabase<typeof primaryDatabase>,
+        readonly analyticsRaw: typeof analyticsDatabase,
+        readonly analyticsDisposeHook: typeof analyticsDispose,
+        readonly analyticsOptions: { strictTransactions: boolean },
+        readonly analytics: DrizzleDatabase<typeof analyticsDatabase>,
+      ) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      imports: [
+        DrizzleModule.forRoot({
+          database: primaryDatabase,
+          dispose: primaryDispose,
+          name: ' primary ',
+          strictTransactions: true,
+        }),
+        DrizzleModule.forRoot({
+          database: analyticsDatabase,
+          dispose: analyticsDispose,
+          name: 'analytics',
+        }),
+      ],
+      providers: [NamedClientConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, { imports: [FeatureModule] });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const consumer = await app.container.resolve(NamedClientConsumer);
+
+      expect(consumer.primaryRaw).toBe(primaryDatabase);
+      expect(consumer.primaryDisposeHook).toBe(primaryDispose);
+      expect(consumer.primaryOptions).toEqual({ strictTransactions: true });
+      expect(consumer.primary.current()).toBe(primaryDatabase);
+      expect(consumer.analyticsRaw).toBe(analyticsDatabase);
+      expect(consumer.analyticsDisposeHook).toBe(analyticsDispose);
+      expect(consumer.analyticsOptions).toEqual({ strictTransactions: false });
+      expect(consumer.analytics.current()).toBe(analyticsDatabase);
+      expect(consumer.primary).not.toBe(consumer.analytics);
+    } finally {
+      await app.close();
+    }
+
+    expect(primaryDispose).toHaveBeenCalledExactlyOnceWith(primaryDatabase);
+    expect(analyticsDispose).toHaveBeenCalledExactlyOnceWith(analyticsDatabase);
+  });
+
+  it('resolves async named handles through their package-owned tokens', async () => {
+    const analyticsDatabase = {};
+    const factory = vi.fn(async () => ({ database: analyticsDatabase }));
+
+    @Inject(getDrizzleHandleProviderToken('analytics'))
+    class AnalyticsConsumer {
+      constructor(readonly analytics: DrizzleDatabase<typeof analyticsDatabase>) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRootAsync({
+          name: 'analytics',
+          useFactory: factory,
+        }),
+      ],
+      providers: [AnalyticsConsumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const consumer = await app.container.resolve(AnalyticsConsumer);
+
+      expect(factory).toHaveBeenCalledOnce();
+      expect(consumer.analytics.current()).toBe(analyticsDatabase);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps named transaction contexts isolated and supports explicit accessor selection', async () => {
+    const events: string[] = [];
+    const primaryTransactionDatabase = { client: 'primary-transaction' as const };
+    const analyticsTransactionDatabase = { client: 'analytics-transaction' as const };
+    const primaryDatabase = {
+      async transaction<T>(callback: (database: typeof primaryTransactionDatabase) => Promise<T>): Promise<T> {
+        events.push('primary:start');
+        const result = await callback(primaryTransactionDatabase);
+        events.push('primary:end');
+        return result;
+      },
+    };
+    const analyticsDatabase = {
+      async transaction<T>(callback: (database: typeof analyticsTransactionDatabase) => Promise<T>): Promise<T> {
+        events.push('analytics:start');
+        const result = await callback(analyticsTransactionDatabase);
+        events.push('analytics:end');
+        return result;
+      },
+    };
+
+    @Inject(getDrizzleHandleProviderToken('primary'), getDrizzleHandleProviderToken('analytics'))
+    class MultiClientService {
+      constructor(
+        readonly primary: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase>,
+        readonly analytics: DrizzleDatabase<typeof analyticsDatabase, typeof analyticsTransactionDatabase>,
+      ) {}
+
+      @Transaction((self: MultiClientService) => self.analytics)
+      async rebuildAnalytics() {
+        return this.analytics.current();
+      }
+
+      async readBoth() {
+        return Promise.all([
+          this.primary.transaction(async () => this.primary.current()),
+          this.analytics.transaction(async () => this.analytics.current()),
+        ]);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRoot<typeof primaryDatabase, typeof primaryTransactionDatabase>({
+          database: primaryDatabase,
+          name: 'primary',
+        }),
+        DrizzleModule.forRoot<typeof analyticsDatabase, typeof analyticsTransactionDatabase>({
+          database: analyticsDatabase,
+          name: 'analytics',
+        }),
+      ],
+      providers: [MultiClientService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const service = await app.container.resolve(MultiClientService);
+
+      await expect(service.rebuildAnalytics()).resolves.toBe(analyticsTransactionDatabase);
+      await expect(service.readBoth()).resolves.toEqual([
+        primaryTransactionDatabase,
+        analyticsTransactionDatabase,
+      ]);
+      expect(events).toEqual([
+        'analytics:start',
+        'analytics:end',
+        'primary:start',
+        'analytics:start',
+        'primary:end',
+        'analytics:end',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('isolates named status, shutdown drains, and disposal', async () => {
+    const events: string[] = [];
+    const primaryTransactionDatabase = {};
+    const primaryStarted = createDeferred();
+    const primaryRelease = createDeferred();
+    const primaryDatabase = {
+      async transaction<T>(callback: (database: typeof primaryTransactionDatabase) => Promise<T>): Promise<T> {
+        try {
+          return await callback(primaryTransactionDatabase);
+        } finally {
+          events.push('primary:transaction:settled');
+        }
+      },
+    };
+    const analyticsDatabase = {};
+
+    @Inject(getDrizzleHandleProviderToken('primary'), getDrizzleHandleProviderToken('analytics'))
+    class NamedLifecycleConsumer {
+      constructor(
+        readonly primary: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase>,
+        readonly analytics: DrizzleDatabase<typeof analyticsDatabase>,
+      ) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRoot<typeof primaryDatabase, typeof primaryTransactionDatabase>({
+          database: primaryDatabase,
+          dispose() {
+            events.push('primary:dispose');
+          },
+          name: 'primary',
+        }),
+        DrizzleModule.forRoot({
+          database: analyticsDatabase,
+          dispose() {
+            events.push('analytics:dispose');
+          },
+          name: 'analytics',
+        }),
+      ],
+      providers: [NamedLifecycleConsumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const consumer = await app.container.resolve(NamedLifecycleConsumer);
+    const openPrimaryRequest = consumer.primary.requestTransaction(async () => {
+      primaryStarted.resolve();
+      await primaryRelease.promise;
+    });
+
+    try {
+      await primaryStarted.promise;
+      expect(consumer.primary.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+      expect(consumer.analytics.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
+
+      const shutdown = consumer.primary.onApplicationShutdown();
+      expect(consumer.primary.createPlatformStatusSnapshot().details.lifecycleState).toBe('shutting-down');
+      expect(consumer.analytics.createPlatformStatusSnapshot().details.lifecycleState).toBe('ready');
+      expect(events).not.toContain('analytics:dispose');
+
+      primaryRelease.resolve();
+      await expect(openPrimaryRequest).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdown;
+
+      expect(events).toEqual(['primary:transaction:settled', 'primary:dispose']);
+      expect(consumer.primary.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopped');
+      expect(consumer.analytics.createPlatformStatusSnapshot().details.lifecycleState).toBe('ready');
+    } finally {
+      primaryRelease.resolve();
+      await Promise.allSettled([openPrimaryRequest]);
+      await consumer.analytics.onApplicationShutdown();
+    }
+  });
+
+  it('rejects empty names and named global visibility', () => {
+    expect(() => DrizzleModule.forRoot({ database: {}, name: '   ' })).toThrow(
+      'DrizzleModule name must be a non-empty string when provided.',
+    );
+    expect(() => DrizzleModule.forRoot({ database: {}, global: true, name: 'analytics' })).toThrow(
+      'Named Drizzle registrations are scoped and cannot be registered globally.',
+    );
+    expect(() => DrizzleModule.forRootAsync({
+      global: true,
+      name: 'analytics',
+      useFactory: () => ({ database: {} }),
+    })).toThrow('Named Drizzle registrations are scoped and cannot be registered globally.');
+
+  });
+
+  it('rejects duplicate normalized static named registrations before startup', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRoot({ database: {}, name: 'analytics' }),
+        DrizzleModule.forRoot({ database: {}, name: ' analytics ' }),
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'Duplicate @fluojs/drizzle registration identity "analytics".',
+    );
+  });
+
+  it('rejects duplicate async names before either factory or disposal hook runs', async () => {
+    const firstDispose = vi.fn();
+    const secondDispose = vi.fn();
+    const firstFactory = vi.fn(async () => ({ database: {}, dispose: firstDispose }));
+    const secondFactory = vi.fn(async () => ({ database: {}, dispose: secondDispose }));
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRootAsync({ name: 'analytics', useFactory: firstFactory }),
+        DrizzleModule.forRootAsync({ name: ' analytics ', useFactory: secondFactory }),
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'Duplicate @fluojs/drizzle registration identity "analytics".',
+    );
+    expect(firstFactory).not.toHaveBeenCalled();
+    expect(secondFactory).not.toHaveBeenCalled();
+    expect(firstDispose).not.toHaveBeenCalled();
+    expect(secondDispose).not.toHaveBeenCalled();
   });
 });

@@ -107,10 +107,50 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@nestjs/bull` / `@nestjs/bullmq` processor discovery through `@Processor(...)`, `@Process(...)`, or provider metadata | `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` providers, and explicit `@Inject(...)` from `@fluojs/queue`, `@fluojs/redis`, and `@fluojs/core` | fluo discovers only decorated singleton providers/controllers in the compiled module graph. Workers expose `handle(job)`; Queue does not read NestJS metadata or automatically preserve a legacy Bull/BullMQ `queueName`, named job, persisted payload, or their topology. Queue requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory runtime dependency. |
 | `@InjectQueue('queue')` producers calling `queue.add('job', payload)` or `queue.add(payload)` | `@Inject(QueueLifecycleService)` (or the `QUEUE` / `getQueueToken(scope)` facade) calling `queue.enqueue(new JobClass(...))` from `@fluojs/queue` | fluo has no name-and-payload producer signature. `enqueue(job)` resolves the worker from the job instance's exact constructor and takes the BullMQ queue/named job from that worker's registered `jobName`, so the job-name string is no longer a producer argument. A plain payload object has `Object` as its constructor and cannot identify a registered JobClass worker; because `enqueue<TJob extends object>` accepts any object, that mistake type-checks and is rejected only at runtime with `No @QueueWorker() registered for job type Object.` |
 | `@nestjs/schedule` decorators, `SchedulerRegistry`, or `CronJob` handles | `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, and `SCHEDULING_REGISTRY` from `@fluojs/cron` | Rename NestJS `timeZone` to fluo `timezone`. Do not carry `waitForCompletion`: fluo has no such option and always skips a tick when the same task instance is still running. fluo starts decorator-discovered tasks during application bootstrap, starts dynamic registry tasks when added to a started registry, and exposes read-only task descriptors instead of live scheduler handles. |
-| NestJS-style email async module registration with `imports`, `useClass`, or `useExisting` | `EmailModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/email` | fluo email async registration supports injected factory options only. Register dependencies in the application module graph first, list tokens in `inject`, and set `global: false` only when opting out of the default global provider visibility. |
+| NestJS mailer async registration, implicit transporter discovery, or `MailerService.sendMail(...)` | `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, explicit `EmailTransport` selection, and `EmailService.send(...)` or `sendNotification(...)` from `@fluojs/email` | fluo email async registration supports injected factory options only. Register dependencies in the application module graph first, list tokens in `inject`, and set `global: false` only when opting out of the default global provider visibility. Choose an application-owned portable transport, the factory-owned Node SMTP transport from `@fluojs/email/node`, or a wrapper around an existing caller-owned Nodemailer transporter; there is no `MailerService` compatibility API or implicit transport discovery. |
 | NestJS-style notification modules, decorator-discovered channel providers, or implicit queue/event integrations | `NotificationsModule.forRoot({ channels, queue?, events?, global? })` or `NotificationsModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/notifications` | fluo notifications registration uses explicit `NotificationChannel` values passed in `channels`. Queue adapters and event publishers are application-owned seams, not module-owned resources, and `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` are global by default unless `global: false` is set. |
 | NestJS Slack modules that assume `imports`, `useClass`, `useExisting`, a package-level multi-client registry, or `isGlobal` | `SlackModule.forRoot({ ..., global? })` or `SlackModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/slack` | fluo Slack async registration consumes injected factory options only. Register dependencies in the application module graph first, list their tokens in `inject`, return final Slack options from `useFactory`, and compose app-owned modules/providers or facades for multiple clients. |
 | NestJS Discord modules that assume `imports`, `useClass`, `useExisting`, `isGlobal`, or custom internal provider tokens | `DiscordModule.forRoot({ ..., global? })` or `DiscordModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/discord` | fluo Discord registration is singleton-oriented and injected-factory-only for async setup. The package exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default unless `global: false` is set; internal provider helpers and option tokens are intentionally private. |
+
+## Email Transport, Ownership, and Delivery Migration
+
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
+NestJS mailer configuration commonly mixes configuration lookup, transporter construction, template rendering, and delivery calls. In fluo, keep those decisions explicit at the application boundary:
+
+For injected async configuration, use `EmailModule.forRootAsync({ inject, useFactory, global: false })`; `global: false` is optional and keeps the returned module local.
+
+1. For a portable HTTP, API, Bun, Deno, Cloudflare, or custom implementation, provide an `EmailTransport` or `EmailTransportFactory` to the root `@fluojs/email` package. The application chooses its `kind`, creates the transport, and sets `ownsResources` when the email module must close a factory-created resource.
+2. For a first-party Node SMTP transporter that the email module owns, use `createNodemailerEmailTransportFactory(...)` from `@fluojs/email/node`. Its factory advertises ownership, so bootstrap verification and shutdown close apply to the transporter it creates.
+3. For an existing Nodemailer transporter that another application component creates and closes, wrap it with `createNodemailerEmailTransport({ transporter })`. The wrapper satisfies the shared transport contract without transferring resource ownership; do not set up a second close path through `EmailService`.
+
+```ts
+import { EmailModule, type EmailTransport } from '@fluojs/email';
+import {
+  createNodemailerEmailTransport,
+  type NodemailerTransporter,
+} from '@fluojs/email/node';
+
+declare const providerTransport: EmailTransport;
+declare const existingTransporter: NodemailerTransporter;
+
+const portableTransport = {
+  kind: 'transactional-http',
+  create: () => providerTransport,
+  ownsResources: false,
+};
+
+EmailModule.forRoot({ transport: portableTransport });
+EmailModule.forRoot({
+  transport: createNodemailerEmailTransport({ transporter: existingTransporter }),
+});
+```
+
+`EmailService.send(...)` replaces a direct `MailerService.sendMail(...)` call when the caller already has a complete, pre-rendered `EmailMessage`: recipients, subject, body, and optional attachments or headers. Do not add template fields to `EmailMessage`.
+
+Use `EmailService.sendNotification(...)` for template-backed delivery. Pass the template key on the notification, put renderer-specific values in `payload.templateData`, and register an `EmailTemplateRenderer` on `EmailModule`. Rendering runs only when both a template and renderer are present. Its `subject`, `text`, and `html` are fallbacks: an explicit notification `subject` wins over the rendered subject, while `payload.text` and `payload.html` win over rendered bodies. `payload.to` wins over notification `recipients`. See the [email chapter](../../book/intermediate/ch16-email.md) for executable registration and renderer examples.
+
+Do not carry NestJS `imports`, `useClass`, `useExisting`, `MailerService` compatibility, implicit transport discovery, or implicit template fields across this boundary.
 
 ## Mongoose Root and Feature Migration
 
@@ -1107,6 +1147,10 @@ const files = assertRequestContext().request.files ?? [];
 ```
 
 Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`, `mimetype`, `buffer`, and `size`. Keep storage, validation, and application policy outside adapter-specific upload interceptors.
+
+## Queue-backed email notification batches
+
+Replace parallel NestJS Bull producer calls with `Queue.enqueueMany(entries)` or `QueueLifecycleService.enqueueMany(entries)`. Each `QueueEnqueueManyEntry` retains its own `deduplicationKey`, but every entry must resolve to the same registered BullMQ queue. Queue validates the entire batch before one atomic `addBulk(...)` persistence call and returns backing job IDs in input order; existing `enqueue(job, options?)` calls remain compatible. The built-in `@fluojs/email/queue` notification adapter uses this atomic batch seam instead of parallel single-job enqueues.
 
 ## Event-bus migration limits
 

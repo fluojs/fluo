@@ -11,6 +11,7 @@ Transport-agnostic email delivery core for fluo. It provides a Nest-like module 
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Registration scope and async factories](#registration-scope-and-async-factories)
+  - [NestJS mailer migration](#nestjs-mailer-migration)
   - [Node-only SMTP with `@fluojs/email/node`](#node-only-smtp-with-fluojs-email-node)
   - [Standalone delivery with `EmailService`](#standalone-delivery-with-emailservice)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
@@ -130,6 +131,16 @@ EmailModule.forRootAsync({
 ```
 
 `global` belongs on the top-level `forRootAsync(...)` options object, not in the factory result. The supported async registration shape is `inject` plus `useFactory`; NestJS dynamic-module forms such as `imports`, `useClass`, and `useExisting` are not part of the `@fluojs/email` contract. Register dependencies in the surrounding application module graph first, then list the tokens the factory needs in `inject`.
+
+### NestJS mailer migration
+
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
+For the complete NestJS migration path, start with the [migration map](../../docs/getting-started/migrate-from-nestjs.md#email-transport-ownership-and-delivery-migration). Choose one explicit transport boundary: an application-owned portable `EmailTransport` / `EmailTransportFactory`, the factory-owned Node SMTP transport created by `createNodemailerEmailTransportFactory(...)`, or `createNodemailerEmailTransport({ transporter })` around an existing caller-owned Nodemailer transporter. The existing-transporter wrapper does not transfer shutdown ownership to `EmailService`.
+
+Replace a pre-rendered `MailerService.sendMail(...)` call with `EmailService.send(...)`; its `EmailMessage` carries delivery fields, not template fields. For template-backed delivery, call `EmailService.sendNotification(...)` with a template key and renderer-specific `payload.templateData`. The renderer runs only when both `template` and a module renderer are present; its output is fallback content, so notification `subject` and payload `text` / `html` remain authoritative.
+
+Do not migrate NestJS `imports`, `useClass`, `useExisting`, `MailerService` compatibility, or implicit transport discovery. Resolve dependencies in the application module graph, then use `EmailModule.forRootAsync({ inject, useFactory, global: false })` when opting into module-local visibility.
 
 ### Node-only SMTP with `@fluojs/email/node`
 
@@ -387,6 +398,8 @@ Behavioral contract notes:
 
 - Queue support is opt-in. The root `@fluojs/email` entrypoint and `EmailModule` do not import `@fluojs/queue`, register `EmailNotificationsQueueWorker`, or require queue peer installation.
 - `EmailNotificationsQueueWorker` is exported from `@fluojs/email/queue` and must be registered by applications that enable queue-backed delivery.
+- The built-in adapter preserves each deterministic `NotificationsQueueJob.id` in the queued email payload and passes it to Queue as `deduplicationKey`; Queue maps it to a BullMQ-safe job id so BullMQ can deduplicate repeated notification dispatch attempts.
+- Its notification bulk adapter delegates to Queue's atomic `enqueueMany(...)` seam rather than issuing parallel single-job enqueues, retaining each notification ID as its corresponding entry's `deduplicationKey`.
 - Before transport handoff, the worker requires the queued notification channel to exactly match the configured `EmailChannel.channel`. A mismatch fails with `EmailMessageValidationError`, so non-email work cannot reach the email transport.
 - The worker reuses `EmailChannel` delivery semantics, so a queued job fails when the underlying transport reports zero accepted recipients or any `pending`/`rejected` recipients. This lets `@fluojs/queue` retry and dead-letter incomplete deliveries instead of acknowledging them as successful jobs.
 
