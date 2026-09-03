@@ -114,6 +114,8 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 
 ## Email Transport, Ownership, and Delivery Migration
 
+<!-- fluo-email-nestjs-migration: async=injected-factory-supported;async-negative=imports-useClass-useExisting-unsupported;ownership=portable-application,node-factory-email-module,nodemailer-caller;delivery=direct-pre-rendered,template-rendered;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
 NestJS mailer configuration commonly mixes configuration lookup, transporter construction, template rendering, and delivery calls. In fluo, keep those decisions explicit at the application boundary:
 
 1. For a portable HTTP, API, Bun, Deno, Cloudflare, or custom implementation, provide an `EmailTransport` or `EmailTransportFactory` to the root `@fluojs/email` package. The application chooses its `kind`, creates the transport, and sets `ownsResources` when the email module must close a factory-created resource.

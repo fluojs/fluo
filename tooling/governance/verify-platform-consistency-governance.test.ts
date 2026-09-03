@@ -12,12 +12,14 @@ import {
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
 
+import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.mjs';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
   enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceContractCompanionUpdates,
+  enforceEmailMigrationCompanions,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
@@ -218,6 +220,9 @@ describe('enforceContractCompanionUpdates', () => {
         ...changedFiles,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'book/intermediate/ch16-email.md',
+        'book/intermediate/ch16-email.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -2093,6 +2098,9 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'book/intermediate/ch16-email.md',
+        'book/intermediate/ch16-email.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -2153,36 +2161,76 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('keeps Email transport ownership and delivery migration guidance present in governed docs', () => {
-    const englishEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8');
-    const koreanEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8');
-    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
-    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
-    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
-    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  it('enforces Email migration guidance in marker-bounded sections and navigation rows', () => {
+    expect(() => enforceEmailNestjsMigrationDocs()).not.toThrow();
+  });
 
-    for (const document of [englishEmailReadme, koreanEmailReadme, englishMigration, koreanMigration]) {
-      expect(document).toContain('EmailModule.forRootAsync');
-      expect(document).toContain('inject');
-      expect(document).toContain('useFactory');
-      expect(document).toContain('global: false');
-      expect(document).toContain('imports');
-      expect(document).toContain('useClass');
-      expect(document).toContain('useExisting');
-      expect(document).toContain('EmailTransport');
-      expect(document).toContain('createNodemailerEmailTransportFactory');
-      expect(document).toContain('createNodemailerEmailTransport');
-      expect(document).toContain('EmailService.send(...)');
-      expect(document).toContain('sendNotification(...)');
-      expect(document).toContain('payload.templateData');
-    }
+  it('rejects reversed Email transport ownership semantics', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace(
+            'ownership=portable-application,node-factory-email-module,nodemailer-caller',
+            'ownership=portable-email-module,node-factory-application,nodemailer-caller',
+          )
+        : source;
+    };
 
-    for (const document of [englishContext, koreanContext]) {
-      expect(document).toContain('EmailTransport');
-      expect(document).toContain('EmailService.send(...)');
-      expect(document).toContain('sendNotification(...)');
-      expect(document).toContain('payload.templateData');
-    }
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow();
+  });
+
+  it('rejects Email async-factory guidance that denies the supported form', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace('async=injected-factory-supported', 'async=injected-factory-unsupported')
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow();
+  });
+
+  it('rejects Email migration guidance without direct and template delivery APIs', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replaceAll('EmailService.send(...)', '').replaceAll('EmailService.sendNotification(...)', '')
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow();
+  });
+
+  it.each([
+    'packages/email/README.md',
+    'packages/email/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/contracts/nestjs-parity-gaps.md',
+    'docs/contracts/nestjs-parity-gaps.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/intermediate/ch16-email.md',
+    'book/intermediate/ch16-email.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+  ])('rejects an Email migration update missing %s', (missingCompanion) => {
+    const completeCompanions = [
+      'packages/email/README.md',
+      'packages/email/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'book/intermediate/ch16-email.md',
+      'book/intermediate/ch16-email.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    expect(() => enforceEmailMigrationCompanions(completeCompanions.filter((path) => path !== missingCompanion))).toThrow();
   });
 
   it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {

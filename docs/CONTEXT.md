@@ -337,6 +337,7 @@ Studio bridge discoverability is split between [`packages/runtime/README.md`](..
 | Need | Read first | Follow with |
 | --- | --- | --- |
 | Passport refresh-token module ownership and alias visibility | `packages/passport/README.md` | `apps/docs/content/docs/guides/auth.mdx` and `packages/passport/src/refresh/refresh-token.ts` |
+| `@fluojs/email` NestJS migration | `packages/email/README.md` | `docs/getting-started/migrate-from-nestjs.md` and `book/intermediate/ch16-email.md` |
 | Repository identity and non-negotiable rules | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | Architecture model, request flow, and runtime boundaries | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |

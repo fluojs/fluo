@@ -8,6 +8,7 @@ import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-m
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
@@ -1199,7 +1200,33 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
  * @param {string[]} changedFiles
  * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
  */
+export function enforceEmailMigrationCompanions(changedFiles) {
+  const emailMigrationCompanions = [
+    'packages/email/README.md',
+    'packages/email/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/contracts/nestjs-parity-gaps.md',
+    'docs/contracts/nestjs-parity-gaps.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/intermediate/ch16-email.md',
+    'book/intermediate/ch16-email.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+  ];
+
+  assert(
+    emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
+    'Email NestJS migration documentation must include every governed Email companion.',
+  );
+}
+
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const touchedEmailMigrationDocumentation = hasChanged(
+    changedFiles,
+    'tooling/governance/email-nestjs-migration-docs.mjs',
+  );
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
@@ -1215,6 +1242,10 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
     'packages/platform-fastify/README.md',
     'packages/platform-fastify/README.ko.md',
   ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
+
+  if (touchedEmailMigrationDocumentation) {
+    enforceEmailMigrationCompanions(changedFiles);
+  }
 
   if (touchedFastifyRawContextDocumentation) {
     assert(
@@ -3735,6 +3766,7 @@ export async function main() {
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
+  enforceEmailNestjsMigrationDocs();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();

@@ -30,6 +30,8 @@
 
 ## 16.2 Registering the Email Module
 
+<!-- fluo-email-nestjs-learning-path: registration=injected-factory;transport-ownership=explicit;delivery=direct-and-template -->
+
 모듈을 등록할 때는 transport를 반드시 제공해야 합니다. 아래의 완전한 Node.js 예제는 fluo의 1st-party Nodemailer factory를 사용합니다. 다른 런타임에서는 transport를 생략하지 말고 애플리케이션이 소유한 `EmailTransport` 또는 `EmailTransportFactory`를 전달하세요.
 
 ```typescript

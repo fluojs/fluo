@@ -109,6 +109,8 @@ The root `@fluojs/email` surface is intentionally module-first. Register email d
 
 ## Common Patterns
 
+<!-- fluo-email-nestjs-migration: async=injected-factory-supported;async-negative=imports-useClass-useExisting-unsupported;ownership=portable-application,node-factory-email-module,nodemailer-caller;delivery=direct-pre-rendered,template-rendered;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
 ### Registration scope and async factories
 
 `EmailModule.forRoot(...)` and `EmailModule.forRootAsync(...)` return a global module by default. After one import, the exported `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL` providers are visible to the application module graph. Pass `global: false` only when email providers should stay visible to modules that explicitly import the returned module.
