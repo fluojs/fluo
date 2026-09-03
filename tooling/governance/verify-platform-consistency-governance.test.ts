@@ -371,6 +371,35 @@ describe('enforceContractCompanionUpdates', () => {
     );
   });
 
+  it('requires generic contract companions for Queue producer idempotency documentation', async () => {
+    // Given: paired Queue producer documentation that exposes a public deduplication contract.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'packages/queue/README.md',
+      'packages/queue/README.ko.md',
+    ];
+
+    // When / Then: discoverability and tooling evidence remain mandatory.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrow(/CI\/tooling enforcement updates/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('requires Fastify raw-object regression coverage for its migration documentation', async () => {
     // Given: Fastify raw-object migration and package documentation updates with their discoverability and tooling companions.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

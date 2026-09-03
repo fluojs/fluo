@@ -234,6 +234,12 @@ Inspection은 read-only이며 유효한 record를 최신순으로 반환합니�
 
 `enqueue(job)`은 job의 정확한 constructor로 dispatch합니다. Queue는 `@QueueWorker(JobClass, options?)`로 discovery한 worker 집합에서 `job.constructor`를 조회하며, 그 constructor가 등록되지 않았으면 `No @QueueWorker() registered for job type <name>.`으로 호출을 거부합니다.
 
+불확실한 전달 또는 반복 dispatch에서도 호출자가 소유한 identity를 유지해야 한다면 두 번째 `enqueue` 인수로 선택적 `deduplicationKey`를 전달하세요. Queue는 이를 BullMQ에 유효한 backing job id로 결정적으로 매핑하므로, 호출자는 BullMQ의 콜론 또는 숫자 전용 custom-id 제한을 상속하지 않으면서 같은 worker queue에 대한 반복 enqueue 시도를 deduplicate할 수 있습니다.
+
+```typescript
+await queue.enqueue(new ProcessOrderJob(id), { deduplicationKey: `order:${id}` });
+```
+
 Plain payload object가 아니라 등록된 job class의 instance를 전달하세요.
 
 ```typescript
@@ -259,7 +265,7 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 ### 핵심 구성 요소
 - `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
 - `QueueModule.forRoot(options)`: 애플리케이션 수준 큐 등록을 구성합니다.
-- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
+- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job, options?)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
 - `getQueueToken(scope?)`: Queue facade token helper입니다. `scope`를 생략하면 기본 `QUEUE` token을 반환하고, 비어 있지 않은 scope는 해당 scoped registration의 facade token을 반환합니다.
@@ -268,7 +274,8 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 
 
 ### 타입
-- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job)` 및 read-only `inspectDeadLetters(jobName, options?)` facade입니다.
+- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job, options?)` 및 read-only `inspectDeadLetters(jobName, options?)` facade입니다.
+- `QueueEnqueueOptions`: idempotent enqueue 시도를 위해 Queue가 BullMQ에 유효한 job id로 매핑하는 호출자 소유 `deduplicationKey`를 포함하는 선택적 producer control입니다.
 - `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection 설정(`limit`) 타입입니다.
 - `QueueDeadLetterInspectionResult`: 최신순의 유효 record와 inspection window의 `malformedRecordCount`를 제공하는 결과 타입입니다.
 - `QueueDeadLetterRecord`: `unknown` 애플리케이션 payload를 포함하는 typed dead-letter metadata입니다.

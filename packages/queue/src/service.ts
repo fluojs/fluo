@@ -1,6 +1,7 @@
 import { cloneWithFallback } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
 import { getRedisComponentId } from '@fluojs/redis';
+import { createHash } from 'node:crypto';
 import type {
   ApplicationLogger,
   CompiledModule,
@@ -27,6 +28,7 @@ import type {
   QueueBackoffOptions,
   QueueDeadLetterInspectionOptions,
   QueueDeadLetterInspectionResult,
+  QueueEnqueueOptions,
   QueueJobType,
   QueueWorkerDescriptor,
 } from './types.js';
@@ -100,6 +102,10 @@ interface ResolvedWorkerHandler {
 const IMMEDIATE_BOOTSTRAP_READY_SIGNAL: BootstrapReadySignal = {
   wait: () => Promise.resolve(),
 };
+
+function createBullMqJobId(deduplicationKey: string): string {
+  return `fluo-${createHash('sha256').update(deduplicationKey).digest('hex')}`;
+}
 
 function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
   if (typeof value !== 'object' || value === null) {
@@ -212,11 +218,12 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
    * Enqueues one job instance using the worker metadata registered for its class.
    *
    * @param job Job instance whose constructor matches a discovered `@QueueWorker()` provider.
-   * @returns The queue-assigned job id, or an empty string when BullMQ does not provide one.
+   * @param options Optional producer controls, including a caller-owned deduplication key.
+   * @returns The backing BullMQ job id, or an empty string when BullMQ does not provide one.
    *
    * @throws {Error} When no worker is registered for the job type or the queue is not initialized.
    */
-  async enqueue<TJob extends object>(job: TJob): Promise<string> {
+  async enqueue<TJob extends object>(job: TJob, options?: QueueEnqueueOptions): Promise<string> {
     await this.ensureStarted();
 
     if (this.lifecycleState !== 'started') {
@@ -238,6 +245,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     const queuedJob = await queue.add(descriptor.jobName, serializeJobPayload(job), {
       attempts: descriptor.attempts,
       backoff: toBullBackoff(descriptor.backoff),
+      ...(options?.deduplicationKey === undefined ? {} : { jobId: createBullMqJobId(options.deduplicationKey) }),
     });
 
     return queuedJob.id ?? '';
