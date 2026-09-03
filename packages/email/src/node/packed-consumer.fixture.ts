@@ -37,6 +37,7 @@ interface PackedManifest {
   readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>;
 }
 
+/** Hermetic packed-package consumer used to verify the published Node declaration closure. */
 export interface PackedEmailConsumer {
   readonly compilerOptions: Readonly<{ readonly skipLibCheck: false }>;
   readonly packedManifest: PackedManifest;
@@ -132,6 +133,11 @@ function addPackedDependency(
   archives[packageName] = `file:${packPackage(packageDirectory, tarballDirectory)}`;
 }
 
+/**
+ * Creates an offline consumer from locally packed workspace dependencies.
+ *
+ * @returns A disposable consumer fixture with its packed manifest and typecheck command.
+ */
 export function createPackedEmailConsumer(): PackedEmailConsumer {
   const sandboxPath = mkdtempSync(join(tmpdir(), 'fluo-email-clean-consumer-'));
 
