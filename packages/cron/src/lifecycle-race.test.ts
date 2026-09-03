@@ -1,3 +1,4 @@
+import { REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -50,6 +51,54 @@ function createRetainedCallbackScheduler(): {
   };
 
   return { callbacks, scheduler, stopStarted: stopStarted.promise, stops };
+}
+
+class DeferredAcquisitionRedisClient {
+  private readonly acquisitionStarted = createDeferred();
+  private readonly allowAcquisition = createDeferred();
+  private readonly locks = new Map<string, string>();
+
+  completeAcquisition(): void {
+    this.allowAcquisition.resolve();
+  }
+
+  hasLock(key: string): boolean {
+    return this.locks.has(key);
+  }
+
+  waitForAcquisition(): Promise<void> {
+    return this.acquisitionStarted.promise;
+  }
+
+  async set(key: string, token: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
+    if (key.includes(':__probe:')) {
+      this.locks.set(key, token);
+      return 'OK';
+    }
+
+    this.acquisitionStarted.resolve();
+    await this.allowAcquisition.promise;
+
+    if (this.locks.has(key)) {
+      return null;
+    }
+
+    this.locks.set(key, token);
+    return 'OK';
+  }
+
+  async eval(script: string, _keysLength: number, key: string, token: string): Promise<number> {
+    if (script.includes('PEXPIRE')) {
+      return this.locks.get(key) === token ? 1 : 0;
+    }
+
+    if (!script.includes('DEL') || this.locks.get(key) !== token) {
+      return 0;
+    }
+
+    this.locks.delete(key);
+    return 1;
+  }
 }
 
 describe('Cron lifecycle race safety', () => {
@@ -158,5 +207,42 @@ describe('Cron lifecycle race safety', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('releases a lease acquired after shutdown starts without running the task body', async () => {
+    // Given
+    const redis = new DeferredAcquisitionRedisClient();
+    const scheduled = createRetainedCallbackScheduler();
+    let runs = 0;
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: { enabled: true, keyPrefix: 'shutdown-acquisition', lockTtlMs: 60_000 },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    registry.addCron('acquired-after-shutdown', CronExpression.EVERY_SECOND, () => {
+      runs += 1;
+    });
+    const tick = requireValue(scheduled.callbacks[0], 'Expected a distributed cron callback.')();
+    await redis.waitForAcquisition();
+
+    // When
+    const closePromise = app.close();
+    await scheduled.stopStarted;
+    redis.completeAcquisition();
+    await Promise.all([tick, closePromise]);
+
+    // Then
+    expect(runs).toBe(0);
+    expect(redis.hasLock('shutdown-acquisition:acquired-after-shutdown')).toBe(false);
   });
 });
