@@ -1273,6 +1273,107 @@ describe('EmailModule', () => {
     expect(closeTransport.closeCalls).toBe(1);
   });
 
+  it('closes a factory-owned transport once when verification failure overlaps shutdown', async () => {
+    let resolveClose!: () => void;
+    let signalCloseStarted!: () => void;
+    const closeCompletion = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    const closeStarted = new Promise<void>((resolve) => {
+      signalCloseStarted = resolve;
+    });
+    const transport: EmailTransport = {
+      close: vi.fn(async () => {
+        signalCloseStarted();
+        await closeCompletion;
+      }),
+      async send() {
+        return {
+          accepted: ['user@example.com'],
+          messageId: 'concurrent-cleanup-1',
+          pending: [],
+          rejected: [],
+        };
+      },
+      async verify() {
+        throw new Error('provider verify failed');
+      },
+    };
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    const initialization = service.onModuleInit();
+
+    await closeStarted;
+    const shutdown = service.onApplicationShutdown();
+    resolveClose();
+
+    await expect(initialization).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider verify failed' }),
+      message: 'Email transport failed to initialize.',
+    });
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(transport.close).toHaveBeenCalledOnce();
+  });
+
+  it('closes each factory-owned transport after a verification retry', async () => {
+    const failedTransport = new FailingLifecycleTransport('verify');
+    let retryCloseCalls = 0;
+    const retryTransport: EmailTransport = {
+      async close() {
+        retryCloseCalls += 1;
+      },
+      async send() {
+        return {
+          accepted: ['user@example.com'],
+          messageId: 'retry-cleanup-1',
+          pending: [],
+          rejected: [],
+        };
+      },
+      async verify() {
+        return undefined;
+      },
+    };
+    let createCalls = 0;
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        async create() {
+          createCalls += 1;
+          return createCalls === 1 ? failedTransport : retryTransport;
+        },
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(service.onModuleInit()).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider verify failed' }),
+      message: 'Email transport failed to initialize.',
+    });
+    expect(failedTransport.closeCalls).toBe(1);
+
+    await service.onModuleInit();
+    expect(createCalls).toBe(2);
+
+    await service.onApplicationShutdown();
+    expect(retryCloseCalls).toBe(1);
+  });
+
   it('leaves caller-owned direct transport instances open during shutdown', async () => {
     const transport = new RecordingTransport('caller-owned-instance');
     const container = new Container();
