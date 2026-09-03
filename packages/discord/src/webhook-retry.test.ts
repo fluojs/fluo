@@ -5,7 +5,7 @@ import type { DiscordFetchLike } from './types.js';
 import { createDiscordWebhookTransport } from './webhook.js';
 
 describe('Discord webhook retries', () => {
-  it.each([408, 429, 502])('retries transient HTTP %s responses before succeeding', async (status) => {
+  it('retries transient HTTP responses at exact exponential backoff boundaries', async () => {
     vi.useFakeTimers();
 
     try {
@@ -13,7 +13,14 @@ describe('Discord webhook retries', () => {
         .fn<DiscordFetchLike>()
         .mockResolvedValueOnce({
           ok: false,
-          status,
+          status: 429,
+          async text() {
+            return 'temporary provider response';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
           async text() {
             return 'temporary provider response';
           },
@@ -22,7 +29,7 @@ describe('Discord webhook retries', () => {
           ok: true,
           status: 200,
           async text() {
-            return JSON.stringify({ id: `msg-${String(status)}` });
+            return JSON.stringify({ id: 'msg-retried' });
           },
         });
       const transport = createDiscordWebhookTransport({
@@ -31,18 +38,30 @@ describe('Discord webhook retries', () => {
       });
 
       const pending = transport.send(
-        { attachments: [], components: [], content: `Retry HTTP ${String(status)}`, embeds: [] },
+        { attachments: [], components: [], content: 'Retry HTTP backoff boundaries', embeds: [] },
         {},
       );
-      const expectation = expect(pending).resolves.toMatchObject({
-        messageId: `msg-${String(status)}`,
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchLike).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(249);
+      expect(fetchLike).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(499);
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(pending).resolves.toMatchObject({
+        messageId: 'msg-retried',
         ok: true,
         statusCode: 200,
       });
-      await vi.runAllTimersAsync();
-
-      await expectation;
-      expect(fetchLike).toHaveBeenCalledTimes(2);
+      expect(fetchLike).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }
