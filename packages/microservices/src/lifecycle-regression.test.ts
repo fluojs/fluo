@@ -3,9 +3,10 @@ import { defineModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
 import { expect, it, vi } from 'vitest';
 
+import { MessagePattern } from './decorators.js';
 import { MicroservicesModule } from './module.js';
 import { MicroserviceLifecycleService } from './service.js';
-import type { MicroserviceTransport } from './types.js';
+import type { MicroserviceTransport, TransportHandler } from './types.js';
 
 function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolvePromise: () => void = () => undefined;
@@ -237,6 +238,50 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
   } catch {}
 });
 
+it('shares a failed close result without retrying transport teardown', async () => {
+  // Given
+  const closeError = new Error('transport close failed');
+  let closeCalls = 0;
+  const transport: MicroserviceTransport = {
+    async close() {
+      closeCalls += 1;
+      throw closeError;
+    },
+    async emit() {},
+    async listen() {},
+    async send() {
+      return 'sent';
+    },
+  };
+
+  class AppModule {}
+  defineModuleMetadata(AppModule, {
+    imports: [MicroservicesModule.forRoot({ transport })],
+  });
+
+  const app = await bootstrapApplication({ rootModule: AppModule });
+  const microservice = await app.container.resolve(MicroserviceLifecycleService);
+  await microservice.listen();
+  const firstClose = microservice.close();
+  const secondClose = microservice.close();
+
+  // When
+  await Promise.allSettled([firstClose, secondClose]);
+  const repeatedClose = microservice.close();
+
+  // Then
+  try {
+    expect(secondClose).toBe(firstClose);
+    expect(repeatedClose).toBe(firstClose);
+    await expect(repeatedClose).rejects.toThrow(closeError);
+    expect(closeCalls).toBe(1);
+  } finally {
+    try {
+      await app.close();
+    } catch {}
+  }
+});
+
   it('rejects resolved lifecycle facade send and emit while shell listen is still pending', async () => {
     // Given
     const events: string[] = [];
@@ -293,3 +338,75 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
       await closePromise;
     }
   });
+
+it('shares close and drains admitted inbound work before transport teardown', async () => {
+  // Given
+  const events: string[] = [];
+  const handlerMayFinish = createDeferred();
+  const handlerStarted = createDeferred();
+  let closeCalls = 0;
+  let transportHandler: TransportHandler | undefined;
+  const transport: MicroserviceTransport = {
+    async close() {
+      closeCalls += 1;
+      events.push('transport:close');
+    },
+    async emit() {},
+    async listen(handler) {
+      transportHandler = handler;
+    },
+    async send() {
+      return 'sent';
+    },
+  };
+
+  class OrdersHandler {
+    @MessagePattern('orders.fulfill')
+    async fulfill(): Promise<string> {
+      events.push('handler:start');
+      handlerStarted.resolve();
+      await handlerMayFinish.promise;
+      events.push('handler:end');
+      return 'fulfilled';
+    }
+  }
+
+  class AppModule {}
+  defineModuleMetadata(AppModule, {
+    imports: [MicroservicesModule.forRoot({ transport })],
+    providers: [OrdersHandler],
+  });
+
+  const app = await bootstrapApplication({ rootModule: AppModule });
+  const microservice = await app.container.resolve(MicroserviceLifecycleService);
+  await microservice.listen();
+
+  if (!transportHandler) {
+    throw new Error('Expected transport handler after listen().');
+  }
+
+  const inbound = transportHandler({
+    kind: 'message',
+    pattern: 'orders.fulfill',
+    payload: {},
+  });
+  await handlerStarted.promise;
+  const firstClose = microservice.close();
+  const secondClose = microservice.close();
+
+  // When
+  const closesBeforeInboundDrain = closeCalls;
+
+  // Then
+  try {
+    expect(secondClose).toBe(firstClose);
+    expect(closesBeforeInboundDrain).toBe(0);
+  } finally {
+    handlerMayFinish.resolve();
+    await expect(inbound).resolves.toBe('fulfilled');
+    await Promise.all([firstClose, secondClose]);
+    expect(events).toEqual(['handler:start', 'handler:end', 'transport:close']);
+    expect(closeCalls).toBe(1);
+    await app.close();
+  }
+});

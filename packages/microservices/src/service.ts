@@ -55,6 +55,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
   private closeStarted = false;
+  private closePromise: Promise<void> | undefined;
+  private readonly inboundWork = new Set<Promise<unknown>>();
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private lastListenError: string | undefined;
   private listening = false;
@@ -110,7 +112,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     if (transport.listenServerStreaming) {
       transport.listenServerStreaming(
         async (pattern: string, payload: unknown, writer: ServerStreamWriter) => {
-          await this.dispatchServerStream(pattern, cloneWithFallback(payload), writer);
+          await this.trackInboundWork(() => this.dispatchServerStream(pattern, cloneWithFallback(payload), writer));
         },
       );
     }
@@ -118,7 +120,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     if (transport.listenClientStreaming) {
       transport.listenClientStreaming(
         async (pattern: string, reader: AsyncIterable<unknown>) => {
-          return await this.dispatchClientStream(pattern, reader);
+          return await this.trackInboundWork(() => this.dispatchClientStream(pattern, reader));
         },
       );
     }
@@ -126,12 +128,12 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     if (transport.listenBidiStreaming) {
       transport.listenBidiStreaming(
         async (pattern: string, reader: AsyncIterable<unknown>, writer: ServerStreamWriter) => {
-          await this.dispatchBidiStream(pattern, reader, writer);
+          await this.trackInboundWork(() => this.dispatchBidiStream(pattern, reader, writer));
         },
       );
     }
 
-    await transport.listen(async (packet) => this.dispatchPacket(packet));
+    await transport.listen(async (packet) => await this.trackInboundWork(() => this.dispatchPacket(packet)));
     this.listening = true;
     this.lifecycleState = 'ready';
   }
@@ -142,10 +144,20 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @param signal Optional shutdown signal reported by the runtime lifecycle hook.
    * @returns A promise that resolves once shutdown completes.
    */
-  async close(signal?: string): Promise<void> {
+  close(signal?: string): Promise<void> {
     void signal;
     this.closeStarted = true;
 
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+
+    this.closePromise = this.closeTransport();
+
+    return this.closePromise;
+  }
+
+  private async closeTransport(): Promise<void> {
     let listenError: unknown;
 
     if (this.listenPromise) {
@@ -159,6 +171,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     this.lifecycleState = 'stopping';
 
     try {
+      if (this.inboundWork.size > 0) {
+        await this.drainInboundWork();
+      }
+
       await this.moduleOptions.transport.close();
       this.listening = false;
 
@@ -174,6 +190,27 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       this.lastListenError = error instanceof Error ? error.message : String(error);
       throw error;
     }
+  }
+
+  private async drainInboundWork(): Promise<void> {
+    while (this.inboundWork.size > 0) {
+      await Promise.allSettled(this.inboundWork);
+    }
+  }
+
+  private trackInboundWork<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.closeStarted) {
+      return Promise.reject(new InvariantError('Microservice cannot accept inbound work after shutdown has started.'));
+    }
+
+    const work = Promise.resolve().then(operation);
+    this.inboundWork.add(work);
+    void work.then(
+      () => this.inboundWork.delete(work),
+      () => this.inboundWork.delete(work),
+    );
+
+    return work;
   }
 
   markShutdownStarted(): void {
