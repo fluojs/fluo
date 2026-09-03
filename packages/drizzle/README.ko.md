@@ -248,6 +248,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
+- `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `DrizzleDatabase.createFacade(...)` (호환성 전용 provider wiring helper; 애플리케이션 등록은 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용)

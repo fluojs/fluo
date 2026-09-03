@@ -10,7 +10,7 @@ This document defines the current transaction-context contract across `@fluojs/p
 | Package | Ambient context carrier | Primary access API | Request boundary API | Current support scope |
 | --- | --- | --- | --- | --- |
 | `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | `@Transaction()` on Services | Explicit `PrismaService.requestTransaction(...)` or deprecated `PrismaTransactionInterceptor` compatibility | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` or deprecated `DrizzleTransactionInterceptor` compatibility | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
 | `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | `@Transaction()` on Services | Explicit `MongooseConnection.requestTransaction(...)` or deprecated `MongooseTransactionInterceptor` compatibility | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
 
 ## Service Transaction Boundary (Primary)

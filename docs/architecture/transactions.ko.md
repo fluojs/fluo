@@ -10,7 +10,7 @@
 | 패키지 | ambient 문맥 운반체 | 주요 접근 API | 요청 경계 API | 현재 지원 범위 |
 | --- | --- | --- | --- | --- |
 | `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | 서비스의 `@Transaction()` | 명시적 `PrismaService.requestTransaction(...)` 또는 deprecated `PrismaTransactionInterceptor` 호환성 | `$transaction(...)`을 사용할 수 있을 때 활성 Prisma interactive transaction client를 공유합니다. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 `DrizzleDatabase.requestTransaction(...)` | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 `DrizzleDatabase.requestTransaction(...)` 또는 deprecated `DrizzleTransactionInterceptor` 호환성 | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
 | `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | 서비스의 `@Transaction()` | 명시적 `MongooseConnection.requestTransaction(...)` 또는 deprecated `MongooseTransactionInterceptor` 호환성 | `connection.startSession()` 또는 위임된 `connection.transaction(...)`을 사용할 수 있을 때 활성 Mongoose session을 공유합니다. |
 
 ## 서비스 트랜잭션 경계 (기본)

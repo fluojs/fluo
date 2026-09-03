@@ -248,7 +248,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
-- `DrizzleTransactionInterceptor` (deprecated 1.x compatibility bridge)
+- `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `DrizzleDatabase.createFacade(...)` (compatibility-only provider wiring helper; prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)` for application registration)

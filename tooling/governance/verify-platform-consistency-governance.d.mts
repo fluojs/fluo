@@ -102,4 +102,7 @@ export function enforceQueueWorkerOwnershipContractFromSources(
 export function enforceNotificationsQueueCancellationDocumentationContract(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforcePersistenceTransactionInterceptorCompatibility(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): Promise<void>;
