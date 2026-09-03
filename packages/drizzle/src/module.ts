@@ -4,6 +4,7 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { DrizzleDatabase } from './database.js';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_HANDLE_PROVIDER, DRIZZLE_OPTIONS } from './tokens.js';
+import { DrizzleTransactionInterceptor } from './transaction.js';
 import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
 
 type DrizzleRuntimeOptions = {
@@ -28,6 +29,7 @@ type DrizzleAsyncModuleOptions<
 const DRIZZLE_NORMALIZED_OPTIONS = Symbol('fluo.drizzle.normalized-options');
 const DRIZZLE_MODULE_EXPORTS = [
   DrizzleDatabase,
+  DrizzleTransactionInterceptor,
   DRIZZLE_HANDLE_PROVIDER,
   DRIZZLE_DATABASE,
   DRIZZLE_DISPOSE,
@@ -100,6 +102,7 @@ function createDrizzleRuntimeProviders<
       provide: DRIZZLE_HANDLE_PROVIDER,
       useExisting: DrizzleDatabase,
     },
+    DrizzleTransactionInterceptor,
   ];
 }
 

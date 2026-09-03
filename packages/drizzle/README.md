@@ -206,7 +206,7 @@ export class CheckoutController {
 }
 ```
 
-There is no Drizzle `*TransactionInterceptor` export to import. Existing NestJS interceptor designs should move most transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level compatibility cases where all request work, not just a service method, must share the same boundary. Decorating a controller method with `@Transaction()` remains a compatibility path when the controller owns an explicit `DrizzleDatabase` target, but `requestTransaction(...)` is the clearer request-wide API because it can receive the request `AbortSignal` directly.
+`DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS interceptor imports. It delegates to `requestTransaction(...)` and forwards the request `AbortSignal`. New code should move business transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level cases where all request work, not just a service method, must share the same boundary. Decorating a controller method with `@Transaction()` remains a compatibility path when the controller owns an explicit `DrizzleDatabase` target, but `requestTransaction(...)` is the clearer request-wide API because it can receive the request `AbortSignal` directly.
 
 ### Shutdown and status contracts
 
@@ -248,6 +248,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
+- `DrizzleTransactionInterceptor` (deprecated 1.x compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `DrizzleDatabase.createFacade(...)` (compatibility-only provider wiring helper; prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)` for application registration)

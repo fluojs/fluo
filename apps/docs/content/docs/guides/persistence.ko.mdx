@@ -139,7 +139,7 @@ export class UserRepository {
 }
 ```
 
-`@fluojs/drizzle`은 `DrizzleTransactionInterceptor`를 export하지 않습니다. 전체 request가 하나의 transaction을 공유해야 할 때는 명시적 `DrizzleDatabase.requestTransaction(...)` request boundary를 사용하세요. Shutdown 중에는 active request transaction을 abort/settle한 뒤 configured `dispose(database)` hook을 실행합니다. 기존 manual transaction boundary 안의 중첩 `requestTransaction(...)` 호출도 별도 Drizzle transaction을 열지 않고 같은 shutdown tracking에 참여합니다.
+`DrizzleTransactionInterceptor`는 기존 NestJS import를 위한 deprecated 1.x 호환성 bridge입니다. `DrizzleDatabase.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다. 새 request-wide boundary에서는 전체 request가 하나의 transaction을 공유해야 할 때 명시적으로 `DrizzleDatabase.requestTransaction(...)`을 호출하세요. Shutdown 중에는 active request transaction을 abort/settle한 뒤 configured `dispose(database)` hook을 실행합니다. 기존 manual transaction boundary 안의 중첩 `requestTransaction(...)` 호출도 별도 Drizzle transaction을 열지 않고 같은 shutdown tracking에 참여합니다.
 
 ## Mongoose
 

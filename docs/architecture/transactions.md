@@ -67,9 +67,9 @@ Mongoose connection ownership remains application-owned: `MongooseModule.forRoot
 | Pattern | Behavior |
 | --- | --- |
 | Explicit request boundary | Application code can call `requestTransaction(...)` at a controller, route adapter, or request orchestration boundary when an entire request must be transactional. |
-| Deprecated interceptor compatibility | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` are restored for existing 1.x imports and delegate to each package's `requestTransaction(...)` API. `DrizzleTransactionInterceptor` remains unavailable. Prefer service `@Transaction()` and explicit request boundaries for new code. |
+| Deprecated interceptor compatibility | `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor` are restored for existing 1.x imports and delegate to each package's `requestTransaction(...)` API. Prefer service `@Transaction()` and explicit request boundaries for new code. |
 
-When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Existing Prisma or Mongoose applications may retain the deprecated compatibility interceptor while migrating, but new request-wide boundaries should call `requestTransaction(...)` explicitly. Drizzle has no transaction interceptor compatibility export. Pass the request `AbortSignal` when available.
+When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Existing Prisma, Drizzle, or Mongoose applications may retain the deprecated compatibility interceptor while migrating, but new request-wide boundaries should call `requestTransaction(...)` explicitly. Pass the request `AbortSignal` when available.
 
 ## Advanced / Escape Hatch
 

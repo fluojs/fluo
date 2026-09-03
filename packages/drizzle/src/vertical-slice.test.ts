@@ -7,11 +7,18 @@ import {
   HttpCode,
   Post,
   RequestDto,
+  UseInterceptors,
 } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { DrizzleDatabase, type DrizzleDatabaseFacade, DrizzleModule, Transaction } from './index.js';
+import {
+  DrizzleDatabase,
+  type DrizzleDatabaseFacade,
+  DrizzleModule,
+  DrizzleTransactionInterceptor,
+  Transaction,
+} from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -366,6 +373,106 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
 
       expect(response.body).toEqual({ email: 'grace@example.com', id: 'controller-tx-user', name: 'Grace' });
       expect(events).toEqual(['transaction:start', 'tx:insert:grace@example.com', 'transaction:commit', 'response:send']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the deprecated request interceptor compatibility boundary transactional', async () => {
+    type UserRecord = {
+      email: string;
+      id: string;
+      name: string;
+    };
+
+    const events: string[] = [];
+    const transactionDatabase = {
+      insert(_table: 'users') {
+        return {
+          async values(value: { email: string; name: string }) {
+            events.push(`tx:insert:${value.email}`);
+            return { ...value, id: 'interceptor-tx-user' };
+          },
+        };
+      },
+    };
+    const database = {
+      insert(_table: 'users') {
+        return {
+          async values(value: { email: string; name: string }) {
+            events.push(`root:insert:${value.email}`);
+            return { ...value, id: 'root-user' };
+          },
+        };
+      },
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        const result = await callback(transactionDatabase);
+        events.push('transaction:commit');
+        return result;
+      },
+    };
+
+    class CreateUserRequest {
+      @FromBody('email')
+      email = '';
+
+      @FromBody('name')
+      name = '';
+    }
+
+    @Inject(DrizzleDatabase)
+    class UserRepository {
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, typeof transactionDatabase>) {}
+
+      async create(input: CreateUserRequest): Promise<UserRecord> {
+        return this.db.insert('users').values(input);
+      }
+    }
+
+    @Inject(UserRepository)
+    class UserService {
+      constructor(private readonly repo: UserRepository) {}
+
+      async create(input: CreateUserRequest): Promise<UserRecord> {
+        return this.repo.create(input);
+      }
+    }
+
+    @Controller('/interceptor-compat/users')
+    @Inject(UserService)
+    class UsersController {
+      constructor(private readonly users: UserService) {}
+
+      @RequestDto(CreateUserRequest)
+      @HttpCode(201)
+      @Post('/')
+      @UseInterceptors(DrizzleTransactionInterceptor)
+      async create(input: CreateUserRequest): Promise<UserRecord> {
+        return this.users.create(input);
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [UsersController],
+      imports: [DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({ database })],
+      providers: [UserRepository, UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const response = createResponse(events);
+
+      await app.dispatch(
+        createRequest('/interceptor-compat/users', 'POST', { email: 'lin@example.com', name: 'Lin' }),
+        response,
+      );
+
+      expect(response.statusCode).toBe(201);
+      expect(response.body).toEqual({ email: 'lin@example.com', id: 'interceptor-tx-user', name: 'Lin' });
+      expect(events).toEqual(['transaction:start', 'tx:insert:lin@example.com', 'transaction:commit', 'response:send']);
     } finally {
       await app.close();
     }

@@ -3398,6 +3398,7 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
 export function enforcePersistenceTransactionInterceptorCompatibility() {
   const compatibilityExports = [
     ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/module.ts', 'packages/drizzle/src/transaction.ts'],
     ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [

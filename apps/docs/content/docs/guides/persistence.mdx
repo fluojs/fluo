@@ -139,7 +139,7 @@ export class UserRepository {
 }
 ```
 
-`@fluojs/drizzle` does not export `DrizzleTransactionInterceptor`. Use an explicit `DrizzleDatabase.requestTransaction(...)` request boundary when the whole request must share one transaction. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
+`DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS imports. It delegates to `DrizzleDatabase.requestTransaction(...)` and forwards the request `AbortSignal`. New request-wide boundaries should call `DrizzleDatabase.requestTransaction(...)` explicitly when the whole request must share one transaction. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
 
 ## Mongoose
 
