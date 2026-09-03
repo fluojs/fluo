@@ -108,6 +108,27 @@ describe('@fluojs/email/node', () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves string and structured Nodemailer receipt recipient identities', async () => {
+    const sendMail = vi.fn().mockResolvedValue({
+      accepted: ['accepted-string@example.com', { address: 'accepted-structured@example.com', name: 'Accepted' }],
+      pending: ['pending-string@example.com', { address: 'pending-structured@example.com', name: 'Pending' }],
+      rejected: ['rejected-string@example.com', { address: 'rejected-structured@example.com', name: 'Rejected' }],
+    });
+    const transport = createNodemailerEmailTransport({
+      transporter: {
+        sendMail,
+      } as never,
+    });
+
+    const result = await transport.send(createMessage(), {});
+
+    expect(result).toMatchObject({
+      accepted: ['accepted-string@example.com', 'accepted-structured@example.com'],
+      pending: ['pending-string@example.com', 'pending-structured@example.com'],
+      rejected: ['rejected-string@example.com', 'rejected-structured@example.com'],
+    });
+  });
+
   it('creates and owns the Nodemailer transporter only through the node subpath factory helper', async () => {
     const sendMail = vi.fn().mockResolvedValue({
       accepted: ['user@example.com'],
