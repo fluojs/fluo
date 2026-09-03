@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import type { NotificationsQueueAdapter, NotificationsQueueJob } from '@fluojs/notifications';
-import { QueueWorker, type QueueLifecycleService, type QueueWorkerOptions } from '@fluojs/queue';
+import { QueueWorker, type Queue, type QueueWorkerOptions } from '@fluojs/queue';
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailChannel } from './channel.js';
@@ -17,17 +17,19 @@ export class EmailNotificationQueueJob {
    *
    * @param notification Notification envelope that will be delivered by the email channel worker.
    * @param queuedAt ISO timestamp captured when the notifications foundation delegated the job.
+   * @param id Deterministic notification identity preserved for queue deduplication.
    */
   constructor(
     public readonly notification: EmailNotificationDispatchRequest,
     public readonly queuedAt: string,
+    public readonly id?: string,
   ) {}
 }
 
 /**
- * Creates a notifications queue adapter backed by {@link QueueLifecycleService}.
+ * Creates a notifications queue adapter backed by the public {@link Queue} facade.
  *
- * @param queue Queue lifecycle service used to enqueue email notification jobs.
+ * @param queue Queue facade used to enqueue email notification jobs.
  * @returns A queue adapter compatible with `NotificationsModule.forRoot(...)` queue wiring.
  *
  * @example
@@ -44,13 +46,21 @@ export class EmailNotificationQueueJob {
  * });
  * ```
  */
-export function createEmailNotificationsQueueAdapter(queue: QueueLifecycleService): NotificationsQueueAdapter {
+export function createEmailNotificationsQueueAdapter(queue: Queue): NotificationsQueueAdapter {
   return {
     enqueue(job: NotificationsQueueJob): Promise<string> {
-      return queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt));
+      return queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt, job.id), {
+        deduplicationKey: job.id,
+      });
     },
     enqueueMany(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]> {
-      return Promise.all(jobs.map((job) => queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt))));
+      return Promise.all(
+        jobs.map((job) =>
+          queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt, job.id), {
+            deduplicationKey: job.id,
+          }),
+        ),
+      );
     },
   };
 }

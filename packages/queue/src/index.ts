@@ -10,6 +10,7 @@ export type {
   QueueDeadLetterInspectionOptions,
   QueueDeadLetterInspectionResult,
   QueueDeadLetterRecord,
+  QueueEnqueueOptions,
   QueueJobType,
   QueueModuleOptions,
   QueueOwnershipEnforcement,

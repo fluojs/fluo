@@ -226,6 +226,8 @@ export class AppModule {}
 
 The queue adapter splits bulk notifications into individual background jobs, and the built-in `EmailNotificationsQueueWorker` consumes them with the fixed defaults exported as `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`: 3 attempts, exponential backoff starting at 1 second, concurrency 5, a 50-per-second rate limiter, and the `fluo.email.notification` job name. Register `EmailNotificationsQueueWorker` as a provider in the same application module so those queued email jobs are actually consumed. If you replace the built-in worker with a custom queue adapter or worker, mirror those defaults explicitly when you need the same retry, backoff, concurrency, rate-limit, and job-name contract.
 
+The built-in adapter also carries the deterministic notification queue identity into Queue as its `deduplicationKey`. Queue maps it to a BullMQ-safe job id, so repeating one notification dispatch reuses that backing queue identity instead of creating a second email job.
+
 ## 16.7 Template Rendering
 
 `@fluojs/email` supports replaceable template rendering. You can choose rendering approaches such as Handlebars, EJS, or React-email without binding the core package to a specific engine.
