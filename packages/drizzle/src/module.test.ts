@@ -2143,7 +2143,7 @@ describe('DrizzleModule named registrations', () => {
     }
   });
 
-  it('rejects empty names, named global visibility, and duplicate named registrations', async () => {
+  it('rejects empty names and named global visibility', () => {
     expect(() => DrizzleModule.forRoot({ database: {}, name: '   ' })).toThrow(
       'DrizzleModule name must be a non-empty string when provided.',
     );
@@ -2156,6 +2156,9 @@ describe('DrizzleModule named registrations', () => {
       useFactory: () => ({ database: {} }),
     })).toThrow('Named Drizzle registrations are scoped and cannot be registered globally.');
 
+  });
+
+  it('rejects duplicate normalized static named registrations before startup', async () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
@@ -2167,5 +2170,28 @@ describe('DrizzleModule named registrations', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
       'Duplicate @fluojs/drizzle registration identity "analytics".',
     );
+  });
+
+  it('rejects duplicate async names before either factory or disposal hook runs', async () => {
+    const firstDispose = vi.fn();
+    const secondDispose = vi.fn();
+    const firstFactory = vi.fn(async () => ({ database: {}, dispose: firstDispose }));
+    const secondFactory = vi.fn(async () => ({ database: {}, dispose: secondDispose }));
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        DrizzleModule.forRootAsync({ name: 'analytics', useFactory: firstFactory }),
+        DrizzleModule.forRootAsync({ name: ' analytics ', useFactory: secondFactory }),
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'Duplicate @fluojs/drizzle registration identity "analytics".',
+    );
+    expect(firstFactory).not.toHaveBeenCalled();
+    expect(secondFactory).not.toHaveBeenCalled();
+    expect(firstDispose).not.toHaveBeenCalled();
+    expect(secondDispose).not.toHaveBeenCalled();
   });
 });

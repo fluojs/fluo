@@ -14,6 +14,7 @@ Node.js-only Drizzle ORM integration for fluo with a transaction-aware database 
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Manual Transactions and current()](#manual-transactions-and-current)
   - [Request-Wide Controller Boundaries](#request-wide-controller-boundaries)
+  - [Named clients](#named-clients)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
 - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
@@ -208,8 +209,6 @@ export class CheckoutController {
 
 `DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS interceptor imports. It delegates to `requestTransaction(...)` and forwards the request `AbortSignal`. New code should move business transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level cases where all request work, not just a service method, must share the same boundary. Decorating a controller method with `@Transaction()` remains a compatibility path when the controller owns an explicit `DrizzleDatabase` target, but `requestTransaction(...)` is the clearer request-wide API because it can receive the request `AbortSignal` directly.
 
-### Shutdown and status contracts
-
 ### Named clients
 
 Register each additional client with a non-empty `name` and inject its package-owned token instead of the `DrizzleDatabase` class token:
@@ -231,8 +230,11 @@ class AnalyticsService {
 
 `getDrizzleDatabaseToken`, `getDrizzleDisposeToken`, `getDrizzleOptionsToken`, and
 `getDrizzleHandleProviderToken` return distinct stable identities for each trimmed name. Named clients are
-module-scoped, cannot be `global`, and independently own ALS transaction context, shutdown drain, disposal, and status.
-Omitting `name` preserves the existing default tokens, `DrizzleDatabase` class token, and interceptor behavior.
+non-global and independently own ALS transaction context, shutdown drain, disposal, and status. A consumer must import
+a module that exports the matching named token; names do not create isolated runtime containers. Omitting `name`
+preserves the existing default tokens, `DrizzleDatabase` class token, and interceptor behavior.
+
+### Shutdown and status contracts
 
 During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for open request and manual transaction callbacks to settle or roll back, and only then runs the optional `dispose(database)` hook. This includes fail-open manual `transaction(...)` callbacks when `database.transaction(...)` is unavailable and `strictTransactions` is `false`, so direct-execution fallbacks still drain before pools or externally managed resources are closed.
 Transaction continuations that start a new boundary after their inherited owner settles no longer reuse the closed transaction handle. They become independently tracked roots, and shutdown waits for those continuation roots before disposal.

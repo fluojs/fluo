@@ -14,6 +14,7 @@ Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dis
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
   - [요청 전체 컨트롤러 경계](#요청-전체-컨트롤러-경계)
+  - [이름 있는 클라이언트](#이름-있는-클라이언트)
   - [종료와 상태 계약](#종료와-상태-계약)
 - [수동 모듈 구성](#수동-모듈-구성)
 - [공개 API 개요](#공개-api-개요)
@@ -208,8 +209,6 @@ export class CheckoutController {
 
 `DrizzleTransactionInterceptor`는 기존 NestJS interceptor import를 위한 deprecated 1.x 호환성 bridge입니다. 이 interceptor는 `requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다. 새 코드에서는 비즈니스 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 사례에만 명시적 `requestTransaction(...)`을 사용하세요. controller가 명시적 `DrizzleDatabase` 대상을 소유한다면 controller method에 `@Transaction()`을 붙이는 방식도 호환성 경로로 유지되지만, request `AbortSignal`을 직접 받을 수 있는 `requestTransaction(...)`이 더 명확한 request-wide API입니다.
 
-### 종료와 상태 계약
-
 ### 이름 있는 클라이언트
 
 추가 client는 비어 있지 않은 `name`으로 등록하고 `DrizzleDatabase` class token 대신 package-owned token을 주입합니다.
@@ -231,8 +230,11 @@ class AnalyticsService {
 
 `getDrizzleDatabaseToken`, `getDrizzleDisposeToken`, `getDrizzleOptionsToken`,
 `getDrizzleHandleProviderToken`은 trim된 이름마다 서로 다른 안정적인 identity를 반환합니다. 이름 있는 client는
-module-scoped이며 `global`일 수 없고 ALS transaction context, shutdown drain, disposal, status를 독립적으로 소유합니다.
-`name`을 생략하면 기존 default token, `DrizzleDatabase` class token, interceptor 동작이 유지됩니다.
+non-global이며 ALS transaction context, shutdown drain, disposal, status를 독립적으로 소유합니다. consumer는 일치하는
+이름 있는 token을 export하는 module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. `name`을 생략하면
+기존 default token, `DrizzleDatabase` class token, interceptor 동작이 유지됩니다.
+
+### 종료와 상태 계약
 
 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 여기에는 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`일 때의 fail-open 수동 `transaction(...)` callback도 포함되므로, 직접 실행 fallback도 pool이나 외부 관리 리소스를 닫기 전에 drain됩니다.
 상속한 owner가 settle된 뒤 새 boundary를 시작하는 transaction continuation은 닫힌 transaction handle을 더 이상 재사용하지 않습니다. 이 continuation은 독립적으로 tracking되는 root가 되며, shutdown은 disposal 전에 해당 continuation root를 기다립니다.
