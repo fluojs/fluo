@@ -277,3 +277,104 @@ it('caches a failed shell close without retrying terminal teardown', async () =>
     await disposeApp(app);
   }
 });
+
+it('caches a synchronous shutdown-mark failure without retrying it', async () => {
+  // Given
+  const microserviceToken = Symbol.for('fluo.microservices.service');
+  const shutdownError = new Error('shutdown mark failed');
+  let closeCalls = 0;
+  let shutdownMarkCalls = 0;
+
+  class StubMicroserviceRuntime implements MicroserviceRuntime {
+    markShutdownStarted(): void {
+      shutdownMarkCalls += 1;
+      throw shutdownError;
+    }
+
+    async close(): Promise<void> {
+      closeCalls += 1;
+    }
+
+    async listen(): Promise<void> {}
+  }
+
+  class AppModule {}
+  defineRuntimeModuleMetadata(AppModule, {
+    providers: [{ provide: microserviceToken, useClass: StubMicroserviceRuntime }],
+  });
+
+  let app: MicroserviceApplication | undefined;
+
+  try {
+    app = await FluoFactory.createMicroservice(AppModule);
+    if (!app) {
+      throw new Error('microservice not bootstrapped');
+    }
+    const firstClose = app.close();
+    const secondClose = app.close();
+
+    // When
+    await expect(firstClose).rejects.toBe(shutdownError);
+    await expect(secondClose).rejects.toBe(shutdownError);
+    await expect(app.close()).rejects.toBe(shutdownError);
+
+    // Then
+    expect(shutdownMarkCalls).toBe(1);
+    expect(closeCalls).toBe(0);
+  } finally {
+    await disposeApp(app);
+  }
+});
+
+it('caches close before a synchronous shutdown-mark reentry', async () => {
+  // Given
+  const microserviceToken = Symbol.for('fluo.microservices.service');
+  let closeCalls = 0;
+  let reenteredClose: Promise<void> | undefined;
+  let shutdownMarkCalls = 0;
+  let app: MicroserviceApplication | undefined;
+
+  class StubMicroserviceRuntime implements MicroserviceRuntime {
+    markShutdownStarted(): void {
+      shutdownMarkCalls += 1;
+
+      if (!app) {
+        throw new Error('microservice not bootstrapped');
+      }
+
+      reenteredClose = app.close();
+    }
+
+    async close(): Promise<void> {
+      closeCalls += 1;
+    }
+
+    async listen(): Promise<void> {}
+  }
+
+  class AppModule {}
+  defineRuntimeModuleMetadata(AppModule, {
+    providers: [{ provide: microserviceToken, useClass: StubMicroserviceRuntime }],
+  });
+
+  try {
+    app = await FluoFactory.createMicroservice(AppModule);
+    if (!app) {
+      throw new Error('microservice not bootstrapped');
+    }
+
+    // When
+    const firstClose = app.close();
+
+    // Then
+    await expect(firstClose).resolves.toBeUndefined();
+    if (!reenteredClose) {
+      throw new Error('expected synchronous shutdown-mark reentry');
+    }
+    await expect(reenteredClose).resolves.toBeUndefined();
+    expect(shutdownMarkCalls).toBe(1);
+    expect(closeCalls).toBe(1);
+  } finally {
+    await disposeApp(app);
+  }
+});
