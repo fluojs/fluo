@@ -27,6 +27,7 @@ import {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePassportJsBridgeNestjsMigration,
   enforcePlatformShellLifecycleContract,
+  enforcePersistenceTransactionInterceptorCompatibility,
   enforceQueueWorkerOwnershipContract,
   enforceQueueWorkerOwnershipContractFromSources,
   enforceReactClientSubpathContract,
@@ -167,6 +168,97 @@ describe('isGovernedPackageSourcePath', () => {
     expect(isGovernedPackageSourcePath('packages/core/src/module.spec.ts')).toBe(false);
     expect(isGovernedPackageSourcePath('packages/cli/scripts/local-test-env.mjs')).toBe(false);
     expect(isGovernedPackageSourcePath('examples/realworld-api/src/app.ts')).toBe(false);
+  });
+});
+
+describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
+  function readWithMutation(
+    path: string,
+    mutate: (source: string) => string,
+  ): (relativePath: string) => string {
+    return (relativePath) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === path ? mutate(source) : source;
+    };
+  }
+
+  it.each([
+    [
+      'root barrel export',
+      'packages/drizzle/src/index.ts',
+      (source: string) => source.replace("export * from './transaction.js';\n", ''),
+    ],
+    [
+      'module providers registration',
+      'packages/drizzle/src/module.ts',
+      (source: string) => source.replace(
+        '    DrizzleTransactionInterceptor,\n  ];\n}\n\nfunction createDrizzleProvidersAsync',
+        '  ];\n}\n\nfunction createDrizzleProvidersAsync',
+      ),
+    ],
+    [
+      'module exports registration',
+      'packages/drizzle/src/module.ts',
+      (source: string) => source.replace(
+        '  DrizzleTransactionInterceptor,\n  DRIZZLE_HANDLE_PROVIDER,',
+        '  DRIZZLE_HANDLE_PROVIDER,',
+      ),
+    ],
+    [
+      'interceptor requestTransaction signal delegation',
+      'packages/drizzle/src/transaction.ts',
+      (source: string) => source.replace('context.requestContext.request.signal', 'undefined'),
+    ],
+  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
+    // Given: the actual compatibility contract with exactly one structural regression injected.
+    const readText = readWithMutation(path, mutate);
+
+    // When: the governance contract evaluates the mutated source graph.
+    // Then: unrelated mentions cannot satisfy the structural registration requirement.
+    expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
+  });
+
+  it.each([
+    [
+      'request transaction lifecycle table entry',
+      'apps/docs/content/docs/guides/persistence.mdx',
+      (source: string) => source.replace(
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor` and `MongooseTransactionInterceptor`',
+      ),
+    ],
+    [
+      'Korean request transaction lifecycle table entry',
+      'apps/docs/content/docs/guides/persistence.ko.mdx',
+      (source: string) => source.replace(
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor`, `MongooseTransactionInterceptor`',
+      ),
+    ],
+    [
+      'English Drizzle public API summary entry',
+      'apps/docs/content/docs/guides/persistence.mdx',
+      (source: string) => source.replace(
+        'deprecated `DrizzleTransactionInterceptor` compatibility export',
+        'compatibility export',
+      ),
+    ],
+    [
+      'Korean Drizzle public API summary entry',
+      'apps/docs/content/docs/guides/persistence.ko.mdx',
+      (source: string) => source.replace(
+        'deprecated `DrizzleTransactionInterceptor` 호환성 export',
+        '호환성 export',
+      ),
+    ],
+  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
+    // Given: the compatibility contract with one required documentation placement removed.
+    const readText = readWithMutation(path, mutate);
+
+    // When: the governance contract evaluates the mutated documentation.
+    // Then: a mention elsewhere cannot satisfy the specific table row requirement.
+    expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
   });
 });
 

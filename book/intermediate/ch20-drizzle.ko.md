@@ -150,7 +150,7 @@ class ReportingService {
 }
 ```
 
-NestJS controller/interceptor transaction 패턴을 마이그레이션한다면 Drizzle transaction interceptor를 찾지 마세요. 일반적인 비즈니스 원자성은 서비스에 둡니다. 전체 request가 하나의 transaction을 공유해야 할 때만 controller 또는 request orchestration 경계에서 `requestTransaction(...)`을 사용하고, adapter가 제공한다면 request `AbortSignal`을 전달하세요. Controller-level `@Transaction()`은 controller가 명시적 `DrizzleDatabase` 대상을 소유하는 경우의 호환성 경로로만 유지됩니다. 요청 전체 작업에는 취소 입력이 명시적인 `requestTransaction(...)`을 우선 사용하세요.
+기존 NestJS controller/interceptor transaction import를 마이그레이션한다면 `DrizzleTransactionInterceptor`를 deprecated 1.x bridge로 사용할 수 있습니다. 이 interceptor는 `requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다. 일반적인 비즈니스 원자성은 서비스에 두세요. 새 controller 또는 request orchestration boundary에서는 전체 request가 하나의 transaction을 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용하고, adapter가 제공한다면 request `AbortSignal`을 전달하세요. Controller-level `@Transaction()`은 controller가 명시적 `DrizzleDatabase` 대상을 소유하는 경우의 호환성 경로로만 유지됩니다. 요청 전체 작업에는 취소 입력이 명시적인 `requestTransaction(...)`을 우선 사용하세요.
 
 ### Manual Transactions
 fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@Transaction()` 데코레이터를 사용하는 것입니다. 수동 제어가 필요한 경우 블록 패턴을 사용하십시오:
@@ -165,7 +165,7 @@ await this.db.transaction(async () => {
 });
 ```
 
-NestJS-style interceptor 대신 요청 전체 호환성에는 `requestTransaction(...)`을 사용하세요.
+기존 NestJS interceptor import를 유지할 때만 `DrizzleTransactionInterceptor`를 사용하세요. 새 요청 전체 boundary에는 `requestTransaction(...)`을 명시적으로 호출하세요.
 
 ```typescript
 import { Inject } from '@fluojs/core';

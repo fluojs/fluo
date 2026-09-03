@@ -3395,10 +3395,11 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   }
 }
 
-export function enforcePersistenceTransactionInterceptorCompatibility() {
+export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
-    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
-    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/module.ts', 'packages/drizzle/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
@@ -3413,22 +3414,73 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
     'docs/reference/package-surface.ko.md',
   ];
 
-  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
-    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
-    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+  for (const [interceptor, indexPath, modulePath, sourcePath] of compatibilityExports) {
+    const indexSource = readText(indexPath);
+    const moduleSource = readText(modulePath);
+    const source = readText(sourcePath);
 
     assert(
-      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      new RegExp(`@deprecated[\\s\\S]*?export class ${interceptor}\\b`).test(source),
       `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
     );
-    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+    assert(
+      /^export \* from '\.\/transaction\.js';$/m.test(indexSource),
+      `${indexPath} must root-export the deprecated transaction interceptor.`,
+    );
+
+    if (interceptor === 'DrizzleTransactionInterceptor') {
+      const exportSection = /const DRIZZLE_MODULE_EXPORTS = \[([\s\S]*?)\];/.exec(moduleSource)?.[1];
+      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(moduleSource)?.[1];
+
+      assert(
+        exportSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(exportSection),
+        `${modulePath} must register DrizzleTransactionInterceptor in DRIZZLE_MODULE_EXPORTS.`,
+      );
+      assert(
+        providerSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(providerSection),
+        `${modulePath} must register DrizzleTransactionInterceptor as a runtime provider.`,
+      );
+      assert(
+        /return this\.database\.requestTransaction\(\s*\(\) => next\.handle\(\),\s*context\.requestContext\.request\.signal\s*,?\s*\);/.test(source),
+        `${sourcePath} must delegate the request signal to requestTransaction(...).`,
+      );
+    } else {
+      assert(
+        new RegExp(`^\\s*${interceptor},\\s*$`, 'm').test(moduleSource),
+        `${modulePath} must register ${interceptor}.`,
+      );
+    }
 
     for (const contractPath of contractPaths) {
       assert(
-        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        readText(contractPath).includes(interceptor),
         `${contractPath} must keep ${interceptor} compatibility discoverable.`,
       );
     }
+  }
+
+  for (const guidePath of [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+  ]) {
+    const guide = readText(guidePath);
+    const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];
+    const drizzlePublicApiRow = /^\| `@fluojs\/drizzle` \|.*$/mu.exec(guide)?.[0];
+
+    assert(
+      requestTransactionsRow !== undefined &&
+        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+          .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('deprecated') &&
+        requestTransactionsRow.includes('1.x'),
+      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+    );
+    assert(
+      drizzlePublicApiRow !== undefined &&
+        drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
+        drizzlePublicApiRow.includes('deprecated'),
+      `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+    );
   }
 }
 
