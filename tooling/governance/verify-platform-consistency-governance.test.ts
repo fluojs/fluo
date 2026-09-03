@@ -36,6 +36,7 @@ import {
   enforceReactServerFunctionContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
+  mandatoryProductionImporterPackageNamesForLockfileChange,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
@@ -918,6 +919,107 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 });
 
 describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
+  it('selects only mandatory production importers when a lockfile-only resolution changes', () => {
+    const previousLockfile = [
+      'lockfileVersion: "9.0"',
+      '',
+      'importers:',
+      '',
+      '  packages/cli:',
+      '    dependencies:',
+      "      '@clack/prompts':",
+      '        specifier: 1.3.0',
+      '        version: 1.3.0',
+      '    devDependencies:',
+      '      vitest:',
+      '        specifier: 3.2.4',
+      '        version: 3.2.4',
+      '',
+      'packages:',
+      '',
+      "  '@clack/prompts@1.3.0':",
+      "    engines: {node: '>=20.0.0'}",
+      '',
+      'snapshots:',
+      '',
+    ].join('\n');
+    const lockfileOnlyMutation = previousLockfile
+      .replace('version: 1.3.0', 'version: 1.4.0')
+      .replace("'@clack/prompts@1.3.0'", "'@clack/prompts@1.4.0'")
+      .replace("engines: {node: '>=20.0.0'}", "engines: {node: '>=20.12.0'}");
+    const devDependencyOnlyMutation = previousLockfile.replace('version: 3.2.4', 'version: 3.2.5');
+    const readText = (relativePath: string): string => {
+      if (relativePath === 'pnpm-lock.yaml') {
+        return lockfileOnlyMutation;
+      }
+
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      if (relativePath !== 'packages/cli/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        dependencies: { '@clack/prompts': '1.3.0' },
+        engines: { node: '>=20.0.0' },
+      });
+    };
+
+    const affectedPackageNames = mandatoryProductionImporterPackageNamesForLockfileChange(
+      previousLockfile,
+      lockfileOnlyMutation,
+    );
+
+    expect(affectedPackageNames).toEqual(new Set(['@fluojs/cli']));
+    expect(mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfile, devDependencyOnlyMutation))
+      .toEqual(new Set());
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, affectedPackageNames))
+      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@clack\/prompts locked/u);
+  });
+
+  it('rejects a direct third-party production dependency that excludes an advertised Node version', () => {
+    const readText = (relativePath: string): string => {
+      if (relativePath === 'pnpm-lock.yaml') {
+        return [
+          'lockfileVersion: "9.0"',
+          '',
+          'importers:',
+          '',
+          '  packages/cli:',
+          '    dependencies:',
+          "      '@clack/prompts':",
+          '        specifier: 1.3.0',
+          '        version: 1.3.0',
+          '',
+          'packages:',
+          '',
+          "  '@clack/prompts@1.3.0':",
+          "    engines: {node: '>=20.12.0'}",
+          '',
+          'snapshots:',
+          '',
+        ].join('\n');
+      }
+
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      if (relativePath !== 'packages/cli/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        dependencies: { '@clack/prompts': '1.3.0' },
+        engines: { node: '>=20.0.0' },
+      });
+    };
+
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/cli'])))
+      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@clack\/prompts/u);
+  });
+
   function readTextWithEngineRanges(packageRange: string, dependencyRange: string): (relativePath: string) => string {
     return (relativePath) => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -4470,27 +4572,15 @@ describe('mandatory first-party dependency Node engine alignment', () => {
       )).not.toThrow();
   });
 
-  it('rejects a selected runtime closure when CLI over-advertises Node 20 support', () => {
-    // Given: the CLI regresses to an incompatible advertised Node floor.
-    const readText = (relativePath: string): string => {
-      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
-
-      if (relativePath !== 'packages/cli/package.json') {
-        return content;
-      }
-
-      const manifest = JSON.parse(content);
-      return JSON.stringify({
-        ...manifest,
-        engines: { ...manifest.engines, node: '>=20.0.0' },
-      });
-    };
-
-    // When: a runtime change selects public reverse dependents.
-    // Then: release governance rejects the incompatible CLI compatibility claim.
+  it('accepts the CLI Node 20 contract when runtime remains an optional peer', () => {
+    // Given: CLI resolves runtime only for inspect and does not require it for other commands.
+    // When: a runtime change selects its public reverse-dependent closure.
+    // Then: CLI's independent Node 20 contract remains valid.
     expect(() =>
-      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/runtime'])))
-      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/runtime']),
+      )).not.toThrow();
   });
 
   it('rejects a transitive runtime reverse dependent that over-advertises Node support', () => {

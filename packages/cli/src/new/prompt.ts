@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import * as clack from '@clack/prompts';
 import { CliPromptCancelledError } from '../prompt-cancel.js';
 import { resolveBootstrapSchema } from './resolver.js';
 import {
@@ -14,6 +13,10 @@ import type { BootstrapAnswers, PackageManager } from './types.js';
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
 const DEFAULT_INSTALL_DEPENDENCIES = true;
 const DEFAULT_INITIALIZE_GIT = false;
+const CLACK_MISSING_MESSAGE = [
+  'Interactive CLI commands require @clack/prompts, but it is not resolvable from this installation.',
+  'Install a version whose Node.js engine supports your current Node.js version and rerun the command.',
+].join('\n');
 
 type WritableStream = {
   write(message: string): unknown;
@@ -51,6 +54,7 @@ export interface BootstrapPrompter {
 export interface ResolveBootstrapAnswersOptions {
   completionMessage?: string | ((answers: BootstrapAnswers) => string);
   interactive?: boolean;
+  onInteractivePrompt?: () => void;
   prompt?: BootstrapPrompter;
   stdin?: ReadableStream;
   stdout?: WritableStream;
@@ -74,7 +78,20 @@ function hasOwnValue<Key extends keyof BootstrapAnswers>(
   return partial[key] !== undefined;
 }
 
-function createBootstrapPrompter(): BootstrapPrompter {
+async function loadClackPrompts(): Promise<typeof import('@clack/prompts')> {
+  try {
+    return await import('@clack/prompts');
+  } catch (error: unknown) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+    if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
+      throw new Error(CLACK_MISSING_MESSAGE);
+    }
+
+    throw error;
+  }
+}
+
+async function createBootstrapPrompter(clack: typeof import('@clack/prompts')): Promise<BootstrapPrompter> {
   return {
     async confirm(message: string, defaultValue: boolean): Promise<boolean> {
       const result = await clack.confirm({
@@ -92,7 +109,7 @@ function createBootstrapPrompter(): BootstrapPrompter {
     async select<T extends string>(message: string, choices: readonly PromptChoice<T>[], defaultValue?: T): Promise<T> {
       const result = await clack.select({
         message,
-        options: choices.map((choice) => ({ label: choice.label, value: choice.value })) as clack.Option<T>[],
+        options: choices.map((choice) => ({ label: choice.label, value: choice.value })) as import('@clack/prompts').Option<T>[],
         initialValue: defaultValue,
       }) as T | symbol;
 
@@ -391,18 +408,20 @@ export async function collectBootstrapAnswers(
     return resolveBootstrapAnswers(partial, cwd, userAgent);
   }
 
-  const prompt = options.prompt ?? createBootstrapPrompter();
   const isInteractiveShell = options.prompt === undefined;
+  options.onInteractivePrompt?.();
+  const clack = isInteractiveShell ? await loadClackPrompts() : undefined;
+  const prompt = options.prompt ?? await createBootstrapPrompter(clack ?? await loadClackPrompts());
 
   try {
     if (isInteractiveShell) {
-      clack.intro('fluo new');
+      clack?.intro('fluo new');
     }
 
     const answers = await resolveInteractiveBootstrapAnswers(partial, cwd, userAgent, prompt);
 
     if (isInteractiveShell) {
-      clack.outro(resolveCompletionMessage(options.completionMessage, answers));
+      clack?.outro(resolveCompletionMessage(options.completionMessage, answers));
     }
 
     return answers;

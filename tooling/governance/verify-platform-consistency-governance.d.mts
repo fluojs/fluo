@@ -23,6 +23,10 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
   readText?: (relativePath: string) => string,
   packageNames?: ReadonlySet<string>,
 ): void;
+export function mandatoryProductionImporterPackageNamesForLockfileChange(
+  previousLockfileText: string,
+  currentLockfileText: string,
+): Set<string>;
 export function enforceCliMigrationTransformDocs(
   readText?: (relativePath: string) => string,
 ): void;

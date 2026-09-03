@@ -1,7 +1,5 @@
 import { resolve } from 'node:path';
 
-import { log as clackLog, spinner as clackSpinner } from '@clack/prompts';
-
 import { installDependencies } from '../new/install.js';
 import { type BootstrapPrompter, collectBootstrapAnswers } from '../new/prompt.js';
 import { resolveBootstrapPlan } from '../new/resolver.js';
@@ -22,6 +20,8 @@ import { newUsage } from '../usage.js';
 type CliStream = {
   write(message: string): unknown;
 };
+
+type ClackSpinner = ReturnType<typeof import('@clack/prompts').spinner>;
 
 function shouldUseInteractiveShell(runtime: NewCommandRuntimeOptions): boolean {
   return runtime.prompt === undefined
@@ -359,9 +359,13 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       throw new Error(newUsage());
     }
 
+    let usedInteractivePrompt = false;
     const answers = await collectBootstrapAnswers(partialAnswers, runtime.cwd ?? process.cwd(), runtime.userAgent, {
       interactive: runtime.interactive,
       completionMessage: parsed.printPlan ? 'Scaffold plan resolved. No files were written.' : undefined,
+      onInteractivePrompt: () => {
+        usedInteractivePrompt = true;
+      },
       prompt: runtime.prompt,
       stdin: runtime.stdin,
       stdout,
@@ -385,16 +389,17 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       targetDirectory,
     };
 
-    const isInteractiveShell = shouldUseInteractiveShell(runtime);
-    let scaffoldSpinner: ReturnType<typeof clackSpinner> | undefined;
+    const isInteractiveShell = usedInteractivePrompt && shouldUseInteractiveShell(runtime);
+    const clack = isInteractiveShell ? await import('@clack/prompts') : undefined;
+    let scaffoldSpinner: ClackSpinner | undefined;
 
     if (!answers.installDependencies && !isInteractiveShell) {
       stdout.write('Skipping dependency installation.\n');
     }
 
     if (isInteractiveShell) {
-      scaffoldSpinner = clackSpinner();
-      scaffoldSpinner.start('Scaffolding project files');
+      scaffoldSpinner = clack?.spinner();
+      scaffoldSpinner?.start('Scaffolding project files');
     }
 
     await scaffoldBootstrapApp(options);
@@ -408,7 +413,10 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
         stdout.write(`Installing dependencies with ${answers.packageManager}...\n`);
         await installDependencies(targetDirectory, answers.packageManager, { stderr });
       } else {
-        const installSpinner = clackSpinner();
+        const installSpinner = clack?.spinner();
+        if (!installSpinner) {
+          throw new Error('Interactive dependency installation requires @clack/prompts.');
+        }
         installSpinner.start(`Installing dependencies with ${answers.packageManager}`);
 
         try {
@@ -429,7 +437,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
         }
       }
     } else if (isInteractiveShell) {
-      clackLog.step('Dependency installation skipped');
+      clack?.log.step('Dependency installation skipped');
     }
 
     const devCommand = answers.packageManager === 'npm'
