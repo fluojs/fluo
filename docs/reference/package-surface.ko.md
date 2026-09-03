@@ -171,9 +171,10 @@ Microservices transport 학습 경로는 패키지 계약 원천으로 다시 �
 
 ### Drizzle 이름 있는 client 소유권
 
-`@fluojs/drizzle`은 하나의 default 등록과 module-scoped 이름 있는 등록을 지원합니다. 각 이름 있는
-등록은 package-owned raw database, normalized options, disposal-hook, lifecycle-handle token을 노출하고,
-독립 ALS transaction context, shutdown drain, disposal, status snapshot을 소유합니다. default
+`@fluojs/drizzle`은 하나의 default 등록과 non-global 이름 있는 등록을 지원합니다. Consumer는
+일치하는 package-owned raw database, normalized options, disposal-hook, lifecycle-handle token을 export하는
+module을 import합니다. 각 이름 있는 등록은 독립 ALS transaction context, shutdown drain, disposal,
+status snapshot을 소유하며, 이름이 runtime container를 분리하지는 않습니다. Default
 `DrizzleDatabase` class token과 `DrizzleTransactionInterceptor`는 default-only compatibility surface로 유지되므로,
 multi-client service는 이름 있는 handle token을 주입하고 `@Transaction(...)`으로 명시적으로 선택합니다.
 

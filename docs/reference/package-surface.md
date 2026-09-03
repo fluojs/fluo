@@ -170,9 +170,10 @@ Microservices transport learning paths link back to the package contract source:
 
 ### Drizzle named-client ownership
 
-`@fluojs/drizzle` supports one default registration plus module-scoped named registrations. Every named
-registration exposes package-owned raw database, normalized options, disposal-hook, and lifecycle-handle
-tokens; it owns an independent ALS transaction context, shutdown drain, disposal, and status snapshot.
+`@fluojs/drizzle` supports one default registration plus non-global named registrations. Consumers import
+a module that exports the matching package-owned raw database, normalized options, disposal-hook, and lifecycle-handle
+tokens. Each named registration owns an independent ALS transaction context, shutdown drain, disposal, and status
+snapshot. Names do not create isolated runtime containers.
 The default `DrizzleDatabase` class token and `DrizzleTransactionInterceptor` remain default-only compatibility
 surfaces, so multi-client services inject a named handle token and select it explicitly with `@Transaction(...)`.
 

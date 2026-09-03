@@ -11,10 +11,20 @@ import {
 import { DrizzleTransactionInterceptor } from './transaction.js';
 import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
 
+/**
+ * Normalized runtime options consumed by lifecycle-aware Drizzle providers.
+ *
+ * @internal
+ */
 export type DrizzleRuntimeOptions = {
   strictTransactions: boolean;
 };
 
+/**
+ * Fully normalized module options stored behind an internal registration token.
+ *
+ * @internal
+ */
 export type ResolvedDrizzleModuleOptions<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase,
@@ -26,12 +36,26 @@ export type ResolvedDrizzleModuleOptions<
 const DRIZZLE_NORMALIZED_OPTIONS = Symbol('fluo.drizzle.normalized-options');
 const DRIZZLE_REGISTRATION_IDENTITIES = Symbol.for('fluo.drizzle.registration-identities');
 
+/**
+ * Returns the internal options token for a default or named registration.
+ *
+ * @internal
+ * @param name Optional normalized registration name.
+ * @returns The internal token that stores normalized module options.
+ */
 export function getNormalizedOptionsToken(name?: string): symbol {
   return name === undefined
     ? DRIZZLE_NORMALIZED_OPTIONS
     : Symbol.for(`fluo.drizzle.normalized-options:${name}`);
 }
 
+/**
+ * Returns the globally stable duplicate-registration guard token for a name.
+ *
+ * @internal
+ * @param name Normalized named-registration identity.
+ * @returns The guard token shared by registrations using the same name.
+ */
 export function getRegistrationGuardToken(name: string): symbol {
   return Symbol.for(`fluo.drizzle.registration-guard:${name}`);
 }
@@ -54,6 +78,14 @@ function createRuntimeOptionsProviderValue(strictTransactions: boolean): Drizzle
   return { strictTransactions };
 }
 
+/**
+ * Builds the provider graph for a default or named Drizzle registration.
+ *
+ * @internal
+ * @param normalizedOptionsProvider Provider that supplies normalized module options.
+ * @param name Optional normalized registration name.
+ * @returns Providers for the registration's raw handle, lifecycle wrapper, options, and disposal hook.
+ */
 export function createDrizzleRuntimeProviders<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase,
