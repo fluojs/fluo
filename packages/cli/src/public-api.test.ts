@@ -54,6 +54,10 @@ function runInspectCommand(
   return runInspectCommandImplementation(argv, runtime);
 }
 
+function loadRuntimeInspectionModule() {
+  return import('@fluojs/runtime');
+}
+
 function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new' | 'typegen'): void {
   const eagerCommandLink = new RegExp(
     String.raw`(?:^|\n)\s*(?:import\s+(?!type\b)[^;]+from|export\s+\{[^}]*\}\s+from)\s+['"]\./commands/${commandName}\.js['"]`,
@@ -203,6 +207,7 @@ describe('public CLI package API', () => {
 
     const exitCode = await runInspectCommand([inspectFixtureModulePath, '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -259,6 +264,7 @@ describe('public CLI package API', () => {
 
     const exitCode = await runInspectCommand([inspectApplicationImportFailureFixtureModulePath, '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
     });
@@ -283,6 +289,7 @@ describe('public CLI package API', () => {
     try {
       exitCode = await runInspectCommand([inspectBootstrapFailureFixtureModulePath, '--json'], {
         cwd: process.cwd(),
+        loadRuntimeInspectionModule,
         stderr: { write: (message) => stderrBuffer.push(message) },
         stdout: { write: (message) => stdoutBuffer.push(message) },
       });

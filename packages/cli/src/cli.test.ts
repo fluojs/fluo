@@ -46,6 +46,10 @@ function runCli(
   return runCliImplementation(argv, runtime);
 }
 
+function loadRuntimeInspectionModule() {
+  return import('@fluojs/runtime');
+}
+
 function createTtyBufferStream(buffer: string[]): { isTTY: true; write(message: string): void } {
   return {
     isTTY: true,
@@ -208,6 +212,7 @@ describe('CLI command runner', () => {
     // When: inspect renders a runtime snapshot through the documented format option.
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json'], {
       ci: true,
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
       updateCheck: false,
@@ -4113,6 +4118,7 @@ exit 7
     try {
       exitCode = await runCli(['inspect', inspectFixtureModulePath], {
         cwd: process.cwd(),
+        loadRuntimeInspectionModule,
         stderr: { write: (message) => stderrBuffer.push(message) },
         stdout: { write: (message) => stdoutBuffer.push(message) },
         updateCheck: false,
@@ -4197,6 +4203,7 @@ exit 7
     const stderrBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--export', 'AdminModule', '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4223,6 +4230,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectReactFixtureModulePath, '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4262,6 +4270,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4291,6 +4300,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--timing'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4322,6 +4332,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--report'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4366,6 +4377,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--report', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4422,6 +4434,7 @@ exit 7
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -4440,6 +4453,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -4458,6 +4472,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: false,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdin: { isTTY: false },
@@ -4480,6 +4495,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async (message) => {
@@ -4513,6 +4529,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async (message) => {
@@ -4542,6 +4559,7 @@ exit 7
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async () => {
@@ -4594,6 +4612,7 @@ exit 7
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4629,6 +4648,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
