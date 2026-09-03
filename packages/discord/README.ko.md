@@ -18,6 +18,7 @@ fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
   - [payload override를 사용하는 template rendering](#payload-override를-사용하는-template-rendering)
   - [명시적 fetch 주입을 사용하는 webhook-first 전달](#명시적-fetch-주입을-사용하는-webhook-first-전달)
+  - [구성 가능한 webhook 재시도 정책](#구성-가능한-webhook-재시도-정책)
   - [의도적인 제한 사항](#의도적인-제한-사항)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -244,9 +245,26 @@ await discord.send({
 
 bot 기반 REST 전달처럼 더 풍부한 API 연동이 필요하다면 export된 `DiscordTransport` 계약을 구현해 `DiscordModule.forRoot(...)` 또는 `forRootAsync(...)`에 주입하면 됩니다.
 
+### 구성 가능한 webhook 재시도 정책
+
+내장 webhook transport는 일시적인 `408`, `429`, `5xx` 응답과 transport-level exception을 재시도합니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base로 지수 backoff하는 기존 기본값을 유지합니다. workload의 latency 또는 허용 가능한 재시도 수준이 다르다면 transport 생성 시 하나의 정책을 구성하세요.
+
+```typescript
+const transport = createDiscordWebhookTransport({
+  fetch: runtime.fetch,
+  retry: {
+    attempts: 5,
+    baseDelayMs: 500,
+  },
+  webhookUrl: config.discordWebhookUrl,
+});
+```
+
+`attempts`에는 최초 요청이 포함되며 `1`부터 `10`까지의 정수여야 합니다. `baseDelayMs`는 `0`부터 `60000`까지의 정수여야 하고 이후 대기 시간은 이 값을 기준으로 두 배씩 증가합니다. 이 정책은 이 프로세스 안에서 한 번 보내는 bounded webhook 재시도에만 적용됩니다. 프로세스 재시작 뒤에도 notification을 보존해야 하거나, durable scheduling이 필요하거나, request latency와 독립적으로 delivery를 관리해야 한다면 webhook attempts를 늘리는 대신 queue-backed delivery를 사용하는 `@fluojs/notifications`를 사용하세요.
+
 Behavioral contract 메모:
 
-- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 응답뿐 아니라 transport-level exception도 bounded exponential backoff로 재시도한 뒤 호출자에게 에러를 노출합니다. 영구적인 upstream 응답은 재시도하지 않습니다.
+- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 응답뿐 아니라 transport-level exception도 구성한 bounded exponential backoff로 재시도한 뒤 호출자에게 에러를 노출합니다. 영구적인 upstream 응답은 재시도하지 않습니다.
 - Retry backoff는 `DiscordSendOptions.signal`을 관찰합니다. 이미 abort된 signal은 다음 backoff timer를 기다리지 않고 즉시 reject됩니다.
 - 성공한 webhook 응답은 `DiscordSendResult.response`로 노출됩니다. rate-limit 재시도가 끝내 실패한 경우를 포함해, 호출자에게 보이는 `DiscordTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 - 잘못되었거나 절대 URL이 아닌 `webhookUrl` 값은 전달 실패로 재시도하지 않고 즉시 `DiscordConfigurationError`로 거부됩니다.
@@ -288,6 +306,7 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `DiscordMessage`
 - `NormalizedDiscordMessage`
+- `DiscordWebhookRetryOptions`
 - `DiscordWebhookTransportOptions`
 - `DiscordFetchLike`
 - `DiscordFetchResponse`
