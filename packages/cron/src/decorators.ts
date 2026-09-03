@@ -30,7 +30,10 @@ function defineStandardSchedulingMetadata(
   const current = bag[schedulingMetadataSymbol] as
     | Map<string | symbol, CronTaskMetadata | IntervalTaskMetadata | TimeoutTaskMetadata>
     | undefined;
-  const map = current ?? new Map<string | symbol, CronTaskMetadata | IntervalTaskMetadata | TimeoutTaskMetadata>();
+  const map =
+    Object.hasOwn(bag, schedulingMetadataSymbol) && current !== undefined
+      ? current
+      : new Map<string | symbol, CronTaskMetadata | IntervalTaskMetadata | TimeoutTaskMetadata>(current);
   map.set(propertyKey, {
     ...taskMetadata,
     options: { ...taskMetadata.options },
