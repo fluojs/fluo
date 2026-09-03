@@ -113,7 +113,7 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   private lifecycleState: EmailServiceLifecycleState = 'created';
   private bootstrapPromise: Promise<void> | undefined;
   private shutdownPromise: Promise<void> | undefined;
-  private ownedTransportCleanupPromise: Promise<void> | undefined;
+  private readonly ownedTransportCleanupPromises = new WeakMap<EmailTransport, Promise<void>>();
   private readonly inFlightOperations = new Set<Promise<unknown>>();
   private resolvedTransport: EmailTransport | undefined;
   private transportPromise: Promise<EmailTransport> | undefined;
@@ -383,10 +383,17 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
       return Promise.resolve();
     }
 
-    const close = transport.close;
-    this.ownedTransportCleanupPromise ??= Promise.resolve().then(() => close.call(transport));
+    const existingCleanup = this.ownedTransportCleanupPromises.get(transport);
 
-    return this.ownedTransportCleanupPromise;
+    if (existingCleanup) {
+      return existingCleanup;
+    }
+
+    const close = transport.close;
+    const cleanup = Promise.resolve().then(() => close.call(transport));
+    this.ownedTransportCleanupPromises.set(transport, cleanup);
+
+    return cleanup;
   }
 
   private async handleTransportInitializationFailure(
