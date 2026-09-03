@@ -21,6 +21,7 @@ interface GrpcServerLike {
 }
 
 interface GrpcWritableStreamLike {
+  cancel?(): void;
   destroy?(err?: Error): void;
   end(): void;
   write(data: unknown): boolean;
@@ -50,6 +51,7 @@ interface GrpcDuplexStreamLike extends GrpcReadableStreamLike {
 interface GrpcReadableAsyncIterableOptions {
   readonly abortErrorMessage?: string | undefined;
   readonly externalAbortCleanup?: (() => void) | undefined;
+  readonly localFailure?: { readonly error: Error | undefined } | undefined;
   readonly signal?: AbortSignal | undefined;
 }
 
@@ -836,6 +838,8 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     let ended = false;
     let cleanupAbortListener: (() => void) | undefined;
     let settled = false;
+    let writerError: Error | undefined;
+    let rejectResult: ((error: Error) => void) | undefined;
 
     const cleanup = () => {
       cleanupAbortListener?.();
@@ -848,6 +852,8 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         reject(new Error('gRPC client stream aborted before dispatch.'));
         return;
       }
+
+      rejectResult = reject;
 
       const settle = (complete: () => void) => {
         if (settled) {
@@ -866,6 +872,13 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         runtime.client,
         metadata,
         (error: { code?: number; message?: string } | null, response: unknown) => {
+          // A local writer.error() failure is the authoritative cause: the transport-level
+          // status that follows an aborted call would otherwise mask it.
+          if (writerError) {
+            settle(() => reject(writerError));
+            return;
+          }
+
           if (error) {
             if (signal?.aborted) {
               settle(() => reject(new Error('gRPC client stream aborted.')));
@@ -917,11 +930,20 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         }
       },
       error(err: Error): void {
-        void err;
+        if (ended) {
+          return;
+        }
 
-        if (!ended) {
-          ended = true;
-          callStream?.end();
+        ended = true;
+        writerError = err;
+        abortClientStreamCall(callStream, err);
+
+        // Runtimes without cancel()/destroy() cannot abort the call, so settle locally
+        // instead of leaving the caller with a silently successful stream.
+        if (!settled) {
+          settled = true;
+          cleanup();
+          rejectResult?.(err);
         }
       },
     };
@@ -951,6 +973,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
 
     let writerEnded = false;
     let cleanupAbortListener: (() => void) | undefined;
+    const localFailure: { error: Error | undefined } = { error: undefined };
 
     if (signal) {
       if (signal.aborted) {
@@ -972,6 +995,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
 
     const reader = grpcReadableToAsyncIterable(duplexStream, {
       externalAbortCleanup: cleanupAbortListener,
+      localFailure,
       signal,
     });
 
@@ -988,12 +1012,15 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         }
       },
       error(err: Error): void {
-        void err;
-
-        if (!writerEnded) {
-          writerEnded = true;
-          duplexStream.end();
+        if (writerEnded) {
+          return;
         }
+
+        writerEnded = true;
+        // Recorded before cancelation so the reader reports the caller's cause rather than
+        // the CANCELLED status the aborted call raises.
+        localFailure.error = err;
+        abortDuplexStreamCall(duplexStream, err);
       },
     };
 
@@ -1347,9 +1374,8 @@ function grpcReadableToAsyncIterable(
   });
 
   stream.on('error', (err: Error) => {
-    const streamError = signal?.aborted
-      ? new Error(abortErrorMessage)
-      : err;
+    const streamError = options.localFailure?.error
+      ?? (signal?.aborted ? new Error(abortErrorMessage) : err);
 
     if (!finish()) {
       return;
@@ -1406,6 +1432,46 @@ function grpcReadableToAsyncIterable(
       return iterator;
     },
   };
+}
+
+/**
+ * Aborts an outbound client-streaming call so the peer observes a failure instead of a clean EOF.
+ *
+ * `destroy(err)` is preferred because it carries the cause; `cancel()` is the grpc-js fallback.
+ */
+function abortClientStreamCall(stream: GrpcWritableStreamLike | undefined, err: Error): void {
+  if (!stream) {
+    return;
+  }
+
+  if (stream.destroy) {
+    stream.destroy(err);
+    return;
+  }
+
+  if (stream.cancel) {
+    stream.cancel();
+    return;
+  }
+
+  stream.end();
+}
+
+/**
+ * Aborts an outbound bidirectional-streaming call so the peer observes a failure instead of a clean EOF.
+ */
+function abortDuplexStreamCall(stream: GrpcDuplexStreamLike, err: Error): void {
+  if (stream.destroy) {
+    stream.destroy(err);
+    return;
+  }
+
+  if (stream.cancel) {
+    stream.cancel();
+    return;
+  }
+
+  stream.end();
 }
 
 function parseGrpcPattern(pattern: string): ParsedGrpcPattern {
