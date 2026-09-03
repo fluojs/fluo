@@ -47,7 +47,7 @@ Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare 
 ## Quick Start
 
 ```ts
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -55,6 +55,12 @@ import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      global: true,
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -74,6 +80,8 @@ import { Pool } from 'pg';
 })
 export class AppModule {}
 ```
+
+`forRootAsync(...)` accepts only `inject` and `useFactory` for its factory dependencies; it does not discover NestJS `imports`, `useClass`, `useExisting`, or decorator metadata. Its generated async module has no `imports`, so a token exported only by a sibling module or by a parent module's import is not visible to the options provider. Register factory dependencies through a global module instead. The `ConfigModule.forRoot(...)` registration above exports `ConfigService` globally by default; `global: true` is shown explicitly because that global export makes `ConfigService` visible to the generated async Drizzle module. For another token, make the module that owns and exports it global before bootstrap rather than relying on the importing application's `providers` or imports.
 
 ## Common Patterns
 
@@ -172,13 +180,16 @@ Async work created inside a transaction can inherit its ALS context even when it
 Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
 
 ```ts
-import { Controller, Post } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { CheckoutService } from './checkout.service';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 export class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,
@@ -186,10 +197,10 @@ export class CheckoutController {
   ) {}
 
   @Post()
-  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+  create(input: CheckoutInput, context: RequestContext) {
     return this.db.requestTransaction(
       () => this.checkout.createOrder(input),
-      requestSignal,
+      context.request.signal,
     );
   }
 }

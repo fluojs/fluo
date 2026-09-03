@@ -47,7 +47,7 @@ Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 
 ## 빠른 시작
 
 ```ts
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -55,6 +55,12 @@ import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      global: true,
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -74,6 +80,8 @@ import { Pool } from 'pg';
 })
 export class AppModule {}
 ```
+
+`forRootAsync(...)`는 factory 의존성으로 `inject`와 `useFactory`만 받으며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata를 탐색하지 않습니다. 생성되는 async module에는 `imports`가 없으므로 sibling module이 export하거나 parent module이 import한 token은 option provider에 보이지 않습니다. 대신 factory 의존성을 global module로 등록하세요. 위의 `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export하며, 생성된 async Drizzle module이 `ConfigService`를 볼 수 있는 전역 export임을 명확히 하기 위해 `global: true`를 명시했습니다. 다른 token도 importing application의 `providers`나 imports에 의존하지 말고, 해당 token을 소유하고 export하는 module을 bootstrap 전에 global로 만드세요.
 
 ## 주요 패턴
 
@@ -172,13 +180,16 @@ Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, ro
 비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ```ts
-import { Controller, Post } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { CheckoutService } from './checkout.service';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 export class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,
@@ -186,10 +197,10 @@ export class CheckoutController {
   ) {}
 
   @Post()
-  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+  create(input: CheckoutInput, context: RequestContext) {
     return this.db.requestTransaction(
       () => this.checkout.createOrder(input),
-      requestSignal,
+      context.request.signal,
     );
   }
 }
