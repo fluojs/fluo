@@ -1,4 +1,22 @@
 # fluo — AI Context Document
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone` maps to `timezone`; `CronTaskOptions.timezone` is a string. |
+| `wait-for-completion` | `protect: true` prevents overlapping Croner invocations, and `CronLifecycleService` rejects a tick while its task is running. |
+| `unsupported-options` | NestJS scheduler options other than the documented fluo options are unsupported. |
+| `absolute-time` | `@Cron` accepts a cron-expression string only; `Date` and `DateTime` overloads are unsupported. |
+| `named-interval-timeout` | `@Interval(ms, options)` and `@Timeout(ms, options)` accept milliseconds and optional named task options. |
+| `async-configuration` | `CronModule.forRoot(...)` is synchronous; resolve async configuration before calling it. |
+| `global-visibility` | `CronModule.forRoot(...)` is local by default; pass `global: true` explicitly when needed. |
+| `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
@@ -343,6 +361,10 @@ transform tokens (`injectable` and `testing`) in `transforms` and per-file
 | `docs/guides/` | AI-targeted anti-pattern and decision-reference documents. |
 | `docs/getting-started/` | Bootstrap and setup facts for common starting paths. |
 | `docs/reference/` | Lookup-oriented tables, glossary terms, package matrices, and support snapshots. |
+
+## Cron Scheduling Migration
+
+The scheduling migration contract spans [`packages/cron/README.md`](../packages/cron/README.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`docs/contracts/nestjs-parity-gaps.md`](./contracts/nestjs-parity-gaps.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md). `@fluojs/cron` supports `timezone`, not NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`; absolute-time `@Cron(Date)` / `@Cron(DateTime)` plans stay application-owned, as do disabled/category-specific schedules and threshold/recovery policy. Named interval/timeout decorators become `(ms, { name })`; resolve async schedule configuration before synchronous `CronModule.forRoot(...)`, use `global: true` explicitly when necessary, and do not expect NestJS category switches.
 
 ## Studio Runtime Bridge
 

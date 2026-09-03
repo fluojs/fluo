@@ -1,4 +1,22 @@
 # fluo — AI Context Document
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone`은 `timezone`으로 매핑되며 `CronTaskOptions.timezone`은 문자열입니다. |
+| `wait-for-completion` | `protect: true`가 Croner 호출의 중복을 막고 `CronLifecycleService`는 작업 실행 중 tick을 거부합니다. |
+| `unsupported-options` | 문서화된 fluo 옵션 외 NestJS scheduler 옵션은 지원되지 않습니다. |
+| `absolute-time` | `@Cron`은 cron-expression 문자열만 받고 `Date`와 `DateTime` overload는 지원되지 않습니다. |
+| `named-interval-timeout` | `@Interval(ms, options)`와 `@Timeout(ms, options)`는 millisecond와 선택적 named task option을 받습니다. |
+| `async-configuration` | `CronModule.forRoot(...)`는 동기식이며 async configuration은 호출 전에 해석합니다. |
+| `global-visibility` | `CronModule.forRoot(...)`는 기본적으로 local이고 필요할 때 `global: true`를 명시합니다. |
+| `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
@@ -343,6 +361,10 @@ input alias가 이 report contract를 바꾸지 않습니다.
 | `docs/guides/` | AI 대상 안티패턴 및 의사결정 참조 문서를 제공한다. |
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
+
+## Cron Scheduling Migration
+
+Scheduling migration contract는 [`packages/cron/README.ko.md`](../packages/cron/README.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/contracts/nestjs-parity-gaps.ko.md`](./contracts/nestjs-parity-gaps.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에 걸쳐 있습니다. `@fluojs/cron`은 `timezone`을 지원하지만 NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 지원하지 않습니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` plan과 disabled/category-specific schedule, threshold/recovery policy는 application-owned로 유지합니다. Named interval/timeout decorator는 `(ms, { name })`로 바꾸고, async schedule configuration은 동기 `CronModule.forRoot(...)` 전에 해석하며, 필요하면 `global: true`를 명시하고 NestJS category switch를 기대하지 마세요.
 
 ## Studio Runtime Bridge
 

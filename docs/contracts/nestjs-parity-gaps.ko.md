@@ -1,6 +1,24 @@
 # NestJS Parity Map
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./nestjs-parity-gaps.md"><kbd>English</kbd></a></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone`은 `timezone`으로 매핑되며 `CronTaskOptions.timezone`은 문자열입니다. |
+| `wait-for-completion` | `protect: true`가 Croner 호출의 중복을 막고 `CronLifecycleService`는 작업 실행 중 tick을 거부합니다. |
+| `unsupported-options` | 문서화된 fluo 옵션 외 NestJS scheduler 옵션은 지원되지 않습니다. |
+| `absolute-time` | `@Cron`은 cron-expression 문자열만 받고 `Date`와 `DateTime` overload는 지원되지 않습니다. |
+| `named-interval-timeout` | `@Interval(ms, options)`와 `@Timeout(ms, options)`는 millisecond와 선택적 named task option을 받습니다. |
+| `async-configuration` | `CronModule.forRoot(...)`는 동기식이며 async configuration은 호출 전에 해석합니다. |
+| `global-visibility` | `CronModule.forRoot(...)`는 기본적으로 local이고 필요할 때 `global: true`를 명시합니다. |
+| `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 
 이 문서는 현재 fluo 범위를 일반적인 NestJS 기대치와 비교해 정리합니다.
 
@@ -45,6 +63,11 @@
 | NestJS Swagger controller scanning, reflection-driven response schema, implicit documentation UI setup | 명시적 `OpenApiModule` 등록으로 의도적으로 대체합니다. Application은 `sources` 및/또는 `descriptors`를 나열하고, `ui: true`로 `/docs`를 opt-in하며, `@ApiResponse(200, { schema })` 또는 `@ApiResponse(200, { type: UserDto })`으로 response content를 선언합니다. Handler 반환값에서는 response shape를 추론하지 않습니다. | `packages/openapi/README.md`, `docs/architecture/openapi.md`, `docs/getting-started/migrate-from-nestjs.md` |
 | `@nestjs/cache-manager` `imports`/`useClass`/`useExisting` async registration and interceptor subclassing as migration defaults | 동기 `CacheModule.forRoot(...)`, injected-factory만 지원하는 `CacheModule.forRootAsync({ inject, useFactory, global? })`, 명시적 `CacheService` injection, 그리고 `httpKeyStrategy`, `@CacheKey(...)`, exported metadata helper를 통한 문서화된 key seam으로 의도적으로 대체합니다. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 | `SchedulerRegistry` / `CronJob` live handle mutation과 private scheduled method | Public instance method decorator와 descriptor 기반 `SCHEDULING_REGISTRY` control로 의도적으로 대체합니다. `get`과 `getAll`은 mutable scheduler-engine handle을 노출하지 않고 task를 설명합니다. | `packages/cron/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch12-cron.md` |
+| `@nestjs/schedule` option parity, absolute-time `@Cron` input, named interval/timeout overload, async/global/category module registration | 의도적으로 일대일 대응하지 않습니다. fluo는 `timezone`은 받지만 `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 받지 않습니다. `@Cron`은 cron-expression string만 받으므로 NestJS `Date` / Luxon `DateTime` schedule은 startup-relative `@Timeout` rewrite가 아니라 application-owned absolute-time plan으로 남습니다. `@Interval(name, ms)` / `@Timeout(name, ms)`는 `(ms, { name })`으로 바꿉니다. Async configuration은 동기 `CronModule.forRoot(...)` 전에 해석하고, 필요하면 `global: true`를 명시하며, `cronJobs` / `intervals` / `timeouts` category 대안은 application composition 또는 dynamic registration이 소유합니다. | `packages/cron/src/types.ts`, `packages/cron/src/decorators.ts`, `packages/cron/src/module.ts`, `packages/cron/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch12-cron.md` |
+
+## Cron Overlap Admission Boundary
+
+NestJS `waitForCompletion`에 대응하는 fluo option은 없으며 overlap은 설정 대상이 아닙니다. `CronLifecycleService`는 cron task를 항상 scheduler-level no-overlap protection과 함께 등록하고 in-process running guard도 유지하므로, 같은 task instance가 아직 실행 중일 때 도착한 tick은 queue되지 않고 건너뜁니다. 따라서 NestJS에서 `waitForCompletion: true`였던 task는 마이그레이션할 때 이 option을 생략하고, `waitForCompletion: false` 또는 NestJS overlapping 기본값에 의존하던 task는 overlap opt-out을 기대하지 말고 concurrent work를 application-owned queue나 worker로 옮겨야 합니다. 이 guard는 한 process의 한 task instance만 보호하므로, application instance 사이에서 같은 task를 배제하려면 여전히 Redis distributed locking이 필요합니다.
 
 ## Queue 기반 이메일 알림 batch
 
