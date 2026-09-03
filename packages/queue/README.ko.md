@@ -265,7 +265,8 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 ### 핵심 구성 요소
 - `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
 - `QueueModule.forRoot(options)`: 애플리케이션 수준 큐 등록을 구성합니다.
-- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job, options?)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
+- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job, options?)`, `enqueueMany(entries)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
+- `Queue`: `QUEUE`와 `getQueueToken(scope?)`로 노출되는 공개 producer facade이며, `QueueLifecycleService`와 같은 `enqueue(...)` 및 `enqueueMany(...)` 계약을 제공합니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
 - `getQueueToken(scope?)`: Queue facade token helper입니다. `scope`를 생략하면 기본 `QUEUE` token을 반환하고, 비어 있지 않은 scope는 해당 scoped registration의 facade token을 반환합니다.
@@ -304,6 +305,14 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 `QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약을 사용합니다. Queue가 `started`에 도달하고 탐색된 모든 BullMQ worker processor가 시작된 뒤에만 readiness를 `ready`로 보고합니다. 이 조건이 유지되는 동안 pending dead-letter write가 있어도 readiness는 `ready`를 유지하지만, pending count가 0으로 돌아올 때까지 health는 degraded입니다. Processor가 아직 pending인 `started` resource와 `starting`은 degraded readiness, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy, worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, `5_000ms` dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
 
 singleton `@QueueWorker()` provider/controller만 등록됩니다. request/transient worker는 discovery 중 건너뜁니다.
+
+### Atomic producer batch
+
+`Queue.enqueueMany(entries)`와 `QueueLifecycleService.enqueueMany(entries)`는 순서가 있는 `QueueEnqueueManyEntry` 값을 받습니다. 각 entry는 하나의 job instance와 `deduplicationKey`를 포함할 수 있는 entry별 `QueueEnqueueOptions`를 제공합니다.
+
+모든 entry는 같은 하나의 BullMQ queue에 등록된 worker로 해석되어야 합니다. Queue는 BullMQ를 호출하기 전에 batch 전체를 검증하므로 worker가 없거나 다른 queue로 해석되는 job이 있으면 어떤 entry도 persist하지 않고 reject합니다. 유효한 batch는 한 번의 atomic BullMQ `addBulk(...)` 호출로 persist되며, 반환 job ID의 순서는 입력 순서와 일치합니다.
+
+각 entry는 Queue가 backing BullMQ job ID로 변환할 때 자신의 `deduplicationKey`를 보존합니다. 기존 `enqueue(job, options?)` 동작은 바뀌지 않으며 호환되는 single-job producer API로 계속 제공됩니다.
 
 ## 관련 패키지
 

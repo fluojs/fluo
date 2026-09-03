@@ -226,7 +226,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 export class AppModule {}
 ```
 
-큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 내장 `EmailNotificationsQueueWorker`는 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되는 고정 기본값으로 이를 소비합니다. 기본값은 3회 시도, 1초부터 시작하는 exponential backoff, concurrency 5, 초당 50건 rate limiter, `fluo.email.notification` job name입니다. 큐에 쌓인 이메일 작업이 실제로 소비되도록 같은 애플리케이션 모듈의 provider에 `EmailNotificationsQueueWorker`를 등록해야 합니다. 내장 worker 대신 커스텀 queue adapter 또는 worker를 사용한다면 동일한 retry, backoff, concurrency, rate-limit, job-name 계약이 필요할 때 이 기본값을 명시적으로 미러링하세요.
+큐 어댑터는 parallel single-job enqueue 대신 Queue의 atomic `enqueueMany(...)` seam에 순서가 있는 notification batch를 위임합니다. 모든 `QueueEnqueueManyEntry`는 하나의 `fluo.email.notification` queue로 해석되어야 하며, Queue는 전체 batch를 검증한 뒤 한 번의 `addBulk(...)` persist를 수행하고 각 notification identity를 `deduplicationKey`로 보존하며 입력 순서대로 backing job ID를 반환합니다. 내장 `EmailNotificationsQueueWorker`는 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되는 고정 기본값으로 이 job을 소비합니다. 기본값은 3회 시도, 1초부터 시작하는 exponential backoff, concurrency 5, 초당 50건 rate limiter, `fluo.email.notification` job name입니다. 큐에 쌓인 이메일 작업이 실제로 소비되도록 같은 애플리케이션 모듈의 provider에 `EmailNotificationsQueueWorker`를 등록해야 합니다. 내장 worker 대신 커스텀 queue adapter 또는 worker를 사용한다면 동일한 retry, backoff, concurrency, rate-limit, job-name 계약이 필요할 때 이 기본값을 명시적으로 미러링하세요.
 
 내장 adapter는 결정적인 notification queue identity를 Queue의 `deduplicationKey`로 전달합니다. Queue가 이를 BullMQ에 유효한 job id로 매핑하므로, 같은 notification dispatch를 반복해도 두 번째 email job을 만들지 않고 해당 backing queue identity를 재사용합니다.
 

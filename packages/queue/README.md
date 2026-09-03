@@ -265,7 +265,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job, options?)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
+- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job, options?)`, `enqueueMany(entries)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
+- `Queue`: Public producer facade exposed through `QUEUE` and `getQueueToken(scope?)`; it has the same `enqueue(...)` and `enqueueMany(...)` contract as `QueueLifecycleService`.
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
@@ -304,6 +305,14 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 `QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract as `createQueuePlatformStatusSnapshot(...)`. It reports readiness as `ready` only after Queue reaches `started` and every discovered BullMQ worker processor has started. While those conditions remain true, pending dead-letter writes keep readiness `ready` but degrade health until the pending count returns to zero. `started` resources with pending processors report degraded readiness, `starting` reports degraded readiness, `stopping` reports not-ready/degraded, `stopped` reports not-ready/unhealthy, and worker-start failures report not-ready/unhealthy with `workerStartFailures` and `lastWorkerStartFailure` details. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the `5_000ms` dead-letter drain timeout, and `workerShutdownTimeoutMs`.
 
 Only singleton `@QueueWorker()` providers/controllers are registered. Request/transient workers are skipped during discovery.
+
+### Atomic producer batches
+
+`Queue.enqueueMany(entries)` and `QueueLifecycleService.enqueueMany(entries)` accept ordered `QueueEnqueueManyEntry` values. Each entry supplies one job instance and optional per-entry `QueueEnqueueOptions`, including `deduplicationKey`.
+
+Every entry must resolve to a registered worker on the same single BullMQ queue. Queue validates the full batch before it calls BullMQ, so a missing worker or a job that resolves to another queue rejects without persisting any entry. A valid batch is persisted with one atomic BullMQ `addBulk(...)` call, and its returned job IDs stay aligned with the input order.
+
+Each entry preserves its own `deduplicationKey` when Queue maps it to the backing BullMQ job ID. Existing `enqueue(job, options?)` behavior is unchanged and remains the compatible single-job producer API.
 
 ## Related Packages
 

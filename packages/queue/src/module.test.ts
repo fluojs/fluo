@@ -826,7 +826,6 @@ describe('@fluojs/queue', () => {
 
     try {
       const queue = await app.container.resolve<Queue>(QUEUE);
-      await waitForApplicationQueueWorkers(app);
 
       // When
       const result = await queue.enqueueMany([
@@ -879,7 +878,6 @@ describe('@fluojs/queue', () => {
 
     try {
       const queue = await app.container.resolve<Queue>(QUEUE);
-      await waitForApplicationQueueWorkers(app);
 
       // When / Then
       await expect(
@@ -891,6 +889,61 @@ describe('@fluojs/queue', () => {
       expect(bullmqState.queues.get('SendReceiptJob')).toMatchObject({
         addBulkCalls: 0,
         addCalls: 0,
+        jobs: [],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects valid batch jobs targeting distinct queues before calling addBulk or persisting either job', async () => {
+    // Given
+    class FirstReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    class SecondReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(FirstReceiptJob, { jobName: 'first-receipt-job' })
+    class FirstReceiptWorker {
+      async handle(_job: FirstReceiptJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondReceiptJob, { jobName: 'second-receipt-job' })
+    class SecondReceiptWorker {
+      async handle(_job: SecondReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [FirstReceiptWorker, SecondReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+
+      // When / Then
+      await expect(
+        queue.enqueueMany([
+          { job: new FirstReceiptJob('receipt-first') },
+          { job: new SecondReceiptJob('receipt-second') },
+        ]),
+      ).rejects.toThrow('Queue batch jobs must target one registered worker queue.');
+      expect(bullmqState.queues.get('first-receipt-job')).toMatchObject({
+        addBulkCalls: 0,
+        jobs: [],
+      });
+      expect(bullmqState.queues.get('second-receipt-job')).toMatchObject({
+        addBulkCalls: 0,
         jobs: [],
       });
     } finally {
