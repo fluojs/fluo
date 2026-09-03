@@ -1,4 +1,5 @@
-import type { MicroserviceTransport, TransportHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 interface RabbitMqConsumerLike {
   consume(queue: string, handler: (message: string) => Promise<void> | void): Promise<void>;
@@ -40,6 +41,7 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
+  private logger: MicroserviceTransportLogger | undefined;
   private readonly eventQueue: string;
   private readonly messageQueue: string;
   private readonly pending = new Map<string, {
@@ -50,6 +52,23 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   private readonly requestTimeoutMs: number;
   private readonly responseQueue: string;
   private readonly subscribedQueues = new Set<string>();
+
+  private logEventHandlerFailure(error: unknown): void {
+    try {
+      logTransportEventHandlerFailure(this.logger, 'RabbitMqMicroserviceTransport', error);
+    } catch {
+      // A failing logger must not mask the event failure the broker still has to observe.
+    }
+  }
+
+  /**
+   * Registers the runtime logger that receives inbound event handler failures.
+   *
+   * @param logger Logger used to report event handler failures.
+   */
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Creates a RabbitMQ transport with explicit consumer and publisher collaborators.
@@ -335,11 +354,17 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
     }
 
     if (message.kind === 'event') {
-      await this.handler({
-        kind: 'event',
-        pattern: message.pattern,
-        payload: message.payload,
-      });
+      try {
+        await this.handler({
+          kind: 'event',
+          pattern: message.pattern,
+          payload: message.payload,
+        });
+      } catch (error) {
+        this.logEventHandlerFailure(error);
+        throw error;
+      }
+
       return;
     }
 
