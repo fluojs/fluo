@@ -1407,7 +1407,7 @@ const governedEmailMigrationDocuments = new Set([
 ]);
 
 export function enforceEmailMigrationCompanions(changedFiles) {
-
+  // Public Email contracts stay migration-safe only when every companion changes together.
   assert(
     emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
     'Email NestJS migration documentation must include every governed Email companion.',

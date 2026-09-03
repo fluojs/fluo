@@ -2492,7 +2492,9 @@ describe('enforceContractCompanionUpdates', () => {
       'tooling/governance/verify-platform-consistency-governance.test.ts',
     ];
 
-    expect(() => enforceEmailMigrationCompanions(completeCompanions.filter((path) => path !== missingCompanion))).toThrow();
+    expect(() => enforceEmailMigrationCompanions(completeCompanions.filter((path) => path !== missingCompanion))).toThrow(
+      /Email NestJS migration documentation/u,
+    );
   });
 
   it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {

@@ -403,6 +403,10 @@ NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 �
 
 전체 안티패턴 목록 경로: `docs/guides/anti-patterns.md`.
 
+## Email queue batch 계약
+
+`Queue`와 `QueueLifecycleService`는 호환되는 `enqueueMany(entries)` producer API를 제공합니다. 순서가 있는 `QueueEnqueueManyEntry` 값은 하나의 등록된 BullMQ queue를 대상으로 해야 하며, Queue는 한 번의 atomic `addBulk(...)` persist 전에 검증하고 입력 순서대로 ID를 반환하며 각 entry의 `deduplicationKey`를 보존합니다. `@fluojs/email/queue` notification adapter는 parallel `enqueue(...)` 호출 대신 이 seam에 bulk 전달을 위임하고, single-job `enqueue(job, options?)` 계약은 바뀌지 않습니다.
+
 ## Notifications 상태 계약
 
 `@fluojs/notifications`는 platform status에서 구성된 publisher infrastructure와 활성화된 lifecycle publication을 구분합니다.

@@ -1148,6 +1148,10 @@ const files = assertRequestContext().request.files ?? [];
 
 Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`, `mimetype`, `buffer`, and `size`. Keep storage, validation, and application policy outside adapter-specific upload interceptors.
 
+## Queue-backed email notification batches
+
+Replace parallel NestJS Bull producer calls with `Queue.enqueueMany(entries)` or `QueueLifecycleService.enqueueMany(entries)`. Each `QueueEnqueueManyEntry` retains its own `deduplicationKey`, but every entry must resolve to the same registered BullMQ queue. Queue validates the entire batch before one atomic `addBulk(...)` persistence call and returns backing job IDs in input order; existing `enqueue(job, options?)` calls remain compatible. The built-in `@fluojs/email/queue` notification adapter uses this atomic batch seam instead of parallel single-job enqueues.
+
 ## Event-bus migration limits
 
 `@OnEvent(...)` supports public instance methods only. `EventBusModule.forRoot()` is global by default; pass `{ global: false }` to keep providers module-local. Handler and transport failures are logged and isolated, so `publish()` resolves after attempts settle (or after shutdown-tracked background work is scheduled with `waitForHandlers: false`). The package requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`.

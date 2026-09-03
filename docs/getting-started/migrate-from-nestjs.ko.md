@@ -1145,6 +1145,10 @@ const files = assertRequestContext().request.files ?? [];
 
 각 file은 `fieldname`, `originalname`, `mimetype`, `buffer`, `size`를 가진 portable `FrameworkRequestFile`입니다. storage, validation, application policy는 adapter-specific upload interceptor 밖에 두세요.
 
+## Queue 기반 이메일 알림 batch
+
+병렬 NestJS Bull producer 호출은 `Queue.enqueueMany(entries)` 또는 `QueueLifecycleService.enqueueMany(entries)`로 바꾸세요. 각 `QueueEnqueueManyEntry`는 자신의 `deduplicationKey`를 유지하지만, 모든 entry는 같은 등록된 BullMQ queue로 해석되어야 합니다. Queue는 전체 batch를 검증한 뒤 한 번의 atomic `addBulk(...)` persist를 수행하고 입력 순서대로 backing job ID를 반환합니다. 기존 `enqueue(job, options?)` 호출은 호환되며, 내장 `@fluojs/email/queue` notification adapter는 parallel single-job enqueue 대신 이 atomic batch seam을 사용합니다.
+
 ## Event-bus migration limits
 
 `@OnEvent(...)`는 public instance 메서드만 지원합니다. `EventBusModule.forRoot()`는 기본 global이며 provider를 모듈-local로 유지하려면 `{ global: false }`를 전달하세요. Handler와 transport 실패는 log되고 격리되므로 `publish()`는 attempt가 settle된 뒤 resolve하며(`waitForHandlers: false`이면 shutdown-tracked background work를 scheduling한 뒤 resolve), 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다.

@@ -398,6 +398,10 @@ NestJS Mongoose migration and transaction semantics are documented in [Transacti
 
 Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
 
+## Email queue batch contract
+
+`Queue` and `QueueLifecycleService` expose compatible `enqueueMany(entries)` producer APIs. Ordered `QueueEnqueueManyEntry` values must target one registered BullMQ queue; Queue validates before one atomic `addBulk(...)` persistence call, returns IDs in input order, and preserves each entry's `deduplicationKey`. The `@fluojs/email/queue` notification adapter delegates bulk delivery to this seam rather than parallel `enqueue(...)` calls, while the single-job `enqueue(job, options?)` contract is unchanged.
+
 ## Notifications Queue Cancellation
 
 `NotificationsQueueContext.signal` carries the caller-owned `AbortSignal` for every notification queue handoff. A pre-aborted signal rejects immediately before the single enqueue, native `enqueueMany`, or each sequential fallback enqueue starts. Once an adapter receives the same live signal, the adapter owns its listener registration, cleanup, and queue-specific mid-flight cancellation policy. Bulk dispatch uses native `enqueueMany` when the adapter supplies it and otherwise falls back to sequential `enqueue`; after an abort, the fallback performs no remaining queue handoffs.
