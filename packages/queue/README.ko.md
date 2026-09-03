@@ -275,8 +275,9 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 
 
 ### 타입
-- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job, options?)` 및 read-only `inspectDeadLetters(jobName, options?)` facade입니다.
+- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job, options?)`, atomic `enqueueMany(entries)`, read-only `inspectDeadLetters(jobName, options?)` facade입니다.
 - `QueueEnqueueOptions`: idempotent enqueue 시도를 위해 Queue가 BullMQ에 유효한 job id로 매핑하는 호출자 소유 `deduplicationKey`를 포함하는 선택적 producer control입니다.
+- `QueueEnqueueManyEntry`: job과 선택적 `QueueEnqueueOptions`를 포함하는 ordered batch entry입니다.
 - `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection 설정(`limit`) 타입입니다.
 - `QueueDeadLetterInspectionResult`: 최신순의 유효 record와 inspection window의 `malformedRecordCount`를 제공하는 결과 타입입니다.
 - `QueueDeadLetterRecord`: `unknown` 애플리케이션 payload를 포함하는 typed dead-letter metadata입니다.

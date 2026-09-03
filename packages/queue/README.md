@@ -275,8 +275,9 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 
 ### Types
-- `Queue`: Application facade with `enqueue(job, options?)` and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `Queue`: Application facade with `enqueue(job, options?)`, atomic `enqueueMany(entries)`, and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
 - `QueueEnqueueOptions`: Optional producer controls, including a caller-owned `deduplicationKey` that Queue maps to a BullMQ-safe job id for idempotent enqueue attempts.
+- `QueueEnqueueManyEntry`: One ordered batch entry containing a job and its optional `QueueEnqueueOptions`.
 - `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection settings (`limit`).
 - `QueueDeadLetterInspectionResult`: Newest-first valid records plus `malformedRecordCount` for the inspected window.
 - `QueueDeadLetterRecord`: Typed dead-letter metadata with an `unknown` application payload.
