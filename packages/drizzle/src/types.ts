@@ -36,7 +36,8 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
    * Optional identity for an additional Drizzle registration.
    *
    * @remarks
-   * Named registrations are module-scoped and must be injected through the matching token helper.
+   * Named registrations are non-global. Consumers must import a module that exports the matching token;
+   * names do not create isolated runtime containers.
    */
   name?: string;
   /**

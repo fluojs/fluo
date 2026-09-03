@@ -194,7 +194,7 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
     ],
     [
       'module providers registration',
-      'packages/drizzle/src/module.ts',
+      'packages/drizzle/src/registration-providers.ts',
       (source: string) => source.replace(
         '        DrizzleTransactionInterceptor,\n      ]\n      : [',
         '      ]\n      : [',
@@ -202,7 +202,7 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
     ],
     [
       'module exports registration',
-      'packages/drizzle/src/module.ts',
+      'packages/drizzle/src/named-registration.ts',
       (source: string) => source.replace(
         '  DrizzleTransactionInterceptor,\n  DRIZZLE_HANDLE_PROVIDER,',
         '  DRIZZLE_HANDLE_PROVIDER,',
