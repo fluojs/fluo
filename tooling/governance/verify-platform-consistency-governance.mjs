@@ -1288,6 +1288,8 @@ const nestMigrationGuidePaths = [
 const emailMigrationDocumentPaths = [
   'packages/email/README.md',
   'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
 ];
 const emailMigrationEnforcementTool =
   'tooling/governance/email-nestjs-migration-docs.mjs';

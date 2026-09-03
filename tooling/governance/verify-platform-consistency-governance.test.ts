@@ -18,7 +18,7 @@ import {
   collectNodeGlobalBufferViolations,
   enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
-  enforceContractCompanionUpdates,
+  enforceContractCompanionUpdates as enforceContractCompanionUpdatesFromSources,
   enforceEmailMigrationCompanions,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
@@ -64,6 +64,71 @@ const fastifyRawContextCompanions = [
   'packages/platform-fastify/README.ko.md',
   'packages/platform-fastify/src/adapter.test.ts',
 ];
+const unchangedEmailMigrationGuideSnapshots = {
+  'packages/email/README.md': {
+    base: readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8'),
+  },
+  'packages/email/README.ko.md': {
+    base: readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8'),
+  },
+  'docs/getting-started/migrate-from-nestjs.md': {
+    base: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
+  },
+  'docs/getting-started/migrate-from-nestjs.ko.md': {
+    base: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
+  },
+};
+const emailMigrationSectionFixture = [
+  '## Email migration',
+  '',
+  '<!-- fluo-email-nestjs-migration: async=injected-factory->supported;delivery=direct->pre-rendered,template->rendered -->',
+  '',
+  'Use `EmailService.send(...)` for direct delivery.',
+].join('\n');
+
+function withUnchangedEmailMigrationSections(
+  migrationGuideSnapshots: Readonly<Record<string, { base: string; head: string }>>,
+): Readonly<Record<string, { base: string; head: string }>> {
+  const snapshots: Record<string, { base: string; head: string }> = {
+    ...unchangedEmailMigrationGuideSnapshots,
+    ...migrationGuideSnapshots,
+  };
+
+  for (const path of [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ]) {
+    const snapshot = snapshots[path];
+    if (
+      typeof snapshot.base === 'string'
+      && typeof snapshot.head === 'string'
+      && !snapshot.base.includes('fluo-email-nestjs-migration:')
+      && !snapshot.head.includes('fluo-email-nestjs-migration:')
+    ) {
+      snapshots[path] = {
+        base: `${snapshot.base}\n${emailMigrationSectionFixture}`,
+        head: `${snapshot.head}\n${emailMigrationSectionFixture}`,
+      };
+    }
+  }
+
+  return snapshots;
+}
+
+function enforceContractCompanionUpdates(
+  changedFiles: string[],
+  migrationGuideSnapshots: Readonly<Record<string, { base: string; head: string }>> =
+    unchangedEmailMigrationGuideSnapshots,
+): void {
+  enforceContractCompanionUpdatesFromSources(
+    changedFiles,
+    withUnchangedEmailMigrationSections(migrationGuideSnapshots),
+  );
+}
 
 describe('static asset contract companions', () => {
   it('requires focused portable, Node, and real-listener regressions', () => {
@@ -141,7 +206,7 @@ function requireWorkflowStepIndex(workflow: string, stepName: string): number {
 }
 
 async function loadGovernanceInternals() {
-  return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
+  const governance = (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
     changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
     enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
     enforceContractCompanionUpdates: (
@@ -156,6 +221,20 @@ async function loadGovernanceInternals() {
     enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
+  };
+
+  return {
+    ...governance,
+    enforceContractCompanionUpdates(
+      changedFiles: string[],
+      migrationGuideSnapshots: Readonly<Record<string, { base: string; head: string }>> =
+        unchangedEmailMigrationGuideSnapshots,
+    ): void {
+      governance.enforceContractCompanionUpdates(
+        changedFiles,
+        withUnchangedEmailMigrationSections(migrationGuideSnapshots),
+      );
+    },
   };
 }
 
@@ -2462,7 +2541,7 @@ describe('enforceContractCompanionUpdates', () => {
     '',
     '## Installation',
     '',
-    'Install the package with your preferred package manager.',
+    'Unrelated prose.',
     '',
     '## NestJS migration',
     '',
@@ -2474,17 +2553,58 @@ describe('enforceContractCompanionUpdates', () => {
     '',
     'See the API reference.',
   ].join('\n');
+  const emailMigrationGuideWithMigrationSection = [
+    '# Migration map',
+    '',
+    '## General migration',
+    '',
+    'Unrelated prose.',
+    '',
+    '## Email migration',
+    '',
+    emailMigrationMarker,
+    '',
+    'Use `EmailService.send(...)` for direct delivery.',
+    '',
+    '## Reference',
+    '',
+    'See the API reference.',
+  ].join('\n');
+  const emailMigrationDocuments = {
+    'packages/email/README.md': emailReadmeWithMigrationSection,
+    'packages/email/README.ko.md': emailReadmeWithMigrationSection,
+    'docs/getting-started/migrate-from-nestjs.md': emailMigrationGuideWithMigrationSection,
+    'docs/getting-started/migrate-from-nestjs.ko.md': emailMigrationGuideWithMigrationSection,
+  };
+  type EmailMigrationDocumentPath = keyof typeof emailMigrationDocuments;
+  const emailMigrationDocumentPaths: EmailMigrationDocumentPath[] = [
+    'packages/email/README.md',
+    'packages/email/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ];
   const emailMigrationSnapshots = (
-    englishHead: string,
-    koreanHead = emailReadmeWithMigrationSection,
+    heads: Readonly<Partial<Record<EmailMigrationDocumentPath, string>>> = {},
   ) => ({
     'packages/email/README.md': {
       base: emailReadmeWithMigrationSection,
-      head: englishHead,
+      head: heads['packages/email/README.md'] ?? emailReadmeWithMigrationSection,
     },
     'packages/email/README.ko.md': {
       base: emailReadmeWithMigrationSection,
-      head: koreanHead,
+      head: heads['packages/email/README.ko.md'] ?? emailReadmeWithMigrationSection,
+    },
+    'docs/getting-started/migrate-from-nestjs.md': {
+      base: emailMigrationGuideWithMigrationSection,
+      head:
+        heads['docs/getting-started/migrate-from-nestjs.md'] ??
+        emailMigrationGuideWithMigrationSection,
+    },
+    'docs/getting-started/migrate-from-nestjs.ko.md': {
+      base: emailMigrationGuideWithMigrationSection,
+      head:
+        heads['docs/getting-started/migrate-from-nestjs.ko.md'] ??
+        emailMigrationGuideWithMigrationSection,
     },
   });
   const completeEmailMigrationCompanions = [
@@ -2501,59 +2621,81 @@ describe('enforceContractCompanionUpdates', () => {
     'tooling/governance/verify-platform-consistency-governance.mjs',
     'tooling/governance/verify-platform-consistency-governance.test.ts',
   ];
+  const changedFilesForUnrelatedEmailDocumentEdit = (path: EmailMigrationDocumentPath) =>
+    path.startsWith('docs/')
+      ? [
+          path,
+          'docs/CONTEXT.md',
+          'docs/CONTEXT.ko.md',
+          'tooling/governance/verify-platform-consistency-governance.test.ts',
+        ]
+      : [path];
 
-  it('does not require Email migration companions for an unrelated README section edit', async () => {
-    // Given: only the Email README installation section changes.
+  it.each(emailMigrationDocumentPaths)(
+    'does not require Email migration companions for an unrelated %s section edit',
+    async (path) => {
+    // Given: only an unrelated section in one governed Email document changes.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-    const snapshots = emailMigrationSnapshots(
-      emailReadmeWithMigrationSection.replace(
-        'Install the package with your preferred package manager.',
+    const snapshots = emailMigrationSnapshots({
+      [path]: emailMigrationDocuments[path].replace(
+        'Unrelated prose.',
         'Install Nodemailer before configuring the Email module.',
       ),
-    );
+    });
 
     // When / Then: the unchanged marker-bounded migration section does not trigger migration companions.
     expect(() =>
-      enforceContractCompanionUpdates(['packages/email/README.md'], snapshots),
+      enforceContractCompanionUpdates(changedFilesForUnrelatedEmailDocumentEdit(path), snapshots),
     ).not.toThrow();
-  });
+    },
+  );
 
   it.each([
     [
-      'prose',
-      emailReadmeWithMigrationSection.replace(
+      'README',
+      'packages/email/README.md',
+    ],
+    [
+      'migration guide',
+      'docs/getting-started/migrate-from-nestjs.md',
+    ],
+  ] as const)('requires all Email migration companions when the %s marker section changes', async (_label, path) => {
+    // Given: a marker-bounded migration section mutation with only one document declared.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = emailMigrationSnapshots({
+      [path]: emailMigrationDocuments[path].replace(
         'Use `EmailService.send(...)` for direct delivery.',
         'Use `EmailService.send(...)` for templated delivery.',
       ),
-    ],
-    [
-      'marker semantics',
-      emailReadmeWithMigrationSection.replace(
-        'delivery=direct->pre-rendered,template->rendered',
-        'delivery=direct->rendered,template->pre-rendered',
-      ),
-    ],
-  ])('requires all Email migration companions when marker-section %s changes', async (_label, head) => {
-    // Given: a marker-bounded migration section mutation with only the Email README declared.
-    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-    const snapshots = emailMigrationSnapshots(head);
+    });
 
     // When / Then: every migration companion remains mandatory, and the complete set is accepted.
     expect(() =>
-      enforceContractCompanionUpdates(['packages/email/README.md'], snapshots),
+      enforceContractCompanionUpdates([path], snapshots),
     ).toThrow(/Email NestJS migration documentation/u);
     expect(() =>
       enforceContractCompanionUpdates(completeEmailMigrationCompanions, snapshots),
     ).not.toThrow();
   });
 
-  it('fails closed for an Email README edit without snapshots', async () => {
-    // Given: a governed Email README path without Git content snapshots.
-    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+  it.each(emailMigrationDocumentPaths)('fails closed for a governed %s edit without snapshots', async (path) => {
+    // Given: a governed Email document path without Git content snapshots.
 
     // When / Then: governance cannot prove the migration section is unchanged.
     expect(() =>
-      enforceContractCompanionUpdates(['packages/email/README.md']),
+      enforceContractCompanionUpdatesFromSources([path]),
+    ).toThrow(/Email NestJS migration documentation/u);
+  });
+
+  it.each(emailMigrationDocumentPaths)('fails closed for malformed %s snapshots', async (path) => {
+    // Given: a changed governed Email document with a malformed sibling snapshot.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = emailMigrationSnapshots();
+    Reflect.deleteProperty(snapshots[path], 'head');
+
+    // When / Then: governance cannot infer a section-safe edit from malformed evidence.
+    expect(() =>
+      enforceContractCompanionUpdates([path], snapshots),
     ).toThrow(/Email NestJS migration documentation/u);
   });
 
@@ -2561,7 +2703,7 @@ describe('enforceContractCompanionUpdates', () => {
     // Given: a semantic change to the Email migration validator.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const snapshots = {
-      ...emailMigrationSnapshots(emailReadmeWithMigrationSection),
+      ...emailMigrationSnapshots(),
       'tooling/governance/email-nestjs-migration-docs.mjs': {
         base: 'function enforceEmailNestjsMigrationDocs() {}',
         head: 'function enforceEmailNestjsMigrationDocs() { return undefined; }',
@@ -2578,7 +2720,7 @@ describe('enforceContractCompanionUpdates', () => {
     // Given: the validator exports its existing parser without changing its implementation.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const snapshots = {
-      ...emailMigrationSnapshots(emailReadmeWithMigrationSection),
+      ...emailMigrationSnapshots(),
       'tooling/governance/email-nestjs-migration-docs.mjs': {
         base: [
           "const emailMigrationMarkerPrefix = '<!-- fluo-email-nestjs-migration:';",
