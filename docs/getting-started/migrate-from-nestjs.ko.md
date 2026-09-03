@@ -1,6 +1,14 @@
 # NestJS → fluo Migration Map
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./migrate-from-nestjs.md"><kbd>English</kbd></a></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 

@@ -1,5 +1,13 @@
 <!-- packages: @fluojs/cron, @fluojs/redis -->
 <!-- project-state: FluoShop v2.1.0 -->
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
 
 # Chapter 12. Scheduling and Distributed Locks
 

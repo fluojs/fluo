@@ -1,6 +1,14 @@
 # NestJS Parity Map
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./nestjs-parity-gaps.md"><kbd>English</kbd></a></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
 
 이 문서는 현재 fluo 범위를 일반적인 NestJS 기대치와 비교해 정리합니다.
 

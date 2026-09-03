@@ -1,6 +1,14 @@
 # @fluojs/cron
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
 
 fluo 애플리케이션을 위한 데코레이터 기반 스케줄링 패키지입니다. 앱 라이프사이클에 맞춰 시작/종료를 관리하고, Redis 기반 분산 락(Distributed Locking) 기능을 제공합니다.
 
