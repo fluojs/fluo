@@ -218,6 +218,25 @@ describe('runtime matrix docs contract', () => {
     }
   });
 
+  it('keeps Drizzle runtime support aligned to its mandatory runtime dependency range', () => {
+    const runtimeNodeEngine = JSON.parse(read('packages/runtime/package.json')).engines.node;
+
+    expect(JSON.parse(read('packages/drizzle/package.json'))).toMatchObject({
+      engines: { node: runtimeNodeEngine },
+    });
+
+    for (const path of [
+      'packages/drizzle/README.md',
+      'packages/drizzle/README.ko.md',
+      'docs/reference/package-chooser.md',
+      'docs/reference/package-chooser.ko.md',
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+    ]) {
+      expect(read(path)).toContain(runtimeNodeEngine);
+    }
+  });
+
   it('keeps the openapi runtime boundary aligned to its mandatory runtime dependency range', () => {
     const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 
