@@ -664,7 +664,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   }
 
   private discoverHandlerDescriptors(): HandlerDescriptor[] {
-    const seen = new WeakMap<Function, Map<MetadataPropertyKey, Set<string>>>();
+    const seen = new WeakMap<Function, Map<Token, Map<MetadataPropertyKey, Set<string>>>>();
     const descriptors: HandlerDescriptor[] = [];
 
     for (const candidate of this.discoveryCandidates()) {
@@ -673,7 +673,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       for (const entry of entries) {
         const dedupeKey = this.dedupeKey(entry.metadata.kind, entry.metadata.pattern);
 
-        if (this.isDuplicate(seen, candidate.targetType, entry.propertyKey, dedupeKey)) {
+        if (this.isDuplicate(seen, candidate.targetType, candidate.token, entry.propertyKey, dedupeKey)) {
           this.logger.warn(
             `Duplicate microservice handler registration for ${dedupeKey} on ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)} was ignored.`,
             'MicroserviceLifecycleService',
@@ -706,16 +706,24 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   }
 
   private isDuplicate(
-    seen: WeakMap<Function, Map<MetadataPropertyKey, Set<string>>>,
+    seen: WeakMap<Function, Map<Token, Map<MetadataPropertyKey, Set<string>>>>,
     targetType: Function,
+    token: Token,
     methodKey: MetadataPropertyKey,
     dedupeKey: string,
   ): boolean {
-    let methodsByKey = seen.get(targetType);
+    let methodsByToken = seen.get(targetType);
+
+    if (!methodsByToken) {
+      methodsByToken = new Map<Token, Map<MetadataPropertyKey, Set<string>>>();
+      seen.set(targetType, methodsByToken);
+    }
+
+    let methodsByKey = methodsByToken.get(token);
 
     if (!methodsByKey) {
       methodsByKey = new Map<MetadataPropertyKey, Set<string>>();
-      seen.set(targetType, methodsByKey);
+      methodsByToken.set(token, methodsByKey);
     }
 
     let seenPatterns = methodsByKey.get(methodKey);
