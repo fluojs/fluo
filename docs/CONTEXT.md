@@ -13,8 +13,9 @@ Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 
 ## Drizzle named-client contract
 
-`@fluojs/drizzle` named registrations are module-scoped and each owns independent transaction ALS,
-shutdown drain, disposal, and status. Use the package-owned named token helpers and an explicit
+`@fluojs/drizzle` named registrations are non-global and each owns independent transaction ALS,
+shutdown drain, disposal, and status. Consumers import a module that exports the matching package-owned
+named tokens; names do not create isolated runtime containers. Use those helpers and an explicit
 `@Transaction((self) => self.client)` accessor; see [Transaction Context](./architecture/transactions.md)
 and the [Drizzle README](../packages/drizzle/README.md).
 

@@ -298,7 +298,7 @@ Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such
 - `forRootAsync(...)` accepts DI-aware Drizzle options whose factory returns the database/dispose/transaction settings; pass `global` on the top-level async registration when the providers should be visible globally.
 - `forRootAsync(...)` resolves options once per application container. Reusing the same module definition across tests or multi-app processes creates isolated database/dispose results for each container instead of sharing a memoized factory result.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
-- Additional named registrations are module-scoped and inject through the matching `getDrizzle*Token(name)` helper. They own independent ALS transaction context, drain, disposal, and status; select them explicitly with `@Transaction((self) => self.analytics)`.
+- Additional named registrations are non-global. Consumers import a module that exports the matching `getDrizzle*Token(name)` and inject through that token; names do not create isolated runtime containers. Each registration owns independent ALS transaction context, drain, disposal, and status; select it explicitly with `@Transaction((self) => self.analytics)`.
 - `database` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
 
 ## Related Packages

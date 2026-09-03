@@ -298,7 +298,7 @@ provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `forRootAsync(...)`는 database/dispose/transaction 설정을 factory에서 반환하는 DI-aware Drizzle 옵션을 받습니다. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요.
 - `forRootAsync(...)`는 애플리케이션 container마다 옵션을 한 번 resolve합니다. 테스트나 multi-app process에서 같은 module definition을 재사용해도 memoized factory result를 공유하지 않고 각 container가 독립적인 database/dispose 결과를 받습니다.
 - `strictTransactions: true`를 설정하면 transaction 지원이 없는 database handle에서 예외를 던집니다.
-- 추가 이름 있는 등록은 module-scoped이며 해당 `getDrizzle*Token(name)` helper로 주입합니다. 독립 ALS transaction context, drain, disposal, status를 소유하고 `@Transaction((self) => self.analytics)`로 명시적으로 선택합니다.
+- 추가 이름 있는 등록은 non-global입니다. Consumer는 일치하는 `getDrizzle*Token(name)`을 export하는 module을 import하고 해당 token으로 주입하며, 이름이 runtime container를 분리하지는 않습니다. 각 등록은 독립 ALS transaction context, drain, disposal, status를 소유하고 `@Transaction((self) => self.analytics)`로 명시적으로 선택합니다.
 - sync 및 async 등록 모두에서 `database`는 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
 
 ## 관련 패키지

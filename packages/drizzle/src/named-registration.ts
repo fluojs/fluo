@@ -104,6 +104,13 @@ function getDrizzleModuleExports(name: string | undefined) {
     ];
 }
 
+/**
+ * Builds a synchronous Drizzle runtime module definition.
+ *
+ * @internal
+ * @param options Static Drizzle registration options.
+ * @returns A module definition for the default or named registration.
+ */
 export function buildDrizzleModule<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
@@ -123,6 +130,13 @@ export function buildDrizzleModule<
   });
 }
 
+/**
+ * Builds an asynchronous Drizzle runtime module definition.
+ *
+ * @internal
+ * @param options Async Drizzle registration options.
+ * @returns A module definition for the default or named registration.
+ */
 export function buildDrizzleModuleAsync<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,

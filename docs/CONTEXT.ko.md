@@ -13,8 +13,9 @@ cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 
 
 ## Drizzle 이름 있는 client 계약
 
-`@fluojs/drizzle` 이름 있는 등록은 module-scoped이며 각각 독립 transaction ALS, shutdown drain,
-disposal, status를 소유합니다. package-owned 이름 있는 token helper와 명시적
+`@fluojs/drizzle` 이름 있는 등록은 non-global이며 각각 독립 transaction ALS, shutdown drain,
+disposal, status를 소유합니다. Consumer는 일치하는 package-owned 이름 있는 token을 export하는
+module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. 해당 helper와 명시적
 `@Transaction((self) => self.client)` accessor를 사용하세요. [Transaction Context](./architecture/transactions.ko.md)와
 [Drizzle README](../packages/drizzle/README.ko.md)를 참고하세요.
 
