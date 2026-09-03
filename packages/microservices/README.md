@@ -119,7 +119,7 @@ Keep application registration and programmatic calls on the root facade: registe
 | --- | --- |
 | `await microservice.send(...)` | Settles when the transport returns the correlated remote response, or rejects for a remote error, abort, timeout, or shutdown. |
 | `await microservice.emit(...)` | Settles when the transport's publish operation accepts/completes the outbound event. It does not wait for remote event handlers or add delivery/redelivery guarantees beyond the collaborator's publish contract. |
-| `await microservice.close()` | Waits for transport-owned listener/subscription teardown and pending-request cleanup. For caller-owned NATS, Kafka, and RabbitMQ collaborators, it does not close or disconnect the supplied broker resources. |
+| `await microservice.close()` | Repeated calls share one shutdown result. It waits for already-admitted inbound handlers to settle before transport-owned listener/subscription teardown and pending-request cleanup. For caller-owned NATS, Kafka, and RabbitMQ collaborators, it does not close or disconnect the supplied broker resources. |
 
 Kafka and RabbitMQ keep each inbound consumer callback pending until the matched handler and any request response publication settle. That consumer-side completion boundary lets a broker adapter decide whether to acknowledge or retry delivery, but it does not turn the producer-side `emit()` promise into an end-to-end handler completion signal. During application shutdown, close the `Microservice` facade first so it can detach transport callbacks, then close or drain caller-owned clients, producers, consumers, publishers, channels, and connections from the application bootstrap layer.
 

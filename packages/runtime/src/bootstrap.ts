@@ -1034,9 +1034,15 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
     }
 
     this.closeStarted = true;
-    this.runtime.markShutdownStarted?.();
+    let resolveClose: () => void = () => undefined;
+    let rejectClose: (reason?: unknown) => void = () => undefined;
+    this.closingPromise = new Promise<void>((resolve, reject) => {
+      resolveClose = resolve;
+      rejectClose = reject;
+    });
+    void (async () => {
+      this.runtime.markShutdownStarted?.();
 
-    this.closingPromise = (async () => {
       if (this.listenPromise) {
         try {
           await this.listenPromise;
@@ -1067,14 +1073,9 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
 
       this.closed = true;
       this.microserviceState = 'closed';
-    })();
+    })().then(resolveClose, rejectClose);
 
-    try {
-      await this.closingPromise;
-    } catch (error) {
-      this.closingPromise = undefined;
-      throw error;
-    }
+    await this.closingPromise;
   }
 
   private assertTransportIngressOpen(operation: 'emit' | 'send'): void {
