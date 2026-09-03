@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { narrowsStableNodeEngineRange } from './node-engine-range.mjs';
+import { narrowsStableNodeEngineRange, nodeEngineRangesIntersect } from './node-engine-range.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -400,7 +400,7 @@ function collectMissingNodeEngineMigrationNotes(narrowings, intents) {
       (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
     );
 
-    return majorIntent && !hasConsumerNodeEngineMigrationGuidance(majorIntent.body)
+    return majorIntent && !hasConsumerNodeEngineMigrationGuidance(majorIntent.body, narrowing.nextEngineRange)
       ? [{ ...narrowing, filePath: majorIntent.filePath }]
       : [];
   });
@@ -411,7 +411,7 @@ function migrationGuidanceSection(body) {
   return match?.[1].trim() ?? '';
 }
 
-function hasConsumerNodeEngineMigrationGuidance(body) {
+function hasConsumerNodeEngineMigrationGuidance(body, nextEngineRange) {
   const guidance = migrationGuidanceSection(body);
   const nodeVersionOrRange = String.raw`(?:v?\d+(?:\.\d+){0,2}|(?:>=|>|~|\^)\s*\d+(?:\.\d+){0,2}(?:\s*<\s*\d+(?:\.\d+){0,2})?)`;
   const removesNodeSupport = new RegExp(String.raw`\bNode(?:\.js)?\s+${nodeVersionOrRange}\s+(?:support\s+)?(?:is\s+)?(?:removed|dropped|unsupported|no\s+longer\s+supported)\b`, 'iu');
@@ -420,42 +420,7 @@ function hasConsumerNodeEngineMigrationGuidance(body) {
 
   return removesNodeSupport.test(guidance) &&
     replacement !== null &&
-    isSatisfiableNodeReplacementRange(replacement[1]);
-}
-
-function parseNodeVersionParts(version) {
-  return version
-    .trim()
-    .replace(/^v/iu, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10));
-}
-
-function compareNodeVersionParts(left, right) {
-  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
-    const leftPart = left[index] ?? 0;
-    const rightPart = right[index] ?? 0;
-
-    if (leftPart !== rightPart) {
-      return leftPart < rightPart ? -1 : 1;
-    }
-  }
-
-  return 0;
-}
-
-function isSatisfiableNodeReplacementRange(expression) {
-  const lowerBound = /(?:>=|>)\s*(v?\d+(?:\.\d+){0,2})/u.exec(expression);
-  const upperBound = /<\s*(v?\d+(?:\.\d+){0,2})/u.exec(expression);
-
-  if (!lowerBound || !upperBound) {
-    return true;
-  }
-
-  return compareNodeVersionParts(
-    parseNodeVersionParts(lowerBound[1]),
-    parseNodeVersionParts(upperBound[1]),
-  ) < 0;
+    nodeEngineRangesIntersect(replacement[1], nextEngineRange);
 }
 
 function hasGeneratedMajorMigrationEvidence(section) {
@@ -724,6 +689,38 @@ function collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(ver
   });
 }
 
+function hasMajorReleaseIntent(intents, packageName) {
+  return intents.some((intent) => intent.packageName === packageName && intent.bump === 'major');
+}
+
+function hasMajorVersionDelta(versionDeltas, packageName) {
+  return versionDeltas.some((delta) => delta.packageName === packageName && delta.bump === 'major');
+}
+
+function collectCronRuntimeMajorCompatibilityBreaks(intents, versionDeltas) {
+  const runtimePackageName = '@fluojs/runtime';
+  const cronPackageName = '@fluojs/cron';
+  const breaks = [];
+
+  if (hasMajorReleaseIntent(intents, runtimePackageName) && !hasMajorReleaseIntent(intents, cronPackageName)) {
+    breaks.push({
+      cronPackageName,
+      runtimePackageName,
+      source: 'changeset',
+    });
+  }
+
+  if (hasMajorVersionDelta(versionDeltas, runtimePackageName) && !hasMajorVersionDelta(versionDeltas, cronPackageName)) {
+    breaks.push({
+      cronPackageName,
+      runtimePackageName,
+      source: 'package version delta',
+    });
+  }
+
+  return breaks;
+}
+
 export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const baseRef = options.baseRef;
   const changesetDirectory = options.changesetDirectory ?? defaultChangesetDirectory;
@@ -772,6 +769,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ...collectPatchStudioRouteKindInputContractNarrowingsFromChangesets(intents),
     ...collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(versionDeltas, dependencies),
   ];
+  const cronRuntimeMajorCompatibilityBreaks = collectCronRuntimeMajorCompatibilityBreaks(intents, versionDeltas);
   const allStableNodeEngineRangeNarrowings = typeof dependencies.collectStableNodeEngineRangeNarrowings === 'function'
     ? dependencies.collectStableNodeEngineRangeNarrowings()
     : collectStableNodeEngineRangeNarrowings(baseRef, dependencies);
@@ -794,6 +792,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     invalidConsumedGeneratedMajorVersionDeltas.length > 0 ||
     patchCliFeatureDowngrades.length > 0 ||
     patchStudioRouteKindInputContractNarrowings.length > 0 ||
+    cronRuntimeMajorCompatibilityBreaks.length > 0 ||
     stableNodeEngineRangeNarrowings.length > 0 ||
     missingNodeEngineMigrationNotes.length > 0
   ) {
@@ -845,6 +844,11 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
             })
             .join('\n  - ')}`
         : '',
+      cronRuntimeMajorCompatibilityBreaks.length > 0
+        ? `Cron releases must be major when mandatory Runtime releases major:\n  - ${cronRuntimeMajorCompatibilityBreaks
+            .map((breakage) => `${breakage.cronPackageName} with ${breakage.runtimePackageName} (${breakage.source})`)
+            .join('\n  - ')}`
+        : '',
       stableNodeEngineRangeNarrowings.length > 0
         ? `stable Node engine range narrowings without a major changeset:\n  - ${stableNodeEngineRangeNarrowings
             .map(
@@ -875,6 +879,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     checkedIntents: intents,
     checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,
     checkedPatchStudioRouteKindInputContractNarrowings: patchStudioRouteKindInputContractNarrowings,
+    checkedCronRuntimeMajorCompatibilityBreaks: cronRuntimeMajorCompatibilityBreaks,
     checkedStableNodeEngineRangeNarrowings: stableNodeEngineRangeNarrowings,
     checkedVersionDeltas: versionDeltas,
     lane,

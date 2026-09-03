@@ -17,6 +17,7 @@ This chapter explains how to introduce time-based work into FluoShop and how to 
 - Completion of Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10, and Chapter 11.
 - A basic understanding of Redis coordination and time-based job execution.
 - Operational intuition for multi-instance deployment and graceful shutdown.
+- Node.js `>=20.19.3 <21 || >=22.2.0 <27`; `@fluojs/cron` 3 requires this range through its mandatory `@fluojs/runtime` 3 dependency.
 
 ## 12.1 Why FluoShop needs scheduling
 

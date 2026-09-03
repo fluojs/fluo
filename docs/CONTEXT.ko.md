@@ -11,6 +11,15 @@ cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.ko.md)와
 [`@fluojs/runtime` README](../packages/runtime/README.ko.md)를 참고하세요.
 
+## Cron Runtime 3 호환성
+
+`@fluojs/cron` 3은 mandatory `@fluojs/runtime` 3 dependency를 가지며 Node.js
+`>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Cron 2에서 업그레이드하는 consumer는
+업그레이드하기 전에 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js
+`22.0.0`–`22.1.x`, Node.js 27+ host를 이 지원 범위로 옮겨야 합니다.
+[`@fluojs/cron` README](../packages/cron/README.ko.md)와
+[package surface](./reference/package-surface.ko.md)를 참고하세요.
+
 ## Drizzle 이름 있는 client 계약
 
 `@fluojs/drizzle` 이름 있는 등록은 non-global이며 각각 독립 transaction ALS, shutdown drain,

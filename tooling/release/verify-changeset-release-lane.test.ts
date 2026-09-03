@@ -340,6 +340,55 @@ describe('verifyChangesetReleaseLane', () => {
     ).toThrow(/stable Node engine range narrowings without a major changeset/u);
   });
 
+  it('rejects a patch Cron release when its mandatory Runtime dependency releases major', () => {
+    // Given: Cron's mandatory Runtime dependency moves to its next major release.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'cron-patch.md', '"@fluojs/cron": patch');
+    writeChangeset(directory, 'runtime-major.md', '"@fluojs/runtime": major');
+
+    // When: the stable release lane validates the pending metadata.
+    // Then: Cron requires a major migration signal instead of a patch release.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { changesetDirectory: directory, lane: 'stable' },
+        { collectStableNodeEngineRangeNarrowings: () => [] },
+      ),
+    ).toThrow(/Cron.*Runtime.*major/u);
+  });
+
+  it('rejects a patch Cron version delta when its mandatory Runtime version delta is major', () => {
+    // Given: consumed release output promotes Runtime but only patches Cron.
+    const directory = createChangesetDirectory();
+
+    // When: the stable release lane validates the generated package versions.
+    // Then: Cron still requires a major migration signal.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectDependencyOnlyMajorVersionDeltas: () => [],
+          collectPackageVersionDeltas: () => [
+            {
+              bump: 'patch',
+              filePath: 'packages/cron/package.json',
+              nextVersion: '2.0.2',
+              packageName: '@fluojs/cron',
+              previousVersion: '2.0.1',
+            },
+            {
+              bump: 'major',
+              filePath: 'packages/runtime/package.json',
+              nextVersion: '3.0.0',
+              packageName: '@fluojs/runtime',
+              previousVersion: '2.0.1',
+            },
+          ],
+          collectStableNodeEngineRangeNarrowings: () => [],
+        },
+      ),
+    ).toThrow(/Cron.*Runtime.*major/u);
+  });
+
   it('fails closed when a changed package manifest carries an unparseable version', () => {
     // Given: a changed stable package manifest whose version cannot be parsed.
     const directory = createChangesetDirectory();
@@ -390,6 +439,37 @@ describe('verifyChangesetReleaseLane', () => {
 
     // When: release metadata is verified for a stable Node engine range narrowing.
     // Then: the syntactically matched but empty replacement range is not accepted as guidance.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [],
+          collectStableNodeEngineRangeNarrowings: () => [
+            {
+              filePath: 'packages/graphql/package.json',
+              nextEngineRange: '>=22.2.0 <27',
+              packageName: '@fluojs/graphql',
+              previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+              previousVersion: '1.1.0',
+            },
+          ],
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings missing consumer migration notes/u);
+  });
+
+  it('rejects Node migration guidance whose replacement range misses new engine support', () => {
+    // Given: a major changeset whose replacement Node range is not newly supported.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'graphql-node-range.md',
+      '"@fluojs/graphql": major',
+      'Migration: Node.js 20 support is removed. Upgrade to Node.js 21.',
+    );
+
+    // When: release metadata is verified for a stable Node engine range narrowing.
+    // Then: migration guidance must direct consumers to a newly supported Node range.
     expect(() =>
       verifyChangesetReleaseLane(
         { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
@@ -584,16 +664,16 @@ describe('verifyChangesetReleaseLane', () => {
         collectPackageVersionDeltas: () => [
           {
             bump: 'major',
-            filePath: 'packages/runtime/package.json',
+            filePath: 'packages/core/package.json',
             nextVersion: '2.0.0',
-            packageName: '@fluojs/runtime',
+            packageName: '@fluojs/core',
             previousVersion: '1.0.0',
           },
         ],
         collectStableNodeEngineRangeNarrowings: () => [],
-        existsSync: (targetPath: string) => targetPath.endsWith('packages/runtime/CHANGELOG.md'),
+        existsSync: (targetPath: string) => targetPath.endsWith('packages/core/CHANGELOG.md'),
         readFileSync: () =>
-          `# @fluojs/runtime\n\n## 2.0.0\n\n### Major Changes\n\n- Remove a deprecated public API.\n`,
+          `# @fluojs/core\n\n## 2.0.0\n\n### Major Changes\n\n- Remove a deprecated public API.\n`,
       },
     );
 
