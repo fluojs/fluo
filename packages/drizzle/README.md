@@ -56,6 +56,7 @@ import { Pool } from 'pg';
 @Module({
   imports: [
     ConfigModule.forRoot({
+      global: true,
       processEnv: {
         DATABASE_URL: process.env.DATABASE_URL,
       },
@@ -80,7 +81,7 @@ import { Pool } from 'pg';
 export class AppModule {}
 ```
 
-`forRootAsync(...)` accepts only `inject` and `useFactory` for its factory dependencies; it does not discover NestJS `imports`, `useClass`, `useExisting`, or decorator metadata. Register each injected token before the async options provider resolves. The `ConfigModule.forRoot(...)` registration above exports `ConfigService` globally by default. For a module-local configuration provider, export its token and import that module where `DrizzleModule.forRootAsync(...)` is registered; adding the provider only to the importing application's `providers` does not make it visible to the async Drizzle module.
+`forRootAsync(...)` accepts only `inject` and `useFactory` for its factory dependencies; it does not discover NestJS `imports`, `useClass`, `useExisting`, or decorator metadata. Its generated async module has no `imports`, so a token exported only by a sibling module or by a parent module's import is not visible to the options provider. Register factory dependencies through a global module instead. The `ConfigModule.forRoot(...)` registration above exports `ConfigService` globally by default; `global: true` is shown explicitly because that global export makes `ConfigService` visible to the generated async Drizzle module. For another token, make the module that owns and exports it global before bootstrap rather than relying on the importing application's `providers` or imports.
 
 ## Common Patterns
 

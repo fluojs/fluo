@@ -56,6 +56,7 @@ import { Pool } from 'pg';
 @Module({
   imports: [
     ConfigModule.forRoot({
+      global: true,
       processEnv: {
         DATABASE_URL: process.env.DATABASE_URL,
       },
@@ -80,7 +81,7 @@ import { Pool } from 'pg';
 export class AppModule {}
 ```
 
-`forRootAsync(...)`는 factory 의존성으로 `inject`와 `useFactory`만 받으며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata를 탐색하지 않습니다. Async option provider가 resolve되기 전에 주입할 각 token을 등록하세요. 위의 `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export합니다. Module-local configuration provider를 사용한다면 해당 token을 export하고 `DrizzleModule.forRootAsync(...)`를 등록하는 위치에서 그 module을 import해야 합니다. Importing application의 `providers`에만 provider를 추가해도 async Drizzle module에는 보이지 않습니다.
+`forRootAsync(...)`는 factory 의존성으로 `inject`와 `useFactory`만 받으며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata를 탐색하지 않습니다. 생성되는 async module에는 `imports`가 없으므로 sibling module이 export하거나 parent module이 import한 token은 option provider에 보이지 않습니다. 대신 factory 의존성을 global module로 등록하세요. 위의 `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export하며, 생성된 async Drizzle module이 `ConfigService`를 볼 수 있는 전역 export임을 명확히 하기 위해 `global: true`를 명시했습니다. 다른 token도 importing application의 `providers`나 imports에 의존하지 말고, 해당 token을 소유하고 export하는 module을 bootstrap 전에 global로 만드세요.
 
 ## 주요 패턴
 

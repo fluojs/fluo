@@ -53,6 +53,7 @@ import { Pool } from 'pg';
 @Module({
   imports: [
     ConfigModule.forRoot({
+      global: true,
       processEnv: {
         DATABASE_URL: process.env.DATABASE_URL,
       },
@@ -78,7 +79,7 @@ import { Pool } from 'pg';
 export class PersistenceModule {}
 ```
 
-`DrizzleModule.forRootAsync(...)`는 factory 의존성을 `inject`와 `useFactory`로만 해석하며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata는 소비하지 않습니다. `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export합니다. 애플리케이션이 module-local configuration provider를 쓴다면 해당 module이 token을 export하고 async Drizzle module을 등록하는 위치에서 import해야 합니다. Importing module에만 provider를 선언해도 async option provider에는 보이지 않습니다.
+`DrizzleModule.forRootAsync(...)`는 factory 의존성을 `inject`와 `useFactory`로만 해석하며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata는 소비하지 않습니다. 생성되는 async module에는 `imports`가 없으므로 sibling module이 export하거나 parent module이 import한 token은 async option provider에 보이지 않습니다. 대신 factory 의존성을 global module로 등록하세요. `ConfigModule.forRoot(...)`는 기본적으로 `ConfigService`를 전역 export하며, 생성된 async Drizzle module이 이를 볼 수 있는 전역 export임을 명확히 하기 위해 이 예제에서는 `global: true`를 명시합니다. 다른 token은 importing module의 providers나 imports에 의존하지 말고, 해당 token을 소유하고 export하는 module을 bootstrap 전에 global로 만드세요.
 
 FluoShop production 주문 서비스에는 `strictTransactions: true`를 권장합니다. checkout에는 rollback 보장이 필요하기 때문입니다. 등록된 Drizzle handle이 `database.transaction(...)`을 노출하지 않고 `strictTransactions`를 기본값 `false`로 두면 fluo는 fail-open합니다. 즉 `transaction(...)`과 `requestTransaction(...)`이 callback을 root handle에서 직접 실행합니다. 이 동작은 local fake와 migration scaffold를 계속 사용할 수 있게 하지만 원자적이지 않으므로 실제 transaction으로 취급하면 안 됩니다. Fluo는 이 root handle을 fallback ALS context에도 바인딩하므로, 중첩 request helper는 실제 database transaction을 만들지 않으면서도 ambient abort signal과 소유 shutdown drain을 보존합니다.
 
@@ -167,9 +168,13 @@ await this.db.transaction(async () => {
 NestJS-style interceptor 대신 요청 전체 호환성에는 `requestTransaction(...)`을 사용하세요.
 
 ```typescript
+import { Inject } from '@fluojs/core';
+import { DrizzleDatabase } from '@fluojs/drizzle';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { CheckoutService } from './checkout.service';
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,
