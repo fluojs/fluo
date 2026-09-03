@@ -90,6 +90,18 @@ Do not copy `waitForCompletion` or invent an overlap flag. fluo does not expose 
 
 This guard covers one task instance in one application process. Use [Distributed Locking](#distributed-locking) when multiple application instances must not run the same task concurrently.
 
+The remaining NestJS scheduling options have no `CronTaskOptions` equivalent. Do not copy `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`: fluo does not accept or emulate them. Make disabled or category-specific schedules part of application composition by omitting the provider/module that declares them, or register a dynamic task only after the application-owned condition is satisfied. Treat threshold/recovery policy as application-owned work. Use `@Timeout(ms, ...)` only when a delay relative to application startup is the intended behavior; it is not an absolute-time replacement for NestJS `@Cron(Date)` or `@Cron(DateTime)`.
+
+| NestJS scheduling form | fluo migration |
+| --- | --- |
+| `@Cron(expression, { timeZone })` | `@Cron(expression, { timezone })` |
+| `@Cron(Date)` or `@Cron(DateTime)` | No direct equivalent. Resolve the absolute-time plan in application code; do not substitute a startup-relative `@Timeout`. |
+| `@Interval('name', ms)` | `@Interval(ms, { name: 'name' })` |
+| `@Timeout('name', ms)` | `@Timeout(ms, { name: 'name' })` |
+| `ScheduleModule.forRootAsync(...)` | Resolve async configuration at the application bootstrap/composition boundary, then call synchronous `CronModule.forRoot(...)`. |
+| NestJS global-by-default schedule registration | `CronModule.forRoot({ global: true })` when global visibility is required; fluo defaults to `false`. |
+| `cronJobs`, `intervals`, or `timeouts` category switches | No direct equivalent. Own the conditional provider/module composition or explicit dynamic registration in the application. |
+
 ### Distributed Locking
 
 To prevent scheduled tasks from running concurrently across multiple server instances, enable distributed mode. This requires `@fluojs/redis`; the Redis peer is loaded and resolved only when `distributed.enabled` is `true`.

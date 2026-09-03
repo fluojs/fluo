@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -66,6 +67,7 @@ const staticAssetRegressionEvidence = [
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -3987,6 +3989,7 @@ export async function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceCacheManagerNestjsMigrationDocs();
+  enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();

@@ -90,6 +90,18 @@ NestJS `@Cron()` 옵션은 `CronTaskOptions`에 그대로 전달할 수 없습�
 
 이 guard는 한 application process 안의 같은 task instance만 보호합니다. 여러 application instance가 같은 task를 동시에 실행하지 않아야 한다면 [분산 락 사용하기](#분산-락-사용하기)를 적용하세요.
 
+나머지 NestJS scheduling option에는 `CronTaskOptions` 대응 항목이 없습니다. `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`을 복사하지 마세요. fluo는 이를 받거나 흉내 내지 않습니다. Disabled 또는 category별 schedule은 해당 provider/module을 생략하는 application composition으로 소유하거나, application-owned condition이 만족된 뒤에만 dynamic task를 등록하세요. Threshold/recovery policy도 application-owned work로 다루세요. `@Timeout(ms, ...)`은 application startup 기준 지연이 의도한 동작일 때만 사용합니다. NestJS `@Cron(Date)` 또는 `@Cron(DateTime)`의 absolute-time 대체 수단이 아닙니다.
+
+| NestJS scheduling form | fluo 마이그레이션 |
+| --- | --- |
+| `@Cron(expression, { timeZone })` | `@Cron(expression, { timezone })` |
+| `@Cron(Date)` 또는 `@Cron(DateTime)` | 직접 대응 없음. Application code에서 absolute-time plan을 해석하고 startup-relative `@Timeout`으로 대체하지 마세요. |
+| `@Interval('name', ms)` | `@Interval(ms, { name: 'name' })` |
+| `@Timeout('name', ms)` | `@Timeout(ms, { name: 'name' })` |
+| `ScheduleModule.forRootAsync(...)` | Application bootstrap/composition boundary에서 async configuration을 해석한 뒤 동기 `CronModule.forRoot(...)`를 호출합니다. |
+| NestJS의 global-by-default schedule registration | Global visibility가 필요하면 `CronModule.forRoot({ global: true })`를 사용합니다. fluo 기본값은 `false`입니다. |
+| `cronJobs`, `intervals`, `timeouts` category switch | 직접 대응 없음. Application에서 conditional provider/module composition 또는 명시적 dynamic registration을 소유하세요. |
+
 ### 분산 락 사용하기
 
 여러 서버 인스턴스에서 스케줄링된 작업이 동시에 실행되는 것을 방지하려면 분산 모드를 활성화하세요. 이 기능은 `@fluojs/redis`가 필요하며, Redis peer는 `distributed.enabled`가 `true`일 때만 로드되고 resolve됩니다.

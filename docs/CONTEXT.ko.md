@@ -325,6 +325,10 @@ input alias가 이 report contract를 바꾸지 않습니다.
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
 
+## Cron Scheduling Migration
+
+Scheduling migration contract는 [`packages/cron/README.ko.md`](../packages/cron/README.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/contracts/nestjs-parity-gaps.ko.md`](./contracts/nestjs-parity-gaps.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에 걸쳐 있습니다. `@fluojs/cron`은 `timezone`을 지원하지만 NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 지원하지 않습니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` plan과 disabled/category-specific schedule, threshold/recovery policy는 application-owned로 유지합니다. Named interval/timeout decorator는 `(ms, { name })`로 바꾸고, async schedule configuration은 동기 `CronModule.forRoot(...)` 전에 해석하며, 필요하면 `global: true`를 명시하고 NestJS category switch를 기대하지 마세요.
+
 ## Studio Runtime Bridge
 
 Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/runtime/README.ko.md)와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)에 나뉘어 있습니다. package integration은 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`, `StudioDevtoolsRuntimeTransport`, `StudioLiveEvent`를 import하고, host-owned bridge를 `bootstrapApplication`, `FluoFactory.create`, 또는 `FluoFactory.createApplicationContext`의 `studioDevtools`로 전달합니다. delivery는 observational이므로 synchronous transport throw와 async rejection은 애플리케이션 동작을 바꾸지 않습니다. explicit bridge는 CLI-injected Studio configuration보다 우선하며, bridge와 injected configuration이 모두 없으면 Studio는 비활성 상태로 남습니다.

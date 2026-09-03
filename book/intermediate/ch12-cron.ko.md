@@ -86,6 +86,8 @@ NestJS cron option object를 그대로 옮길 수는 없습니다. `timeZone`은
 
 fluo에는 `waitForCompletion`이나 overlap-enable option이 없습니다. 항상 scheduler에 no-overlap protection을 전달하고 in-process running guard도 유지합니다. 같은 task instance가 active한 동안 도착한 tick은 queue되지 않고 건너뛰므로, NestJS에서 `waitForCompletion: true`였던 task에는 대체 flag가 필요하지 않습니다. 기존 코드가 `waitForCompletion: false` 또는 NestJS 기본값으로 의도적인 overlapping execution에 의존했다면 지원되지 않는 option을 만들지 말고 concurrent work를 application-owned queue나 worker 뒤로 옮기세요. Local guard는 한 task instance만 보호하므로 application instance 사이에서 같은 task를 조정하려면 여전히 Section 12.4의 distributed lock이 필요합니다.
 
+나머지 NestJS scheduler option도 이식되지 않습니다. `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`에는 fluo 대응 항목이 없습니다. Disabled 또는 category-specific scheduling은 application composition이 소유합니다. 해당 schedule을 선언하는 provider/module을 생략하거나 application-owned condition이 충족된 뒤에만 dynamic task를 추가하세요. Threshold와 recovery policy도 application code에 둡니다. `@Cron`은 cron-expression string만 받으므로 NestJS `@Cron(Date)`와 `@Cron(DateTime)` absolute schedule은 application이 해석해야 합니다. 이를 `@Timeout`으로 바꾸면 startup-relative work로 의미가 바뀝니다. `@Interval('name', ms)`와 `@Timeout('name', ms)`는 `@Interval(ms, { name: 'name' })`, `@Timeout(ms, { name: 'name' })`로 바꿉니다. `ScheduleModule.forRootAsync(...)` input은 동기 `CronModule.forRoot(...)` 호출 전에 해석하고, NestJS global visibility가 필요하면 `global: true`를 명시하며, `cronJobs`, `intervals`, `timeouts` category switch가 있다고 기대하지 마세요.
+
 ### 12.3.3 Startup timeout and periodic polling
 
 어떤 작업은 boot 직후 일정 시간이 지난 뒤 실행되어야 합니다. 예를 들어 FluoShop은 startup 5초 뒤에 초기 cache warm-up이나 configuration sync를 수행할 수 있습니다. 다른 작업은 15초마다 partner API를 polling할 수 있습니다. 이런 흐름은 자연스럽게 `@Timeout`과 `@Interval`에 매핑됩니다. 중요한 점은 fluo가 이를 bootstrap code 곳곳에 흩어진 즉흥적인 `setTimeout`, `setInterval` 호출이 아니라 first-class scheduling concept로 취급한다는 점입니다.
@@ -195,6 +197,8 @@ v2.1.0에서 reservation expiry path는 이제 다음과 같습니다.
 
 - `@fluojs/cron`은 decorator-based scheduling을 통해 FluoShop에 cron expression, interval, timeout을 제공합니다.
 - NestJS cron option은 `timeZone`을 `timezone`으로 바꿔야 합니다. fluo는 같은 task instance의 overlapping tick을 항상 건너뛰고 overlap opt-out을 노출하지 않으므로 `waitForCompletion`은 생략합니다.
+- `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`에는 fluo option이 없습니다. Disabled/category-specific scheduling과 threshold/recovery policy는 application composition이 소유합니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` schedule은 application-owned로 유지하고, `@Timeout`은 startup-relative입니다.
+- Named NestJS interval/timeout overload는 `(ms, { name })`로 바꿉니다. Async Schedule module input은 동기 `CronModule.forRoot(...)` 전에 해석하고, `global: true`는 명시적이며 category switch는 없습니다.
 - Redis-backed distributed locking은 multi-instance deployment에서 scheduled task를 한 인스턴스만 실행하도록 보장합니다.
 - `distributed.lockTtlMs`와 optional named Redis client는 신뢰성을 좌우하는 운영 설정이며, enabled TTL은 Redis I/O 전에 검증됩니다.
 - `SCHEDULING_REGISTRY`를 통한 dynamic scheduling은 비즈니스가 실제로 runtime-created task를 필요로 할 때 지원됩니다.
