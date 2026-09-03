@@ -458,6 +458,37 @@ describe('verifyChangesetReleaseLane', () => {
     ).toThrow(/stable Node engine range narrowings missing consumer migration notes/u);
   });
 
+  it('rejects Node migration guidance whose replacement range misses new engine support', () => {
+    // Given: a major changeset whose replacement Node range is not newly supported.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'graphql-node-range.md',
+      '"@fluojs/graphql": major',
+      'Migration: Node.js 20 support is removed. Upgrade to Node.js 21.',
+    );
+
+    // When: release metadata is verified for a stable Node engine range narrowing.
+    // Then: migration guidance must direct consumers to a newly supported Node range.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [],
+          collectStableNodeEngineRangeNarrowings: () => [
+            {
+              filePath: 'packages/graphql/package.json',
+              nextEngineRange: '>=22.2.0 <27',
+              packageName: '@fluojs/graphql',
+              previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+              previousVersion: '1.1.0',
+            },
+          ],
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings missing consumer migration notes/u);
+  });
+
   it('accepts Node migration guidance whose replacement range is satisfiable', () => {
     // Given: a major changeset whose replacement Node range is bounded and satisfiable.
     const directory = createChangesetDirectory();

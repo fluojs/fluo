@@ -236,6 +236,31 @@ function isSubset(candidate, previous) {
   return candidate.every((interval) => previous.some((container) => contains(container, interval)));
 }
 
+function intervalsIntersect(left, right) {
+  const lower = !left.lower || (right.lower && compareLower(left.lower, right.lower) < 0)
+    ? right.lower
+    : left.lower;
+  const upper = !left.upper || (right.upper && compareVersions(left.upper.parts, right.upper.parts) > 0)
+    ? right.upper
+    : left.upper;
+
+  if (!lower || !upper) {
+    return true;
+  }
+
+  const comparison = compareVersions(lower.parts, upper.parts);
+  return comparison < 0 || (comparison === 0 && lower.inclusive && upper.inclusive);
+}
+
+export function nodeEngineRangesIntersect(leftRange, rightRange) {
+  const left = normalizeRange(leftRange ?? '*');
+  const right = normalizeRange(rightRange ?? '*');
+
+  return left !== null && right !== null && left.some((leftInterval) =>
+    right.some((rightInterval) => intervalsIntersect(leftInterval, rightInterval)),
+  );
+}
+
 function versionTier(version) {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(version);
 
