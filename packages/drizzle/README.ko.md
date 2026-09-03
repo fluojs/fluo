@@ -47,7 +47,7 @@ Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 
 ## 빠른 시작
 
 ```ts
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -55,6 +55,11 @@ import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -74,6 +79,8 @@ import { Pool } from 'pg';
 })
 export class AppModule {}
 ```
+
+`forRootAsync(...)`는 factory 의존성으로 `inject`와 `useFactory`만 받으며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata를 탐색하지 않습니다. Async option provider가 resolve되기 전에 주입할 각 token을 등록하세요. 위의 `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export합니다. Module-local configuration provider를 사용한다면 해당 token을 export하고 `DrizzleModule.forRootAsync(...)`를 등록하는 위치에서 그 module을 import해야 합니다. Importing application의 `providers`에만 provider를 추가해도 async Drizzle module에는 보이지 않습니다.
 
 ## 주요 패턴
 
@@ -172,7 +179,7 @@ Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, ro
 비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ```ts
-import { Controller, Post } from '@fluojs/http';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
@@ -186,10 +193,10 @@ export class CheckoutController {
   ) {}
 
   @Post()
-  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+  create(input: CheckoutInput, context: RequestContext) {
     return this.db.requestTransaction(
       () => this.checkout.createOrder(input),
-      requestSignal,
+      context.request.signal,
     );
   }
 }

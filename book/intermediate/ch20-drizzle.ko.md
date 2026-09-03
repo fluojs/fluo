@@ -44,14 +44,19 @@ pnpm add -D drizzle-kit @types/pg
 `DrizzleModule`은 일반적으로 `ConfigService`를 사용해 비동기적으로 구성합니다. 이 방식은 커넥션 문자열과 풀 설정을 런타임 설정에 맞춰 주입하기 쉽습니다.
 
 ```typescript
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
-import { ConfigService } from '@fluojs/config';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -72,6 +77,8 @@ import { Pool } from 'pg';
 })
 export class PersistenceModule {}
 ```
+
+`DrizzleModule.forRootAsync(...)`는 factory 의존성을 `inject`와 `useFactory`로만 해석하며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata는 소비하지 않습니다. `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export합니다. 애플리케이션이 module-local configuration provider를 쓴다면 해당 module이 token을 export하고 async Drizzle module을 등록하는 위치에서 import해야 합니다. Importing module에만 provider를 선언해도 async option provider에는 보이지 않습니다.
 
 FluoShop production 주문 서비스에는 `strictTransactions: true`를 권장합니다. checkout에는 rollback 보장이 필요하기 때문입니다. 등록된 Drizzle handle이 `database.transaction(...)`을 노출하지 않고 `strictTransactions`를 기본값 `false`로 두면 fluo는 fail-open합니다. 즉 `transaction(...)`과 `requestTransaction(...)`이 callback을 root handle에서 직접 실행합니다. 이 동작은 local fake와 migration scaffold를 계속 사용할 수 있게 하지만 원자적이지 않으므로 실제 transaction으로 취급하면 안 됩니다. Fluo는 이 root handle을 fallback ALS context에도 바인딩하므로, 중첩 request helper는 실제 database transaction을 만들지 않으면서도 ambient abort signal과 소유 shutdown drain을 보존합니다.
 
@@ -160,10 +167,23 @@ await this.db.transaction(async () => {
 NestJS-style interceptor 대신 요청 전체 호환성에는 `requestTransaction(...)`을 사용하세요.
 
 ```typescript
-return this.db.requestTransaction(
-  () => this.checkout.placeOrder(input),
-  request.signal,
-);
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+
+@Controller('/checkout')
+class CheckoutController {
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly checkout: CheckoutService,
+  ) {}
+
+  @Post()
+  checkoutOrder(input: CheckoutInput, context: RequestContext) {
+    return this.db.requestTransaction(
+      () => this.checkout.placeOrder(input),
+      context.request.signal,
+    );
+  }
+}
 ```
 
 ## 20.6 FluoShop Context: Relational Schema

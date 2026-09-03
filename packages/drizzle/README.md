@@ -47,7 +47,7 @@ Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare 
 ## Quick Start
 
 ```ts
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -55,6 +55,11 @@ import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -74,6 +79,8 @@ import { Pool } from 'pg';
 })
 export class AppModule {}
 ```
+
+`forRootAsync(...)` accepts only `inject` and `useFactory` for its factory dependencies; it does not discover NestJS `imports`, `useClass`, `useExisting`, or decorator metadata. Register each injected token before the async options provider resolves. The `ConfigModule.forRoot(...)` registration above exports `ConfigService` globally by default. For a module-local configuration provider, export its token and import that module where `DrizzleModule.forRootAsync(...)` is registered; adding the provider only to the importing application's `providers` does not make it visible to the async Drizzle module.
 
 ## Common Patterns
 
@@ -172,7 +179,7 @@ Async work created inside a transaction can inherit its ALS context even when it
 Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
 
 ```ts
-import { Controller, Post } from '@fluojs/http';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
@@ -186,10 +193,10 @@ export class CheckoutController {
   ) {}
 
   @Post()
-  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+  create(input: CheckoutInput, context: RequestContext) {
     return this.db.requestTransaction(
       () => this.checkout.createOrder(input),
-      requestSignal,
+      context.request.signal,
     );
   }
 }

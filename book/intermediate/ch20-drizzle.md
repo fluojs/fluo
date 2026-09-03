@@ -44,14 +44,19 @@ pnpm add -D drizzle-kit @types/pg
 `DrizzleModule` is usually configured asynchronously with `ConfigService`. This approach makes it easy to inject the connection string and pool settings from runtime configuration.
 
 ```typescript
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
-import { ConfigService } from '@fluojs/config';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -72,6 +77,8 @@ import { Pool } from 'pg';
 })
 export class PersistenceModule {}
 ```
+
+`DrizzleModule.forRootAsync(...)` resolves factory dependencies only through `inject` and `useFactory`; it does not consume NestJS `imports`, `useClass`, `useExisting`, or decorator metadata. The `ConfigModule.forRoot(...)` registration exports `ConfigService` globally by default. If an application uses a module-local configuration provider instead, that module must export the token and be imported where the async Drizzle module is registered; declaring the provider only on the importing module does not make it visible to the async options provider.
 
 `strictTransactions: true` is recommended for FluoShop's production order service because checkout needs rollback guarantees. If the registered Drizzle handle does not expose `database.transaction(...)` and `strictTransactions` is left at its default `false`, fluo fails open: `transaction(...)` and `requestTransaction(...)` run the callback directly against the root handle. That keeps local fakes and migration scaffolds usable, but it is not atomic and should not be treated as a real transaction. Fluo still binds that root handle into the fallback ALS context, so nested request helpers preserve the ambient abort signal and the owning shutdown drain without creating a real database transaction.
 
@@ -160,10 +167,23 @@ await this.db.transaction(async () => {
 Use `requestTransaction(...)` for request-wide compatibility instead of a NestJS-style interceptor:
 
 ```typescript
-return this.db.requestTransaction(
-  () => this.checkout.placeOrder(input),
-  request.signal,
-);
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+
+@Controller('/checkout')
+class CheckoutController {
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly checkout: CheckoutService,
+  ) {}
+
+  @Post()
+  checkoutOrder(input: CheckoutInput, context: RequestContext) {
+    return this.db.requestTransaction(
+      () => this.checkout.placeOrder(input),
+      context.request.signal,
+    );
+  }
+}
 ```
 
 ## 20.6 FluoShop Context: Relational Schema
