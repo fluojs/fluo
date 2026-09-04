@@ -157,6 +157,7 @@ describe('runtime route inspection', () => {
     // Then
     expect(route).toEqual({
       controller: 'CatalogController',
+      graphNodeId: 'route:GET__v2_products_:productId_CatalogController_show',
       handler: 'show',
       id: 'GET /v2/products/:productId CatalogController show',
       kind: 'react-page',

@@ -69,7 +69,8 @@ describe('RoutesPanel', () => {
     }
   });
 
-  it('selects graph route nodes by stable route id when labels collide', async () => {
+  it('selects explicitly correlated graph route nodes when labels and slugged route ids collide', async () => {
+    // Given
     const dispatch = vi.fn();
     const state: StudioDashboardState = {
       ...initialStudioState,
@@ -80,25 +81,27 @@ describe('RoutesPanel', () => {
         graph: {
           edges: [],
           nodes: [
-            { id: 'route:GET__users_UsersController_list', kind: 'route', label: 'GET /users' },
-            { id: 'route:GET__users_UsersController_listV2', kind: 'route', label: 'GET /users' },
+            { id: 'route-node:first', kind: 'route', label: 'GET /users' },
+            { id: 'route-node:second', kind: 'route', label: 'GET /users' },
           ],
         },
         requests: [],
         routes: [
           {
-            controller: 'UsersController',
+            controller: 'Users Controller',
+            graphNodeId: 'route-node:first',
             handler: 'list',
-            id: 'GET /users UsersController list',
+            id: 'GET /users Users Controller list',
             kind: 'react-page',
             method: 'GET',
             params: [],
             path: '/users',
           },
           {
-            controller: 'UsersController',
-            handler: 'listV2',
-            id: 'GET /users UsersController listV2',
+            controller: 'Users_Controller',
+            graphNodeId: 'route-node:second',
+            handler: 'list',
+            id: 'GET /users Users_Controller list',
             kind: 'http',
             method: 'GET',
             params: [],
@@ -109,21 +112,20 @@ describe('RoutesPanel', () => {
       },
       mode: 'live',
     };
-
     const container = document.createElement('div');
     const root = createRoot(container);
     root.render(createElement(RoutesPanel, { dispatch, state }));
+    await vi.waitFor(() => {
+      expect(container.querySelectorAll('.route-row')).toHaveLength(2);
+    });
 
     try {
-      await vi.waitFor(() => {
-        expect(container.querySelectorAll('.route-row')).toHaveLength(2);
-      });
-      expect(container.textContent).toContain('React page');
-      expect(container.textContent).toContain('HTTP handler');
+      // When
       container.querySelectorAll<HTMLButtonElement>('.route-row')[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-      expect(dispatch).toHaveBeenCalledWith({ routeId: 'GET /users UsersController listV2', type: 'select-route' });
-      expect(dispatch).toHaveBeenCalledWith({ nodeId: 'route:GET__users_UsersController_listV2', type: 'select-graph-node' });
+      // Then
+      expect(dispatch).toHaveBeenCalledWith({ routeId: 'GET /users Users_Controller list', type: 'select-route' });
+      expect(dispatch).toHaveBeenCalledWith({ nodeId: 'route-node:second', type: 'select-graph-node' });
     } finally {
       root.unmount();
     }
