@@ -55,6 +55,10 @@ const migrationDocumentationRequirements = [
     path: 'book/intermediate/ch18-graphql.ko.md',
   },
 ];
+const resolverMigrationDocumentationRequirements = [
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
 const discoverabilityRequirements = [
   {
     destination: './getting-started/migrate-from-nestjs.md#graphql-migration-boundaries',
@@ -73,17 +77,6 @@ const discoverabilityRequirements = [
     path: 'packages/graphql/README.ko.md',
   },
 ];
-const resolverMigrationDocumentationRequirements = [
-  {
-    heading: '### GraphQL Resolver Migration',
-    path: 'docs/getting-started/migrate-from-nestjs.md',
-  },
-  {
-    heading: '### GraphQL Resolver Migration',
-    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
-  },
-];
-
 function assert(condition, message) {
   if (!condition) {
     throw new Error(`Platform consistency governance check failed: ${message}`);
@@ -227,18 +220,12 @@ export function enforceGraphqlNestjsMigrationBoundaries(
 ) {
   for (const requirement of migrationDocumentationRequirements) {
     const content = readText(requirement.path);
-    parseMigrationFacts(
-      extractSection(content, requirement.heading, requirement.path),
-      requirement.path,
-    );
+    const section = extractSection(content, requirement.heading, requirement.path);
+    parseMigrationFacts(section, requirement.path);
   }
 
-  for (const requirement of resolverMigrationDocumentationRequirements) {
-    const content = readText(requirement.path);
-    parseResolverMigrationFacts(
-      extractSection(content, requirement.heading, requirement.path),
-      requirement.path,
-    );
+  for (const relativePath of resolverMigrationDocumentationRequirements) {
+    parseResolverMigrationFacts(readText(relativePath), relativePath);
   }
 
   for (const requirement of discoverabilityRequirements) {
