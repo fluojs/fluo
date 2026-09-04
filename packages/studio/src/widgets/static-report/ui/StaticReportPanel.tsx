@@ -5,9 +5,9 @@ import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import {
   selectOriginalStaticSnapshot,
   selectSelectedStaticComponent,
-  selectStaticReportSummary,
   selectStaticSnapshot,
 } from '../../../entities/studio/model.js';
+import { selectStaticReportSummary } from '../../../entities/studio/static-report-summary.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
 import { inspectComponentConnections, renderDiagnostics, renderGraphSvg } from '../../../shared/lib/viewer-rendering.js';
 
@@ -33,7 +33,7 @@ function renderSnapshotSummary(
         <span className="chip">report warnings: {reportSummary.warningCount}</span>
         <span className="chip">report health: {reportSummary.healthStatus}</span>
         <span className="chip">report readiness: {reportSummary.readinessStatus}</span>
-        <span className="chip">report timing: {reportSummary.timingTotalMs.toFixed(3)}ms</span>
+        <span className="chip">report timing: {reportSummary.timingTotalMs === undefined ? 'unavailable' : `${reportSummary.timingTotalMs.toFixed(3)}ms`}</span>
       </div>
     );
   }
@@ -185,7 +185,7 @@ export function StaticReportPanel({ dispatch, state }: StaticReportPanelProps) {
         <div className="section-title-row">
           <div>
             <p className="eyebrow">Static/report compatibility</p>
-            <h2>{reportSummary ? 'Canonical report summary' : 'Snapshot summary'}</h2>
+            <h2>{reportSummary?.source === 'report' ? 'Canonical report summary' : 'Snapshot-derived report summary'}</h2>
           </div>
         </div>
         {renderSnapshotSummary(snapshot, reportSummary)}

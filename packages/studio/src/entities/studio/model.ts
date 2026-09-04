@@ -7,8 +7,7 @@ import type {
   StudioLiveDiagnostic,
   StudioLiveEvent,
   StudioLiveSnapshot,
-  StudioPayload,
-  StudioReportSummary,
+  StudioParsedPayload,
   StudioRequestTrace,
   StudioRouteDescriptor,
 } from '../../contracts.js';
@@ -24,7 +23,7 @@ export type StudioMode = 'live' | 'static';
  */
 export interface StaticReportState {
   filteredSnapshot?: PlatformShellSnapshot;
-  payload?: StudioPayload;
+  payload?: StudioParsedPayload;
   rawJson?: string;
   selectedComponentId?: string;
 }
@@ -106,16 +105,6 @@ export function selectOriginalStaticSnapshot(state: StudioDashboardState): Platf
  */
 export function selectStaticTiming(state: StudioDashboardState): BootstrapTimingDiagnostics | undefined {
   return state.staticReport.payload?.timing;
-}
-
-/**
- * Provides canonical report summary behavior for static report artifacts.
- *
- * @param state state value used by select Static Report Summary.
- * @returns The canonical report summary, when a report artifact has been loaded.
- */
-export function selectStaticReportSummary(state: StudioDashboardState): StudioReportSummary | undefined {
-  return state.staticReport.payload?.report?.summary;
 }
 
 /**

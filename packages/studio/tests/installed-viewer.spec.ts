@@ -192,8 +192,14 @@ test('opens the installed public viewer bin and exercises its file workflow in C
       await expect(page.locator('.notice')).toHaveText('Diagnostics file loaded successfully.');
       await expect(page.getByRole('heading', { name: 'QUEUE_DEPENDENCY_NOT_READY' })).toBeVisible();
       await expect(page.getByText('Verify Redis connectivity and queue configuration.')).toBeVisible();
-      await expect(page.getByText('components: 2')).toBeVisible();
-      await expect(page.getByText('diagnostics: 1')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Snapshot-derived report summary' })).toBeVisible();
+      await expect(page.getByText('report components: 2')).toBeVisible();
+      await expect(page.getByText('report diagnostics: 1')).toBeVisible();
+      await expect(page.getByText('report errors: 0')).toBeVisible();
+      await expect(page.getByText('report warnings: 1')).toBeVisible();
+      await expect(page.getByText('report health: degraded')).toBeVisible();
+      await expect(page.getByText('report readiness: degraded')).toBeVisible();
+      await expect(page.getByText('report timing: unavailable')).toBeVisible();
       await captureEvidence(page, '03-snapshot-loaded', viewport, url);
 
       await page.locator('#search').fill('does-not-match');

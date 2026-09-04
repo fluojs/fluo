@@ -3,6 +3,7 @@
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
+import { parseStudioPayload } from '../../../contracts.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { initialStudioState } from '../../../entities/studio/model.js';
 import { RoutesPanel } from './RoutesPanel.js';
@@ -174,24 +175,22 @@ describe('RoutesPanel', () => {
     const state: StudioDashboardState = {
       ...initialStudioState,
       staticReport: {
-        payload: {
-          snapshot: {
-            components: [],
-            diagnostics: [],
-            generatedAt: '2026-07-28T00:00:00.000Z',
-            health: { status: 'healthy' },
-            readiness: { critical: false, status: 'ready' },
-            routes: [
-              {
-                controller: 'LegacyController',
-                handler: 'list',
-                id: 'GET /legacy LegacyController list',
-                method: 'GET',
-                path: '/legacy',
-              },
-            ],
-          },
-        },
+        payload: parseStudioPayload(JSON.stringify({
+          components: [],
+          diagnostics: [],
+          generatedAt: '2026-07-28T00:00:00.000Z',
+          health: { status: 'healthy' },
+          readiness: { critical: false, status: 'ready' },
+          routes: [
+            {
+              controller: 'LegacyController',
+              handler: 'list',
+              id: 'GET /legacy LegacyController list',
+              method: 'GET',
+              path: '/legacy',
+            },
+          ],
+        })).payload,
       },
     };
     const container = document.createElement('div');
