@@ -811,7 +811,28 @@ describe('ThrottlerGuard — in-memory store', () => {
     await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
   });
 
-  it('normalizes forwarded client identity ports before building throttler keys when trustProxyHeaders is enabled', async () => {
+  it('uses the explicit trustProxy boundary for default throttler client keys', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1, trustProxy: ['10.0.0.0/8'] });
+    const firstContext = createRequestContext({
+      headers: { 'x-forwarded-for': '198.51.100.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createRequestContext({
+      headers: { 'x-forwarded-for': '198.51.100.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).rejects.toThrow(
+      'Too Many Requests',
+    );
+  });
+
+  it('separates forwarded IPv4 identities with ports when trustProxyHeaders is enabled', async () => {
     class TestController {
       action() {}
     }
@@ -822,14 +843,12 @@ describe('ThrottlerGuard — in-memory store', () => {
       raw: { socket: { remoteAddress: '10.0.0.1' } },
     });
     const secondContext = createRequestContext({
-      headers: { forwarded: 'for=198.51.100.10:5678;proto=https' },
+      headers: { forwarded: 'for=198.51.100.11:5678;proto=https' },
       raw: { socket: { remoteAddress: '10.0.0.1' } },
     });
 
     await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
-    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).rejects.toThrow(
-      'Too Many Requests',
-    );
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
   });
 
   it('rejects spoofable proxy headers by default when no raw socket identity is available', async () => {

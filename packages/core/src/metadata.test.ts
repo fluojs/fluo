@@ -546,8 +546,13 @@ describe('metadata helpers', () => {
     expect(Object.isFrozen(metadata?.exports)).toBe(true);
     expect(metadata?.controllers).toEqual([ExampleController]);
     expect(metadata?.exports).toEqual([ExportedProvider]);
-    expect(() => metadata?.controllers?.push(class MutatedController {})).toThrow(TypeError);
-    expect(() => metadata?.exports?.push(class MutatedExport {})).toThrow(TypeError);
+    if (metadata?.controllers === undefined || metadata.exports === undefined) {
+      throw new Error('Expected frozen module collection snapshots');
+    }
+    expect(() => Reflect.apply(Array.prototype.push, metadata.controllers, [class MutatedController {}])).toThrow(
+      TypeError,
+    );
+    expect(() => Reflect.apply(Array.prototype.push, metadata.exports, [class MutatedExport {}])).toThrow(TypeError);
 
     controllers.push(class CallerMutatedController {});
     exports.push(class CallerMutatedExport {});

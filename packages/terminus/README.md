@@ -107,6 +107,25 @@ For Prisma, `createPrismaHealthIndicatorProvider()` prefers the lifecycle-aware 
 
 Provider factories are repeatable. You may register multiple providers created by the same factory in one `indicatorProviders` array when each instance uses a distinct indicator key or dependency option; Terminus keeps every provider instance under its own DI token instead of letting later same-type providers overwrite earlier ones.
 
+### Readiness Participation
+
+Every indicator participates in both `/health` and `/ready` by default. Set `readiness: false` when a dependency must remain visible in `/health` but must not remove an otherwise ready instance from rotation.
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [
+    new HttpHealthIndicator({
+      key: 'search',
+      readiness: false,
+      url: 'https://search.example.com/health',
+    }),
+    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+  ],
+});
+```
+
+If `search` reports `down`, `/health` returns `503` with its diagnostic while `/ready` continues to evaluate `memory`, custom `readinessChecks`, and platform readiness. A failing indicator whose `readiness` is omitted or `true` continues to make both endpoints unavailable.
+
 ### Execution Guardrails
 
 Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
@@ -131,7 +150,7 @@ Use `path` to mount the health endpoints under a custom path, and `readinessChec
 When an indicator returns a `down` result or throws a `HealthCheckError`, the `TerminusHealthService` aggregates the failure into a report:
 
 - `/health` returns HTTP `503` if any indicator fails.
-- `/ready` returns HTTP `503` when registered indicators fail, a custom readiness check returns `false`, runtime shutdown has begun, or platform readiness is anything other than `ready`. Platform `critical` metadata is preserved in diagnostics, but the HTTP readiness endpoint itself is a binary ready/unavailable gate and does not expose warning severity buckets.
+- `/ready` returns HTTP `503` when an indicator whose `readiness` is omitted or `true` fails, a custom readiness check returns `false`, runtime shutdown has begun, or platform readiness is anything other than `ready`. Indicators with `readiness: false` still contribute to `/health` but do not block `/ready`. Platform `critical` metadata is preserved in diagnostics, but the HTTP readiness endpoint itself is a binary ready/unavailable gate and does not expose warning severity buckets.
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
@@ -165,6 +184,13 @@ Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` fo
   - Runs the currently registered indicators and returns the aggregated report.
 - `isHealthy(): Promise<boolean>`
   - Returns whether the current aggregated report is fully healthy.
+- `isReady(): Promise<boolean>`
+  - Returns whether every indicator participating in readiness currently reports `up`.
+
+### `HealthIndicator`
+
+- `readiness?: boolean`
+  - Controls whether an indicator participates in `/ready`; it defaults to `true`. All bundled indicator option objects accept this setting.
 
 ### Direct helpers and tokens
 

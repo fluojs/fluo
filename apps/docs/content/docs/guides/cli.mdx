@@ -73,8 +73,8 @@ fluo new my-react-app --starter react-vite-ssr
 ```
 
 Run `pnpm dev`, open `/products/sku-42?preview=true`, and edit `src/page.tsx`. The explicit
-`@Router(...)` / `@Path(...)` handler stays in `src/app.tsx` and returns that page as one
-`ReactElement`, so HTTP matching and DTO validation remain authoritative. Generated wiring keeps the
+`@Router(...)` / `@Path(...)` handler stays in `src/app.ts` and returns `createElement(ProductPage)`,
+one `ReactElement`, so HTTP matching and DTO validation remain authoritative. Generated wiring keeps the
 first-edit path small without hiding it: `src/entry-server.tsx` owns the replaceable
 `ReactPageRenderer`, `src/react-app.tsx` shares one document and `ReactClientRouterProvider`
 composition, `src/entry-client.tsx` hydrates that tree, and `src/main.ts` plus

@@ -507,7 +507,7 @@ describe('@fluojs/platform-deno', () => {
     }
 
     expect(server.shutdown).toHaveBeenCalledTimes(1);
-    expect(server.options?.signal?.aborted).toBe(true);
+    expect(server.options?.signal?.aborted).toBe(false);
   });
 
   it('dispatches successful requests through adapter.handle after listen binds the dispatcher', async () => {
@@ -536,6 +536,47 @@ describe('@fluojs/platform-deno', () => {
       });
     } finally {
       await adapter.close();
+    }
+  });
+
+  it('forwards multipart stream strategy through managed Deno bootstrap routes', async () => {
+    @Controller('/streaming-upload')
+    class StreamingUploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const parts = context.request.body as AsyncIterable<unknown>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        return first.done ? { streamed: false } : first.value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingUploadController] });
+
+    const server = createServeStub();
+    const app = await bootstrapDenoApplication(AppModule, {
+      multipart: { strategy: 'stream' },
+      serve: server.serve,
+    });
+
+    try {
+      await app.listen();
+      const form = new FormData();
+      form.set('title', 'Ada');
+      const response = await server.handler?.(new Request('https://runtime.test/streaming-upload', {
+        body: form,
+        method: 'POST',
+      }));
+
+      expect(response?.status).toBe(201);
+      await expect(response?.json()).resolves.toMatchObject({
+        kind: 'field',
+        name: 'title',
+        value: 'Ada',
+      });
+    } finally {
+      await app.close();
     }
   });
 

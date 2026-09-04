@@ -1,4 +1,4 @@
-import type { ChangeEvent, Dispatch, DragEvent } from 'react';
+import { useRef, type ChangeEvent, type Dispatch, type DragEvent } from 'react';
 import { parseStudioPayload, renderMermaid } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
@@ -31,18 +31,31 @@ async function copyToClipboard(text: string): Promise<void> {
  * Provides File Drop Zone behavior for the Studio devtool.
  */
 export function FileDropZone({ dispatch, state }: FileDropZoneProps) {
+  const latestFileLoad = useRef(0);
   const snapshot = selectStaticSnapshot(state);
   const rawJson = state.staticReport.rawJson;
 
   async function handleFile(file: File): Promise<void> {
-    const raw = await file.text();
+    const fileLoad = latestFileLoad.current + 1;
+    latestFileLoad.current = fileLoad;
+
     try {
+      const raw = await file.text();
+      const parsed = parseStudioPayload(raw);
+      if (fileLoad !== latestFileLoad.current) {
+        return;
+      }
+
       dispatch({
         message: 'Diagnostics file loaded successfully.',
-        parsed: parseStudioPayload(raw),
+        parsed,
         type: 'static-payload',
       });
     } catch (error) {
+      if (fileLoad !== latestFileLoad.current) {
+        return;
+      }
+
       dispatch({
         message: error instanceof Error ? error.message : 'Failed to parse diagnostics file.',
         type: 'file-error',

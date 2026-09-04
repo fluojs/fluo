@@ -10,6 +10,7 @@
 - `@Module`, `@Inject`, `@Controller`, `@Get`을 사용한 표준 데코레이터 DI
 - `HealthModule.forRoot(...)`의 내장 `/health` 및 `/ready` 엔드포인트
 - `/hello` 경로의 단일 스타터 컨트롤러
+- `@FromFiles('attachments')`를 사용한 `/uploads`의 portable multipart DTO 바인딩
 - `@fluojs/testing`을 사용한 단위 및 e2e 스타일 테스트
 
 ## 실행 방법
@@ -35,6 +36,7 @@ examples/minimal/
 │   ├── main.ts             # 진입점: adapter-first Fastify startup
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # 비즈니스 로직
+│   ├── upload.controller.ts # POST /uploads portable multipart DTO
 │   └── app.test.ts         # unit + createTestApp request helper 테스트
 └── README.md
 ```

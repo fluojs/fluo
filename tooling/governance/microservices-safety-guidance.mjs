@@ -485,3 +485,16 @@ export function enforceMicroservicesSafetyRuntimeEvidence() {
     }
   }
 }
+
+export function enforceRedisStreamsSubpathExportEvidence() {
+  const packageManifest = JSON.parse(read('packages/microservices/package.json'));
+
+  assert.deepEqual(
+    packageManifest.exports?.['./redis-streams'],
+    {
+      import: './dist/transports/redis-streams-transport.js',
+      types: './dist/transports/redis-streams-transport.d.ts',
+    },
+    'packages/microservices/package.json must retain the Redis Streams subpath export.',
+  );
+}

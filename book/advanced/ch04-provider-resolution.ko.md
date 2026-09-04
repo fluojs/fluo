@@ -952,7 +952,7 @@ missing provider 에러는 token과 복구 hint를 같은 자리에서 구성합
 
 `RequestScopeResolutionError`는 request-scoped provider를 request scope 밖에서 resolve할 때 `cacheFor()`와 `multiCacheFor()`에서 발생합니다. 근거는 `path:packages/di/src/container.ts:958-970`과 `path:packages/di/src/container.ts:981-993`입니다. 이것은 단순 생성 실패가 아니라 아키텍처 위반을 설명하는 런타임 에러입니다.
 
-`ScopeMismatchError`는 한 단계 더 위의 검증입니다. `path:packages/di/src/container.ts:1234-1306`의 `assertSingletonDependencyScopes()`와 재귀 helper는 singleton 생성 전에 dependency graph를 순회하고, request-scoped provider에 도달하는 path를 거부합니다. 이 탐색은 effective provider, wrapper, nested dependency, class metadata를 따라가므로 alias와 transitive edge에도 동일하게 적용됩니다.
+`ScopeMismatchError`는 한 단계 더 위의 검증입니다. `path:packages/di/src/container.ts:1234-1306`의 `assertSingletonDependencyScopes()`와 재귀 helper는 singleton 생성 전에 dependency graph를 순회하고, request-scoped provider에 도달하는 path를 거부합니다. 이 탐색은 effective provider, multi-provider contribution, wrapper, nested dependency, class metadata를 따라가므로 alias, multi token, transitive edge에도 동일하게 적용됩니다.
 
 singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 
@@ -978,7 +978,7 @@ singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
   }
 ```
 
-이 검사는 singleton provider가 만들어지기 전에 dependency graph를 확인합니다. 재귀 helper는 alias, nested dependency, wrapper, unregistered class metadata 뒤의 request-scoped provider도 같은 규칙으로 잡아냅니다.
+이 검사는 singleton provider가 만들어지기 전에 dependency graph를 확인합니다. 재귀 helper는 alias, multi-provider contribution, nested dependency, wrapper, unregistered class metadata 뒤의 request-scoped provider도 같은 규칙으로 잡아냅니다.
 
 `CircularDependencyError`는 의도적으로 매우 노골적입니다. `path:packages/di/src/errors.ts:106-125`의 constructor는 full chain과 함께, shared logic 분리 또는 `forwardRef()` 사용을 권장하는 first-party hint를 넣습니다. 그 복구 조언은 표준 해결 모델에 뿌리를 두고 있습니다.
 

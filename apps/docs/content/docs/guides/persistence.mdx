@@ -2,6 +2,7 @@
 title: Persistence
 description: Choose and operate database, Redis, cache, transaction, and queue packages in fluo applications.
 ---
+{/* fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target */}
 
 Persistence in fluo is explicit by design. The framework does not hide every database behind one generic repository abstraction. Instead, each package keeps the semantics of its backing technology visible while connecting it to fluo's DI, lifecycle, interceptor, and status contracts.
 
@@ -12,7 +13,7 @@ Use this guide when you need durable records, shared Redis state, HTTP/applicati
 | Need | Package | Primary contract |
 | --- | --- | --- |
 | Prisma ORM | `@fluojs/prisma` | `PrismaModule`, `PrismaService.current()`, request transactions |
-| Drizzle ORM | `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase.current()`, optional dispose hook |
+| Drizzle ORM | `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase.current()`, `DrizzleTransactionInterceptor` compatibility bridge, optional dispose hook |
 | Mongoose ODM | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection.model(...)` session facade, explicit raw-model sessions |
 | Shared Redis clients | `@fluojs/redis` | `RedisModule`, `RedisService`, named clients |
 | HTTP and app caching | `@fluojs/cache-manager` | `CacheModule`, `CacheInterceptor`, `CacheService` |
@@ -23,8 +24,8 @@ Use this guide when you need durable records, shared Redis state, HTTP/applicati
 | If you need... | Choose | Why |
 | --- | --- | --- |
 | Type-safe relational access with generated Prisma clients | `@fluojs/prisma` | Keeps generated Prisma types while adding lifecycle and ALS-backed transaction context. |
-| Drizzle query builder integration | `@fluojs/drizzle` | Wraps a Drizzle database handle with `current()`, request transactions, and shutdown status. |
-| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | Preserves explicit Mongoose session semantics instead of rewriting operation options. |
+| Drizzle query builder integration | `@fluojs/drizzle` | Wraps a Drizzle database handle with `current()`, request transactions, the deprecated `DrizzleTransactionInterceptor` bridge, and shutdown status. |
+| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | Preserves existing operation option fields while merging the ambient Mongoose session for supported transaction-aware operations. |
 | Shared key-value state for cache, queues, throttling, pub/sub | `@fluojs/redis` | Owns Redis client bootstrap/shutdown and named client tokens. |
 | Cached GET responses or `remember(...)` style application caching | `@fluojs/cache-manager` | Offers memory, Redis, and custom store contracts with bounded ownership. |
 | Retryable work outside the request path | `@fluojs/queue` | Uses Redis-backed distributed jobs, worker discovery, retry/backoff, and dead-letter records. |
@@ -138,7 +139,7 @@ export class UserRepository {
 }
 ```
 
-`@fluojs/drizzle` does not export `DrizzleTransactionInterceptor`. Use an explicit `DrizzleDatabase.requestTransaction(...)` request boundary when the whole request must share one transaction. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
+`DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS imports. It delegates to `DrizzleDatabase.requestTransaction(...)` and forwards the request `AbortSignal`. New request-wide boundaries should call `DrizzleDatabase.requestTransaction(...)` explicitly when the whole request must share one transaction. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
 
 ## Mongoose
 
@@ -336,7 +337,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Topic | Rule |
 | --- | --- |
 | Repository access | Use the package's `current()` seam (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`). |
-| Request transactions | Keep restored Prisma and Mongoose interceptors only for 1.x compatibility; prefer service `@Transaction()` or explicit request transaction calls, especially for named/multiple clients. |
+| Request transactions | Keep restored `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor` only as deprecated 1.x compatibility exports; prefer service `@Transaction()` or explicit request transaction calls, especially for named/multiple clients. |
 | Nested transactions | Active boundaries are reused; nested options that would be ignored are rejected. |
 | Shutdown | Packages drain or abort active request transactions before disposing underlying resources. |
 | Strict transactions | Enable strict mode when direct execution fallback would hide a missing driver capability. |
@@ -349,7 +350,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Package | Public API |
 | --- | --- |
 | `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` compatibility export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
-| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `requestTransaction(...)`, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, deprecated `DrizzleTransactionInterceptor` compatibility export, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `requestTransaction(...)`, status snapshot helper |
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, deprecated `MongooseTransactionInterceptor` compatibility export, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |

@@ -1,22 +1,34 @@
+import { appendVaryHeader } from '../header-helpers.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
   HandlerDescriptor,
   RequestContext,
   ResponseFormatter,
+  ResponseValidators,
 } from '../types.js';
 import {
-  FRAMEWORK_RESPONSE_VALUE_FINALIZER,
-  FRAMEWORK_RESPONSE_WRITER,
-  type FrameworkResponseValueFinalizer,
-  type FrameworkResponseWriter,
-} from './response-integration.js';
+  applyResponseValidators,
+  type ConditionalRequestOutcome,
+} from './conditional-request-policy.js';
 import {
   type ResolvedContentNegotiation,
   resolveContentNegotiation,
   selectResponseFormatter,
 } from './dispatch-content-negotiation.js';
 import { writeErrorResponse } from './dispatch-error-policy.js';
+import { applyRouteHeaders } from './dispatch-response-metadata.js';
+import {
+  createByteRangeResponse,
+  isByteRangeByteSource,
+  shouldApplyByteRange,
+} from '../byte-range-response.js';
+import {
+  FRAMEWORK_RESPONSE_VALUE_FINALIZER,
+  FRAMEWORK_RESPONSE_WRITER,
+  type FrameworkResponseValueFinalizer,
+  type FrameworkResponseWriter,
+} from './response-integration.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -33,6 +45,35 @@ type SuccessResponseMetadataContext = {
   readonly response: FrameworkResponse;
   readonly value: unknown;
 };
+
+/** Selected representation metadata shared by success and conditional response writers. */
+export interface ResolvedResponsePolicy {
+  readonly formatter: ResponseFormatter | undefined;
+  readonly variesByAccept: boolean;
+}
+
+/**
+ * Resolves the representation policy before conditional request evaluation.
+ *
+ * @param handler Matched route descriptor.
+ * @param request Adapter-normalized request.
+ * @param contentNegotiation Configured response formatters.
+ * @returns Formatter selection and representation variance metadata.
+ */
+export function resolveResponsePolicy(
+  handler: HandlerDescriptor,
+  request: FrameworkRequest,
+  contentNegotiation: ResolvedContentNegotiation | undefined,
+): ResolvedResponsePolicy {
+  const formatter = contentNegotiation
+    ? selectResponseFormatter(handler, request, contentNegotiation)
+    : undefined;
+
+  return {
+    formatter,
+    variesByAccept: formatter !== undefined,
+  };
+}
 
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
   switch (handler.route.method) {
@@ -113,9 +154,7 @@ function isJsonContentType(contentType: string): boolean {
 function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): void {
   const { formatter, handler, response, value } = context;
 
-  for (const header of handler.route.headers ?? []) {
-    response.setHeader(header.name, header.value);
-  }
+  applyRouteHeaders(handler, response);
 
   if (formatter) {
     response.setHeader('Content-Type', formatter.mediaType);
@@ -148,8 +187,10 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param request The request.
  * @param response The response.
  * @param value The value.
- * @param contentNegotiation The content negotiation.
+ * @param contentNegotiation The configured response formatters.
  * @param requestContext The active request context passed to custom response writers.
+ * @param validators Validators resolved before the route handler executes.
+ * @param conditionalOutcome Matched conditional outcome for formatter-managed responses.
  * @returns The write success response result.
  */
 export async function writeSuccessResponse(
@@ -159,6 +200,8 @@ export async function writeSuccessResponse(
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
+  validators?: ResponseValidators,
+  conditionalOutcome?: Exclude<ConditionalRequestOutcome, 'proceed'>,
 ) {
   if (response.committed) {
     return;
@@ -166,6 +209,7 @@ export async function writeSuccessResponse(
 
   if (handler.route.redirect) {
     const { url, statusCode = 302 } = handler.route.redirect;
+    applyResponseValidators(response, validators);
     response.redirect(statusCode, url);
     return;
   }
@@ -174,9 +218,17 @@ export async function writeSuccessResponse(
   const responseValue = responseValueFinalizer
     ? await responseValueFinalizer({ handler, request, requestContext, response, value })
     : value;
-  const responseWriter = readFrameworkResponseWriter(responseValue);
+  const writerValue = readFrameworkResponseWriter(responseValue)
+    ? responseValue
+    : isByteRangeByteSource(responseValue) && shouldApplyByteRange(request, validators)
+      ? createByteRangeResponse(responseValue)
+      : undefined;
+  const responseWriter = writerValue
+    ? readFrameworkResponseWriter(writerValue)
+    : undefined;
 
   if (responseWriter) {
+    applyResponseValidators(response, validators);
     let successResponseMetadataApplied = false;
     const applyWriterSuccessResponseMetadata = (): void => {
       if (successResponseMetadataApplied) {
@@ -185,6 +237,7 @@ export async function writeSuccessResponse(
 
       successResponseMetadataApplied = true;
       applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
+      applyResponseValidators(response, validators);
     };
 
     return responseWriter({
@@ -193,14 +246,24 @@ export async function writeSuccessResponse(
       request,
       requestContext,
       response,
+      validators,
+      value: writerValue,
     });
   }
 
-  const formatter = contentNegotiation
-    ? selectResponseFormatter(handler, request, contentNegotiation)
-    : undefined;
+  const responsePolicy = resolveResponsePolicy(handler, request, contentNegotiation);
+  const { formatter } = responsePolicy;
+
+  if (conditionalOutcome !== undefined) {
+    applyRouteHeaders(handler, response);
+    return writeConditionalResponse(response, conditionalOutcome, validators, responsePolicy);
+  }
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+  if (responsePolicy.variesByAccept) {
+    appendVaryHeader(response, 'Accept');
+  }
+  applyResponseValidators(response, validators);
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);
@@ -215,6 +278,29 @@ export async function writeSuccessResponse(
     ? formatter.format(responseValue)
     : responseValue;
   return response.send(responseBody);
+}
+
+/**
+ * Writes a bodyless conditional response through every supported adapter facade.
+ *
+ * @param response Mutable adapter-normalized response.
+ * @param outcome Selected non-proceed conditional request outcome.
+ * @param validators Current representation validators.
+ * @param responsePolicy Selected representation metadata.
+ * @returns A promise that settles after the adapter accepts the bodyless response.
+ */
+export async function writeConditionalResponse(
+  response: FrameworkResponse,
+  outcome: Exclude<ConditionalRequestOutcome, 'proceed'>,
+  validators: ResponseValidators | undefined,
+  responsePolicy: ResolvedResponsePolicy,
+): Promise<void> {
+  applyResponseValidators(response, validators);
+  if (responsePolicy.variesByAccept) {
+    appendVaryHeader(response, 'Accept');
+  }
+  response.setStatus(outcome === 'not-modified' ? 304 : 412);
+  await response.send(undefined);
 }
 
 export type { ResolvedContentNegotiation };

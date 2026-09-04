@@ -82,14 +82,6 @@ import type Redis from 'ioredis';
 const COMMAND_REDIS = getRedisClientToken();
 const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
-  ],
-})
-export class RedisConnectionsModule {}
-
 @Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
 export class NotificationTransportFactory {
   constructor(
@@ -104,7 +96,18 @@ export class NotificationTransportFactory {
     });
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+  providers: [NotificationTransportFactory],
+})
+export class RedisConnectionsModule {}
 ```
+
+Declare the factory class before the module so the module decorator can reference it. `@Inject(...)` only marks constructor tokens; the class is not resolvable until it appears in a `providers` array. fluo performs explicit provider discovery, so any class that must be injected elsewhere must be listed in the owning module.
 
 ## 3.2 Redis Streams for Durable Delivery
 

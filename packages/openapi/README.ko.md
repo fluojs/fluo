@@ -20,6 +20,8 @@ fluo를 위한 descriptor-driven OpenAPI 3.1.0 문서 생성 패키지입니다.
 pnpm add @fluojs/openapi
 ```
 
+`@fluojs/openapi`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원하며 `engines.node`로 정확히 이 범위를 선언합니다. mandatory `@fluojs/runtime` dependency가 이 Node listener 경계를 소유하므로 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 이전 1.x 릴리스는 `engines.node >=20.0.0`을 광고했지만, 이는 실제 dependency floor와 일치한 적이 없습니다.
+
 ## 사용 시점
 
 - **Swagger UI**를 사용하여 REST API에 대한 대화형 문서를 제공하고 싶을 때.
@@ -78,9 +80,13 @@ await app.listen(3000);
 fluo는 `sources`와 `descriptors`로 전달된 controller 및 handler descriptor만 조사하여 OpenAPI 3.1.0 문서를 작성합니다. 이 명시적 입력 집합의 경로, 메서드, 파라미터, 요청 바디가 포함되며, controller를 application module에 import하는 것만으로는 자동 추가되지 않습니다.
 
 ### OpenAPI 3.1 Path Item 검증
-Builder는 표준 Path Item operation인 `get`, `put`, `post`, `delete`, `options`, `head`, `patch`만 생성합니다. Fluo catch-all `ALL` descriptor는 runtime routing 입력이지 OpenAPI operation이 아니므로, 비표준 `all` key로 직렬화하지 않고 문서 생성을 거부합니다. 지원하지 않는 다른 descriptor method도 같은 path-specific error로 실패합니다.
+Builder는 표준 Path Item operation인 `get`, `put`, `post`, `delete`, `options`, `head`, `patch`, `trace`만 생성합니다. Fluo catch-all `ALL` descriptor는 runtime routing 입력이지 OpenAPI operation이 아니므로, 비표준 `all` key로 직렬화하지 않고 문서 생성을 거부합니다. 지원하지 않는 다른 descriptor method도 같은 path-specific error로 실패합니다.
 
 `documentTransform` 이후에는 모든 Path Item을 다시 검증합니다. Transform은 OpenAPI 3.1 operation(`trace` 포함), fixed field(`$ref`, `summary`, `description`, `servers`, `parameters`), `x-*` specification extension을 사용할 수 있습니다. `all`, `query` 또는 기타 알 수 없는 key는 문서가 노출되기 전에 생성을 실패시킵니다.
+
+### 2.0으로 마이그레이션
+
+업그레이드하기 전에 모든 `@All()` route 또는 custom handler descriptor를 각각 지원되는 HTTP method route로 바꾸거나 OpenAPI 입력에서 제외하세요. `documentTransform`에서는 `all`, `query` 같은 비표준 Path Item key를 제거하고 표준 operation, fixed field, `x-*` extension만 유지하세요. 지원하지 않는 입력은 이제 잘못된 문서를 생성하는 대신 문서 생성 단계에서 예외를 발생시킵니다.
 
 ### 응답 미디어 타입
 HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 OpenAPI 응답은 해당 미디어 타입을 response `content` 키로 사용합니다. 예를 들어 `@ApiResponse(...)` 스키마가 있는 핸들러에 `@Produces('application/json', 'application/problem+json')`를 붙이면, `application/json`만으로 되돌아가지 않고 두 미디어 타입 모두 같은 응답 스키마로 방출합니다.
@@ -145,6 +151,13 @@ Path는 `@fluojs/http` route grammar를 따르며 중복 slash와 trailing slash
 
 ### Async 등록과 옵션
 title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApiModule.forRootAsync(...)`를 사용합니다. 등록 시점의 `documentPath`와 `uiPath`는 `inject`, `useFactory` 옆에 두고, factory에서는 `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`를 반환합니다. `defaultErrorResponsesPolicy`는 기본적으로 표준 error response와 `ErrorResponse` schema를 주입하며, `documentTransform`은 문서 생성 뒤 제공되기 전에 실행됩니다.
+
+### NestJS 마이그레이션 계약 차이
+생성 문서는 NestJS Swagger와 일대일 호환 계층이 아닙니다. fluo는 기본적으로 명시적으로 선언한 응답을 대체하지 않으면서 `400`, `401`, `403`, `404`, `500` 응답과 공용 `ErrorResponse` schema를 추가합니다. 클라이언트를 다시 생성하기 전에 생성된 error contract를 검증하고, legacy 문서에 이 기본 응답이 들어가면 안 되는 경우 `defaultErrorResponsesPolicy: 'omit'`을 설정하세요.
+
+fluo는 controller tag, handler name, HTTP method, normalized path에서 각 `operationId`를 결정론적으로 만듭니다. 충돌에는 숫자 suffix가 붙습니다. 생성된 client가 legacy identifier에 의존한다면 문서를 제공하기 전에 `documentTransform`에서 생성된 operation ID를 변경하고, 변환된 문서를 client generator로 검증하세요.
+
+`forRootAsync(...)`에서는 `documentPath`와 `uiPath`의 route가 `useFactory(...)`가 resolve되기 전에 compile되므로 두 값은 바깥 registration option입니다. 이 path들은 `inject`와 `useFactory` 옆에 두고 factory에서는 document configuration만 반환하세요. factory가 반환한 path로는 이미 등록된 route를 다시 구성할 수 없습니다.
 
 ## 공개 API
 

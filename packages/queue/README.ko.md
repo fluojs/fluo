@@ -21,7 +21,7 @@ fluo를 위한 Redis 기반 분산 작업 처리 패키지입니다. 데코레�
 npm install @fluojs/queue @fluojs/redis
 ```
 
-`@fluojs/queue`는 package manifest의 `engines.node` 선언에 따라 Node.js `>=20.0.0`이 필요합니다. fluo 애플리케이션의 나머지 부분이 runtime-portable API를 사용하더라도 이 패키지 수준 요구사항은 그대로 적용됩니다.
+`@fluojs/queue`는 필수 `@fluojs/runtime` dependency와 일치하는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다. 이 major version을 적용하기 전에 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, 또는 Node.js 27+를 사용하는 Queue consumer는 지원되는 release로 업그레이드하세요.
 
 `@fluojs/queue`는 BullMQ `^5.81.1`을 포함합니다. 업그레이드할 때 application lockfile을 갱신해 BullMQ의 패치된 dependency graph가 설치되도록 하세요. Queue registration, worker discovery, persisted-job contract는 그대로입니다.
 
@@ -59,6 +59,8 @@ export class OrderWorker {
 
 `QueueModule.forRoot(...)`는 애플리케이션 수준 큐 등록을 위한 지원되는 루트 엔트리포인트입니다.
 
+Producer는 job class instance를 넣어 `enqueue(new JobClass(...))`를 호출합니다. `add(name, payload)` 형태의 producer signature는 없습니다. `enqueue(job)`은 `job.constructor`로 대상 worker를 찾고, queue와 named job은 그 worker에 등록된 `jobName`에서 가져옵니다.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
 import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
@@ -90,8 +92,49 @@ NestJS queue integration에서 이동하는 consumer는 metadata 기반 processo
 1. Backing Redis client를 `RedisModule.forRoot(...)`로 등록한 뒤 queue를 소유하는 module graph에서 `QueueModule.forRoot(...)`를 import합니다. NestJS async-module shape를 복사하거나 Queue가 environment configuration을 암묵적으로 읽을 것이라고 기대하지 마세요.
 2. `@Processor(...)`, `@Process(...)` 또는 그 밖의 NestJS/Bull provider metadata를 TC39 표준 class decorator인 `@QueueWorker(JobClass, options?)`로 바꿉니다. 각 worker는 호출 가능한 `handle(job)` 메서드를 노출해야 합니다.
 3. Decorated worker class를 singleton으로 `@Module({ providers: [...] })`에 추가합니다. Queue는 compiled provider/controller registration을 scan하며, `@Injectable()` metadata, emit된 constructor type, 임의로 import된 class는 scan하지 않습니다. Constructor dependency는 `@Inject(...)`로 명시적으로 선언합니다.
+
+**각 job class와 실제 `jobName`은 worker 하나만 소유합니다.** Queue는 BullMQ resource를 만들기 전에 bootstrap 중 singleton 중복 등록을 거부하며, provider discovery 순서와 무관합니다. 마이그레이션하는 NestJS `@Process(...)` handler마다 별도 job class와 `jobName`을 부여하거나, 여러 handler를 worker 하나의 `handle(job)` 뒤로 통합하세요.
+
 4. Worker가 queue registration에서 도달 가능하도록 유지합니다. 기본 global `QueueModule.forRoot()`는 compiled application graph 전체의 singleton worker를 discovery할 수 있습니다. `global: false`에서는 authored imports/exports를 통해 해당 registration에 도달할 수 있는 module로 discovery가 제한되며, 일치하는 Redis provider도 같은 module tree에서 도달 가능해야 합니다.
-5. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
+5. Processor뿐 아니라 producer도 변환합니다. `@InjectQueue('name')`과 `queue.add('job', payload)`를 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)와 `queue.enqueue(new JobClass(...))`로 바꿉니다. Queue에는 name과 payload를 받는 producer signature가 없으며, plain payload object는 constructor가 `Object`이므로 등록된 JobClass worker를 식별할 수 없습니다.
+6. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
+
+### Producer 마이그레이션: Bull/BullMQ에서 Queue로
+
+NestJS Bull 또는 BullMQ에서는 producer가 queue와 named job을 모두 선택합니다.
+
+```typescript
+// 이전: NestJS Bull/BullMQ
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+
+export class OrdersProducer {
+  constructor(@InjectQueue('orders') private readonly queue: Queue) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.add('process-order', { orderId });
+  }
+}
+```
+
+fluo에서는 `ProcessOrderJob`을 `@QueueWorker(ProcessOrderJob, { jobName: 'process-order' })`로 선언하고 등록한 뒤, 정확히 그 exported class의 instance를 enqueue합니다. Worker registration이 BullMQ queue와 named job을 결정하므로 producer는 두 문자열을 제공하지 않습니다.
+
+```typescript
+// 이후: fluo
+import { Inject } from '@fluojs/core';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+@Inject(QueueLifecycleService)
+export class OrdersProducer {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.enqueue(new ProcessOrderJob(orderId));
+  }
+}
+```
+
+`ProcessOrderJob`은 `@QueueWorker`에 전달한 것과 동일한 constructor reference여야 하며, 복사해서 선언한 class나 plain `{ orderId }` object가 아니어야 합니다. 후자는 `enqueue<TJob extends object>`가 object를 받으므로 type-check는 통과하지만 runtime에서 `No @QueueWorker() registered for job type Object.`로 거부됩니다.
 
 Cutover 전에는 persistence identity 차이를 반영하세요. NestJS Bull/BullMQ는 하나의 `queueName` 아래 여러 named job 값을 영속화할 수 있습니다. 반면 fluo는 job type마다 queue/worker pair 하나를 만들면서 worker의 `jobName`을 BullMQ queue name과 named job 양쪽에 사용합니다. 따라서 `jobName`만 설정해서는 여러 named job이 하나의 `queueName`을 공유하는 legacy topology를 보존할 수 없고, `@fluojs/queue`는 NestJS decorator metadata를 해석하거나 기존 serialized payload를 자동 변환하지 않습니다.
 
@@ -115,7 +158,21 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 애플리케이션이 non-global queue 등록을 둘 이상 가져오면 명시적인 `scope`를 사용하세요. Scope 이름은 trim되며, 비어 있으면 안 되고, 컴파일된 module graph 안에서 고유해야 합니다. `QueueModule.forRoot({ global: false })`를 두 번 가져오는 duplicate default scoped registration이나 `QueueModule.forRoot({ global: false, scope: 'jobs' })`를 두 번 가져오는 duplicate explicit scope는 bootstrap 중 결정적인 오류로 실패합니다.
 
-Scope는 DI ownership을 격리하지만 Redis에 저장되는 BullMQ queue를 namespace하지는 않습니다. Queue는 bootstrap 중 같은 Redis client를 resolve하면서 동일한 `jobName`의 worker를 발견하는 두 scope를 거부합니다. 그렇지 않으면 두 worker가 같은 BullMQ queue를 소비하기 때문입니다. 각 owner에 서로 다른 `clientName` 또는 `jobName`을 설정하세요. Scope 사이에서 `jobName`을 재사용할 수 있는 경우는 각 scope가 서로 다른 named Redis registration을 resolve할 때뿐입니다.
+Scope는 DI ownership을 격리하지만 Redis에 저장되는 BullMQ queue를 namespace하지는 않습니다. `clientName`은 DI registration을 선택할 뿐 BullMQ backend identity가 아닙니다. 서로 다른 named client가 같은 Redis database와 BullMQ prefix를 가리킬 수 있습니다.
+
+BullMQ backend를 공유하는 scoped registration마다 `ownershipNamespace`를 선언하세요. 이 stable application-supplied 값은 실제 Redis database와 BullMQ prefix topology를 식별하며, 같은 backend의 registration은 `clientName`과 무관하게 같은 값을 사용해야 합니다. 이 값은 validation identity일 뿐 BullMQ key나 prefix를 바꾸지 않습니다.
+
+Queue는 BullMQ resource를 만들기 전에 각 `(ownershipNamespace, jobName)` pair를 검증합니다. 2.x에서 `ownershipEnforcement` 기본값은 `'warn'`이므로, namespace가 없거나 collision이 있어도 diagnostic을 기록하고 startup 동작을 보존합니다. Resource 생성 전에 collision을 거부하려면 registration에 `ownershipEnforcement: 'reject'`를 설정하세요. 빈 namespace는 유효하지 않습니다. 실제로 서로 다른 BullMQ backend에만 서로 다른 namespace를 사용하고, 의도적인 격리가 필요하면 서로 다른 `jobName`을 설정하세요.
+
+```typescript
+QueueModule.forRoot({
+  clientName: 'orders',
+  global: false,
+  ownershipNamespace: 'orders-redis-db-0',
+  ownershipEnforcement: 'reject',
+  scope: 'orders',
+})
+```
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
@@ -173,7 +230,33 @@ for (const record of inspection.records) {
 
 Inspection은 read-only이며 유효한 record를 최신순으로 반환합니다. Redis read를 worker lifecycle state로 gate하지 않으므로 inspection이 worker를 시작하지 않으며, backing Redis client에 접근 가능한 동안에는 Queue가 `idle`이거나 worker startup이 `failed`에 도달한 뒤에도 사용할 수 있습니다. Queue는 shared Redis client를 소유하지 않습니다. `RedisModule`이 해당 client를 종료한 뒤에는 post-shutdown availability를 보장하지 않고 backing Redis operation error를 그대로 전달합니다. Limit은 기본적으로 저장된 entry `100`개이며 최대 `1_000`개로 제한되고, 잘못된 limit은 기본값으로 대체됩니다. Malformed stored value는 결과에서 제외되고 해당 inspection window의 `malformedRecordCount`에 집계됩니다. `payload`는 `unknown`으로 유지되므로 애플리케이션 코드가 자신의 job data를 직접 narrow해야 합니다. Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.
 
-Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object를 입력으로 받습니다. Enqueue 전에 Queue는 job을 JSON으로 직렬화하며, 직렬화 결과는 `null`이나 array가 아닌 JSON object여야 합니다. Worker 측에서는 그 직렬화된 object 위에 등록된 job prototype을 다시 입힙니다.
+### Producer dispatch 계약
+
+`enqueue(job)`은 job의 정확한 constructor로 dispatch합니다. Queue는 `@QueueWorker(JobClass, options?)`로 discovery한 worker 집합에서 `job.constructor`를 조회하며, 그 constructor가 등록되지 않았으면 `No @QueueWorker() registered for job type <name>.`으로 호출을 거부합니다.
+
+불확실한 전달 또는 반복 dispatch에서도 호출자가 소유한 identity를 유지해야 한다면 두 번째 `enqueue` 인수로 선택적 `deduplicationKey`를 전달하세요. Queue는 이를 BullMQ에 유효한 backing job id로 결정적으로 매핑하므로, 호출자는 BullMQ의 콜론 또는 숫자 전용 custom-id 제한을 상속하지 않으면서 같은 worker queue에 대한 반복 enqueue 시도를 deduplicate할 수 있습니다.
+
+```typescript
+await queue.enqueue(new ProcessOrderJob(id), { deduplicationKey: `order:${id}` });
+```
+
+Plain payload object가 아니라 등록된 job class의 instance를 전달하세요.
+
+```typescript
+// 정상: instance의 constructor가 등록된 ProcessOrderJob class입니다.
+await queue.enqueue(new ProcessOrderJob(id));
+
+// runtime에서 거부: object literal의 constructor는 `Object`이므로
+// 등록된 JobClass worker를 식별할 수 없습니다.
+await queue.enqueue({ orderId: id });
+
+// 같이 거부: 구조가 동일하더라도 등록되지 않은 class입니다.
+await queue.enqueue(new UnregisteredOrderJob(id));
+```
+
+`enqueue<TJob extends object>(job: TJob)`은 임의의 object를 허용하므로 plain payload도 TypeScript 검사를 통과하고 runtime에서만 실패합니다. Worker 선택 기준은 payload shape, field 이름, job name 문자열이 아니라 constructor identity이므로, class 정의를 복사하거나 다른 module에서 job class를 다시 선언하면 서로 다른 constructor가 되어 등록된 것으로 간주되지 않습니다.
+
+Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object를 입력으로 받습니다. Enqueue 전에 Queue는 job을 JSON으로 직렬화하며, 직렬화 결과는 `null`이나 array가 아닌 JSON object여야 합니다. Worker 측에서는 그 직렬화된 object 위에 등록된 job prototype을 다시 입힙니다. 직렬화는 constructor 조회가 성공한 뒤에 생기므로, 직렬화 가능한 plain object도 payload 검사 전에 거부됩니다.
 
 저수준 provider 조합을 루트 barrel API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다. 저수준 provider helper는 문서화된 루트 barrel 계약에 포함되지 않습니다.
 
@@ -182,7 +265,8 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 ### 핵심 구성 요소
 - `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
 - `QueueModule.forRoot(options)`: 애플리케이션 수준 큐 등록을 구성합니다.
-- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
+- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job, options?)`, `enqueueMany(entries)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
+- `Queue`: `QUEUE`와 `getQueueToken(scope?)`로 노출되는 공개 producer facade이며, `QueueLifecycleService`와 같은 `enqueue(...)` 및 `enqueueMany(...)` 계약을 제공합니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
 - `getQueueToken(scope?)`: Queue facade token helper입니다. `scope`를 생략하면 기본 `QUEUE` token을 반환하고, 비어 있지 않은 scope는 해당 scoped registration의 facade token을 반환합니다.
@@ -191,12 +275,15 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 
 
 ### 타입
-- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job)` 및 read-only `inspectDeadLetters(jobName, options?)` facade입니다.
+- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job, options?)`, atomic `enqueueMany(entries)`, read-only `inspectDeadLetters(jobName, options?)` facade입니다.
+- `QueueEnqueueOptions`: idempotent enqueue 시도를 위해 Queue가 BullMQ에 유효한 job id로 매핑하는 호출자 소유 `deduplicationKey`를 포함하는 선택적 producer control입니다.
+- `QueueEnqueueManyEntry`: job과 선택적 `QueueEnqueueOptions`를 포함하는 ordered batch entry입니다.
 - `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection 설정(`limit`) 타입입니다.
 - `QueueDeadLetterInspectionResult`: 최신순의 유효 record와 inspection window의 `malformedRecordCount`를 제공하는 결과 타입입니다.
 - `QueueDeadLetterRecord`: `unknown` 애플리케이션 payload를 포함하는 typed dead-letter metadata입니다.
 - `QueueJobType`: job payload class를 식별하고 rehydrate하는 데 사용하는 constructor 타입입니다.
-- `QueueModuleOptions`: 전역 큐 설정(`global`, clientName, 기본 시도 횟수, `defaultBackoff`, 동시성, 전송률 제한, dead-letter retention 등)을 위한 타입입니다.
+- `QueueModuleOptions`: 전역 큐 설정(`global`, `clientName`, `ownershipNamespace`, `ownershipEnforcement`, 기본 시도 횟수, `defaultBackoff`, 동시성, 전송률 제한, dead-letter retention 등)을 위한 타입입니다.
+- `QueueOwnershipEnforcement`: Cross-scope ownership collision action(`'warn'` 또는 `'reject'`) 타입입니다.
 - `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, jobName, 전송률 제한 등)을 위한 타입입니다.
 - `QueueBackoffType`: 지원되는 retry backoff strategy 이름(`fixed`, `exponential`)입니다.
 - `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
@@ -211,13 +298,22 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 
 - `global`: queue module 등록을 global로 만들지 여부입니다. 기본값은 `true`이며, queue provider를 importing module graph 안에만 scope하고 싶으면 `false`를 지정합니다.
 - `scope`: 고유한 non-empty queue registration scope입니다. 하나의 앱에 non-global queue registration이 여러 개 있으면 필요합니다.
-- Cross-scope ownership: 같은 Redis client를 resolve하는 registration은 서로 다른 worker `jobName`을 사용해야 하며, collision은 BullMQ resource가 생성되기 전 bootstrap 중 실패합니다.
+- `ownershipNamespace`: Redis database와 BullMQ prefix를 위한 stable application-supplied identity입니다. 하나의 BullMQ backend registration은 `clientName`과 무관하게 같은 non-empty 값을 사용해야 합니다.
+- `ownershipEnforcement`: Cross-scope ownership action입니다. 2.x에서는 `'warn'`이 기본값이며, 일치하는 `(ownershipNamespace, jobName)` collision을 BullMQ resource 생성 전에 실패시키려면 `'reject'`를 설정합니다.
 - `workerShutdownTimeoutMs`: 각 BullMQ worker close phase에 허용되는 최대 시간입니다. Graceful close를 먼저 시도하고, 이 단계가 실패하거나 timeout되면 force-close에 같은 budget을 적용합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 
 `QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약을 사용합니다. Queue가 `started`에 도달하고 탐색된 모든 BullMQ worker processor가 시작된 뒤에만 readiness를 `ready`로 보고합니다. 이 조건이 유지되는 동안 pending dead-letter write가 있어도 readiness는 `ready`를 유지하지만, pending count가 0으로 돌아올 때까지 health는 degraded입니다. Processor가 아직 pending인 `started` resource와 `starting`은 degraded readiness, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy, worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, `5_000ms` dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
 
 singleton `@QueueWorker()` provider/controller만 등록됩니다. request/transient worker는 discovery 중 건너뜁니다.
+
+### Atomic producer batch
+
+`Queue.enqueueMany(entries)`와 `QueueLifecycleService.enqueueMany(entries)`는 순서가 있는 `QueueEnqueueManyEntry` 값을 받습니다. 각 entry는 하나의 job instance와 `deduplicationKey`를 포함할 수 있는 entry별 `QueueEnqueueOptions`를 제공합니다.
+
+모든 entry는 같은 하나의 BullMQ queue에 등록된 worker로 해석되어야 합니다. Queue는 BullMQ를 호출하기 전에 batch 전체를 검증하므로 worker가 없거나 다른 queue로 해석되는 job이 있으면 어떤 entry도 persist하지 않고 reject합니다. 유효한 batch는 한 번의 atomic BullMQ `addBulk(...)` 호출로 persist되며, 반환 job ID의 순서는 입력 순서와 일치합니다.
+
+각 entry는 Queue가 backing BullMQ job ID로 변환할 때 자신의 `deduplicationKey`를 보존합니다. 기존 `enqueue(job, options?)` 동작은 바뀌지 않으며 호환되는 single-job producer API로 계속 제공됩니다.
 
 ## 관련 패키지
 

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,7 +53,7 @@ describe('runMigrateCommand', () => {
     expect(stderrBuffer.join('')).toContain('No transforms remain');
   });
 
-  it('returns changed file summary in dry-run mode', async () => {
+  it('reports adapter selection for an unselected bootstrap in dry-run mode', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
     tempDirectories.push(workspaceDirectory);
 
@@ -80,8 +80,115 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Mode: dry-run');
-    expect(stdoutBuffer.join('')).toContain('Changed files: 1');
-    expect(stdoutBuffer.join('')).toContain('Run again with --apply to write transformed files.');
+    expect(stdoutBuffer.join('')).toContain('Changed files: 0');
+    expect(stdoutBuffer.join('')).toContain('Warnings: 1');
+    expect(stdoutBuffer.join('')).toContain('Select a Fluo platform adapter');
+  });
+
+  it('retains adapter-unknown bootstraps and reports adapter selection', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    tempDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+
+    const exitCode = await runMigrateCommand(['./src', '--apply'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(migratedSource).toContain('NestFactory.create(AppModule)');
+    expect(migratedSource).toContain('await app.listen(3000);');
+    expect(migratedSource).not.toContain('FluoFactory.create');
+  });
+
+  it('applies an Express-backed bootstrap rewrite only when explicitly selected', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    tempDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--platform', 'express'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(migratedSource).not.toContain('NestFactory.create');
+    expect(migratedSource).toContain('FluoFactory.create(AppModule, {');
+    expect(migratedSource).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
+    expect(migratedSource).toContain('adapter: createExpressAdapter({');
+    expect(migratedSource).toMatch(/port:\s*3000/);
+    expect(migratedSource).toContain('await app.listen();');
+  });
+
+  it('keeps bootstrap unchanged for CLI-selected adapter-independent transforms', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    tempDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const serviceFilePath = join(workspaceDirectory, 'src', 'users.service.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+    writeFileSync(
+      serviceFilePath,
+      `import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class UsersService {}
+`,
+    );
+
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--only', 'injectable'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(sourceFilePath, 'utf8')).toContain('NestFactory.create(AppModule)');
+    expect(readFileSync(serviceFilePath, 'utf8')).not.toContain('@Injectable');
   });
 
   it('emits structured JSON summary in dry-run mode', async () => {
@@ -129,21 +236,26 @@ void bootstrap();
     expect(output).not.toContain('Mode: dry-run');
     expect(report).toMatchObject({
       apply: false,
-      changedFiles: 1,
+      changedFiles: 0,
       command: 'migrate',
       dryRun: true,
       mode: 'dry-run',
       scannedFiles: 1,
-      warningCount: 0,
+      warningCount: 1,
     });
     expect(report.transforms).toContain('bootstrap');
     expect(report.files).toEqual([
       {
-        appliedTransforms: ['bootstrap'],
-        changed: true,
+        appliedTransforms: [],
+        changed: false,
         filePath: sourceFilePath,
-        warningCount: 0,
-        warnings: [],
+        warningCount: 1,
+        warnings: [
+          expect.objectContaining({
+            category: 'bootstrap-unsupported',
+            message: expect.stringContaining('Select a Fluo platform adapter'),
+          }),
+        ],
       },
     ]);
   });
@@ -185,14 +297,9 @@ export class AppController {
     expect(report.dryRun).toBe(false);
     expect(report.mode).toBe('apply');
     expect(report.changedFiles).toBe(1);
-    expect(report.warningCount).toBe(1);
-    expect(report.files[0]?.warningCount).toBe(1);
-    expect(report.files[0]?.warnings[0]).toMatchObject({
-      category: 'inject-token',
-      categoryLabel: 'DI token migration (@Inject)',
-      line: 5,
-      message: 'Constructor @Inject(TOKEN) parameter decorators need manual migration to class-level @Inject(TOKEN, ...) syntax.',
-    });
+    expect(report.warningCount).toBe(0);
+    expect(report.files[0]?.warningCount).toBe(0);
+    expect(report.files[0]?.warnings).toEqual([]);
   });
 
   it('outputs "Automated rewrites:" section header for changed files', async () => {
@@ -202,19 +309,15 @@ export class AppController {
     mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
     writeFileSync(
       join(workspaceDirectory, 'src', 'main.ts'),
-      `import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+      `import { Injectable } from '@nestjs/common';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(3000);
-}
-void bootstrap();
+@Injectable()
+export class UsersService {}
 `,
     );
 
     const stdoutBuffer: string[] = [];
-    const exitCode = await runMigrateCommand(['./src', '--apply'], {
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--only', 'injectable'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -237,7 +340,11 @@ void bootstrap();
 
 @Controller('users')
 export class UsersController {
-  constructor(@Inject('TOKEN') private readonly token: string) {}
+  constructor(
+    @Inject('TOKEN') private readonly token: string,
+    private readonly secondary: SecondaryDependency,
+    ...remaining: readonly RemainingDependency[]
+  ) {}
 
   @Post()
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -258,7 +365,7 @@ export class UsersController {
     const output = stdoutBuffer.join('');
     expect(exitCode).toBe(0);
     expect(output).toContain('Manual follow-up required:');
-    expect(output).toMatch(/\[DI token migration \(@Inject\)\]/);
+    expect(output).toMatch(/\[Unsupported constructor injection\]/);
     expect(output).toContain('Docs: https://github.com/fluojs/fluo');
     expect(output).toContain('post-codemod checklist');
   });
@@ -305,7 +412,11 @@ export class UsersController {
 
 @Controller('app')
 export class AppController {
-  constructor(@Inject('SVC') private readonly svc: unknown) {}
+  constructor(
+    @Inject('SVC') private readonly svc: unknown,
+    private readonly secondary: SecondaryDependency,
+    ...remaining: readonly RemainingDependency[]
+  ) {}
 }
 `,
     );

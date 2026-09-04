@@ -177,7 +177,7 @@
 ## Part 5. Testing and Diagnostics
 
 - [Chapter 14. Portability Testing and Conformance Verification](ch14-portability-testing.md)
-  - [What You Will Learn in This Chapter](ch14-portability-testing.md#what-you-will-learn-in-this-chapter)
+  - [What You Will Learn in This Chapter](ch14-portability-testing.md#learning-objectives)
   - [Prerequisites](ch14-portability-testing.md#prerequisites)
   - [14.1 The Portability Challenge](ch14-portability-testing.md#141-the-portability-challenge)
   - [14.2 Conformance vs Portability](ch14-portability-testing.md#142-conformance-vs-portability)
@@ -197,7 +197,7 @@
   - [15.3 Generating Inspect Artifacts with `fluo inspect`](ch15-studio.md#153-generating-inspect-artifacts-with-fluo-inspect)
   - [15.4 Understanding the Snapshot and Report Shapes](ch15-studio.md#154-understanding-the-snapshot-and-report-shapes)
   - [15.5 Using the Studio Viewer](ch15-studio.md#155-using-the-studio-viewer)
-  - [15.6 Scenario: Diagnosing a Provider Deadlock](ch15-studio.md#156-scenario-diagnosing-a-provider-deadlock)
+  - [15.6 Scenario: Reviewing a Successful-Bootstrap Inspect Artifact](ch15-studio.md#156-scenario-reviewing-a-successful-bootstrap-inspect-artifact)
   - [15.7 Consuming Inspect Artifacts Programmatically](ch15-studio.md#157-consuming-inspect-artifacts-programmatically)
   - [15.8 Mermaid Export for Documentation](ch15-studio.md#158-mermaid-export-for-documentation)
   - [15.9 Why Heading Parity Matters](ch15-studio.md#159-why-heading-parity-matters)

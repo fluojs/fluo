@@ -56,7 +56,7 @@ const EnvSchema = z.object({
 class AppModule {}
 ```
 
-env file이 절대 경로나 미리 해석된 경로에 있다면 `envFilePath`를 사용하고, 기본 dotenv parser 대신 다른 flat-file parser가 필요하다면 `parse`를 전달하세요.
+env file이 절대 경로나 미리 해석된 경로에 있다면 `envFilePath`를 사용하고, 여러 env file을 명시적인 순서로 계층화해야 한다면 `envFilePaths`를 사용하며, 기본 dotenv parser 대신 다른 flat-file parser가 필요하다면 `parse`를 전달하세요.
 
 등록 후에는 `ConfigService`를 주입해서 값을 읽습니다.
 
@@ -84,6 +84,7 @@ class MyService {
 - `@fluojs/config`는 ambient environment variable을 scan하지 않으므로 명시적 `processEnv` snapshot을 전달합니다.
 - NestJS `validate` callback은 `schema`에 전달하는 동기 Standard Schema로 바꿉니다. 비동기 schema 결과는 거부됩니다.
 - NestJS `isGlobal`이 아니라 `global`을 사용합니다. Visibility는 기본적으로 global이며, `global: false`로 module-local visibility를 선택합니다.
+- Call site는 single-key 형태로 재작성합니다. `ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받으며 NestJS default-value 또는 options overload를 노출하지 않습니다. 기본값은 `defaults` 또는 `schema` output이 소유하거나, `get(key)` 결과에 명시적인 `??` fallback을 적용합니다.
 
 공유 validated snapshot bootstrap pattern과 HTTP adapter boundary는 canonical [NestJS configuration migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 참고하세요.
 
@@ -94,6 +95,33 @@ class MyService {
 `@fluojs/config`는 주변 환경 변수를 자동으로 스캔하지 않습니다. 환경 기반 값을 우선순위에 포함하려면 부트스트랩 경계에서 `processEnv` 스냅샷을 명시적으로 전달하세요.
 
 `envFilePath`는 `envFile`보다 우선하며, `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 빈 load/module option은 `loadConfig({})`와 `ConfigModule.forRoot()`에 대해 기본 `<cwd>/.env` 동작을 보존합니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
+
+### 순서가 있는 다중 env file loading
+
+`envFilePaths`는 명시적으로 순서가 정해진 env file 목록 하나를 받습니다. 목록은 낮은 우선순위에서 높은 우선순위로 병합되어 단일 env-file tier를 구성하므로, 여전히 `defaults`보다 위에 있고 `processEnv`와 `runtimeOverrides`보다 아래에 있습니다.
+
+```ts
+ConfigModule.forRoot({
+  envFilePaths: ['.env', '.env.production', '.env.production.local'],
+  processEnv: {
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
+  schema: EnvSchema,
+});
+```
+
+contract는 다음과 같습니다.
+
+- 뒤쪽 entry가 앞쪽 entry를 이깁니다. plain object는 여전히 deep merge되고 array는 여전히 교체됩니다.
+- 상대 경로 entry는 `cwd`(기본값 `process.cwd()`) 기준으로 해석되고, 절대 경로 entry는 그대로 사용됩니다.
+- 누락된 파일은 아무 값도 기여하지 않으며 load를 실패시키지 않습니다.
+- `envFilePaths: []`는 기본 `<cwd>/.env` fallback을 포함해 env-file loading 자체를 명시적으로 해제합니다.
+- `envFilePaths`를 `envFile` 또는 `envFilePath`와 함께 쓰면 `INVALID_CONFIG`로 실패하며, 해석 결과가 중복된 경로나 빈 entry도 동일하게 실패합니다.
+- schema는 개별 파일이 아니라 완전히 병합된 결과를 한 번만 검증합니다.
+- watch mode에서는 서로 다른 parent directory마다 watcher를 하나씩만 시작하고, 목록에 포함된 파일이 변경되면 전체 목록을 다시 계산하며, 우선순위가 높은 파일을 삭제하면 남은 파일로 fallback합니다. 검증 실패 시에는 마지막 유효 snapshot을 유지합니다.
+- 자동 profile 탐색은 패키지 밖에 남습니다. 정확한 목록과 순서는 caller가 결정합니다.
+
+패키지는 `NODE_ENV`에서 env file 이름을 유도하지 않습니다. 환경별 계층화가 필요하다면 bootstrap boundary에서 목록을 직접 구성하세요.
 
 Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`, option type, 또는 명시적 in-memory 입력을 쓰는 `loadConfig(...)` consumer는 root import를 안전하게 사용할 수 있고, Node builtin은 env-file load 또는 watch mode가 실제로 실행될 때 lazy하게 해석됩니다. `loadConfig({ defaults, processEnv, runtimeOverrides })`는 `process.cwd()`, 기본 `.env` path, Node filesystem/path/crypto builtin을 해석하지 않습니다. Published package engine이 Node.js 20.16.0 이상이므로 Node.js 20.0.0부터 20.15.x까지와 Node.js 밖의 runtime은 env-file, 기본 `.env`, watch execution path의 지원 package contract에 포함되지 않습니다.
 
@@ -115,7 +143,7 @@ Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem,
 
 Module registration과 reloader 생성은 `schema`로 전달한 nested Standard Schema validator object를 포함해 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. 이 캡처는 provider resolution이나 application bootstrap보다 앞선 `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, `createConfigReloader(...)` 호출 시점에 동기적으로 일어납니다. Config dictionary, `processEnv`, Standard Schema descriptor는 분리하고, `parse`, `onReloadError`, schema validator 같은 callable value는 해당 호출에서 캡처한 reference를 유지합니다. 이후 option object나 snapshot으로 분리된 nested object를 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. `ConfigModule.forRoot({ watch: true, ... })`를 사용하면 module은 application bootstrap 중 env-file watcher를 시작하고, 먼저 injected `ConfigService`를 watch reloader baseline과 맞춘 다음 watch reload가 성공한 뒤 같은 injected `ConfigService` instance를 갱신합니다. `ConfigModule`의 automatic watch reload 실패를 애플리케이션이 소유해야 한다면 `onReloadError`를 전달하세요. Watch mode에서는 기존 env file과 누락된 env file 모두에 대해 parent directory를 watch하므로, 나중에 env file을 생성하거나 atomic replacement로 교체해도 reload가 트리거될 수 있습니다. Watch reload는 reload 전에 최종 env file content를 마지막으로 commit된 watch baseline과 비교하므로, 내용이 바뀌지 않은 저장이나 변경 후 debounce 안에서 원래 내용으로 되돌린 burst는 인프로세스 config snapshot을 교체하지 않습니다.
 
-`ConfigReloadModule`은 명시적으로 주입 가능한 reload layer이며 standalone config source가 아닙니다. manual reload나 subscription을 위해 `CONFIG_RELOADER`가 필요한 caller는 `ConfigModule` 또는 다른 `ConfigService` provider와 함께 사용하세요. `ConfigModule` 또는 `ConfigReloadModule`이 만든 watcher는 `watch: true`일 때만 생성되며 module shutdown 중에 닫힙니다. 같은 env file에 대해서는 한 layer에서만 `watch: true`를 활성화하세요. 자동 `ConfigService` 갱신만 필요하면 `ConfigModule`을 사용하고, subscription/manual reload를 위한 injected reloader 계약이 필요하면 `ConfigReloadModule`을 사용합니다.
+`ConfigReloadModule`은 명시적으로 주입 가능한 reload layer이며 standalone config source가 아닙니다. manual reload나 subscription을 위해 `CONFIG_RELOADER`가 필요한 caller는 `ConfigModule` 또는 다른 `ConfigService` provider와 함께 사용하세요. `ConfigModule` 또는 `ConfigReloadModule`이 만든 watcher는 `watch: true`일 때만 생성되며 module shutdown 중에 닫힙니다. `ConfigReloadManager`의 종료는 최종 상태입니다. `close()` 또는 `onModuleDestroy()` 이후에는 대체 reloader나 watcher를 다시 생성하지 않고, `reload()`, `subscribe()`, `subscribeError()`는 `InvariantError`를 던지며, `current()`는 마지막으로 commit된 스냅샷을 계속 반환합니다. 같은 env file에 대해서는 한 layer에서만 `watch: true`를 활성화하세요. 자동 `ConfigService` 갱신만 필요하면 `ConfigModule`을 사용하고, subscription/manual reload를 위한 injected reloader 계약이 필요하면 `ConfigReloadModule`을 사용합니다.
 
 ## 공개 API
 

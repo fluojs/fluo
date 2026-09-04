@@ -8,7 +8,7 @@
 ## Learning Objectives
 - fluo에서 GraphQL을 도입할 때 얻는 구조적 이점을 구분합니다.
 - `GraphqlModule` 설정과 코드 우선 리졸버 등록 방식을 정리합니다.
-- Request-scoped DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
+- GraphQL operation 범위 DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
 - SSE 기본 구독과 선택적 WebSocket 구독 설정을 확인합니다.
 - 복잡도 제한과 인트로스펙션 제어 같은 운영 가드레일을 적용합니다.
 - FluoShop 제품 카탈로그에 GraphQL을 연결하는 기준을 정리합니다.
@@ -37,7 +37,7 @@
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-통합의 중심은 `GraphqlModule`입니다. 현재 `GraphqlModule`은 여러 fluo 모듈과 달리 동기적인 `forRoot` 설정 방식을 사용합니다.
+통합의 중심은 `GraphqlModule`입니다. 준비된 option에는 동기 `forRoot` 설정을 사용하고, option이 application graph의 provider에 의존하면 `forRootAsync({ inject, useFactory })`를 사용합니다.
 
 ## 18.3 Building Code-first Resolvers
 
@@ -85,7 +85,18 @@ export class ProductResolver {
 
 fluo는 TypeScript 반환 타입이나 emit된 metadata에서 GraphQL output type을 추론하지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용하므로, 위 예제처럼 object 결과에는 GraphQL output type을 선언하고 array에는 `listOf(itemType)`을 사용해야 합니다.
 
-Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, HTTP middleware나 guard가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
+Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, GraphQL이 request를 소비하기 전에 bootstrap/application middleware가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
+
+### NestJS 마이그레이션 경계
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+
+NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니다. GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요. Root resolver signature는 `(input, context)`입니다. `@Args()`, `@Context()`, `@Parent()`는 code-first object field resolver용 method decorator이며 root operation parameter decorator가 아닙니다.
+
+WebSocket `context.connectionParams`는 인증된 identity가 아니라 client가 제공한 `Record<string, unknown>`입니다. Subscription setup을 application-owned로 두고 stream을 만들기 전에 이를 parse 및 authorize하세요. GraphQL endpoint는 `/graphql`로 고정되므로 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
+
+Resolver decorator에는 public instance target이 필요합니다. Root 및 field operation decorator는 private/static method를 거부하고, `@Arg()`는 private/static input field를 거부합니다. Cutover 전에 생성 SDL을 비교하세요. `outputType`은 추론되지 않고 `String`으로 fallback하며, list output은 `listOf(...)`로 보존하고, 새 object field는 `nullable: false`일 때만 non-null이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만듭니다. DTO validation은 argument를 non-null schema argument로 바꾸지 않으므로 NestJS의 required argument는 SDL이 그 요구사항을 보존할 때까지 migration gap입니다.
+
+Request-scoped provider를 주입하는 resolver에는 resolver 자체에도 반드시 `@Scope('request')`를 붙여야 합니다. fluo는 해당 resolver를 operation container에 두고 HTTP 또는 WebSocket operation이 완료되거나 disconnect될 때 그 container를 dispose합니다.
 
 ### Registering the Module
 
@@ -106,16 +117,41 @@ import { ProductResolver } from './product.resolver';
 export class AppModule {}
 ```
 
+### 비동기 Module Option 해석
+
+Endpoint lifecycle이 시작되기 전에 application graph 의존성에서 GraphQL option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Factory는 application context마다 한 번 실행됩니다. 이 좁은 API는 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery를 의도적으로 허용하지 않습니다.
+`GraphqlModule.forRoot(...)`는 동기 option에 계속 사용할 수 있지만, 유일한 GraphQL 등록 API는 아닙니다.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [ProductResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, ProductResolver],
+})
+export class AppModule {}
+```
+
 ## 18.4 Object Field Resolver와 DataLoader로 N+1 해결하기
 
-N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 요청 스코프 **DataLoader** 지원을 제공해 같은 요청 안의 반복 조회를 배치로 묶을 수 있게 합니다.
+N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 GraphQL operation 스코프 **DataLoader** 지원을 제공해 같은 GraphQL operation 안의 반복 조회를 배치로 묶을 수 있게 합니다.
 
 ### Creating a DataLoader
 
 ```typescript
 import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
 
-const authorLoader = createDataLoader(async (ids: string[]) => {
+const authorLoader = createDataLoader(async (ids: readonly string[]) => {
   const authors = await authorService.findByIds(ids);
   // 반환되는 배열이 입력 ID의 순서와 일치하도록 보장해야 합니다.
   return ids.map(id => authors.find(a => a.id === id));
@@ -164,9 +200,15 @@ export class BookFieldResolver {
 }
 ```
 
-`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
+`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 GraphQL operation 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 operation으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
 
 `@Parent()`와 `@Context()`는 legacy parameter decorator가 아니라 TC39 표준 method decorator입니다. 기본값은 parent/source object를 method parameter `0`에, `GraphQLContext`를 parameter `1`에 바인딩합니다. Method 순서가 다르면 zero-based index를 명시적으로 전달하세요. 위 `Book` object type은 `author`를 이미 선언하므로 `@FieldResolver('author')`가 기존 field type을 유지합니다. Object type에 없는 field를 추가할 때는 `@FieldResolver({ fieldName: 'author', type: AuthorType })`을 사용합니다.
+
+### Field Argument 바인딩과 검증
+
+Object field는 root operation과 동일한 DTO argument pipeline을 사용할 수 있습니다. Input DTO의 field에 `@Arg(...)`를 선언하고 DTO를 `@FieldResolver({ input: AuthorInput })`로 전달한 다음 `@Args(index?)`로 바인딩하세요. Resolver가 실행되기 전에 DTO가 materialize 및 validate되며 validation failure는 GraphQL `BAD_USER_INPUT` error가 됩니다.
+
+이들은 TC39 method decorator이므로 `@Args()`, `@Parent()`, `@Context()`를 함께 사용할 때는 서로 다른 explicit index를 선택해야 합니다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고, `@Args()`에는 `input`이 필요합니다. Bootstrap은 불완전한 pairing과 root operation에 둔 이 binding을 모두 거부합니다. Request-scoped root 및 field resolver는 HTTP request와 subscription execution에서 같은 operation container를 공유합니다. Schema-first field-resolver attachment는 계속 지원하지 않습니다.
 
 ## 18.5 Real-time with Subscriptions
 
@@ -182,6 +224,35 @@ export class NotificationResolver {
   @Subscription()
   async onNewNotification() {
     return pubsub.subscribe('NEW_NOTIFICATION');
+  }
+}
+```
+
+Subscription은 NestJS `Observable`이 아니라 `AsyncIterable`을 반환해야 합니다. fluo는 HTTP operation 완료 또는 WebSocket operation 완료/disconnect 시 request-scoped DI container를 dispose하지만, 외부 subscription resource는 application이 소유합니다. GraphQL이 소비를 멈출 때 resource를 닫는 typed iterator를 반환하세요.
+
+```typescript
+type Notification = { id: string; message: string };
+
+async function* ownedNotifications(
+  source: AsyncIterable<Notification>,
+  close: () => Promise<void>,
+): AsyncIterable<Notification> {
+  try {
+    yield* source;
+  } finally {
+    await close();
+  }
+}
+
+@Resolver()
+class NotificationResolver {
+  @Subscription({ outputType: NotificationType })
+  notifications(_input: undefined, context: GraphQLContext): AsyncIterable<Notification> {
+    const principal = requireAuthorizedPrincipal(context.principal);
+    return ownedNotifications(
+      this.events.subscribe(principal.id),
+      () => this.events.unsubscribe(principal.id),
+    );
   }
 }
 ```
@@ -245,5 +316,7 @@ export class CatalogResolver {
 ## 18.8 Conclusion
 
 Fluo에서 GraphQL은 주변 기능이 아니라 DI, 런타임 퍼사드, 표준 데코레이터와 맞물린 API 계층입니다. 이 구조를 사용하면 클라이언트에는 유연한 질의 모델을 제공하고, 서버 쪽에는 유지보수 가능한 리졸버 경계를 남길 수 있습니다.
+
+module을 등록하고 resolver를 discovery하며 operation 범위 DataLoader를 사용하고 SSE subscription을 검증하는 실행 가능한 companion은 [`examples/graphql`](../../examples/graphql/README.ko.md)에서 확인하세요.
 
 다음 장에서는 이 API를 구동하는 데이터를 **MongoDB와 Mongoose**로 영속화하는 방법을 다룹니다.

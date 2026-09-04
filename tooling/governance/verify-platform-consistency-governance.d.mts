@@ -19,6 +19,17 @@ export function collectNodeGlobalBufferViolations(
   relativePaths: readonly string[],
   readSource: (relativePath: string) => string,
 ): NodeGlobalBufferViolation[];
+export function enforceMandatoryFirstPartyDependencyEngineAlignment(
+  readText?: (relativePath: string) => string,
+  packageNames?: ReadonlySet<string>,
+): void;
+export function mandatoryProductionImporterPackageNamesForLockfileChange(
+  previousLockfileText: string,
+  currentLockfileText: string,
+): Set<string>;
+export function enforceCliMigrationTransformDocs(
+  readText?: (relativePath: string) => string,
+): void;
 export function parsePackageNamesFromFamilyTable(markdown: string, sectionTitle: string): string[];
 export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   relativePaths?: readonly string[],
@@ -28,6 +39,11 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
   relativePaths?: readonly string[],
   readSource?: (relativePath: string) => string,
 ): void;
+export function enforceContractCompanionUpdates(
+  changedFiles: readonly string[],
+  migrationGuideSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
+): void;
+export function enforceEmailMigrationCompanions(changedFiles: readonly string[]): void;
 export function enforceReactClientSubpathContract(): void;
 export function enforceReactPageCatalogContract(readText?: (relativePath: string) => string): void;
 export function enforceReactPageMetadataIdentityContract(): void;
@@ -44,8 +60,20 @@ export function enforceReactServerFunctionContract(): void;
 export function enforceHttpRuntimeCancellationAndContextIsolation(): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceHttpCustomMethodContract(): void;
+export function enforceHttpAdapterPortabilityDocumentationContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function isSupportedNodeListenerVersion(version: string): boolean;
+export function enforcePlatformFastifyEngineDocumentation(
+  readText?: (relativePath: string) => string,
+): void;
+export function enforcePlatformNodejsEngineDocumentation(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(
+  readText?: (relativePath: string) => string,
+): void;
+export function enforceCacheManagerNestjsMigrationDocs(
   readText?: (relativePath: string) => string,
 ): void;
 export function enforceSerializerResponseOwnershipDocsSync(
@@ -69,7 +97,20 @@ export function enforceJwtAsyncRegistrationContract(
 export function enforceGraphqlRuntimeBoundaryDiscoverability(): void;
 export function enforceMicroservicesSafetyGuidanceParity(): void;
 export function enforceMicroservicesSafetyRuntimeEvidence(): void;
+export function enforceRedisStreamsSubpathExportEvidence(): void;
 export function enforceQueueWorkerOwnershipContract(
   readText?: (relativePath: string) => string,
 ): void;
-export function main(): void;
+export function enforceQueueWorkerOwnershipContractFromSources(
+  sources: Readonly<Record<string, string>>,
+): void;
+export function enforceNotificationsQueueCancellationDocumentationContract(
+  readText?: (relativePath: string) => string,
+): void;
+export function enforcePersistenceTransactionInterceptorCompatibility(
+  readText?: (relativePath: string) => string,
+): void;
+export function enforceStudioStaticGraphLimitsContract(
+  readText?: (relativePath: string) => string,
+): void;
+export function main(): Promise<void>;

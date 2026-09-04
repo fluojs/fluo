@@ -1,9 +1,18 @@
 import type { Constructor, Token } from '@fluojs/core';
 
 import { normalizeRoutePath } from '../route-path.js';
-import type { Middleware, MiddlewareContext, MiddlewareLike, MiddlewareRouteConfig, Next, RequestContext } from '../types.js';
+import type {
+  Middleware,
+  MiddlewareContext,
+  MiddlewareLike,
+  MiddlewareRouteConfig,
+  MiddlewareRouteSnapshot,
+  MiddlewareSnapshotLike,
+  Next,
+  RequestContext,
+} from '../types.js';
 
-function isMiddleware(value: MiddlewareLike): value is Middleware {
+function isMiddleware(value: MiddlewareLike | MiddlewareSnapshotLike): value is Middleware {
   return typeof value === 'object' && value !== null && 'handle' in value;
 }
 
@@ -13,7 +22,9 @@ function isMiddleware(value: MiddlewareLike): value is Middleware {
  * @param value The value.
  * @returns The is middleware route config result.
  */
-export function isMiddlewareRouteConfig(value: MiddlewareLike): value is MiddlewareRouteConfig {
+export function isMiddlewareRouteConfig(
+  value: MiddlewareLike | MiddlewareSnapshotLike,
+): value is MiddlewareRouteConfig | MiddlewareRouteSnapshot {
   return typeof value === 'object' && value !== null && 'middleware' in value && 'routes' in value;
 }
 
@@ -64,7 +75,10 @@ export function forRoutes<T extends Constructor<Middleware>>(
   return { middleware: middlewareClass, routes };
 }
 
-async function resolveMiddleware(definition: MiddlewareLike, requestContext: RequestContext): Promise<Middleware> {
+async function resolveMiddleware(
+  definition: MiddlewareLike | MiddlewareSnapshotLike,
+  requestContext: RequestContext,
+): Promise<Middleware> {
   if (isMiddleware(definition)) {
     return definition;
   }
@@ -73,7 +87,7 @@ async function resolveMiddleware(definition: MiddlewareLike, requestContext: Req
 }
 
 async function resolveActiveMiddlewareDefinitions(
-  definitions: MiddlewareLike[],
+  definitions: readonly (MiddlewareLike | MiddlewareSnapshotLike)[],
   context: MiddlewareContext,
 ): Promise<Middleware[]> {
   const requestPath = context.request.path;
@@ -114,7 +128,7 @@ function deferNext(next: Next): Next {
  * @returns The run middleware chain result.
  */
 export async function runMiddlewareChain(
-  definitions: MiddlewareLike[],
+  definitions: readonly (MiddlewareLike | MiddlewareSnapshotLike)[],
   context: MiddlewareContext,
   terminal: Next,
 ): Promise<void> {

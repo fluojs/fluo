@@ -45,6 +45,33 @@ Use a more specific package contract when it governs the changed behavior.
 7. Can intent be established from the linked issue and canonical docs, or is a
    maintainer decision genuinely required?
 
+## Changeset decision procedure (earned by live reversals)
+
+Apply these in order before answering key questions 4-5; each rule exists
+because the opposite call was made and overturned in a real review:
+
+1. **Determine what actually ships — never from `files` alone.** npm
+   auto-includes package-root `README*`/`LICENSE*` regardless of
+   `files:["dist"]`; run `npm pack --dry-run --ignore-scripts` on the
+   affected package when docs or README are in the diff. One review
+   correctly required a patch changeset for a README-only edit this way
+   (#3347); another correctly REMOVED a major changeset because the
+   changed docs were root `docs/**` and never entered the tarball (#3395).
+2. **Classify the documentation surface**: package README (ships) ≠ root
+   `docs/**` (does not ship) ≠ `apps/docs` website (does not ship). A
+   version bump on a package whose tarball is byte-identical announces a
+   change that does not exist.
+3. **Patch vs major for behavior corrections**: if the public type or
+   documented contract was ALWAYS a closed set, rejecting formerly
+   tolerated junk is a bug fix → patch (#3335, `BootstrapTimingPhase`).
+   If the accepted set genuinely NARROWS (type was `string`, parser took
+   anything), that is breaking → major with an actionable migration note
+   (#3336, route kinds). Correcting a documented guarantee on a shipped
+   README is breaking even when the old text never matched shipped
+   behavior (#3363).
+4. Blanket maintainer approval for major grants PERMISSION, not
+   correctness — it never substitutes for steps 1-3.
+
 ## Judgment rules
 
 - Canonical contract intent takes precedence over implementation convenience.

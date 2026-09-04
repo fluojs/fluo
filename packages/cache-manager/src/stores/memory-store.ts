@@ -1,5 +1,5 @@
-import type { CacheStore } from '../types.js';
 import { cloneCacheValue } from '../clone.js';
+import type { CacheStore } from '../types.js';
 
 interface MemoryCacheEntry<T = unknown> {
   expiresAt?: number;
@@ -37,6 +37,10 @@ function enforceEntryLimit(entries: Map<string, MemoryCacheEntry>): void {
 
     entries.delete(oldestKey);
   }
+}
+
+function normalizePositiveTtlMilliseconds(ttlSeconds: number, maximumTtlMilliseconds: number): number {
+  return Math.min(maximumTtlMilliseconds, Math.max(1, Math.floor(ttlSeconds * 1000)));
 }
 
 /**
@@ -80,7 +84,8 @@ export class MemoryStore implements CacheStore {
     };
 
     if (ttlSeconds > 0) {
-      const ttlMilliseconds = Math.max(1, Math.floor(ttlSeconds * 1000));
+      const maximumTtlMilliseconds = Number.MAX_SAFE_INTEGER - now;
+      const ttlMilliseconds = normalizePositiveTtlMilliseconds(ttlSeconds, maximumTtlMilliseconds);
       entry.expiresAt = now + ttlMilliseconds;
     }
 

@@ -90,17 +90,16 @@ export class ConfigModule {
         provide: ConfigService,
         useFactory: () => createConfigServiceFromSnapshot(loadConfig(loadOptions)),
       },
-    ];
-
-    if (loadOptions.watch) {
-      providers.push(
+      ...(loadOptions.watch
+        ? [
         {
           provide: CONFIG_MODULE_WATCH_OPTIONS,
           useValue: loadOptions,
         },
         ConfigModuleWatchManager,
-      );
-    }
+          ]
+        : []),
+    ];
 
     defineModuleMetadata(ConfigModuleImpl, {
       global: loadOptions.global ?? true,

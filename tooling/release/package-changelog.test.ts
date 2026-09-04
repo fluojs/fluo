@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   normalizePackageChangelog,
@@ -165,5 +166,18 @@ describe('packageChangelogContractViolation', () => {
     ['the wrong heading level', '# @fluojs/prisma\n\n### [Unreleased]\n\n## 1.1.0\n'],
   ])('rejects %s', (_caseName, changelog) => {
     expect(packageChangelogContractViolation(changelog)).toBeTypeOf('string');
+  });
+});
+
+describe('Terminus package changelog', () => {
+  it('keeps the Unreleased placeholder empty after released notes', () => {
+    const changelog = readFileSync(
+      new URL('../../packages/terminus/CHANGELOG.md', import.meta.url),
+      'utf8',
+    );
+    const unreleasedSection = changelog.split(/^## \[Unreleased\]\s*$/mu)[1];
+    const unreleasedBody = unreleasedSection?.split(/^## /mu)[0];
+
+    expect(unreleasedBody?.trim()).toBe('');
   });
 });

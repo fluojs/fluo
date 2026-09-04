@@ -21,7 +21,7 @@ Redis-backed distributed job processing for fluo. It features decorator-based wo
 npm install @fluojs/queue @fluojs/redis
 ```
 
-`@fluojs/queue` requires Node.js `>=20.0.0`, as declared by `engines.node` in the package manifest. This package-level requirement still applies when the rest of a fluo application uses runtime-portable APIs.
+`@fluojs/queue` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Upgrade Queue consumers from Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, or Node.js 27+ to a supported release before adopting this major version.
 
 `@fluojs/queue` includes BullMQ `^5.81.1`. Refresh the application lockfile when upgrading so BullMQ's patched dependency graph is installed. Queue registration, worker discovery, and persisted-job contracts are unchanged.
 
@@ -59,6 +59,8 @@ Import `QueueModule` and inject `QueueLifecycleService` to enqueue jobs.
 
 `QueueModule.forRoot(...)` is the supported root entrypoint for application-level queue registration.
 
+Producers call `enqueue(new JobClass(...))` with a job class instance. There is no `add(name, payload)` producer signature: `enqueue(job)` resolves the target worker from `job.constructor` and the queue/named job comes from that worker's registered `jobName`.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
 import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
@@ -90,8 +92,49 @@ Consumers moving from NestJS queue integrations must replace metadata-driven pro
 1. Register the backing Redis client with `RedisModule.forRoot(...)`, then import `QueueModule.forRoot(...)` from the module graph that owns the queue. Do not copy NestJS async-module shapes or expect Queue to read environment configuration implicitly.
 2. Replace `@Processor(...)`, `@Process(...)`, or other NestJS/Bull provider metadata with the TC39 standard class decorator `@QueueWorker(JobClass, options?)`. Each worker must expose a callable `handle(job)` method.
 3. Add the decorated worker class to `@Module({ providers: [...] })` as a singleton. Queue scans compiled provider/controller registrations; it does not scan `@Injectable()` metadata, emitted constructor types, or arbitrary imported classes. Declare constructor dependencies explicitly with `@Inject(...)`.
+
+**One worker owns each job class and effective `jobName`.** Queue rejects duplicate singleton registrations during bootstrap before creating BullMQ resources, regardless of provider discovery order. Give each migrated NestJS `@Process(...)` handler its own job class and `jobName`, or consolidate multiple handlers behind one worker's `handle(job)`.
+
 4. Keep the worker reachable from the queue registration. The default global `QueueModule.forRoot()` can discover singleton workers across the compiled application graph. With `global: false`, discovery is limited to modules that can reach that specific registration through their authored imports/exports, and the matching Redis provider must be reachable from the same module tree.
-5. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and gives graceful close plus any required force-close their own `workerShutdownTimeoutMs` budgets.
+5. Convert producers as well as processors. Replace `@InjectQueue('name')` plus `queue.add('job', payload)` with `@Inject(QueueLifecycleService)` (or the `QUEUE` / `getQueueToken(scope)` facade) and `queue.enqueue(new JobClass(...))`. Queue has no name-and-payload producer signature, and a plain payload object has `Object` as its constructor, so it cannot identify a registered JobClass worker.
+6. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and gives graceful close plus any required force-close their own `workerShutdownTimeoutMs` budgets.
+
+### Producer migration: Bull/BullMQ to Queue
+
+In NestJS Bull or BullMQ, the producer selects both the queue and the named job:
+
+```typescript
+// Before: NestJS Bull/BullMQ
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+
+export class OrdersProducer {
+  constructor(@InjectQueue('orders') private readonly queue: Queue) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.add('process-order', { orderId });
+  }
+}
+```
+
+In fluo, declare and register `ProcessOrderJob` with `@QueueWorker(ProcessOrderJob, { jobName: 'process-order' })`, then enqueue an instance of that exact exported class. The worker registration selects the BullMQ queue and named job; the producer does not supply either string:
+
+```typescript
+// After: fluo
+import { Inject } from '@fluojs/core';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+@Inject(QueueLifecycleService)
+export class OrdersProducer {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  async placeOrder(orderId: string) {
+    await this.queue.enqueue(new ProcessOrderJob(orderId));
+  }
+}
+```
+
+`ProcessOrderJob` must be the same constructor reference passed to `@QueueWorker`, not a copied declaration or a plain `{ orderId }` object. The latter type-checks because `enqueue<TJob extends object>` accepts objects, but it is rejected at runtime as `No @QueueWorker() registered for job type Object.`.
 
 Before cutover, account for the persistence identity mismatch. NestJS Bull/BullMQ can persist multiple named job values under one `queueName`. fluo instead uses the worker's `jobName` as both the BullMQ queue name and the named job when it creates one queue/worker pair for each job type. Setting `jobName` alone therefore cannot preserve a legacy topology in which multiple named jobs share one `queueName`, and `@fluojs/queue` does not interpret NestJS decorator metadata or transform an existing serialized payload.
 
@@ -115,7 +158,21 @@ When `QueueModule.forRoot({ global: false })` is used, each queue registration o
 
 Use an explicit `scope` when an application imports more than one non-global queue registration. Scope names are trimmed, must be non-empty, and must be unique per compiled module graph. Duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports, or duplicate explicit scopes such as two `QueueModule.forRoot({ global: false, scope: 'jobs' })` imports, fail deterministically during bootstrap.
 
-A scope isolates DI ownership; it does not namespace the BullMQ queue stored in Redis. During bootstrap, Queue rejects two scopes that resolve the same Redis client and discover workers with the same `jobName`, because both workers would otherwise consume the same BullMQ queue. Configure a distinct `clientName` or `jobName` for each owner. Reusing a `jobName` across scopes is supported only when those scopes resolve distinct named Redis registrations.
+A scope isolates DI ownership; it does not namespace the BullMQ queue stored in Redis. `clientName` selects a DI registration and is not a BullMQ backend identity: distinct named clients can point to the same Redis database and BullMQ prefix.
+
+Declare `ownershipNamespace` for every scoped registration that shares a BullMQ backend. This stable application-supplied value identifies the actual Redis database plus BullMQ prefix topology; registrations for the same backend must use the same value, regardless of `clientName`. It is a validation identity only and does not change BullMQ keys or prefixes.
+
+Queue validates each `(ownershipNamespace, jobName)` pair before it creates BullMQ resources. In 2.x, `ownershipEnforcement` defaults to `'warn'`, so an unconfigured or colliding topology logs a diagnostic and preserves startup behavior. Set `ownershipEnforcement: 'reject'` on a registration to reject a collision before resources are created. A registration with an empty namespace is invalid. Use distinct namespaces only for distinct BullMQ backends, or configure distinct `jobName` values for intentional isolation.
+
+```typescript
+QueueModule.forRoot({
+  clientName: 'orders',
+  global: false,
+  ownershipNamespace: 'orders-redis-db-0',
+  ownershipEnforcement: 'reject',
+  scope: 'orders',
+})
+```
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
@@ -173,7 +230,33 @@ for (const record of inspection.records) {
 
 Inspection is read-only and returns valid records in newest-first order. It reads Redis without lifecycle-gating the operation, so inspection does not start workers and remains usable while Queue is `idle` or after worker startup reaches `failed`, as long as the backing Redis client is reachable. Queue does not own the shared Redis client; after `RedisModule` shuts that client down, inspection propagates the backing Redis operation error instead of promising post-shutdown availability. The limit defaults to `100` stored entries and is capped at `1_000`; invalid limits fall back to the default. Malformed stored values are omitted and counted in `malformedRecordCount` for the inspected window, and `payload` remains `unknown` so application code must narrow its own job data. Inspection does not delete, replay, or mutate jobs or dead-letter records.
 
-Queue accepts job objects, including class instances such as `new ProcessOrderJob(id)`. Before enqueueing, Queue JSON-serializes the job and requires the serialized payload to be a non-null, non-array JSON object. On the worker side, Queue rehydrates the registered job prototype over that serialized object.
+### Producer Dispatch Contract
+
+`enqueue(job)` dispatches by the job's exact constructor. Queue looks up `job.constructor` in the workers discovered from `@QueueWorker(JobClass, options?)` and rejects the call with `No @QueueWorker() registered for job type <name>.` when that exact constructor is not registered.
+
+Pass an optional `deduplicationKey` as the second `enqueue` argument when one caller-owned identity must survive uncertain delivery or repeated dispatch. Queue deterministically maps it to a BullMQ-safe backing job id, so callers do not inherit BullMQ's colon or numeric-only custom-id restrictions and BullMQ can deduplicate repeated enqueue attempts for the same worker queue.
+
+```typescript
+await queue.enqueue(new ProcessOrderJob(id), { deduplicationKey: `order:${id}` });
+```
+
+Pass an instance of the registered job class, not a plain payload object:
+
+```typescript
+// Correct: the instance's constructor is the registered ProcessOrderJob class.
+await queue.enqueue(new ProcessOrderJob(id));
+
+// Rejected at runtime: a plain object literal has `Object` as its constructor,
+// so it cannot identify any registered JobClass worker.
+await queue.enqueue({ orderId: id });
+
+// Also rejected: a structurally identical class that was never registered.
+await queue.enqueue(new UnregisteredOrderJob(id));
+```
+
+Because `enqueue<TJob extends object>(job: TJob)` accepts any object, a plain payload satisfies TypeScript and fails only at runtime. Constructor identity — not payload shape, field names, or a job-name string — selects the worker, so a copied class definition or a re-declared job class in another module is a different constructor and is not registered.
+
+Queue accepts job objects, including class instances such as `new ProcessOrderJob(id)`. Before enqueueing, Queue JSON-serializes the job and requires the serialized payload to be a non-null, non-array JSON object. On the worker side, Queue rehydrates the registered job prototype over that serialized object. Serialization runs after the constructor lookup succeeds, so a serializable plain object is still rejected before any payload validation.
 
 Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
 
@@ -182,7 +265,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
+- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job, options?)`, `enqueueMany(entries)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
+- `Queue`: Public producer facade exposed through `QUEUE` and `getQueueToken(scope?)`; it has the same `enqueue(...)` and `enqueueMany(...)` contract as `QueueLifecycleService`.
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
@@ -191,12 +275,15 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 
 ### Types
-- `Queue`: Application facade with `enqueue(job)` and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `Queue`: Application facade with `enqueue(job, options?)`, atomic `enqueueMany(entries)`, and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `QueueEnqueueOptions`: Optional producer controls, including a caller-owned `deduplicationKey` that Queue maps to a BullMQ-safe job id for idempotent enqueue attempts.
+- `QueueEnqueueManyEntry`: One ordered batch entry containing a job and its optional `QueueEnqueueOptions`.
 - `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection settings (`limit`).
 - `QueueDeadLetterInspectionResult`: Newest-first valid records plus `malformedRecordCount` for the inspected window.
 - `QueueDeadLetterRecord`: Typed dead-letter metadata with an `unknown` application payload.
 - `QueueJobType`: Constructor type used to identify and rehydrate a job payload class.
-- `QueueModuleOptions`: Global queue settings (`global`, clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
+- `QueueModuleOptions`: Global queue settings (`global`, `clientName`, `ownershipNamespace`, `ownershipEnforcement`, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
+- `QueueOwnershipEnforcement`: Cross-scope ownership collision action (`'warn'` or `'reject'`).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffType`: Supported retry backoff strategy names (`fixed`, `exponential`).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
@@ -211,13 +298,22 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 - `global`: whether the queue module registration is global. Defaults to `true`; set `false` when queue providers should stay scoped to the importing module graph.
 - `scope`: unique non-empty queue registration scope. Required when multiple non-global queue registrations exist in one app.
-- Cross-scope ownership: registrations that resolve the same Redis client must use distinct worker `jobName` values; collisions fail during bootstrap before BullMQ resources are created.
+- `ownershipNamespace`: stable application-supplied identity for the Redis database and BullMQ prefix. Registrations for one BullMQ backend must use the same non-empty value, independent of `clientName`.
+- `ownershipEnforcement`: cross-scope ownership action. It defaults to `'warn'` in 2.x; set `'reject'` to fail a matching `(ownershipNamespace, jobName)` collision before BullMQ resources are created.
 - `workerShutdownTimeoutMs`: maximum time allotted to each BullMQ worker close phase: graceful close first, then force-close if graceful close fails or times out. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 
 `QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract as `createQueuePlatformStatusSnapshot(...)`. It reports readiness as `ready` only after Queue reaches `started` and every discovered BullMQ worker processor has started. While those conditions remain true, pending dead-letter writes keep readiness `ready` but degrade health until the pending count returns to zero. `started` resources with pending processors report degraded readiness, `starting` reports degraded readiness, `stopping` reports not-ready/degraded, `stopped` reports not-ready/unhealthy, and worker-start failures report not-ready/unhealthy with `workerStartFailures` and `lastWorkerStartFailure` details. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the `5_000ms` dead-letter drain timeout, and `workerShutdownTimeoutMs`.
 
 Only singleton `@QueueWorker()` providers/controllers are registered. Request/transient workers are skipped during discovery.
+
+### Atomic producer batches
+
+`Queue.enqueueMany(entries)` and `QueueLifecycleService.enqueueMany(entries)` accept ordered `QueueEnqueueManyEntry` values. Each entry supplies one job instance and optional per-entry `QueueEnqueueOptions`, including `deduplicationKey`.
+
+Every entry must resolve to a registered worker on the same single BullMQ queue. Queue validates the full batch before it calls BullMQ, so a missing worker or a job that resolves to another queue rejects without persisting any entry. A valid batch is persisted with one atomic BullMQ `addBulk(...)` call, and its returned job IDs stay aligned with the input order.
+
+Each entry preserves its own `deduplicationKey` when Queue maps it to the backing BullMQ job ID. Existing `enqueue(job, options?)` behavior is unchanged and remains the compatible single-job producer API.
 
 ## Related Packages
 

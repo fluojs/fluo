@@ -224,6 +224,27 @@ export class PostsController {
 
 Each route directly declares the input DTO it receives. `@RequestDto(...)` selects the DTO for the handler, and field-level binding decorators such as `@FromPath(...)`, `@FromQuery(...)`, and `@FromBody(...)` say which request source fills each DTO field. `FindPostParamsDto` shows the input shape bound from the `/:id` path, `SearchPostsQueryDto` gathers values read from the query string into one input object, and `CreatePostDto` shows what shape the request body should have before it crosses the service boundary.
 
+### Multipart File Inputs
+
+Multipart endpoints can keep portable file inputs in the same DTO contract. `@FromFiles(...)` always binds a readonly array, filters by multipart field name in upload order, and passes only `FrameworkRequestFile` data into the DTO:
+
+```typescript
+import { FromFiles, RequestDto, type FrameworkRequestFile } from '@fluojs/http';
+
+class UploadPostAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+}
+
+@Post('/:id/assets')
+@RequestDto(UploadPostAssetsDto)
+uploadAssets(input: UploadPostAssetsDto) {
+  return { uploaded: input.attachments.length };
+}
+```
+
+If the adapter did not provide a file collection, a required `@FromFiles(...)` field uses the normal missing-field error; add `@Optional()` when absence is valid. A provided collection with no matching field name becomes an empty array. `RequestContext.request.files` remains available when a handler needs the unfiltered request collection.
+
 ### Why Explicit Binding Matters
 
 Explicit binding is especially helpful when you first read a request flow. The handler signature immediately shows which DTO the route receives, and because the input contract is fixed as one object per method, it is easier to trace the request flow.

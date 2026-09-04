@@ -42,6 +42,34 @@ evidence for the behavior and scope it changes.
 - Green unrelated jobs do not compensate for missing affected-scope checks.
 - Never infer that an unrun command would pass.
 
+## Receipt and evidence authentication (earned by eight caught inaccuracies)
+
+Receipts and verification claims are testimony, not fact. In one 30-issue
+lane, reviewers caught eight inaccurate receipt claims — every one real.
+Authenticate rather than trust:
+
+- **Re-derive cited line numbers.** Two of the eight were wrong assertion
+  lines (a test's closing line cited as its assertion). Open the file and
+  confirm the cited line asserts what the receipt claims.
+- **Manual demonstration ≠ automated regression.** "Mutated X by hand and
+  the check failed" proves the guard works today; only a pinned test keeps
+  it working. A receipt counting a hand-run as a regression test is
+  inaccurate — one claimed four regression tests when three existed.
+- **"Unchanged since approval" is ambiguous after a rebase.** The branch's
+  PATCH being unchanged is not the FILES being unchanged once main moves
+  underneath. Demand the precise claim; `git range-diff` distinguishes them.
+- **Environment state is part of the evidence.** A typecheck in a worktree
+  with no built `dist/` fails with spurious TS2307; a closure build over
+  warm dist hides ordering defects a clean CI environment exposes. When
+  build-order or cross-package types are in scope, require build-first
+  ordering and note whether dist was cold or warm.
+- **Merged test counts need arithmetic, not direction.** After a keep-both
+  conflict resolution, "the count went up" proves nothing; require the
+  exact sum (e.g. 146 + 7 = 153) and confirm no case was dropped.
+- **Two consecutive clean runs.** A fail followed by a pass is not "green
+  twice"; a solo re-run separates contention from regression, and both
+  results belong in the record.
+
 ## Evidence requirements
 
 - Tie each blocker to the exact check, command, test, changed behavior, and

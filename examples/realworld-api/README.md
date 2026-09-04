@@ -7,7 +7,7 @@ A more realistic fluo application demonstrating the standard app path beyond the
 ## what this example demonstrates
 
 - Multi-module composition with `imports` / `exports`
-- Typed configuration via `ConfigModule.forRoot`
+- Typed configuration via `ConfigModule.forRoot`, including explicit ordered multi-file env loading with `envFilePaths: ['.env', '.env.local']`
 - Request DTO validation with `@fluojs/validation` decorators
 - Repository pattern with explicit DI tokens
 - Runtime-owned `/health` and `/ready` plus a domain `/users` CRUD surface

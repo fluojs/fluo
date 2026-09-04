@@ -1,6 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
+import type {
+  PrismaAsyncModuleOptions as RootPrismaAsyncModuleOptions,
+  PrismaClientLike,
+  PrismaPlatformStatusSnapshotInput as RootPrismaPlatformStatusSnapshotInput,
+} from './index.js';
 import * as prismaPublicApi from './index.js';
+import type { PrismaAsyncModuleOptions as ModulePrismaAsyncModuleOptions } from './module.js';
+import type { PrismaPlatformStatusSnapshotInput as StatusPrismaPlatformStatusSnapshotInput } from './status.js';
+
+type PrismaPublicApiTestTransactionClient = {
+  readonly transaction: true;
+};
+
+type PrismaPublicApiTestTransactionOptions = {
+  readonly isolationLevel: 'serializable';
+};
+
+type PrismaPublicApiTestClient = PrismaClientLike<
+  PrismaPublicApiTestTransactionClient,
+  PrismaPublicApiTestTransactionOptions
+>;
 
 describe('@fluojs/prisma public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -14,6 +34,20 @@ describe('@fluojs/prisma public API surface', () => {
     expect(prismaPublicApi).toHaveProperty('getPrismaClientToken');
     expect(prismaPublicApi).toHaveProperty('getPrismaOptionsToken');
     expect(prismaPublicApi).toHaveProperty('getPrismaServiceToken');
+  });
+
+  it('exports reusable async module and platform status input contracts', () => {
+    expectTypeOf<RootPrismaAsyncModuleOptions<
+      PrismaPublicApiTestClient,
+      PrismaPublicApiTestTransactionClient,
+      PrismaPublicApiTestTransactionOptions
+    >>().toEqualTypeOf<ModulePrismaAsyncModuleOptions<
+      PrismaPublicApiTestClient,
+      PrismaPublicApiTestTransactionClient,
+      PrismaPublicApiTestTransactionOptions
+    >>();
+    expectTypeOf<RootPrismaPlatformStatusSnapshotInput>()
+      .toEqualTypeOf<StatusPrismaPlatformStatusSnapshotInput>();
   });
 
   it('does not expose internal module wiring values from the root barrel', () => {

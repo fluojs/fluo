@@ -86,7 +86,7 @@ describe('Studio live event contracts', () => {
     }
   });
 
-  it('rejects unknown supplied route kinds in live snapshots', () => {
+  it('preserves arbitrary string route kinds in live snapshots', () => {
     const event = {
       ...liveEvents[0],
       payload: {
@@ -105,10 +105,10 @@ describe('Studio live event contracts', () => {
       },
     };
 
-    expect(isStudioLiveEvent(event)).toBe(false);
-    expect(() => parseStudioLiveEvent(JSON.stringify(event))).toThrow(
-      'Invalid Studio live route descriptor kind payload.',
-    );
+    expect(isStudioLiveEvent(event)).toBe(true);
+    expect(parseStudioLiveEvent(JSON.stringify(event))).toMatchObject({
+      payload: { routes: [{ kind: 'unknown' }] },
+    });
   });
 
   it('defaults omitted route kinds to http in legacy live snapshots', () => {

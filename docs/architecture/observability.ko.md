@@ -19,6 +19,18 @@
 - 플랫폼 텔레메트리는 `MetricsService.getRegistry().metrics()`를 통한 advanced custom scrape를 포함해 active Registry 스크레이프마다 `PLATFORM_SHELL`을 resolve하고 snapshot을 읽어 갱신된다. `PLATFORM_SHELL`이 없으면 스크레이프는 성공하지만 플랫폼 텔레메트리 시계열은 빠진다. 토큰이 있는데 해석이 실패하면 스크레이프가 실패한다.
 - 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 module instance의 refresh는 active platform snapshot에 더 이상 없는 stale module-owned component readiness/health series를 제거한다.
 
+## Structured HTTP Access Logging (구조화된 HTTP 접근 로그)
+
+| 표면 | 출처 | 기본 계약 | 설정 가능한 동작 |
+| --- | --- | --- | --- |
+| 구조화된 접근 라이프사이클 레코드 | `@fluojs/http`의 `createAccessLogObserver(...)` | admitted request마다 optional request ID, method, path, matched route, 최종 status, duration, success/error/abort outcome을 담은 `http.access.finish` 레코드를 하나 보낸다. 기본값으로 request/response header는 보내지 않는다. | 애플리케이션은 dispatcher 또는 runtime bootstrap의 `observers`로 observer를 설치하고 `AccessLogSink`를 소유한다. Header field는 명시적 allowlist가 필요하며 authorization, cookie, 구성된 sensitive field는 계속 redaction된다. |
+
+- 접근 로그는 application-owned structured output이며 runtime `ApplicationLogger`를 대체하지 않고 adapter-native logger를 `FrameworkRequest`에 저장하지도 않는다.
+- `AccessLogSink.emit(...)`는 비동기일 수 있다. 요청 라이프사이클은 각 emission을 await하며 observer failure는 dispatcher logger로 격리·보고되므로 실패한 observer가 뒤 observer나 terminal record를 막지 못한다.
+- 접근 로그 request ID는 optional이며 존재할 때 `RequestContext.requestId`를 사용한다. `createCorrelationMiddleware()`는 `x-request-id` 또는 legacy `x-correlation-id`를 채택하고, 둘 다 없을 때 access-log start 전에 ID를 생성한다. Observer만 설치하면 ID를 생성하지 않는다.
+- `clientIdentity`를 명시적으로 구성하기 전에는 client address가 없다. `clientIdentity: {}`는 direct transport peer를 기록하고 위조된 forwarding field를 무시한다. Forwarded identity는 명시적 정책에 matching `trustProxy` boundary가 있을 때만 사용된다.
+- `status`는 response가 commit되기 전에 admission abort된 경우에만 생략된다. Commit된 response는 adapter가 명시적으로 설정하지 않았으면 기본값 `200`을 사용해 final status를 기록한다.
+
 ## Health Checks (헬스 체크)
 
 | 표면 | 출처 | 기본 경로 계약 | 응답 계약 |
@@ -48,9 +60,9 @@
 
 ## Constraints (제약 조건)
 
-- Constraint: 이 저장소의 observability 표면은 metrics용 Prometheus text와 health endpoint용 JSON이다.
+- Constraint: 이 저장소의 observability 표면은 metrics용 Prometheus text, health endpoint용 JSON, opt-in application-owned structured HTTP access logging record다.
 - Constraint: metrics endpoint 노출은 명시적이어야 한다. 운영 배포에서는 ingress 경계가 준비되기 전까지 `endpointMiddleware`로 스크레이프 경로를 보호하거나 `path: false`로 비활성화해야 한다.
 - Constraint: HTTP metric path label은 기본적으로 template 정규화를 사용한다. raw path label은 `allowUnsafeRawPathLabelMode: true`가 필요하며, path cardinality가 제한된 경우에만 사용해야 한다.
 - Constraint: health endpoint는 패키지 내부의 임의 `process.env` 검사 대신 런타임과 Terminus 계약을 통해 dependency 상태를 보고한다.
 - Constraint: readiness와 health 텔레메트리는 `PLATFORM_SHELL` snapshot 의미론에 연결되므로, component 구현은 `ready()`, `health()`, `snapshot()`을 결정적으로 유지해야 한다.
-- Constraint: 요청 상관관계 데이터는 `@fluojs/http`의 `RequestContext` 및 AsyncLocalStorage 헬퍼로 접근할 수 있지만, 이 문서는 metrics와 health endpoint만 저장소의 기본 observability 표면으로 다룬다.
+- Constraint: 요청 상관관계 데이터는 `@fluojs/http`의 `RequestContext` 및 AsyncLocalStorage 헬퍼로 접근할 수 있으며 access logging은 그 context를 사용한다. Metrics와 health endpoint는 독립적으로 구성되는 표면으로 남는다.

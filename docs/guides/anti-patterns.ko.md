@@ -7,16 +7,12 @@
 ### ❌ Anti-pattern
 
 ```ts
-import { Injectable } from '@fluojs/core';
-
-@Injectable()
 export class PaymentsService {
   private readonly apiKey = process.env.PAYMENTS_API_KEY;
 
   constructor(private readonly orders: OrdersService) {}
 }
 
-@Injectable()
 export class OrdersService {
   constructor(private readonly payments: PaymentsService) {}
 }
@@ -25,21 +21,33 @@ export class OrdersService {
 ### ✅ Correct
 
 ```ts
-import { Inject, Injectable } from '@fluojs/core';
-import { ConfigService } from '@fluojs/config';
+import { Inject, Module } from '@fluojs/core';
 
-@Inject(ConfigService, OrdersService)
-@Injectable()
+const PAYMENTS_API_KEY = Symbol('PAYMENTS_API_KEY');
+
+@Inject(PAYMENTS_API_KEY)
 export class PaymentsService {
-  constructor(
-    private readonly config: ConfigService,
-    private readonly orders: OrdersService,
-  ) {}
+  constructor(private readonly apiKey: string) {}
 
   getApiKey(): string {
-    return this.config.getOrThrow('PAYMENTS_API_KEY');
+    return this.apiKey;
   }
 }
+
+@Inject(PaymentsService)
+export class OrdersService {
+  constructor(private readonly payments: PaymentsService) {}
+}
+
+@Module({
+  providers: [
+    { provide: PAYMENTS_API_KEY, useValue: 'configured-at-bootstrap' },
+    PaymentsService,
+    OrdersService,
+  ],
+  exports: [OrdersService],
+})
+export class PaymentsModule {}
 ```
 
 ## Decorators
@@ -56,7 +64,6 @@ export class PaymentsService {
 ```
 
 ```ts
-@Injectable()
 export class UsersService {
   constructor(private readonly repo: UsersRepository) {}
 }
@@ -73,13 +80,18 @@ export class UsersService {
 ```
 
 ```ts
-import { Inject, Injectable } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 
 @Inject(UsersRepository)
-@Injectable()
 export class UsersService {
   constructor(private readonly repo: UsersRepository) {}
 }
+
+@Module({
+  providers: [UsersRepository, UsersService],
+  exports: [UsersService],
+})
+export class UsersModule {}
 ```
 
 ## Platform Adapters

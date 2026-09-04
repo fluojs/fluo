@@ -5,6 +5,7 @@ import { snapshotConfigLoadOptions } from './options.js';
 import type {
   ConfigDictionary,
   ConfigLoadOptions,
+  ConfigProcessEnv,
   ConfigReloadErrorListener,
   ConfigReloader,
   ConfigReloadListener,
@@ -43,6 +44,7 @@ type NodePathModule = {
   basename(path: string): string;
   dirname(path: string): string;
   join(...paths: string[]): string;
+  resolve(...paths: string[]): string;
 };
 
 type NodeModuleModule = {
@@ -66,7 +68,8 @@ type NodeBuiltinModuleHost = typeof globalThis & {
 type NodeBuiltinRequire = (id: 'node:crypto' | 'node:fs' | 'node:path') => NodeCryptoModule | NodeFsModule | NodePathModule;
 
 interface NormalizedLoadOptions {
-  envFile: string | undefined;
+  /** Ordered env files merged from lowest to highest precedence. */
+  envFiles: readonly string[];
   defaults: ConfigDictionary;
   safeProcessEnv: Record<string, string>;
   runtimeOverrides: ConfigDictionary;
@@ -203,7 +206,7 @@ function unquoteEnvValue(value: string): string {
 }
 
 function stripInlineEnvComment(value: string): string {
-  const commentIndex = value.search(/\s#/);
+  const commentIndex = value.indexOf('#');
   return commentIndex === -1 ? value : value.slice(0, commentIndex);
 }
 
@@ -346,7 +349,7 @@ function parseEnvContent(content: string, safeProcessEnv: Record<string, string>
   return expandEnvVariables(parseDotenvContent(content), safeProcessEnv);
 }
 
-function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, string> {
+function sanitizeProcessEnv(processEnv: ConfigProcessEnv): Record<string, string> {
   return Object.fromEntries(
     Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
@@ -361,16 +364,67 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
   }
 }
 
+function rejectAmbiguousEnvFileOptions(options: ConfigLoadOptions): void {
+  if (options.envFilePaths === undefined) {
+    return;
+  }
+
+  if (options.envFile !== undefined || options.envFilePath !== undefined) {
+    throw new FluoError('Invalid configuration.', {
+      code: 'INVALID_CONFIG',
+      cause: new Error('`envFilePaths` cannot be combined with `envFile` or `envFilePath`. Use one explicit ordered list instead of mixing singular and list env-file options.'),
+    });
+  }
+}
+
+function resolveEnvFilePaths(envFilePaths: readonly string[], cwd: string | undefined): readonly string[] {
+  if (envFilePaths.length === 0) {
+    return [];
+  }
+
+  const path = nodePath();
+  const baseDirectory = cwd ?? resolveCurrentWorkingDirectory();
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of envFilePaths) {
+    if (typeof entry !== 'string' || entry.trim().length === 0) {
+      throw new FluoError('Invalid configuration.', {
+        code: 'INVALID_CONFIG',
+        cause: new Error('`envFilePaths` entries must be non-empty file path strings.'),
+      });
+    }
+
+    const resolvedEntry = path.resolve(baseDirectory, entry);
+
+    if (seen.has(resolvedEntry)) {
+      throw new FluoError('Invalid configuration.', {
+        code: 'INVALID_CONFIG',
+        cause: new Error(`\`envFilePaths\` must not repeat the same resolved file. Duplicate entry: ${resolvedEntry}.`),
+      });
+    }
+
+    seen.add(resolvedEntry);
+    resolved.push(resolvedEntry);
+  }
+
+  return resolved;
+}
+
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
+  rejectAmbiguousEnvFileOptions(options);
 
-  const hasExplicitEnvFile = options.envFilePath !== undefined || options.envFile !== undefined;
+  const hasExplicitEnvFile = options.envFilePath !== undefined || options.envFile !== undefined || options.envFilePaths !== undefined;
   const hasExplicitInMemorySource = options.defaults !== undefined || options.processEnv !== undefined || options.runtimeOverrides !== undefined;
   const shouldUseDefaultEnvFile = !hasExplicitEnvFile && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
-  const cwd = shouldUseDefaultEnvFile && options.envFilePath === undefined && options.envFile === undefined
+  const cwd = shouldUseDefaultEnvFile
     ? options.cwd ?? resolveCurrentWorkingDirectory()
     : options.cwd;
-  const envFile = options.envFilePath ?? options.envFile ?? (cwd ? nodePath().join(cwd, '.env') : undefined);
+  const singularEnvFile = options.envFilePath ?? options.envFile ?? (shouldUseDefaultEnvFile && cwd ? nodePath().join(cwd, '.env') : undefined);
+  const envFiles = options.envFilePaths === undefined
+    ? (singularEnvFile === undefined ? [] : [singularEnvFile])
+    : resolveEnvFilePaths(options.envFilePaths, options.cwd);
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? {};
   const safeProcessEnv = sanitizeProcessEnv(processEnv);
@@ -378,7 +432,7 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
 
   return {
     defaults,
-    envFile,
+    envFiles,
     parse: options.parse,
     runtimeOverrides,
     safeProcessEnv,
@@ -386,20 +440,22 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
   };
 }
 
-function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
-  if (options.envFile === undefined) {
-    return {};
-  }
+function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary[] {
+  const layers: ConfigDictionary[] = [];
 
-  try {
-    return parseEnvContent(nodeFs().readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
-  } catch (error: unknown) {
-    if (isNodeFsError(error) && error.code === 'ENOENT') {
-      return {};
+  for (const envFile of options.envFiles) {
+    try {
+      layers.push(parseEnvContent(nodeFs().readFileSync(envFile, 'utf8'), options.safeProcessEnv, options.parse));
+    } catch (error: unknown) {
+      if (isNodeFsError(error) && error.code === 'ENOENT') {
+        continue;
+      }
+
+      throw error;
     }
-
-    throw error;
   }
+
+  return layers;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -440,11 +496,9 @@ function mergeConfigSources(...sources: ConfigDictionary[]): ConfigDictionary {
 }
 
 function buildMergedConfig(options: NormalizedLoadOptions): ConfigDictionary {
-  const envFileValues = readEnvFileValues(options);
-
   return mergeConfigSources(
     options.defaults,
-    envFileValues,
+    ...readEnvFileValues(options),
     options.safeProcessEnv,
     options.runtimeOverrides,
   );
@@ -570,7 +624,7 @@ type ReloaderState = {
   reloading: boolean;
   watchedEnvFileHash: string | undefined;
   watchReloadTimer: ReturnType<typeof setTimeout> | undefined;
-  watcher: ConfigFileWatcher | undefined;
+  watchers: ConfigFileWatcher[];
 };
 
 function hashEnvFileContent(envFile: string): string | undefined {
@@ -583,6 +637,27 @@ function hashEnvFileContent(envFile: string): string | undefined {
 
     throw error;
   }
+}
+
+function hashEnvFileListContent(envFiles: readonly string[]): string | undefined {
+  if (envFiles.length === 0) {
+    return undefined;
+  }
+
+  const digest = nodeCrypto().createHash('sha256');
+  let hasAnyFile = false;
+
+  for (const envFile of envFiles) {
+    const fileHash = hashEnvFileContent(envFile);
+
+    if (fileHash !== undefined) {
+      hasAnyFile = true;
+    }
+
+    digest.update(`${envFile}\u0000${fileHash ?? ''}\u0000`);
+  }
+
+  return hasAnyFile ? digest.digest('hex') : undefined;
 }
 
 function notifyReloadListeners(
@@ -666,30 +741,28 @@ function startReloaderWatcher(
   state: ReloaderState,
   listeners: ReadonlySet<ConfigReloadListener>,
   errorListeners: ReadonlySet<ConfigReloadErrorListener>,
-): ConfigFileWatcher | undefined {
-  if (!options.watch) {
-    return undefined;
-  }
-
-  if (normalized.envFile === undefined) {
-    return undefined;
+): ConfigFileWatcher[] {
+  if (!options.watch || normalized.envFiles.length === 0) {
+    return [];
   }
 
   const path = nodePath();
   const fs = nodeFs();
-  const envFile = normalized.envFile;
-  const watchTarget = path.dirname(envFile);
-  const watchedEnvFileName = path.basename(envFile);
+  const watchedNamesByDirectory = new Map<string, Set<string>>();
 
-  if (!fs.existsSync(watchTarget)) {
-    return undefined;
-  }
+  for (const envFile of normalized.envFiles) {
+    const directory = path.dirname(envFile);
+    const watchedNames = watchedNamesByDirectory.get(directory);
 
-  return fs.watch(watchTarget, { persistent: false }, (_eventType, filename) => {
-    if (filename !== null && filename.toString() !== watchedEnvFileName) {
-      return;
+    if (watchedNames) {
+      watchedNames.add(path.basename(envFile));
+      continue;
     }
 
+    watchedNamesByDirectory.set(directory, new Set([path.basename(envFile)]));
+  }
+
+  const scheduleWatchReload = (): void => {
     if (state.watchReloadTimer !== undefined) {
       clearTimeout(state.watchReloadTimer);
     }
@@ -698,7 +771,7 @@ function startReloaderWatcher(
       state.watchReloadTimer = undefined;
 
       try {
-        const nextEnvFileHash = hashEnvFileContent(envFile);
+        const nextEnvFileHash = hashEnvFileListContent(normalized.envFiles);
         if (nextEnvFileHash === state.watchedEnvFileHash) {
           return;
         }
@@ -709,7 +782,40 @@ function startReloaderWatcher(
         notifyReloadErrorListeners(errorListeners, error, getReloadFailureReason(error) ?? 'watch');
       }
     }, watchEventDebounceMs);
-  });
+  };
+
+  const watchers: ConfigFileWatcher[] = [];
+
+  try {
+    for (const [directory, watchedNames] of watchedNamesByDirectory) {
+      if (!fs.existsSync(directory)) {
+        continue;
+      }
+
+      watchers.push(fs.watch(directory, { persistent: false }, (_eventType, filename) => {
+        if (filename !== null && !watchedNames.has(filename.toString())) {
+          return;
+        }
+
+        scheduleWatchReload();
+      }));
+    }
+  } catch (error: unknown) {
+    rollBackStartedWatchers(watchers);
+    throw error;
+  }
+
+  return watchers;
+}
+
+function rollBackStartedWatchers(watchers: readonly ConfigFileWatcher[]): void {
+  for (const watcher of watchers) {
+    try {
+      watcher.close();
+    } catch {
+      // A cleanup failure must never mask the watcher initialization error being rethrown.
+    }
+  }
 }
 
 function closeReloader(
@@ -722,10 +828,11 @@ function closeReloader(
     state.watchReloadTimer = undefined;
   }
 
-  if (state.watcher) {
-    state.watcher.close();
-    state.watcher = undefined;
+  for (const watcher of state.watchers) {
+    watcher.close();
   }
+
+  state.watchers = [];
 
   listeners.clear();
   errorListeners.clear();
@@ -758,14 +865,14 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
     current: resolveConfig(normalized),
     pendingReloadReason: undefined,
     reloading: false,
-    watchedEnvFileHash: normalized.envFile === undefined ? undefined : hashEnvFileContent(normalized.envFile),
+    watchedEnvFileHash: hashEnvFileListContent(normalized.envFiles),
     watchReloadTimer: undefined,
-    watcher: undefined,
+    watchers: [],
   };
   const listeners = new Set<ConfigReloadListener>();
   const errorListeners = new Set<ConfigReloadErrorListener>();
 
-  state.watcher = startReloaderWatcher(normalized, loadOptions, state, listeners, errorListeners);
+  state.watchers = startReloaderWatcher(normalized, loadOptions, state, listeners, errorListeners);
 
   return {
     close(): void {

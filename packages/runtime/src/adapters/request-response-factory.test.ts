@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
+import { parseMultipartStream } from '../multipart.js';
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
@@ -200,4 +201,177 @@ describe('dispatchWithRequestResponseFactory', () => {
     expect(frameworkResponse.committed).toBe(true);
     expect(events).toEqual(['response', 'signal', 'request', 'dispatch:/fast-path', 'send']);
   });
+
+  it('returns a route-owned multipart iterator when dispatch rejects before reading the body', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartParser();
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch() {
+          throw new Error('guard rejected request');
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart.multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.source.return).toHaveBeenCalledOnce();
+  });
+
+  it('returns a route-owned multipart iterator when a handler ignores the body', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartParser();
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch() {},
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart.multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.source.return).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a route-owned multipart source once after a handler breaks its for-await loop', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartParser(
+      '--fluo-route-owned\r\ncontent-disposition: form-data; name="file"; filename="note.txt"\r\n\r\n',
+    );
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch(request) {
+          for await (const _part of request.body as AsyncIterable<unknown>) {
+            break;
+          }
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart.multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.source.return).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a route-owned multipart source after a handler reads only its final file chunk', async () => {
+    // Given
+    const multipart = createRouteOwnedMultipartParser(
+      '--fluo-route-owned\r\ncontent-disposition: form-data; name="file"; filename="note.txt"\r\n\r\nfinal bytes\r\n--fluo-route-owned--\r\n',
+    );
+
+    // When
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch(request) {
+          const parts = request.body as AsyncIterable<unknown>;
+          const first = await parts[Symbol.asyncIterator]().next();
+
+          if (first.done || !isMultipartFilePart(first.value)) {
+            throw new TypeError('Expected a route-owned multipart file.');
+          }
+
+          const reader = first.value.stream.getReader();
+
+          await expect(reader.read()).resolves.toEqual({
+            done: false,
+            value: new TextEncoder().encode('final bytes'),
+          });
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher unavailable',
+      factory: createFactoryWithMultipart(multipart.multipart),
+      rawRequest: undefined,
+      rawResponse: undefined,
+    });
+
+    // Then
+    expect(multipart.source.return).toHaveBeenCalledOnce();
+  });
 });
+
+function createRouteOwnedMultipartParser(chunk?: string): {
+  multipart: AsyncIterableIterator<unknown>;
+  source: AsyncIterableIterator<Uint8Array>;
+} {
+  let sent = false;
+  const source: AsyncIterableIterator<Uint8Array> = {
+    async next() {
+      if (!chunk || sent) {
+        return { done: true, value: undefined };
+      }
+
+      sent = true;
+      return { done: false, value: new TextEncoder().encode(chunk) };
+    },
+    return: vi.fn(async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined })),
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+  const multipart = parseMultipartStream({
+    headers: { 'content-type': 'multipart/form-data; boundary=fluo-route-owned' },
+    method: 'POST',
+    [Symbol.asyncIterator]() {
+      return source;
+    },
+    url: 'http://localhost/route-owned',
+  });
+
+  return { multipart, source };
+}
+
+function createFactoryWithMultipart(
+  multipart: AsyncIterable<unknown>,
+): RequestResponseFactory<undefined, undefined> {
+  const request = { body: multipart } as FrameworkRequest;
+  const response: FrameworkResponse = {
+    committed: false,
+    headers: {},
+    redirect() {},
+    async send() {
+      response.committed = true;
+    },
+    setHeader() {},
+    setStatus() {},
+    statusSet: false,
+  };
+
+  return {
+    async createRequest() {
+      return request;
+    },
+    createRequestSignal() {
+      return new AbortController().signal;
+    },
+    createResponse() {
+      return response;
+    },
+    resolveRequestId() {
+      return undefined;
+    },
+    async writeErrorResponse() {},
+  };
+}
+
+function isMultipartFilePart(value: unknown): value is { stream: ReadableStream<Uint8Array> } {
+  return value !== null
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'file'
+    && 'stream' in value
+    && value.stream instanceof ReadableStream;
+}

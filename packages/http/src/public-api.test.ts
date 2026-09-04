@@ -1,10 +1,29 @@
 import { readFileSync } from 'node:fs';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import type { ResponseFormatter } from './index.js';
+import type {
+  ByteRangeResponseOptions,
+  ByteRangeResponseSource,
+  ClearCookieOptions,
+  CookieOptions,
+  CookieSameSite,
+  HandlerDescriptor,
+  HandlerMapping,
+  HandlerMetadata,
+  HttpConnection,
+  MiddlewareRouteConfig,
+  MiddlewareRouteSnapshot,
+  ResponseFormatter,
+  RouteDefinition,
+} from './index.js';
 import * as httpPublicApi from './index.js';
 import * as httpInternalApi from './internal.js';
+import type {
+  ByteRangeResponseOptions as PortableByteRangeResponseOptions,
+  ByteRangeResponseSource as PortableByteRangeResponseSource,
+} from './index.portable.js';
+import * as portableHttpPublicApi from './index.portable.js';
 
 type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends (<Value>() => Value extends Right ? 1 : 2)
   ? (<Value>() => Value extends Right ? 1 : 2) extends (<Value>() => Value extends Left ? 1 : 2)
@@ -13,6 +32,9 @@ type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends
   : false;
 
 type AssertTrue<Condition extends true> = Condition;
+
+type MutableHeader = { name: string; value: string };
+type MutableRedirect = { statusCode?: number; url: string };
 
 const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 const runtimeDynamicModuleSpecifierPattern = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
@@ -117,6 +139,24 @@ function collectRuntimeDependencyGraph(entrypoint: URL) {
 }
 
 describe('@fluojs/http public API surface', () => {
+  it('declares portable response cookie APIs', () => {
+    expectTypeOf<CookieSameSite>().toEqualTypeOf<'lax' | 'none' | 'strict'>();
+    expectTypeOf<keyof CookieOptions>().toEqualTypeOf<'domain' | 'expires' | 'httpOnly' | 'maxAgeSeconds' | 'path' | 'sameSite' | 'secure'>();
+    expectTypeOf<keyof ClearCookieOptions>().toEqualTypeOf<'domain' | 'httpOnly' | 'path' | 'sameSite' | 'secure'>();
+    expectTypeOf<HttpConnection['proxyChain']>().toEqualTypeOf<readonly string[]>();
+  });
+
+  it('exports only documented byte range APIs from root and portable barrels', () => {
+    expectTypeOf<ByteRangeResponseOptions>().toEqualTypeOf<PortableByteRangeResponseOptions>();
+    expectTypeOf<ByteRangeResponseSource>().toEqualTypeOf<PortableByteRangeResponseSource>();
+    expect(httpPublicApi).toHaveProperty('createByteRangeResponse');
+    expect(portableHttpPublicApi).toHaveProperty('createByteRangeResponse');
+    expect(httpPublicApi).not.toHaveProperty('isByteRangeByteSource');
+    expect(httpPublicApi).not.toHaveProperty('shouldApplyByteRange');
+    expect(portableHttpPublicApi).not.toHaveProperty('isByteRangeByteSource');
+    expect(portableHttpPublicApi).not.toHaveProperty('shouldApplyByteRange');
+  });
+
   it('keeps documented supported root-barrel exports', () => {
     expect(httpPublicApi).toHaveProperty('Controller');
     expect(httpPublicApi).toHaveProperty('Get');
@@ -150,6 +190,8 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('FAST_PATH_STATS_SYMBOL');
     expect(httpPublicApi).toHaveProperty('formatFastPathStats');
     expect(httpPublicApi).toHaveProperty('getDispatcherFastPathStats');
+    expect(httpPublicApi).toHaveProperty('setCookie');
+    expect(httpPublicApi).toHaveProperty('clearCookie');
     expect(httpPublicApi).toHaveProperty('createHandlerMapping');
     expect(httpPublicApi).toHaveProperty('forRoutes');
     expect(httpPublicApi).toHaveProperty('normalizeRoutePattern');
@@ -158,9 +200,14 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createCorrelationMiddleware');
     expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
+    expect(httpPublicApi).toHaveProperty('createAccessLogObserver');
+    expect(httpPublicApi).toHaveProperty('resolveHttpConnection');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
+    expect(httpPublicApi).toHaveProperty('buildContentDisposition');
     expect(httpPublicApi).toHaveProperty('getRequestHeader');
+    expect(httpPublicApi).toHaveProperty('getResponseHeader');
+    expect(httpPublicApi).toHaveProperty('hasResponseHeader');
     expect(httpPublicApi).not.toHaveProperty('readFirstNonEmptyRequestHeaderValue');
     expect(httpPublicApi).toHaveProperty('SseResponse');
     expect(httpPublicApi).toHaveProperty('encodeSseComment');
@@ -174,6 +221,45 @@ describe('@fluojs/http public API surface', () => {
     > = true;
 
     expect(formatterReturnTypeContract).toBe(true);
+  });
+
+  it('exposes HandlerMapping snapshots as deeply readonly while preserving mutable source routes', () => {
+    expectTypeOf<HandlerMapping['descriptors']>().not.toEqualTypeOf<HandlerDescriptor[]>([]);
+    expectTypeOf<HandlerDescriptor>().not.toEqualTypeOf<{
+      controllerToken: HandlerDescriptor['controllerToken'];
+      metadata: HandlerMetadata;
+      methodName: string;
+      route: RouteDefinition;
+    }>({
+      controllerToken: class {},
+      metadata: {
+        controllerPath: '',
+        effectivePath: '',
+        moduleMiddleware: [],
+        pathParams: [],
+      },
+      methodName: '',
+      route: { method: 'GET', path: '' },
+    });
+    expectTypeOf<HandlerMetadata['pathParams']>().not.toEqualTypeOf<string[]>([]);
+    expectTypeOf<HandlerMetadata['moduleMiddleware']>().not.toEqualTypeOf<MiddlewareRouteSnapshot[]>([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['produces']>>().not.toEqualTypeOf<string[]>([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['guards']>>().not.toEqualTypeOf<
+      NonNullable<RouteDefinition['guards']>
+    >([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['interceptors']>>().not.toEqualTypeOf<
+      NonNullable<RouteDefinition['interceptors']>
+    >([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['headers']>>().not.toEqualTypeOf<MutableHeader[]>([]);
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['headers']>[number]>().not.toEqualTypeOf<MutableHeader>({
+      name: '',
+      value: '',
+    });
+    expectTypeOf<NonNullable<HandlerDescriptor['route']['redirect']>>().not.toEqualTypeOf<MutableRedirect>({
+      url: '',
+    });
+    expectTypeOf<MiddlewareRouteSnapshot['routes']>().not.toEqualTypeOf<string[]>([]);
+    expectTypeOf<MiddlewareRouteConfig['routes']>().toMatchTypeOf<string[]>();
   });
 
   it('does not expose internal pipeline runners or implementation classes', () => {

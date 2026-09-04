@@ -5,31 +5,44 @@ import {
   createSourceFile,
   forEachChild,
   isCallExpression,
+  isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
+  isReturnStatement,
+  isThrowStatement,
   ScriptKind,
   ScriptTarget,
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
 
+import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.mjs';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
+  enforceContractCompanionUpdates as enforceContractCompanionUpdatesFromSources,
+  enforceEmailMigrationCompanions,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
+  enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
+  enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePassportJsBridgeNestjsMigration,
   enforcePlatformShellLifecycleContract,
+  enforcePersistenceTransactionInterceptorCompatibility,
   enforceQueueWorkerOwnershipContract,
+  enforceQueueWorkerOwnershipContractFromSources,
   enforceReactClientSubpathContract,
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
+  enforceStudioStaticGraphLimitsContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
+  mandatoryProductionImporterPackageNamesForLockfileChange,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
@@ -38,12 +51,124 @@ type RunCommand = (command: string, args: string[], options?: { allowFailure?: b
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const nodeListenerEngineRange = '>=20.19.3 <21 || >=22.2.0 <27';
+const staticAssetContractCompanions = [
+  'docs/architecture/http-runtime.md',
+  'docs/architecture/http-runtime.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+  'packages/http/src/static-assets.ts',
+  'packages/http/src/static-assets.test.ts',
+  'packages/runtime/src/node/node-static-assets.ts',
+  'packages/runtime/src/node/node-static-assets.test.ts',
+];
+const fastifyRawContextCompanions = [
+  'packages/platform-fastify/README.md',
+  'packages/platform-fastify/README.ko.md',
+  'packages/platform-fastify/src/adapter.test.ts',
+];
+const unchangedEmailMigrationGuideSnapshots = {
+  'packages/email/README.md': {
+    base: readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8'),
+  },
+  'packages/email/README.ko.md': {
+    base: readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8'),
+  },
+  'docs/getting-started/migrate-from-nestjs.md': {
+    base: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
+  },
+  'docs/getting-started/migrate-from-nestjs.ko.md': {
+    base: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
+    head: readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
+  },
+};
+const emailMigrationSectionFixture = [
+  '## Email migration',
+  '',
+  '<!-- fluo-email-nestjs-migration: async=injected-factory->supported;delivery=direct->pre-rendered,template->rendered -->',
+  '',
+  'Use `EmailService.send(...)` for direct delivery.',
+].join('\n');
+
+function withUnchangedEmailMigrationSections(
+  migrationGuideSnapshots: Readonly<Record<string, { base: string; head: string }>>,
+): Readonly<Record<string, { base: string; head: string }>> {
+  const snapshots: Record<string, { base: string; head: string }> = {
+    ...unchangedEmailMigrationGuideSnapshots,
+    ...migrationGuideSnapshots,
+  };
+
+  for (const path of [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ]) {
+    const snapshot = snapshots[path];
+    if (
+      typeof snapshot.base === 'string'
+      && typeof snapshot.head === 'string'
+      && !snapshot.base.includes('fluo-email-nestjs-migration:')
+      && !snapshot.head.includes('fluo-email-nestjs-migration:')
+    ) {
+      snapshots[path] = {
+        base: `${snapshot.base}\n${emailMigrationSectionFixture}`,
+        head: `${snapshot.head}\n${emailMigrationSectionFixture}`,
+      };
+    }
+  }
+
+  return snapshots;
+}
+
+function enforceContractCompanionUpdates(
+  changedFiles: string[],
+  migrationGuideSnapshots: Readonly<Record<string, { base: string; head: string }>> =
+    unchangedEmailMigrationGuideSnapshots,
+): void {
+  enforceContractCompanionUpdatesFromSources(
+    changedFiles,
+    withUnchangedEmailMigrationSections(migrationGuideSnapshots),
+  );
+}
+
+describe('static asset contract companions', () => {
+  it('requires focused portable, Node, and real-listener regressions', () => {
+    expect(() => enforceContractCompanionUpdates(staticAssetContractCompanions)).toThrow(
+      'HTTP static asset contract changes must include',
+    );
+    expect(() => enforceContractCompanionUpdates([
+      ...staticAssetContractCompanions,
+      'packages/testing/src/static-assets-portability.test.ts',
+    ])).not.toThrow();
+  });
+});
+
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
   'createCqrsModule',
   'createEventBusModule',
   'createRedisModule',
 ] as const;
+
+describe('enforceCliMigrationTransformDocs', () => {
+  it('accepts documented migration transform selections', () => {
+    expect(() => enforceCliMigrationTransformDocs()).not.toThrow();
+  });
+
+  it('rejects a documented transform that the CLI does not support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace('--only imports,injectable', '--only imports,unsupported')
+        : content;
+    };
+
+    expect(() => enforceCliMigrationTransformDocs(readText)).toThrow(/unsupported/u);
+  });
+});
 
 function collectMarkdownFiles(relativeRoot: string): string[] {
   const absoluteRoot = resolve(repoRoot, relativeRoot);
@@ -85,14 +210,65 @@ function requireWorkflowStepIndex(workflow: string, stepName: string): number {
 }
 
 async function loadGovernanceInternals() {
-  return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
+  const governance = (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
     changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
     enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
-    enforceContractCompanionUpdates: (changedFiles: string[]) => void;
+    enforceContractCompanionUpdates: (
+      changedFiles: string[],
+      migrationGuideSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
+    ) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
+    enforceOpenApiMigrationDocumentStructure: (readText?: (relativePath: string) => string) => void;
+    enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
+    enforcePlatformNodejsEngineDocumentation: (readText?: (relativePath: string) => string) => void;
+    enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
+    enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
+    enforceStudioReportBootstrapFailureCompanions: (
+      changedFiles: string[],
+      documentSnapshots?: Readonly<Record<string, { base: unknown; head: unknown }>>,
+    ) => void;
+    enforceStudioStaticGraphLimitsContract: (readText?: (relativePath: string) => string) => void;
   };
+
+  return {
+    ...governance,
+    enforceContractCompanionUpdates(
+      changedFiles: string[],
+      migrationGuideSnapshots: Readonly<Record<string, { base: string; head: string }>> =
+        unchangedEmailMigrationGuideSnapshots,
+    ): void {
+      governance.enforceContractCompanionUpdates(
+        changedFiles,
+        withUnchangedEmailMigrationSections(migrationGuideSnapshots),
+      );
+    },
+  };
+}
+
+function hasDirectMainCall(sourceText: string, calleeName: string): boolean {
+  const source = createSourceFile(
+    'verify-platform-consistency-governance.mjs',
+    sourceText,
+    ScriptTarget.Latest,
+    true,
+    ScriptKind.JS,
+  );
+
+  return source.statements.some((statement) =>
+    isFunctionDeclaration(statement) &&
+    statement.name?.text === 'main' &&
+    statement.body?.statements.some((mainStatement, index, mainStatements) =>
+      !mainStatements.slice(0, index).some(
+        (previousStatement) => isReturnStatement(previousStatement) || isThrowStatement(previousStatement),
+      ) &&
+      isExpressionStatement(mainStatement) &&
+      isCallExpression(mainStatement.expression) &&
+      isIdentifier(mainStatement.expression.expression) &&
+      mainStatement.expression.expression.text === calleeName,
+    ),
+  );
 }
 
 describe('isGovernedPackageSourcePath', () => {
@@ -107,6 +283,671 @@ describe('isGovernedPackageSourcePath', () => {
     expect(isGovernedPackageSourcePath('packages/core/src/module.spec.ts')).toBe(false);
     expect(isGovernedPackageSourcePath('packages/cli/scripts/local-test-env.mjs')).toBe(false);
     expect(isGovernedPackageSourcePath('examples/realworld-api/src/app.ts')).toBe(false);
+  });
+});
+
+describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
+  function readWithMutation(
+    path: string,
+    mutate: (source: string) => string,
+  ): (relativePath: string) => string {
+    return (relativePath) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === path ? mutate(source) : source;
+    };
+  }
+
+  it.each([
+    [
+      'root barrel export',
+      'packages/drizzle/src/index.ts',
+      (source: string) => source.replace("export * from './transaction.js';\n", ''),
+    ],
+    [
+      'module providers registration',
+      'packages/drizzle/src/registration-providers.ts',
+      (source: string) => source.replace(
+        '        DrizzleTransactionInterceptor,\n      ]\n      : [',
+        '      ]\n      : [',
+      ),
+    ],
+    [
+      'module exports registration',
+      'packages/drizzle/src/named-registration.ts',
+      (source: string) => source.replace(
+        '  DrizzleTransactionInterceptor,\n  DRIZZLE_HANDLE_PROVIDER,',
+        '  DRIZZLE_HANDLE_PROVIDER,',
+      ),
+    ],
+    [
+      'interceptor requestTransaction signal delegation',
+      'packages/drizzle/src/transaction.ts',
+      (source: string) => source.replace('context.requestContext.request.signal', 'undefined'),
+    ],
+  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
+    // Given: the actual compatibility contract with exactly one structural regression injected.
+    const readText = readWithMutation(path, mutate);
+
+    // When: the governance contract evaluates the mutated source graph.
+    // Then: unrelated mentions cannot satisfy the structural registration requirement.
+    expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
+  });
+
+  it.each([
+    [
+      'request transaction lifecycle table entry',
+      'apps/docs/content/docs/guides/persistence.mdx',
+      (source: string) => source.replace(
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor` and `MongooseTransactionInterceptor`',
+      ),
+    ],
+    [
+      'Korean request transaction lifecycle table entry',
+      'apps/docs/content/docs/guides/persistence.ko.mdx',
+      (source: string) => source.replace(
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor`, `MongooseTransactionInterceptor`',
+      ),
+    ],
+    [
+      'English Drizzle public API summary entry',
+      'apps/docs/content/docs/guides/persistence.mdx',
+      (source: string) => source.replace(
+        'deprecated `DrizzleTransactionInterceptor` compatibility export',
+        'compatibility export',
+      ),
+    ],
+    [
+      'Korean Drizzle public API summary entry',
+      'apps/docs/content/docs/guides/persistence.ko.mdx',
+      (source: string) => source.replace(
+        'deprecated `DrizzleTransactionInterceptor` 호환성 export',
+        '호환성 export',
+      ),
+    ],
+  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
+    // Given: the compatibility contract with one required documentation placement removed.
+    const readText = readWithMutation(path, mutate);
+
+    // When: the governance contract evaluates the mutated documentation.
+    // Then: a mention elsewhere cannot satisfy the specific table row requirement.
+    expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
+  });
+});
+
+describe('enforceContractCompanionUpdates', () => {
+  it('requires bilingual context discoverability companions for release-contract changes', async () => {
+    // Given: a release-governing contract update with its tooling and regression companion.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/contracts/release-governance.md',
+      'tooling/release/verify-changeset-release-lane.mjs',
+      'tooling/release/verify-changeset-release-lane.test.ts',
+    ];
+
+    // When: bilingual context companions are absent or present.
+    // Then: platform governance requires them for discoverability.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(/docs\/CONTEXT\.md/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('requires context and tooling companions for package-surface contract changes', async () => {
+    // Given: a bilingual package-surface contract update with its package regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+      'packages/redis/src/duplicate-registration.test.ts',
+    ];
+
+    // When: required discoverability and tooling companions are added incrementally.
+    // Then: governance accepts only the complete contract change.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrow(/CI\/tooling enforcement updates/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch16-email.md',
+        'book/intermediate/ch16-email.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('requires context and governance regression companions for CQRS status contract updates', async () => {
+    // Given: a bilingual CQRS status contract update with runtime-field regression evidence.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/architecture/cqrs.md',
+      'docs/architecture/cqrs.ko.md',
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+      'packages/cqrs/src/status.test.ts',
+    ];
+
+    // When: discoverability and governance companions are added.
+    // Then: platform governance accepts only the complete change.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrow(/CI\/tooling enforcement updates/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('requires generic context companions for migration updates without bootstrap-only evidence', async () => {
+    // Given: a bilingual NestJS HTTP migration update with complete Fastify raw-object coverage.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: no bootstrap-only content proof is supplied.
+    // Then: the generic contract companions remain mandatory.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+  });
+
+  it('requires generic contract companions for Queue producer idempotency documentation', async () => {
+    // Given: paired Queue producer documentation that exposes a public deduplication contract.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'packages/queue/README.md',
+      'packages/queue/README.ko.md',
+    ];
+
+    // When / Then: discoverability and tooling evidence remain mandatory.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrow(/CI\/tooling enforcement updates/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('requires Fastify raw-object regression coverage for its migration documentation', async () => {
+    // Given: Fastify raw-object migration and package documentation updates with their discoverability and tooling companions.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/platform-fastify/README.md',
+      'packages/platform-fastify/README.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: the Fastify adapter regression is absent or present.
+    // Then: only the concrete runtime regression completes the documentation contract.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'packages/platform-fastify/src/adapter.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ['Fastify package README', 'packages/platform-fastify/README.md'],
+    ['Korean Fastify package README', 'packages/platform-fastify/README.ko.md'],
+  ])('rejects partial Fastify raw-object documentation updates for the %s', async (_label, partialDocumentationPath) => {
+    // Given: one governed Fastify raw-object document and the ordinary contract companions.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      partialDocumentationPath,
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: the other governed Fastify raw-object documents are absent.
+    // Then: no individual document can bypass the complete bilingual documentation contract.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /Fastify raw request and response migration docs must include all governed Fastify documentation/u,
+    );
+  });
+
+  it('fails closed when Nest bootstrap migration evidence lacks content snapshots', async () => {
+    // Given: a Nest bootstrap migration update with its focused CLI regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+
+    // When: Fastify package documentation is unchanged but the migration diff is unavailable.
+    // Then: governance cannot infer a bootstrap-only change and keeps the generic gate closed.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+  });
+
+  it('allows only an explicit-adapter bootstrap table-row update without generic companions', async () => {
+    // Given: bilingual migration guides change only their NestFactory bootstrap mapping.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
+        ].join('\n'),
+      },
+    };
+
+    // When: no Fastify or generic-contract region changed.
+    // Then: the dedicated bootstrap exception permits only this content delta.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).not.toThrow();
+  });
+
+  it('rejects a Fastify raw-object mutation in the Nest migration guide', async () => {
+    // Given: the same bootstrap implementation evidence plus a Fastify raw-object contract mutation.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+          'Fastify raw request access uses `context.request.raw` and `IncomingMessage`.',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
+          'Fastify raw request는 `context.request.raw`와 `IncomingMessage`를 사용한다.',
+        ].join('\n'),
+      },
+    };
+
+    // When: Fastify runtime documentation changes without its governed companions.
+    // Then: the Fastify runtime regression remains mandatory.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+      /Fastify raw request and response migration docs must include all governed Fastify documentation/u,
+    );
+  });
+
+  it('keeps generic companions mandatory when bootstrap-only migration evidence accompanies release governance', async () => {
+    // Given: a valid bootstrap-only migration update and an independent governed contract change.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+      'docs/contracts/release-governance.md',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: [
+          '# NestJS → fluo Migration Map',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        ].join('\n'),
+        head: [
+          '# NestJS → fluo Migration Map',
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `--platform express`를 선택하지 않으면 `listen()` bootstrap을 보존한다. |',
+        ].join('\n'),
+      },
+    };
+
+    // When / Then: the guide exception cannot suppress another contract trigger.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+  });
+
+  it('rejects a general cookie contract mutation in the Nest migration guide', async () => {
+    // Given: a bootstrap row update also changes the cookie migration contract.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/transforms/nestjs-migrate.ts',
+      'packages/cli/src/transforms/nestjs-migrate.test.ts',
+      'packages/cli/src/commands/migrate.ts',
+      'packages/cli/src/commands/migrate.test.ts',
+    ];
+    const snapshots = {
+      'docs/getting-started/migrate-from-nestjs.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` requires an adapter. |',
+        head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` preserves the bootstrap unless `--platform express` is selected. |',
+          'Use `setCookie` with `maxAgeSeconds` for cookie migration.',
+        ].join('\n'),
+      },
+      'docs/getting-started/migrate-from-nestjs.ko.md': {
+        base: '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()`에는 adapter가 필요하다. |',
+        head: [
+          '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->',
+          '| `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` | `listen()` bootstrap은 `--platform express`를 선택할 때만 변환한다. |',
+          '`setCookie`와 `maxAgeSeconds`로 cookie를 migration한다.',
+        ].join('\n'),
+      },
+    };
+
+    // When: a general contract region changes without the generic companions.
+    // Then: governance fails closed instead of treating it as bootstrap-only.
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+  });
+
+  describe('Queue producer migration contract companions', () => {
+    const queueProducerMigrationChangedFiles = [
+      'packages/queue/README.md',
+      'packages/queue/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
+    ];
+    const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.mjs';
+    const regressionCompanion = 'packages/queue/src/worker-ownership.test.ts';
+
+    it('rejects a Queue producer migration missing only the English context companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        contextCompanions[1],
+        toolingCompanion,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+      );
+    });
+
+    it('rejects a Queue producer migration missing only the Korean context companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        contextCompanions[0],
+        toolingCompanion,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+      );
+    });
+
+    it('accepts a Queue producer migration when the shared Fastify regression completes the companion set', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        ...contextCompanions,
+        toolingCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+    });
+
+    it('rejects a Queue producer migration with regression evidence but no tooling companion', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        ...contextCompanions,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /CI\/tooling enforcement updates/u,
+      );
+    });
+
+    it('accepts independent tooling and regression companions for a Queue producer migration', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...queueProducerMigrationChangedFiles,
+        ...contextCompanions,
+        toolingCompanion,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+    });
+  });
+
+  describe('Lifecycle multi-provider contract companions', () => {
+    const lifecycleChangedFiles = [
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'packages/di/README.md',
+      'packages/di/README.ko.md',
+      'packages/runtime/README.md',
+      'packages/runtime/README.ko.md',
+    ];
+    const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const regressionCompanion = 'packages/testing/src/module.test.ts';
+    const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.test.ts';
+
+    it('requires CI tooling enforcement for lifecycle multi-provider contract updates', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...lifecycleChangedFiles,
+        ...contextCompanions,
+        regressionCompanion,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /CI\/tooling enforcement updates/u,
+      );
+      expect(() =>
+        enforceContractCompanionUpdates([
+          ...changedFiles,
+          toolingCompanion,
+        ])
+      ).not.toThrow();
+    });
+  });
+
+  describe('Lifecycle shutdown contract companions', () => {
+    const lifecycleChangedFiles = [
+      'book/advanced/ch09-app-context.md',
+      'book/advanced/ch09-app-context.ko.md',
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'packages/runtime/README.md',
+      'packages/runtime/README.ko.md',
+    ];
+    const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const regressionCompanions = [
+      'packages/runtime/src/application.test.ts',
+      'packages/runtime/src/bootstrap.test.ts',
+    ];
+    const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.test.ts';
+
+    it('requires context, regression, and tooling companions for shutdown contract updates', async () => {
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const changedFiles = [
+        ...lifecycleChangedFiles,
+        ...regressionCompanions,
+      ];
+
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+        /docs\/CONTEXT\.md/u,
+      );
+      expect(() =>
+        enforceContractCompanionUpdates([
+          ...changedFiles,
+          ...contextCompanions,
+        ])
+      ).toThrow(/CI\/tooling enforcement updates/u);
+      expect(() =>
+        enforceContractCompanionUpdates([
+          ...changedFiles,
+          ...contextCompanions,
+          toolingCompanion,
+        ])
+      ).not.toThrow();
+    });
+  });
+
+  it.each([
+    ['English Queue README', 'packages/queue/README.md'],
+    ['Korean Queue README', 'packages/queue/README.ko.md'],
+  ])('requires context companions for %s contract updates', async (_label, queueReadmePath) => {
+    // Given: one Queue contract README and the governance regression that changes with it.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      queueReadmePath,
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: bilingual documentation-hub companions are absent or present.
+    // Then: either Queue contract surface requires both discoverability updates.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts the connection identity regression for its HTTP runtime contract update', async () => {
+    // Given: a bilingual HTTP runtime update backed by its focused connection regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'packages/http/src/connection.test.ts',
+    ];
+
+    // When: the connection contract and its regression change together.
+    // Then: unrelated isolation and manual-SSE regressions are not required.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
+  });
+
+  it('accepts the access log observer regression for its HTTP runtime contract update', async () => {
+    // Given: a bilingual HTTP runtime update backed by the access log lifecycle regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/architecture/http-runtime.md',
+      'docs/architecture/http-runtime.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'packages/http/src/access-log-observer.test.ts',
+    ];
+
+    // When: the access log contract and its focused lifecycle regression change together.
+    // Then: unrelated isolation and manual-SSE regressions are not required.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
   });
 });
 
@@ -223,6 +1064,344 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
   });
 });
 
+describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
+  it('selects only mandatory production importers when a lockfile-only resolution changes', () => {
+    const previousLockfile = [
+      'lockfileVersion: "9.0"',
+      '',
+      'importers:',
+      '',
+      '  packages/cli:',
+      '    dependencies:',
+      "      '@clack/prompts':",
+      '        specifier: 1.3.0',
+      '        version: 1.3.0',
+      '    devDependencies:',
+      '      vitest:',
+      '        specifier: 3.2.4',
+      '        version: 3.2.4',
+      '',
+      'packages:',
+      '',
+      "  '@clack/prompts@1.3.0':",
+      "    engines: {node: '>=20.0.0'}",
+      '',
+      'snapshots:',
+      '',
+    ].join('\n');
+    const lockfileOnlyMutation = previousLockfile
+      .replace('version: 1.3.0', 'version: 1.4.0')
+      .replace("'@clack/prompts@1.3.0'", "'@clack/prompts@1.4.0'")
+      .replace("engines: {node: '>=20.0.0'}", "engines: {node: '>=20.12.0'}");
+    const devDependencyOnlyMutation = previousLockfile.replace('version: 3.2.4', 'version: 3.2.5');
+    const readText = (relativePath: string): string => {
+      if (relativePath === 'pnpm-lock.yaml') {
+        return lockfileOnlyMutation;
+      }
+
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      if (relativePath !== 'packages/cli/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        dependencies: { '@clack/prompts': '1.3.0' },
+        engines: { node: '>=20.0.0' },
+      });
+    };
+
+    const affectedPackageNames = mandatoryProductionImporterPackageNamesForLockfileChange(
+      previousLockfile,
+      lockfileOnlyMutation,
+    );
+
+    expect(affectedPackageNames).toEqual(new Set(['@fluojs/cli']));
+    expect(mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfile, devDependencyOnlyMutation))
+      .toEqual(new Set());
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, affectedPackageNames))
+      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@clack\/prompts locked/u);
+  });
+
+  it('rejects a direct third-party production dependency that excludes an advertised Node version', () => {
+    const readText = (relativePath: string): string => {
+      if (relativePath === 'pnpm-lock.yaml') {
+        return [
+          'lockfileVersion: "9.0"',
+          '',
+          'importers:',
+          '',
+          '  packages/cli:',
+          '    dependencies:',
+          "      '@clack/prompts':",
+          '        specifier: 1.3.0',
+          '        version: 1.3.0',
+          '',
+          'packages:',
+          '',
+          "  '@clack/prompts@1.3.0':",
+          "    engines: {node: '>=20.12.0'}",
+          '',
+          'snapshots:',
+          '',
+        ].join('\n');
+      }
+
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      if (relativePath !== 'packages/cli/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        dependencies: { '@clack/prompts': '1.3.0' },
+        engines: { node: '>=20.0.0' },
+      });
+    };
+
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/cli'])))
+      .toThrow(/@fluojs\/cli engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@clack\/prompts/u);
+  });
+
+  function readTextWithEngineRanges(packageRange: string, dependencyRange: string): (relativePath: string) => string {
+    return (relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/prisma/package.json') {
+        const manifest = JSON.parse(content) as Record<string, unknown>;
+
+        return JSON.stringify({
+          ...manifest,
+          dependencies: { '@fluojs/core': 'workspace:*' },
+          engines: { node: packageRange },
+        });
+      }
+
+      if (relativePath === 'packages/core/package.json') {
+        const manifest = JSON.parse(content) as Record<string, unknown>;
+
+        return JSON.stringify({
+          ...manifest,
+          engines: { node: dependencyRange },
+        });
+      }
+
+      return content;
+    };
+  }
+
+  it('rejects a bare-major package range that exceeds a mandatory dependency cap', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('20', '<=20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.0\.1/u);
+  });
+
+  it('accepts compatible bare-major package and dependency ranges', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('20', '20'),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('rejects an explicit partial equality package range that exceeds a full-version dependency', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('=20', '20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.0\.1/u);
+  });
+
+  it.each([
+    ['>=20.1', '>=20.1.0'],
+    ['<20.2', '<20.2.0'],
+    ['>20', '>=21.0.0'],
+    ['20.0.0', '=20'],
+  ])('accepts npm-equivalent partial comparator ranges %s and %s', (packageRange, dependencyRange) => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges(packageRange, dependencyRange),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('rejects a partial less-than-or-equal package range that exceeds a full-version dependency', () => {
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        readTextWithEngineRanges('<=20', '<=20.0.0'),
+        new Set(['@fluojs/prisma']),
+      )).toThrow(/permits Node 20\.999\.999/u);
+  });
+});
+
+describe('enforcePlatformFastifyEngineDocumentation', () => {
+  const fastifyGuidePaths = [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ] as const;
+
+  it('pins both Fastify guide engine ranges to the platform manifest', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+    expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+  });
+
+  it('rejects Fastify guide engine drift and remains wired into central governance', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
+    expect(governanceSource).toContain('enforcePlatformFastifyEngineDocumentation();');
+  });
+
+  it.each(fastifyGuidePaths)(
+    'rejects a level-three Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace('## Fastify', '### Fastify')
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 0/u);
+    },
+  );
+
+  it.each(fastifyGuidePaths)(
+    'rejects an earlier duplicate Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace(
+            '## Fastify',
+            '## Fastify\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Fastify',
+          )
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 2/u);
+    },
+  );
+
+  it('rejects Fastify manifest engine drift from both guide sections', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-fastify/package.json'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
+  });
+});
+
+describe('enforcePlatformNodejsEngineDocumentation', () => {
+  it('pins both Raw Node.js guide engine ranges to the platform manifest', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it('rejects Raw Node.js guide engine drift and remains wired into central governance', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace(
+          /(## Raw Node\.js[\s\S]*?)>=20\.19\.3 <21 \|\| >=22\.2\.0 <27/u,
+          '$1>=20.19.3 <21 || >=22.2.0 <28',
+        )
+        : content;
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Raw Node\.js section/u);
+    expect(governanceSource).toContain('enforcePlatformNodejsEngineDocumentation();');
+  });
+
+  it('rejects platform Node.js manifest engine drift', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-nodejs/package.json'
+        ? content.replace(nodeListenerEngineRange, '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Raw Node\.js section must state @fluojs\/platform-nodejs engines\.node >=20\.19\.3 <21 \|\| >=22\.2\.0 <28\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it.each([
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ])('rejects a level-three Raw Node.js heading in %s', async (targetPath) => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === targetPath
+        ? content.replace('## Raw Node.js', '### Raw Node.js')
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrowError(/must include exactly one ## Raw Node\.js heading; found 0\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it.each([
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ])('rejects a duplicate Raw Node.js heading in %s', async (targetPath) => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === targetPath
+        ? content.replace(
+          '## Raw Node.js',
+          '## Raw Node.js\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Raw Node.js',
+        )
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrowError(/must include exactly one ## Raw Node\.js heading; found 2\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+});
+
 describe('enforceHttpCustomMethodContract', () => {
   it('keeps custom method authoring, adapter fallback, and portability evidence synchronized', () => {
     expect(() => enforceHttpCustomMethodContract()).not.toThrow();
@@ -236,6 +1415,51 @@ describe('enforceHttpCustomMethodContract', () => {
     for (const version of ['20.19.2', '21.7.3', '22.0.0', '22.1.0', '27.0.0']) {
       expect(isSupportedNodeListenerVersion(version)).toBe(false);
     }
+  });
+});
+
+describe('enforceHttpAdapterPortabilityDocumentationContract', () => {
+  it('keeps the complete HTTP portability suite and companion contract discoverable', () => {
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract()).not.toThrow();
+  });
+
+  it('rejects a discoverability document missing a required suite identifier', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('assertReportsHttpsStartupUrl(...)', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /docs\/CONTEXT\.md must keep assertReportsHttpsStartupUrl discoverable/u,
+    );
+  });
+
+  it('rejects a companion checklist missing portable response cookie coverage', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/contracts/platform-conformance-authoring-checklist.md'
+        ? content.replace('assertSupportsPortableResponseCookies()', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /platform-conformance-authoring-checklist\.md must keep the HTTP portability companion contract marker assertSupportsPortableResponseCookies/u,
+    );
+  });
+
+  it('rejects removal of the canonical single-byte-range assertion', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('assertSupportsSingleByteRanges()', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /docs\/CONTEXT\.md must keep assertSupportsSingleByteRanges\(\) discoverable/u,
+    );
   });
 });
 
@@ -717,39 +1941,440 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
-  it('requires discoverability, tooling or CI, and regression test updates for contract-governing docs', async () => {
+  const httpRuntimeContractChangedFiles = [
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+    'tooling/governance/http-runtime-isolation.test.ts',
+    'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts',
+  ] as const;
+
+  it.each([
+    ['English architecture contract', 'docs/architecture/http-runtime.md', /http-runtime\.md and docs\/architecture\/http-runtime\.ko\.md/u],
+    ['Korean architecture contract', 'docs/architecture/http-runtime.ko.md', /http-runtime\.md and docs\/architecture\/http-runtime\.ko\.md/u],
+    ['English context companion', 'docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['Korean context companion', 'docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['governance implementation', 'tooling/governance/verify-platform-consistency-governance.mjs', /verify-platform-consistency-governance\.mjs/u],
+    ['changed-path regression', 'tooling/governance/verify-platform-consistency-governance.test.ts', /verify-platform-consistency-governance\.test\.ts/u],
+    ['canonical HTTP isolation regression', 'tooling/governance/http-runtime-isolation.test.ts', /http-runtime-isolation\.test\.ts/u],
+    ['manual SSE lifecycle regression', 'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts', /dispatcher-manual-sse-lifecycle\.test\.ts/u],
+  ] as const)(
+    'rejects removal of the required %s from an HTTP runtime contract change',
+    async (_companion, removedPath, expectedError) => {
+      // Given: an HTTP runtime contract update with every exact companion present.
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+      // When: exactly one enforcement companion is absent.
+      const changedFiles = httpRuntimeContractChangedFiles.filter((path) => path !== removedPath);
+
+      // Then: its own enforcement category rejects the incomplete change.
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrowError(expectedError);
+    },
+  );
+
+  it('accepts a complete HTTP runtime contract changed-file fixture', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
-    expect(() => enforceContractCompanionUpdates(['docs/reference/package-surface.md'])).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    expect(() => enforceContractCompanionUpdates([...httpRuntimeContractChangedFiles])).not.toThrow();
+  });
+
+  it('requires byte-range and canonical listener-harness evidence for byte-range runtime changes', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const byteRangeRuntimeChange = [...httpRuntimeContractChangedFiles];
+
+    // When / Then
+    for (const runtimeSourcePath of [
+      'packages/http/src/byte-range-response.ts',
+      'packages/http/src/dispatch/byte-range-response.ts',
+    ]) {
+      expect(() => enforceContractCompanionUpdates([
+        ...byteRangeRuntimeChange,
+        runtimeSourcePath,
+      ])).toThrow(/byte-range runtime contract changes/u);
+    }
+    expect(() => enforceContractCompanionUpdates([
+      ...byteRangeRuntimeChange,
+      'packages/http/src/byte-range-response.ts',
+      'packages/http/src/dispatch/conditional-request-policy.test.ts',
+      'packages/http/src/dispatch/byte-range-response.test.ts',
+      'packages/testing/src/portability/http-adapter-portability.ts',
+      'packages/testing/src/portability/http-adapter-portability.test.ts',
+    ])).not.toThrow();
+  });
+
+  it('invokes HTTP lifecycle routing and content enforcement from central governance', () => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    const mainGateCalls = new Set<string>();
+
+    // When
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)) {
+          mainGateCalls.add(node.expression.text);
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    // Then
+    expect([...mainGateCalls]).toEqual(expect.arrayContaining([
+      'enforceContractCompanionUpdates',
+      'enforceHttpRuntimeCancellationAndContextIsolation',
+    ]));
+  });
+
+  it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const genericContractCompanions = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When
+    const enforceGenericCompanions = () => enforceContractCompanionUpdates(genericContractCompanions);
+
+    // Then
+    expect(enforceGenericCompanions).not.toThrow();
+  });
+
+  it('accepts strict validation materialization with bilingual contract companions', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const contractFiles = [
+      'packages/validation/README.md',
+      'packages/validation/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'book/beginner/ch06-validation.md',
+      'book/beginner/ch06-validation.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When
+    const enforceCompanions = () => enforceContractCompanionUpdates(contractFiles);
+
+    // Then
+    expect(enforceCompanions).not.toThrow();
+  });
+
+  it('requires generic companions for metadata preload migration guidance', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/core/README.md',
+      'packages/core/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
+      'book/advanced/ch16-custom-package.md',
+      'book/advanced/ch16-custom-package.ko.md',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).toThrow(
+      /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+  });
+
+  it('accepts i18n catalog migration guidance with required governance companions', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/i18n/README.md',
+      'packages/i18n/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      ...fastifyRawContextCompanions,
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
+  });
+
+  it('requires companions for additive edits inside the bounded #3338 contract region', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const region = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\\ncontract section\\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+    const changedRegion = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\\ncontract section\\nadjacent addition\\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: { base: region, head: changedRegion },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('ignores unrelated NestJS migration guide edits for #3338 companions', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const migrationPaths = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      migrationPaths.map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head: 'unrelated migration edit\n<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+        },
+      ]),
     );
 
     expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).toThrowError(/CI\/tooling enforcement updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-      ]),
-    ).toThrowError(/regression test updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-      ]),
+      enforceStudioReportBootstrapFailureCompanions(migrationPaths, snapshots),
     ).not.toThrow();
+  });
+
+  it('requires exact #3338 companions when the sentinel is introduced', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: path === 'book/advanced/ch15-studio.md' ? '' : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(
+        exactCompanions.filter((path) => path !== 'packages/cli/src/public-api.test.ts'),
+        snapshots,
+      ),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).not.toThrow();
+  });
+
+  it('fails closed when a changed #3338 contract path removes the sentinel', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: '',
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when HEAD mixes a canonical pair with a legacy sentinel', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const canonicalPair = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: canonicalPair,
+          head: `${canonicalPair}\n<!-- fluo-studio-report-bootstrap-failure-contract -->`,
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when BASE mixes a canonical pair with legacy sentinels', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const canonicalPair = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: `${canonicalPair}\n<!-- fluo-studio-report-bootstrap-failure-contract -->\n<!-- fluo-studio-report-bootstrap-failure-contract -->`,
+          head: canonicalPair,
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when a changed #3338 contract path has duplicate sentinel decoys', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: [
+            '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+            '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          ].join('\n'),
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when a changed #3338 contract path has unavailable or malformed snapshots', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    for (const snapshots of [
+      undefined,
+      {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: undefined,
+        },
+      },
+    ]) {
+      expect(() =>
+        enforceStudioReportBootstrapFailureCompanions([path], snapshots),
+      ).toThrowError(/Studio bootstrap-failure guidance/u);
+    }
+  });
+
+  it.each([
+    ['removes', ''],
+    [
+      'duplicates',
+      [
+        '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+        '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+      ].join('\n'),
+    ],
+  ])('fails closed when a later changed #3338 contract path %s its sentinel', async (_action, invalidHead) => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head:
+            path === 'book/advanced/ch15-studio.md'
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\nchanged contract section\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->'
+              : path === 'book/advanced/ch15-studio.ko.md'
+                ? invalidHead
+                : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it.each([
+    'book/advanced/ch15-studio.md',
+    'book/advanced/ch15-studio.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('requires exact #3338 companions for a contract edit in %s', async (triggerPath) => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head:
+            path === triggerPath
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\nchanged contract section\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->'
+              : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([triggerPath], snapshots),
+    ).toThrowError(/Studio bootstrap-failure guidance/);
+    for (const missingCompanion of exactCompanions) {
+      if (missingCompanion === triggerPath) {
+        continue;
+      }
+
+      expect(() =>
+        enforceStudioReportBootstrapFailureCompanions(
+          exactCompanions.filter((companion) => companion !== missingCompanion),
+          snapshots,
+        ),
+      ).toThrowError(/Studio bootstrap-failure guidance/);
+    }
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).not.toThrow();
+  });
+
+  it('registers the #3338 companion gate in the central governance path', () => {
+    const source = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(true);
+  });
+
+  it.each([
+    'export function main() { /* enforceStudioReportBootstrapFailureCompanions([]); */ }',
+    'export function main() { if (false) { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { const deferred = () => enforceStudioReportBootstrapFailureCompanions([]); }',
+    'export function main() { function deferred() { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { switch (kind) { default: enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { for (;;) { enforceStudioReportBootstrapFailureCompanions([]); break; } }',
+    'export function main() { while (true) { enforceStudioReportBootstrapFailureCompanions([]); break; } }',
+    'export function main() { try { enforceStudioReportBootstrapFailureCompanions([]); } catch {} }',
+    'export function main() { try {} finally { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { return; enforceStudioReportBootstrapFailureCompanions([]); }',
+    'export function main() { throw new Error(); enforceStudioReportBootstrapFailureCompanions([]); }',
+  ])('rejects a nested or unreachable #3338 companion-call decoy', (source) => {
+    expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(false);
   });
 
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
@@ -765,6 +2390,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/reference/package-surface.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch19-mongoose.md',
@@ -787,6 +2413,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/reference/package-surface.md',
         'docs/reference/package-surface.ko.md',
         'docs/CONTEXT.md',
@@ -799,6 +2426,54 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('rejects duplicate OpenAPI migration and learning-path sections', async () => {
+    // Given: the bilingual OpenAPI migration and learning-path documentation.
+    const { enforceOpenApiMigrationDocumentStructure } = await loadGovernanceInternals();
+
+    // When: either contract section is repeated consecutively.
+    // Then: governance rejects the duplicate heading before it can render twice.
+    expect(() => enforceOpenApiMigrationDocumentStructure()).not.toThrow();
+    expect(() => enforceOpenApiMigrationDocumentStructure((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace(
+          '## OpenAPI Contract Differences',
+          '## OpenAPI Contract Differences\n\n## OpenAPI Contract Differences',
+        )
+        : content;
+    })).toThrow(/migrate-from-nestjs\.md must contain exactly one OpenAPI Contract Differences heading/u);
+    expect(() => enforceOpenApiMigrationDocumentStructure((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'book/beginner/ch10-openapi.ko.md'
+        ? content.replace(
+          '### 기본 오류 계약',
+          '### 기본 오류 계약\n\n### 기본 오류 계약',
+        )
+        : content;
+    })).toThrow(/ch10-openapi\.ko\.md must contain exactly one 기본 오류 계약 heading/u);
+  });
+
+  it.each([
+    ['default error responses', 'defaultErrorResponsesPolicy'],
+    ['operation identifiers', 'operationId'],
+    ['document transforms', 'documentTransform'],
+  ])('requires the %s migration difference', async (_name, marker) => {
+    // Given: the English migration reference and its three machine-governed facts.
+    const { enforceOpenApiMigrationDocumentStructure } = await loadGovernanceInternals();
+
+    // When: a migration difference marker is removed.
+    // Then: governance rejects the incomplete contract.
+    expect(() => enforceOpenApiMigrationDocumentStructure((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace(marker, '')
+        : content;
+    })).toThrow(/must retain migration marker/u);
+  });
+
   it('accepts GraphQL contract guidance when bilingual surfaces and regression enforcement change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -808,6 +2483,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/graphql/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch18-graphql.md',
@@ -896,8 +2572,25 @@ describe('enforceContractCompanionUpdates', () => {
       enforceContractCompanionUpdates([
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts NestJS import migration guidance with context and executable evidence updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/transforms/nestjs-migrate.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -912,6 +2605,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/microservices/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch01-microservices-intro.md',
@@ -986,22 +2680,41 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
-  it('accepts Email async-registration migration guidance when context, package, and governance tests change together', async () => {
+  it('accepts Email migration contract guidance when context, contract, package, and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
     expect(() =>
       enforceContractCompanionUpdates([
         'packages/email/README.md',
         'packages/email/README.ko.md',
-        'book/intermediate/ch16-email.md',
-        'book/intermediate/ch16-email.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
-        'docs/reference/package-surface.md',
-        'docs/reference/package-surface.ko.md',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
-        'packages/email/src/module.test.ts',
+        'book/intermediate/ch16-email.md',
+        'book/intermediate/ch16-email.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts NestJS throttler migration guidance when context and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'book/beginner/ch16-throttler.md',
+        'book/beginner/ch16-throttler.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/throttler/README.md',
+        'packages/throttler/README.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1035,6 +2748,7 @@ describe('enforceContractCompanionUpdates', () => {
         'book/intermediate/ch15-notifications.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
@@ -1042,21 +2756,312 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('keeps Email async-registration and visibility guidance present in governed docs', () => {
-    const englishEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8');
-    const koreanEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8');
-    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
-    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+  it('enforces Email migration guidance in marker-bounded sections and navigation rows', () => {
+    expect(() => enforceEmailNestjsMigrationDocs()).not.toThrow();
+  });
 
-    for (const document of [englishEmailReadme, koreanEmailReadme, englishMigration, koreanMigration]) {
-      expect(document).toContain('EmailModule.forRootAsync');
-      expect(document).toContain('inject');
-      expect(document).toContain('useFactory');
-      expect(document).toContain('global: false');
-      expect(document).toContain('imports');
-      expect(document).toContain('useClass');
-      expect(document).toContain('useExisting');
-    }
+  it('rejects reversed Email transport ownership semantics', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace(
+            'ownership=portable->application,node-factory->email-module,nodemailer->caller',
+            'ownership=portable->email-module,node-factory->application,nodemailer->caller',
+          )
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/ownership/u);
+  });
+
+  it('rejects Email async-factory guidance that denies the supported form', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace('async=injected-factory->supported', 'async=injected-factory->unsupported')
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/async/u);
+  });
+
+  it('rejects Email migration guidance with an incomplete delivery marker', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace(
+            'delivery=direct->pre-rendered,template->rendered',
+            'delivery=direct->pre-rendered',
+          )
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/delivery/u);
+  });
+
+  it('rejects Email migration guidance with incomplete delivery precedence', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/email/README.md'
+        ? source.replace(
+            'precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients',
+            'precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.to->notification.recipients',
+          )
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/precedence/u);
+  });
+
+  it('rejects an Email API identifier that appears only in its marker', () => {
+    const readText = (relativePath: string) => {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? source.replace(
+            '`EmailService.send(...)` replaces a direct `MailerService.sendMail(...)` call',
+            '`direct delivery` replaces a direct `MailerService.sendMail(...)` call',
+          )
+        : source;
+    };
+
+    expect(() => enforceEmailNestjsMigrationDocs(readText)).toThrow(/EmailService\.send/u);
+  });
+
+  const emailMigrationMarker =
+    '<!-- fluo-email-nestjs-migration: async=injected-factory->supported;delivery=direct->pre-rendered,template->rendered -->';
+  const emailReadmeWithMigrationSection = [
+    '# Email',
+    '',
+    '## Installation',
+    '',
+    'Unrelated prose.',
+    '',
+    '## NestJS migration',
+    '',
+    emailMigrationMarker,
+    '',
+    'Use `EmailService.send(...)` for direct delivery.',
+    '',
+    '## Reference',
+    '',
+    'See the API reference.',
+  ].join('\n');
+  const emailMigrationGuideWithMigrationSection = [
+    '# Migration map',
+    '',
+    '## General migration',
+    '',
+    'Unrelated prose.',
+    '',
+    '## Email migration',
+    '',
+    emailMigrationMarker,
+    '',
+    'Use `EmailService.send(...)` for direct delivery.',
+    '',
+    '## Reference',
+    '',
+    'See the API reference.',
+  ].join('\n');
+  const emailMigrationDocuments = {
+    'packages/email/README.md': emailReadmeWithMigrationSection,
+    'packages/email/README.ko.md': emailReadmeWithMigrationSection,
+    'docs/getting-started/migrate-from-nestjs.md': emailMigrationGuideWithMigrationSection,
+    'docs/getting-started/migrate-from-nestjs.ko.md': emailMigrationGuideWithMigrationSection,
+  };
+  type EmailMigrationDocumentPath = keyof typeof emailMigrationDocuments;
+  const emailMigrationDocumentPaths: EmailMigrationDocumentPath[] = [
+    'packages/email/README.md',
+    'packages/email/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ];
+  const emailMigrationSnapshots = (
+    heads: Readonly<Partial<Record<EmailMigrationDocumentPath, string>>> = {},
+  ) => ({
+    'packages/email/README.md': {
+      base: emailReadmeWithMigrationSection,
+      head: heads['packages/email/README.md'] ?? emailReadmeWithMigrationSection,
+    },
+    'packages/email/README.ko.md': {
+      base: emailReadmeWithMigrationSection,
+      head: heads['packages/email/README.ko.md'] ?? emailReadmeWithMigrationSection,
+    },
+    'docs/getting-started/migrate-from-nestjs.md': {
+      base: emailMigrationGuideWithMigrationSection,
+      head:
+        heads['docs/getting-started/migrate-from-nestjs.md'] ??
+        emailMigrationGuideWithMigrationSection,
+    },
+    'docs/getting-started/migrate-from-nestjs.ko.md': {
+      base: emailMigrationGuideWithMigrationSection,
+      head:
+        heads['docs/getting-started/migrate-from-nestjs.ko.md'] ??
+        emailMigrationGuideWithMigrationSection,
+    },
+  });
+  const completeEmailMigrationCompanions = [
+    'packages/email/README.md',
+    'packages/email/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/contracts/nestjs-parity-gaps.md',
+    'docs/contracts/nestjs-parity-gaps.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/intermediate/ch16-email.md',
+    'book/intermediate/ch16-email.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+  ];
+  const changedFilesForUnrelatedEmailDocumentEdit = (path: EmailMigrationDocumentPath) =>
+    path.startsWith('docs/')
+      ? [
+          path,
+          'docs/CONTEXT.md',
+          'docs/CONTEXT.ko.md',
+          'tooling/governance/verify-platform-consistency-governance.test.ts',
+        ]
+      : [path];
+
+  it.each(emailMigrationDocumentPaths)(
+    'does not require Email migration companions for an unrelated %s section edit',
+    async (path) => {
+    // Given: only an unrelated section in one governed Email document changes.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = emailMigrationSnapshots({
+      [path]: emailMigrationDocuments[path].replace(
+        'Unrelated prose.',
+        'Install Nodemailer before configuring the Email module.',
+      ),
+    });
+
+    // When / Then: the unchanged marker-bounded migration section does not trigger migration companions.
+    expect(() =>
+      enforceContractCompanionUpdates(changedFilesForUnrelatedEmailDocumentEdit(path), snapshots),
+    ).not.toThrow();
+    },
+  );
+
+  it.each(emailMigrationDocumentPaths)(
+    'requires all Email migration companions when the %s marker section changes',
+    async (path) => {
+    // Given: a marker-bounded migration section mutation with only one document declared.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = emailMigrationSnapshots({
+      [path]: emailMigrationDocuments[path].replace(
+        'delivery=direct->pre-rendered,template->rendered',
+        'delivery=direct->pre-rendered',
+      ),
+    });
+
+    // When / Then: every migration companion remains mandatory, and the complete set is accepted.
+    expect(() =>
+      enforceContractCompanionUpdates([path], snapshots),
+    ).toThrow(/Email NestJS migration documentation/u);
+    expect(() =>
+      enforceContractCompanionUpdates(completeEmailMigrationCompanions, snapshots),
+    ).not.toThrow();
+    },
+  );
+
+  it.each(emailMigrationDocumentPaths)('fails closed for a governed %s edit without snapshots', async (path) => {
+    // Given: a governed Email document path without Git content snapshots.
+
+    // When / Then: governance cannot prove the migration section is unchanged.
+    expect(() =>
+      enforceContractCompanionUpdatesFromSources([path]),
+    ).toThrow(/Email NestJS migration documentation/u);
+  });
+
+  it.each(emailMigrationDocumentPaths)('fails closed for malformed %s snapshots', async (path) => {
+    // Given: a changed governed Email document with a malformed sibling snapshot.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = emailMigrationSnapshots();
+    Reflect.deleteProperty(snapshots[path], 'head');
+
+    // When / Then: governance cannot infer a section-safe edit from malformed evidence.
+    expect(() =>
+      enforceContractCompanionUpdates([path], snapshots),
+    ).toThrow(/Email NestJS migration documentation/u);
+  });
+
+  it('requires all Email migration companions when the enforcement tool changes', async () => {
+    // Given: a semantic change to the Email migration validator.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = {
+      ...emailMigrationSnapshots(),
+      'tooling/governance/email-nestjs-migration-docs.mjs': {
+        base: 'function enforceEmailNestjsMigrationDocs() {}',
+        head: 'function enforceEmailNestjsMigrationDocs() { return undefined; }',
+      },
+    };
+
+    // When / Then: its companion set remains non-bypassable with complete snapshots.
+    expect(() =>
+      enforceContractCompanionUpdates(['tooling/governance/email-nestjs-migration-docs.mjs'], snapshots),
+    ).toThrow(/Email NestJS migration documentation/u);
+  });
+
+  it('does not treat a shared parser export as an Email migration semantic change', async () => {
+    // Given: the validator exports its existing parser without changing its implementation.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const snapshots = {
+      ...emailMigrationSnapshots(),
+      'tooling/governance/email-nestjs-migration-docs.mjs': {
+        base: [
+          "const emailMigrationMarkerPrefix = '<!-- fluo-email-nestjs-migration:';",
+          'function headingBoundedSection(markdown, markerPrefix, relativePath) {}',
+        ].join('\n'),
+        head: [
+          "const emailMigrationMarkerPrefix = '<!-- fluo-email-nestjs-migration:';",
+          'export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;',
+          'export function headingBoundedSection(markdown, markerPrefix, relativePath) {}',
+        ].join('\n'),
+      },
+    };
+
+    // When / Then: sharing the parser cannot impose documentation companions by itself.
+    expect(() =>
+      enforceContractCompanionUpdates(
+        ['tooling/governance/email-nestjs-migration-docs.mjs'],
+        snapshots,
+      ),
+    ).not.toThrow();
+  });
+
+  it.each([
+    'packages/email/README.md',
+    'packages/email/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/contracts/nestjs-parity-gaps.md',
+    'docs/contracts/nestjs-parity-gaps.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/intermediate/ch16-email.md',
+    'book/intermediate/ch16-email.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+  ])('rejects an Email migration update missing %s', (missingCompanion) => {
+    const completeCompanions = [
+      'packages/email/README.md',
+      'packages/email/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'book/intermediate/ch16-email.md',
+      'book/intermediate/ch16-email.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    expect(() => enforceEmailMigrationCompanions(completeCompanions.filter((path) => path !== missingCompanion))).toThrow(
+      /Email NestJS migration documentation/u,
+    );
   });
 
   it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {
@@ -1110,6 +3115,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/architecture/lifecycle-and-shutdown.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/contracts/nestjs-parity-gaps.md',
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
@@ -1128,6 +3134,7 @@ describe('enforceContractCompanionUpdates', () => {
         'packages/cron/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch12-cron.md',
@@ -1137,15 +3144,13 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('treats Cron lifecycle and NestJS migration docs as contract-governing updates', async () => {
+  it('treats Cron lifecycle contract surfaces as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const cronLifecycleTriggers = [
       'docs/architecture/lifecycle-and-shutdown.md',
       'docs/architecture/lifecycle-and-shutdown.ko.md',
       'docs/contracts/nestjs-parity-gaps.md',
       'docs/contracts/nestjs-parity-gaps.ko.md',
-      'docs/getting-started/migrate-from-nestjs.md',
-      'docs/getting-started/migrate-from-nestjs.ko.md',
     ];
 
     for (const trigger of cronLifecycleTriggers) {
@@ -1153,6 +3158,29 @@ describe('enforceContractCompanionUpdates', () => {
         /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
       );
     }
+  });
+
+  it('accepts serialization migration contracts with metadata regressions and governance coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/serialization/README.md',
+        'packages/serialization/README.ko.md',
+        'packages/serialization/src/serialize.test.ts',
+        'packages/runtime/src/application.test.ts',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/beginner/ch07-serialization.md',
+        'book/beginner/ch07-serialization.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
   });
 
   it('treats the React render policy decision pairs as contract-governing updates', async () => {
@@ -1233,6 +3261,24 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/vite/src/index.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts CLI migration transform guidance when context and token regression evidence change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/cli/README.md',
+        'packages/cli/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...fastifyRawContextCompanions,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/commands/migration-transform-tokens.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1418,15 +3464,13 @@ describe('repository governance contracts', () => {
     const drizzleReadmeKo = readFileSync(resolve(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
 
     for (const source of [docsContext, packageSurface, packageChooser, drizzleReadme]) {
-      expect(source).toContain('Node.js 20+');
+      expect(source).toContain('>=20.19.3 <21 || >=22.2.0 <27');
       expect(source).toContain('node:async_hooks');
-      expect(source).toContain('engines.node >=20.0.0');
     }
 
     for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, drizzleReadmeKo]) {
-      expect(source).toContain('Node.js 20+');
+      expect(source).toContain('>=20.19.3 <21 || >=22.2.0 <27');
       expect(source).toContain('node:async_hooks');
-      expect(source).toContain('engines.node >=20.0.0');
     }
 
     for (const source of [docsContext, packageSurface, drizzleReadme]) {
@@ -1585,6 +3629,27 @@ describe('repository governance contracts', () => {
   it('keeps PR CI governance-gated', () => {
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
     const vitestConfig = readFileSync(resolve(repoRoot, 'vitest.config.ts'), 'utf8');
+    const workflowLines = ciWorkflow.split('\n');
+    const verifyJobStart = workflowLines.indexOf('  verify:');
+    const verifyJobEnd = workflowLines.findIndex(
+      (line, index) => index > verifyJobStart && /^ {2}\S.*:$/u.test(line),
+    );
+    const verifyJobLines = workflowLines.slice(
+      verifyJobStart,
+      verifyJobEnd === -1 ? undefined : verifyJobEnd,
+    );
+    const verifyNeedsStart = verifyJobLines.indexOf('    needs:');
+    const directNeeds = (jobLines: readonly string[]): string[] => {
+      const needsStart = jobLines.indexOf('    needs:');
+      const needsEnd = jobLines.findIndex(
+        (line, index) => index > needsStart && !line.startsWith('      - '),
+      );
+
+      return jobLines
+        .slice(needsStart + 1, needsEnd === -1 ? undefined : needsEnd)
+        .map((line) => line.slice('      - '.length));
+    };
+    const verifyNeeds = directNeeds(verifyJobLines);
 
     expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
     expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
@@ -1610,6 +3675,31 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toContain('build-and-typecheck:');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
+    expect(verifyJobStart).toBeGreaterThanOrEqual(0);
+    expect(verifyNeedsStart).toBeGreaterThanOrEqual(0);
+    expect(verifyNeeds).toContain('deno-platform');
+    expect(() => {
+      expect(
+        directNeeds(verifyJobLines.filter((line) => line !== '      - deno-platform')),
+      ).toContain('deno-platform');
+    }).toThrow();
+    expect(ciWorkflow).toMatch(
+      /studio-browser:\n\s+name: Studio browser\n\s+runs-on: ubuntu-latest\n\s+needs:\n\s+- resolve-pr-verification-scope\n\n\s+steps:/u,
+    );
+    const studioVerificationCondition = "if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
+    const studioNoopCondition = "if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
+    const studioBrowserStart = ciWorkflow.indexOf('  studio-browser:');
+    const nextJobStart = ciWorkflow.indexOf('\n  official-web-runtime-adapter-portability:', studioBrowserStart);
+    const studioBrowserJob = ciWorkflow.slice(studioBrowserStart, nextJobStart);
+
+    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(5);
+    expect(studioBrowserJob).toContain(studioNoopCondition);
+
+    const requiresStudioBrowser = (mode: string, packageNames: readonly string[]): boolean =>
+      mode !== 'scoped' || packageNames.includes('@fluojs/studio');
+    expect(requiresStudioBrowser('scoped', ['@fluojs/studio'])).toBe(true);
+    expect(requiresStudioBrowser('scoped', ['@fluojs/cache-manager'])).toBe(false);
+    expect(ciWorkflow).toContain('- studio-browser');
     expect(ciWorkflow).toMatch(/resolve-pr-verification-scope:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
     expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
   });
@@ -2254,6 +4344,38 @@ describe('Queue lifecycle and migration discoverability', () => {
     'utf8',
   );
   const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
+  const queueWorkerOwnershipContractSources = {
+    'packages/queue/README.md': englishReadme,
+    'packages/queue/README.ko.md': koreanReadme,
+    'docs/CONTEXT.md': englishContext,
+    'docs/CONTEXT.ko.md': koreanContext,
+    'docs/getting-started/migrate-from-nestjs.md': englishMigration,
+    'docs/getting-started/migrate-from-nestjs.ko.md': koreanMigration,
+    'docs/reference/package-surface.md': englishSurface,
+    'docs/reference/package-surface.ko.md': koreanSurface,
+    'book/intermediate/ch11-queue.md': englishChapter,
+    'book/intermediate/ch11-queue.ko.md': koreanChapter,
+    'packages/queue/src/worker-ownership.ts': readFileSync(
+      join(repoRoot, 'packages/queue/src/worker-ownership.ts'),
+      'utf8',
+    ),
+    'packages/queue/src/module.ts': readFileSync(join(repoRoot, 'packages/queue/src/module.ts'), 'utf8'),
+    'packages/queue/src/worker-ownership.test.ts': readFileSync(
+      join(repoRoot, 'packages/queue/src/worker-ownership.test.ts'),
+      'utf8',
+    ),
+  };
+
+  function withQueueWorkerOwnershipSourceMutation(
+    path: keyof typeof queueWorkerOwnershipContractSources,
+    mutate: (source: string) => string,
+  ): typeof queueWorkerOwnershipContractSources {
+    const original = queueWorkerOwnershipContractSources[path];
+    const mutated = mutate(original);
+    expect(mutated).not.toBe(original);
+
+    return { ...queueWorkerOwnershipContractSources, [path]: mutated };
+  }
 
   it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
     const nodeEngineRange = extractNodeEngineRange(packageManifest);
@@ -2264,9 +4386,9 @@ describe('Queue lifecycle and migration discoverability', () => {
       extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
-      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 package manifest'),
-      extractMarkdownLine(englishChapter, '`@fluojs/queue` is a Node.js'),
-      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 `engines.node'),
+      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 필수'),
+      extractMarkdownLine(englishChapter, '`@fluojs/queue` declares'),
+      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 필수'),
     ]) {
       expect(queueRuntimeEntry).toContain('Node.js');
       expect(queueRuntimeEntry).toContain(nodeEngineRange);
@@ -2280,8 +4402,188 @@ describe('Queue lifecycle and migration discoverability', () => {
     }
   });
 
-  it('keeps cross-scope Redis and jobName ownership rejection aligned across source, regressions, and docs', () => {
+  it('keeps cross-scope ownership namespace and jobName rejection aligned across source, regressions, and docs', () => {
     expect(() => enforceQueueWorkerOwnershipContract()).not.toThrow();
+  });
+
+  it('rejects a source mutation that stops preferring compatible reject owners', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source.replace(
+          [
+            'const existingOwner =',
+            "        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??",
+            '        compatibleOwners[0];',
+          ].join('\n'),
+          'const existingOwner = compatibleOwners[0];',
+        ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership validation must prefer a compatible owner that enforces rejection before falling back to the first compatible owner.',
+    );
+  });
+
+  it('rejects a source mutation that removes the missing-namespace logger warning', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source.replace(
+          [
+            '    if (ownershipNamespace === undefined) {',
+            '      logger.warn(',
+            '        `Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.`,',
+            "        'QueueLifecycleService',",
+            '      );',
+            '    }',
+            '',
+          ].join('\n'),
+          '',
+        ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
+    );
+  });
+
+  it('rejects a source mutation that moves the missing-namespace logger warning into descriptor iteration', () => {
+    const diagnosticBlock = [
+      '    if (ownershipNamespace === undefined) {',
+      '      logger.warn(',
+      '        `Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.`,',
+      "        'QueueLifecycleService',",
+      '      );',
+      '    }',
+    ].join('\n');
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source
+          .replace(`${diagnosticBlock}\n\n`, '')
+          .replace(
+            '    for (const descriptor of descriptors.values()) {\n',
+            `    for (const descriptor of descriptors.values()) {\n${diagnosticBlock}\n`,
+          ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
+    );
+  });
+
+  it('rejects a source mutation that derives ownership identity from DI clientName', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.ts',
+      (source) =>
+        source.replace(
+          'const ownershipNamespace = moduleContext.options.ownershipNamespace;',
+          'const ownershipNamespace = moduleContext.options.clientName;',
+        ),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership identity must use application-supplied ownershipNamespace, treating an absent namespace as compatible and only explicitly different namespaces as isolated.',
+    );
+  });
+
+  it('rejects a source mutation that removes the later-owner pre-resource assertion', () => {
+    const laterOwnerTitle = 'rejects when an unconfigured registration collides with a later reject owner';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.test.ts',
+      (source) => {
+        const testStart = source.indexOf(`it('${laterOwnerTitle}',`);
+        const nextTestStart = source.indexOf("\n  it('", testStart + 1);
+        const testSource = source.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+        return `${source.slice(0, testStart)}${testSource.replace(
+          '      expect(bullmqState.queueNames).toEqual([]);\n',
+          '',
+        )}${source.slice(nextTestStart === -1 ? source.length : nextTestStart)}`;
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership regression "rejects when an unconfigured registration collides with a later reject owner" must assert no BullMQ queues are created before rejection.',
+    );
+  });
+
+  it('rejects a source mutation that strips Queue ownership meaning from the English package-surface bullet', () => {
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.md',
+      (source) => source.replace('2.x compatibility diagnostics by default, ', ''),
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.md Queue package-surface bullet must document application ownershipNamespace identity independent of DI clientName, pre-resource collision validation, default 2.x diagnostics, and opt-in reject failure.',
+    );
+  });
+
+  it('rejects a duplicate English Queue package-surface bullet even when the first decoy is compliant', () => {
+    const anchor = '- **`@fluojs/queue`**:';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.md',
+      (source) => {
+        const queueBullet = source.split('\n').find((line) => line.startsWith(anchor));
+        if (queueBullet === undefined) {
+          throw new TypeError('Expected the English Queue package-surface bullet.');
+        }
+
+        return source.replace(
+          queueBullet,
+          `${queueBullet}\n${queueBullet.replace('2.x compatibility diagnostics by default, ', '')}`,
+        );
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.md Queue package-surface bullet anchor must occur exactly once; observed 2.',
+    );
+  });
+
+  it('rejects a duplicate Korean Queue package-surface bullet even when the first decoy is compliant', () => {
+    const anchor = '- **`@fluojs/queue`**:';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'docs/reference/package-surface.ko.md',
+      (source) => {
+        const queueBullet = source.split('\n').find((line) => line.startsWith(anchor));
+        if (queueBullet === undefined) {
+          throw new TypeError('Expected the Korean Queue package-surface bullet.');
+        }
+
+        return source.replace(
+          queueBullet,
+          `${queueBullet}\n${queueBullet.replace('기본 2.x compatibility diagnostic, ', '')}`,
+        );
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'docs/reference/package-surface.ko.md Queue package-surface bullet anchor must occur exactly once; observed 2.',
+    );
+  });
+
+  it('rejects a duplicate regression declaration even when the first decoy keeps the pre-resource assertion', () => {
+    const regressionTitle =
+      'rejects when an unconfigured registration collides with a later reject owner';
+    const sources = withQueueWorkerOwnershipSourceMutation(
+      'packages/queue/src/worker-ownership.test.ts',
+      (source) => {
+        const testStart = source.indexOf(`it('${regressionTitle}',`);
+        const nextTestStart = source.indexOf("\n  it('", testStart + 1);
+        const testSource = source.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+        return `${source.slice(0, testStart)}${testSource}\n  ${testSource.replace(
+          '      expect(bullmqState.queueNames).toEqual([]);\n',
+          '',
+        )}${source.slice(nextTestStart === -1 ? source.length : nextTestStart)}`;
+      },
+    );
+
+    expect(() => enforceQueueWorkerOwnershipContractFromSources(sources)).toThrow(
+      'Queue ownership regression "rejects when an unconfigured registration collides with a later reject owner" test declaration must occur exactly once; observed 2.',
+    );
   });
 
   it('keeps explicit NestJS worker migration and persisted-job cutover limits in Queue-specific regions', () => {
@@ -2793,6 +5095,30 @@ describe('Studio public docs and migration expectations', () => {
   const koreanReadme = readFileSync(join(repoRoot, 'packages/studio/README.ko.md'), 'utf8');
   const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const staticLiveSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const swappedStaticLiveSentinel = '<!-- studio-static-live-contract: static=node-compiled-di-graph; live=inspect-successful-bootstrap-no-compiled-di-graph -->';
+  const staticLiveCompanionPairs = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ] as const;
+
+  function mainHasDirectStudioStaticGraphContractRegistration(source: ReturnType<typeof createSourceFile>): boolean {
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+
+      return statement.body.statements.some((bodyStatement) =>
+        isExpressionStatement(bodyStatement) &&
+        isCallExpression(bodyStatement.expression) &&
+        isIdentifier(bodyStatement.expression.expression) &&
+        bodyStatement.expression.expression.text === 'enforceStudioStaticGraphLimitsContract');
+    }
+
+    return false;
+  }
 
   it('keeps Studio sidecar, fallback, dependency, and exported type docs discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
@@ -2817,5 +5143,290 @@ describe('Studio public docs and migration expectations', () => {
       expect(content).toContain('applyFilters(...)');
       expect(content).toContain('renderMermaid(snapshot)');
     }
+  });
+
+  it('enforces host-owned runtime bridge discoverability from the central governance path', async () => {
+    // Given: the central platform-governance entrypoint and a missing Studio bridge path.
+    const { enforceStudioRuntimeBridgeDiscoverability } = await loadGovernanceInternals();
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.ko.md'
+        ? content.replace('@fluojs/runtime/devtools', '')
+        : content;
+    };
+    let mainCallsStudioBridgeGuard = false;
+
+    // When: the central path is inspected and the discoverability guard reads the affected hub.
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)
+          && node.expression.text === 'enforceStudioRuntimeBridgeDiscoverability') {
+          mainCallsStudioBridgeGuard = true;
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    // Then: main invokes the guard and missing bridge guidance names the affected document.
+    expect(mainCallsStudioBridgeGuard).toBe(true);
+    expect(() => enforceStudioRuntimeBridgeDiscoverability(readText)).toThrow(
+      /docs\/CONTEXT\.ko\.md must document the host-owned @fluojs\/runtime\/devtools bridge/u,
+    );
+  });
+
+  it('keeps static graph limits synchronized across Studio entrypoints', async () => {
+    const { enforceStudioStaticGraphLimitsContract } = await loadGovernanceInternals();
+
+    expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
+  });
+
+  it.each(staticLiveCompanionPairs)(
+    'rejects missing English and swapped Korean static/live contract sentinels in %s and %s',
+    (englishPath, koreanPath) => {
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === englishPath ? content.replace(staticLiveSentinel, '') : content;
+      })).toThrowError(englishPath);
+
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === koreanPath
+          ? content.replace(staticLiveSentinel, swappedStaticLiveSentinel)
+          : content;
+      })).toThrowError(koreanPath);
+    },
+  );
+
+  it('keeps the Studio static graph contract registered from main', () => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    // When
+    const mainCallsStudioGuard = mainHasDirectStudioStaticGraphContractRegistration(source);
+
+    // Then
+    expect(mainCallsStudioGuard).toBe(true);
+  });
+
+  it.each([
+    [
+      'a comment',
+      '// enforceStudioStaticGraphLimitsContract();',
+    ],
+    [
+      'an uncalled nested closure',
+      'const registerStudioContract = () => {\n    enforceStudioStaticGraphLimitsContract();\n  };',
+    ],
+    [
+      'an unreachable branch',
+      'if (false) {\n    enforceStudioStaticGraphLimitsContract();\n  }',
+    ],
+    [
+      'an uncalled nested function',
+      'function registerStudioContract() {\n    enforceStudioStaticGraphLimitsContract();\n  }',
+    ],
+  ])('rejects %s as Studio static graph contract registration', (_description, replacement) => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8')
+        .replace('  enforceStudioStaticGraphLimitsContract();', `  ${replacement}`),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    // When
+    const mainCallsStudioGuard = mainHasDirectStudioStaticGraphContractRegistration(source);
+
+    // Then
+    expect(mainCallsStudioGuard).toBe(false);
+  });
+});
+
+describe('Notifications configured-disabled status contract', () => {
+  const documentationPaths = [
+    'packages/notifications/README.md',
+    'packages/notifications/README.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+  ] as const;
+
+  it('keeps configuration, enablement, and configured-disabled health semantics machine-readable', async () => {
+    const { enforceNotificationsStatusDocumentationContract } = await loadGovernanceInternals();
+
+    expect(() => enforceNotificationsStatusDocumentationContract()).not.toThrow();
+  });
+
+  it('rejects configured-but-disabled health semantic drift in every governed documentation surface', async () => {
+    const { enforceNotificationsStatusDocumentationContract } = await loadGovernanceInternals();
+
+    for (const targetPath of documentationPaths) {
+      const readText = (relativePath: string): string => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace(
+            'configured-but-disabled-no-channels=degraded',
+            'configured-but-disabled-no-channels=unhealthy',
+          )
+          : content;
+      };
+
+      expect(() => enforceNotificationsStatusDocumentationContract(readText)).toThrow(targetPath);
+    }
+  });
+
+  it('runs the documentation contract from the central governance path', () => {
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(governanceSource).toContain('enforceNotificationsStatusDocumentationContract();');
+  });
+});
+
+describe('Auth & JWT contract gate triggers', () => {
+  it.each([
+    'docs/architecture/auth-and-jwt.md',
+    'docs/architecture/auth-and-jwt.ko.md',
+  ])('requires context companions when %s changes', async (changedPath) => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() => enforceContractCompanionUpdates([changedPath])).toThrow(
+      'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+  });
+});
+
+describe('mandatory first-party dependency Node engine alignment', () => {
+  it('rejects a public package that advertises Node versions its required dependency excludes', () => {
+    // Given: Prisma's Node 20+ package contract and a required runtime dependency with a higher floor.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/prisma/package.json') {
+        const manifest = JSON.parse(content);
+
+        return JSON.stringify({
+          ...manifest,
+          dependencies: {
+            ...manifest.dependencies,
+            '@fluojs/runtime': 'workspace:^',
+          },
+        });
+      }
+
+      return content;
+    };
+
+    // When: release governance evaluates the mandatory first-party graph.
+    // Then: it rejects the false Node 20+ compatibility claim before release.
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/prisma']))).toThrow(
+      /@fluojs\/prisma engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@fluojs\/runtime/u,
+    );
+  });
+
+  it('accepts the current mandatory first-party dependency Node engine graph', () => {
+    // Given: the checked-in public package manifests.
+    // When: release governance evaluates their mandatory first-party dependency graph.
+    // Then: every advertised Node version is executable through the required first-party packages.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/prisma']),
+      )).not.toThrow();
+  });
+
+  it('accepts the checked-in runtime reverse-dependent Node engine closure', () => {
+    // Given: runtime has public reverse dependents with mandatory runtime dependencies.
+    // When: a runtime change selects its full public reverse-dependent closure.
+    // Then: every selected package advertises only executable Node versions.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/runtime']),
+      )).not.toThrow();
+  });
+
+  it('accepts the CLI Node 20 contract when runtime remains an optional peer', () => {
+    // Given: CLI resolves runtime only for inspect and does not require it for other commands.
+    // When: a runtime change selects its public reverse-dependent closure.
+    // Then: CLI's independent Node 20 contract remains valid.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/runtime']),
+      )).not.toThrow();
+  });
+
+  it('rejects a transitive runtime reverse dependent that over-advertises Node support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/discord/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        engines: { ...manifest.engines, node: '>=20.0.0' },
+      });
+    };
+
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/runtime'])))
+      .toThrow(/@fluojs\/discord engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
+  });
+
+  it('accepts a selected public package without an advertised Node engine floor', () => {
+    // Given: the documented runtime-neutral i18n package with no engines.node declaration.
+    // When: release governance evaluates its mandatory first-party dependency graph.
+    // Then: the absent public compatibility claim does not require an engine comparison.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(
+        (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+        new Set(['@fluojs/i18n']),
+      )).not.toThrow();
+  });
+
+  it('rejects an unchanged public dependent after its mandatory dependency narrows Node support', () => {
+    // Given: core narrows its advertised Node floor while only core's manifest is selected.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/core/package.json') {
+        return content;
+      }
+
+      const manifest = JSON.parse(content);
+      return JSON.stringify({
+        ...manifest,
+        engines: { ...manifest.engines, node: '>=22.0.0' },
+      });
+    };
+
+    // When: release governance evaluates the changed package's public reverse dependencies.
+    // Then: an unchanged public dependent's Node 20+ advertisement is rejected.
+    expect(() =>
+      enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/core'])))
+      .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 20\.19\.3.*@fluojs\/core/u);
   });
 });

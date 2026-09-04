@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | 기본 애플리케이션 스택이 필요함 | `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime` | 모든 Node.js 웹 API의 시작점입니다. |
 | HTTP 라우팅이 필요함 | `@fluojs/http` | 컨트롤러와 라우트 실행에 필요합니다. |
+| portable 정적 에셋이 필요함 | `@fluojs/http` + `@fluojs/runtime/node` | `@fluojs/http`는 `createStaticAssetsMiddleware(...)`를 소유하고, Node subpath만 `createNodeFileSystemAssetSource(...)`를 소유합니다. Web, Bun, Deno, Workers 애플리케이션은 자체 `StaticAssetSource`를 제공합니다. |
 | GraphQL 엔드포인트가 필요함 | `@fluojs/graphql` | HTTP 스택 위에 추가합니다. |
 | 기본 Node.js 어댑터가 필요함 | `@fluojs/platform-fastify` | Node.js `>=20.19.3 <21 || >=22.2.0 <27` 프로젝트에 권장되는 시작 경로이며, listener-level RFC `QUERY`가 fluo dispatch에 도달하도록 package는 이 정확한 `engines.node` 범위를 선언합니다. |
 | Fastify가 HTTPS/TLS 시작을 직접 소유해야 함 | `@fluojs/platform-fastify` | 프로세스가 TLS를 직접 소유할 때 adapter/bootstrap startup surface에 Node.js `https` server option을 전달하세요. Load balancer, ingress, gateway가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요. |
@@ -63,8 +64,8 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | Node.js에서 Prisma 기반 관계형 접근이 필요함 | `@fluojs/prisma` | Node.js 20+용 Prisma ORM 통합에 사용합니다. Root wrapper는 transaction context에 host `AsyncLocalStorage`와 `engines.node >=20.0.0` 계약을 사용하므로, 호환 ALS 경계가 없는 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Prisma-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |
-| Node.js에서 Drizzle 기반 관계형 접근이 필요함 | `@fluojs/drizzle` | Node.js 20+용 Drizzle ORM 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context와 `engines.node >=20.0.0` 계약을 사용하므로, Bun SQL, Cloudflare D1 같은 비 Node Drizzle driver는 비 Node context adapter가 문서화되기 전까지 현재 fluo wrapper 범위 밖입니다. 그런 런타임에서는 이 wrapper를 import하지 말고 raw Drizzle driver handle을 런타임별 fluo provider(`useFactory` 또는 `useValue`) 뒤에 등록하세요. |
-| Node.js에서 도큐먼트 데이터베이스 접근이 필요함 | `@fluojs/mongoose` | Node.js 20+용 Mongoose 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context와 `engines.node >=20.0.0` 계약을 사용하므로, 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |
+| Node.js에서 Drizzle 기반 관계형 접근이 필요함 | `@fluojs/drizzle` | Node.js `>=20.19.3 <21 || >=22.2.0 <27`용 Drizzle ORM 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context를 사용하며 mandatory `@fluojs/runtime`과 같은 범위를 요구합니다. Node 21과 Node 27 이상은 지원하지 않습니다. Bun SQL, Cloudflare D1 같은 비 Node Drizzle driver는 비 Node context adapter가 문서화되기 전까지 현재 fluo wrapper 범위 밖입니다. 그런 런타임에서는 이 wrapper를 import하지 말고 raw Drizzle driver handle을 런타임별 fluo provider(`useFactory` 또는 `useValue`) 뒤에 등록하세요. |
+| Node.js에서 도큐먼트 데이터베이스 접근이 필요함 | `@fluojs/mongoose` | Node.js `>=20.19.3 <21 || >=22.2.0 <27`용 Mongoose 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context를 사용하며 mandatory `@fluojs/runtime`과 같은 범위를 요구합니다. Node 21과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |
 | 캐시 추상화가 필요함 | `@fluojs/cache-manager` | 캐시 기반 읽기와 쓰기에 사용합니다. |
 | 공유 Redis 클라이언트/서비스 계층이 필요함 | `@fluojs/redis` | 기본 또는 이름 있는 Redis 등록에 사용합니다. |
 

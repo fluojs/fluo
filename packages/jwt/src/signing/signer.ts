@@ -3,7 +3,9 @@ import { Inject } from '@fluojs/core';
 import { JwtConfigurationError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtVerifierOptions } from '../types.js';
-import { ASYMMETRIC_HASH, HMAC_HASH, JWT_OPTIONS } from './verifier.js';
+import { SUPPORTED_ASYMMETRIC_HASH, SUPPORTED_HMAC_HASH } from './algorithm-policy.js';
+import { assertJwtKeyEntries } from './key-entries.js';
+import { JWT_OPTIONS } from './verifier.js';
 
 function encodeBase64Url(value: Buffer | string): string {
   return Buffer.from(value)
@@ -20,7 +22,7 @@ function resolveSigningKeyEntry(options: JwtVerifierOptions, algorithm: JwtAlgor
     return undefined;
   }
 
-  if (hasOwnAlgorithmMapping(HMAC_HASH, algorithm)) {
+  if (hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm)) {
     return keys.find((entry) => typeof entry.secret === 'string' && entry.secret.length > 0);
   }
 
@@ -35,7 +37,7 @@ function hasOwnAlgorithmMapping(
 }
 
 function isSupportedSigningAlgorithm(algorithm: string | undefined): algorithm is JwtAlgorithm {
-  return hasOwnAlgorithmMapping(HMAC_HASH, algorithm) || hasOwnAlgorithmMapping(ASYMMETRIC_HASH, algorithm);
+  return hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm) || hasOwnAlgorithmMapping(SUPPORTED_ASYMMETRIC_HASH, algorithm);
 }
 
 function assertSigningAlgorithms(algorithms: JwtAlgorithm[]): void {
@@ -69,8 +71,13 @@ export class DefaultJwtSigner {
 
   constructor(private readonly options: JwtVerifierOptions) {
     assertSigningAlgorithms(options.algorithms);
-    this.refreshAlgorithms = this.options.algorithms.filter(
-      (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(HMAC_HASH, algorithm),
+    assertJwtKeyEntries(options.keys);
+    const refreshToken = this.options.refreshToken
+      ? normalizeRefreshTokenOptions(this.options.refreshToken)
+      : undefined;
+    const configuredRefreshAlgorithms = refreshToken?.algorithms;
+    this.refreshAlgorithms = (configuredRefreshAlgorithms ?? this.options.algorithms).filter(
+      (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm),
     );
   }
 
@@ -98,7 +105,7 @@ export class DefaultJwtSigner {
   private async signToken(claims: JwtClaims, options: JwtVerifierOptions, hmacOnly: boolean): Promise<string> {
     const algorithm: JwtAlgorithm | undefined = options.algorithms.find((alg) => {
       if (hmacOnly) {
-        return hasOwnAlgorithmMapping(HMAC_HASH, alg);
+        return hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, alg);
       }
 
       return isSupportedSigningAlgorithm(alg);
@@ -116,7 +123,7 @@ export class DefaultJwtSigner {
       );
     }
 
-    const isAsymmetric = hasOwnAlgorithmMapping(ASYMMETRIC_HASH, algorithm);
+    const isAsymmetric = hasOwnAlgorithmMapping(SUPPORTED_ASYMMETRIC_HASH, algorithm);
 
     const now = Math.floor(Date.now() / 1000);
     const ttl = resolveAccessTokenTtlSeconds(options);
@@ -147,7 +154,7 @@ export class DefaultJwtSigner {
         throw new JwtConfigurationError('JWT private key is not configured.');
       }
 
-      const hash = ASYMMETRIC_HASH[algorithm];
+      const hash = SUPPORTED_ASYMMETRIC_HASH[algorithm];
 
       if (!hash) {
         throw new JwtConfigurationError(`No hash mapping for asymmetric algorithm "${algorithm}".`);
@@ -167,7 +174,7 @@ export class DefaultJwtSigner {
         throw new JwtConfigurationError('JWT secret is not configured.');
       }
 
-      const hash = HMAC_HASH[algorithm];
+      const hash = SUPPORTED_HMAC_HASH[algorithm];
 
       if (!hash) {
         throw new JwtConfigurationError(`No hash mapping for HMAC algorithm "${algorithm}".`);

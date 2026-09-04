@@ -77,7 +77,7 @@ export class CacheRepository {
 
 ### 수명 주기 소유권
 
-`RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다.
+`RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다. 등록 identity는 애플리케이션 전체에서 유일해야 합니다. 이름 없는 기본 등록은 하나만 허용하고, trim한 각 name도 하나만 허용하며, bootstrap은 Redis client를 만들기 전에 중복 identity를 거부합니다.
 
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
@@ -89,7 +89,7 @@ export class CacheRepository {
 
 `RedisModuleOptions`는 최종 `ioredis` 생성자 형태가 아니라 `RedisModule.forRoot(...)`가 받는 caller-facing 입력입니다. 일반 `ioredis` 옵션 중 `lazyConnect`와 `name`을 제외한 필드에 Fluo 전용 필드 네 개를 추가합니다.
 
-- `name`은 Fluo 등록과 해당 DI 토큰을 식별합니다. 이 값은 `ioredis` 생성자 `name`이 되지 않습니다.
+- `name`은 Fluo 등록과 해당 DI 토큰을 식별합니다. 이 값은 `ioredis` 생성자 `name`이 되지 않습니다. trim한 각 name은 애플리케이션 전체에서 하나만 등록할 수 있는 ownership identity입니다.
 - `global`은 module visibility를 제어합니다. 기본 등록은 `false`로 지정하지 않는 한 global이고, named registration은 항상 scoped이며 `global: true`를 거부합니다.
 - `lifecycle`은 Fluo가 소유한 `connect()`와 `quit()` timeout guardrail을 설정합니다.
 - `sentinelName`은 입력의 `name` 필드가 Fluo 등록 식별자에 예약되어 있으므로 ioredis Sentinel master name을 별도로 받습니다.
@@ -180,14 +180,6 @@ import type Redis from 'ioredis';
 const COMMAND_REDIS = getRedisClientToken();
 const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
-  ],
-})
-export class RedisConnectionsModule {}
-
 @Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
 export class PubSubTransportFactory {
   constructor(
@@ -202,7 +194,18 @@ export class PubSubTransportFactory {
     });
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+  providers: [PubSubTransportFactory],
+})
+export class RedisConnectionsModule {}
 ```
+
+`@Inject(...)`는 클래스의 생성자 토큰만 선언하며 클래스를 등록하지 않습니다. fluo는 명시적 모듈 등록에서 프로바이더를 resolve하므로 `PubSubTransportFactory`는 Redis 등록을 import하는 모듈의 `providers` 배열에 반드시 나열해야 합니다. 어느 모듈에도 나열되지 않은 decorated 클래스는 resolve할 수 없습니다.
 
 ## 공개 API 개요
 

@@ -533,6 +533,57 @@ describe('loadConfig', () => {
     });
   });
 
+  it('strips unquoted inline comments that are not preceded by whitespace', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-adjacent-comment-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(
+      envPath,
+      [
+        'ADJACENT=value#comment',
+        'ADJACENT_EMPTY=#comment',
+        'ADJACENT_MULTIPLE=value#first#second',
+        'SPACED=value #comment',
+        'QUOTED_DOUBLE="value#kept"#comment',
+        "QUOTED_SINGLE='value#kept'#comment",
+        'QUOTED_BACKTICK=`value#kept`#comment',
+        'ESCAPED_IN_DOUBLE="value\\#kept"',
+      ].join('\n'),
+    );
+
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+
+    expect(loaded).toMatchObject({
+      ADJACENT: 'value',
+      ADJACENT_EMPTY: '',
+      ADJACENT_MULTIPLE: 'value',
+      ESCAPED_IN_DOUBLE: 'value\\#kept',
+      QUOTED_BACKTICK: 'value#kept',
+      QUOTED_DOUBLE: 'value#kept',
+      QUOTED_SINGLE: 'value#kept',
+      SPACED: 'value',
+    });
+  });
+
+  it('applies adjacent inline comment stripping to manual reloads', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-adjacent-comment-reload-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'TOKEN=initial#comment\n');
+
+    const reloader = createConfigReloader({ cwd, envFile: envPath, processEnv: {} });
+
+    try {
+      expect(reloader.current()).toMatchObject({ TOKEN: 'initial' });
+
+      writeFileSync(envPath, 'TOKEN="reloaded#kept"#comment\n');
+
+      expect(reloader.reload()).toMatchObject({ TOKEN: 'reloaded#kept' });
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('expands variable interpolation in env files', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-expand-'));
     const envPath = join(cwd, '.env.dev');

@@ -26,6 +26,8 @@ import {
 import type {
   NormalizedQueueModuleOptions,
   QueueDeadLetterInspectionOptions,
+  QueueEnqueueManyEntry,
+  QueueEnqueueOptions,
   QueueModuleOptions,
 } from './types.js';
 import { assertUniqueQueueWorkerOwnership } from './worker-ownership.js';
@@ -81,10 +83,17 @@ interface QueueProviderTokens {
 function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): NormalizedQueueModuleOptions {
   const defaultRateLimiter = normalizeRateLimiter(options.defaultRateLimiter);
   const scope = normalizeQueueScope(options.scope);
+  const ownershipNamespace = options.ownershipNamespace?.trim();
+
+  if (options.ownershipNamespace !== undefined && !ownershipNamespace) {
+    throw new Error('Queue ownership namespace must be a non-empty string when provided.');
+  }
 
   return {
     clientName: options.clientName,
     ...(scope ? { scope } : {}),
+    ...(ownershipNamespace ? { ownershipNamespace } : {}),
+    ownershipEnforcement: options.ownershipEnforcement ?? 'warn',
     defaultAttempts: normalizePositiveInteger(options.defaultAttempts, 1),
     defaultBackoff: options.defaultBackoff
       ? {
@@ -197,7 +206,7 @@ function createQueueProviders(
       provide: tokens.lifecycleServiceToken,
       useFactory: (...deps: unknown[]) => {
         const typedDeps = deps as QueueLifecycleServiceFactoryDeps;
-        assertUniqueQueueWorkerOwnership(typedDeps[3]);
+        assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType);
 
         return new QueueLifecycleService(...typedDeps);
       },
@@ -206,7 +215,9 @@ function createQueueProviders(
       inject: [tokens.lifecycleServiceToken],
       provide: tokens.queueToken,
       useFactory: (service: unknown) => ({
-        enqueue: (job: object) => (service as QueueLifecycleService).enqueue(job),
+        enqueue: (job: object, options?: QueueEnqueueOptions) => (service as QueueLifecycleService).enqueue(job, options),
+        enqueueMany: (entries: readonly QueueEnqueueManyEntry[]) =>
+          (service as QueueLifecycleService).enqueueMany(entries),
         inspectDeadLetters: (jobName: string, options?: QueueDeadLetterInspectionOptions) =>
           (service as QueueLifecycleService).inspectDeadLetters(jobName, options),
       }),

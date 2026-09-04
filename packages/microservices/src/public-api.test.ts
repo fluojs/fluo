@@ -63,6 +63,7 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<NatsMicroserviceTransportOptions>().toHaveProperty('client');
     expectTypeOf<RabbitMqMicroserviceTransportOptions>().toHaveProperty('consumer');
     expectTypeOf<RedisPubSubMicroserviceTransportOptions>().toHaveProperty('subscribeClient');
+    expectTypeOf<RedisPubSubMicroserviceTransportOptions>().not.toHaveProperty('requestTimeoutMs');
     expectTypeOf<RedisStreamsMicroserviceTransportOptions>().toHaveProperty('readerClient');
     expectTypeOf<RedisStreamClientLike>().toHaveProperty('xreadgroup');
     expectTypeOf<TcpMicroserviceTransportOptions>().toHaveProperty('port');

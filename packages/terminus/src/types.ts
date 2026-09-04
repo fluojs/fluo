@@ -18,6 +18,8 @@ export type HealthIndicatorResult = {
 export interface HealthIndicator {
   check(key: string): Promise<HealthIndicatorResult>;
   key?: string;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
 }
 
 /** Structured health report returned by Terminus aggregation helpers. */

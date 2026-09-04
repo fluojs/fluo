@@ -1,9 +1,8 @@
 import { createRequire } from 'node:module';
-import { createServer } from 'node:net';
 import { Inject, Scope } from '@fluojs/core';
 import type { MiddlewareContext, Next } from '@fluojs/http';
-import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapModule, defineModule } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 import { describe, expect, it } from 'vitest';
@@ -11,43 +10,21 @@ import { WebSocket } from 'ws';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
+import { createGraphqlNetworkFixture } from './network.test-fixture.js';
+import { GraphqlLifecycleService } from './service.js';
 import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
 
 const runtimeRequire = createRequire(import.meta.url);
-
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error?: Error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
+const { bootstrapNodeApplication, findAvailablePort, resolvePort } = createGraphqlNetworkFixture();
 
 async function postGraphql(
   port: number,
   query: string,
   options?: { headers?: Record<string, string>; operationName?: string },
 ): Promise<unknown> {
-  const response = await fetch(`http://127.0.0.1:${String(port)}/graphql`, {
+  const response = await fetch(`http://127.0.0.1:${String(await resolvePort(port))}/graphql`, {
     body: JSON.stringify({
       ...(options?.operationName ? { operationName: options.operationName } : {}),
       query,
@@ -127,9 +104,11 @@ function onceWebSocketCloseEvent(socket: WebSocket): Promise<{ code: number; rea
   });
 }
 
-function openGraphqlWebSocket(port: number): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/graphql`, 'graphql-transport-ws');
+async function openGraphqlWebSocket(port: number): Promise<WebSocket> {
+  const resolvedPort = await resolvePort(port);
+
+  return await new Promise((resolve, reject) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${String(resolvedPort)}/graphql`, 'graphql-transport-ws');
     socket.once('open', () => resolve(socket));
     socket.once('error', reject);
   });
@@ -242,18 +221,13 @@ async function readGraphqlWebSocketMessages(socket: WebSocket, count: number): P
   });
 }
 
-async function waitForGraphqlRuntimeEffect(predicate: () => boolean, description: string): Promise<void> {
-  const timeoutAt = Date.now() + 1_000;
+async function awaitGraphqlLifecycle<T>(signal: Promise<T>, description: string): Promise<T> {
+  const timeout = AbortSignal.timeout(250);
+  const timedOut = new Promise<never>((_, reject) => {
+    timeout.addEventListener('abort', () => reject(new Error(`Timed out waiting for ${description}.`)), { once: true });
+  });
 
-  while (Date.now() < timeoutAt) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-
-  throw new Error(`Timed out waiting for GraphQL runtime effect: ${description}`);
+  return await Promise.race([signal, timedOut]);
 }
 
 @Inject()
@@ -459,6 +433,54 @@ class UnionOutputResolver {
 }
 
 describe('@fluojs/graphql', () => {
+  it('registers GraphQL middleware through module metadata', () => {
+    // Given: GraphQL module options for an application endpoint.
+    const graphqlModule = GraphqlModule.forRoot();
+
+    // When: the runtime compiles the generated module metadata.
+    const bootstrap = bootstrapModule(graphqlModule, {
+      validationTokens: [
+        APPLICATION_LOGGER,
+        COMPILED_MODULES,
+        HTTP_APPLICATION_ADAPTER,
+        RUNTIME_CONTAINER,
+      ],
+    });
+
+    // Then: the DI-managed lifecycle service is declared as package middleware.
+    expect(bootstrap.modules[0]?.definition.middleware).toEqual([GraphqlLifecycleService]);
+  });
+
+  it('requests an operating system assigned port for network tests', async () => {
+    expect(await findAvailablePort()).toBeGreaterThan(0);
+  });
+
+  it('forwards literal port zero to the runtime bind seam', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const portToken = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: portToken });
+    await app.listen();
+
+    expect(await resolvePort(portToken)).not.toBe(portToken);
+  });
+
+  it('keeps two bound applications attached to their own port tokens', async () => {
+    class FirstModule {}
+    class SecondModule {}
+    defineModule(FirstModule, {});
+    defineModule(SecondModule, {});
+
+    const firstToken = await findAvailablePort();
+    const secondToken = await findAvailablePort();
+    const firstApp = await bootstrapNodeApplication(FirstModule, { cors: false, port: firstToken });
+    const secondApp = await bootstrapNodeApplication(SecondModule, { cors: false, port: secondToken });
+    await Promise.all([firstApp.listen(), secondApp.listen()]);
+
+    expect(await resolvePort(firstToken)).not.toBe(await resolvePort(secondToken));
+  });
+
   it('invokes configured Yoga/Envelop plugins during request execution', async () => {
     const pluginHooks: string[] = [];
 
@@ -1145,7 +1167,7 @@ describe('@fluojs/graphql', () => {
       await app.listen();
 
       const response = await fetch(
-        `http://127.0.0.1:${String(port)}/graphql?query=${encodeURIComponent('subscription { pingStream }')}`,
+        `http://127.0.0.1:${String(await resolvePort(port))}/graphql?query=${encodeURIComponent('subscription { pingStream }')}`,
         {
           headers: {
             accept: 'text/event-stream',
@@ -1290,7 +1312,10 @@ describe('@fluojs/graphql', () => {
     await app.listen();
 
     const firstSocket = await connectGraphqlWebSocket(port);
-    const secondSocket = new WebSocket(`ws://127.0.0.1:${String(port)}/graphql`, 'graphql-transport-ws');
+    const secondSocket = new WebSocket(
+      `ws://127.0.0.1:${String(await resolvePort(port))}/graphql`,
+      'graphql-transport-ws',
+    );
 
     await expect(onceUnexpectedWebSocketUpgradeResponse(secondSocket)).resolves.toEqual({
       body: 'GraphQL websocket connection count exceeds the configured limit.\n',
@@ -1511,6 +1536,10 @@ describe('@fluojs/graphql', () => {
 
   it('disposes websocket operation-scoped providers when the client disconnects before completion', async () => {
     const lifecycleEvents: string[] = [];
+    let resolveDestroyed: (() => void) | undefined;
+    const destroyed = new Promise<void>((resolve) => {
+      resolveDestroyed = resolve;
+    });
     let releaseOperation: (() => void) | undefined;
     const waitForRelease = new Promise<void>((resolve) => {
       releaseOperation = resolve;
@@ -1521,6 +1550,7 @@ describe('@fluojs/graphql', () => {
     class WebSocketOperationState {
       onDestroy(): void {
         lifecycleEvents.push('state:destroy');
+        resolveDestroyed?.();
       }
     }
 
@@ -1582,7 +1612,7 @@ describe('@fluojs/graphql', () => {
 
     socket.close();
     await onceWebSocketClosed(socket);
-    await waitForGraphqlRuntimeEffect(() => lifecycleEvents.includes('state:destroy'), 'websocket operation container disposal');
+    await awaitGraphqlLifecycle(destroyed, 'disconnected websocket operation cleanup');
 
     expect(lifecycleEvents).toEqual(expect.arrayContaining(['resolver:started', 'resolver:destroy', 'state:destroy']));
 
@@ -1782,6 +1812,15 @@ describe('@fluojs/graphql', () => {
 describe('@fluojs/graphql — provider scopes', () => {
   it('isolates request-scoped resolver instances across concurrent operations', async () => {
     let issued = 0;
+    let enteredResolverCount = 0;
+    let releaseResolvers: (() => void) | undefined;
+    const bothResolversEntered = new Promise<void>((resolve) => {
+      releaseResolvers = resolve;
+    });
+    let releaseOverlap: (() => void) | undefined;
+    const overlapReleased = new Promise<void>((resolve) => {
+      releaseOverlap = resolve;
+    });
 
     @Inject()
     @Scope('request')
@@ -1797,7 +1836,11 @@ describe('@fluojs/graphql — provider scopes', () => {
 
       @Query()
       async requestId(): Promise<string> {
-        await new Promise((resolve) => setTimeout(resolve, 25));
+        enteredResolverCount += 1;
+        if (enteredResolverCount === 2) {
+          releaseResolvers?.();
+        }
+        await overlapReleased;
         return this.identity.id;
       }
     }
@@ -1812,10 +1855,13 @@ describe('@fluojs/graphql — provider scopes', () => {
     const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
-    const [op1, op2] = await Promise.all([
+    const operations = Promise.all([
       postGraphql(port, '{ requestId }'),
       postGraphql(port, '{ requestId }'),
     ]);
+    await awaitGraphqlLifecycle(bothResolversEntered, 'both request-scoped resolvers entering');
+    releaseOverlap?.();
+    const [op1, op2] = await operations;
 
     const id1 = (op1 as { data?: { requestId?: string } }).data?.requestId;
     const id2 = (op2 as { data?: { requestId?: string } }).data?.requestId;
@@ -1928,7 +1974,6 @@ describe('@fluojs/graphql — provider scopes', () => {
 
       @Subscription()
       async *requestIds(): AsyncGenerator<string, void, void> {
-        await new Promise((resolve) => setTimeout(resolve, 10));
         yield this.identity.id;
       }
     }
@@ -2190,10 +2235,7 @@ describe('@fluojs/graphql — provider scopes', () => {
       },
     ]);
 
-    await expect(Promise.race([
-      destroyed,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for websocket operation cleanup.')), 250)),
-    ])).resolves.toBe('subscription-probe-1784');
+    await expect(awaitGraphqlLifecycle(destroyed, 'websocket operation cleanup')).resolves.toBe('subscription-probe-1784');
     expect(destroyedIds).toEqual(['subscription-probe-1784']);
 
     socket.close();
@@ -2273,10 +2315,7 @@ describe('@fluojs/graphql — provider scopes', () => {
     const socketClosed = onceWebSocketClosed(socket);
     await app.close();
 
-    await expect(Promise.race([
-      destroyed,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for shutdown cleanup.')), 250)),
-    ])).resolves.toBe('live-subscription-probe-1967');
+    await expect(awaitGraphqlLifecycle(destroyed, 'shutdown cleanup')).resolves.toBe('live-subscription-probe-1967');
     await expect(socketClosed).resolves.toBeUndefined();
     expect(destroyedIds).toEqual(['live-subscription-probe-1967']);
   });

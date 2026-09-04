@@ -1,4 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -46,13 +51,31 @@ describe('Vite package declaration boundary', () => {
     expect(readStringArrayProperty(buildConfig, 'exclude')).toEqual(['src/**/*.test.ts', 'src/**/*.spec.ts']);
   });
 
-  it('keeps the injected Babel test factory out of production declarations', async () => {
-    const buildConfig = await readJsonFile(new URL('../tsconfig.build.json', import.meta.url));
-    const compilerOptions = readRecordProperty(buildConfig, 'compilerOptions');
-    const source = await readFile(new URL('./decorators-plugin.ts', import.meta.url), 'utf8');
+  it(
+    'keeps the injected Babel test factory out of production declarations',
+    async () => {
+      const outputDirectory = await mkdtemp(join(tmpdir(), 'fluo-vite-declarations-'));
 
-    expect(compilerOptions.stripInternal).toBe(true);
-    expect(source).toContain('@internal');
-    expect(source).toContain('createFluoDecoratorsPluginForTesting');
-  });
+      try {
+        await promisify(execFile)(
+          process.execPath,
+          [
+            fileURLToPath(new URL('../../../node_modules/typescript/bin/tsc', import.meta.url)),
+            '--project',
+            'tsconfig.build.json',
+            '--outDir',
+            outputDirectory,
+          ],
+          { cwd: new URL('../', import.meta.url) },
+        );
+
+        const declaration = await readFile(join(outputDirectory, 'decorators-plugin.d.ts'), 'utf8');
+
+        expect(declaration).not.toContain('createFluoDecoratorsPluginForTesting');
+      } finally {
+        await rm(outputDirectory, { force: true, recursive: true });
+      }
+    },
+    10_000,
+  );
 });

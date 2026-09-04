@@ -9,6 +9,8 @@ export interface DiskHealthIndicatorOptions {
   minFreeBytes?: number;
   minFreeRatio?: number;
   path?: string;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
 }
 
 const DEFAULT_DISK_FREE_RATIO_THRESHOLD = 0.1;
@@ -51,9 +53,11 @@ export function createDiskHealthIndicatorProvider(options: DiskHealthIndicatorOp
 /** Health indicator that inspects free space for one filesystem path. */
 export class DiskHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
+  readonly readiness: boolean | undefined;
 
   constructor(private readonly options: DiskHealthIndicatorOptions = {}) {
     this.key = options.key;
+    this.readiness = options.readiness;
   }
 
   async check(key: string): Promise<HealthIndicatorResult> {

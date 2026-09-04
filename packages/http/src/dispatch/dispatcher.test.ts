@@ -42,6 +42,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '../index.js';
+import { NotAcceptableException } from '../exceptions.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 
@@ -937,6 +938,39 @@ describe('dispatcher runtime', () => {
     expect(response.simpleJsonBody).toEqual({ ok: true });
   });
 
+  it('reports conditional request routes as full-path execution in stats and diagnostics', async () => {
+    @Controller('/conditional-fast-path-diagnostics')
+    class ConditionalFastPathDiagnosticsController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(ConditionalFastPathDiagnosticsController);
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return { exists: false };
+        },
+      },
+      fastPathDebugHeaders: true,
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalFastPathDiagnosticsController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/conditional-fast-path-diagnostics'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.fastPathRoutes).toBe(0);
+    expect(stats?.fullPathRoutes).toBe(1);
+    expect(stats?.routes[0]?.executionPath).toBe('full');
+    expect(stats?.routes[0]?.fallbackReason).toContain('conditional requests');
+    expect(response.headers['X-Fluo-Path']).toContain('full; route=GET:/');
+    expect(response.headers['X-Fluo-Path']).toContain('conditional requests');
+  });
+
   it('dispatches OPTIONS and HEAD route decorators through the HTTP pipeline', async () => {
     @Controller('/metadata')
     class MetadataController {
@@ -1307,6 +1341,52 @@ describe('dispatcher runtime', () => {
     expect(bufferResponse.body).toBeInstanceOf(ArrayBuffer);
   });
 
+  it('keeps ArrayBuffer values on the generic writer for range fallbacks', async () => {
+    @Controller('/generic-range-fallback')
+    class GenericRangeFallbackController {
+      @Get('/buffer')
+      getBuffer() {
+        return Uint8Array.from([4, 5, 6]).buffer;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: { etag: { opaqueValue: 'buffer-v1', strength: 'strong' } },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: GenericRangeFallbackController }]),
+      rootContainer: new Container().register(GenericRangeFallbackController),
+    });
+    const malformedRangeResponse = createFastPathResponse();
+    const ifRangeFallbackResponse = createFastPathResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/generic-range-fallback/buffer', 'GET', { range: 'items=0-1' }),
+      malformedRangeResponse,
+    );
+    await dispatcher.dispatch(
+      createRequest('/generic-range-fallback/buffer', 'GET', {
+        'if-range': '"buffer-v2"',
+        range: 'bytes=0-1',
+      }),
+      ifRangeFallbackResponse,
+    );
+
+    for (const response of [malformedRangeResponse, ifRangeFallbackResponse]) {
+      expect(response.simpleJsonBody).toBeUndefined();
+      expect(response.body).toBeInstanceOf(ArrayBuffer);
+      expect(response.headers['Accept-Ranges']).toBeUndefined();
+      expect(response.headers['Content-Range']).toBeUndefined();
+      expect(response.headers['Content-Length']).toBeUndefined();
+    }
+    expect(ifRangeFallbackResponse.headers.ETag).toBe('"buffer-v1"');
+  });
+
   it('preserves explicit success headers and status on the simple JSON fast path', async () => {
     @Controller('/fast-json-contract')
     class FastJsonContractController {
@@ -1486,6 +1566,96 @@ describe('dispatcher runtime', () => {
     expect(response.body).toBe('plain:{"ok":true}');
   });
 
+  it('combines all duplicate-case Accept field values in wire order', async () => {
+    @Controller('/negotiation-combined')
+    class NegotiationCombinedController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationCombinedController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationCombinedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-combined/formatted', 'GET', {
+        Accept: ['application/json;q=0.8'],
+        aCcEpT: ['text/plain;q=0.9'],
+      }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
+  it('uses the configured default formatter for absent and blank Accept headers', async () => {
+    @Controller('/negotiation-default-accept')
+    class NegotiationDefaultAcceptController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationDefaultAcceptController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationDefaultAcceptController }]),
+      rootContainer: root,
+    });
+
+    for (const headers of [{}, { Accept: [' ', ''], aCcEpT: '   ' }]) {
+      const response = createResponse();
+
+      await dispatcher.dispatch(createRequest('/negotiation-default-accept/formatted', 'GET', headers), response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['Content-Type']).toBe('text/plain');
+      expect(response.body).toBe('plain:{"ok":true}');
+    }
+  });
+
   it('keeps negotiated formatter headers while suppressing HEAD bodies', async () => {
     @Controller('/negotiation-head')
     class NegotiationHeadController {
@@ -1579,11 +1749,14 @@ describe('dispatcher runtime', () => {
   });
 
   it('returns 406 when Accept does not match available formatters', async () => {
+    let handlerCalls = 0;
+
     @Controller('/negotiation')
     class NegotiationController {
       @Produces('application/json')
       @Get('/json-only')
       getValue() {
+        handlerCalls += 1;
         return { ok: true };
       }
     }
@@ -1618,6 +1791,22 @@ describe('dispatcher runtime', () => {
         status: 406,
       },
     });
+    expect(response.headers.Vary).toBe('Accept');
+    expect(response.committed).toBe(true);
+    expect(handlerCalls).toBe(0);
+
+    const deduplicatedResponse = createResponse();
+    deduplicatedResponse.headers.Vary = 'Origin';
+    deduplicatedResponse.headers.vary = 'accept';
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation/json-only', 'GET', { accept: 'text/plain' }),
+      deduplicatedResponse,
+    );
+
+    expect(deduplicatedResponse.headers.Vary).toBe('Origin, accept');
+    expect(deduplicatedResponse.headers.vary).toBeUndefined();
+    expect(handlerCalls).toBe(0);
   });
 
   it('returns 406 when Accept tokens are all q=0', async () => {
@@ -1743,6 +1932,300 @@ describe('dispatcher runtime', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
+  it('excludes q=0 representations even when a wildcard accepts alternatives', async () => {
+    @Controller('/negotiation-q-zero')
+    class NegotiationQZeroController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationQZeroController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationQZeroController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-q-zero', 'GET', { accept: 'text/plain;q=0, */*;q=1' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/json');
+    expect(response.body).toBe('{"ok":true}');
+  });
+
+  it('accepts RFC qvalues with empty fractional parts for selection and exclusion', async () => {
+    @Controller('/negotiation-rfc-qvalues')
+    class NegotiationRfcQvaluesController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationRfcQvaluesController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationRfcQvaluesController }]),
+      rootContainer: root,
+    });
+    const qualityOneResponse = createResponse();
+    const qualityZeroResponse = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-rfc-qvalues', 'GET', { accept: 'application/json;q=0.1, text/plain;q=1.' }),
+      qualityOneResponse,
+    );
+    await dispatcher.dispatch(
+      createRequest('/negotiation-rfc-qvalues', 'GET', { accept: 'text/plain;q=0., */*;q=1' }),
+      qualityZeroResponse,
+    );
+
+    expect(qualityOneResponse.headers['Content-Type']).toBe('text/plain');
+    expect(qualityOneResponse.body).toBe('plain:{"ok":true}');
+    expect(qualityZeroResponse.headers['Content-Type']).toBe('application/json');
+    expect(qualityZeroResponse.body).toBe('{"ok":true}');
+  });
+
+  it('rejects qvalues outside RFC bounds and precision', async () => {
+    @Controller('/negotiation-invalid-qvalues')
+    class NegotiationInvalidQvaluesController {
+      @Produces('application/json')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationInvalidQvaluesController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationInvalidQvaluesController }]),
+      rootContainer: root,
+    });
+
+    for (const accept of ['application/json;q=1.0000', 'application/json;q=1.001']) {
+      const response = createResponse();
+
+      await dispatcher.dispatch(createRequest('/negotiation-invalid-qvalues', 'GET', { accept }), response);
+
+      expect(response.statusCode).toBe(406);
+    }
+  });
+
+  it('does not add Vary: Accept to unrelated 406 responses', async () => {
+    @Controller('/unrelated-not-acceptable')
+    class UnrelatedNotAcceptableController {
+      @Get('/')
+      getValue() {
+        throw new NotAcceptableException('Application-defined 406.');
+      }
+    }
+
+    const root = new Container().register(UnrelatedNotAcceptableController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: UnrelatedNotAcceptableController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/unrelated-not-acceptable'), response);
+
+    expect(response.statusCode).toBe(406);
+    expect(response.headers.Vary).toBeUndefined();
+    expect(response.committed).toBe(true);
+  });
+
+  it('selects structured syntax suffix formatters deterministically', async () => {
+    @Controller('/negotiation-suffix')
+    class NegotiationSuffixController {
+      @Produces('application/problem+json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationSuffixController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return `problem:${JSON.stringify(body)}`;
+            },
+            mediaType: 'application/problem+json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationSuffixController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-suffix', 'GET', { accept: 'application/*+json' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/problem+json');
+    expect(response.body).toBe('problem:{"ok":true}');
+  });
+
+  it('returns canonical 406 for malformed Accept quality values', async () => {
+    @Controller('/negotiation-malformed')
+    class NegotiationMalformedController {
+      @Produces('application/json')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationMalformedController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationMalformedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-malformed', 'GET', { accept: 'application/json;q=2' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toEqual({
+      error: {
+        code: 'NOT_ACCEPTABLE',
+        details: undefined,
+        message: 'No acceptable response representation found.',
+        meta: undefined,
+        requestId: undefined,
+        status: 406,
+      },
+    });
+  });
+
+  it('adds canonical deduplicated Vary: Accept after native negotiation falls back', async () => {
+    @Controller('/negotiation-native-fallback')
+    class NegotiationNativeFallbackController {
+      @Header('Vary', 'Origin, Accept')
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationNativeFallbackController);
+    const handlerMapping = createHandlerMapping([{ controllerToken: NegotiationNativeFallbackController }]);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping,
+      rootContainer: root,
+    });
+    const request = createRequest('/negotiation-native-fallback', 'GET', { accept: 'text/plain' });
+    const nativeMatch = handlerMapping.match(request);
+
+    if (!nativeMatch || !dispatcher.dispatchNativeRoute) {
+      throw new Error('Expected native route dispatch support.');
+    }
+
+    const response = createResponse();
+    const handled = await dispatcher.dispatchNativeRoute(nativeMatch, request, response);
+
+    expect(handled).toBe(false);
+
+    await dispatcher.dispatch(request, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.headers.Vary).toBe('Origin, Accept');
     expect(response.body).toBe('plain:{"ok":true}');
   });
 
@@ -1914,6 +2397,7 @@ describe('dispatcher runtime', () => {
       stream(_input: undefined, ctx: ReturnType<typeof assertRequestContext>) {
         const sse = new SseResponse(ctx);
         sse.send({ ok: true }, { event: 'ready', id: 'evt-1' });
+        sse.close();
         return sse;
       }
     }
@@ -2701,6 +3185,83 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(events).toEqual(['start', 'match', 'handler', 'finish']);
+  });
+
+  it('keeps later observers ordered and terminally complete when an earlier observer throws', async () => {
+    // Given
+    const events: string[] = [];
+    const logger = { error: vi.fn() };
+    const failingObserver = {
+      onHandlerMatched() {
+        throw new Error('matched observer failed');
+      },
+      onRequestError() {
+        throw new Error('error observer failed');
+      },
+      onRequestFinish() {
+        throw new Error('finish observer failed');
+      },
+      onRequestStart() {
+        throw new Error('start observer failed');
+      },
+      onRequestSuccess() {
+        throw new Error('success observer failed');
+      },
+    };
+    const terminalObserver = {
+      onHandlerMatched() {
+        events.push('matched');
+      },
+      onRequestError() {
+        events.push('error');
+      },
+      onRequestFinish() {
+        events.push('finish');
+      },
+      onRequestStart() {
+        events.push('start');
+      },
+      onRequestSuccess() {
+        events.push('success');
+      },
+    };
+
+    @Controller('/observer-order')
+    class ObserverOrderController {
+      @Get('/failure')
+      fail() {
+        throw new Error('handler failed');
+      }
+
+      @Get('/success')
+      succeed() {
+        return { ok: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ObserverOrderController }]),
+      logger,
+      observers: [failingObserver, terminalObserver],
+      rootContainer: new Container().register(ObserverOrderController),
+    });
+
+    // When
+    await dispatcher.dispatch(createRequest('/observer-order/success', 'GET'), createResponse());
+    await dispatcher.dispatch(createRequest('/observer-order/failure', 'GET'), createResponse());
+
+    // Then
+    expect(events).toEqual([
+      'start',
+      'matched',
+      'success',
+      'finish',
+      'start',
+      'matched',
+      'error',
+      'finish',
+    ]);
+    expect(logger.error).toHaveBeenCalledTimes(8);
   });
 
   it('routes observer and request-scope disposal failures through the dispatcher logger', async () => {

@@ -168,10 +168,10 @@ Studio는 raw snapshot, timing diagnostics, snapshot-plus-timing envelope, `fluo
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-출력된 `dist/index.html` path를 열고 snapshot file을 viewer에 drag-and-drop하세요. Studio는 `parseStudioPayload(...)`, `applyFilters(...)`, `renderMermaid(...)`를 통해 snapshot parsing, filtering, Mermaid rendering을 소유합니다.
+출력된 `http://127.0.0.1:<port>/` URL을 열고 snapshot file을 viewer에 drag-and-drop하세요. `dist/index.html`을 직접 열지 마세요. 패키징된 HTML entry를 resolve하는 integration을 위해 `@fluojs/studio/viewer`는 계속 사용할 수 있습니다. Studio는 `parseStudioPayload(...)`, `applyFilters(...)`, `renderMermaid(...)`를 통해 snapshot parsing, filtering, Mermaid rendering을 소유합니다.
 
 ## Runnable operations example
 

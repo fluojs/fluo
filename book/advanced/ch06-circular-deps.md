@@ -511,7 +511,7 @@ The first pattern is extracting shared logic into a third Provider. `CircularDep
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the cycle by extracting shared logic into a separate provider, or use forwardRef() to defer one side of the dependency.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. forwardRef() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +
@@ -523,7 +523,7 @@ export class CircularDependencyError extends FluoCodeError {
 }
 ```
 
-The error message gives two pieces of information together: the actual chain, and the limited choices of extracting shared logic or deferring Token lookup.
+The error message gives two pieces of information together: the actual chain, and the supported ways to break it: extract shared logic, introduce a mediator, or move the interaction to a later boundary. `forwardRef()` only helps with declaration-order token lookup and cannot resolve the cycle.
 
 The second pattern is moving a constructor-time dependency to a later interaction boundary. For example, instead of one service directly holding another, the design can publish an event or receive a callback. Because the Fluo container doesn't allow a partially initialized object graph, it naturally encourages this kind of separation.
 

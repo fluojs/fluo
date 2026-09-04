@@ -9,6 +9,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
+- [Catalog Aggregation 및 Fallback Migration](#catalog-aggregation-및-fallback-migration)
 - [코어 번역](#코어-번역)
 - [포맷팅](#포맷팅)
 - [ICU MessageFormat](#icu-messageformat)
@@ -71,6 +72,69 @@ class AppModule {}
 `I18nModule.forRoot(...)`는 기본적으로 `I18nService`를 global provider로 export하므로 root package를 한 번 import한 뒤 sibling module에서도 shared service를 inject할 수 있습니다. Service를 i18n module을 import한 module 안에만 보이게 하려면 `global: false`를 전달하세요.
 
 `I18nModule.forRoot(...)`는 module graph가 정의될 때 최종 option을 capture하는 동기 registration입니다. 비동기 catalog 또는 configuration loading은 `I18nModule.forRoot(...)` 전에 application-owned bootstrap boundary에서 완료하고, resolve된 catalog와 option을 해당 registration call에 전달하세요. 이 방식은 framework-agnostic root contract를 유지하며 NestJS dynamic-module runtime bridge나 `forRootAsync(...)` compatibility surface를 제공하지 않습니다.
+
+## Catalog Aggregation 및 Fallback Migration
+
+NestJS i18n에서 migration할 때는 동기 `I18nModule.forRoot(...)` 호출 전에 필요한 모든 locale과 namespace를 load하세요. NestJS loader configuration을 module registration으로 가져오지 않습니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const catalogLoader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const catalogEntries = await Promise.all(
+  locales.map(async (locale) => {
+    const namespaceEntries = await Promise.all(
+      namespaces.map(async (namespace) => [
+        namespace,
+        await catalogLoader.load(locale, namespace),
+      ] as const),
+    );
+
+    return [locale, Object.fromEntries(namespaceEntries)] as const;
+  }),
+);
+const catalogs = Object.fromEntries(catalogEntries);
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: locales,
+      fallbackLocales: { ko: ['en'] },
+      catalogs,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Aggregate는 namespace boundary를 보존합니다. `locales/ko/common.json`은 namespace tree를 shallow merge하지 말고 `i18n.translate('title', { locale: 'ko', namespace: 'common' })`로 조회하세요. Catalog file이 없으면 aggregation은 `I18N_MISSING_CATALOG`으로 reject됩니다. `fallbackLocales`는 catalog가 존재한 뒤 메시지를 조회할 때만 적용됩니다.
+
+NestJS i18n fallback intent는 명시적으로 변환합니다.
+
+```ts
+// NestJS i18n
+I18nModule.forRoot({
+  fallbackLanguage: 'en',
+  fallbacks: { ko: 'en' },
+});
+
+// fluo
+I18nModule.forRoot({
+  defaultLocale: 'en',
+  fallbackLocales: { ko: ['en'] },
+  catalogs,
+});
+```
+
+이 방식은 lookup order를 보존합니다. 명시적 locale, 구성된 fallback chain, `defaultLocale`, 호출별 `defaultValue`, `missingMessage` 순서입니다. Registration 전에 비동기 aggregation을 완료해도 이 순서는 바뀌지 않으며 `forRootAsync(...)`도 추가되지 않습니다.
 
 ## 코어 번역
 
@@ -346,11 +410,11 @@ const loader = createRemoteI18nLoader({
 const common = await loader.load('en', 'common');
 ```
 
-Provider는 validated `locale`, `namespace`, 그리고 loader timeout과 optional per-call cancellation을 결합한 `AbortSignal`을 받습니다. Provider는 raw object message tree 또는 JSON string을 반환할 수 있습니다. `undefined`와 `null`은 missing catalog로 취급되어 `I18N_MISSING_CATALOG`를 throw합니다. Malformed JSON과 invalid message tree shape는 `I18N_INVALID_CATALOG`, provider failure는 `I18N_LOADER_FAILED`, timeout은 `I18N_LOADER_TIMEOUT`, caller cancellation은 `I18N_LOADER_ABORTED`로 보고됩니다. 반환된 catalog는 항상 detached immutable `I18nMessageTree` snapshot입니다.
+Provider는 validated `locale`, `namespace`, 그리고 loader timeout과 optional per-call cancellation을 결합한 `AbortSignal`을 받습니다. `timeoutMs`는 runtime timer가 정확하게 표현할 수 있는 최대 지연값인 `2_147_483_647` 이하의 양의 정수여야 합니다. Provider는 raw object message tree 또는 JSON string을 반환할 수 있습니다. `undefined`와 `null`은 missing catalog로 취급되어 `I18N_MISSING_CATALOG`를 throw합니다. Malformed JSON과 invalid message tree shape는 `I18N_INVALID_CATALOG`, provider가 throw한 `I18nError` instance는 변경 없이 다시 throw되며 그 외 provider failure는 `I18N_LOADER_FAILED`, timeout은 `I18N_LOADER_TIMEOUT`, caller cancellation은 `I18N_LOADER_ABORTED`로 보고됩니다. 반환된 catalog는 항상 detached immutable `I18nMessageTree` snapshot입니다.
 
 Remote loader는 기본적으로 cache하지 않습니다. 모든 `load(locale, namespace)` 호출은 provider를 호출하고 그 provider result를 snapshot합니다. Memory, HTTP, CDN, database 또는 stale-while-revalidate caching이 필요한 애플리케이션은 cache invalidation이 application boundary에서 명시적으로 유지되도록 provider 내부 또는 provider wrapper에서 구현해야 합니다.
 
-First-party in-memory policy가 필요한 애플리케이션은 loader를 명시적으로 wrap할 수 있습니다. Cache entry는 caller가 custom key를 제공하지 않는 한 `(locale, namespace, version)`으로 keying되며, `invalidate(...)` / `clear()`가 invalidation을 application-owned 상태로 유지합니다.
+First-party in-memory policy가 필요한 애플리케이션은 loader를 명시적으로 wrap할 수 있습니다. Cache entry는 caller가 custom key를 제공하지 않는 한 `(locale, namespace, version)`으로 keying되고 successful load 이후에만 TTL을 시작하며, `invalidate(...)` / `clear()`가 invalidation을 application-owned 상태로 유지합니다.
 
 ```ts
 import { createCachedRemoteI18nLoader, createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
@@ -415,7 +479,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 
 이 helper declaration은 type-only이며 application-owned입니다. Runtime wrapper를 추가하지 않고, framework bridge를 import하지 않으며, 넓은 runtime `I18nService.translate(key: string, options)` signature도 바꾸지 않습니다.
 
-두 helper 모두 locale 간 key를 deduplicate하고 stable diff를 위해 output을 sort하며, invalid catalog shape는 `I18N_INVALID_CATALOG`, unsafe locale 또는 namespace path는 `I18N_INVALID_LOADER_OPTIONS`로 거부합니다.
+두 helper 모두 locale 간 key를 deduplicate하고 stable diff를 위해 output을 sort하며, invalid catalog shape는 `I18N_INVALID_CATALOG`, unsafe locale 또는 namespace path는 `I18N_INVALID_LOADER_OPTIONS`로 거부합니다. Custom output name은 유효하고 서로 다른 TypeScript identifier여야 하며, invalid 또는 충돌하는 name은 `I18N_INVALID_OPTIONS`로 거부합니다.
 
 ## 공개 API
 

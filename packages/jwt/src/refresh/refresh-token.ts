@@ -1,7 +1,9 @@
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
+import { SUPPORTED_HMAC_HASH } from '../signing/algorithm-policy.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
 import type { DefaultJwtVerifier } from '../signing/verifier.js';
-import type { JwtClaims } from '../types.js';
+import type { JwtAlgorithm } from '../types.js';
+import { type RefreshTokenClaims, verifyRefreshTokenClaims } from './refresh-token-claims.js';
 
 /**
  * Describes the refresh token store contract.
@@ -54,11 +56,13 @@ export interface RefreshTokenRecord {
  * Describes the refresh token options contract.
  */
 export interface RefreshTokenOptions {
-  secret: string;
-  expiresInSeconds: number;
-  verifyMaxAgeSeconds?: number;
-  rotation: boolean;
-  store: RefreshTokenStore;
+  /** HMAC algorithms allowed for refresh-token signing and verification. Defaults to HMAC algorithms from the top-level policy. */
+  readonly algorithms?: readonly Extract<JwtAlgorithm, 'HS256' | 'HS384' | 'HS512'>[];
+  readonly secret: string;
+  readonly expiresInSeconds: number;
+  readonly verifyMaxAgeSeconds?: number;
+  readonly rotation: boolean;
+  readonly store: RefreshTokenStore;
 }
 
 /**
@@ -75,6 +79,20 @@ export interface RefreshTokenOptions {
 export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | undefined): RefreshTokenOptions {
   if (!options) {
     throw new JwtConfigurationError('JWT refresh token options are not configured.');
+  }
+
+  if (options.algorithms !== undefined) {
+    if (!Array.isArray(options.algorithms) || options.algorithms.length === 0) {
+      throw new JwtConfigurationError('JWT refresh token algorithms must contain at least one HMAC algorithm.');
+    }
+
+    for (const algorithm of options.algorithms) {
+      if (typeof algorithm !== 'string' || !Object.hasOwn(SUPPORTED_HMAC_HASH, algorithm)) {
+        throw new JwtConfigurationError(
+          `JWT refresh token received unsupported algorithm "${String(algorithm)}"; only HS256, HS384, and HS512 are allowed.`,
+        );
+      }
+    }
   }
 
   if (typeof options.secret !== 'string' || options.secret.length === 0) {
@@ -103,12 +121,6 @@ export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | unde
   };
 }
 
-interface RefreshTokenClaims extends JwtClaims {
-  family: string;
-  jti: string;
-  type: 'refresh';
-}
-
 /**
  * Represents the refresh token service.
  */
@@ -131,7 +143,7 @@ export class RefreshTokenService {
   }
 
   async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    const claims = await this.verifyRefreshClaims(currentToken);
+    const claims = await verifyRefreshTokenClaims(this.verifier, currentToken);
 
     if (this.options.rotation) {
       if (!this.options.store.rotate && !this.options.store.consume) {
@@ -208,6 +220,20 @@ export class RefreshTokenService {
     await this.options.store.revoke(tokenId);
   }
 
+  /**
+   * Revokes the record identified by a verified presented refresh token.
+   *
+   * @param token Compact refresh token to verify before its record is revoked.
+   * @returns A promise that resolves after the verified refresh-token record is revoked.
+   * @throws {JwtInvalidTokenError} When the token is malformed or lacks required refresh claims.
+   * @throws {JwtExpiredTokenError} When the refresh token has expired.
+   */
+  async revokePresentedRefreshToken(token: string): Promise<void> {
+    const claims = await verifyRefreshTokenClaims(this.verifier, token);
+
+    await this.options.store.revoke(claims.jti);
+  }
+
   async revokeAllForSubject(subject: string): Promise<void> {
     await this.options.store.revokeBySubject(subject);
   }
@@ -268,34 +294,5 @@ export class RefreshTokenService {
     const token = await this.signer.signRefreshToken(claims);
 
     return { record, token };
-  }
-
-  private async verifyRefreshClaims(token: string): Promise<RefreshTokenClaims & { sub: string }> {
-    const principal = await this.verifier.verifyRefreshToken(token);
-    const claims = principal.claims;
-
-    if (claims.type !== 'refresh') {
-      throw new JwtInvalidTokenError('JWT is not a refresh token.');
-    }
-
-    if (typeof claims.jti !== 'string' || claims.jti.length === 0) {
-      throw new JwtInvalidTokenError('Refresh token is missing jti.');
-    }
-
-    if (typeof claims.family !== 'string' || claims.family.length === 0) {
-      throw new JwtInvalidTokenError('Refresh token is missing family.');
-    }
-
-    if (typeof claims.sub !== 'string' || claims.sub.length === 0) {
-      throw new JwtInvalidTokenError('Refresh token is missing sub.');
-    }
-
-    return {
-      ...claims,
-      family: claims.family,
-      jti: claims.jti,
-      sub: claims.sub,
-      type: 'refresh',
-    };
   }
 }

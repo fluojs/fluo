@@ -38,7 +38,7 @@ function resolveStoreOwnershipMode(input: CacheManagerStatusAdapterInput): Cache
     return input.storeOwnershipMode;
   }
 
-  return input.storeKind === 'memory' ? 'framework' : 'external';
+  return input.storeKind === 'redis' ? 'external' : 'framework';
 }
 
 function isBackingStoreReady(input: CacheManagerStatusAdapterInput): boolean {

@@ -276,7 +276,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
         provide: TERMINUS_READINESS_REGISTRAR,
         useFactory: (resolvedHealthService: unknown) => {
           const healthService = resolvedHealthService as {
-            isHealthy(): Promise<boolean>;
+            isReady(): Promise<boolean>;
           };
 
           return {
@@ -284,7 +284,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
               healthModule.addReadinessCheck(async (ctx: RequestContext) => {
                 const platformShell = await ctx.container.resolve<PlatformShell>(PLATFORM_SHELL);
                 const [indicatorHealthy, readiness] = await Promise.all([
-                  healthService.isHealthy(),
+                  healthService.isReady(),
                   platformShell.ready(),
                 ]);
 

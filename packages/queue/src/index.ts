@@ -10,8 +10,11 @@ export type {
   QueueDeadLetterInspectionOptions,
   QueueDeadLetterInspectionResult,
   QueueDeadLetterRecord,
+  QueueEnqueueManyEntry,
+  QueueEnqueueOptions,
   QueueJobType,
   QueueModuleOptions,
+  QueueOwnershipEnforcement,
   QueueRateLimiterOptions,
   QueueWorkerOptions,
 } from './types.js';

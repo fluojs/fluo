@@ -112,6 +112,115 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
   });
 
+  it('disposes successfully compiled module containers after use', async () => {
+    const events: string[] = [];
+
+    class DisposableService {
+      onDestroy() {
+        events.push('disposed');
+      }
+    }
+
+    @Module({ providers: [DisposableService] })
+    class DisposableModule {}
+
+    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+    let testError: unknown;
+    let testFailed = false;
+    let disposeError: unknown;
+    let disposeFailed = false;
+
+    try {
+      expect(await testingModule.resolve(DisposableService)).toBeInstanceOf(DisposableService);
+    } catch (error: unknown) {
+      testError = error;
+      testFailed = true;
+    } finally {
+      try {
+        await Promise.all([
+          testingModule.container.dispose(),
+          testingModule.container.dispose(),
+        ]);
+      } catch (error: unknown) {
+        disposeFailed = true;
+        disposeError = error;
+      }
+    }
+
+    if (testFailed) {
+      if (disposeFailed) {
+        throw new AggregateError(
+          [testError, disposeError],
+          'Test and testing module disposal both failed.',
+        );
+      }
+
+      throw testError;
+    }
+
+    if (disposeFailed) {
+      throw disposeError;
+    }
+
+    expect(events).toEqual(['disposed']);
+  });
+
+  it('preserves test and disposal failures together', async () => {
+    const testError = new Error('test assertion failed');
+    const disposeError = new Error('testing module disposal failed');
+
+    class DisposableService {
+      onDestroy() {
+        throw disposeError;
+      }
+    }
+
+    @Module({ providers: [DisposableService] })
+    class DisposableModule {}
+
+    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+    const result = await (async () => {
+      let caughtTestError: unknown;
+      let testFailed = false;
+      let caughtDisposeError: unknown;
+      let disposeFailed = false;
+
+      try {
+        throw testError;
+      } catch (error: unknown) {
+        caughtTestError = error;
+        testFailed = true;
+      } finally {
+        try {
+          await testingModule.container.dispose();
+        } catch (error: unknown) {
+          disposeFailed = true;
+          caughtDisposeError = error;
+        }
+      }
+
+      if (testFailed) {
+        if (disposeFailed) {
+          throw new AggregateError(
+            [caughtTestError, caughtDisposeError],
+            'Test and testing module disposal both failed.',
+          );
+        }
+
+        throw caughtTestError;
+      }
+
+      if (disposeFailed) {
+        throw caughtDisposeError;
+      }
+    })().catch((error: unknown) => error);
+
+    expect(result).toBeInstanceOf(AggregateError);
+    if (result instanceof AggregateError) {
+      expect(result.errors).toEqual([testError, disposeError]);
+    }
+  });
+
   it('runs bootstrap lifecycle hooks from the effective override provider', async () => {
     const SERVICE_TOKEN = Symbol('service-token');
     const events: string[] = [];
@@ -248,6 +357,64 @@ describe('@fluojs/testing', () => {
     expect(plugins[0]).toBeInstanceOf(PluginA);
     expect(plugins[1]).toBeInstanceOf(PluginB);
     expect(events).toEqual(['a:init', 'b:init', 'a:bootstrap', 'b:bootstrap']);
+  });
+
+  it('runs interleaved multi-provider lifecycle hooks in declared runtime order', async () => {
+    const PLUGINS = Symbol('interleaved-lifecycle-plugins');
+    const events: string[] = [];
+
+    class FirstPlugin {
+      onModuleInit() {
+        events.push('first:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('first:bootstrap');
+      }
+    }
+
+    class SingletonService {
+      onModuleInit() {
+        events.push('singleton:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('singleton:bootstrap');
+      }
+    }
+
+    class SecondPlugin {
+      onModuleInit() {
+        events.push('second:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('second:bootstrap');
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: PLUGINS, useClass: FirstPlugin, multi: true },
+        SingletonService,
+        { provide: PLUGINS, useClass: SecondPlugin, multi: true },
+      ],
+    })
+    class InterleavedLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: InterleavedLifecycleModule }).compile();
+    const plugins = await testingModule.resolve<Array<FirstPlugin | SecondPlugin>>(PLUGINS);
+
+    expect(plugins[0]).toBeInstanceOf(FirstPlugin);
+    expect(plugins[1]).toBeInstanceOf(SecondPlugin);
+    expect(events).toEqual([
+      'first:init',
+      'singleton:init',
+      'second:init',
+      'first:bootstrap',
+      'singleton:bootstrap',
+      'second:bootstrap',
+    ]);
   });
 
   it('runs singleton multi-provider lifecycle hooks when another contribution is request scoped', async () => {

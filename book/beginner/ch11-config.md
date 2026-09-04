@@ -38,7 +38,7 @@ In a modular backend like FluoBlog, each Module can have its own configuration n
 ### Scaling Configuration as Your App Grows
 As FluoBlog grows from a few files into dozens of Modules, the cost of configuration management grows with it. In an implicit system, you may need to search the entire codebase to find where a specific environment variable is used. With `ConfigService`, you can create a centralized source of truth that scales with the application.
 
-This approach also makes it much easier to move to professional secret management tools such as HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault. Instead of editing every file that uses secrets, you only update the `ConfigModule` logic so it reads values from those external Providers.
+This approach also makes it much easier to move to professional secret management tools such as HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault. Instead of editing every file that uses secrets, you read those values once at the application entrypoint before the module graph is built, then pass the resolved snapshot into the synchronous `ConfigModule.forRoot(...)` call. `ConfigModule` never fetches from an external Provider itself.
 
 ### Configuration as a Behavioral Contract
 Configuration is a contract between the application and its runtime environment. When you explicitly define which settings are required, you also make it clear what conditions the environment must provide. If the environment doesn't satisfy that contract, the application refuses to start and avoids the risk of running in an undefined state. This kind of behavioral contract is a basic requirement for building predictable backend systems that are easy to reason about.
@@ -130,6 +130,18 @@ This hierarchy lets you define reasonable defaults while still allowing environm
 
 ### Managing Complex Precedence Scenarios
 In advanced deployment scenarios, you may need multiple environment files or runtime overrides that are computed dynamically. The precedence system guarantees that these values are merged in a predictable way. For example, if you provide a runtime override for a variable that also exists in `.env`, the runtime value always wins, letting you test a specific setting without editing the environment file.
+
+When you genuinely need several environment files, pass `envFilePaths` instead of pre-merging them yourself. The list is explicit and ordered from lowest to highest precedence, and the merged result still occupies the single env-file tier.
+
+```typescript
+const configSources = {
+  envFilePaths: ['.env', '.env.production', '.env.production.local'],
+  processEnv,
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
+```
+
+Missing files in the list are skipped instead of failing the load, so the same list can cover machines where only some of the files exist.
 
 ### Best Practices for Config Defaults
 When setting `defaults` in `ConfigModule.forRoot`, aim for values that let the application start in a "safe but limited" mode. For example, defaulting `PORT` to 3000 is standard, but you should avoid providing a default for `DATABASE_URL`. If database configuration is missing, it's far better for the app to fail fast than to try a generic connection string and fail later.
@@ -285,6 +297,20 @@ const configSources = {
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
 ```
+
+If you want a shared baseline plus environment-specific overrides rather than one file per environment, build an ordered list instead.
+
+```typescript
+const environment = process.env.NODE_ENV ?? 'development';
+
+const configSources = {
+  envFilePaths: ['.env', `.env.${environment}`, `.env.${environment}.local`],
+  processEnv,
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
+```
+
+`@fluojs/config` never guesses these file names for you. Your application decides the exact list and its order, which keeps the resolved configuration reproducible across machines and CI. Note that `envFilePaths` cannot be combined with `envFile` or `envFilePath`; mixing them fails fast with `INVALID_CONFIG` so the intended order is never ambiguous.
 
 ### Advanced Precedence: Docker and Kubernetes
 When running fluo in container environments such as Docker or Kubernetes, you often want to skip `.env` files entirely and use the orchestrator's environment variable system. Even in this case, `@fluojs/config` doesn't automatically scan the ambient `process.env`. Instead, explicitly pass the required values as `processEnv` at the bootstrap boundary, and that snapshot will take priority over `.env`.

@@ -1,4 +1,4 @@
-import { type Constructor, type MetadataPropertyKey, type MetadataSource } from '@fluojs/core';
+import type { Constructor, MetadataPropertyKey, MetadataSource } from '@fluojs/core';
 import {
   getClassValidationRules,
   getDtoBindingSchema,
@@ -6,10 +6,10 @@ import {
   type DtoBindingSchemaEntry,
   type DtoFieldBindingMetadata,
   type DtoFieldValidationRule,
-} from '@fluojs/core/internal';
+} from '@fluojs/core/request-pipeline';
 
 import { getRequestHeader } from '../header-helpers.js';
-import type { FrameworkRequest } from '../types.js';
+import type { FrameworkRequest, FrameworkRequestFile } from '../types.js';
 
 function toFieldName(propertyKey: MetadataPropertyKey): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
@@ -17,6 +17,16 @@ function toFieldName(propertyKey: MetadataPropertyKey): string {
 
 function resolveSourceKey(propertyKey: MetadataPropertyKey, key?: string): string {
   return key ?? toFieldName(propertyKey);
+}
+
+function toPortableRequestFile(file: FrameworkRequestFile): FrameworkRequestFile {
+  return {
+    buffer: file.buffer,
+    fieldname: file.fieldname,
+    mimetype: file.mimetype,
+    originalname: file.originalname,
+    size: file.size,
+  };
 }
 
 export interface CompiledDtoBindingPlanEntry {
@@ -52,6 +62,9 @@ function createSourceReader(source: MetadataSource, sourceKey: string): (request
       return (request) => request.cookies[sourceKey];
     case 'body':
       return (request) => (request.body as Record<string, unknown> | undefined)?.[sourceKey];
+    case 'files':
+      return (request) =>
+        request.files?.filter((file) => file.fieldname === sourceKey).map(toPortableRequestFile);
     default:
       return () => undefined;
   }

@@ -66,6 +66,7 @@ import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/pr
 import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
+@Inject(UserRepository)
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
@@ -74,21 +75,6 @@ export class UserService {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
     return user;
-  }
-}
-
-@Inject(PrismaService)
-export class UserRepository {
-  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
-
-  async create(data: any) {
-    // facade 타입은 표준 PrismaClient delegate를 노출합니다.
-    // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
-    return this.prisma.user.create({ data });
-  }
-
-  async initProfile(userId: string) {
-    return this.prisma.profile.create({ data: { userId } });
   }
 }
 ```
@@ -100,11 +86,16 @@ export class UserRepository {
 `PrismaTransactionInterceptor`는 기존 `@UseInterceptors(...)` request-wide boundary를 위한 deprecated 1.x 호환성 export로 복원되었습니다. 이름 없는 `PrismaModule.forRoot(...)`와 `forRootAsync(...)` 등록이 이 interceptor를 provider 및 export로 제공하며, `PrismaService.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Controller, Post, UseInterceptors } from '@fluojs/http';
 import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+import { OrdersService } from './orders.service';
 
 @Controller('/orders')
+@Inject(OrdersService)
 export class OrdersController {
+  constructor(private readonly orders: OrdersService) {}
+
   @Post('/')
   @UseInterceptors(PrismaTransactionInterceptor)
   createOrder() {
@@ -213,8 +204,9 @@ await this.prisma.transaction(async () => {
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
 - `readiness.status`는 `onModuleInit()`이 클라이언트를 연결하기 전, Prisma가 종료 중이거나 stopped 상태일 때, `strictTransactions`가 켜져 있는데 `$transaction(...)`을 지원하지 않을 때, 그리고 클라이언트가 interactive transaction을 지원하지만 호스트 런타임이 `AsyncLocalStorage`를 제공하지 않을 때 `not-ready`입니다. ALS 미지원 상태의 readiness reason은 `Prisma transaction context requires AsyncLocalStorage support from the host runtime.`이며 `details.transactionContext`가 `unavailable`로 보고됩니다. 이 상태는 Prisma 클라이언트 자체는 연결되어 있고 기능적으로 정상일 수 있으므로 일반 database readiness 실패와 구분됩니다.
-- `health.status`는 종료 중 요청 트랜잭션을 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
-- `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, `details.transactionAbortSignalSupport`는 현재 요청 트랜잭션과 트랜잭션 capability 상태를 설명합니다.
+- `health.status`는 종료 중 열린 요청, 수동 또는 서비스 트랜잭션 경계를 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
+- `details.activeRequestTransactions`, `details.activeTransactionBoundaries`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, `details.transactionAbortSignalSupport`는 현재 트랜잭션과 트랜잭션 capability 상태를 설명합니다.
+- `details.activeTransactionBoundaries`는 shutdown이 `$disconnect()` 전에 drain하는 현재 열린 바깥 `transaction(...)` 및 service `@Transaction()` boundary 수를 나타냅니다. 요청 전용 `requestTransaction(...)` activity는 포함하지 않으며, 해당 activity는 `details.activeRequestTransactions`에서 별도로 확인할 수 있습니다.
 - `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다. `details.transactionContext: 'unavailable'`은 호스트 런타임이 사용 가능한 `AsyncLocalStorage`를 노출하지 않았음을 나타내며, 이 경우 `transaction()`과 `requestTransaction()`은 Prisma 트랜잭션을 열기 전에 예외를 던집니다.
 - `ownership.externallyManaged: false`와 `ownership.ownsResources: true`는 패키지가 fluo 애플리케이션 라이프사이클 안에서 등록된 클라이언트의 `$connect()` / `$disconnect()` lifecycle hook을 소유한다는 의미입니다.
 
@@ -317,6 +309,7 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 ### 관련 export 타입
 
+- `PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>`
 - `PrismaModuleOptions`
 - `PrismaClientLike`
 - `PrismaHandleProvider`
@@ -324,6 +317,8 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
+- `PrismaPlatformStatusSnapshotInput`
+  - `createPrismaPlatformStatusSnapshot(...)`의 입력 계약입니다. 바깥 service 또는 manual transaction boundary가 열려 있지 않다면 `activeTransactionBoundaries`를 생략할 수 있으며 snapshot은 `0`으로 보고합니다.
 
 ## 관련 패키지
 

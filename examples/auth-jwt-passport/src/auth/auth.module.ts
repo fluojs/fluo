@@ -1,10 +1,14 @@
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import { PassportModule } from '@fluojs/passport';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 import { AuthController, ProfileController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { BearerJwtStrategy } from './bearer.strategy';
 
 @Module({
   controllers: [AuthController, ProfileController],
@@ -17,8 +21,8 @@ import { BearerJwtStrategy } from './bearer.strategy';
       secret: 'fluo-auth-example-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [

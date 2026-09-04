@@ -483,7 +483,12 @@ function createResolverInvoker(
       const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
       const methodArguments =
         handler.type === 'field'
-          ? objectFieldResolvers.createMethodArguments(handler, source, contextValue)
+          ? objectFieldResolvers.createMethodArguments(
+              handler,
+              await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects),
+              source,
+              contextValue,
+            )
           : [await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects), contextValue];
       return resolverMethod.call(instance, ...methodArguments);
     }
@@ -496,7 +501,12 @@ function createResolverInvoker(
       const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
       const methodArguments =
         handler.type === 'field'
-          ? objectFieldResolvers.createMethodArguments(handler, source, contextValue)
+          ? objectFieldResolvers.createMethodArguments(
+              handler,
+              await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects),
+              source,
+              contextValue,
+            )
           : [await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects), contextValue];
       return await resolverMethod.call(instance, ...methodArguments);
     } finally {
@@ -614,7 +624,8 @@ export function createCodeFirstSchema(
           outputType,
           attachObjectFieldResolvers,
         ),
-      (descriptor, handler, source, contextValue) => invokeResolver(descriptor, handler, {}, contextValue, source),
+      (handler) => createFieldArgs(deps, handler),
+      (descriptor, handler, args, source, contextValue) => invokeResolver(descriptor, handler, args, contextValue, source),
     );
   }
 

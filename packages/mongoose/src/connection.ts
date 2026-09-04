@@ -73,9 +73,17 @@ function resolveCreateOptionsIndex(operationArgs: unknown[]): number | undefined
   return undefined;
 }
 
+function resolveAggregateOptionsIndex(): number {
+  return 1;
+}
+
 function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number | undefined {
   if (operation === 'create') {
     return resolveCreateOptionsIndex(operationArgs);
+  }
+
+  if (operation === 'aggregate') {
+    return resolveAggregateOptionsIndex();
   }
 
   if (!MODEL_OPERATIONS_WITH_PROJECTION.has(operation)) {
@@ -233,6 +241,31 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   }
 
   /**
+   * Saves a Mongoose document with the active transaction session.
+   *
+   * This opt-in helper preserves the document instance and forwards caller-provided save options.
+   * It does not patch document instances, prototypes, or model caches.
+   *
+   * @typeParam TSaveOptions Options accepted by the document's native `save()` method.
+   * @typeParam TDocument Mongoose document-like value being saved.
+   * @param document Existing Mongoose document to save.
+   * @param options Native Mongoose save options to preserve while attaching the ambient session.
+   * @returns The same document instance after its native save operation completes.
+   * @throws When called outside an active transaction or with a conflicting explicit session.
+   */
+  async saveDocument<
+    TSaveOptions extends object,
+    TDocument extends { save(options?: TSaveOptions): Promise<TDocument> },
+  >(document: TDocument, options?: TSaveOptions): Promise<TDocument> {
+    const session = this.currentSession();
+    if (!session) {
+      throw new Error('Mongoose document saves require an active transaction session.');
+    }
+
+    return document.save(resolveSessionOptions(options, session) as TSaveOptions);
+  }
+
+  /**
    * Returns a model from the root connection, injecting the ambient transaction session into conservative operations.
    *
    * @typeParam TModel Consumer-defined facade result contract for the wrapped model.
@@ -327,9 +360,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return this.runDirectTransaction(fn, activeCallback);
     }
 
-    activeCallback.settle();
-
-    return this.runManualSessionTransaction(session, fn);
+    return this.runManualSessionTransaction(session, fn, activeCallback);
   }
 
   /**
@@ -412,7 +443,11 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
-  private async runManualSessionTransaction<T>(session: MongooseSessionLike, fn: () => Promise<T>): Promise<T> {
+  private async runManualSessionTransaction<T>(
+    session: MongooseSessionLike,
+    fn: () => Promise<T>,
+    activeCallback?: ActiveTransactionCallbackHandle,
+  ): Promise<T> {
     const activeSession = this.trackActiveSession();
 
     try {
@@ -422,6 +457,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         await session.endSession();
       } finally {
         activeSession.settle();
+        activeCallback?.settle();
       }
     }
   }

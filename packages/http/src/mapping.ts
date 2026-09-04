@@ -4,6 +4,7 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 import { attachCompiledRouteIdentity } from './compiled-route-identity.js';
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
+import { isMiddlewareRouteConfig } from './middleware/middleware.js';
 import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import type {
   FrameworkRequest,
@@ -11,9 +12,14 @@ import type {
   HandlerDescriptor,
   HandlerMapping,
   HandlerMatch,
+  HandlerMetadata,
+  HandlerRouteSnapshot,
   HandlerSource,
   HttpMethod,
   InterceptorLike,
+  MiddlewareLike,
+  MiddlewareSnapshotLike,
+  RouteDefinition,
   VersioningExtractor,
   VersioningOptions,
 } from './types.js';
@@ -39,6 +45,22 @@ type ParamDescriptorIndex = Map<HttpMethod, Map<number, IndexedDescriptor[]>>;
 interface CompiledDescriptorIndex {
   param: ParamDescriptorIndex;
   static: StaticDescriptorIndex;
+}
+
+interface MutableHandlerMetadata {
+  controllerPath: string;
+  effectivePath: string;
+  effectiveVersion?: string;
+  moduleMiddleware: MiddlewareSnapshotLike[];
+  moduleType?: Constructor;
+  pathParams: string[];
+}
+
+interface MutableHandlerDescriptor {
+  controllerToken: Constructor;
+  metadata: MutableHandlerMetadata;
+  methodName: string;
+  route: RouteDefinition;
 }
 
 function joinPaths(basePath: string, routePath: string): string {
@@ -234,7 +256,7 @@ function getControllerMethodNames(controllerToken: Constructor): MetadataPropert
   return Object.getOwnPropertyNames(controllerToken.prototype).filter((propertyKey) => propertyKey !== 'constructor');
 }
 
-function buildDescriptorIndex(descriptors: HandlerDescriptor[]): CompiledDescriptorIndex {
+function buildDescriptorIndex(descriptors: readonly HandlerDescriptor[]): CompiledDescriptorIndex {
   const staticIndex: StaticDescriptorIndex = new Map();
   const paramIndex: ParamDescriptorIndex = new Map();
 
@@ -355,9 +377,9 @@ function createHandlerDescriptors(
   source: HandlerSource,
   versioning: ResolvedVersioning,
   sourceIndex: number,
-): HandlerDescriptor[] {
+): MutableHandlerDescriptor[] {
   const controllerMetadata = getControllerMetadata(source.controllerToken) ?? { basePath: '' };
-  const descriptors: HandlerDescriptor[] = [];
+  const descriptors: MutableHandlerDescriptor[] = [];
 
   for (const [methodIndex, propertyKey] of getControllerMethodNames(source.controllerToken).entries()) {
     const routeMetadata = getRouteMetadata(source.controllerToken.prototype, propertyKey);
@@ -402,7 +424,7 @@ function createHandlerDescriptors(
   return descriptors;
 }
 
-function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersioning): HandlerDescriptor[] {
+function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersioning): MutableHandlerDescriptor[] {
   const descriptors = sources.flatMap((source, sourceIndex) =>
     createHandlerDescriptors(source, versioning, sourceIndex));
   const seen = new Set<string>();
@@ -421,6 +443,52 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
   return descriptors;
 }
 
+function freezeDescriptorSnapshot(descriptors: readonly MutableHandlerDescriptor[]): readonly HandlerDescriptor[] {
+  const snapshot = descriptors.map((descriptor): HandlerDescriptor => {
+    const { metadata, route } = descriptor;
+    const frozenMetadata: HandlerMetadata = Object.freeze({
+      ...metadata,
+      moduleMiddleware: freezeModuleMiddlewareSnapshot(metadata.moduleMiddleware),
+      pathParams: Object.freeze([...metadata.pathParams]),
+    });
+    const frozenRoute: HandlerRouteSnapshot = Object.freeze({
+      ...route,
+      ...(route.guards ? { guards: Object.freeze([...route.guards]) } : {}),
+      ...(route.headers
+        ? { headers: Object.freeze(route.headers.map((header) => Object.freeze({ ...header }))) }
+        : {}),
+      ...(route.interceptors ? { interceptors: Object.freeze([...route.interceptors]) } : {}),
+      ...(route.produces ? { produces: Object.freeze([...route.produces]) } : {}),
+      ...(route.redirect ? { redirect: Object.freeze({ ...route.redirect }) } : {}),
+    });
+
+    return Object.freeze({
+      ...descriptor,
+      metadata: frozenMetadata,
+      route: frozenRoute,
+    });
+  });
+
+  return Object.freeze(snapshot);
+}
+
+function freezeModuleMiddlewareSnapshot(
+  definitions: readonly (MiddlewareLike | MiddlewareSnapshotLike)[],
+): readonly MiddlewareSnapshotLike[] {
+  const snapshot = definitions.map((definition) => {
+    if (!isMiddlewareRouteConfig(definition)) {
+      return definition;
+    }
+
+    return Object.freeze({
+      middleware: definition.middleware,
+      routes: Object.freeze([...definition.routes]),
+    });
+  });
+
+  return Object.freeze(snapshot);
+}
+
 /**
  * Create handler mapping.
  *
@@ -430,10 +498,10 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
  */
 export function createHandlerMapping(sources: HandlerSource[], options?: CreateHandlerMappingOptions): HandlerMapping {
   const versioning = resolveVersioning(options);
-  const descriptors = buildDescriptorList(sources, versioning);
+  const descriptors = freezeDescriptorSnapshot(buildDescriptorList(sources, versioning));
   const descriptorIndex = buildDescriptorIndex(descriptors);
 
-  return {
+  const mapping = {
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase();
@@ -499,4 +567,11 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
       return undefined;
     },
   };
+
+  Object.defineProperty(mapping, 'descriptors', {
+    configurable: false,
+    writable: false,
+  });
+
+  return mapping;
 }

@@ -34,6 +34,18 @@ describe('request-scoped DataLoader helpers', () => {
     expect(first).toBe(second);
   });
 
+  it('reuses a cached undefined value for the same operation context and key', () => {
+    const context = createContext();
+    const createLoader = vi.fn(() => undefined);
+
+    const first = getRequestScopedDataLoader(context, 'userById', createLoader);
+    const second = getRequestScopedDataLoader(context, 'userById', createLoader);
+
+    expect(first).toBeUndefined();
+    expect(second).toBeUndefined();
+    expect(createLoader).toHaveBeenCalledTimes(1);
+  });
+
   it('creates isolated loader instances across different operation contexts', () => {
     const contextA = createContext();
     const contextB = createContext();

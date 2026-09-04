@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { initializeGitRepository, installDependencies } from './install.js';
 import { resolvePackageSpecs } from './package-spec-resolver.js';
+import { PUBLISHED_REACT_VERSION } from './published-react-version.js';
 import { createReactViteSsrScaffoldFiles } from './react-vite-ssr-scaffold.js';
 import { type ResolvedBootstrapPlan, resolveBootstrapPlan } from './resolver.js';
 import type { StarterScaffoldRecipeId } from './starter-profiles.js';
@@ -54,7 +55,7 @@ const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/platform-express': '^1.0.0',
   '@fluojs/platform-fastify': '^1.0.0',
   '@fluojs/platform-nodejs': '^1.0.0',
-  '@fluojs/react': '^1.0.0',
+  '@fluojs/react': `^${PUBLISHED_REACT_VERSION}`,
   '@fluojs/runtime': '^1.0.0',
   '@fluojs/testing': '^1.0.0',
   '@fluojs/validation': '^1.0.0',

@@ -109,6 +109,7 @@ function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): P
 
   return {
     name: 'fluo-babel-decorators',
+    enforce: 'pre',
     configResolved(config) {
       shouldGenerateSourceMaps = shouldRequestBabelSourceMaps(config);
     },

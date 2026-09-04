@@ -192,6 +192,104 @@ describe('TerminusModule.forRoot', () => {
     }
   });
 
+  it('keeps /ready available when only an indicator excluded from readiness fails', async () => {
+    const optionalDependencyCheck = vi.fn(async (key: string) => ({
+      [key]: {
+        message: 'search unavailable',
+        status: 'down' as const,
+      },
+    }));
+    const requiredDependencyCheck = vi.fn(async (key: string) => ({
+      [key]: {
+        status: 'up' as const,
+      },
+    }));
+    const indicators = [
+      {
+        key: 'search',
+        readiness: false,
+        check: optionalDependencyCheck,
+      },
+      {
+        key: 'database',
+        check: requiredDependencyCheck,
+      },
+    ];
+    const terminusModule = TerminusModule.forRoot({ indicators });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['search'],
+          up: ['database'],
+        },
+        status: 'error',
+      });
+
+      const readyResponse = await app.request('GET', '/ready').send();
+
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+      expect(optionalDependencyCheck).toHaveBeenCalledTimes(1);
+      expect(requiredDependencyCheck).toHaveBeenCalledTimes(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps /ready available when a built-in indicator opts out of readiness', async () => {
+    const indicators: HealthIndicator[] = [
+      new RedisHealthIndicator({
+        key: 'search',
+        readiness: false,
+        ping: async () => {
+          throw new Error('search unavailable');
+        },
+      }),
+      new MemoryHealthIndicator({ key: 'memory' }),
+    ];
+    const terminusModule = TerminusModule.forRoot({ indicators });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['search'],
+          up: ['memory'],
+        },
+        status: 'error',
+      });
+
+      const readyResponse = await app.request('GET', '/ready').send();
+
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('applies execution timeouts through request-facing /health and /ready endpoints', async () => {
     const indicators: HealthIndicator[] = [
       {

@@ -24,6 +24,8 @@ npm install @fluojs/event-bus
 npm install @fluojs/event-bus ioredis
 ```
 
+`@fluojs/event-bus`는 필수 `@fluojs/runtime` 의존성과 동일하게 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원합니다.
+
 ## 사용 시점
 
 - 직접적인 서비스 호출 대신 이벤트를 통해 컴포넌트 간의 결합도를 낮추고 싶을 때.
@@ -176,6 +178,8 @@ class UserRegisteredEvent {
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
 
 Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. Shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
+
+Handler discovery는 normalized effective singleton provider registration과 controller를 사용하므로, duplicate provider token의 DI winner만 발견되고 factory-provider scope도 canonical DI normalization을 따릅니다. `@OnEvent(...)`는 public instance 메서드에만 적용할 수 있습니다. Handler와 transport 실패는 기록되고 log되지만 `publish()`는 attempt가 settle되면 resolve하며, `waitForHandlers: false`에서는 shutdown-tracked background work를 scheduling한 뒤 resolve합니다.
 
 ## 런타임별 및 통합 서브패스
 

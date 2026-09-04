@@ -1,6 +1,4 @@
-import type { Token } from '@fluojs/core';
-import { getRedisClientToken, getRedisComponentId } from '@fluojs/redis';
-import type { CompiledModule, ModuleType } from '@fluojs/runtime';
+import type { ApplicationLogger, CompiledModule, ModuleType } from '@fluojs/runtime';
 
 import type { DiscoveryModuleFilter } from './helpers.js';
 import type { QueueRegistrationContext } from './tokens.js';
@@ -8,10 +6,14 @@ import { QUEUE_MODULE_CONTEXT_MARKER } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 
 interface QueueWorkerOwner {
+  readonly ownershipEnforcement: 'warn' | 'reject';
+  readonly ownershipNamespace?: string;
   readonly moduleName: string;
   readonly scope: string;
   readonly workerName: string;
 }
+
+const UNCONFIGURED_BACKEND_IDENTITY = '(unconfigured)';
 
 function isQueueModuleContext(value: unknown): value is QueueRegistrationContext {
   return (
@@ -112,35 +114,48 @@ function assertUniqueQueueScopes(moduleContexts: readonly QueueRegistrationConte
   }
 }
 
-function getJobOwners(
-  ownersByRedisDependency: Map<Token, Map<string, QueueWorkerOwner>>,
-  redisToken: Token,
-): Map<string, QueueWorkerOwner> {
-  const existing = ownersByRedisDependency.get(redisToken);
-
-  if (existing) {
-    return existing;
-  }
-
-  const created = new Map<string, QueueWorkerOwner>();
-  ownersByRedisDependency.set(redisToken, created);
-  return created;
+function canShareBackend(
+  ownershipNamespace: string | undefined,
+  existingOwner: QueueWorkerOwner,
+): boolean {
+  return (
+    ownershipNamespace === undefined ||
+    existingOwner.ownershipNamespace === undefined ||
+    ownershipNamespace === existingOwner.ownershipNamespace
+  );
 }
 
 /**
- * Rejects queue registrations that would assign one BullMQ queue to workers in different DI scopes.
+ * Validates queue registrations that would assign one BullMQ queue to workers in different DI scopes.
  *
  * @param compiledModules Complete compiled application module graph.
+ * @param logger Application logger used for compatibility diagnostics.
+ * @param validationModuleType Queue registration module that triggers this one-time application-wide validation.
  */
-export function assertUniqueQueueWorkerOwnership(compiledModules: readonly CompiledModule[]): void {
+export function assertUniqueQueueWorkerOwnership(
+  compiledModules: readonly CompiledModule[],
+  logger: ApplicationLogger,
+  validationModuleType: ModuleType,
+): void {
   const moduleContexts = collectQueueModuleContexts(compiledModules);
   assertUniqueQueueScopes(moduleContexts);
 
-  const ownersByRedisDependency = new Map<Token, Map<string, QueueWorkerOwner>>();
+  if (moduleContexts[0]?.moduleType !== validationModuleType) {
+    return;
+  }
+
+  const ownersByJobName = new Map<string, QueueWorkerOwner[]>();
 
   for (const moduleContext of moduleContexts) {
-    const redisToken = getRedisClientToken(moduleContext.options.clientName);
-    const ownersByJobName = getJobOwners(ownersByRedisDependency, redisToken);
+    const ownershipNamespace = moduleContext.options.ownershipNamespace;
+
+    if (ownershipNamespace === undefined) {
+      logger.warn(
+        `Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.`,
+        'QueueLifecycleService',
+      );
+    }
+
     const descriptors = discoverQueueWorkerDescriptors(
       compiledModules,
       moduleContext.options,
@@ -149,19 +164,43 @@ export function assertUniqueQueueWorkerOwnership(compiledModules: readonly Compi
     );
 
     for (const descriptor of descriptors.values()) {
-      const existingOwner = ownersByJobName.get(descriptor.jobName);
+      const owners = ownersByJobName.get(descriptor.jobName) ?? [];
+      const compatibleOwners = owners.filter((owner) => canShareBackend(ownershipNamespace, owner));
+      const existingOwner =
+        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??
+        compatibleOwners[0];
 
       if (existingOwner) {
-        throw new Error(
-          `Cross-scope @fluojs/queue worker ownership collision for Redis dependency "${getRedisComponentId(moduleContext.options.clientName)}" and jobName "${descriptor.jobName}" between scopes "${existingOwner.scope}" (${existingOwner.workerName} in ${existingOwner.moduleName}) and "${moduleContext.scope}" (${descriptor.workerName} in ${descriptor.moduleName}). Configure a distinct QueueModule.forRoot({ clientName }) or @QueueWorker(..., { jobName }) value.`,
+        const backendIdentity =
+          ownershipNamespace === undefined || existingOwner.ownershipNamespace === undefined
+            ? UNCONFIGURED_BACKEND_IDENTITY
+            : ownershipNamespace;
+        const message =
+          `Cross-scope @fluojs/queue worker ownership collision for backend identity "${backendIdentity}" and jobName "${descriptor.jobName}" between scopes "${existingOwner.scope}" (${existingOwner.workerName} in ${existingOwner.moduleName}) and "${moduleContext.scope}" (${descriptor.workerName} in ${descriptor.moduleName}).`;
+
+        if (
+          existingOwner.ownershipEnforcement === 'reject' ||
+          moduleContext.options.ownershipEnforcement === 'reject'
+        ) {
+          throw new Error(
+            `${message} Configure distinct ownershipNamespace or @QueueWorker(..., { jobName }) values.`,
+          );
+        }
+
+        logger.warn(
+          `${message} Set matching QueueModule.forRoot({ ownershipNamespace }) values for registrations that share one BullMQ backend, then opt into ownershipEnforcement: "reject" to fail before BullMQ resources are created.`,
+          'QueueLifecycleService',
         );
       }
 
-      ownersByJobName.set(descriptor.jobName, {
+      owners.push({
         moduleName: descriptor.moduleName,
+        ownershipEnforcement: moduleContext.options.ownershipEnforcement,
+        ownershipNamespace,
         scope: moduleContext.scope,
         workerName: descriptor.workerName,
       });
+      ownersByJobName.set(descriptor.jobName, owners);
     }
   }
 }

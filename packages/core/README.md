@@ -62,13 +62,17 @@ class UserService {
 
 fluo uses TC39 standard decorators. You do not need `experimentalDecorators: true` or `emitDecoratorMetadata: true` to use `@Module`, `@Inject`, `@Global`, or `@Scope`.
 
-Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Importing `@fluojs/core` does not install a global `Symbol.metadata` polyfill. Call `ensureMetadataSymbol()` at test or bootstrap boundaries when a runtime needs the polyfill installed before evaluating custom standard decorators.
+Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Importing `@fluojs/core` does not install a global `Symbol.metadata` polyfill. Fluo's built-in decorators keep working through framework-owned stores, but a custom standard decorator that reads `context.metadata` needs `Symbol.metadata` before its decorated module is evaluated.
 
 ```ts
+// preload.ts — configure this as the application entrypoint
 import { ensureMetadataSymbol } from '@fluojs/core';
 
 ensureMetadataSymbol();
+await import('./bootstrap.js');
 ```
+
+The dynamic import is intentional. An ordinary bootstrap module that statically imports decorated classes and then calls `ensureMetadataSymbol()` is too late, because ESM evaluates the static import graph before running the bootstrap module body.
 
 ### Explicit dependency metadata
 
@@ -113,16 +117,18 @@ console.log(metadata.providers);
 `AsyncModuleOptions<T>` is the standard contract for modules that require asynchronous initialization, such as those relying on an external `ConfigService`.
 
 ```ts
-import { AsyncModuleOptions, MaybePromise, Token } from '@fluojs/core';
+import { type AsyncModuleOptions } from '@fluojs/core';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 interface Config {
   apiKey: string;
 }
 
 class EmailModule {
-  static forRootAsync(options: AsyncModuleOptions<Config>) {
-    return {
-      module: EmailModule,
+  static forRootAsync(options: AsyncModuleOptions<Config>): ModuleType {
+    class EmailRuntimeModule {}
+
+    return defineModule(EmailRuntimeModule, {
       providers: [
         {
           provide: 'CONFIG',
@@ -130,7 +136,7 @@ class EmailModule {
           inject: options.inject,
         },
       ],
-    };
+    });
   }
 }
 ```

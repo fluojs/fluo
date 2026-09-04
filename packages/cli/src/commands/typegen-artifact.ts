@@ -1,11 +1,12 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { renameSync } from 'node:fs';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
 /** Filesystem boundary used by deterministic typegen artifact commits. */
 export type TypegenArtifactFileSystem = {
   readonly mkdir: (path: string) => Promise<void>;
   readonly readFile: (path: string) => Promise<string>;
-  readonly rename: (source: string, destination: string) => Promise<void>;
+  readonly rename: (source: string, destination: string) => undefined;
   readonly rm: (path: string) => Promise<void>;
   readonly writeFile: (path: string, content: string) => Promise<void>;
 };
@@ -31,7 +32,10 @@ const NODE_FILE_SYSTEM: TypegenArtifactFileSystem = {
     await mkdir(path, { recursive: true });
   },
   readFile: (path) => readFile(path, 'utf8'),
-  rename,
+  rename(source, destination) {
+    renameSync(source, destination);
+    return undefined;
+  },
   async rm(path) {
     await rm(path, { force: true });
   },
@@ -99,13 +103,16 @@ export async function checkTypegenArtifact(
  * @param outputPath Target artifact path.
  * @param source Complete generated source to publish.
  * @param fileSystem Filesystem boundary used for the atomic replacement.
+ * @param signal Optional owner cancellation signal checked before publication.
  * @returns The stable create, update, or unchanged action.
  */
 export async function writeTypegenArtifact(
   outputPath: string,
   source: string,
   fileSystem: TypegenArtifactFileSystem = NODE_FILE_SYSTEM,
+  signal?: AbortSignal,
 ): Promise<TypegenArtifactWriteAction> {
+  signal?.throwIfAborted();
   const existingSource = await readExistingArtifact(outputPath, fileSystem);
   if (existingSource === source) {
     return 'UNCHANGED';
@@ -120,7 +127,8 @@ export async function writeTypegenArtifact(
   let committed = false;
   try {
     await fileSystem.writeFile(temporaryPath, source);
-    await fileSystem.rename(temporaryPath, outputPath);
+    signal?.throwIfAborted();
+    fileSystem.rename(temporaryPath, outputPath);
     committed = true;
   } finally {
     if (!committed) {

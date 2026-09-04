@@ -22,7 +22,7 @@
     "directory": "packages/microservices"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.19.3 <21 || >=22.2.0 <27"
   },
   "publishConfig": {
     "access": "public"
@@ -52,6 +52,10 @@
     "./redis": {
       "types": "./dist/transports/redis-transport.d.ts",
       "import": "./dist/transports/redis-transport.js"
+    },
+    "./redis-streams": {
+      "types": "./dist/transports/redis-streams-transport.d.ts",
+      "import": "./dist/transports/redis-streams-transport.js"
     },
     "./rabbitmq": {
       "types": "./dist/transports/rabbitmq-transport.d.ts",

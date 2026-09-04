@@ -120,6 +120,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
 
   it('releases waitUntil and close drains when an SSE response body is canceled', async () => {
     const adapter = createCloudflareWorkerAdapter();
+    const dispatcherCompleted = createDeferred<void>();
     const waitUntilPromises: Array<Promise<unknown>> = [];
     let cancelReason: unknown;
     let closeSettled = false;
@@ -134,7 +135,10 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
       headers: { 'content-type': 'text/event-stream; charset=utf-8' },
     });
 
-    vi.spyOn(runtimeWeb, 'dispatchWebRequest').mockResolvedValue(streamingResponse);
+    vi.spyOn(runtimeWeb, 'startWebRequestDispatch').mockReturnValue({
+      completion: dispatcherCompleted.promise,
+      response: Promise.resolve(streamingResponse),
+    });
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(200);
@@ -159,6 +163,11 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     expect(closeSettled).toBe(false);
 
     await reader.cancel('client-disconnected');
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+
+    dispatcherCompleted.resolve();
     await waitUntilPromises[0];
     await closePromise;
 
@@ -182,7 +191,10 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     vi.spyOn(responseBody, 'getReader').mockImplementation(() => {
       throw new Error('reader acquisition failed');
     });
-    vi.spyOn(runtimeWeb, 'dispatchWebRequest').mockResolvedValue(streamingResponse);
+    vi.spyOn(runtimeWeb, 'startWebRequestDispatch').mockReturnValue({
+      completion: Promise.resolve(),
+      response: Promise.resolve(streamingResponse),
+    });
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(200);
@@ -208,7 +220,10 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
       headers: { 'content-type': 'text/event-stream' },
     });
 
-    vi.spyOn(runtimeWeb, 'dispatchWebRequest').mockResolvedValue(streamingResponse);
+    vi.spyOn(runtimeWeb, 'startWebRequestDispatch').mockReturnValue({
+      completion: Promise.resolve(),
+      response: Promise.resolve(streamingResponse),
+    });
     vi.stubGlobal('ReadableStream', class {
       constructor() {
         throw new Error('tracked stream construction failed');

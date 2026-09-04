@@ -1,12 +1,13 @@
 import type { KeyObject } from 'node:crypto';
 
 import { Inject } from '@fluojs/core';
-import type { OnModuleDestroy } from '@fluojs/runtime';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
+import { SUPPORTED_ASYMMETRIC_HASH, SUPPORTED_HMAC_HASH } from './algorithm-policy.js';
 import { JwksClient } from './jwks.js';
+import { assertJwtKeyEntries } from './key-entries.js';
 
 /**
  * Provides the resolved JWT verifier options through dependency injection.
@@ -14,25 +15,21 @@ import { JwksClient } from './jwks.js';
 export const JWT_OPTIONS = Symbol.for('fluo.jwt.options');
 
 /**
+ * Describes the lifecycle hook called when a JWT module is destroyed.
+ */
+export interface JwtModuleDestroyLifecycle {
+  onModuleDestroy(): void | Promise<void>;
+}
+
+/**
  * Maps supported HMAC JWT algorithms to their Node.js hash names.
  */
-export const HMAC_HASH: Partial<Record<JwtAlgorithm, string>> = {
-  HS256: 'sha256',
-  HS384: 'sha384',
-  HS512: 'sha512',
-};
+export const HMAC_HASH: Readonly<Partial<Record<JwtAlgorithm, string>>> = Object.freeze({ ...SUPPORTED_HMAC_HASH });
 
 /**
  * Maps supported asymmetric JWT algorithms to their Node.js hash names.
  */
-export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
-  RS256: 'sha256',
-  RS384: 'sha384',
-  RS512: 'sha512',
-  ES256: 'sha256',
-  ES384: 'sha384',
-  ES512: 'sha512',
-};
+export const ASYMMETRIC_HASH: Readonly<Partial<Record<JwtAlgorithm, string>>> = Object.freeze({ ...SUPPORTED_ASYMMETRIC_HASH });
 
 function hasOwnAlgorithmMapping(
   mappings: Partial<Record<JwtAlgorithm, string>>,
@@ -42,7 +39,7 @@ function hasOwnAlgorithmMapping(
 }
 
 function isSupportedAlgorithm(alg: string | undefined): alg is JwtAlgorithm {
-  return hasOwnAlgorithmMapping(HMAC_HASH, alg) || hasOwnAlgorithmMapping(ASYMMETRIC_HASH, alg);
+  return hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, alg) || hasOwnAlgorithmMapping(SUPPORTED_ASYMMETRIC_HASH, alg);
 }
 
 function assertJwtAlgorithms(algorithms: JwtAlgorithm[], context: string): void {
@@ -188,7 +185,7 @@ async function verifyHmacSignature(
   signingInput: string,
   signatureSegment: string,
 ): Promise<void> {
-  const hash = HMAC_HASH[algorithm];
+  const hash = SUPPORTED_HMAC_HASH[algorithm];
 
   if (!hash) {
     throw new JwtInvalidTokenError();
@@ -210,7 +207,7 @@ async function verifyAsymmetricSignature(
   signingInput: string,
   signatureSegment: string,
 ): Promise<void> {
-  const hash = ASYMMETRIC_HASH[algorithm];
+  const hash = SUPPORTED_ASYMMETRIC_HASH[algorithm];
 
   if (!hash) {
     throw new JwtInvalidTokenError();
@@ -241,8 +238,18 @@ function decodeBase64Url(value: string): Buffer {
 
 function parseJwtPart<T>(value: string): T {
   try {
-    return JSON.parse(decodeBase64Url(value).toString('utf8')) as T;
-  } catch {
+    const parsed: unknown = JSON.parse(decodeBase64Url(value).toString('utf8'));
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new JwtInvalidTokenError('JWT header and payload must be JSON objects.');
+    }
+
+    return parsed as T;
+  } catch (error) {
+    if (error instanceof JwtInvalidTokenError) {
+      throw error;
+    }
+
     throw new JwtInvalidTokenError();
   }
 }
@@ -283,7 +290,7 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
  * Verifies JWT access and refresh tokens against the configured key sources.
  */
 @Inject(JWT_OPTIONS)
-export class DefaultJwtVerifier implements OnModuleDestroy {
+export class DefaultJwtVerifier implements JwtModuleDestroyLifecycle {
   private readonly jwksClient: JwksClient | undefined;
   private readonly keyResolutionState: KeyResolutionState;
   private readonly refreshKeyResolutionState: KeyResolutionState;
@@ -291,6 +298,7 @@ export class DefaultJwtVerifier implements OnModuleDestroy {
 
   constructor(private readonly options: JwtVerifierOptions) {
     assertJwtAlgorithms(options.algorithms, 'JWT verifier');
+    assertJwtKeyEntries(options.keys);
     this.jwksClient = options.jwksUri
       ? new JwksClient(options.jwksUri, options.jwksCacheTtl, options.jwksRequestTimeoutMs, options.jwksCacheMaxEntries)
       : undefined;
@@ -370,7 +378,10 @@ export class DefaultJwtVerifier implements OnModuleDestroy {
   private createRefreshVerificationOptions(
     refreshToken: ReturnType<typeof normalizeRefreshTokenOptions>,
   ): JwtVerifierOptions {
-    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(HMAC_HASH, algorithm));
+    const configuredRefreshAlgorithms = refreshToken.algorithms;
+    const algorithms = (configuredRefreshAlgorithms ?? this.options.algorithms).filter(
+      (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm),
+    );
 
     if (algorithms.length === 0) {
       throw new JwtConfigurationError(
@@ -438,7 +449,7 @@ export class DefaultJwtVerifier implements OnModuleDestroy {
     keyResolutionState: KeyResolutionState,
     jwksClient: JwksClient | undefined,
   ): Promise<void> {
-    if (hasOwnAlgorithmMapping(HMAC_HASH, header.alg)) {
+    if (hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, header.alg)) {
       await this.verifyHmacTokenSignature(header, signingInput, signatureSegment, options, keyResolutionState);
       return;
     }

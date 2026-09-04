@@ -1,8 +1,23 @@
+import type {
+  PlatformDiagnosticIssue,
+  PlatformHealthReport,
+  PlatformCheckResult,
+  PersistencePlatformStatusSnapshot,
+  PlatformReadinessReport,
+  PlatformSnapshot,
+} from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
   createJwtPlatformDiagnosticIssues,
   createJwtPlatformStatusSnapshot,
+} from './status.js';
+import type {
+  JwtPlatformDiagnosticIssue,
+  JwtPlatformHealthReport,
+  JwtPlatformOwnership,
+  JwtPlatformReadinessReport,
+  JwtPlatformStatusSnapshot,
 } from './status.js';
 
 describe('createJwtPlatformStatusSnapshot', () => {
@@ -92,5 +107,50 @@ describe('createJwtPlatformDiagnosticIssues', () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]?.severity).toBe('error');
+  });
+});
+
+describe('JWT platform status contracts', () => {
+  it('remains bidirectionally compatible with mutable runtime platform status contracts', () => {
+    const checks: PlatformCheckResult[] = [{ name: 'refresh-token-store', status: 'pass' }];
+    const runtimeReadiness: PlatformReadinessReport = { checks, critical: false, status: 'ready' };
+    const runtimeHealth: PlatformHealthReport = { checks, status: 'healthy' };
+    const runtimeOwnership: PlatformSnapshot['ownership'] = { externallyManaged: true, ownsResources: false };
+    const runtimeDiagnostic: PlatformDiagnosticIssue = {
+      code: 'AUTH_JWT_REFRESH_TOKEN_BACKING_STORE_NOT_READY',
+      componentId: 'jwt.default',
+      message: 'JWT refresh token backing store is degraded.',
+      severity: 'warning',
+    };
+    const runtimeSnapshot: PersistencePlatformStatusSnapshot = {
+      details: {},
+      health: runtimeHealth,
+      ownership: runtimeOwnership,
+      readiness: runtimeReadiness,
+    };
+
+    const jwtReadiness: JwtPlatformReadinessReport = runtimeReadiness;
+    const jwtHealth: JwtPlatformHealthReport = runtimeHealth;
+    const jwtOwnership: JwtPlatformOwnership = runtimeOwnership;
+    const jwtDiagnostic: JwtPlatformDiagnosticIssue = runtimeDiagnostic;
+    const jwtSnapshot: JwtPlatformStatusSnapshot = runtimeSnapshot;
+
+    jwtReadiness.checks = checks;
+    jwtHealth.checks = checks;
+    jwtOwnership.ownsResources = false;
+    jwtDiagnostic.code = 'AUTH_JWT_REFRESH_TOKEN_BACKING_STORE_NOT_READY';
+    jwtSnapshot.details = {};
+
+    const restoredReadiness: PlatformReadinessReport = jwtReadiness;
+    const restoredHealth: PlatformHealthReport = jwtHealth;
+    const restoredOwnership: PlatformSnapshot['ownership'] = jwtOwnership;
+    const restoredDiagnostic: PlatformDiagnosticIssue = jwtDiagnostic;
+    const restoredSnapshot: PersistencePlatformStatusSnapshot = jwtSnapshot;
+
+    expect(restoredReadiness).toEqual(runtimeReadiness);
+    expect(restoredHealth).toEqual(runtimeHealth);
+    expect(restoredOwnership).toEqual(runtimeOwnership);
+    expect(restoredDiagnostic).toEqual(runtimeDiagnostic);
+    expect(restoredSnapshot).toEqual(runtimeSnapshot);
   });
 });

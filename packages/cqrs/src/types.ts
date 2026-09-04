@@ -162,6 +162,7 @@ export interface CommandBus {
    * Executes one command by resolving its discovered singleton handler.
    *
    * @param command Command instance to dispatch.
+   * @param context Optional CQRS dispatch context to pass through a nested dispatch.
    * @returns The handler result.
    */
   execute<TCommand extends ICommand, TResult = void>(command: TCommand, context?: CqrsDispatchContext): Promise<TResult>;
@@ -173,6 +174,7 @@ export interface QueryBus {
    * Executes one query by resolving its discovered singleton handler.
    *
    * @param query Query instance to dispatch.
+   * @param context Optional CQRS dispatch context to pass through a nested dispatch.
    * @returns The handler result.
    */
   execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery, context?: CqrsDispatchContext): Promise<TResult>;

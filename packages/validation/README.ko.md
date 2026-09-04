@@ -74,11 +74,13 @@ class rule이 실행되기 전에 deterministic `DtoValidationError`로 거부�
 DTO 바인딩 메타데이터를 적용한 뒤 `@ValidateNested(...)` 필드를 재귀적으로
 실체화합니다. 어떤 요청 소스를 선택하고 스칼라 값을 변환할지는 transport 또는
 binder가 검증 전에 담당한다는 request-pipeline 계약을 유지합니다.
-Plain 입력 객체를 materialize할 때 안전한 추가 own enumerable 속성은 유지됩니다. `__proto__`, `constructor`,
+Plain 입력 객체를 materialize할 때 안전한 추가 own enumerable 속성은 기본적으로 유지됩니다. `__proto__`, `constructor`,
 `prototype` 같은 위험한 key와 inherited 또는 non-enumerable 속성만 제외합니다.
-이는 `ValidationPipe` 스타일의 whitelist 또는 `forbidNonWhitelisted` 경계가
-아닙니다. 애플리케이션에 해당 정책이 필요하면 materialization 전에 추가 입력을
-명시적으로 shaping하거나 거부해야 합니다.
+세 번째 `materialize()` 인자로 `{ undeclaredProperties: 'reject' }`를 전달하면
+초기화된 DTO field, validation 또는 binding metadata field, binding alias로 선언되지
+않은 안전한 enumerable 속성을 거부합니다. 이 정책은 plain nested DTO 값에도
+재귀적으로 적용되며 입력을 조용히 제거하지 않고 `UNDECLARED_PROPERTY` issue를
+보고합니다. 기존 DTO instance는 undeclared-property 경계로 검사하지 않습니다.
 선언된 중첩 DTO의 인스턴스인 기존 중첩 값은 그대로 보존하고, plain 중첩 값만
 해당 필드 또는 collection entry 단위로 실체화합니다.
 `materialize()`에 넘기는 루트 값은 plain 객체이거나 대상 DTO 인스턴스여야 합니다.
@@ -143,6 +145,11 @@ validation 및 binding metadata를 보존합니다. `PickType`, `OmitType`,
 `PartialType`은 생략되었거나 optional이 된 필드에 의존할 수 있는 base
 class-level validator를 derived DTO로 전달하지 않습니다.
 
+`IntersectionType(...)` source가 같은 property에 서로 다른
+`@ValidateNested(...)` target을 선언하면 모든 nested rule이 보존되고 검증됩니다.
+공유 property의 plain value는 초기 실체화 중 plain 상태로 유지되므로 각 nested
+target이 해당 value를 독립적으로 실체화하고 검증할 수 있습니다.
+
 ### Standard Schema 지원
 
 Standard Schema adapter는 유효하지 않은 입력을 명시적인 issue로 보고해야 합니다. issue가 없는 검증 결과는 성공으로 처리합니다.
@@ -160,6 +167,14 @@ class RestrictedUserDto {
 ```
 
 `ValidateClass(...)`는 custom class-level validator도 받을 수 있습니다. `Validate(...)`는 built-in decorator만으로 부족할 때 custom field-level validator를 붙이고, `ValidateIf(...)`는 predicate가 false를 반환하면 dependent validator를 short-circuit합니다.
+
+### Custom field 검증
+
+`Validate(callback)`는 callback을 `(value, context)`로 호출합니다. `context.dto`는
+포함하는 DTO이고, `context.propertyKey`는 decorator가 적용된 field key입니다.
+
+`@IsObject()`는 null-prototype record를 포함한 plain object만 허용합니다. Class
+instance, `Date`, `Map`, `Set` 값은 거부합니다.
 
 ### 네트워크 검증기
 
@@ -179,9 +194,12 @@ Array, `Set`, `Map` member는 자동으로 검증되고 실체화되므로 neste
 `materialize()`는 의도적으로 엄격합니다. Transport가 `'42'`를 넘기고 DTO가 `number`를 기대한다면, transport나 binding layer가 먼저 변환해야 합니다.
 `@IsLatitude()`, `@IsLongitude()`를 포함한 numeric validator는 numeric string을 이미 변환된 number처럼 취급하지 않고 DTO의 numeric 값을 검증합니다.
 
+`@IsEnum(...)`은 선언된 enum 값만 허용합니다. 숫자형 TypeScript enum에서 생성된
+reverse-map 멤버 이름은 값이 아니므로 거부됩니다.
+
 ## 공개 API
 
-- **검증 엔진**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`, `Validator`
+- **검증 엔진**: `DefaultValidator`, `DtoValidationError`, `MaterializeOptions`, `ValidationIssue`, `Validator`
 - **핵심 데코레이터**: `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt`, `IsDefined`, `IsOptional`, `ValidateNested`, `ValidateIf`, `Validate`, `ValidateClass`
 - **존재 및 비교 데코레이터**: `IsEmpty`, `IsNotEmpty`, `Equals`, `NotEquals`, `IsIn`, `IsNotIn`
 - **문자열 및 네트워크 데코레이터**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsBooleanString`, `IsDataURI`, `IsDateString`, `IsDecimal`, `IsFQDN`, `IsHexColor`, `IsHexadecimal`, `IsJSON`, `IsJWT`, `IsLocale`, `IsLowercase`, `IsMagnetURI`, `IsMimeType`, `IsMongoId`, `IsNumberString`, `IsPort`, `IsRFC3339`, `IsSemVer`, `IsUppercase`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`

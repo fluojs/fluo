@@ -48,7 +48,7 @@ fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 
 
 `overrideModule(source, replacement)`는 테스트 전용 module graph rewrite입니다. source module의 decorator metadata를 변경하면 안 되며, 컴파일된 testing module은 provider 해석에는 replacement module definition을 사용하더라도 diagnostics와 graph assertion을 위해 원래 `rootModule`과 `modules[].type` identity를 유지해야 합니다.
 
-Testing-module builder는 `compile()`이 `TestingModuleRef`를 반환할 때까지 내부에서 생성한 container를 소유합니다. Override 적용, bootstrap lifecycle 작업, 최종 singleton 동기화가 실패하면 `compile()`은 reject하기 전에 복구할 수 없는 해당 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 다시 던지고, disposal도 실패하면 원래 실패와 cleanup 실패를 담은 `AggregateError`를 보고합니다. 성공적으로 반환된 `TestingModuleRef`는 기존의 caller-owned container lifecycle을 유지합니다.
+Testing-module builder는 `compile()`이 `TestingModuleRef`를 반환할 때까지 내부에서 생성한 container를 소유합니다. Override 적용, bootstrap lifecycle 작업, 최종 singleton 동기화가 실패하면 `compile()`은 reject하기 전에 복구할 수 없는 해당 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 다시 던지고, disposal도 실패하면 원래 실패와 cleanup 실패를 담은 `AggregateError`를 보고합니다. 성공적으로 반환된 `TestingModuleRef`는 caller-owned container lifecycle을 유지합니다. reference를 보관한 뒤 `finally` 또는 `afterEach`에서 `await module.container.dispose()`를 unconditional하게 호출하세요. 그러면 통과, 실패, 조기 반환 테스트 모두 resource를 해제합니다. 완료된 disposal은 idempotent하며 teardown error는 surface됩니다. operation과 teardown이 모두 실패할 수 있는 코드는 operation error를 mask하지 말고 두 오류를 함께 보존해야 합니다.
 
 `@fluojs/testing/vitest`는 `fluoBabelDecoratorsPlugin()`을 위한 지원 Vitest 엔트리포인트입니다. testing package export가 바뀔 때는 package export-map과 build surface 검증에 이 엔트리포인트를 계속 포함하세요.
 

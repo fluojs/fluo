@@ -11,6 +11,7 @@ import {
   PRISMA_OPTIONS,
   PrismaModule,
   PrismaService,
+  Transaction,
   type PrismaServiceFacade,
   type PrismaTransactionClient,
 } from './index.js';
@@ -41,6 +42,8 @@ type InferredPrismaServiceFacade = PrismaServiceFacade<GeneratedPrismaClient>;
 type InferredCurrentHandle = ReturnType<InferredPrismaService['current']>;
 type InferredTransactionHandle = PrismaTransactionClient<GeneratedPrismaClient>;
 type InferredFacadeFindUniqueResult = ReturnType<InferredPrismaServiceFacade['user']['findUnique']>;
+type StaticPrismaModuleDefinition = ReturnType<typeof PrismaModule.forRoot<GeneratedPrismaClient>>['definition'];
+type AsyncPrismaModuleDefinition = ReturnType<typeof PrismaModule.forRootAsync<GeneratedPrismaClient>>['definition'];
 
 type _PrismaServiceCurrentInference = Assert<
   IsEqual<InferredCurrentHandle, GeneratedPrismaClient | GeneratedTransactionClient>
@@ -49,16 +52,90 @@ type _PrismaTransactionClientInference = Assert<IsEqual<InferredTransactionHandl
 type _PrismaServiceFacadeDelegateInference = Assert<
   IsEqual<InferredFacadeFindUniqueResult, Promise<{ id: string } | null>>
 >;
+type _StaticPrismaModuleDefinitionCompatibility = Assert<
+  StaticPrismaModuleDefinition extends Parameters<typeof Module>[0] | undefined ? true : false
+>;
+type _AsyncPrismaModuleDefinitionCompatibility = Assert<
+  AsyncPrismaModuleDefinition extends Parameters<typeof Module>[0] | undefined ? true : false
+>;
 
 const prismaServiceCurrentInferenceChecked: _PrismaServiceCurrentInference = true;
 const prismaTransactionClientInferenceChecked: _PrismaTransactionClientInference = true;
 const prismaServiceFacadeDelegateInferenceChecked: _PrismaServiceFacadeDelegateInference = true;
+const staticPrismaModuleDefinitionCompatibilityChecked: _StaticPrismaModuleDefinitionCompatibility = true;
+const asyncPrismaModuleDefinitionCompatibilityChecked: _AsyncPrismaModuleDefinitionCompatibility = true;
 
 void prismaServiceCurrentInferenceChecked;
 void prismaTransactionClientInferenceChecked;
 void prismaServiceFacadeDelegateInferenceChecked;
+void staticPrismaModuleDefinitionCompatibilityChecked;
+void asyncPrismaModuleDefinitionCompatibilityChecked;
+
+type ObservableTransactionBoundary = {
+  settled: PromiseLike<void>;
+};
+
+function isObservableTransactionBoundary(value: unknown): value is ObservableTransactionBoundary {
+  if (typeof value !== 'object' || value === null || !('settled' in value)) {
+    return false;
+  }
+
+  const { settled } = value;
+
+  return typeof settled === 'object' && settled !== null && 'then' in settled;
+}
+
+function observeActiveTransactionBoundaryDrain(prisma: object): Promise<void> {
+  const activeTransactionBoundaries = Reflect.get(prisma, 'activeTransactionBoundaries');
+
+  if (!(activeTransactionBoundaries instanceof Set) || activeTransactionBoundaries.size !== 1) {
+    throw new Error('Expected exactly one active transaction boundary before shutdown.');
+  }
+
+  const [activeTransactionBoundary] = activeTransactionBoundaries;
+
+  if (!isObservableTransactionBoundary(activeTransactionBoundary)) {
+    throw new Error('Expected the active transaction boundary to expose its settlement promise.');
+  }
+
+  let markDrainStarted!: () => void;
+  const drainStarted = new Promise<void>((resolve) => {
+    markDrainStarted = resolve;
+  });
+  const settled = activeTransactionBoundary.settled;
+
+  activeTransactionBoundary.settled = new Proxy(settled, {
+    get(target, property) {
+      if (property === 'then') {
+        return (...args: Parameters<PromiseLike<void>['then']>) => {
+          markDrainStarted();
+          return target.then(...args);
+        };
+      }
+
+      return Reflect.get(target, property);
+    },
+  });
+
+  return drainStarted;
+}
 
 describe('@fluojs/prisma', () => {
+  it('preserves distinct static and async module definition names', () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const staticModule = PrismaModule.forRoot({ client });
+    const asyncModule = PrismaModule.forRootAsync({
+      useFactory: () => ({ client }),
+    });
+
+    expect(staticModule.name).toBe('PrismaRootModuleDefinition');
+    expect(asyncModule.name).toBe('PrismaAsyncModuleDefinition');
+  });
+
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
     const events: string[] = [];
     const transactionClient = {
@@ -1068,6 +1145,129 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('waits for fallback manual transaction callbacks to settle before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client, strictTransactions: false })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const openTransaction = prisma.transaction(async () => {
+        events.push('manual:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('manual:callback-settled');
+        return 'settled';
+      });
+
+      await callbackStarted;
+      const boundaryDrainStarted = observeActiveTransactionBoundaryDrain(prisma);
+      const shutdown = app.close();
+
+      await boundaryDrainStarted;
+      expect(events).toEqual(['connect', 'manual:callback-start']);
+
+      releaseCallback();
+
+      await expect(openTransaction).resolves.toBe('settled');
+      await shutdown;
+
+      expect(events).toEqual(['connect', 'manual:callback-start', 'manual:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
+  it('waits for fallback service transaction callbacks to settle before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    @Inject(PrismaService)
+    class UserService {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client>) {}
+
+      @Transaction()
+      async holdOpen() {
+        void this.prisma;
+        events.push('service:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('service:callback-settled');
+        return 'settled';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client, strictTransactions: false })],
+      providers: [UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(UserService);
+      const openTransaction = service.holdOpen();
+
+      await callbackStarted;
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const boundaryDrainStarted = observeActiveTransactionBoundaryDrain(prisma);
+      const shutdown = app.close();
+
+      await boundaryDrainStarted;
+      expect(events).toEqual(['connect', 'service:callback-start']);
+
+      releaseCallback();
+
+      await expect(openTransaction).resolves.toBe('settled');
+      await shutdown;
+
+      expect(events).toEqual(['connect', 'service:callback-start', 'service:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
   it('rejects new request transactions while shutdown is draining or stopped', async () => {
     let releaseDisconnect!: () => void;
     const disconnectReady = new Promise<void>((resolve) => {
@@ -1227,6 +1427,7 @@ describe('@fluojs/prisma', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
+      activeTransactionBoundaries: 0,
       activeRequestTransactions: 1,
       strictTransactions: false,
       transactionContext: 'als',

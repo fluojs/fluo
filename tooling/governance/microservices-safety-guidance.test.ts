@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
+  enforceRedisStreamsSubpathExportEvidence,
 } from './verify-platform-consistency-governance.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -18,6 +19,10 @@ describe('Microservices safety guidance governance', () => {
 
   it('keeps package source and regression evidence behind the documented safety contracts', () => {
     expect(() => enforceMicroservicesSafetyRuntimeEvidence()).not.toThrow();
+  });
+
+  it('keeps Redis Streams on its published dedicated subpath', () => {
+    expect(() => enforceRedisStreamsSubpathExportEvidence()).not.toThrow();
   });
 
   it('pins all-attempt, retained-retry, and aggregate NATS subscription cleanup evidence', () => {

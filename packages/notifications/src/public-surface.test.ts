@@ -7,13 +7,24 @@ import type {
   NotificationDispatchOptions,
   NotificationDispatchRequest,
   NotificationLifecycleEvent,
+  NotificationSnapshot,
+  NotificationSnapshotArrayBuffer,
+  NotificationSnapshotArrayBufferView,
+  NotificationSnapshotDate,
+  NotificationSnapshotMap,
+  NotificationSnapshotRegExp,
+  NotificationSnapshotSet,
+  NotificationSnapshotUrl,
+  NotificationSnapshotUrlSearchParams,
   Notifications,
   NotificationsEventPublisher,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
+  NotificationsQueueContext,
   NotificationsQueueJob,
   NotificationsQueueOptions,
   NotificationsStatusAdapterInput,
+  NotificationsStatusDetails,
 } from './index.js';
 
 describe('@fluojs/notifications public API surface', () => {
@@ -26,6 +37,7 @@ describe('@fluojs/notifications public API surface', () => {
     expect(notificationsPublicApi).toHaveProperty('NotificationsConfigurationError');
     expect(notificationsPublicApi).toHaveProperty('NotificationChannelNotFoundError');
     expect(notificationsPublicApi).toHaveProperty('NotificationQueueNotConfiguredError');
+    expect(notificationsPublicApi).toHaveProperty('NotificationQueueResultIntegrityError');
   });
 
   it('keeps documented TypeScript-only contracts stable enough for leaf packages', () => {
@@ -41,6 +53,9 @@ describe('@fluojs/notifications public API surface', () => {
     expectTypeOf<NotificationChannel>().toHaveProperty('channel');
     expectTypeOf<NotificationChannel>().toHaveProperty('send');
     expectTypeOf<NotificationsQueueAdapter>().toHaveProperty('enqueue');
+    expectTypeOf<NotificationsQueueContext>().toMatchTypeOf<{
+      signal?: AbortSignal;
+    }>();
     expectTypeOf<NotificationsQueueJob>().toMatchTypeOf<{
       channel: string;
       id: string;
@@ -64,6 +79,23 @@ describe('@fluojs/notifications public API surface', () => {
         | 'notification.dispatch.failed';
       occurredAt: string;
     }>();
+    expectTypeOf<NotificationSnapshot<Date>>().toEqualTypeOf<NotificationSnapshotDate>();
+    expectTypeOf<NotificationSnapshot<ArrayBuffer>>().toEqualTypeOf<NotificationSnapshotArrayBuffer>();
+    expectTypeOf<NotificationSnapshot<DataView>>().toEqualTypeOf<NotificationSnapshotArrayBufferView>();
+    expectTypeOf<NotificationSnapshot<Uint8Array>>().toEqualTypeOf<NotificationSnapshotArrayBufferView>();
+    expectTypeOf<NotificationSnapshot<Map<string, number>>>().toEqualTypeOf<
+      NotificationSnapshotMap<string, number>
+    >();
+    expectTypeOf<NotificationSnapshot<ReadonlyMap<string, number>>>().toEqualTypeOf<
+      NotificationSnapshotMap<string, number>
+    >();
+    expectTypeOf<NotificationSnapshot<RegExp>>().toEqualTypeOf<NotificationSnapshotRegExp>();
+    expectTypeOf<NotificationSnapshot<Set<string>>>().toEqualTypeOf<NotificationSnapshotSet<string>>();
+    expectTypeOf<NotificationSnapshot<ReadonlySet<string>>>().toEqualTypeOf<NotificationSnapshotSet<string>>();
+    expectTypeOf<NotificationSnapshot<URL>>().toEqualTypeOf<NotificationSnapshotUrl>();
+    expectTypeOf<NotificationSnapshot<URLSearchParams>>().toEqualTypeOf<
+      NotificationSnapshotUrlSearchParams
+    >();
     expectTypeOf<NotificationDispatchBatchResult>().toMatchTypeOf<{
       failed: number;
       queued: number;
@@ -72,9 +104,19 @@ describe('@fluojs/notifications public API surface', () => {
     expectTypeOf<NotificationsStatusAdapterInput>().toMatchTypeOf<{
       bulkQueueThreshold: number;
       channelsRegistered: number;
+      eventPublicationEnabled?: boolean;
       eventPublisherConfigured: boolean;
       queueConfigured: boolean;
     }>();
+    expectTypeOf<NotificationsStatusDetails>().toMatchTypeOf<{
+      bulkQueueThreshold: number;
+      channelsRegistered: number;
+      dependencies: readonly string[];
+      eventPublicationEnabled: boolean;
+      eventPublisherConfigured: boolean;
+      queueConfigured: boolean;
+    }>();
+    expectTypeOf<NotificationsStatusDetails>().toMatchTypeOf<Record<string, unknown>>();
   });
 
   it('hides internal normalized options token from the root barrel', () => {

@@ -1,6 +1,7 @@
 # @fluojs/cli
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 React page type 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
 
@@ -32,6 +33,8 @@ pnpm dlx @fluojs/cli new my-app
 
 - `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
 - `@fluojs/cli`는 Node.js `>=20.0.0`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 독립적인 `>=20.0.0` 하한을 유지합니다.
+- `inspect`는 검사를 실행할 때만, 그리고 검사 대상 프로젝트의 dependency tree에서만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=20.0.0` 범위에서 계속 사용할 수 있습니다.
+- 대화형 `new` 흐름과 선택적인 대화형 `inspect --mermaid` 안내는 필요할 때만 `@clack/prompts`를 해석합니다. `@clack/prompts`는 현재 Node.js `>=20.12.0`을 요구하므로 Node.js `20.0.0`부터 `20.11.x`까지는 CLI의 비대화형 명령만 지원합니다.
 - CLI와 생성된 Node.js starter toolchain은 `tsx@^4.23.1`을 사용하며, 생성된 gRPC starter는 `@grpc/grpc-js@^1.14.4`를 요구합니다. 이 패치된 floor를 적용할 때 기존 project lockfile을 갱신하세요.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
 - 배포되는 `fluo` bin은 `package.json`에 선언된 `./bin/fluo.mjs` wrapper이며, 이 wrapper가 dist 빌드 CLI 엔트리포인트인 `../dist/cli.js`를 로드합니다.
@@ -93,7 +96,7 @@ Non-interactive 출력에서는 이 블록 전에 설치 시 `Installing depende
 
 생성된 standard non-Deno HTTP starter는 TDD-first Vitest 레이아웃을 사용합니다. 빠른 greeting unit test와 `greeting.slice.test.ts`는 `src/greeting/` 아래에 colocate하고, 앱 dispatch test는 `src/app.test.ts`에 유지하며, 기본 e2e 스타일 request-pipeline test는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용해 `test/app.e2e.test.ts`에 둡니다. React starter는 대신 streamed SSR, DOM hydration, production Playwright hydration에 집중한 test를 포함합니다. `test:browser` script는 build된 Fastify server를 시작하며 asset 누락, hydration warning, server-owned route를 우회하는 navigation이 있으면 실패합니다.
 
-생성된 Node.js 애플리케이션 프로젝트에서 `fluo dev`는 기본적으로 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart와 terminal shutdown은 현재 앱 child에 먼저 `SIGTERM`을 보내고, 제한된 grace period 뒤에도 종료되지 않으면 force-kill하므로 비협조적인 child가 restart supervisor를 무기한 멈추게 할 수 없습니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. Primary recursive watcher 또는 fallback directory watcher에서 terminal error가 발생해도 동일한 cleanup path를 따르고, 기존 제한 시간 안에 현재 앱 child를 종료하며, child나 sibling watcher를 남겨 두는 대신 exit code `1`로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하세요. 생성된 Bun/Deno/Workers 프로젝트는 기본적으로 watch/reload를 `bun --watch`, `deno run --watch --allow-env --allow-net src/main.ts`, `wrangler dev`에 위임합니다. Deno command는 `Deno.env.toObject()`를 통해 소비되는 모든 application-owned environment key에 대한 접근을 보존합니다. 해당 프로젝트에서 fluo 소유 restart runner로 되돌리려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하고, 그 runner에 추가 ignore 경로가 필요하면 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
+생성된 Node.js 애플리케이션 프로젝트에서 `fluo dev`는 기본적으로 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart와 terminal shutdown은 현재 앱 child에 먼저 `SIGTERM`을 보내고, 제한된 grace period 뒤에도 종료되지 않으면 force-kill하므로 비협조적인 child가 restart supervisor를 무기한 멈추게 할 수 없습니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. Primary recursive watcher 또는 fallback directory watcher에서 terminal error가 발생하거나 watcher 등록 전에 필수 source target이 없거나 접근할 수 없거나 recursive watch를 사용할 수 없을 때 필수 fallback source watcher를 획득하지 못하면 동일한 cleanup path를 따릅니다. 이는 fallback 획득이 전부 실패하는 경우, sibling watcher를 획득한 뒤 일부가 실패하는 경우, fallback watcher 실행 중 새로 발견된 directory의 획득이 실패하는 경우를 모두 포함하며, runner는 기존 제한 시간 안에 현재 앱 child를 종료하고 child나 sibling watcher를 남겨 두는 대신 exit code `1`로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하세요. 생성된 Bun/Deno/Workers 프로젝트는 기본적으로 watch/reload를 `bun --watch`, `deno run --watch --allow-env --allow-net src/main.ts`, `wrangler dev`에 위임합니다. Deno command는 `Deno.env.toObject()`를 통해 소비되는 모든 application-owned environment key에 대한 접근을 보존합니다. 해당 프로젝트에서 fluo 소유 restart runner로 되돌리려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하고, 그 runner에 추가 ignore 경로가 필요하면 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
 
 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Node.js + Fastify, Express, raw Node.js HTTP 애플리케이션 스타터를 제공합니다.
 
@@ -119,7 +122,7 @@ fluo new my-react-app --starter react-vite-ssr
 
 이 starter는 schema를 Node.js + Fastify HTTP로 고정합니다. `pnpm dev`를 실행하고
 `/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집하세요. Page UI는 더 이상 Vite asset,
-document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.tsx`의 명시적인
+document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.ts`의 명시적인
 `@Router(...)` / `@Path(...)` handler가 page를 하나의 `ReactElement`로 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
 
@@ -252,7 +255,7 @@ MVP runtime support는 명시적으로 제한됩니다.
 | Runtime target | `fluo dev --studio` status |
 | --- | --- |
 | Node dev runner | Full support target입니다. |
-| Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. |
+| Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. 대신 `fluo inspect <module-path> --json --output <path>` 또는 `fluo inspect <module-path> --report --output <path>`로 Studio 호환 static artifact를 내보내세요. |
 | Deno | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Deno 프로젝트를 거부합니다. |
 | Cloudflare Workers | worker bridge를 추가하고 테스트하지 않는 한 이번 MVP에서는 unsupported입니다. |
 
@@ -294,17 +297,28 @@ fluo migrate ./src --json
 # 변환 적용
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
+
+정식 `--only` 및 `--skip` 토큰은 `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, `tsconfig`입니다. 기존 `injectable` 및 `testing` 토큰은 각각 `inject-params` 및 `tests`의 허용되는 별칭으로 유지됩니다.
 
 CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
 
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap 재작성은 platform을 추론하지 않습니다. Platform을 선택하지 않으면 codemod은 `NestFactory.create(AppModule)`와 `listen(port)` 호출을 유지하고 필요한 adapter-selection warning을 출력합니다. 자동 bootstrap 재작성은 명시적인 `--platform express`와 정확히 하나의 숫자 리터럴 단일 인자 `app.listen(port)`에서만 지원됩니다. host, callback, string, 환경 변수 기반, 여러 `listen` 형태는 warning과 함께 그대로 보존되며 수동 마이그레이션이 필요합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요:
+
+```bash
+fluo migrate ./src --apply --platform express
+
+# bootstrap은 그대로 두고 adapter-independent transform만 적용
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
+
 **주요 변환 사항:**
 - `@nestjs/common` 임포트를 `@fluojs/core` 또는 `@fluojs/http`로 재작성합니다.
-- bootstrap 패턴을 재작성하고 지원되는 `listen(port)` 호출을 fluo runtime startup 규칙으로 접습니다.
+- 명시적으로 platform을 선택한 뒤에만 bootstrap 패턴을 재작성하고 지원되는 `listen(port)` 호출을 fluo runtime startup 규칙으로 접습니다.
 - constructor parameter `@Inject(...)` 사용을 fluo 호환 의존성 선언으로 migration합니다.
 - `@Injectable()`을 제거하고 스코프를 `@Scope()`로 매핑합니다.
 - 안전하게 변환 가능한 test template을 `@fluojs/testing` helper 쪽으로 migration합니다.
@@ -318,7 +332,7 @@ CLI가 그래프 렌더링을 소유하지 않으면서 애플리케이션 구�
 fluo inspect ./src/app.module.ts --mermaid
 
 # @fluojs/studio용 snapshot 내보내기
-fluo inspect ./src/app.module.ts --json > snapshot.json
+fluo inspect ./src/app.module.ts --format json > snapshot.json
 
 # shell redirection 없이 같은 JSON snapshot을 CI artifact 경로에 쓰기
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
@@ -332,6 +346,8 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 # 특정 module export 검사; 기본값은 AppModule
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
+
+`--format json`은 명시적으로 `--json`과 동등합니다. 두 option 모두 stdout에 정확히 하나의 JSON document를 쓰고 runtime diagnostics는 stderr로 보내며, 다른 `--format` 값은 거부합니다.
 
 런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. CLI는 authoritative HTTP dispatcher descriptor를 사용할 수 있도록 adapterless application을 bootstrap한 뒤 runtime-owned `routes` projection을 JSON, timing envelope, report snapshot에 추가합니다. CLI는 inspect orchestration, JSON serialization, report wrapping, `--output <path>` artifact write를 소유하고, Studio는 snapshot parsing, filtering, connection inspection, viewer rendering, Mermaid graph semantics를 소유합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 명시적인 `--json` flag 없이 제공된 경우를 포함해 JSON snapshot 출력 옆에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다.
 
@@ -388,8 +404,14 @@ burst는 100 ms 동안 coalesce되고 generation은 serialize되며 output과 �
 무시됩니다. 각 generation은 authoritative bootstrap 전에 변경된 native `.js`와 `.mjs` dependency를
 포함한 현재 application module graph를 평가합니다. Regeneration failure는 `ERROR <output>: <message>`를
 출력하고 마지막 valid artifact를 보존한 채 다음 change를 기다립니다. Watcher failure는 cleanup 뒤 code
-`1`로 종료됩니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active generation을
-기다린 뒤 code `0`으로 종료됩니다. Module directory 밖의 파일은 의도적으로 watch boundary 밖에
+`1`로 종료됩니다. generation 또는 generation이 소유한 artifact commit이 active인 동안 수신한 모든 source
+event는 해당 작업을 무효화하므로 coalesce된 후속 generation이 끝나기 전에는 그 output이 publish될 수
+없습니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active owned generation(child
+process 또는 caller-process bootstrap)을 cancel하고 owned artifact commit을 abort하여 둘 중 어느 것도
+publish하지 못하게 합니다. Caller-process cancellation은 asynchronous bootstrap과 application close가
+settle될 때까지 기다린 뒤 code `0`으로 watch를 종료하며, `SIGTERM` 뒤에도 종료하지 않는 child는 제한된
+grace period 뒤 force-kill됩니다.
+Module directory 밖의 파일은 의도적으로 watch boundary 밖에
 있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
 의도한 source root의 module path를 선택하세요.
 

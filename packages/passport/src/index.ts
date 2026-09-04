@@ -1,4 +1,5 @@
 export * from './account/account-linking.js';
+export * from './bearer/bearer-jwt.js';
 export * from './cookie/cookie-auth.js';
 export * from './cookie/cookie-auth-module.js';
 export * from './cookie/cookie-manager.js';

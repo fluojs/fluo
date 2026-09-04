@@ -1,6 +1,7 @@
 # @fluojs/mongoose
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 세션 인지형 트랜잭션 처리와 라이프사이클 친화적인 외부 연결 관리를 제공하는 fluo용 Mongoose 통합 패키지입니다.
 
@@ -12,6 +13,7 @@
 - [라이프사이클과 종료](#라이프사이클과-종료)
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [기존 문서 저장](#기존-문서-저장)
   - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
 - [공개 API](#공개-api)
@@ -32,7 +34,7 @@ pnpm add mongoose
 - 요청 단위 트랜잭션에 명시적 `requestTransaction(...)` 경계가 필요할 때.
 - 애플리케이션이 이미 concrete Mongoose connection을 생성·구성하고 있고, fluo가 그 ownership을 대체하지 않고 관측하기를 원할 때.
 
-Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며, package manifest의 `engines.node >=20.0.0`과 동일하게 Node.js 20 이상을 지원합니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
+Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 mandatory `@fluojs/runtime` dependency와 동일하게 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
 
 ## 빠른 시작
 
@@ -82,23 +84,22 @@ Request cancellation 또는 shutdown이 callback 시작 후 boundary를 abort하
 `@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 MongoDB 세션을 공유합니다.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
 
-type UserDocument = { readonly _id: string; readonly name: string };
+type UserDocumentSaveOptions = {
+  readonly validateBeforeSave?: boolean;
+  readonly session?: object | null;
+};
+type UserDocument = {
+  readonly _id: string;
+  readonly name: string;
+  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;
+};
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
-export class UserService {
-  constructor(private readonly repo: UserRepository) {}
-
-  @Transaction()
-  async onboardUser(dto: CreateUserDto) {
-    const [user] = await this.repo.create(dto);
-    await this.repo.initProfile(user._id);
-    return user;
-  }
-}
-
+@Inject(MongooseConnection)
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
@@ -113,9 +114,50 @@ export class UserRepository {
     return this.conn.model<ProfileCreateModel>('Profile').create([{ userId }]);
   }
 }
+
+@Inject(UserRepository)
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: CreateUserDto) {
+    const [user] = await this.repo.create(dto);
+    await this.repo.initProfile(user._id);
+    return user;
+  }
+}
 ```
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 지원되는 facade 작업(`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, `model.bulkWrite()`)을 사용하세요.
+
+`@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 임의의 connection field를 선택하지는 않습니다. 서비스가 여러 connection을 소유하거나 다른 field에 connection을 저장하는 경우에는 경계를 명시적으로 선택하세요.
+
+```ts
+@Inject(MongooseConnection)
+export class AnalyticsService {
+  constructor(private readonly analyticsConnection: MongooseConnection) {}
+
+  @Transaction((self: AnalyticsService) => self.analyticsConnection)
+  async rebuildReports() {
+    // 추론된 connection 대신 analyticsConnection을 사용합니다.
+  }
+}
+```
+
+### 기존 문서 저장
+
+<!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
+
+기존 Mongoose 문서를 활성 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 안에서 저장해야 하면 opt-in `MongooseConnection.saveDocument(...)` helper를 사용하세요.
+
+```ts
+@Transaction()
+async rename(document: UserDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+helper는 native Mongoose save option을 전달하고 ambient session을 붙인 뒤 동일한 document instance를 반환합니다. 활성 트랜잭션 밖에서는 fail-closed하며, 실수로 현재 트랜잭션을 벗어나지 않도록 `{ session: null }` 또는 다른 명시적 session을 거부합니다. document, prototype, model cache를 patch하지 않으므로 `doc.save()` 직접 호출은 계속 native Mongoose 동작이며 자동 session을 받지 않습니다.
 
 ### 요청 트랜잭션 인터셉터 호환성
 
@@ -172,6 +214,7 @@ await this.conn.transaction(async () => {
 
 ## 공개 API
 
+- `MongooseConnection.saveDocument(document, options?)` — native save option과 document identity를 보존하면서 현재 트랜잭션 session으로 기존 문서를 명시적으로 저장합니다.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.

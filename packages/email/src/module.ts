@@ -146,7 +146,7 @@ export class EmailModule {
    * Registers email providers using static options.
    *
    * @param options Static email module options including transport wiring and optional template rendering behavior.
-   * @returns A global module definition that exports {@link EmailService}, {@link EmailChannel}, and email facade tokens.
+   * @returns A module definition that exports {@link EmailService}, {@link EmailChannel}, and email facade tokens globally by default or only to explicit importers when `options.global` is `false`.
    *
    * @example
     * ```ts
@@ -167,7 +167,7 @@ export class EmailModule {
    * Registers email providers from an async DI factory.
    *
    * @param options Async module options that resolve email transport and renderer configuration through DI.
-   * @returns A global module definition that memoizes async option resolution per module instance.
+   * @returns A module definition that memoizes async option resolution per module instance and exports its providers globally by default or only to explicit importers when `options.global` is `false`.
    *
    * @example
     * ```ts

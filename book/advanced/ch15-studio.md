@@ -1,9 +1,10 @@
 <!-- packages: @fluojs/studio, @fluojs/runtime, @fluojs/cli -->
 <!-- project-state: FluoBlog v0 -->
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
 # Chapter 15. Studio: Visual Diagnostics and Observability
 
-This chapter covers the Studio ecosystem, which turns runtime-produced Module Graph snapshots, diagnostics, timing data, and inspect reports into artifacts that people can read. Chapter 14 used contract verification to confirm runtime consistency. This chapter moves to the tools that export, store, view, and interpret that internal state.
+This chapter covers the Studio ecosystem, which turns Node live Studio compiled graph snapshots, diagnostics, timing data, and inspect reports into artifacts that people can read. Chapter 14 used contract verification to confirm runtime consistency. This chapter moves to the tools that export, store, view, and interpret that internal state.
 
 ## Learning Objectives
 
@@ -57,7 +58,7 @@ For CI and support workflows, prefer an explicit artifact path instead of shell 
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 ```
 
-`--output <path>` writes the selected payload to a file and creates parent directories when needed. This is useful for CI systems that upload `artifacts/` after a failed bootstrap check. It does not make the application writable, and it does not change module graph state beyond the normal bootstrap and close cycle.
+`--output <path>` writes the selected payload to a file and creates parent directories when needed. This is useful for CI systems that upload `artifacts/` from completed bootstrap checks. It does not make the application writable, and it does not change module graph state beyond the normal bootstrap and close cycle.
 
 Use `--timing` when you need bootstrap timing alongside the snapshot.
 
@@ -101,10 +102,10 @@ The payload is a `PlatformShellSnapshot`. At a high level, it includes:
 
 - `generatedAt`, the time the snapshot was produced.
 - `readiness` and `health`, the platform-level status signals.
-- `components`, the modules, controllers, providers, and related platform components in the resolved graph.
+- `components`, the platform components reported by file-first inspection. This is not the compiled module/provider graph that the Node live snapshot derives at runtime.
 - `diagnostics`, the structured issues found while the platform shell was built or inspected.
 
-Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views.
+Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views. Static artifacts do not reconstruct compiled module/provider nodes or provider scope metadata; use the supported Node live path with `fluo dev --studio` when a workflow needs that DI graph.
 
 ### Timing envelope
 
@@ -132,14 +133,14 @@ A report does not replace the raw snapshot. It packages the snapshot with the ex
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency, resolve the packaged static HTML entry, and open it in a browser.
+Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency and launch its packaged HTTP server.
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-The printed path points at the packaged `dist/index.html` artifact. Open that file in a browser, then load your inspect artifact. This viewer resolution step is Node package-resolution based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
+The command prints a `http://127.0.0.1:<port>/` URL that serves the packaged viewer; open that URL in a browser, then load your inspect artifact. Do not open `dist/index.html` directly because browser file-origin module loading can leave the viewer blank. `@fluojs/studio/viewer` remains the packaged HTML entry for integrations that resolve it. This launch step is Node package based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
 
 ```bash
 pnpm --dir packages/studio dev
@@ -151,7 +152,7 @@ Internally, Studio uses `parseStudioPayload(rawJson)` before rendering. This kee
 
 ### Key Features of the Viewer
 
-- **Graph View**: Renders the application dependency graph so you can see modules, providers, and dependency edges at a glance.
+- **Graph View**: Renders the graph information present in the loaded artifact. Static inspect artifacts do not contain the compiled module/provider graph; use Node live Studio when you need to inspect those nodes and their dependency edges.
 - **Diagnostics Tab**: Lists `PlatformDiagnosticIssue` entries with severity, message, cause, fix hints, blockers, and docs links when present.
 - **Timing View**: Uses `BootstrapTimingDiagnostics` to show total bootstrap time and phase-level cost when timing data is present.
 - **Filtering**: Applies query, readiness, and severity filters without mutating the loaded snapshot, and keeps keyboard focus in the active search or filter control while the view updates.
@@ -161,26 +162,28 @@ These features give teams a shared artifact review flow. The CLI exports the fil
 
 ### Visualizing Scopes and Lifecycles
 
-One important role of Studio is making scope and lifecycle problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious.
+One important role of Node live Studio is making provider scope and dependency-graph problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious. Static inspect artifacts do not contain the compiled DI graph or provider scope metadata needed for that analysis.
 
-The snapshot gives Studio the resolved component graph and diagnostics. Timing data gives it bootstrap phase cost. Together, those artifacts let the viewer explain both structure and startup behavior. A graph can show which component depends on a slow provider, while the timing view can show whether the delay happened during graph construction, instance resolution, or lifecycle hooks.
+After a successful bootstrap, the Node live path emits a snapshot with compiled module, provider, controller, and route nodes; provider nodes include scope metadata. It emits bootstrap timing separately, and its request observer emits request trace events. Together, those source-backed live artifacts let the viewer explain graph structure, bootstrap timing, and request progress. File-first artifacts remain useful for their reported components, routes, timing, and diagnostics, but they do not provide equivalent compiled-DI analysis.
 
-## 15.6 Scenario: Diagnosing a Provider Deadlock
+## 15.6 Scenario: Reviewing a Successful-Bootstrap Inspect Artifact
 
-Assume an application hangs or fails during startup. Instead of relying only on logs, generate a report artifact.
+<!-- fluo-studio-report-bootstrap-failure-contract: begin -->
+Studio reports are post-bootstrap artifacts. `fluo inspect` creates its artifact only after `FluoFactory.create(...)` has completed a successful bootstrap, then reads `PlatformShell.snapshot()` and the dispatcher `routes` to create a `PlatformShellSnapshot`. An application that hangs or fails during bootstrap cannot produce a static report or partial compiled DI graph for provider-deadlock diagnosis; investigate that startup failure through its runtime failure output instead.
+<!-- fluo-studio-report-bootstrap-failure-contract: end -->
 
 ```bash
-fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-Then follow the artifact trail.
+For a successful inspection, follow the artifact trail.
 
-1. **Check the summary**: Read `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, and `summary.timingTotalMs` to understand the failure shape.
-2. **Open the snapshot in Studio**: Use the viewer to inspect the graph and diagnostics. The Diagnostics tab shows structured issues, including `dependsOn`, `cause`, and `fixHint` when available.
-3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd` when an architecture review needs a text diagram in a PR or decision record.
+1. **Check the summary**: Read `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, and `summary.timingTotalMs` to understand the completed run's diagnostics, readiness state, and bootstrap duration.
+2. **Open the snapshot in Studio**: Use the viewer to inspect reported platform components, their dependencies, routes, and diagnostics. This is not the compiled DI graph.
+3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/platform-components.mmd` when an architecture review needs a text diagram in a PR or decision record.
 4. **Keep the artifact**: Attach the report to CI logs or a support ticket so another developer can reproduce the same inspection view.
 
-This workflow is more repeatable than copying terminal output into chat. The report keeps summary, snapshot, diagnostics, and timing together. Studio then turns those facts into a graph and issue list that reviewers can inspect without bootstrapping the app themselves.
+This workflow is more repeatable than copying terminal output into chat. The report keeps summary, snapshot, diagnostics, and timing together. Studio then turns those facts into a component/dependency graph and issue list that reviewers can inspect without bootstrapping the app themselves.
 
 ## 15.7 Consuming Inspect Artifacts Programmatically
 
@@ -217,7 +220,7 @@ Studio owns the snapshot-to-Mermaid contract through `renderMermaid(snapshot)`. 
 fluo inspect ./src/app.module.ts --mermaid --output docs/generated/module-graph.mmd
 ```
 
-Mermaid output is useful for architecture decision records, README diagrams, and review threads. Because it is text, normal version control can show graph changes over time. That reduces drift between architecture diagrams and the actual Module Graph.
+Mermaid output is useful for architecture decision records, README diagrams, and review threads. Because it is text, normal version control can show graph changes over time. `renderMermaid(snapshot)` traverses the static `PlatformShellSnapshot` components and their dependencies, including external dependency nodes when needed; it does not track the actual compiled Module Graph.
 
 Mermaid is not the same artifact as a raw snapshot or report. It is a rendered view of the graph. Keep raw JSON or report artifacts when you need diagnostics, readiness, health, timing, or machine-readable details. Keep Mermaid when you need a diagram that readers can scan quickly.
 
@@ -229,11 +232,11 @@ This approach catches architecture regressions before they reach production. It 
 
 ### Live Studio
 
-The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
+The current Studio workflow has two supported paths. After a successful bootstrap, `fluo dev --studio` opens a runtime-connected local devtool that receives a snapshot of compiled module, provider, controller, and route graph data, including provider scope metadata. It receives bootstrap timing as a separate event, and `StudioRequestObserver` publishes request traces. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
 
 The CLI also owns live sidecar teardown. `StudioSidecar.close()` ends tracked SSE responses as before, closes sockets only while they are serving authenticated runtime ingestion, and shares one deterministic close operation across repeated or concurrent callers. This keeps an ingestion client that leaves its request body incomplete from holding `fluo dev --studio` shutdown open indefinitely without turning teardown into blanket destruction of completed ordinary request sockets.
 
-Bun, Deno, and Cloudflare Workers are migration/static users for this MVP. Until dedicated bridges are implemented and verified, non-Node projects should generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer instead of expecting live sidecar streams.
+Bun, Deno, and Cloudflare Workers remain migration/static users by default. A host owner can now import the transport-neutral bridge contracts from `@fluojs/runtime/devtools`, create a `StudioDevtoolsRuntime`, and pass it as `studioDevtools` during application or context bootstrap without relying on the legacy process-global. That seam is not a bundled non-Node sidecar: a non-Node live path is supported only when its owner provides executable host integration evidence. Otherwise, generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer.
 
 Live Studio does not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports provide that evidence, while the live devtool gives developers immediate feedback while the app is running.
 

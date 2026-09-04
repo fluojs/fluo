@@ -11,6 +11,7 @@
 ### Patch Changes
 
 - [#2702](https://github.com/fluojs/fluo/pull/2702) [`553fb51`](https://github.com/fluojs/fluo/commit/553fb516adf8c2fd2ecbd907b69fc191864f90f3) Thanks [@ayden94](https://github.com/ayden94)! - Align the documented GraphQL runtime boundary with the effective mandatory dependency floor by requiring Node.js 20.16.0 or newer and treating Bun, Deno, and Cloudflare Workers as unsupported until native runtime verification exists.
+  Migration guidance: consumers on Node.js below 20.19.3, Node.js 21, or Node.js 22.0.0 through 22.1.9 must upgrade to Node.js 20.19.3+ or 22.2.0+ before installing the current package.
 
 - [#2318](https://github.com/fluojs/fluo/pull/2318) [`df0886f`](https://github.com/fluojs/fluo/commit/df0886f96cef6f7c87031630654db7c620cf112d) Thanks [@ayden94](https://github.com/ayden94)! - Dispose request-scoped websocket operation providers when GraphQL clients disconnect before subscription completion.
 

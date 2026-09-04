@@ -21,6 +21,45 @@ describe('createCacheManagerPlatformStatusSnapshot', () => {
     });
   });
 
+  it('reports a custom store as framework-owned when CacheService owns teardown dispatch', () => {
+    // Given / When
+    const snapshot = createCacheManagerPlatformStatusSnapshot({ storeKind: 'custom' });
+
+    // Then
+    expect(snapshot.ownership).toEqual({ externallyManaged: false, ownsResources: true });
+    expect(snapshot.details).toMatchObject({
+      storeKind: 'custom',
+      storeOwnershipMode: 'framework',
+    });
+  });
+
+  it('keeps the redis store externally managed when the application owns its client lifecycle', () => {
+    // Given / When
+    const snapshot = createCacheManagerPlatformStatusSnapshot({
+      dependencyId: 'redis.cache',
+      storeKind: 'redis',
+    });
+
+    // Then
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.details).toMatchObject({
+      storeKind: 'redis',
+      storeOwnershipMode: 'external',
+    });
+  });
+
+  it('honors an explicit ownership override when it differs from the store default', () => {
+    // Given / When
+    const snapshot = createCacheManagerPlatformStatusSnapshot({
+      storeKind: 'custom',
+      storeOwnershipMode: 'external',
+    });
+
+    // Then
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.details).toMatchObject({ storeOwnershipMode: 'external' });
+  });
+
   it('keeps readiness degraded (not not-ready) when cache is non-critical and backing store is down', () => {
     const snapshot = createCacheManagerPlatformStatusSnapshot({
       backingStoreReady: false,

@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Route,
 } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
@@ -66,20 +67,32 @@ describe('OpenAPI Path Item validation', () => {
     // Given
     @Controller('/unsupported')
     class UnsupportedController {
-      @Get('/') handle() { return undefined; }
+      @Route(method, '/') handle() { return undefined; }
     }
     const descriptors = createHandlerMapping([{ controllerToken: UnsupportedController }]).descriptors;
-    const descriptor = descriptors[0];
-    if (descriptor === undefined) {
-      throw new TypeError('Expected the unsupported-method fixture to create one descriptor.');
-    }
-    Reflect.set(descriptor.route, 'method', method);
 
     // When
     const buildDocument = () => buildOpenApiDocument({ ...DOCUMENT_OPTIONS, descriptors });
 
     // Then
     expect(buildDocument).toThrow(`OpenAPI cannot document unsupported HTTP method "${method}" for path "/unsupported".`);
+  });
+
+  it('emits TRACE descriptors as standard OpenAPI operations', () => {
+    // Given
+    @Controller('/trace')
+    class TraceController {
+      @Route('TRACE', '/') trace() { return undefined; }
+    }
+    const descriptors = createHandlerMapping([{ controllerToken: TraceController }]).descriptors;
+
+    // When
+    const document = buildOpenApiDocument({ ...DOCUMENT_OPTIONS, descriptors });
+
+    // Then
+    expect(document.paths['/trace']?.trace).toEqual(expect.objectContaining({
+      operationId: 'TraceController_trace_trace_trace',
+    }));
   });
 
   it('emits every operation supported by Fluo descriptors', () => {

@@ -38,6 +38,18 @@ Chapter 6이 입력 경계를 검증했다면, 이 장은 애플리케이션 밖
 
 FluoBlog가 공개 API에 그대로 노출하면 안 되는 필드를 포함한 게시글을 저장한다고 가정해 봅시다.
 
+### Decorated module 전에 metadata 준비하기
+
+`@fluojs/serialization`을 import해도 `Symbol.metadata`는 설치되지 않습니다. Runtime이 이를 기본 제공하지 않는다면 `@Expose()`, `@Exclude()`, `@Transform()`이 있는 module을 평가하기 전에 preload entrypoint를 구성하세요.
+
+```typescript
+// preload.ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
 ```typescript
 class PostRecord {
   id = '';

@@ -75,6 +75,19 @@ export interface NotificationsQueueJob<TRequest extends NotificationDispatchRequ
   queuedAt: string;
 }
 
+/** Context passed to an application-owned queue adapter for one enqueue operation. */
+export interface NotificationsQueueContext {
+  /**
+   * Caller-owned cancellation signal for the queue handoff.
+   *
+   * @remarks
+   * The notifications foundation checks this signal immediately before every
+   * queue handoff and passes the same live signal to the adapter. Queue
+   * adapters own any listener cleanup and queue-specific cancellation policy.
+   */
+  readonly signal?: AbortSignal;
+}
+
 /**
  * Queue seam used when applications prefer background delivery for bulk notifications.
  *
@@ -87,17 +100,21 @@ export interface NotificationsQueueAdapter {
    * Enqueues one notification delivery job.
    *
    * @param job Serialized notification envelope ready for background processing.
-   * @returns A queue-assigned identifier that can be surfaced to callers.
+   * @param context Optional caller-owned cancellation context for this queue handoff.
+   * @returns A non-empty queue-assigned identifier that can be surfaced to callers.
+   * @throws {NotificationQueueResultIntegrityError} When the adapter resolves with an empty or non-string identifier.
    */
-  enqueue(job: NotificationsQueueJob): Promise<string>;
+  enqueue(job: NotificationsQueueJob, context?: NotificationsQueueContext): Promise<string>;
 
   /**
    * Enqueues multiple notification delivery jobs in one operation when supported.
    *
    * @param jobs Ordered notification envelopes to enqueue.
-   * @returns Ordered queue identifiers aligned with the input order.
+   * @param context Optional caller-owned cancellation context for this queue handoff.
+   * @returns A dense array of own-data-property, non-empty queue identifiers aligned with the admitted input order.
+   * @throws {NotificationQueueResultIntegrityError} When the adapter resolves with a malformed result or identifiers.
    */
-  enqueueMany?(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]>;
+  enqueueMany?(jobs: readonly NotificationsQueueJob[], context?: NotificationsQueueContext): Promise<readonly string[]>;
 }
 
 /** Lifecycle event names emitted through the optional event publication seam. */
@@ -107,17 +124,107 @@ export type NotificationLifecycleEventName =
   | 'notification.dispatch.delivered'
   | 'notification.dispatch.failed';
 
+/** Immutable lifecycle representation of a `Date` value. */
+export interface NotificationSnapshotDate {
+  readonly epochMilliseconds: number | null;
+  readonly kind: 'Date';
+}
+
+/** Immutable lifecycle representation of an `ArrayBuffer` value. */
+export interface NotificationSnapshotArrayBuffer {
+  readonly byteLength: number;
+  readonly bytes: readonly number[];
+  readonly kind: 'ArrayBuffer';
+}
+
+/**
+ * Immutable lifecycle representation of an `ArrayBufferView` value.
+ *
+ * @remarks
+ * `view` records the native view kind, such as `DataView` or `Uint8Array`.
+ */
+export interface NotificationSnapshotArrayBufferView {
+  readonly byteLength: number;
+  readonly byteOffset: number;
+  readonly bytes: readonly number[];
+  readonly kind: 'ArrayBufferView';
+  readonly view: string;
+}
+
+/** Immutable lifecycle representation of a `Map` value. */
+export interface NotificationSnapshotMap<TKey, TValue> {
+  readonly entries: readonly (readonly [NotificationSnapshot<TKey>, NotificationSnapshot<TValue>])[];
+  readonly kind: 'Map';
+}
+
+/** Immutable lifecycle representation of a `RegExp` value. */
+export interface NotificationSnapshotRegExp {
+  readonly flags: string;
+  readonly kind: 'RegExp';
+  readonly lastIndex: number;
+  readonly source: string;
+}
+
+/** Immutable lifecycle representation of a `Set` value. */
+export interface NotificationSnapshotSet<TValue> {
+  readonly kind: 'Set';
+  readonly values: readonly NotificationSnapshot<TValue>[];
+}
+
+/** Immutable lifecycle representation of a `URL` value. */
+export interface NotificationSnapshotUrl {
+  readonly href: string;
+  readonly kind: 'URL';
+}
+
+/** Immutable lifecycle representation of a `URLSearchParams` value. */
+export interface NotificationSnapshotUrlSearchParams {
+  readonly kind: 'URLSearchParams';
+  readonly query: string;
+}
+
+/**
+ * Recursive immutable value view used for notification lifecycle observation snapshots.
+ *
+ * Native mutable built-ins are converted into the corresponding `NotificationSnapshot*`
+ * data representation rather than exposed as live instances.
+ *
+ * @typeParam T Value captured in a lifecycle event.
+ */
+export type NotificationSnapshot<T> =
+  T extends Date
+    ? NotificationSnapshotDate
+    : T extends ArrayBuffer
+      ? NotificationSnapshotArrayBuffer
+      : T extends ArrayBufferView
+        ? NotificationSnapshotArrayBufferView
+        : T extends RegExp
+          ? NotificationSnapshotRegExp
+          : T extends URL
+            ? NotificationSnapshotUrl
+            : T extends URLSearchParams
+              ? NotificationSnapshotUrlSearchParams
+              : T extends ReadonlyMap<infer TKey, infer TValue>
+                ? NotificationSnapshotMap<TKey, TValue>
+                : T extends ReadonlySet<infer TValue>
+                  ? NotificationSnapshotSet<TValue>
+                  : T extends readonly (infer TValue)[]
+                    ? readonly NotificationSnapshot<TValue>[]
+                    : T extends object
+                      ? { readonly [TKey in keyof T]: NotificationSnapshot<T[TKey]> }
+                      : T;
+
 /** Published event payload emitted around notification lifecycle transitions. */
 export interface NotificationLifecycleEvent<TRequest extends NotificationDispatchRequest = NotificationDispatchRequest> {
-  channel: string;
-  deliveryId?: string;
-  error?: {
-    message: string;
-    name: string;
+  readonly channel: string;
+  readonly deliveryId?: string;
+  readonly error?: {
+    readonly message: string;
+    readonly name: string;
   };
-  name: NotificationLifecycleEventName;
-  notification: TRequest;
-  occurredAt: string;
+  readonly name: NotificationLifecycleEventName;
+  readonly notification: NotificationSnapshot<TRequest>;
+  readonly occurredAt: string;
 }
 
 /** Optional event publication seam for notification lifecycle visibility. */

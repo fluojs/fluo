@@ -11,6 +11,7 @@ import {
 export type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
  * Request metadata passed to a remote catalog provider.
@@ -82,8 +83,11 @@ function validateTimeout(timeoutMs: unknown): number {
     return DEFAULT_TIMEOUT_MS;
   }
 
-  if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new I18nError('Remote i18n loader timeoutMs must be a positive integer when provided.', 'I18N_INVALID_LOADER_OPTIONS');
+  if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
+    throw new I18nError(
+      `Remote i18n loader timeoutMs must be a positive integer no greater than ${MAX_TIMEOUT_MS} when provided.`,
+      'I18N_INVALID_LOADER_OPTIONS',
+    );
   }
 
   return timeoutMs;
@@ -286,7 +290,7 @@ export class CachedRemoteI18nLoader implements CachedI18nLoader {
     }
 
     const catalog = await this.loader.load(locale, namespace, options);
-    this.cache.set(cacheKey, { catalog, expiresAt: currentTime + this.ttlMs });
+    this.cache.set(cacheKey, { catalog, expiresAt: this.now() + this.ttlMs });
     return catalog;
   }
 

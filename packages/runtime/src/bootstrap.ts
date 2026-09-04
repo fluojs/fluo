@@ -1,11 +1,13 @@
 import { InvariantError, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
+import { resolveMultiContribution } from '@fluojs/di/internal';
 import {
   createDispatcher,
   createHandlerMapping,
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
+  type HandlerDescriptor,
   type HandlerSource,
   type HttpApplicationAdapter,
 } from '@fluojs/http';
@@ -20,16 +22,25 @@ import { type BootstrapTimingPhase, createBootstrapTimingDiagnostics } from './h
 import { getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
+import { defineModule } from './module-definition.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
-import { defineModule } from './module-definition.js';
 import {
   createLifecycleCloseError,
   createRetryableShutdownState,
   type RetryableShutdownState,
 } from './retryable-shutdown.js';
 import type { BootstrapReadySignal } from './tokens.js';
-import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
+import {
+  APPLICATION_LOGGER,
+  BOOTSTRAP_PROVIDER_TOKENS,
+  BOOTSTRAP_READY_SIGNAL,
+  COMPILED_MODULES,
+  HTTP_APPLICATION_ADAPTER,
+  PLATFORM_SHELL,
+  RUNTIME_CLEANUP_REGISTRATION,
+  RUNTIME_CONTAINER,
+} from './tokens.js';
 import type {
   Application,
   ApplicationContext,
@@ -46,7 +57,6 @@ import type {
   ExceptionFilterHandler,
   MicroserviceApplication,
   MicroserviceRuntime,
-  ModuleDefinition,
   ModuleType,
   OnApplicationBootstrap,
   OnApplicationShutdown,
@@ -69,6 +79,7 @@ type MutableBootstrapReadySignal = BootstrapReadySignal & {
 };
 
 type CacheInvalidatingContainer = Container & { override(...providers: Provider[]): Container };
+type RuntimeCleanupCallback = Parameters<RuntimeCleanupRegistration>[0];
 
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
@@ -116,12 +127,12 @@ async function disposeContainer(container: Container): Promise<void> {
   await container.dispose();
 }
 
-async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<unknown[]> {
+async function runCleanupCallbacks(cleanups: readonly RuntimeCleanupCallback[]): Promise<unknown[]> {
   const errors: unknown[] = [];
 
   for (const cleanup of cleanups) {
     try {
-      cleanup();
+      await cleanup();
     } catch (error) {
       errors.push(error);
     }
@@ -130,7 +141,7 @@ async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<u
   return errors;
 }
 
-function createRuntimeCleanupRegistration(cleanups: Array<() => void>): RuntimeCleanupRegistration {
+function createRuntimeCleanupRegistration(cleanups: RuntimeCleanupCallback[]): RuntimeCleanupRegistration {
   return (cleanup) => {
     cleanups.push(cleanup);
 
@@ -170,7 +181,7 @@ async function closeRuntimeResources(options: {
   container: Container;
   lifecycleInstances: readonly unknown[];
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   shutdownState: RetryableShutdownState<RuntimeShutdownPhase>;
   signal?: string;
 }): Promise<void> {
@@ -228,7 +239,7 @@ async function runBootstrapFailureCleanup(options: {
   lifecycleInstances: readonly unknown[];
   logger: ApplicationLogger;
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   scope: 'application' | 'application context';
 }): Promise<void> {
   const errors: unknown[] = [];
@@ -710,7 +721,9 @@ class FluoApplication implements Application {
     }
   }
 
-  private assertApplicationOperationAllowed(operation: 'connect a microservice' | 'start microservices'): void {
+  private assertApplicationOperationAllowed(
+    operation: 'connect a microservice' | 'dispatch' | 'start microservices',
+  ): void {
     if (this.closeStarted) {
       throw new InvariantError(`Application cannot ${operation} after shutdown has started.`);
     }
@@ -776,6 +789,7 @@ class FluoApplication implements Application {
   }
 
   dispatch = async (...args: Parameters<Dispatcher['dispatch']>): Promise<void> => {
+    this.assertApplicationOperationAllowed('dispatch');
     await this.dispatcher.dispatch(...args);
   };
 
@@ -1020,9 +1034,15 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
     }
 
     this.closeStarted = true;
-    this.runtime.markShutdownStarted?.();
+    let resolveClose: () => void = () => undefined;
+    let rejectClose: (reason?: unknown) => void = () => undefined;
+    this.closingPromise = new Promise<void>((resolve, reject) => {
+      resolveClose = resolve;
+      rejectClose = reject;
+    });
+    void (async () => {
+      this.runtime.markShutdownStarted?.();
 
-    this.closingPromise = (async () => {
       if (this.listenPromise) {
         try {
           await this.listenPromise;
@@ -1053,14 +1073,9 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
 
       this.closed = true;
       this.microserviceState = 'closed';
-    })();
+    })().then(resolveClose, rejectClose);
 
-    try {
-      await this.closingPromise;
-    } catch (error) {
-      this.closingPromise = undefined;
-      throw error;
-    }
+    await this.closingPromise;
   }
 
   private assertTransportIngressOpen(operation: 'emit' | 'send'): void {
@@ -1078,18 +1093,35 @@ async function resolveLifecycleInstances(
   providers: Provider[],
   resolvedInstances: unknown[] = [],
 ): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+  const lifecycleEntries: Array<{ contributionIndex?: number; token: Token; useValue?: unknown }> = [];
+  const seenSingleTokens = new Set<Token>();
+  const multiContributionIndexes = new Map<Token, number>();
 
   for (const provider of providers) {
     const token = providerToken(provider);
 
-    if (seen.has(token)) {
+    if (isMultiProvider(provider)) {
+      const contributionIndex = multiContributionIndexes.get(token) ?? 0;
+      multiContributionIndexes.set(token, contributionIndex + 1);
+
+      if (isHookBearingValueProvider(provider)) {
+        lifecycleEntries.push({ token, useValue: provider.useValue });
+        continue;
+      }
+
+      if (isDirectSingletonContextProvider(provider, true)) {
+        lifecycleEntries.push({ contributionIndex, token });
+      }
+
+      continue;
+    }
+
+    if (seenSingleTokens.has(token)) {
       continue;
     }
 
     if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
+      seenSingleTokens.add(token);
       lifecycleEntries.push({ token, useValue: provider.useValue });
       continue;
     }
@@ -1098,20 +1130,35 @@ async function resolveLifecycleInstances(
       continue;
     }
 
-    seen.add(token);
+    seenSingleTokens.add(token);
     lifecycleEntries.push({ token });
   }
 
   const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
+    lifecycleEntries.map((entry) => {
+      if (entry.useValue !== undefined) {
+        return entry.useValue;
+      }
+
+      if (entry.contributionIndex === undefined) {
+        return container.resolve(entry.token);
+      }
+
+      return resolveMultiContribution(container, entry.token, entry.contributionIndex);
+    }),
   );
 
   let resolutionError: unknown;
   let hasResolutionError = false;
 
-  for (const result of resolutionResults) {
+  for (const [index, result] of resolutionResults.entries()) {
     if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
+      const entry = lifecycleEntries[index];
+
+      if (entry.contributionIndex === undefined || hasLifecycleHook(result.value)) {
+        resolvedInstances.push(result.value);
+      }
+
       continue;
     }
 
@@ -1153,8 +1200,8 @@ function createContextCacheableTokenSet(
   return cacheableTokens;
 }
 
-function isDirectSingletonContextProvider(provider: Provider): boolean {
-  if (isMultiProvider(provider)) {
+function isDirectSingletonContextProvider(provider: Provider, includeMulti = false): boolean {
+  if (isMultiProvider(provider) && !includeMulti) {
     return false;
   }
 
@@ -1255,16 +1302,30 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
  * 종료 단계의 hook을 역순으로 실행해 이미 시작한 리소스를 정리한다.
  */
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  const errors: unknown[] = [];
+
   for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
+    try {
+      if (isOnModuleDestroy(instance)) {
+        await instance.onModuleDestroy();
+      }
+    } catch (error) {
+      errors.push(error);
     }
   }
 
   for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
+    try {
+      if (isOnApplicationShutdown(instance)) {
+        await instance.onApplicationShutdown(signal);
+      }
+    } catch (error) {
+      errors.push(error);
     }
+  }
+
+  if (errors.length > 0) {
+    throw createLifecycleCloseError(errors);
   }
 }
 
@@ -1295,7 +1356,7 @@ function logRouteMappings(
   logger: ApplicationLogger,
   descriptors: ReturnType<typeof createHandlerMapping>['descriptors'],
 ): void {
-  const byController = new Map<string, { controllerPath: string; descriptors: typeof descriptors }>();
+  const byController = new Map<string, { controllerPath: string; descriptors: HandlerDescriptor[] }>();
 
   for (const descriptor of descriptors) {
     const key = descriptor.controllerToken.name;
@@ -1325,8 +1386,14 @@ function createRuntimeProviders(
   options: { readonly providers?: Provider[] },
   logger: ApplicationLogger,
 ): Provider[] {
+  const bootstrapProviderTokens = new Set((options.providers ?? []).map(providerToken));
+
   return [
     ...(options.providers ?? []),
+    {
+      provide: BOOTSTRAP_PROVIDER_TOKENS,
+      useValue: bootstrapProviderTokens,
+    },
     {
       provide: APPLICATION_LOGGER,
       useValue: logger,
@@ -1338,7 +1405,7 @@ function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -1373,7 +1440,7 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
 function registerRuntimeApplicationContextTokens(
   bootstrapped: BootstrapResult,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -1448,6 +1515,12 @@ function createRuntimeDispatcherOptions(
   const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    ...(options.contentNegotiation === undefined
+      ? {}
+      : { contentNegotiation: options.contentNegotiation }),
+    ...(options.conditionalRequest === undefined
+      ? {}
+      : { conditionalRequest: options.conditionalRequest }),
     ...(options.errorRepresentation === undefined
       ? {}
       : { errorRepresentation: options.errorRepresentation }),
@@ -1503,7 +1576,7 @@ function createRuntimeDispatcher(
  * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
+  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
   const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
   const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
@@ -1514,7 +1587,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     async close() {},
     async listen() {},
   };
-  const runtimeCleanup: Array<() => void> = [];
+  const runtimeCleanup: RuntimeCleanupCallback[] = [];
   if (studioDevtools) {
     runtimeCleanup.push(() => studioDevtools.close());
   }
@@ -1563,7 +1636,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 
     const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
     lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-    lifecycleInstances.push({
+    lifecycleInstances.unshift({
       onModuleDestroy() {
         return platformShell.stop();
       },
@@ -1680,13 +1753,13 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
+    const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
     const effectiveOptions = applyStudioDevtoolsContextOptions(options, studioDevtools);
     const logger = createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
-    const runtimeCleanup: Array<() => void> = [];
+    const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
       runtimeCleanup.push(() => studioDevtools.close());
     }
@@ -1729,7 +1802,7 @@ export class FluoFactory {
 
       const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-      lifecycleInstances.push({
+      lifecycleInstances.unshift({
         onModuleDestroy() {
           return platformShell.stop();
         },

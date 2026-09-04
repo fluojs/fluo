@@ -86,6 +86,34 @@ export const summarizeTransitions = (prev, next) => {
 	return { changes, settled };
 };
 
+// Stall detection for watch. Transitions-only output reads "no change" as
+// "no problem", and that assumption broke live: issue 3400 sat in `review`
+// for hours after a unanimous triad because the lead never consulted `plan`
+// and nothing nudged it. Terminal states never stall, and wait-dependencies
+// is exempt because it is derivative waiting — the upstream issue's own stall
+// fires instead.
+const STALL_EXEMPT = new Set(['done', 'blocked', 'wait-dependencies']);
+
+export const trackStalls = (counts, next, threshold) => {
+	if (!Array.isArray(next)) {
+		throw new TypeError('next snapshot must be an array.');
+	}
+	const nextCounts = {};
+	const stalled = [];
+	for (const row of next) {
+		const key = String(row.issue);
+		const action = row.decision.action;
+		const prev = counts?.[key];
+		const ticks = prev && prev.action === action ? prev.ticks + 1 : 1;
+		nextCounts[key] = { action, ticks };
+		const due = threshold > 0 && ticks >= threshold && ticks % threshold === 0;
+		if (due && !STALL_EXEMPT.has(action)) {
+			stalled.push({ issue: row.issue, action, ticks });
+		}
+	}
+	return { counts: nextCounts, stalled };
+};
+
 /**
  * Decide the next action for one issue. Pure function of
  * (lane state, fresh observation). Returns { action, reason?, ... }.

@@ -3,10 +3,19 @@ import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT, RedisModule } from '@fluojs/redis';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withTimeout } from './helpers.js';
 
 interface MockQueueConnection {
   closeCalls: number;
   connection: MockRedisConnection;
+  name: string;
+}
+
+interface MockQueueState {
+  addBulkCalls: number;
+  addCalls: number;
+  closeCalls: number;
+  jobs: MockQueueJob[];
   name: string;
 }
 
@@ -17,6 +26,7 @@ interface MockQueueJob {
   opts: {
     attempts?: number;
     backoff?: { delay?: number; type?: 'fixed' | 'exponential' };
+    jobId?: string;
   };
 }
 
@@ -48,7 +58,7 @@ interface MockRedisDuplicateOptions {
 type FailedListener = (job: MockQueueJob | undefined, error: Error) => void
 
 const bullmqState = vi.hoisted(() => {
-  const queues = new Map<string, { closeCalls: number; jobs: MockQueueJob[]; name: string }>();
+  const queues = new Map<string, MockQueueState>();
   const workers = new Map<string, MockWorkerState>();
 
   let sequence = 0;
@@ -56,7 +66,12 @@ const bullmqState = vi.hoisted(() => {
   const failWorkerCreation = new Set<string>();
   const failWorkerRun = new Set<string>();
   const forceCloseHangs = new Set<string>();
+  const queueCloseHangs = new Set<string>();
+  const queueCloseStarted = new Set<string>();
+  const pendingQueueCloses = new Map<string, () => void>();
   const pendingForceCloses = new Map<string, () => void>();
+  const deferredWorkerRunRejections = new Map<string, (error: Error) => void>();
+  const pendingWorkerRunRejections = new Set<string>();
 
   function attemptsFor(job: MockQueueJob): number {
     if (typeof job.opts.attempts === 'number' && Number.isFinite(job.opts.attempts) && job.opts.attempts > 0) {
@@ -114,14 +129,25 @@ const bullmqState = vi.hoisted(() => {
       failWorkerCreation.clear();
       failWorkerRun.clear();
       forceCloseHangs.clear();
+      queueCloseHangs.clear();
+      queueCloseStarted.clear();
+      for (const resolve of pendingQueueCloses.values()) {
+        resolve();
+      }
+      pendingQueueCloses.clear();
       for (const resolve of pendingForceCloses.values()) {
         resolve();
       }
       pendingForceCloses.clear();
+      for (const reject of deferredWorkerRunRejections.values()) {
+        reject(new Error('bullmq mock cleared'));
+      }
+      deferredWorkerRunRejections.clear();
+      pendingWorkerRunRejections.clear();
       sequence = 0;
     },
     createQueue(name: string) {
-      const queue = { closeCalls: 0, jobs: [] as MockQueueJob[], name };
+      const queue: MockQueueState = { addBulkCalls: 0, addCalls: 0, closeCalls: 0, jobs: [], name };
       queues.set(name, queue);
       return queue;
     },
@@ -160,10 +186,30 @@ const bullmqState = vi.hoisted(() => {
     failWorkerCreation,
     failWorkerRun,
     forceCloseHangs,
+    queueCloseHangs,
+    pendingWorkerRunRejections,
+    captureDeferredWorkerRunRejection(name: string, reject: (error: Error) => void): void {
+      deferredWorkerRunRejections.set(name, reject);
+    },
+    rejectWorkerRun(name: string, error: Error): void {
+      const reject = deferredWorkerRunRejections.get(name);
+
+      if (!reject) {
+        throw new Error(`No deferred BullMQ Worker.run() rejection is pending for ${name}.`);
+      }
+
+      deferredWorkerRunRejections.delete(name);
+      reject(error);
+    },
     releaseForceClose(name: string): void {
       forceCloseHangs.delete(name);
       pendingForceCloses.get(name)?.();
       pendingForceCloses.delete(name);
+    },
+    releaseQueueClose(name: string): void {
+      queueCloseHangs.delete(name);
+      pendingQueueCloses.get(name)?.();
+      pendingQueueCloses.delete(name);
     },
     queues,
     workers,
@@ -189,6 +235,28 @@ const bullmqState = vi.hoisted(() => {
         pendingForceCloses.set(name, resolve);
       });
     },
+    waitForQueueClose(name: string): Promise<void> {
+      if (queueCloseStarted.has(name)) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        pendingQueueCloses.set(name, resolve);
+      });
+    },
+    async closeQueue(name: string): Promise<void> {
+      queueCloseStarted.add(name);
+      pendingQueueCloses.get(name)?.();
+      pendingQueueCloses.delete(name);
+
+      if (!queueCloseHangs.has(name)) {
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        pendingQueueCloses.set(name, resolve);
+      });
+    },
   };
 });
 
@@ -205,10 +273,26 @@ vi.mock('bullmq', () => ({
     }
 
     async add(_jobName: string, data: Record<string, unknown>, opts: MockQueueJob['opts'] = {}): Promise<{ id: string }> {
+      this.queue.addCalls += 1;
+
+      if (opts.jobId !== undefined && `${parseInt(opts.jobId, 10)}` === opts.jobId) {
+        throw new Error('Custom Id cannot be integers');
+      }
+
+      if (opts.jobId?.includes(':')) {
+        throw new Error('Custom Id cannot contain :');
+      }
+
+      const existing = opts.jobId === undefined ? undefined : this.queue.jobs.find((job) => job.id === opts.jobId);
+
+      if (existing?.id) {
+        return { id: existing.id };
+      }
+
       const job: MockQueueJob = {
         attemptsMade: 0,
         data,
-        id: bullmqState.nextId(),
+        id: opts.jobId ?? bullmqState.nextId(),
         opts,
       };
 
@@ -218,8 +302,54 @@ vi.mock('bullmq', () => ({
       return { id: job.id ?? '' };
     }
 
+    async addBulk(
+      jobs: readonly { readonly data: Record<string, unknown>; readonly name: string; readonly opts: MockQueueJob['opts'] }[],
+    ): Promise<readonly { id: string }[]> {
+      this.queue.addBulkCalls += 1;
+
+      for (const { opts } of jobs) {
+        if (opts.jobId !== undefined && `${parseInt(opts.jobId, 10)}` === opts.jobId) {
+          throw new Error('Custom Id cannot be integers');
+        }
+
+        if (opts.jobId?.includes(':')) {
+          throw new Error('Custom Id cannot contain :');
+        }
+      }
+
+      const stagedJobs: MockQueueJob[] = [];
+      const results: Array<{ id: string }> = [];
+
+      for (const { data, opts } of jobs) {
+        const existing = opts.jobId === undefined
+          ? undefined
+          : [...this.queue.jobs, ...stagedJobs].find((job) => job.id === opts.jobId);
+
+        if (existing?.id) {
+          results.push({ id: existing.id });
+          continue;
+        }
+
+        const job: MockQueueJob = {
+          attemptsMade: 0,
+          data,
+          id: opts.jobId ?? bullmqState.nextId(),
+          opts,
+        };
+
+        stagedJobs.push(job);
+        results.push({ id: job.id ?? '' });
+      }
+
+      this.queue.jobs.push(...stagedJobs);
+      await Promise.all(stagedJobs.map((job) => bullmqState.dispatch(this.name, job)));
+
+      return results;
+    }
+
     async close(): Promise<void> {
       this.queue.closeCalls += 1;
+      await bullmqState.closeQueue(this.name);
     }
   },
   Worker: class MockBullWorker {
@@ -275,6 +405,12 @@ vi.mock('bullmq', () => ({
         throw new Error(`worker run fail:${this.worker.name}`);
       }
 
+      if (bullmqState.pendingWorkerRunRejections.has(this.worker.name)) {
+        return new Promise<void>((_resolve, reject) => {
+          bullmqState.captureDeferredWorkerRunRejection(this.worker.name, reject);
+        });
+      }
+
       return bullmqState.runWorker(this.worker);
     }
 
@@ -295,16 +431,67 @@ import type { Queue } from './types.js';
 
 class MockRedisClient {
   private duplicateSequence = 0;
+  private readonly duplicateCloseObservers: (() => void)[] = [];
+  private readonly duplicateQuitObservers = new Map<string, () => void>();
+  private readonly pendingDuplicateQuits = new Map<string, () => void>();
   failConnectOnDuplicate: number | undefined;
+  hangQuitOnDuplicate: number | undefined;
 
   readonly deadLetters = new Map<string, string[]>();
   readonly disconnectCalls: string[] = [];
+  readonly duplicateDisconnectCalls: string[] = [];
   readonly duplicateOptions: MockRedisDuplicateOptions[] = [];
+  readonly duplicateQuitCalls: string[] = [];
   readonly duplicates: MockRedisConnection[] = [];
   readonly quitCalls: string[] = [];
 
   disconnect(): void {
     this.disconnectCalls.push('shared');
+  }
+
+  /**
+   * Resolves on the transition that closes the last queue-owned duplicate.
+   * Queue-owned connections are the final resource that startup-failure
+   * rollback releases, so subscribing before the failure is triggered turns
+   * rollback completion into an observed signal instead of a timed wait.
+   */
+  whenAllDuplicatesClosed(): Promise<void> {
+    if (this.allDuplicatesClosed()) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.duplicateCloseObservers.push(resolve);
+    });
+  }
+
+  releaseDuplicateQuit(id: string): void {
+    this.pendingDuplicateQuits.get(id)?.();
+    this.pendingDuplicateQuits.delete(id);
+  }
+
+  waitForDuplicateQuit(id: string): Promise<void> {
+    if (this.duplicateQuitCalls.includes(id)) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.duplicateQuitObservers.set(id, resolve);
+    });
+  }
+
+  private allDuplicatesClosed(): boolean {
+    return this.duplicates.length > 0 && this.duplicates.every((connection) => connection.status === 'end');
+  }
+
+  private notifyDuplicateClosed(): void {
+    if (!this.allDuplicatesClosed()) {
+      return;
+    }
+
+    for (const resolve of this.duplicateCloseObservers.splice(0)) {
+      resolve();
+    }
   }
 
   duplicate(options: MockRedisDuplicateOptions = {}): MockRedisConnection {
@@ -321,12 +508,25 @@ class MockRedisClient {
         connection.status = 'ready';
       },
       disconnect: () => {
+        this.duplicateDisconnectCalls.push(id);
         connection.status = 'end';
+        this.notifyDuplicateClosed();
       },
       id,
       maxRetriesPerRequest: Object.hasOwn(options, 'maxRetriesPerRequest') ? options.maxRetriesPerRequest : 20,
       quit: async () => {
+        this.duplicateQuitCalls.push(id);
+        this.duplicateQuitObservers.get(id)?.();
+        this.duplicateQuitObservers.delete(id);
+
+        if (this.hangQuitOnDuplicate === duplicateIndex) {
+          await new Promise<void>((resolve) => {
+            this.pendingDuplicateQuits.set(id, resolve);
+          });
+        }
+
         connection.status = 'end';
+        this.notifyDuplicateClosed();
         return 'OK';
       },
       status: 'wait',
@@ -601,6 +801,244 @@ describe('@fluojs/queue', () => {
     }
   });
 
+  it('enqueues ordered batches through BullMQ addBulk with per-job deduplication keys', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+
+      // When
+      const result = await queue.enqueueMany([
+        { job: new SendReceiptJob('receipt-first'), options: { deduplicationKey: 'notification:email:first' } },
+        { job: new SendReceiptJob('receipt-second'), options: { deduplicationKey: 'notification:email:second' } },
+      ]);
+
+      // Then
+      const bullQueue = bullmqState.queues.get('SendReceiptJob');
+      expect(result).toEqual(bullQueue?.jobs.map((job) => job.id));
+      expect(bullQueue).toMatchObject({
+        addBulkCalls: 1,
+        addCalls: 0,
+        jobs: [
+          { data: { receiptId: 'receipt-first' }, opts: { jobId: expect.stringMatching(/^fluo-/) } },
+          { data: { receiptId: 'receipt-second' }, opts: { jobId: expect.stringMatching(/^fluo-/) } },
+        ],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects an invalid later batch job before persisting earlier jobs', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    class UnregisteredJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+
+      // When / Then
+      await expect(
+        queue.enqueueMany([
+          { job: new SendReceiptJob('receipt-first') },
+          { job: new UnregisteredJob('receipt-invalid') },
+        ]),
+      ).rejects.toThrow('No @QueueWorker() registered for job type UnregisteredJob.');
+      expect(bullmqState.queues.get('SendReceiptJob')).toMatchObject({
+        addBulkCalls: 0,
+        addCalls: 0,
+        jobs: [],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects valid batch jobs targeting distinct queues before calling addBulk or persisting either job', async () => {
+    // Given
+    class FirstReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    class SecondReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(FirstReceiptJob, { jobName: 'first-receipt-job' })
+    class FirstReceiptWorker {
+      async handle(_job: FirstReceiptJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondReceiptJob, { jobName: 'second-receipt-job' })
+    class SecondReceiptWorker {
+      async handle(_job: SecondReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [FirstReceiptWorker, SecondReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+
+      // When / Then
+      await expect(
+        queue.enqueueMany([
+          { job: new FirstReceiptJob('receipt-first') },
+          { job: new SecondReceiptJob('receipt-second') },
+        ]),
+      ).rejects.toThrow('Queue batch jobs must target one registered worker queue.');
+      expect(bullmqState.queues.get('first-receipt-job')).toMatchObject({
+        addBulkCalls: 0,
+        jobs: [],
+      });
+      expect(bullmqState.queues.get('second-receipt-job')).toMatchObject({
+        addBulkCalls: 0,
+        jobs: [],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maps a colon-bearing deduplication key to a stable BullMQ-safe job id', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      const deduplicationKey = 'notification:email:payment-received';
+      const expectedJobId = 'fluo-fe7e6f032c190d2e815ccd9f0afb2da5dc02548f90254460b1a00706a081818b';
+      await waitForApplicationQueueWorkers(app);
+
+      // When
+      const result = await Promise.all([
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+      ]);
+
+      // Then
+      expect(result).toEqual([expectedJobId, expectedJobId]);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toHaveLength(1);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toMatchObject([{ opts: { jobId: expectedJobId } }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maps a numeric-only deduplication key to a stable BullMQ-safe job id', async () => {
+    // Given
+    class SendReceiptJob {
+      constructor(public readonly receiptId: string) {}
+    }
+
+    @QueueWorker(SendReceiptJob)
+    class SendReceiptWorker {
+      async handle(_job: SendReceiptJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [SendReceiptWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      const deduplicationKey = '3167';
+      const expectedJobId = 'fluo-dcd0ea5b0fea71aa19678a266ac3620df54c68aef9e329a31f969a3862ba9168';
+      await waitForApplicationQueueWorkers(app);
+
+      // When
+      const result = await Promise.all([
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+        queue.enqueue(new SendReceiptJob('receipt-1'), { deduplicationKey }),
+      ]);
+
+      // Then
+      expect(result).toEqual([expectedJobId, expectedJobId]);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toHaveLength(1);
+      expect(bullmqState.queues.get('SendReceiptJob')?.jobs).toMatchObject([{ opts: { jobId: expectedJobId } }]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('resolves a named Redis client when clientName is configured', async () => {
     const NAMED_REDIS_CLIENT = getRedisClientToken('jobs');
 
@@ -720,6 +1158,119 @@ describe('@fluojs/queue', () => {
     expect(redis.disconnectCalls).toEqual([]);
   });
 
+  it('bounds a never-settling Queue close and continues Queue-owned Redis cleanup', async () => {
+    const loggerEvents: string[] = [];
+
+    class HangingQueueCloseJob {}
+
+    @QueueWorker(HangingQueueCloseJob)
+    class HangingQueueCloseWorker {
+      async handle(_job: HangingQueueCloseJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ workerShutdownTimeoutMs: 10 })],
+      providers: [HangingQueueCloseWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const queueCloseStarted = withTimeout(
+      bullmqState.waitForQueueClose('HangingQueueCloseJob'),
+      10,
+      () => new Error('Queue close did not begin before shutdown timeout.'),
+    );
+
+    bullmqState.queueCloseHangs.add('HangingQueueCloseJob');
+    vi.useFakeTimers();
+    const closing = app.close();
+    let closed = false;
+    void closing.then(() => {
+      closed = true;
+    });
+
+    try {
+      await queueCloseStarted;
+
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(closed).toBe(true);
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+      expect(loggerEvents).toContain(
+        'error:QueueLifecycleService:Failed to close queue within shutdown timeout.:queue shutdown timed out',
+      );
+    } finally {
+      bullmqState.releaseQueueClose('HangingQueueCloseJob');
+      await closing;
+    }
+  });
+
+  it('bounds a never-settling Queue-owned Redis quit and force-disconnects it', async () => {
+    const loggerEvents: string[] = [];
+
+    class HangingRedisQuitJob {}
+
+    @QueueWorker(HangingRedisQuitJob)
+    class HangingRedisQuitWorker {
+      async handle(_job: HangingRedisQuitJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ workerShutdownTimeoutMs: 10 })],
+      providers: [HangingRedisQuitWorker],
+    });
+
+    const redis = new MockRedisClient();
+    redis.hangQuitOnDuplicate = 1;
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const duplicateQuitStarted = withTimeout(
+      redis.waitForDuplicateQuit('dup-1'),
+      10,
+      () => new Error('Queue-owned Redis quit did not begin before shutdown timeout.'),
+    );
+
+    vi.useFakeTimers();
+    const closing = app.close();
+    let closed = false;
+    void closing.then(() => {
+      closed = true;
+    });
+
+    try {
+      await duplicateQuitStarted;
+
+      expect(redis.duplicates[1]?.status).not.toBe('end');
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(closed).toBe(true);
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+      expect(redis.duplicateQuitCalls).toEqual(['dup-1', 'dup-2']);
+      expect(redis.duplicateDisconnectCalls).toEqual(['dup-1']);
+      expect(redis.disconnectCalls).toEqual([]);
+      expect(loggerEvents).toContain(
+        'error:QueueLifecycleService:Failed to close queue-owned Redis connection within shutdown timeout.:queue-owned Redis connection shutdown timed out',
+      );
+    } finally {
+      redis.releaseDuplicateQuit('dup-1');
+      await closing;
+    }
+  });
+
   it('rejects duplicate default scoped queue registrations with a deterministic error', async () => {
     class FirstQueueFeatureModule {}
     defineModule(FirstQueueFeatureModule, {
@@ -770,6 +1321,48 @@ describe('@fluojs/queue', () => {
         rootModule: AppModule,
       }),
     ).rejects.toThrow('Duplicate @fluojs/queue scope "jobs" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.');
+  });
+
+  it('ignores unrelated application values that structurally resemble queue registration metadata', async () => {
+    class LookalikeModuleType {}
+
+    const LOOKALIKE_TOKEN = Symbol('app.lookalike-queue-context');
+
+    class LookalikeContextModule {}
+    defineModule(LookalikeContextModule, {
+      providers: [
+        {
+          provide: LOOKALIKE_TOKEN,
+          useValue: {
+            moduleType: LookalikeModuleType,
+            options: {},
+            registrationTokens: [],
+            scope: 'jobs',
+          },
+        },
+      ],
+    });
+
+    class QueueFeatureModule {}
+    defineModule(QueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false, scope: 'jobs' })],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [LookalikeContextModule, QueueFeatureModule],
+    });
+
+    const redis = new MockRedisClient();
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await expect(app.container.resolve(getQueueToken('jobs'))).resolves.toBeDefined();
+
+    await app.close();
   });
 
   it('keeps distinct explicit queue scopes isolated through public scoped token helpers', async () => {
@@ -895,6 +1488,12 @@ describe('@fluojs/queue', () => {
     );
     expect(() => getQueueToken('')).toThrow('Queue scope must be a non-empty string when provided.');
     expect(() => getQueueLifecycleServiceToken('  ')).toThrow('Queue scope must be a non-empty string when provided.');
+  });
+
+  it('rejects blank ownership namespaces during module registration', () => {
+    expect(() => QueueModule.forRoot({ ownershipNamespace: '   ' })).toThrow(
+      'Queue ownership namespace must be a non-empty string when provided.',
+    );
   });
 
   it('resolves a named Redis client through sibling Redis and Queue module imports', async () => {
@@ -1103,6 +1702,88 @@ describe('@fluojs/queue', () => {
     ).toBe(true);
 
     await app.close();
+  });
+
+  it('rejects duplicate job class workers before BullMQ resource creation regardless of provider order', async () => {
+    class DuplicateJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(DuplicateJob)
+    class FirstDuplicateWorker {
+      async handle(_job: DuplicateJob): Promise<void> {}
+    }
+
+    @QueueWorker(DuplicateJob)
+    class SecondDuplicateWorker {
+      async handle(_job: DuplicateJob): Promise<void> {}
+    }
+
+    for (const providers of [
+      [FirstDuplicateWorker, SecondDuplicateWorker],
+      [SecondDuplicateWorker, FirstDuplicateWorker],
+    ]) {
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [QueueModule.forRoot()],
+        providers,
+      });
+
+      const redis = new MockRedisClient();
+
+      await expect(
+        bootstrapApplication({
+          providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+          rootModule: AppModule,
+        }),
+      ).rejects.toThrow('Duplicate @QueueWorker() registration for job type DuplicateJob.');
+      expect(bullmqState.queues).toHaveLength(0);
+      expect(bullmqState.workers).toHaveLength(0);
+      expect(redis.duplicates).toHaveLength(0);
+    }
+  });
+
+  it('rejects duplicate job names before BullMQ resource creation regardless of provider order', async () => {
+    class FirstNamedJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class SecondNamedJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(FirstNamedJob, { jobName: 'shared-job' })
+    class FirstNamedWorker {
+      async handle(_job: FirstNamedJob): Promise<void> {}
+    }
+
+    @QueueWorker(SecondNamedJob, { jobName: 'shared-job' })
+    class SecondNamedWorker {
+      async handle(_job: SecondNamedJob): Promise<void> {}
+    }
+
+    for (const providers of [
+      [FirstNamedWorker, SecondNamedWorker],
+      [SecondNamedWorker, FirstNamedWorker],
+    ]) {
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [QueueModule.forRoot()],
+        providers,
+      });
+
+      const redis = new MockRedisClient();
+
+      await expect(
+        bootstrapApplication({
+          providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+          rootModule: AppModule,
+        }),
+      ).rejects.toThrow('Duplicate queue job name shared-job.');
+      expect(bullmqState.queues).toHaveLength(0);
+      expect(bullmqState.workers).toHaveLength(0);
+      expect(redis.duplicates).toHaveLength(0);
+    }
   });
 
   it('uses decorator attempts/backoff and writes dead-letter records on terminal failure', async () => {
@@ -1519,6 +2200,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,
@@ -1626,6 +2308,86 @@ describe('@fluojs/queue', () => {
     await waitForRedisDuplicatesClosed(redis);
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
     await expect(service.enqueue(new RunFailureJob('after-failure'))).rejects.toThrow('Queue lifecycle state is failed.');
+
+    await app.close();
+  });
+
+  it('marks queue lifecycle failed when BullMQ worker run rejects after the call returns', async () => {
+    const loggerEvents: string[] = [];
+
+    class AsyncRunFailureJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(AsyncRunFailureJob)
+    class AsyncRunFailureWorker {
+      async handle(_job: AsyncRunFailureJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [AsyncRunFailureWorker],
+    });
+
+    bullmqState.pendingWorkerRunRejections.add('AsyncRunFailureJob');
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const service = await app.container.resolve(QueueLifecycleService);
+
+    // Worker.run() already returned a still-pending Promise and startup
+    // completed, so only the post-startup rejection path can fail below.
+    expect(bullmqState.workers.get('AsyncRunFailureJob')?.closeCalls).toBe(0);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'started', workerStartFailures: 0, workersReady: 1 },
+    });
+
+    // Subscribe to the terminal rollback signal before triggering the
+    // rejection so completion is observed, never waited out.
+    const rollbackCompleted = redis.whenAllDuplicatesClosed();
+
+    bullmqState.rejectWorkerRun('AsyncRunFailureJob', new Error('worker run rejected:AsyncRunFailureJob'));
+
+    await expect(
+      withTimeout(rollbackCompleted, 1_000, () => new Error('Queue startup failure did not roll back initialized resources.')),
+    ).resolves.toBeUndefined();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lastWorkerStartFailure: 'worker run rejected:AsyncRunFailureJob',
+        lifecycleState: 'failed',
+        queuesReady: 0,
+        workerStartFailures: 1,
+        workersDiscovered: 1,
+        workersReady: 0,
+      },
+      health: {
+        reason: 'Queue worker startup failed.',
+        status: 'unhealthy',
+      },
+      readiness: {
+        reason: 'Queue worker startup failed.',
+        status: 'not-ready',
+      },
+    });
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'error:QueueLifecycleService:Failed to start queue worker AsyncRunFailureWorker after application bootstrap.:worker run rejected:AsyncRunFailureJob',
+        ),
+      ),
+    ).toBe(true);
+    expect(bullmqState.queues.get('AsyncRunFailureJob')?.closeCalls).toBe(1);
+    expect(bullmqState.workers.get('AsyncRunFailureJob')?.closeCalls).toBe(1);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    await expect(service.enqueue(new AsyncRunFailureJob('after-async-failure'))).rejects.toThrow(
+      'Queue lifecycle state is failed.',
+    );
 
     await app.close();
   });
@@ -1791,6 +2553,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,
@@ -1960,6 +2723,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,
@@ -2035,6 +2799,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,

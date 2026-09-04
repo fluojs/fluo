@@ -19,6 +19,18 @@
 - Platform telemetry refreshes on each active registry scrape by resolving `PLATFORM_SHELL` and reading its snapshot, including advanced custom scrapes through `MetricsService.getRegistry().metrics()`. If `PLATFORM_SHELL` is missing, the scrape succeeds without platform telemetry series. Non-missing resolution failures fail the scrape.
 - Platform telemetry state is tracked per reused registry, so a later module instance refresh removes stale module-owned component readiness and health series that are no longer present in the active platform snapshot.
 
+## Structured HTTP Access Logging
+
+| Surface | Source | Default contract | Configurable behavior |
+| --- | --- | --- | --- |
+| Structured access lifecycle records | `createAccessLogObserver(...)` in `@fluojs/http` | Emits one `http.access.finish` record per admitted request, with an optional request ID, method, path, matched route, final status, duration, and success/error/abort outcome. It emits no request or response headers by default. | Applications install the observer through dispatcher or runtime bootstrap `observers` and own the `AccessLogSink`. Header fields require an explicit allowlist; authorization, cookie, and configured sensitive fields remain redacted. |
+
+- Access logging is application-owned structured output, not a replacement for the runtime `ApplicationLogger` and not an adapter-native logger stored on `FrameworkRequest`.
+- `AccessLogSink.emit(...)` may be asynchronous; the request lifecycle awaits each emission while observer failures are isolated and reported through the dispatcher logger so a failing observer cannot suppress later observers or terminal records.
+- Access-log request IDs are optional and use `RequestContext.requestId` when present. `createCorrelationMiddleware()` adopts `x-request-id` or legacy `x-correlation-id`, and generates an ID before access-log start when neither header is present; an observer alone does not generate one.
+- Client addresses are absent unless `clientIdentity` is explicitly configured. `clientIdentity: {}` records the direct transport peer and ignores forged forwarding fields. Forwarded identity is used only when that explicit policy includes a matching `trustProxy` boundary.
+- `status` is omitted only when admission aborts before a response is committed; committed responses record their final status, defaulting to `200` when the adapter did not explicitly set one.
+
 ## Health Checks
 
 | Surface | Source | Default path contract | Response contract |
@@ -48,9 +60,9 @@
 
 ## Constraints
 
-- Constraint: observability surfaces in this repository are Prometheus text for metrics and JSON for health endpoints.
+- Constraint: observability surfaces in this repository are Prometheus text for metrics, JSON for health endpoints, and opt-in application-owned structured records for HTTP access logging.
 - Constraint: metrics endpoint exposure is explicit. Production deployments should either protect the scrape route with `endpointMiddleware` or disable it with `path: false` until an ingress boundary exists.
 - Constraint: HTTP metric path labels default to template normalization. Raw path labels require `allowUnsafeRawPathLabelMode: true` and should only be used when path cardinality is bounded.
 - Constraint: health endpoints report dependency state through runtime and Terminus contracts, not through ad hoc direct `process.env` checks inside packages.
 - Constraint: readiness and health telemetry are tied to `PLATFORM_SHELL` snapshot semantics, so component implementations must keep `ready()`, `health()`, and `snapshot()` deterministic.
-- Constraint: request correlation data is available through `RequestContext` and AsyncLocalStorage helpers in `@fluojs/http`, but this document only treats metrics and health endpoints as the repository's built-in observability surfaces.
+- Constraint: request correlation data is available through `RequestContext` and AsyncLocalStorage helpers in `@fluojs/http`; access logging uses that context while metrics and health endpoints remain independently configured surfaces.

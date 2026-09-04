@@ -8,6 +8,9 @@ export interface QueueJobType<TJob extends object = object> {
 /** Supported retry backoff strategies forwarded to BullMQ workers. */
 export type QueueBackoffType = 'fixed' | 'exponential';
 
+/** Cross-scope ownership collision action selected during queue bootstrap. */
+export type QueueOwnershipEnforcement = 'warn' | 'reject';
+
 /** Retry timing settings applied to one queued job type. */
 export interface QueueBackoffOptions {
   delayMs?: number;
@@ -39,6 +42,14 @@ export interface QueueModuleOptions {
   clientName?: string;
   /** Unique registration scope for non-global queue modules that need isolated providers. */
   scope?: string;
+  /**
+   * Stable application-supplied identity for the Redis database and BullMQ prefix shared by this registration.
+   *
+   * Registrations that target one BullMQ backend must use the same namespace, regardless of `clientName`.
+   */
+  ownershipNamespace?: string;
+  /** Cross-scope collision action. Defaults to `warn` for 2.x compatibility. */
+  ownershipEnforcement?: QueueOwnershipEnforcement;
   /** Whether queue providers should be visible globally. Defaults to `true`. */
   global?: boolean;
   defaultAttempts?: number;
@@ -54,6 +65,8 @@ export interface QueueModuleOptions {
 export interface NormalizedQueueModuleOptions {
   clientName?: string;
   scope?: string;
+  ownershipNamespace?: string;
+  ownershipEnforcement: QueueOwnershipEnforcement;
   defaultAttempts: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency: number;
@@ -106,15 +119,45 @@ export interface QueueDeadLetterInspectionResult {
   readonly records: readonly QueueDeadLetterRecord[];
 }
 
+/** Optional producer controls applied to one enqueue operation. */
+export interface QueueEnqueueOptions {
+  /**
+   * Caller-supplied identity used to deduplicate repeated enqueue attempts.
+   *
+   * Queue deterministically maps this value to a BullMQ-safe backing job id,
+   * so callers can use arbitrary identities without inheriting
+   * BullMQ's colon or numeric-only custom-id restrictions.
+   */
+  readonly deduplicationKey?: string;
+}
+
+/** One ordered job and its producer controls for an atomic queue batch. */
+export interface QueueEnqueueManyEntry<TJob extends object = object> {
+  /** Job instance whose constructor identifies the target worker. */
+  readonly job: TJob;
+  /** Optional producer controls applied only to this batch entry. */
+  readonly options?: QueueEnqueueOptions;
+}
+
 /** Queue facade exposed to application code and compatibility tokens. */
 export interface Queue {
   /**
    * Enqueues one job instance for the worker registered against its class.
    *
    * @param job Job instance whose constructor identifies the target worker.
-   * @returns The BullMQ job id generated for the enqueued payload.
+   * @param options Optional producer controls, including a caller-owned deduplication key.
+   * @returns The backing BullMQ job id for the enqueued payload.
    */
-  enqueue<TJob extends object>(job: TJob): Promise<string>;
+  enqueue<TJob extends object>(job: TJob, options?: QueueEnqueueOptions): Promise<string>;
+
+  /**
+   * Atomically enqueues ordered jobs that resolve to one registered worker queue.
+   *
+   * @param entries Ordered job instances and per-job producer controls.
+   * @returns Backing BullMQ job ids aligned with the input order.
+   * @throws {Error} When any entry has no registered worker, targets another queue, or the queue is unavailable.
+   */
+  enqueueMany<TJob extends object>(entries: readonly QueueEnqueueManyEntry<TJob>[]): Promise<readonly string[]>;
 
   /**
    * Reads a bounded snapshot of dead-letter records for one queue job name.

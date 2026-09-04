@@ -1,8 +1,8 @@
 export {
   CacheEvict,
   CacheKey,
-  cacheRouteMetadataKey,
   CacheTTL,
+  cacheRouteMetadataKey,
   getCacheEvictMetadata,
   getCacheKeyMetadata,
   getCacheTtlMetadata,
@@ -10,6 +10,12 @@ export {
 export { CacheInterceptor } from './interceptor.js';
 export { CacheModule } from './module.js';
 export { CacheService } from './service.js';
+export type {
+  CacheManagerPlatformStatusSnapshot,
+  CacheManagerStatusAdapterInput,
+  CacheManagerStoreKind,
+  CacheManagerStoreOwnershipMode,
+} from './status.js';
 export {
   createCacheManagerPlatformDiagnosticIssues,
   createCacheManagerPlatformStatusSnapshot,
@@ -18,21 +24,21 @@ export { MemoryStore } from './stores/memory-store.js';
 export { RedisStore, type RedisStoreOptions } from './stores/redis-store.js';
 export { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 export type {
+  CacheAsyncModuleOptions,
   CacheEvictDecoratorValue,
   CacheEvictFactory,
   CacheKeyDecoratorValue,
   CacheKeyFactory,
   CacheKeyStrategy,
   CacheModuleOptions,
+  CacheObservation,
+  CacheObserver,
   CacheStore,
+  CacheTtlJitterMode,
+  CacheTtlJitterOptions,
   NormalizedCacheModuleOptions,
+  NormalizedCacheTtlJitterOptions,
   PrincipalScopeResolver,
   RedisCacheOptions,
   RedisCompatibleClient,
 } from './types.js';
-export type {
-  CacheManagerPlatformStatusSnapshot,
-  CacheManagerStatusAdapterInput,
-  CacheManagerStoreKind,
-  CacheManagerStoreOwnershipMode,
-} from './status.js';

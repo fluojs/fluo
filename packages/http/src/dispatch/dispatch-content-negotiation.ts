@@ -1,5 +1,5 @@
 import { NotAcceptableException } from '../exceptions.js';
-import { readFirstNonEmptyRequestHeaderValue } from '../header-helpers.js';
+import { readJoinedNonEmptyRequestHeaderValues } from '../header-helpers.js';
 import type {
   ContentNegotiationOptions,
   FrameworkRequest,
@@ -9,6 +9,7 @@ import type {
 
 interface AcceptToken {
   mediaRange: string;
+  order: number;
   quality: number;
   specificity: number;
 }
@@ -24,30 +25,60 @@ export interface ResolvedContentNegotiation {
 
 const NO_ACCEPTABLE_REPRESENTATION_MESSAGE = 'No acceptable response representation found.';
 
+class ContentNegotiationNotAcceptableException extends NotAcceptableException {}
+
 function normalizeMediaType(value: string): string {
   return value.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
 function readAcceptHeader(request: FrameworkRequest): string | undefined {
-  return readFirstNonEmptyRequestHeaderValue(request, 'accept');
+  return readJoinedNonEmptyRequestHeaderValues(request, 'accept');
 }
 
-function parseQuality(value: string | undefined): number {
-  if (!value) {
-    return 1;
+function parseQuality(value: string): number | undefined {
+  if (!/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(value)) {
+    return undefined;
   }
 
-  const parsed = Number(value);
+  return Number(value);
+}
 
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return 0;
+/**
+ * Determines whether an error originated from response content negotiation.
+ *
+ * @param error Candidate error emitted while selecting a response formatter.
+ * @returns Whether the error requires `Vary: Accept` on its representation.
+ */
+export function isContentNegotiationNotAcceptableException(
+  error: unknown,
+): error is NotAcceptableException {
+  return error instanceof ContentNegotiationNotAcceptableException;
+}
+
+function isValidMediaRange(mediaRange: string): boolean {
+  const [type, subtype, extra] = mediaRange.split('/');
+
+  if (!type || !subtype || extra !== undefined) {
+    return false;
   }
 
-  if (parsed > 1) {
-    return 1;
+  if (type === '*') {
+    return subtype === '*';
   }
 
-  return parsed;
+  if (type.includes('*')) {
+    return false;
+  }
+
+  if (subtype === '*') {
+    return true;
+  }
+
+  if (subtype.startsWith('*+')) {
+    return subtype.length > 2 && !subtype.slice(2).includes('*');
+  }
+
+  return !subtype.includes('*');
 }
 
 function getMediaRangeSpecificity(mediaRange: string): number {
@@ -59,49 +90,57 @@ function getMediaRangeSpecificity(mediaRange: string): number {
     return 1;
   }
 
-  return 2;
+  return mediaRange.includes('/*+') ? 2 : 3;
 }
 
 function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
   const tokens: AcceptToken[] = [];
 
-  for (const token of acceptHeader.split(',')) {
+  for (const [order, token] of acceptHeader.split(',').entries()) {
     const [rawMediaRange, ...parameterParts] = token.trim().split(';');
     const mediaRange = normalizeMediaType(rawMediaRange ?? '');
 
-    if (!mediaRange || !mediaRange.includes('/')) {
+    if (!isValidMediaRange(mediaRange)) {
       continue;
     }
 
     let quality = 1;
+    let qualityDefined = false;
+    let malformed = false;
 
     for (const parameterPart of parameterParts) {
-      const [name, value] = parameterPart.trim().split('=');
+      const [name, ...rawValues] = parameterPart.trim().split('=');
 
       if (name?.toLowerCase() === 'q') {
-        quality = parseQuality(value?.trim());
-        break;
+        if (qualityDefined || rawValues.length !== 1) {
+          malformed = true;
+          break;
+        }
+
+        const parsedQuality = parseQuality(rawValues[0]?.trim() ?? '');
+        if (parsedQuality === undefined) {
+          malformed = true;
+          break;
+        }
+
+        quality = parsedQuality;
+        qualityDefined = true;
       }
     }
 
-    if (quality <= 0) {
+    if (malformed) {
       continue;
     }
 
     tokens.push({
       mediaRange,
+      order,
       quality,
       specificity: getMediaRangeSpecificity(mediaRange),
     });
   }
 
-  return tokens.sort((left, right) => {
-    if (right.quality !== left.quality) {
-      return right.quality - left.quality;
-    }
-
-    return right.specificity - left.specificity;
-  });
+  return tokens;
 }
 
 function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
@@ -120,7 +159,38 @@ function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
     return false;
   }
 
-  return rangeSubtype === '*' || rangeSubtype === mediaTypeSubtype;
+  if (rangeSubtype === '*') {
+    return true;
+  }
+
+  if (rangeSubtype.startsWith('*+')) {
+    return mediaTypeSubtype.endsWith(rangeSubtype.slice(1));
+  }
+
+  return rangeSubtype === mediaTypeSubtype;
+}
+
+function selectMostSpecificAcceptToken(
+  mediaType: string,
+  acceptTokens: readonly AcceptToken[],
+): AcceptToken | undefined {
+  let selected: AcceptToken | undefined;
+
+  for (const token of acceptTokens) {
+    if (!matchesMediaRange(token.mediaRange, mediaType)) {
+      continue;
+    }
+
+    if (
+      !selected
+      || token.specificity > selected.specificity
+      || (token.specificity === selected.specificity && token.order < selected.order)
+    ) {
+      selected = token;
+    }
+  }
+
+  return selected;
 }
 
 /**
@@ -216,7 +286,7 @@ export function selectResponseFormatter(
   );
 
   if (!allowedFormatters.length) {
-    throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+    throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
   const defaultFormatter = resolveDefaultFormatter(allowedFormatters, allowedNormalizedMediaTypes, contentNegotiation);
@@ -229,27 +299,44 @@ export function selectResponseFormatter(
   const acceptTokens = parseAcceptHeader(acceptHeader);
 
   if (!acceptTokens.length) {
-    throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+    throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
-  for (const token of acceptTokens) {
-    if (token.mediaRange === '*/*') {
-      return defaultFormatter;
+  let selectedFormatter: ResponseFormatter | undefined;
+  let selectedToken: AcceptToken | undefined;
+
+  for (let i = 0; i < allowedFormatters.length; i++) {
+    const formatter = allowedFormatters[i]!;
+    const token = selectMostSpecificAcceptToken(allowedNormalizedMediaTypes[i]!, acceptTokens);
+
+    if (
+      !token
+      || token.quality === 0
+      || (
+        selectedToken
+        && (
+          token.quality < selectedToken.quality
+          || (token.quality === selectedToken.quality && token.specificity < selectedToken.specificity)
+        )
+      )
+    ) {
+      continue;
     }
 
-    let matchedFormatter: ResponseFormatter | undefined;
-
-    for (let i = 0; i < allowedFormatters.length; i++) {
-      if (matchesMediaRange(token.mediaRange, allowedNormalizedMediaTypes[i]!)) {
-        matchedFormatter = allowedFormatters[i];
-        break;
-      }
-    }
-
-    if (matchedFormatter) {
-      return matchedFormatter;
+    if (
+      !selectedToken
+      || token.quality > selectedToken.quality
+      || token.specificity > selectedToken.specificity
+      || formatter === defaultFormatter
+    ) {
+      selectedFormatter = formatter;
+      selectedToken = token;
     }
   }
 
-  throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+  if (selectedFormatter) {
+    return selectedFormatter;
+  }
+
+  throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
 }

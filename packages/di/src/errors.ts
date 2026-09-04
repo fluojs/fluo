@@ -108,12 +108,13 @@ export class ScopeMismatchError extends FluoCodeError {
  *
  * @remarks
  * The formatted message includes the full dependency path plus a first-party hint that points callers toward
- * extracting shared logic or using `forwardRef()` for intentional cycle deferral.
+ * extracting shared logic, introducing a mediator, or moving the interaction to a later boundary.
+ * `forwardRef()` only defers declaration-time token lookup and cannot resolve a true constructor cycle.
  */
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the cycle by extracting shared logic into a separate provider, or use forwardRef() to defer one side of the dependency.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. forwardRef() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +

@@ -10,9 +10,9 @@ function read(relativePath: string): string {
 }
 
 function graphqlMigrationSection(content: string): string {
-  const heading = '### GraphQL Resolver Migration';
+  const heading = '## GraphQL Field Resolver DTO Arguments';
   const start = content.indexOf(heading);
-  const end = content.indexOf('\n### ', start + heading.length);
+  const end = content.indexOf('\n## ', start + heading.length);
 
   if (start === -1 || end === -1) {
     throw new Error('GraphQL resolver migration section is missing or unterminated.');
@@ -35,8 +35,16 @@ const unsupportedMigrationClaims = [
     /detached (?:object )?types? (?:are )?reachable without (?:a )?(?:code-first )?root (?:operation )?output/iu,
   ],
   ['detached-type-reachability-ko', /분리된 object type은 root operation output 없이도 도달 가능/iu],
-  ['field-argument-binding', /field argument DTO binding is supported/iu],
-  ['field-argument-binding-ko', /field argument DTO binding을 지원/iu],
+  ['field-argument-binding', /field argument DTO binding (?:is |remains )?(?:un|not )supported/iu],
+  ['field-argument-binding-ko', /field argument DTO binding(?:을|은)? (?:지원하지 않|미지원)/iu],
+  [
+    'field-argument-compound-limitation',
+    /There is no `forRootAsync\(\.\.\.\)`, field argument DTO binding, schema-first field-resolver attachment, or `@Subscription\(\{ topics \}\)` contract\./u,
+  ],
+  [
+    'field-argument-compound-limitation-ko',
+    /`forRootAsync\(\.\.\.\)`, field argument DTO binding, schema-first field-resolver attachment, `@Subscription\(\{ topics \}\)` 계약은 없다\./u,
+  ],
 ] as const;
 
 function collectUnsupportedMigrationClaims(content: string): string[] {
@@ -64,6 +72,8 @@ describe('GraphQL object field resolver contract governance', () => {
       expect(content).toContain('@FieldResolver');
       expect(content).toContain('@Parent');
       expect(content).toContain('@Context');
+      expect(content).toContain('@Args');
+      expect(content).toContain('@FieldResolver({ input');
     }
 
     const decorators = read('packages/graphql/src/decorators.ts');
@@ -72,6 +82,7 @@ describe('GraphQL object field resolver contract governance', () => {
     expect(decorators).toContain('export function FieldResolver');
     expect(decorators).toContain('export function Parent');
     expect(decorators).toContain('export function Context');
+    expect(decorators).toContain('export function Args(parameterIndex = 0)');
     expect(regressionTest).toContain('discovers and executes a field resolver with parent and context bindings');
   });
 
@@ -81,11 +92,14 @@ describe('GraphQL object field resolver contract governance', () => {
     const discovery = read('packages/graphql/src/discovery.ts');
     const objectFieldResolvers = read('packages/graphql/src/schema/object-field-resolvers.ts');
     const schema = read('packages/graphql/src/schema/schema.ts');
+    const inputRegression = read('packages/graphql/src/field-resolver-input.test.ts');
+    const bootstrapRegression = read('packages/graphql/src/field-resolver-input-bootstrap.test.ts');
     const contextDocs = [read('docs/CONTEXT.md'), read('docs/CONTEXT.ko.md')] as const;
-    const migrationSections = [
-      graphqlMigrationSection(read('docs/getting-started/migrate-from-nestjs.md')),
-      graphqlMigrationSection(read('docs/getting-started/migrate-from-nestjs.ko.md')),
+    const migrationDocs = [
+      read('docs/getting-started/migrate-from-nestjs.md'),
+      read('docs/getting-started/migrate-from-nestjs.ko.md'),
     ] as const;
+    const migrationSections = migrationDocs.map(graphqlMigrationSection);
 
     // When
     const fieldResolverOptions = decorators.slice(
@@ -100,35 +114,41 @@ describe('GraphQL object field resolver contract governance', () => {
     expect(decorators).toContain('export function Context(parameterIndex = 1)');
     expect(fieldResolverOptions).toContain('fieldName?: string');
     expect(fieldResolverOptions).toContain('type?: GraphqlRootOutputType');
-    expect(fieldResolverOptions).not.toContain('input?:');
-    expect(fieldResolverOptions).not.toContain('argTypes?:');
+    expect(fieldResolverOptions).toContain('input?: Function');
+    expect(fieldResolverOptions).toContain('argTypes?: Record<string, GraphqlArgType>');
     expect(discovery).toContain('for (const provider of compiledModule.definition.providers ?? [])');
     expect(discovery).toContain('for (const controller of compiledModule.definition.controllers ?? [])');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = parent;');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = contextValue;');
+    expect(objectFieldResolvers).toContain('methodArguments[binding.index] = input;');
     expect(objectFieldResolvers).toContain('not reachable from a code-first root operation output type');
     expect(schema).toContain('const objectFieldResolvers = new ObjectFieldResolverRegistry(resolverDescriptors);');
     expect(schema).toContain('objectFieldResolvers.assertAllTargetsAttached();');
+    expect(inputRegression).toContain('@Context(0)');
+    expect(inputRegression).toContain('@Args(1)');
+    expect(inputRegression).toContain('@Parent(2)');
+    expect(bootstrapRegression).toContain('rejects @Args() on root operations during bootstrap');
+    expect(bootstrapRegression).toContain('rejects field resolver input without @Args() during bootstrap');
+    expect(bootstrapRegression).toContain('rejects @Args() without field resolver input during bootstrap');
 
     for (const migrationSection of migrationSections) {
-      expect(migrationSection).toContain('@Query');
-      expect(migrationSection).toContain('@Mutation');
-      expect(migrationSection).toContain('@Subscription');
-      expect(migrationSection).toContain("@Resolver('TypeName')");
-      expect(migrationSection).toContain('@FieldResolver(...)');
-      expect(migrationSection).toContain('@Parent(index?)');
-      expect(migrationSection).toContain('@Context(index?)');
-      expect(migrationSection).toMatch(/providers?/u);
-      expect(migrationSection).toMatch(/controllers?/u);
-      expect(migrationSection).toContain('code-first root operation output');
-      expect(migrationSection).toMatch(/field argument DTO binding/iu);
+      expect(migrationSection).toContain('@Parent()');
+      expect(migrationSection).toContain('@Context()');
+      expect(migrationSection).toContain('@Args(index?)');
+      expect(migrationSection).toContain('@FieldResolver({ input: InputDto })');
+      expect(migrationSection).toMatch(/input.*@Args|@Args.*input/iu);
       expect(migrationSection).toMatch(/schema-first field-resolver attachment/iu);
-      expect(collectUnsupportedMigrationClaims(migrationSection)).toEqual([]);
+    }
+
+    for (const migrationDoc of migrationDocs) {
+      expect(collectUnsupportedMigrationClaims(migrationDoc)).toEqual([]);
     }
 
     for (const contextDoc of contextDocs) {
       expect(contextDoc).toContain("@Resolver('TypeName')");
       expect(contextDoc).toContain('@FieldResolver(...)');
+      expect(contextDoc).toContain('@FieldResolver({ input: InputDto })');
+      expect(contextDoc).toContain('@Args(index?)');
       expect(contextDoc).toContain('provider');
       expect(contextDoc).toContain('controller');
       expect(contextDoc).toMatch(/two categor|두 category/iu);
@@ -147,8 +167,16 @@ describe('GraphQL object field resolver contract governance', () => {
     ['schema-first-field-resolver-ko', 'Schema-first field-resolver attachment을 지원합니다.'],
     ['detached-type-reachability', 'Detached object types are reachable without a root operation output.'],
     ['detached-type-reachability-ko', '분리된 object type은 root operation output 없이도 도달 가능합니다.'],
-    ['field-argument-binding', 'Field argument DTO binding is supported.'],
-    ['field-argument-binding-ko', 'Field argument DTO binding을 지원합니다.'],
+    ['field-argument-binding', 'Field argument DTO binding is unsupported.'],
+    ['field-argument-binding-ko', 'Field argument DTO binding을 지원하지 않습니다.'],
+    [
+      'field-argument-compound-limitation',
+      'There is no `forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, or `@Subscription({ topics })` contract.',
+    ],
+    [
+      'field-argument-compound-limitation-ko',
+      '`forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, `@Subscription({ topics })` 계약은 없다.',
+    ],
   ] as const)('rejects the unsupported %s migration claim', (claimName, claim) => {
     // Given
     const migrationSection = `### GraphQL Resolver Migration\n\n${claim}`;
@@ -158,5 +186,13 @@ describe('GraphQL object field resolver contract governance', () => {
 
     // Then
     expect(detectedClaims).toContain(claimName);
+  });
+
+  it.each([
+    ['schema-first-only', 'Code-first field argument DTO binding is supported; schema-first field-resolver attachment remains unsupported.'],
+    ['schema-first-only-ko', 'Code-first field argument DTO binding은 지원하며 schema-first field-resolver attachment만 지원하지 않습니다.'],
+  ] as const)('accepts the qualified %s limitation', (_claimName, claim) => {
+    expect(collectUnsupportedMigrationClaims(claim)).not.toContain('field-argument-compound-limitation');
+    expect(collectUnsupportedMigrationClaims(claim)).not.toContain('field-argument-compound-limitation-ko');
   });
 });

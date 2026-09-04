@@ -2,16 +2,10 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { diagnosticsUsage, runAnalyzeCommand, runDoctorCommand, runInfoCommand } from './commands/diagnostics.js';
-import { runGenerateCommand } from './commands/generate.js';
-import { type InspectCommandRuntimeOptions, runInspectCommand } from './commands/inspect.js';
-import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
-import { type NewCommandRuntimeOptions, runNewCommand } from './commands/new.js';
-import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
-import { runScriptCommand, scriptUsage } from './commands/scripts.js';
-import { runTypegenCommand, type TypegenCommandRuntimeOptions } from './commands/typegen.js';
-import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
-import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
+import type { InspectCommandRuntimeOptions } from './commands/inspect.js';
+import type { NewCommandRuntimeOptions } from './commands/new.js';
+import type { TypegenCommandRuntimeOptions } from './commands/typegen.js';
+import type { DevRunnerRuntime } from './dev-runner/node-restart-runner.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { startStudioSidecar } from './studio/sidecar.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
@@ -117,24 +111,6 @@ type TopLevelCommandHelpEntry = {
   description: string;
 };
 
-const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
-  ...generatorManifest.map((entry) => ({
-    aliases: [...entry.aliases],
-    description: entry.description,
-    kind: entry.kind,
-    schematic: entry.schematic,
-    wiring: entry.wiringBehavior === 'auto-registered' ? 'auto' : 'manual',
-  })),
-];
-
-const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
-  ...generatorOptionSchemas.map((option) => ({
-    aliases: [...option.aliases],
-    description: option.description,
-    option: option.name,
-  })),
-];
-
 const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: ['create'], command: 'new', description: 'Scaffold a new fluo application and install dependencies.' },
   { aliases: ['g'], command: 'generate', description: 'Generate a schematic inside an existing fluo application.' },
@@ -180,7 +156,8 @@ function parseDevRunnerInvocation(argv: string[]): { appArgs: string[]; runtime:
   return { appArgs, runtime };
 }
 
-function normalizeGeneratorKind(value: string | undefined): GeneratorKind | undefined {
+async function normalizeGeneratorKind(value: string | undefined): Promise<GeneratorKind | undefined> {
+  const { resolveGeneratorKind } = await import('./generators/manifest.js');
   return resolveGeneratorKind(value);
 }
 
@@ -211,14 +188,28 @@ function readCliVersion(): string {
   return manifest.version;
 }
 
-function generateUsage(): string {
+async function generateUsage(): Promise<string> {
+  const { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas } = await import('./generators/manifest.js');
+  const generateKindHelp: GenerateKindHelpEntry[] = generatorManifest.map((entry) => ({
+    aliases: [...entry.aliases],
+    description: entry.description,
+    kind: entry.kind,
+    schematic: entry.schematic,
+    wiring: entry.wiringBehavior === 'auto-registered' ? 'auto' : 'manual',
+  }));
+  const generateOptionHelp: GenerateOptionHelpEntry[] = generatorOptionSchemas.map((option) => ({
+    aliases: [...option.aliases],
+    description: option.description,
+    option: option.name,
+  }));
+
   return [
     'Usage: fluo generate|g <kind> <name> [options]',
     '       fluo generate|g request-dto|req <feature> <name> [options]',
     '       fluo generate|g e2e <name> [options]',
     '',
     'Schematics',
-    renderHelpTable(GENERATE_KIND_HELP, [
+    renderHelpTable(generateKindHelp, [
       { header: 'Schematic', render: (entry) => entry.schematic },
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Wiring', render: (entry) => entry.wiring },
@@ -233,7 +224,7 @@ function generateUsage(): string {
     '  External or app-local generator collections are intentionally deferred; no packages or config files are loaded by generate.',
     '',
     'Options',
-    renderHelpTable(GENERATE_OPTION_HELP, [
+    renderHelpTable(generateOptionHelp, [
       { header: 'Option', render: (entry) => entry.option },
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Description', render: (entry) => entry.description },
@@ -292,16 +283,16 @@ function resolveDefaultTargetDirectory(startDirectory: string): string {
   return resolvedStartDirectory;
 }
 
-function parseGenerateArgs(argv: string[]): ParsedCliArgs {
+async function parseGenerateArgs(argv: string[]): Promise<ParsedCliArgs> {
   const [command, rawKind, firstName, ...optionArgs] = argv;
-  const kind = normalizeGeneratorKind(rawKind);
+  const kind = await normalizeGeneratorKind(rawKind);
 
   if (!(command === 'g' || command === 'generate')) {
     throw new Error(usage());
   }
 
   if (!kind || !firstName) {
-    throw new Error(generateUsage());
+    throw new Error(await generateUsage());
   }
 
   if (firstName.startsWith('-')) {
@@ -403,7 +394,7 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   };
 }
 
-function parseCommand(argv: string[]): ParsedCommand {
+async function parseCommand(argv: string[]): Promise<ParsedCommand> {
   const [command] = argv;
 
   if (command === 'analyze') {
@@ -461,7 +452,7 @@ function parseCommand(argv: string[]): ParsedCommand {
   return {
     argv,
     command: 'generate',
-    parsed: parseGenerateArgs(argv),
+    parsed: await parseGenerateArgs(argv),
   };
 }
 
@@ -502,6 +493,7 @@ export async function runCli(
   try {
     if (commandArgv[0] === NODE_DEV_RUNNER_COMMAND || commandArgv[0] === DEV_RUNNER_COMMAND) {
       const runnerInvocation = parseDevRunnerInvocation(commandArgv);
+      const { runNodeRestartRunner } = await import('./dev-runner/node-restart-runner.js');
       return runNodeRestartRunner({ appArgs: runnerInvocation.appArgs, env, runtime: runnerInvocation.runtime, stderr, stdout });
     }
 
@@ -542,36 +534,42 @@ export async function runCli(
       }
 
       if (topic === 'g' || topic === 'generate') {
-        stdout.write(`${generateUsage()}\n`);
+        stdout.write(`${await generateUsage()}\n`);
         return 0;
       }
 
       if (topic === 'doctor' || topic === 'info') {
+        const { diagnosticsUsage } = await import('./commands/diagnostics.js');
         stdout.write(`${diagnosticsUsage(topic)}\n`);
         return 0;
       }
 
       if (topic === 'analyze') {
+        const { diagnosticsUsage } = await import('./commands/diagnostics.js');
         stdout.write(`${diagnosticsUsage('analyze')}\n`);
         return 0;
       }
 
       if (topic === 'build' || topic === 'dev' || topic === 'start') {
+        const { scriptUsage } = await import('./commands/scripts.js');
         stdout.write(`${scriptUsage(topic)}\n`);
         return 0;
       }
 
       if (topic === 'add') {
+        const { addUsage } = await import('./commands/package-workflow.js');
         stdout.write(`${addUsage()}\n`);
         return 0;
       }
 
       if (topic === 'upgrade') {
+        const { upgradeUsage } = await import('./commands/package-workflow.js');
         stdout.write(`${upgradeUsage()}\n`);
         return 0;
       }
 
       if (topic === 'migrate') {
+        const { migrateUsage } = await import('./commands/migrate.js');
         stdout.write(`${migrateUsage()}\n`);
         return 0;
       }
@@ -596,36 +594,42 @@ export async function runCli(
     }
 
     if ((commandArgv[0] === 'g' || commandArgv[0] === 'generate') && commandArgv.slice(1).some(isHelpFlag)) {
-      stdout.write(`${generateUsage()}\n`);
+      stdout.write(`${await generateUsage()}\n`);
       return 0;
     }
 
     if ((commandArgv[0] === 'doctor' || commandArgv[0] === 'info') && commandArgv.slice(1).some(isHelpFlag)) {
+      const { diagnosticsUsage } = await import('./commands/diagnostics.js');
       stdout.write(`${diagnosticsUsage(commandArgv[0])}\n`);
       return 0;
     }
 
     if (commandArgv[0] === 'analyze' && commandArgv.slice(1).some(isHelpFlag)) {
+      const { diagnosticsUsage } = await import('./commands/diagnostics.js');
       stdout.write(`${diagnosticsUsage('analyze')}\n`);
       return 0;
     }
 
     if ((commandArgv[0] === 'build' || commandArgv[0] === 'dev' || commandArgv[0] === 'start') && commandArgv.slice(1).some(isHelpFlag)) {
+      const { scriptUsage } = await import('./commands/scripts.js');
       stdout.write(`${scriptUsage(commandArgv[0])}\n`);
       return 0;
     }
 
     if (commandArgv[0] === 'add' && commandArgv.slice(1).some(isHelpFlag)) {
+      const { addUsage } = await import('./commands/package-workflow.js');
       stdout.write(`${addUsage()}\n`);
       return 0;
     }
 
     if (commandArgv[0] === 'upgrade' && commandArgv.slice(1).some(isHelpFlag)) {
+      const { upgradeUsage } = await import('./commands/package-workflow.js');
       stdout.write(`${upgradeUsage()}\n`);
       return 0;
     }
 
     if (commandArgv[0] === 'migrate' && commandArgv.slice(1).some(isHelpFlag)) {
+      const { migrateUsage } = await import('./commands/migrate.js');
       stdout.write(`${migrateUsage()}\n`);
       return 0;
     }
@@ -640,45 +644,55 @@ export async function runCli(
       return 0;
     }
 
-    const parsedCommand = parseCommand(commandArgv);
+    const parsedCommand = await parseCommand(commandArgv);
 
     if (parsedCommand.command === 'analyze') {
+      const { runAnalyzeCommand } = await import('./commands/diagnostics.js');
       return runAnalyzeCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'add') {
+      const { runAddCommand } = await import('./commands/package-workflow.js');
       return runAddCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'doctor') {
+      const { runDoctorCommand } = await import('./commands/diagnostics.js');
       return runDoctorCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'info') {
+      const { runInfoCommand } = await import('./commands/diagnostics.js');
       return runInfoCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'build' || parsedCommand.command === 'dev' || parsedCommand.command === 'start') {
+      const { runScriptCommand } = await import('./commands/scripts.js');
       return await runScriptCommand(parsedCommand.command, parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'upgrade') {
+      const { runUpgradeCommand } = await import('./commands/package-workflow.js');
       return runUpgradeCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'new') {
+      const { runNewCommand } = await import('./commands/new.js');
       return runNewCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'migrate') {
+      const { runMigrateCommand } = await import('./commands/migrate.js');
       return runMigrateCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'inspect') {
+      const { runInspectCommand } = await import('./commands/inspect.js');
       return runInspectCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'typegen') {
+      const { runTypegenCommand } = await import('./commands/typegen.js');
       return runTypegenCommand(parsedCommand.argv, commandRuntime);
     }
 
@@ -688,6 +702,7 @@ export async function runCli(
 
     const targetDirectory = resolve(cwd, parsedCommand.parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
 
+    const { runGenerateCommand } = await import('./commands/generate.js');
     const result = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, parsedCommand.parsed.options);
 
     if (parsedCommand.parsed.options.dryRun) {

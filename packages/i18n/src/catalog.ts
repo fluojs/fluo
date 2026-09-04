@@ -16,20 +16,17 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return prototype === Object.prototype || prototype === null;
 }
 
-/**
- * Creates a detached immutable message tree from untrusted catalog-like input.
- *
- * @param value Catalog-like value to validate and snapshot.
- * @param path Diagnostic path used in validation errors.
- * @returns A frozen message tree detached from caller-owned data.
- */
-export function snapshotMessageTree(value: unknown, path: string): I18nMessageTree {
+function snapshotMessageTreeAtPath(value: unknown, path: string, ancestors: Set<object>): I18nMessageTree {
   if (!isPlainObject(value)) {
     throw new I18nError(`${path} must be a plain object message tree.`, 'I18N_INVALID_CATALOG');
   }
 
-  const snapshot: Record<string, string | I18nMessageTree> = {};
+  if (ancestors.has(value)) {
+    throw new I18nError(`${path} contains a cyclic message tree.`, 'I18N_INVALID_CATALOG');
+  }
 
+  ancestors.add(value);
+  const snapshot: Record<string, string | I18nMessageTree> = Object.create(null);
   for (const [key, entry] of Object.entries(value)) {
     if (key.trim() === '') {
       throw new I18nError(`${path} contains an empty message key segment.`, 'I18N_INVALID_CATALOG');
@@ -41,14 +38,26 @@ export function snapshotMessageTree(value: unknown, path: string): I18nMessageTr
     }
 
     if (isPlainObject(entry)) {
-      snapshot[key] = snapshotMessageTree(entry, `${path}.${key}`);
+      snapshot[key] = snapshotMessageTreeAtPath(entry, `${path}.${key}`, ancestors);
       continue;
     }
 
     throw new I18nError(`${path}.${key} must be a string or nested message tree.`, 'I18N_INVALID_CATALOG');
   }
 
+  ancestors.delete(value);
   return Object.freeze(snapshot);
+}
+
+/**
+ * Creates a detached immutable message tree from untrusted catalog-like input.
+ *
+ * @param value Catalog-like value to validate and snapshot.
+ * @param path Diagnostic path used in validation errors.
+ * @returns A frozen message tree detached from caller-owned data.
+ */
+export function snapshotMessageTree(value: unknown, path: string): I18nMessageTree {
+  return snapshotMessageTreeAtPath(value, path, new Set<object>());
 }
 
 /**

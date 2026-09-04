@@ -511,7 +511,7 @@ Fluo가 둘을 분리하는 이유는 recovery strategy도 다르기 때문입�
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the cycle by extracting shared logic into a separate provider, or use forwardRef() to defer one side of the dependency.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. forwardRef() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +
@@ -523,7 +523,7 @@ export class CircularDependencyError extends FluoCodeError {
 }
 ```
 
-에러 메시지는 두 정보를 함께 줍니다. 하나는 실제 chain이고, 다른 하나는 공유 로직 추출 또는 token lookup deferral이라는 제한된 선택지입니다.
+에러 메시지는 두 정보를 함께 줍니다. 하나는 실제 chain이고, 다른 하나는 cycle을 끊는 지원되는 방법입니다. shared logic을 추출하거나 mediator를 도입하거나 interaction을 더 늦은 boundary로 옮겨야 합니다. `forwardRef()`는 declaration-order token lookup에만 도움이 되며 cycle을 해결할 수 없습니다.
 
 두 번째 패턴은 constructor-time dependency를 더 늦은 interaction boundary로 바꾸는 것입니다. 예를 들어 한 서비스가 다른 서비스를 직접 들고 있기보다, event를 발행하거나 callback을 받는 구조로 바꿀 수 있습니다. Fluo 컨테이너는 partially initialized object graph를 허용하지 않기 때문에, 자연스럽게 이런 분리를 유도합니다.
 

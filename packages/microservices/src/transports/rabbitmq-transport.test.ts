@@ -352,6 +352,46 @@ describe('RabbitMqMicroserviceTransport', () => {
     await expect(pending).rejects.toThrow(/RabbitMQ microservice transport closed before/);
   });
 
+  it('retries cleanup only for queues whose cancellation failed', async () => {
+    const cancelledQueues: string[] = [];
+    const closeError = new Error('message queue cancellation failed');
+    let messageQueueCancellationFailed = false;
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue) {
+          cancelledQueues.push(queue);
+
+          if (queue === 'test.messages' && !messageQueueCancellationFailed) {
+            messageQueueCancellationFailed = true;
+            throw closeError;
+          }
+        },
+        async consume() {},
+      },
+      eventQueue: 'test.events',
+      messageQueue: 'test.messages',
+      publisher: {
+        async publish() {},
+      },
+      responseQueue: 'test.responses',
+    });
+
+    await transport.listen(async () => undefined);
+
+    await expect(transport.close()).rejects.toBe(closeError);
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'RabbitMQ consumer cleanup is incomplete. Call close() again before listen().',
+    );
+
+    await expect(transport.close()).resolves.toBeUndefined();
+    expect(cancelledQueues).toEqual([
+      'test.events',
+      'test.messages',
+      'test.responses',
+      'test.messages',
+    ]);
+  });
+
   it('documents startup/reconnect/shutdown queue lifecycle behavior', async () => {
     const bus = new InMemoryQueueBus();
     const consumedQueues: string[] = [];

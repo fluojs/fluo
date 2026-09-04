@@ -17,7 +17,7 @@
     "directory": "packages/metrics"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.19.3 <21 || >=22.2.0 <27"
   },
   "publishConfig": {
     "access": "public"
@@ -46,7 +46,7 @@
     "@fluojs/di": "workspace:^",
     "@fluojs/http": "workspace:^",
     "@fluojs/runtime": "workspace:^",
-    "prom-client": "^15.1.3"
+    "prom-client": "15.1.3"
   },
   "devDependencies": {
     "@fluojs/testing": "workspace:^",

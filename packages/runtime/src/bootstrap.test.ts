@@ -1,5 +1,5 @@
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, RequestDto } from '@fluojs/http';
+import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, Produces, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
@@ -19,6 +19,60 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function createBootstrapFailureComponent(
+  id: string,
+  events: string[],
+): PlatformComponent {
+  let currentState: PlatformState = 'created';
+
+  return {
+    async health() {
+      return { status: 'healthy' };
+    },
+    id,
+    kind: 'test',
+    async ready() {
+      return { critical: false, status: 'ready' };
+    },
+    snapshot() {
+      return {
+        dependencies: [],
+        details: {},
+        health: { status: 'healthy' },
+        id,
+        kind: 'test',
+        ownership: {
+          externallyManaged: false,
+          ownsResources: true,
+        },
+        readiness: {
+          critical: false,
+          status: 'ready',
+        },
+        state: currentState,
+        telemetry: {
+          namespace: 'fluo.test',
+          tags: {},
+        },
+      };
+    },
+    async start() {
+      currentState = 'ready';
+      events.push('platform:start');
+    },
+    state() {
+      return currentState;
+    },
+    async stop() {
+      currentState = 'stopped';
+      events.push('platform:stop');
+    },
+    async validate() {
+      return { issues: [], ok: true };
+    },
+  };
 }
 
 function createRequest(path: string, query: FrameworkRequest['query'] = {}): FrameworkRequest {
@@ -1014,9 +1068,15 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
-  it('preserves the original application bootstrap error when a runtime cleanup callback fails', async () => {
+  it('awaits runtime cleanup failure before preserving the original application bootstrap error', async () => {
     const bootstrapFailure = new Error('application bootstrap failed');
     const cleanupFailure = new Error('application cleanup failed');
+    const cleanupCanFinish = createDeferred<void>();
+    const cleanupStarted = createDeferred<void>();
+    const cleanupFailurePromise = cleanupCanFinish.promise.then(() => {
+      throw cleanupFailure;
+    });
+    void cleanupFailurePromise.catch(() => undefined);
     const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
 
     @Inject(RUNTIME_CLEANUP_REGISTRATION)
@@ -1025,7 +1085,8 @@ describe('FluoFactory.createApplicationContext', () => {
 
       onModuleInit() {
         this.registerCleanup(() => {
-          throw cleanupFailure;
+          cleanupStarted.resolve();
+          return cleanupFailurePromise;
         });
       }
     }
@@ -1041,7 +1102,31 @@ describe('FluoFactory.createApplicationContext', () => {
       providers: [CleanupRegistrant, FailingBootstrapHook],
     });
 
-    await expect(bootstrapApplication({ logger, rootModule: AppModule })).rejects.toBe(bootstrapFailure);
+    let bootstrapSettled = false;
+    const bootstrapResult = bootstrapApplication({ logger, rootModule: AppModule });
+    const observedBootstrapResult = bootstrapResult.then(
+      () => {
+        bootstrapSettled = true;
+        return undefined;
+      },
+      (error: unknown) => {
+        bootstrapSettled = true;
+        return error;
+      },
+    );
+
+    try {
+      await cleanupStarted.promise;
+      await Promise.resolve();
+      expect(bootstrapSettled).toBe(false);
+
+      cleanupCanFinish.resolve();
+      expect(await observedBootstrapResult).toBe(bootstrapFailure);
+    } finally {
+      cleanupCanFinish.resolve();
+      await observedBootstrapResult;
+    }
+
     expect(logger.error).toHaveBeenCalledWith(
       'Failed to clean up after application bootstrap failure.',
       cleanupFailure,
@@ -1082,6 +1167,110 @@ describe('FluoFactory.createApplicationContext', () => {
         '[fluo] ERROR [FluoFactory] Failed to clean up after application context bootstrap failure.',
       );
       expect(errorLog).toHaveBeenCalledWith(cleanupFailure);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it('continues bootstrapApplication() cleanup after a provider destroy failure', async () => {
+    const events: string[] = [];
+    const destroyFailure = new Error('provider destroy failed');
+    const shutdownFailure = new Error('provider shutdown failed');
+    const bootstrapFailure = new Error('readiness publication failed');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+    const platformComponent = createBootstrapFailureComponent('platform.bootstrap', events);
+
+    class FailingLifecycleProvider {
+      onApplicationShutdown(signal?: string) {
+        events.push(`provider:shutdown:${signal ?? 'none'}`);
+        throw shutdownFailure;
+      }
+
+      onModuleDestroy() {
+        events.push('provider:destroy');
+        throw destroyFailure;
+      }
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingLifecycleProvider],
+    });
+
+    await expect(
+      bootstrapApplication({
+        logger,
+        platform: { components: [platformComponent] },
+        rootModule: AppModule,
+      }),
+    ).rejects.toBe(bootstrapFailure);
+
+    expect(events).toEqual([
+      'platform:start',
+      'provider:destroy',
+      'platform:stop',
+      'provider:shutdown:bootstrap-failed',
+    ]);
+
+    const cleanupFailure = logger.error.mock.calls.find(
+      ([message]) => message === 'Failed to clean up after application bootstrap failure.',
+    )?.[1];
+
+    expect(cleanupFailure).toBeInstanceOf(AggregateError);
+    if (cleanupFailure instanceof AggregateError) {
+      expect(cleanupFailure.errors).toEqual([destroyFailure, shutdownFailure]);
+    }
+  });
+
+  it('continues application context cleanup after a provider destroy failure', async () => {
+    const events: string[] = [];
+    const destroyFailure = new Error('context provider destroy failed');
+    const bootstrapFailure = new Error('context readiness publication failed');
+    const platformComponent = createBootstrapFailureComponent('platform.context', events);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    class FailingLifecycleProvider {
+      onApplicationShutdown(signal?: string) {
+        events.push(`provider:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('provider:destroy');
+        throw destroyFailure;
+      }
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingLifecycleProvider],
+    });
+
+    try {
+      await expect(
+        FluoFactory.createApplicationContext(AppModule, {
+          platform: { components: [platformComponent] },
+        }),
+      ).rejects.toBe(bootstrapFailure);
+
+      expect(events).toEqual([
+        'platform:start',
+        'provider:destroy',
+        'platform:stop',
+        'provider:shutdown:bootstrap-failed',
+      ]);
+      expect(errorLog).toHaveBeenCalledWith(destroyFailure);
     } finally {
       errorLog.mockRestore();
     }
@@ -1167,6 +1356,297 @@ describe('FluoFactory.createApplicationContext', () => {
       'value:bootstrap',
       'value:destroy',
       'value:shutdown:SIGTERM',
+    ]);
+  });
+
+  it('runs lifecycle hooks for every hook-bearing multi useValue contribution in provider order', async () => {
+    const events: string[] = [];
+    const LIFECYCLE_MULTI = Symbol('lifecycle-multi-value');
+
+    function createContribution(id: string) {
+      return {
+        id,
+        onApplicationBootstrap() {
+          events.push(`${id}:bootstrap`);
+        },
+        onApplicationShutdown(signal?: string) {
+          events.push(`${id}:shutdown:${signal ?? 'none'}`);
+        },
+        onModuleDestroy() {
+          events.push(`${id}:destroy`);
+        },
+        onModuleInit() {
+          events.push(`${id}:init`);
+        },
+      };
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('first') },
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('second') },
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: { marker: 'no-hooks' } },
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('third') },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {});
+
+    expect(events).toEqual([
+      'first:init',
+      'second:init',
+      'third:init',
+      'first:bootstrap',
+      'second:bootstrap',
+      'third:bootstrap',
+    ]);
+
+    await context.close('SIGTERM');
+
+    expect(events).toEqual([
+      'first:init',
+      'second:init',
+      'third:init',
+      'first:bootstrap',
+      'second:bootstrap',
+      'third:bootstrap',
+      'third:destroy',
+      'second:destroy',
+      'first:destroy',
+      'third:shutdown:SIGTERM',
+      'second:shutdown:SIGTERM',
+      'first:shutdown:SIGTERM',
+    ]);
+  });
+
+  it('runs lifecycle hooks for every singleton multi class/factory contribution', async () => {
+    const events: string[] = [];
+    const LIFECYCLE_MULTI = Symbol('lifecycle-multi-singleton');
+
+    class FirstPlugin {
+      onApplicationShutdown(signal?: string) {
+        events.push(`class-first:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleInit() {
+        events.push('class-first:init');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: FirstPlugin },
+        {
+          multi: true,
+          provide: LIFECYCLE_MULTI,
+          useFactory: () => ({
+            onApplicationShutdown(signal?: string) {
+              events.push(`factory-second:shutdown:${signal ?? 'none'}`);
+            },
+            onModuleInit() {
+              events.push('factory-second:init');
+            },
+          }),
+        },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {});
+
+    expect(events).toEqual(['class-first:init', 'factory-second:init']);
+
+    await context.close('SIGTERM');
+
+    expect(events).toEqual([
+      'class-first:init',
+      'factory-second:init',
+      'factory-second:shutdown:SIGTERM',
+      'class-first:shutdown:SIGTERM',
+    ]);
+  });
+
+  it('resolves only singleton multi contributions during bootstrap while request contributions remain request-scoped', async () => {
+    // Given
+    const events: string[] = [];
+    const LIFECYCLE_MULTI = Symbol('mixed-scope-lifecycle-multi');
+    let requestContributions = 0;
+
+    class SingletonPlugin {
+      onApplicationShutdown(signal?: string) {
+        events.push(`singleton:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleInit() {
+        events.push('singleton:init');
+      }
+    }
+
+    @ScopeDecorator('request')
+    class RequestPlugin {
+      readonly id = ++requestContributions;
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: SingletonPlugin },
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: RequestPlugin },
+      ],
+    });
+
+    // When
+    const context = await FluoFactory.createApplicationContext(AppModule, {});
+
+    // Then
+    expect(events).toEqual(['singleton:init']);
+    expect(requestContributions).toBe(0);
+
+    const requestScope = context.container.createRequestScope();
+    const contributions = await requestScope.resolve<Array<SingletonPlugin | RequestPlugin>>(LIFECYCLE_MULTI);
+
+    expect(contributions).toHaveLength(2);
+    expect(contributions[0]).toBeInstanceOf(SingletonPlugin);
+    expect(contributions[1]).toBeInstanceOf(RequestPlugin);
+    expect(requestContributions).toBe(1);
+
+    await context.close('SIGTERM');
+
+    expect(events).toEqual(['singleton:init', 'singleton:shutdown:SIGTERM']);
+  });
+
+  it('runs lifecycle hooks for every runtime multi contribution', async () => {
+    const events: string[] = [];
+    const LIFECYCLE_MULTI = Symbol('runtime-lifecycle-multi');
+
+    function createContribution(id: string) {
+      return {
+        onApplicationShutdown(signal?: string) {
+          events.push(`${id}:shutdown:${signal ?? 'none'}`);
+        },
+        onModuleInit() {
+          events.push(`${id}:init`);
+        },
+      };
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('runtime-first') },
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('runtime-second') },
+      ],
+    });
+
+    expect(events).toEqual(['runtime-first:init', 'runtime-second:init']);
+
+    await context.close('SIGTERM');
+
+    expect(events).toEqual([
+      'runtime-first:init',
+      'runtime-second:init',
+      'runtime-second:shutdown:SIGTERM',
+      'runtime-first:shutdown:SIGTERM',
+    ]);
+  });
+
+  it('rolls back every multi contribution when application bootstrap fails', async () => {
+    const events: string[] = [];
+    const bootstrapFailure = new Error('readiness publication failed');
+    const LIFECYCLE_MULTI = Symbol('rollback-lifecycle-multi');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+
+    function createContribution(id: string) {
+      return {
+        onApplicationShutdown(signal?: string) {
+          events.push(`${id}:shutdown:${signal ?? 'none'}`);
+        },
+        onModuleDestroy() {
+          events.push(`${id}:destroy`);
+        },
+        onModuleInit() {
+          events.push(`${id}:init`);
+        },
+      };
+    }
+
+    class AppModule {
+      static markReady() {
+        throw bootstrapFailure;
+      }
+
+      static markStarting() {}
+    }
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('rollback-first') },
+        { multi: true, provide: LIFECYCLE_MULTI, useValue: createContribution('rollback-second') },
+      ],
+    });
+
+    await expect(
+      bootstrapApplication({
+        logger,
+        rootModule: AppModule,
+      }),
+    ).rejects.toBe(bootstrapFailure);
+
+    expect(events).toEqual([
+      'rollback-first:init',
+      'rollback-second:init',
+      'rollback-second:destroy',
+      'rollback-first:destroy',
+      'rollback-second:shutdown:bootstrap-failed',
+      'rollback-first:shutdown:bootstrap-failed',
+    ]);
+  });
+
+  it('rolls back fulfilled singleton multi contributions when a later contribution fails to resolve', async () => {
+    // Given
+    const events: string[] = [];
+    const bootstrapFailure = new Error('later multi contribution failed');
+    const LIFECYCLE_MULTI = Symbol('partial-multi-lifecycle-rollback');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+
+    class FirstPlugin {
+      onApplicationShutdown(signal?: string) {
+        events.push(`first:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('first:destroy');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        { multi: true, provide: LIFECYCLE_MULTI, useClass: FirstPlugin },
+        {
+          multi: true,
+          provide: LIFECYCLE_MULTI,
+          useFactory: () => {
+            throw bootstrapFailure;
+          },
+        },
+      ],
+    });
+
+    // When
+    await expect(
+      bootstrapApplication({
+        logger,
+        rootModule: AppModule,
+      }),
+    ).rejects.toBe(bootstrapFailure);
+
+    // Then
+    expect(events).toEqual([
+      'first:destroy',
+      'first:shutdown:bootstrap-failed',
     ]);
   });
 
@@ -1493,6 +1973,45 @@ describe('FluoFactory.createApplicationContext', () => {
     expect(siblingOnDestroy).toHaveBeenCalledOnce();
   });
 
+  it('retries only failed container-managed onDestroy hooks on a second application close', async () => {
+    let failedAttempts = 0;
+    const failedOnDestroy = vi.fn(() => {
+      failedAttempts += 1;
+
+      if (failedAttempts === 1) {
+        throw new Error('application container destroy failed');
+      }
+    });
+    const siblingOnDestroy = vi.fn();
+
+    class FailingResource {
+      onDestroy = failedOnDestroy;
+    }
+
+    class SiblingResource {
+      onDestroy = siblingOnDestroy;
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingResource, SiblingResource],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    await app.get(FailingResource);
+    await app.get(SiblingResource);
+
+    // Given: an application whose container-managed onDestroy hook fails once.
+    // When: the first close attempt reports that failure.
+    await expect(app.close()).rejects.toThrow('application container destroy failed');
+
+    // Then: a later close retries only the failed hook and reaches a stable closed application.
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(failedOnDestroy).toHaveBeenCalledTimes(2);
+    expect(siblingOnDestroy).toHaveBeenCalledOnce();
+    expect(app.state).toBe('closed');
+  });
+
   it('rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending', async () => {
     const shutdownCanFinish = createDeferred<void>();
 
@@ -1630,6 +2149,59 @@ describe('FluoFactory.create HTTP dispatch request scopes', () => {
     expect(secondResponse.body).toEqual({ id: 'second:2' });
 
     await app.close();
+  });
+});
+
+describe('FluoFactory.create content negotiation', () => {
+  it('forwards bootstrap formatters through @Produces selection', async () => {
+    @Controller('/bootstrap-negotiation')
+    class NegotiationController {
+      @Produces('application/json', 'text/plain')
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [NegotiationController],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.create(AppModule, {
+      contentNegotiation: {
+        defaultMediaType: 'application/json',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+    });
+
+    try {
+      const request = createRequest('/bootstrap-negotiation');
+      request.headers = { accept: 'text/plain' };
+      const response = createResponse();
+
+      await app.dispatch(request, response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['Content-Type']).toBe('text/plain');
+      expect(response.headers.Vary).toBe('Accept');
+      expect(response.body).toBe('plain:{"ok":true}');
+    } finally {
+      await app.close();
+    }
   });
 });
 

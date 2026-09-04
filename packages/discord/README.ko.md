@@ -18,6 +18,7 @@ fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
   - [payload override를 사용하는 template rendering](#payload-override를-사용하는-template-rendering)
   - [명시적 fetch 주입을 사용하는 webhook-first 전달](#명시적-fetch-주입을-사용하는-webhook-first-전달)
+  - [구성 가능한 webhook 재시도 정책](#구성-가능한-webhook-재시도-정책)
   - [의도적인 제한 사항](#의도적인-제한-사항)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -29,7 +30,7 @@ fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지
 npm install @fluojs/discord @fluojs/notifications
 ```
 
-이 패키지는 published package metadata에 반영된 저장소 전반의 Node.js 20+ 설치 baseline을 따르지만, 런타임 전달 계약 자체는 명시적인 fetch-compatible 경계를 통해 계속 transport-agnostic하게 유지됩니다.
+이 패키지는 mandatory `@fluojs/runtime` dependency 때문에 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않으므로 process를 지원되는 line으로 옮겨야 합니다. 런타임 전달 계약 자체는 명시적인 fetch-compatible 경계를 통해 계속 transport-agnostic하게 유지됩니다.
 
 ## 사용 시점
 
@@ -112,6 +113,7 @@ Behavioral contract 메모:
 - `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, bootstrap verification 실패와 애플리케이션 shutdown 전반에서 factory-owned 리소스를 정확히 한 번 닫습니다. shutdown 전에 시작된 factory 생성 transport가 아직 완료되지 않았더라도 이를 기다리며, 진행 중인 bootstrap verification이 settle된 뒤에만 factory-owned transport를 닫습니다. Verification 실패 후 owned cleanup도 실패하면 status diagnostics는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` failure phase를 유지하며, reject된 factory creation도 initialization failure로 유지됩니다.
 - send는 bootstrap이 transport를 `ready`로 표시한 뒤에만 허용됩니다. bootstrap 전, startup 중, bootstrap 실패 후, shutdown 중, shutdown 후 시도는 전달 전에 거부됩니다.
+- `ready` 상태에서 허용된 직접 send 또는 notification dispatch는 factory-owned transport resource를 닫기 전에 renderer와 transport delivery가 끝날 때까지 drain합니다. 전달 실패는 caller의 결과로 남고 shutdown 실패로 전파하지 않습니다.
 - 서비스가 shutdown 중이거나 이미 stopped 상태라면 cached transport를 재사용하지 않고 send를 거부합니다.
 - `DiscordService.sendNotification(...)`은 구성된 renderer를 호출하기 전에 lifecycle readiness를 확인하고, 호출자의 `AbortSignal`을 `DiscordTemplateRenderInput.signal`과 transport delivery 양쪽에 전달합니다.
 - `DiscordService.createPlatformStatusSnapshot()`은 `createDiscordPlatformStatusSnapshot(...)`과 같은 status 계약을 노출합니다. 여기에는 lifecycle/readiness, health, transport kind와 ownership, 기본 thread 구성, bootstrap verification 상태, bootstrap initialization 실패와 shutdown cleanup 실패를 구분하는 diagnostics, notifications channel dependency details가 포함되어, 호출자가 내부 옵션에 접근하지 않고도 Discord wiring을 관찰할 수 있습니다.
@@ -244,9 +246,26 @@ await discord.send({
 
 bot 기반 REST 전달처럼 더 풍부한 API 연동이 필요하다면 export된 `DiscordTransport` 계약을 구현해 `DiscordModule.forRoot(...)` 또는 `forRootAsync(...)`에 주입하면 됩니다.
 
+### 구성 가능한 webhook 재시도 정책
+
+내장 webhook transport는 일시적인 `408`, `429`, `5xx` 응답과 transport-level exception을 재시도합니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base로 지수 backoff하는 기존 기본값을 유지합니다. workload의 latency 또는 허용 가능한 재시도 수준이 다르다면 transport 생성 시 하나의 정책을 구성하세요.
+
+```typescript
+const transport = createDiscordWebhookTransport({
+  fetch: runtime.fetch,
+  retry: {
+    attempts: 5,
+    baseDelayMs: 500,
+  },
+  webhookUrl: config.discordWebhookUrl,
+});
+```
+
+`attempts`에는 최초 요청이 포함되며 `1`부터 `10`까지의 정수여야 합니다. `baseDelayMs`는 `0`부터 `60000`까지의 정수여야 하고 이후 대기 시간은 이 값을 기준으로 두 배씩 증가합니다. 이 정책은 이 프로세스 안에서 한 번 보내는 bounded webhook 재시도에만 적용됩니다. 프로세스 재시작 뒤에도 notification을 보존해야 하거나, durable scheduling이 필요하거나, request latency와 독립적으로 delivery를 관리해야 한다면 webhook attempts를 늘리는 대신 queue-backed delivery를 사용하는 `@fluojs/notifications`를 사용하세요.
+
 Behavioral contract 메모:
 
-- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 응답뿐 아니라 transport-level exception도 bounded exponential backoff로 재시도한 뒤 호출자에게 에러를 노출합니다. 영구적인 upstream 응답은 재시도하지 않습니다.
+- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 응답뿐 아니라 transport-level exception도 구성한 bounded exponential backoff로 재시도한 뒤 호출자에게 에러를 노출합니다. 영구적인 upstream 응답은 재시도하지 않습니다.
 - Retry backoff는 `DiscordSendOptions.signal`을 관찰합니다. 이미 abort된 signal은 다음 backoff timer를 기다리지 않고 즉시 reject됩니다.
 - 성공한 webhook 응답은 `DiscordSendResult.response`로 노출됩니다. rate-limit 재시도가 끝내 실패한 경우를 포함해, 호출자에게 보이는 `DiscordTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 - 잘못되었거나 절대 URL이 아닌 `webhookUrl` 값은 전달 실패로 재시도하지 않고 즉시 `DiscordConfigurationError`로 거부됩니다.
@@ -288,6 +307,7 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `DiscordMessage`
 - `NormalizedDiscordMessage`
+- `DiscordWebhookRetryOptions`
 - `DiscordWebhookTransportOptions`
 - `DiscordFetchLike`
 - `DiscordFetchResponse`

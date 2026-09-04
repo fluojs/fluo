@@ -27,7 +27,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./node": {
       "types": "./dist/node.d.ts",
@@ -36,6 +37,10 @@
     "./web": {
       "types": "./dist/web.d.ts",
       "import": "./dist/web.js"
+    },
+    "./devtools": {
+      "types": "./dist/devtools/index.d.ts",
+      "import": "./dist/devtools/index.js"
     },
     "./internal": {
       "types": "./dist/internal.d.ts",
@@ -77,7 +82,8 @@
     "@fluojs/config": "workspace:^",
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
-    "@fluojs/http": "workspace:^"
+    "@fluojs/http": "workspace:^",
+    "@fluojs/studio": "workspace:^"
   },
   "devDependencies": {
     "@fluojs/serialization": "workspace:^",

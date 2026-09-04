@@ -210,6 +210,72 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
+  it('reports discovered command and query handlers without topology details across shutdown', async () => {
+    class StatusDeleteUserCommand implements ICommand {
+      constructor(public readonly id: string) {}
+    }
+
+    @CommandHandler(CreateUserCommand)
+    class StatusCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      execute(command: CreateUserCommand): string {
+        return `created:${command.name}`;
+      }
+    }
+
+    @CommandHandler(StatusDeleteUserCommand)
+    class StatusDeleteUserHandler implements ICommandHandler<StatusDeleteUserCommand, string> {
+      execute(command: StatusDeleteUserCommand): string {
+        return `deleted:${command.id}`;
+      }
+    }
+
+    @QueryHandler(GetUserQuery)
+    class StatusGetUserHandler implements IQueryHandler<GetUserQuery, { id: string; name: string | undefined }> {
+      execute(query: GetUserQuery): { id: string; name: string | undefined } {
+        return { id: query.id, name: 'status-user' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [StatusCreateUserHandler, StatusDeleteUserHandler, StatusGetUserHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+
+    try {
+      await expect(commandBus.execute(new CreateUserCommand('status-user'))).resolves.toBe('created:status-user');
+      await expect(commandBus.execute(new StatusDeleteUserCommand('status-user'))).resolves.toBe('deleted:status-user');
+      await expect(queryBus.execute(new GetUserQuery('status-user'))).resolves.toEqual({
+        id: 'status-user',
+        name: 'status-user',
+      });
+
+      expect(eventBus.createPlatformStatusSnapshot().details).toMatchObject({
+        commandHandlersDiscovered: 2,
+        commandLifecycleState: 'ready',
+        queryHandlersDiscovered: 1,
+        queryLifecycleState: 'ready',
+      });
+      expect(
+        Object.keys(eventBus.createPlatformStatusSnapshot().details).filter((key) => /descriptor|token|topology/i.test(key)),
+      ).toEqual([]);
+    } finally {
+      await app.close();
+    }
+
+    expect(eventBus.createPlatformStatusSnapshot().details).toMatchObject({
+      commandHandlersDiscovered: 0,
+      commandLifecycleState: 'stopped',
+      queryHandlersDiscovered: 0,
+      queryLifecycleState: 'stopped',
+    });
+  });
+
   it('ignores CQRS decorators on module controllers during handler discovery', async () => {
     const seen: string[] = [];
 

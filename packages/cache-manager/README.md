@@ -13,9 +13,13 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Application-Level Caching](#application-level-caching)
 - [Common Patterns](#common-patterns)
   - [Redis Storage](#redis-storage)
+  - [TTL Jitter](#ttl-jitter)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
+  - [Observing Cache Operations](#observing-cache-operations)
+  - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
+  - [NestJS Cache Migration](#nestjs-cache-migration)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -25,6 +29,8 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
 ```bash
 npm install @fluojs/cache-manager
 ```
+
+`@fluojs/cache-manager` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. Its mandatory `@fluojs/runtime` dependency owns that Node listener boundary, so Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Earlier 1.x releases advertised `engines.node >=20.0.0`, which never matched the effective dependency floor.
 
 The root `@fluojs/cache-manager` import stays safe for memory-only installs. You only need a Redis client when you explicitly select the Redis-backed store path.
 
@@ -159,8 +165,30 @@ class AppModule {}
 The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache values therefore need to be JSON-compatible: plain objects, arrays, strings, numbers, booleans, and `null` round-trip cleanly, while values such as `Date` come back as JSON output (for example ISO strings), functions/`undefined`/symbols do not survive, and non-serializable values like `bigint` or cyclic graphs should be normalized before caching.
 
 Positive Redis TTL values are accepted in seconds and may be fractional. Redis expiry is rounded up to the next whole second because Redis `EX` uses integer seconds, while fluo also records the millisecond-precision expiry timestamp in the stored entry and treats the value as expired once that timestamp is reached. Use `ttl: 0` when you intentionally want no Redis expiry.
+Exceptionally large finite TTL values are capped at the largest safe JavaScript expiry timestamp by both built-in stores, so Redis JSON metadata remains finite and aligns with the memory path.
 
 Redis reset ownership is scoped by the top-level `keyPrefix` option, which defaults to `fluo:cache:` and is passed through to the built-in `RedisStore` namespace. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. Redis glob metacharacters in a non-empty prefix (`*`, `?`, `[`, `]`, and `\`) are escaped before `SCAN`, so the configured prefix remains a literal namespace instead of broadening reset ownership. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
+
+### TTL Jitter
+
+Popular keys written together can otherwise expire together and synchronize origin load. Opt in to centralized positive-TTL jitter with `ttlJitter`; `CacheService` calculates the effective TTL once before handing the write to memory, Redis, or a custom store.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  ttl: 600,
+  ttlJitter: {
+    ratio: 0.1,
+    mode: 'symmetric',
+  },
+});
+```
+
+`ratio` must be greater than `0` and at most `1`. The default `symmetric` mode samples within `ttl ± (ttl * ratio)`; `shorten` only subtracts from the TTL and `lengthen` only adds to it. A `CacheService.set(...)` or `remember(...)` per-call TTL override is jittered instead of the module default. `ttl: 0` remains a no-expiry write, and negative or non-finite TTL values still skip the write.
+
+Jitter is disabled only when `ttlJitter` is omitted or `undefined`; `null`, primitives, arrays, and invalid option fields are rejected during module registration. The optional `random` function is a deterministic test seam and must return a finite value in `[0, 1]`; an invalid sample rejects the write instead of being coerced. Production code should normally keep the default `Math.random`.
+
+Every jittered positive TTL remains positive and finite within its selected direction. A fully shortened TTL uses JavaScript's smallest positive finite value rather than becoming the no-expiry sentinel, while an upward result beyond the representable range saturates at `Number.MAX_VALUE`. TTL jitter spreads expiry times only. It is not distributed locking, refresh-ahead caching, or cross-instance stampede coordination.
 
 ### Query-Sensitive Caching
 
@@ -205,6 +233,8 @@ The HTTP interceptor caches only successful, uncommitted GET handler results wit
 
 ### Cache Ownership and Reset Scope
 
+Ordinary `get(...)`, `set(...)`, and `del(...)` calls run concurrently against the configured store, so a slow store call for one key does not delay unrelated keys.
+
 `CacheService.reset()` clears entries owned by the configured store, not unrelated application state. It also serializes store reads/writes across the reset boundary and invalidates in-flight `remember(...)` loaders so loaders that started before the reset cannot repopulate stale entries after the reset completes. For the built-in memory store that means the in-process entries held by that store instance. For Redis, ownership is the configured `keyPrefix` namespace; keep the default `fluo:cache:` or choose a dedicated prefix such as `myapp:cache:` for shared Redis deployments.
 
 ```typescript
@@ -220,6 +250,85 @@ When the application closes, `CacheService` stops new store reads/writes, waits 
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
+### Observing Cache Operations
+
+The platform status helpers report cache availability only. To measure hit rate, latency, and error outcomes, pass an opt-in `observer` to `CacheModule.forRoot(...)`. The observer is independent of `@fluojs/metrics`; wire it to whichever metrics backend the application already uses.
+
+```typescript
+import { CacheModule, type CacheObservation } from '@fluojs/cache-manager';
+
+CacheModule.forRoot({
+  store: 'memory',
+  observer: {
+    onCacheOperation(observation: CacheObservation) {
+      cacheOperationCounter.inc({
+        operation: observation.operation,
+        outcome: observation.outcome,
+      });
+      cacheOperationLatency.observe(observation.durationMs);
+    },
+  },
+});
+```
+
+The contract is intentionally narrow:
+
+- **Privacy**: an observation carries only `operation`, `outcome`, and `durationMs`. Cache keys, cached values, loader results, and error objects are never passed to the observer, so instrumentation cannot leak application data.
+- **Operation taxonomy**: `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` is reported once per call; its internal read is not reported as a separate `get`.
+- **Outcomes**: `CacheObservation` is a discriminated union: read operations (`get`, `remember`) can report only `hit`, `miss`, or `error`, while write, invalidation, and lifecycle operations can report only `success` or `error`. A `remember` call that joins an in-flight load for the same key reports `miss`, because that call did not read a cached value.
+- **Timing**: `durationMs` measures the full `CacheService` operation, including store-queue serialization, with the runtime's monotonic `performance.now()` clock.
+- **Failure containment**: observer errors are swallowed. A thrown error or a rejected promise never changes the value the caller receives and never surfaces as an unhandled rejection. Observer work is not awaited by the cache operation.
+- **HTTP fail-soft interaction**: `CacheInterceptor` still swallows store failures so cache problems cannot fail an otherwise successful handler. The observer sees those failures as `error` observations, which is the supported way to alert on a degraded cache while keeping requests served.
+
+When no `observer` is configured, the cache runs its original code path with no observation work.
+Lifecycle diagnostics report the same teardown owner that shutdown actually uses. `createCacheManagerPlatformStatusSnapshot(...)` resolves ownership from lifecycle responsibility rather than treating every non-memory store alike:
+
+- The built-in memory store is `framework`-owned because the framework creates and holds it in-process.
+- A custom store is `framework`-owned by default because `CacheService.close()` owns teardown dispatch to its optional `close()` or `dispose()` hook.
+- The Redis store is `external` to `CacheService`, which never closes the client. When the cache module resolves a client through `@fluojs/redis`, that integration owns its lifecycle; when `redis.client` supplies a client directly, the application owns its lifecycle.
+
+An explicit `storeOwnershipMode` still wins over the store default. Set it to `external` when the application intentionally retains lifecycle responsibility for a custom store.
+
+### Async Configuration
+
+Use `CacheModule.forRootAsync(...)` when the final store, TTL, `keyPrefix`, or key strategy must come from DI or asynchronous bootstrap work. List the dependency tokens in `inject`, return ordinary `CacheModuleOptions` from `useFactory`, and the module normalizes that result with the same defaults as `CacheModule.forRoot(...)`.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+import { CacheSettingsService } from './cache-settings.service';
+
+@Module({
+  imports: [
+    CacheModule.forRootAsync({
+      inject: [CacheSettingsService],
+      useFactory: async (settings: CacheSettingsService) => ({
+        store: 'redis',
+        ttl: await settings.resolveTtlSeconds(),
+        keyPrefix: settings.keyPrefix,
+        redis: { clientName: 'cache' },
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Injected tokens must be visible to the container that instantiates the cache module. Provide them as bootstrap runtime providers or export them from a globally visible imported module before the cache options provider resolves. A provider local only to the importing parent module, or an ordinary sibling/parent export, is not visible to the async cache module. The factory runs once per registration when cache providers are first resolved, and a rejected factory fails bootstrap instead of registering a partially configured cache.
+
+Module visibility stays on the registration call: pass `global: true` to `CacheModule.forRootAsync({ global: true, ... })`. `useFactory` may return a prepared `CacheModuleOptions` value, including its `global` property; any returned `global` is ignored because module metadata is fixed before the factory runs.
+
+```typescript
+CacheModule.forRootAsync({
+  global: true,
+  inject: [CacheSettingsService],
+  useFactory: (settings: CacheSettingsService) => ({ store: settings.store }),
+})
+```
+
+The async path supports the same store selection as `forRoot(...)`: `'memory'`, `'redis'` with a DI-resolved or directly supplied client, and any custom `CacheStore` instance.
+
 ### Manual Module Composition
 
 Use `CacheModule.forRoot(...)` for normal application setup, including custom `defineModule(...)` composition.
@@ -234,6 +343,33 @@ defineModule(ManualCacheModule, {
   exports: [CacheService, CacheInterceptor],
   imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
 });
+```
+
+### NestJS Cache Migration
+
+`@nestjs/cache-manager` and `@fluojs/cache-manager` expose overlapping cache concepts, but their option names, units, defaults, and ownership do not all carry over. Convert each of the following, and see [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.md) for the full migration contract.
+
+| NestJS option or decorator | fluo equivalent | Conversion rule |
+| --- | --- | --- |
+| `ttl` when the installed underlying `cache-manager` generation uses milliseconds | `ttl` in seconds | Inspect the installed underlying `cache-manager` dependency/version. Divide by 1000 only when that generation defines TTLs in milliseconds. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
+| `ttl: 0` | `ttl: 0` | Means no expiry, not "do not cache". Negative or non-finite values are invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and write for that handler. |
+| `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | Accepts one static number only. Move per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`. |
+| implicit query-sensitive keys | `httpKeyStrategy` | Defaults to path-only `'route'`. Select `'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` when a response varies by query parameters. |
+| `isGlobal: true` | `global: true` | Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules are module-local unless you opt in or import the module everywhere it is resolved. |
+| NestJS store adapters such as `cache-manager-redis-store` | `store: 'redis'` or a `CacheStore` object | NestJS adapters do not satisfy the `CacheStore` contract; use the built-in Redis path or wrap the adapter so callback/options completion becomes a Promise, `ttlSeconds` maps to the legacy TTL in seconds, and `reset()` clears only the cache namespace. Never forward `reset()` blindly to a whole-database `flushDb`. |
+| adapter-owned client teardown | `close()` / `dispose()` on the store | Application shutdown forwards teardown only to those optional hooks. A raw client passed through `redis.client` stays application-owned and must be closed from the application lifecycle. |
+
+```typescript
+CacheModule.forRoot({
+  // If the installed underlying cache-manager generation uses milliseconds,
+  // NestJS `ttl: 60_000` becomes 60 seconds.
+  ttl: 60,
+  // NestJS `isGlobal: true` becomes `global: true`.
+  global: true,
+  // Opt in explicitly when responses vary by query parameters.
+  httpKeyStrategy: 'route+query',
+  store: 'redis',
+})
 ```
 
 ### Memory Store Operational Limits
@@ -268,12 +404,18 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 ## Public API Overview
 
 ### Modules
-- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
+- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, opt-in `ttlJitter`, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
+- `CacheModule.forRootAsync({ inject, useFactory, global? })`: Resolves the same options through an injected factory for applications that build cache configuration from DI or asynchronous bootstrap work. `global` belongs to this registration call, and a rejected factory fails bootstrap.
 
 ### Public types
-- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
-- `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
+- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`, including optional `ttlJitter` and `observer`.
+- `CacheTtlJitterOptions` and `CacheTtlJitterMode`: Opt-in positive-TTL jitter bounds, direction, and deterministic randomness seam.
+- `NormalizedCacheTtlJitterOptions`: Normalized TTL jitter configuration after defaults are applied.
+- `CacheObserver`: Opt-in observation hook with a single `onCacheOperation(observation)` method.
+- `CacheObservation`: Privacy-safe discriminated union coupling each operation category to its valid outcomes and carrying `durationMs`.
+- `CacheAsyncModuleOptions`: Injected-factory configuration accepted by `CacheModule.forRootAsync(...)`. `useFactory` returns `CacheModuleOptions`; registration-level `global` alone controls module visibility.
+- `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized module configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services
 - `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()` and shares the first teardown completion across concurrent or repeated callers.
@@ -303,3 +445,4 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `packages/cache-manager/src/interceptor.test.ts`: HTTP caching and eviction tests.
 - `packages/cache-manager/src/service.ts`: Core `CacheService` implementation.
 - `packages/cache-manager/src/status.test.ts`: Status and diagnostic helper tests.
+- `packages/cache-manager/src/cache-observer.test.ts`: Cache observation contract tests.

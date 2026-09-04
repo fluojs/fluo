@@ -1,6 +1,7 @@
 # @fluojs/cli
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
 
 The canonical CLI for fluo — bootstrap new applications, generate components and React page types, export runtime inspection data, and run code transforms.
 
@@ -32,6 +33,8 @@ pnpm dlx @fluojs/cli new my-app
 
 - `@fluojs/cli` is a public package in the intended publish surface.
 - `@fluojs/cli` requires Node.js `>=20.0.0`; generated Bun, Deno, and Cloudflare Workers starters may target non-Node runtimes, but the CLI process itself runs on Node.js. Generated Node HTTP and mixed projects declare Node.js `>=20.19.3 <21 || >=22.2.0 <27` so listener-level RFC `QUERY` reaches framework dispatch; Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Node microservice-only projects retain their independent `>=20.0.0` floor.
+- `inspect` resolves `@fluojs/runtime` only when inspection runs and only from the inspected project's dependency tree. Install a runtime version compatible with your active Node.js version before using `fluo inspect`; other CLI commands remain available across the CLI's full Node.js `>=20.0.0` range.
+- Interactive `new` flows and optional interactive `inspect --mermaid` guidance resolve `@clack/prompts` only when needed. `@clack/prompts` currently requires Node.js `>=20.12.0`, so Node.js `20.0.0` through `20.11.x` supports the CLI's non-interactive commands only.
 - The CLI and generated Node.js starter toolchain use `tsx@^4.23.1`; generated gRPC starters require `@grpc/grpc-js@^1.14.4`. Refresh existing project lockfiles when adopting these patched floors.
 - The supported install paths are the global package (`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, or `yarn global add @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
 - The published `fluo` bin is the `./bin/fluo.mjs` wrapper declared in `package.json`; that wrapper loads the dist-built CLI entrypoint at `../dist/cli.js`.
@@ -89,11 +92,11 @@ Generated Node.js `dev`, `build`, and `start` package scripts delegate to `fluo 
 
 Generated starters set their `@fluojs/cli` `devDependency` from the generator CLI package version that created the project, so lifecycle scripts such as `pnpm dev`, `pnpm build`, and `pnpm start` keep using the same CLI behavior that scaffolded the starter instead of a stale hard-coded range.
 
-Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
+Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. The React starter keeps decorator-bearing declarations in `src/app.ts` and JSX rendering in `.tsx` modules, so the supported `.ts` transform boundary stays explicit. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
 
 Generated standard non-Deno HTTP starters use a TDD-first Vitest layout: fast greeting unit tests and `greeting.slice.test.ts` stay colocated under `src/greeting/`, app dispatch tests stay in `src/app.test.ts`, and the default e2e-style request-pipeline tests live in `test/app.e2e.test.ts` with `createTestApp({ rootModule })` plus `app.request(...).send()`. The React starter instead includes focused streamed SSR, DOM hydration, and production Playwright hydration tests. Its `test:browser` script starts the built Fastify server and fails on missing assets, hydration warnings, or navigation that bypasses the server-owned route.
 
-For generated Node.js application projects, `fluo dev` runs through a fluo-owned restart boundary by default. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each Node app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. Planned restarts and terminal shutdown first send `SIGTERM` to the current app child, then force-kill it after a bounded grace period so a non-cooperative child cannot hang the restart supervisor indefinitely. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. A terminal error from either the primary recursive watcher or a fallback directory watcher follows that same cleanup path, terminates the current app child within the existing bound, and exits with code `1` instead of leaving the child or sibling watchers running. This is full-process restart-on-watch, not module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` when you need the runtime-native Node watcher for debugging. Generated Bun/Deno/Workers projects delegate watch/reload behavior to `bun --watch`, `deno run --watch --allow-env --allow-net src/main.ts`, or `wrangler dev` by default; the Deno command preserves access to every application-owned environment key consumed through `Deno.env.toObject()`. Use `fluo dev --runner fluo` or `FLUO_DEV_RUNNER=fluo` when those projects should return to the fluo-owned restart runner, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths for that runner.
+For generated Node.js application projects, `fluo dev` runs through a fluo-owned restart boundary by default. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each Node app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. Planned restarts and terminal shutdown first send `SIGTERM` to the current app child, then force-kill it after a bounded grace period so a non-cooperative child cannot hang the restart supervisor indefinitely. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. A terminal error from either the primary recursive watcher or a fallback directory watcher, a required source target that is missing or inaccessible before watcher registration, or an unavailable required fallback source watcher after recursive watching is unavailable follows that same cleanup path. This covers total fallback acquisition failure, partial failure after sibling watchers are acquired, and failure for a directory discovered while the fallback watcher is running; the runner terminates the current app child within the existing bound and exits with code `1` instead of leaving the child or sibling watchers running. This is full-process restart-on-watch, not module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` when you need the runtime-native Node watcher for debugging. Generated Bun/Deno/Workers projects delegate watch/reload behavior to `bun --watch`, `deno run --watch --allow-env --allow-net src/main.ts`, or `wrangler dev` by default; the Deno command preserves access to every application-owned environment key consumed through `Deno.env.toObject()`. Use `fluo dev --runner fluo` or `FLUO_DEV_RUNNER=fluo` when those projects should return to the fluo-owned restart runner, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths for that runner.
 
 `fluo new` supports Node.js + Fastify, Express, and raw Node.js HTTP application starters on the same Node-oriented install/build flow:
 
@@ -120,7 +123,7 @@ fluo new my-react-app --starter react-vite-ssr
 This starter fixes the schema to Node.js + Fastify HTTP. Run `pnpm dev`, open
 `/products/sku-42?preview=true`, and edit `src/page.tsx`; page UI no longer needs to carry Vite assets,
 the document shell, or the server/client route snapshot wiring. The explicit `@Router(...)` /
-`@Path(...)` handler in `src/app.tsx` returns that page as one `ReactElement`, so the existing HTTP
+`@Path(...)` handler in `src/app.ts` returns that page as one `ReactElement`, so the existing HTTP
 dispatcher remains authoritative.
 
 Generated application wiring stays visible instead of becoming a framework abstraction:
@@ -252,7 +255,7 @@ Runtime support for the MVP is explicit:
 | Runtime target | `fluo dev --studio` status |
 | --- | --- |
 | Node dev runner | Full support target. |
-| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. |
+| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. Export Studio-compatible static artifacts with `fluo inspect <module-path> --json --output <path>` or `fluo inspect <module-path> --report --output <path>` instead. |
 | Deno | Not enabled for this MVP; `fluo dev --studio` rejects Deno projects until a dedicated bridge is implemented and verified. |
 | Cloudflare Workers | Unsupported for this MVP unless a worker bridge is added and tested. |
 
@@ -294,17 +297,28 @@ fluo migrate ./src --json
 # Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
+
+The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, and `tsconfig`. The legacy `injectable` and `testing` tokens remain accepted aliases for `inject-params` and `tests`.
 
 Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
 
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Bootstrap rewrites never infer a platform: without a selected platform, the codemod retains `NestFactory.create(AppModule)` and its `listen(port)` call and emits a required adapter-selection warning. The only automatic bootstrap rewrite requires explicit `--platform express` and exactly one numeric-literal single-argument `app.listen(port)`. Host, callback, string, environment-derived, and multiple-`listen` forms remain untouched with a warning for manual migration. Install `@fluojs/platform-express` and `express` before compiling the migrated application:
+
+```bash
+fluo migrate ./src --apply --platform express
+
+# Leave bootstrap unchanged while applying only adapter-independent transforms
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
+
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.
-- Rewrites bootstrap patterns and folds supported `listen(port)` calls into fluo runtime startup conventions.
+- Rewrites bootstrap patterns only after explicit platform selection and folds supported `listen(port)` calls into fluo runtime startup conventions.
 - Migrates constructor parameter `@Inject(...)` usage into fluo-compatible dependency declarations.
 - Removes `@Injectable()` and maps scopes to `@Scope()`.
 - Migrates test templates toward `@fluojs/testing` helpers where the codemod can do so safely.
@@ -318,7 +332,7 @@ Export your application structure and troubleshoot initialization issues without
 fluo inspect ./src/app.module.ts --mermaid
 
 # Export snapshot for @fluojs/studio
-fluo inspect ./src/app.module.ts --json > snapshot.json
+fluo inspect ./src/app.module.ts --format json > snapshot.json
 
 # Write the same JSON snapshot to a CI artifact path without shell redirection
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
@@ -332,6 +346,8 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 # Inspect a named module export; defaults to AppModule
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
+
+`--format json` is explicitly equivalent to `--json`: either writes exactly one JSON document to stdout while runtime diagnostics go to stderr, and any other `--format` value is rejected.
 
 The runtime produces the inspection snapshot. `fluo inspect` accepts generated TypeScript source modules such as `./src/app.ts` or `./src/app.module.ts` through an explicit TypeScript loader boundary, while existing `.js` and `.mjs` module paths continue to load through native Node.js ESM. The CLI bootstraps an adapterless application so the authoritative HTTP dispatcher descriptors are available, then adds the runtime-owned `routes` projection to JSON, timing envelopes, and report snapshots. The CLI owns inspect orchestration, JSON serialization, report wrapping, and `--output <path>` artifact writes; Studio owns snapshot parsing, filtering, connection inspection, viewer rendering, and Mermaid graph semantics. `fluo inspect` serializes the snapshot as JSON by default when no output mode flag is provided, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. `--export <name>` selects the module export to bootstrap and defaults to `AppModule`; `--timing` records bootstrap timing diagnostics next to the JSON snapshot output, including when `--timing` is provided without an explicit `--json` flag, and `--report` wraps the runtime-produced snapshot with a stable summary for CI/support triage. `--timing` cannot be combined with Mermaid output. `--output <path>` writes the selected inspect payload to an explicit artifact path instead of stdout; it does not make the inspected application writable or change module graph state beyond the normal bootstrap/close cycle.
 
@@ -389,8 +405,14 @@ bursts after readiness are coalesced for 100 ms, generations are serialized, and
 output or its temporary files are ignored. Each generation evaluates a current application module
 graph, including changed native `.js` and `.mjs` dependencies, before the authoritative bootstrap.
 A regeneration failure prints `ERROR <output>: <message>`, preserves the last valid artifact, and
-waits for a later change. A watcher failure exits with code `1` after cleanup. `SIGINT` and `SIGTERM`
-close the watcher, remove signal handlers, wait for an active generation, and exit with code `0`.
+waits for a later change. A watcher failure exits with code `1` after cleanup. Every source event
+received while a generation or its owned artifact commit is active invalidates that work; its output
+cannot publish before the coalesced successor completes. `SIGINT` and `SIGTERM` close the watcher,
+remove signal handlers, cancel the active owned generation (a child process or caller-process
+bootstrap), and abort its owned artifact commit before either can publish. Caller-process
+cancellation waits for asynchronous bootstrap and application close to settle before watch exits
+with code `0`; a child that does not exit after `SIGTERM` is force-killed after the bounded grace
+period.
 Files outside the module directory are intentionally outside this watch boundary; run the command
 again or choose a module path at the intended source root instead of expecting source scanning or a
 second route discovery system.

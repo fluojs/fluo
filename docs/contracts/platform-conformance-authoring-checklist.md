@@ -13,6 +13,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 ## Conformance Harness Requirements
 
 - [ ] MUST: Run `createPlatformConformanceHarness(...)` from `@fluojs/testing/platform-conformance` for platform component contract checks.
+- [ ] MUST: Run `createPlatformShellLifecycleConformanceHarness(...)` from `@fluojs/testing/platform-shell-lifecycle-conformance` for PlatformShell lifecycle exclusivity checks.
 - [ ] MUST: Verify `validate()` does not transition component state.
 - [ ] MUST: Verify `validate()` does not introduce long-lived side effects when side-effect capture is configured.
 - [ ] MUST: Verify `start()` is deterministic across duplicate calls.
@@ -28,14 +29,20 @@ Use this checklist when authoring or changing official platform-facing packages 
 ## Adapter Portability Requirements
 
 - [ ] MUST: For HTTP adapters, run `createHttpAdapterPortabilityHarness(...)` from `@fluojs/testing/http-adapter-portability`.
+- [ ] MUST: Run `assertSupportsPortableResponseCookies()` to verify independent, ordered response `Set-Cookie` fields.
+- [ ] MUST: Verify `QUERY` and extension HTTP methods with `assertSupportsCustomHttpRouteMethods()`.
+- [ ] MUST: Verify bounded, suffix, open-ended, malformed, multi-range, unsatisfiable, `HEAD`, and `POST` range cases with `assertSupportsSingleByteRanges()`.
+- [ ] MUST: Configure `createErrorRepresentationBootstrapOptions` and run both `assertSupportsHttpErrorRepresentations()` and `assertDoesNotCommitAbortedHttpErrorRepresentations()`.
 - [ ] MUST: Preserve malformed cookie values without crashing or normalizing them away.
 - [ ] MUST: Preserve `rawBody` for JSON and text requests when raw-body capture is enabled.
 - [ ] MUST: Verify `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` for byte-sensitive payloads so adapters preserve exact `rawBody` bytes without Unicode replacement, newline normalization, or re-encoding.
 - [ ] MUST NOT: Preserve `rawBody` for multipart requests.
+- [ ] MUST: Verify `assertDefaultsMultipartTotalLimitToMaxBodySize()` so multipart uploads use `maxBodySize` as their default total limit.
 - [ ] MUST: Support SSE streaming with `text/event-stream` content type and stable event framing.
-- [ ] MUST: Report the configured host in startup logs.
-- [ ] MUST: Support HTTPS startup and report the HTTPS listen URL.
-- [ ] MUST: Remove registered shutdown signal listeners after `close()`.
+- [ ] MUST: Where the adapter exposes `response.stream.waitForDrain()`, verify `assertSettlesStreamDrainWaitOnClose()`.
+- [ ] MUST: Verify `assertReportsConfiguredHostInStartupLogs()`.
+- [ ] MUST: Supply a test-owned TLS certificate and key to `assertReportsHttpsStartupUrl(...)`.
+- [ ] MUST: Verify `assertRemovesShutdownSignalListenersAfterClose()`.
 - [ ] MUST: For fetch-style websocket adapters, run `createFetchStyleWebSocketConformanceHarness(...)` from `@fluojs/testing/fetch-style-websocket-conformance`.
 - [ ] MUST: Keep fetch-style websocket capability fields stable: `kind`, `contract`, `mode`, `version`, `support`, and `reason`. Version 1 capabilities may add the optional, independently versioned `bindingInstallation` extension for protocol bindings that must be installed before adapter `listen()`; adding the extension MUST NOT change the capability `version` field.
 

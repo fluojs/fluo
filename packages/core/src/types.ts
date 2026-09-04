@@ -74,4 +74,4 @@ export type MetadataPropertyKey = string | symbol;
 /**
  * Canonical request-data origins used by packages that describe how metadata values are bound.
  */
-export type MetadataSource = 'path' | 'query' | 'header' | 'cookie' | 'body';
+export type MetadataSource = 'path' | 'query' | 'header' | 'cookie' | 'body' | 'files';

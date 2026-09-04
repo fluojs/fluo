@@ -1,12 +1,18 @@
 export {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
+  NotificationQueueResultIntegrityError,
   NotificationsConfigurationError,
 } from './errors.js';
 export { NotificationsModule } from './module.js';
 export { NotificationsService } from './service.js';
+export type {
+  NotificationsOperationMode,
+  NotificationsPlatformStatusSnapshot,
+  NotificationsStatusAdapterInput,
+  NotificationsStatusDetails,
+} from './status.js';
 export { createNotificationsPlatformStatusSnapshot } from './status.js';
-export type { NotificationsPlatformStatusSnapshot, NotificationsStatusAdapterInput } from './status.js';
 export { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 export type {
   NotificationChannel,
@@ -22,12 +28,22 @@ export type {
   NotificationLifecycleEvent,
   NotificationLifecycleEventName,
   NotificationPayload,
+  NotificationSnapshot,
+  NotificationSnapshotArrayBuffer,
+  NotificationSnapshotArrayBufferView,
+  NotificationSnapshotDate,
+  NotificationSnapshotMap,
+  NotificationSnapshotRegExp,
+  NotificationSnapshotSet,
+  NotificationSnapshotUrl,
+  NotificationSnapshotUrlSearchParams,
   Notifications,
   NotificationsAsyncModuleOptions,
   NotificationsEventPublisher,
   NotificationsEventsOptions,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
+  NotificationsQueueContext,
   NotificationsQueueJob,
   NotificationsQueueOptions,
 } from './types.js';

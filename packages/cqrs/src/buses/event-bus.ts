@@ -1,5 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
+import { type EventBus, EventBusLifecycleService, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
 import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -16,6 +16,9 @@ import type { CqrsDispatchContext, CqrsEventBus, CqrsEventType, EventHandlerDesc
 import { discoverEventHandlerDescriptors } from './event-handler-discovery.js';
 import { CqrsPublishDrainTracker } from './publish-drain-tracker.js';
 import { CQRS_SAGA_DRAIN_AUTHORIZATION, CqrsSagaLifecycleService } from './saga-bus.js';
+import { CqrsShutdownDeadline } from './shutdown-deadline.js';
+import { CommandBusLifecycleService } from './command-bus.js';
+import { QueryBusLifecycleService } from './query-bus.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
@@ -46,6 +49,10 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   APPLICATION_LOGGER,
   CQRS_MODULE_OPTIONS,
   RUNTIME_CLEANUP_REGISTRATION,
+  EventBusLifecycleService,
+  CqrsShutdownDeadline,
+  CommandBusLifecycleService,
+  QueryBusLifecycleService,
 )
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
@@ -63,6 +70,10 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
+    private readonly delegatedEventBus: EventBusLifecycleService | undefined = undefined,
+    private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
+    private readonly commandService: CommandBusLifecycleService | undefined = undefined,
+    private readonly queryService: QueryBusLifecycleService | undefined = undefined,
   ) {
     super(runtimeContainer, compiledModules, logger);
     this.publishDrainTracker = new CqrsPublishDrainTracker(logger);
@@ -90,7 +101,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.unregisterShutdownStartCleanup = undefined;
 
     if (this.publishDrainTracker.hasActivePipelines) {
-      await this.publishDrainTracker.drain(this.resolveShutdownDrainTimeoutMs());
+      await this.publishDrainTracker.drain(this.resolveRemainingShutdownDrainTimeoutMs());
     }
 
     this.lifecycleState = 'stopped';
@@ -102,12 +113,18 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @returns A structured snapshot describing CQRS event-handler discovery and saga lifecycle state.
    */
   createPlatformStatusSnapshot() {
+    const commandSnapshot = this.commandService?.getRuntimeSnapshot();
+    const querySnapshot = this.queryService?.getRuntimeSnapshot();
     const sagaSnapshot = this.sagaService.getRuntimeSnapshot();
 
     return createCqrsPlatformStatusSnapshot({
+      commandHandlersDiscovered: commandSnapshot?.commandHandlersDiscovered,
+      commandLifecycleState: commandSnapshot?.lifecycleState,
       eventHandlersDiscovered: this.descriptors.length,
       inFlightSagaExecutions: sagaSnapshot.inFlightSagaExecutions,
       lifecycleState: this.lifecycleState,
+      queryHandlersDiscovered: querySnapshot?.queryHandlersDiscovered,
+      queryLifecycleState: querySnapshot?.lifecycleState,
       sagaLifecycleState: sagaSnapshot.lifecycleState,
       sagaShutdownDrainTimeouts: sagaSnapshot.shutdownDrainTimeouts,
       sagasDiscovered: sagaSnapshot.sagasDiscovered,
@@ -128,9 +145,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async publish<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
     this.assertAcceptingNewWork('publish', context);
     const publishContext = this.createPublishContext(context);
-    await this.publishDrainTracker.track(
+    await this.trackPublishPipeline(
+      publishContext,
       this.runPublishPipeline(event, publishContext.context),
-      publishContext.drainToken,
     );
   }
 
@@ -144,9 +161,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
     this.assertAcceptingNewWork('publishAll', context);
     const publishContext = this.createPublishContext(context);
-    await this.publishDrainTracker.track(
+    await this.trackPublishPipeline(
+      publishContext,
       this.runPublishAllPipeline(events, publishContext.context),
-      publishContext.drainToken,
     );
   }
 
@@ -179,6 +196,16 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
   }
 
+  private async trackPublishPipeline(publishContext: CqrsPublishContext, pipeline: Promise<void>): Promise<void> {
+    const releaseSagaGraph = this.sagaService.acquireAuthorizedPipelineLease();
+
+    try {
+      await this.publishDrainTracker.track(pipeline, publishContext.drainToken);
+    } finally {
+      releaseSagaGraph();
+    }
+  }
+
   private assertAcceptingNewWork(operation: 'publish' | 'publishAll', context?: CqrsDispatchContext): void {
     if (this.lifecycleState === 'stopped') {
       throw new InvariantError(`CQRS event bus cannot ${operation} after shutdown has started.`);
@@ -194,6 +221,13 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   private markApplicationShutdownStarted(): void {
+    this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
+    const deadlineAtMs = this.shutdownDeadline.deadlineAtMs();
+
+    if (deadlineAtMs !== undefined && this.delegatedEventBus) {
+      this.delegatedEventBus.adoptShutdownDeadline(deadlineAtMs);
+    }
+
     if (this.lifecycleState !== 'stopped') {
       this.lifecycleState = 'stopping';
     }
@@ -225,6 +259,10 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
 
     return Math.floor(timeoutMs);
+  }
+
+  private resolveRemainingShutdownDrainTimeoutMs(): number {
+    return this.shutdownDeadline.remainingTimeoutMs() ?? this.resolveShutdownDrainTimeoutMs();
   }
 
   private matchEventDescriptors(event: IEvent): EventHandlerDescriptor[] {

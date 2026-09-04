@@ -1,5 +1,5 @@
-import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
-import { getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/internal';
+import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
+import { getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 import { DefaultValidator } from '@fluojs/validation';
 
 import { isGraphqlListTypeRef } from '../types.js';

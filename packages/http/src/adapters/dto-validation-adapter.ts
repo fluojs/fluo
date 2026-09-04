@@ -1,5 +1,9 @@
 import { type Constructor } from '@fluojs/core';
-import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@fluojs/validation';
+import {
+  DefaultValidator as BaseDefaultValidator,
+  DtoValidationError,
+  type MaterializeOptions,
+} from '@fluojs/validation';
 
 import { BadRequestException } from '../exceptions.js';
 import { toInputErrorDetail } from '../input-error-detail.js';
@@ -36,9 +40,9 @@ export class HttpDtoValidationAdapter implements Validator {
     }
   }
 
-  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
+  async materialize<T>(value: unknown, target: Constructor<T>, options?: MaterializeOptions): Promise<T> {
     try {
-      return await this.validator.materialize(value, target);
+      return await this.validator.materialize(value, target, options);
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
         this.throwBadRequestForValidationError(error);

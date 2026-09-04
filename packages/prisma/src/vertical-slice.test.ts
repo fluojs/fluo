@@ -7,11 +7,18 @@ import {
   HttpCode,
   Post,
   RequestDto,
+  UseInterceptors,
 } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { PrismaModule, PrismaService, type PrismaServiceFacade, Transaction } from './index.js';
+import {
+  PrismaModule,
+  PrismaService,
+  type PrismaServiceFacade,
+  PrismaTransactionInterceptor,
+  Transaction,
+} from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -285,6 +292,73 @@ describe('@fluojs/prisma service boundary primary flow', () => {
         'connect',
         'transaction:start',
         'tx:create:grace@example.com',
+        'transaction:commit',
+        'response:send',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('injects the compatibility interceptor controller dependency before creating an order', async () => {
+    const events: string[] = [];
+    const transactionClient = { source: 'transaction' } as const;
+    const client = {
+      source: 'root' as const,
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        const result = await callback(transactionClient);
+        events.push('transaction:commit');
+        return result;
+      },
+    };
+
+    @Inject(PrismaService)
+    class OrdersService {
+      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+
+      create() {
+        events.push(`orders:create:${this.prisma.current().source}`);
+        return { id: 'order-1' };
+      }
+    }
+
+    @Controller('/orders')
+    @Inject(OrdersService)
+    class OrdersController {
+      constructor(private readonly orders: OrdersService) {}
+
+      @Post('/')
+      @UseInterceptors(PrismaTransactionInterceptor)
+      createOrder() {
+        return this.orders.create();
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [OrdersController],
+      imports: [PrismaModule.forRoot({ client })],
+      providers: [OrdersService],
+    });
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const response = createResponse(events);
+
+      await app.dispatch(createRequest('/orders', 'POST'), response);
+
+      expect(response.body).toEqual({ id: 'order-1' });
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'orders:create:transaction',
         'transaction:commit',
         'response:send',
       ]);

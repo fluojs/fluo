@@ -8,7 +8,7 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 
 - issuing access tokens with `DefaultJwtSigner`
 - protecting a route with `@UseAuth('jwt')` and `@RequireScopes(...)`
-- verifying bearer tokens through a custom `AuthStrategy`
+- verifying bearer tokens through the built-in `BearerJwtStrategy` preset from `@fluojs/passport`
 - explicit DI token metadata instead of reflection-based injection
 - runtime-owned `/health` and `/ready` endpoints alongside auth routes
 - unit, integration, and e2e-style testing with `@fluojs/testing`
@@ -16,7 +16,7 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 ## trust boundaries
 
 - `@fluojs/jwt` is a Node-runtime auth package. The root import surface loads lazily, but signing, verification, JWKS key parsing, and refresh-token id generation all require a Node.js-compatible `node:crypto` implementation. Bun satisfies this through its Node compatibility layer; Deno and Cloudflare Workers are not supported JWT signing/verification runtimes.
-- `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input and must never be used for authorization decisions. Use `JwtService.verify(token, options)` or `DefaultJwtVerifier.verifyAccessToken(token)` first, and read identity from the normalized `JwtPrincipal`. `decode()` is for diagnostics and non-authoritative inspection only.
+- `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input and must never be used for authorization decisions. `JwtService.verify(token, options)` returns verified claims; it does not return a `JwtPrincipal`. Use `DefaultJwtVerifier.verifyAccessToken(token)` when the normalized `JwtPrincipal` identity is required without per-call overrides, or `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` when preserving per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp`. `decode()` is for diagnostics and non-authoritative inspection only.
 
 ## routes
 
@@ -55,9 +55,9 @@ examples/auth-jwt-passport/
 
 1. `src/auth/login.dto.ts` — explicit request boundary
 2. `src/auth/auth.service.ts` — JWT issuance
-3. `src/auth/bearer.strategy.ts` — bearer token verification through passport core
+3. `src/auth/bearer.strategy.ts` — re-export of the built-in `BearerJwtStrategy` preset
 4. `src/auth/auth.controller.ts` — open token route + protected profile route
-5. `src/auth/auth.module.ts` — module-first registration via `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)`
+5. `src/auth/auth.module.ts` — module-first registration via `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` with the stable `createBearerJwtStrategyRegistration()` helper
 6. `src/app.test.ts` — service/strategy coverage plus e2e-style HTTP checks through `createTestApp(...).request(...).send()`
 
 ## related docs

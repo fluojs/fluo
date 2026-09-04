@@ -1,12 +1,31 @@
 # @fluojs/cron
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone` maps to `timezone`; `CronTaskOptions.timezone` is a string. |
+| `wait-for-completion` | `protect: true` prevents overlapping Croner invocations, and `CronLifecycleService` rejects a tick while its task is running. |
+| `unsupported-options` | NestJS scheduler options other than the documented fluo options are unsupported. |
+| `absolute-time` | `@Cron` accepts a cron-expression string only; `Date` and `DateTime` overloads are unsupported. |
+| `named-interval-timeout` | `@Interval(ms, options)` and `@Timeout(ms, options)` accept milliseconds and optional named task options. |
+| `async-configuration` | `CronModule.forRoot(...)` is synchronous; resolve async configuration before calling it. |
+| `global-visibility` | `CronModule.forRoot(...)` is local by default; pass `global: true` explicitly when needed. |
+| `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 
 Decorator-based scheduling for fluo applications with lifecycle-managed startup/shutdown and optional Redis distributed locking.
 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Node.js Compatibility](#nodejs-compatibility)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
@@ -27,6 +46,14 @@ npm install @fluojs/cron
 `@fluojs/cron` owns `croner` as a runtime dependency, so consumers do not need to install the scheduler engine directly.
 
 `@fluojs/redis` is needed only when Redis distributed locking is enabled. Non-distributed scheduling paths do not load the Redis integration during package import, module registration, bootstrap, or status snapshot creation.
+
+## Node.js Compatibility
+
+`@fluojs/cron` 3 requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` because it depends on `@fluojs/runtime` 3. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are not supported.
+
+### Migration to 3
+
+Before upgrading from `@fluojs/cron` 2, move deployment hosts to Node.js `>=20.19.3 <21 || >=22.2.0 <27`. Update any runtime image, CI matrix, or local development environment that still uses a removed Node.js version before installing `@fluojs/cron` 3.
 
 ## When to Use
 
@@ -89,6 +116,18 @@ NestJS `@Cron()` options are not a drop-in `CronTaskOptions` object. Rename Nest
 Do not copy `waitForCompletion` or invent an overlap flag. fluo does not expose either option: every cron task uses scheduler-level no-overlap protection plus an in-process running guard. If another tick arrives while the same task instance is still running, fluo skips that tick instead of queueing another run. A NestJS task with `waitForCompletion: true` therefore omits the option when migrated. If the NestJS task left `waitForCompletion` unset or set it to `false` and intentionally depended on overlapping runs, redesign that work behind an application-owned queue or worker rather than expecting fluo to enable overlap.
 
 This guard covers one task instance in one application process. Use [Distributed Locking](#distributed-locking) when multiple application instances must not run the same task concurrently.
+
+The remaining NestJS scheduling options have no `CronTaskOptions` equivalent. Do not copy `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`: fluo does not accept or emulate them. Make disabled or category-specific schedules part of application composition by omitting the provider/module that declares them, or register a dynamic task only after the application-owned condition is satisfied. Treat threshold/recovery policy as application-owned work. Use `@Timeout(ms, ...)` only when a delay relative to application startup is the intended behavior; it is not an absolute-time replacement for NestJS `@Cron(Date)` or `@Cron(DateTime)`.
+
+| NestJS scheduling form | fluo migration |
+| --- | --- |
+| `@Cron(expression, { timeZone })` | `@Cron(expression, { timezone })` |
+| `@Cron(Date)` or `@Cron(DateTime)` | No direct equivalent. Resolve the absolute-time plan in application code; do not substitute a startup-relative `@Timeout`. |
+| `@Interval('name', ms)` | `@Interval(ms, { name: 'name' })` |
+| `@Timeout('name', ms)` | `@Timeout(ms, { name: 'name' })` |
+| `ScheduleModule.forRootAsync(...)` | Resolve async configuration at the application bootstrap/composition boundary, then call synchronous `CronModule.forRoot(...)`. |
+| NestJS global-by-default schedule registration | `CronModule.forRoot({ global: true })` when global visibility is required; fluo defaults to `false`. |
+| `cronJobs`, `intervals`, or `timeouts` category switches | No direct equivalent. Own the conditional provider/module composition or explicit dynamic registration in the application. |
 
 ### Distributed Locking
 

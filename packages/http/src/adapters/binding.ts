@@ -1,4 +1,4 @@
-import { InvariantError, type Constructor, type Token } from '@fluojs/core';
+import { type Constructor, InvariantError, type Token } from '@fluojs/core';
 
 import { BadRequestException, type HttpExceptionDetail } from '../exceptions.js';
 import { toInputErrorDetail } from '../input-error-detail.js';
@@ -69,6 +69,22 @@ function isConverterToken(value: unknown): value is Token<Converter> {
   return typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol';
 }
 
+function hasRegisteredConverter(
+  container: unknown,
+  token: Token<Converter>,
+): boolean | undefined {
+  if (
+    typeof container !== 'object'
+    || container === null
+    || !('has' in container)
+    || typeof container.has !== 'function'
+  ) {
+    return undefined;
+  }
+
+  return container.has(token);
+}
+
 async function resolveConverter(
   value: unknown,
   context: ArgumentResolverContext,
@@ -91,29 +107,25 @@ async function resolveConverter(
     throw new InvariantError('Converter metadata must be a converter instance or DI token.');
   }
 
-  try {
-    const resolved = await context.requestContext.container.resolve(value as Token<Converter>);
+  if (typeof value === 'function' && hasRegisteredConverter(context.requestContext.container, value) === false) {
+    const instantiated = new (value as Constructor<Converter>)();
 
-    if (!isConverter(resolved)) {
-      throw new InvariantError('Resolved converter token does not implement convert().');
+    if (!isConverter(instantiated)) {
+      throw new InvariantError('Converter class must implement convert(value, target).');
     }
 
-    cache.set(value, resolved);
-    return resolved;
-  } catch (error) {
-    if (typeof value === 'function') {
-      const instantiated = new (value as Constructor<Converter>)();
-
-      if (!isConverter(instantiated)) {
-        throw new InvariantError('Converter class must implement convert(value, target).');
-      }
-
-      cache.set(value, instantiated);
-      return instantiated;
-    }
-
-    throw error;
+    cache.set(value, instantiated);
+    return instantiated;
   }
+
+  const resolved = await context.requestContext.container.resolve(value as Token<Converter>);
+
+  if (!isConverter(resolved)) {
+    throw new InvariantError('Resolved converter token does not implement convert().');
+  }
+
+  cache.set(value, resolved);
+  return resolved;
 }
 
 /**

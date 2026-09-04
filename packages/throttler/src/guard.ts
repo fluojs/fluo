@@ -1,6 +1,12 @@
 import { Inject } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
-import { type Guard, type GuardContext, type MiddlewareContext, TooManyRequestsException } from '@fluojs/http';
+import {
+  type Guard,
+  type GuardContext,
+  type MiddlewareContext,
+  type TrustProxyPolicy,
+  TooManyRequestsException,
+} from '@fluojs/http';
 import { getCompiledRouteIdentity, resolveClientIdentity } from '@fluojs/http/internal';
 
 import {
@@ -41,8 +47,12 @@ function getMethodMetadataBag(controllerToken: Function, methodName: string): Me
   return routeMap?.get(methodName);
 }
 
-function defaultKeyGenerator(ctx: MiddlewareContext, trustProxyHeaders: boolean): string {
-  return resolveClientIdentity(ctx.request, { trustProxyHeaders });
+function defaultKeyGenerator(
+  ctx: MiddlewareContext,
+  trustProxy: TrustProxyPolicy,
+  trustProxyHeaders: boolean,
+): string {
+  return resolveClientIdentity(ctx.request, { trustProxy, trustProxyHeaders });
 }
 
 function buildStoreKey(encodedHandlerKey: string, clientKey: string): string {
@@ -150,7 +160,11 @@ export class ThrottlerGuard implements Guard {
 
     const clientKey = this.options.keyGenerator
       ? this.options.keyGenerator(middlewareCtx)
-      : defaultKeyGenerator(middlewareCtx, this.options.trustProxyHeaders ?? false);
+      : defaultKeyGenerator(
+        middlewareCtx,
+        this.options.trustProxy ?? (this.options.trustProxyHeaders ? Number.MAX_SAFE_INTEGER : false),
+        this.options.trustProxyHeaders ?? false,
+      );
 
     const storeKey = buildStoreKey(policy.encodedHandlerKey, clientKey);
     const now = Date.now();

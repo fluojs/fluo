@@ -1,8 +1,12 @@
 import { Inject } from '@fluojs/core';
 import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier } from '@fluojs/jwt';
+import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
-import { AuthenticationRequiredError } from '../errors.js';
+import {
+  AuthenticationExpiredError,
+  AuthenticationFailedError,
+  AuthenticationRequiredError,
+} from '../errors.js';
 import type { AuthOptionalResult, AuthStrategy, AuthStrategyResult } from '../types.js';
 
 const unauthenticatedCookieAuthResult: AuthOptionalResult = {
@@ -57,6 +61,12 @@ export function normalizeCookieAuthOptions(options?: CookieAuthOptions): Require
  * When `requireAccessToken` is `false`, missing cookies now resolve to an explicit
  * unauthenticated result. Protected routes still reject that result unless they opt in
  * with `@UseOptionalAuth(...)`.
+ *
+ * Verifier failures keep the documented typed-error classification: expired access
+ * tokens raise {@link AuthenticationExpiredError}, invalid access tokens raise
+ * {@link AuthenticationFailedError}, and missing or malformed cookies raise
+ * {@link AuthenticationRequiredError}. `AuthGuard` still responds with HTTP 401 for
+ * every variant while preserving the typed error as the cause.
  */
 @Inject(DefaultJwtVerifier, COOKIE_AUTH_OPTIONS)
 export class CookieAuthStrategy implements AuthStrategy {
@@ -107,8 +117,16 @@ export class CookieAuthStrategy implements AuthStrategy {
         subject: principal.subject,
       };
     } catch (error: unknown) {
+      if (error instanceof JwtExpiredTokenError) {
+        throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
+      }
+
+      if (error instanceof JwtInvalidTokenError) {
+        throw new AuthenticationFailedError('Access token is invalid.', { cause: error });
+      }
+
       if (error instanceof Error) {
-        throw new AuthenticationRequiredError(error.message);
+        throw new AuthenticationRequiredError(error.message, { cause: error });
       }
 
       throw new AuthenticationRequiredError('Access token verification failed.');

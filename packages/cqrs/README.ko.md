@@ -24,6 +24,10 @@ fluo 애플리케이션을 위한 CQRS 패키지입니다. 부트스트랩 시�
 npm install @fluojs/cqrs
 ```
 
+### Node.js 지원
+
+`@fluojs/cqrs`는 필수 `@fluojs/runtime` dependency와 일치하는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원합니다. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 지원하지 않습니다.
+
 ## 사용 시점
 
 - "의도"(Command/Query)와 "실행"(Handler)을 분리하고 싶을 때 사용합니다.
@@ -174,13 +178,13 @@ Saga, command handler, query handler, event handler 안에서 다시 CQRS `execu
 
 ### Event 발행 계약
 
-`CqrsEventBusService.publish(event)`는 CQRS event pipeline을 고정된 순서로 실행합니다. 먼저 일치하는 `@EventHandler(...)` provider를 실행하고, 그다음 일치하는 `@Saga(...)` provider를 실행한 뒤, 마지막으로 `@fluojs/event-bus`로 위임 발행합니다. `publishAll(events)`는 각 event의 CQRS handler, saga, 위임 발행 호출을 기다린 뒤 다음 event를 발행하므로 입력 순서를 보존합니다. 애플리케이션 shutdown 중에는 CQRS event bus가 진행 중인 `publish(...)` pipeline, `publishAll(...)` sequence, saga execution chain이 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. Command bus와 query bus는 shutdown이 시작되면 새로운 `execute(...)` 호출을 거부하고 shutdown 중 preload된 handler cache를 정리하므로, close 이후 dispatch가 오래된 provider instance를 재사용할 수 없습니다. Shutdown이 시작되면 brand-new external `publish(...)`, `publishAll(...)`, direct saga dispatch 호출은 거부됩니다. 이미 활성화된 handler나 saga에서 호출되는 nested `publish(...)` 또는 `publishAll(...)`은 CQRS가 제공한 `CqrsDispatchContext`를 그대로 전달할 때만 계속 진행할 수 있습니다. 이렇게 하면 drain 작업은 활성 pipeline 안에 머무르고 관련 없는 caller는 계속 거부됩니다. 이미 진행 중인 publish와 saga 작업은 bounded shutdown window 안에서 계속 drain됩니다. Shutdown drain은 기본값이 5000ms인 `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. CQRS handler, saga 또는 위임 publish chain이 이 bound 이후에도 멈춰 있으면 CQRS는 degraded status diagnostic을 기록하고 경고를 남긴 뒤 애플리케이션 close를 무기한 hang시키지 않고 계속 진행합니다. `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`로 설정한 경우 위임 발행 호출은 일치하는 `@OnEvent(...)` subscriber가 완료되기 전에 resolve될 수 있으므로, 이 모드에서 `publish(...)`, `publishAll(...)`, shutdown drain 완료는 subscriber 완료를 의미하지 않습니다.
+`CqrsEventBusService.publish(event)`는 CQRS event pipeline을 고정된 순서로 실행합니다. 먼저 일치하는 `@EventHandler(...)` provider를 실행하고, 그다음 일치하는 `@Saga(...)` provider를 실행한 뒤, 마지막으로 `@fluojs/event-bus`로 위임 발행합니다. `publishAll(events)`는 각 event의 CQRS handler, saga, 위임 발행 호출을 기다린 뒤 다음 event를 발행하므로 입력 순서를 보존합니다. 애플리케이션 shutdown 중에는 CQRS event bus가 진행 중인 `publish(...)` pipeline, `publishAll(...)` sequence, saga execution chain이 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. Command bus와 query bus는 shutdown이 시작되면 새로운 `execute(...)` 호출을 거부하고 shutdown 중 preload된 handler cache를 정리하므로, close 이후 dispatch가 오래된 provider instance를 재사용할 수 없습니다. Shutdown이 시작되면 brand-new external `publish(...)`, `publishAll(...)`, direct saga dispatch 호출은 거부됩니다. 이미 활성화된 handler나 saga에서 호출되는 nested `publish(...)` 또는 `publishAll(...)`은 CQRS가 제공한 `CqrsDispatchContext`를 그대로 전달할 때만 계속 진행할 수 있습니다. 이렇게 하면 drain 작업은 활성 pipeline 안에 머무르고 관련 없는 caller는 계속 거부됩니다. 이미 진행 중인 publish와 saga 작업은 하나의 absolute shutdown window 안에서 drain됩니다. `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`는 기본값 5000ms의 CQRS 전체 bound를 설정하며, 위임 `@fluojs/event-bus` shutdown은 항상 남은 budget을 상속합니다. 명시적인 `eventBus.shutdown.drainTimeoutMs`는 이 cap을 더 줄일 수만 있고 공유 CQRS deadline을 연장할 수 없습니다. CQRS handler, saga 또는 위임 publish chain이 이 bound가 만료된 뒤에도 멈춰 있으면 CQRS는 degraded status diagnostic을 기록하고 경고를 남긴 뒤 애플리케이션 close를 무기한 hang시키지 않고 계속 진행합니다. `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`로 설정한 경우 위임 발행 호출은 일치하는 `@OnEvent(...)` subscriber가 완료되기 전에 resolve될 수 있으므로, 이 모드에서 `publish(...)`, `publishAll(...)`, shutdown drain 완료는 subscriber 완료를 의미하지 않습니다.
 
 각 CQRS event handler와 saga는 매칭된 event prototype이 복원된 격리 event 복사본을 받습니다. 이 복사본을 mutate해도 변경은 현재 handler 또는 saga route 안에만 머물며, 다른 CQRS handler, saga, 원본 event 객체, 또는 위임된 `@fluojs/event-bus` subscriber에는 보이지 않습니다. 위임된 event-bus 발행은 CQRS side effect가 끝난 뒤 원본 event를 받으므로, `@OnEvent(...)` projection과 transport는 CQRS handler가 mutate한 복사본이 아니라 호출자가 소유한 payload를 관찰합니다.
 
 Event class는 payload state를 clone 가능하고 enumerable하게 유지해야 합니다. 문자열 key와 symbol key를 가진 enumerable payload field는 shared core clone fallback으로 보존되지만, 열린 socket, function, process-local handle처럼 의도적으로 clone할 수 없는 resource는 발행 전에 ID나 다른 serializable boundary로 표현해야 합니다.
 
-CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
+CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Discovery는 direct class와 `useClass` provider, class token이 CQRS metadata를 가진 `useFactory` provider, instance constructor가 CQRS metadata를 가진 `useValue` provider를 지원합니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
 
 ### 심볼 토큰
 
@@ -224,8 +228,24 @@ class TokenInjectedService {
 - `SagaTopologyError`: 활성 provider-token/event-route cycle 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
 
 ### status와 metadata
-- `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다.
+- `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다. Snapshot `details`는 Command, Query, Event handler, saga의 탐색된 개수와 각 lifecycle summary를 보고합니다. Command와 Query adapter input은 호환성을 위해 optional로 유지하며, 생략하면 탐색된 handler 수는 0이고 lifecycle은 CQRS event lifecycle을 사용합니다.
+- `CqrsEventBusService.createPlatformStatusSnapshot()`: live bus state에서 Command와 Query discovery summary를 채웁니다. Snapshot details는 handler descriptor, provider token, saga topology를 절대 노출하지 않으며 Command와 Query summary는 기존 event/saga readiness 또는 health semantics를 바꾸지 않습니다.
 - command, query, event, saga registration을 검사해야 하는 framework package를 위해 metadata helper와 symbol이 export됩니다.
+
+#### Status snapshot field
+
+모든 CQRS snapshot은 `readiness`, `health`, `ownership`, `details`를 가집니다. `ownership`은 항상 `externallyManaged: false`, `ownsResources: false`를 보고합니다. CQRS는 자체 in-process lifecycle을 관찰하며 caller-owned external resource를 소유한다고 주장하지 않습니다.
+
+| `details` field | 의미 |
+| --- | --- |
+| `dependencies` | 위임된 event-bus dependency를 나타내는 항상 `['event-bus.default']` 값입니다. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Command/Query adapter input을 생략하면 `0`을 사용하며, shutdown 후 live-bus count는 `0`입니다. |
+| `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, Query, event-pipeline, saga runtime의 lifecycle state입니다. Command/Query adapter input을 생략하면 `lifecycleState`로 fallback합니다. |
+| `inFlightSagaExecutions` | 현재 runtime이 소유한 saga execution 수입니다. |
+| `shutdownDrainTimeoutMs` | 설정된 bounded shutdown-drain window입니다. |
+| `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | event pipeline과 saga runtime에서 기록된 bounded drain timeout입니다. |
+
+유효한 lifecycle state는 `created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`입니다. Readiness는 event와 saga state를 다음 순서로 평가합니다. 둘 다 `ready`이면 `ready`, 그 외에는 하나라도 `discovering`이면 `degraded`, 그 외에는 하나라도 `stopping`이면 `not-ready`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `not-ready`, `created`를 포함한 나머지 조합은 `not-ready`입니다. Health는 다음 순서로 평가합니다. 0이 아닌 drain-timeout counter가 하나라도 있으면 `degraded`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `unhealthy`, 그 외에는 하나라도 `discovering` 또는 `stopping`이면 `degraded`, 나머지 조합은 `healthy`입니다. Command와 Query lifecycle field는 diagnostic 전용이며 기존 event/saga readiness 또는 health rule을 바꾸지 않습니다.
 
 ## 관련 패키지
 

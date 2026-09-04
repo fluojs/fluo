@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+} from './index.js';
 import type { FrameworkRequest, FrameworkResponse } from './types.js';
-import { appendVaryHeader, getRequestHeader } from './index.js';
 
 function createRequest(
   headers: FrameworkRequest['headers'],
@@ -70,6 +76,57 @@ describe('getRequestHeader', () => {
     });
 
     expect(getRequestHeader(request, 'accept')).toBe('   ');
+  });
+});
+
+describe('response metadata helpers', () => {
+  it('reads response headers case-insensitively without flattening arrays or mutating response state', () => {
+    const upstreamValues = ['trace-a', 'trace-b'];
+    const response = createResponse();
+    response.headers['X-Trace-Id'] = upstreamValues;
+    response.statusCode = 202;
+    response.statusSet = true;
+
+    expect(getResponseHeader(response, 'x-trace-id')).toBe(upstreamValues);
+    expect(getResponseHeader(response, 'X-TRACE-ID')).toBe(upstreamValues);
+    expect(hasResponseHeader(response, 'x-trace-id')).toBe(true);
+    expect(hasResponseHeader(response, 'x-missing')).toBe(false);
+    expect(response).toMatchObject({
+      committed: false,
+      headers: { 'X-Trace-Id': upstreamValues },
+      statusCode: 202,
+      statusSet: true,
+    });
+  });
+
+  it('returns undefined and false for blank or missing response header names', () => {
+    const response = createResponse();
+    response.headers.ETag = '"response-v1"';
+
+    expect(getResponseHeader(response, '   ')).toBeUndefined();
+    expect(hasResponseHeader(response, '   ')).toBe(false);
+    expect(getResponseHeader(response, 'x-missing')).toBeUndefined();
+    expect(hasResponseHeader(response, 'x-missing')).toBe(false);
+  });
+});
+
+describe('buildContentDisposition', () => {
+  it('creates deterministic quoted ASCII and UTF-8 filename parameters for attachment and inline responses', () => {
+    expect(buildContentDisposition('attachment', 'résumé "2026"\\draft.txt')).toBe(
+      `attachment; filename="r?sum? \\"2026\\"\\\\draft.txt"; filename*=UTF-8''r%C3%A9sum%C3%A9%20%222026%22%5Cdraft.txt`,
+    );
+    expect(buildContentDisposition('inline', 'resume.txt')).toBe(
+      `inline; filename="resume.txt"; filename*=UTF-8''resume.txt`,
+    );
+  });
+
+  it('rejects carriage-return and line-feed filename injection before creating a header value', () => {
+    expect(() => buildContentDisposition('attachment', 'report\r\nX-Injected: true')).toThrow(
+      'Content-Disposition filenames cannot contain CR or LF characters.',
+    );
+    expect(() => buildContentDisposition('inline', 'report\nX-Injected: true')).toThrow(
+      'Content-Disposition filenames cannot contain CR or LF characters.',
+    );
   });
 });
 

@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/platform-express, @fluojs/platform-nodejs, @fluojs/runtime -->
+<!-- packages: @fluojs/http, @fluojs/platform-express, @fluojs/platform-nodejs, @fluojs/runtime -->
 <!-- project-state: FluoShop v2.3.0 -->
 
 # Chapter 21. Express and Node.js Adapters
@@ -206,7 +206,24 @@ async download(_input: undefined, ctx: RequestContext) {
 }
 ```
 
-### 21.3.3 Runtime diagnostics snapshots vs Studio rendering
+### 21.3.3 Portable byte-range downloads
+
+Use `createByteRangeResponse(...)` when a controller owns a byte representation or can create a portable stream with its exact size. `GET` uses a valid single `Range: bytes=` member to produce the partial response, and `HEAD` mirrors that metadata without opening a stream; `POST`, unsafe, and custom methods keep their ordinary full response.
+
+```typescript
+import { createByteRangeResponse, Get } from '@fluojs/http';
+
+@Get('exports/report')
+downloadReport() {
+  return createByteRangeResponse(report.bytes, {
+    contentType: 'application/pdf',
+  });
+}
+```
+
+The application owns file opening, `stat`, seeking, exact size calculation, and closure. If `report.bytes` instead comes from a file stream, pass a factory and the application-known `size`; the helper never opens or closes the file and does not construct multi-range responses. Raw Node sends partial representations with identity encoding so the transmitted `Content-Range` and `Content-Length` stay byte-accurate, while complete representations may still use configured compression.
+
+### 21.3.4 Runtime diagnostics snapshots vs Studio rendering
 
 Adapter choice does not change who owns diagnostics. `@fluojs/runtime` and the platform shell produce the machine-readable `PlatformShellSnapshot`, including readiness, health, component graph data, and structured diagnostic issues. `fluo inspect` exports that runtime-produced snapshot as JSON or as a report artifact for CLI, CI, and support workflows.
 

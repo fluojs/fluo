@@ -77,6 +77,7 @@ const modulePaths = new Map([
   ['@fluojs/passport', '/passport-bridge/passport.d.ts'],
   ['./google.strategy.js', '/passport-bridge/google.strategy.d.ts'],
 ]);
+const successfullyTypeCheckedSources = new Set();
 
 function formatDiagnostics(diagnostics) {
   return diagnostics.slice(0, 8).map((diagnostic) => {
@@ -90,6 +91,10 @@ function formatDiagnostics(diagnostics) {
 }
 
 export function enforcePassportBridgeExampleTypes(relativePath, sourceText) {
+  if (successfullyTypeCheckedSources.has(sourceText)) {
+    return;
+  }
+
   const sources = new Map(virtualSources);
   sources.set(examplePath, sourceText);
   const options = {
@@ -129,4 +134,6 @@ export function enforcePassportBridgeExampleTypes(relativePath, sourceText) {
       `Passport.js bridge migration contract check failed: ${relativePath} example must type-check (${formatDiagnostics(diagnostics)}).`,
     );
   }
+
+  successfullyTypeCheckedSources.add(sourceText);
 }

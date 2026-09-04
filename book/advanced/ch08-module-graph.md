@@ -533,36 +533,11 @@ When `compileModuleGraph()` returns, three things are guaranteed. The import gra
 That is why later Bootstrap code can be comparatively simple. It receives a graph whose coherence has already been proven.
 
 ## 8.4 Container registration replays the compiled order and applies duplicate-provider policy
-Once the graph is compiled, `bootstrapModule()` at `path:packages/runtime/src/bootstrap.ts:372-398` creates a new `Container`. Only after that does it decide which Providers to register.
+Once the graph is compiled, `bootstrapModule()` creates a new `Container` and calls `selectEffectiveBootstrapProviders()`. This selector preserves every `multi: true` contribution in declaration order. It deduplicates only single providers, so a shared multi Token never collapses to one winner.
 
-The most interesting helper here is `collectProvidersForContainer()` at `path:packages/runtime/src/bootstrap.ts:262-312`. This function merges runtime Providers and Module Providers into a selected-Provider map keyed by Token. It does not try to support multi-version coexistence. It selects only one winner per Token.
+The selector keeps separate single-provider indexes for runtime and module entries. A later single provider is the effective provider under `'warn'` or `'ignore'`; `'throw'` rejects that duplicate. Runtime single providers mask module single providers with the same Token, but multi contributions remain effective even when they share a Token with other multi contributions.
 
-The helper starts by putting runtime Providers into the same selected map first.
-
-`path:packages/runtime/src/bootstrap.ts:262-278`
-```typescript
-function collectProvidersForContainer(
-  modules: CompiledModule[],
-  runtimeProviders: Provider[] | undefined,
-  policy: DuplicateProviderPolicy,
-  logger?: ApplicationLogger,
-): Provider[] {
-  const selectedProviders = new Map<Token, SelectedProviderEntry>();
-
-  for (const runtimeProvider of runtimeProviders ?? []) {
-    const token = providerToken(runtimeProvider);
-    selectedProviders.set(token, {
-      moduleName: '<runtime>',
-      provider: runtimeProvider,
-      source: 'runtime',
-      token,
-    });
-  }
-```
-
-Runtime Providers are also selected by Token key, but the later filter removes Module Providers that overlap with runtime Tokens. That prevents Bootstrap-only runtime Tokens from being registered twice through Module Providers.
-
-The duplicate policy comes from `BootstrapModuleOptions` at `path:packages/runtime/src/types.ts:33-39`. The allowed values are `'warn'`, `'throw'`, and `'ignore'`. `bootstrapModule()` sets the default to `'warn'` at `path:packages/runtime/src/bootstrap.ts:375`.
+The duplicate policy comes from `BootstrapModuleOptions`. The allowed values are `'warn'`, `'throw'`, and `'ignore'`; `bootstrapModule()` uses `'warn'` by default.
 
 The option type shows that duplicate policy belongs to the same low-level Bootstrap contract as graph compilation options.
 
@@ -579,49 +554,18 @@ export interface BootstrapModuleOptions {
 
 This option is passed along not only for graph validation, but also for how Provider selection is handled after the graph is approved.
 
-When two Modules register the same Token, the runtime uses `createDuplicateProviderMessage()` at `path:packages/runtime/src/bootstrap.ts:257-260`, then branches by policy. `'throw'` throws `DuplicateProviderError`, `'warn'` logs and continues, and `'ignore'` silently lets the later registration win.
+When two Modules register the same **single-provider** Token, `selectEffectiveBootstrapProviders()` delegates duplicate reporting to `handleDuplicateProvider()`. `'throw'` raises `DuplicateProviderError`, `'warn'` logs and retains the later single provider, and `'ignore'` silently retains that later single provider. These policies do not apply a one-winner rule to `multi: true`.
 
-The Module Provider loop handles duplicate detection and the last write in the same loop.
+The selector traverses compiled Modules in dependency order, records every entry, and retains the final index only for each single Token. Its result therefore has two deliberate properties:
 
-`path:packages/runtime/src/bootstrap.ts:280-308`
-```typescript
-  for (const compiledModule of modules) {
-    for (const provider of compiledModule.definition.providers ?? []) {
-      const token = providerToken(provider);
-      const existing = selectedProviders.get(token);
-
-      if (existing && existing.source === 'module') {
-        const message = createDuplicateProviderMessage(token, compiledModule.type.name, existing.moduleName);
-
-        if (policy === 'throw') {
-          throw new DuplicateProviderError(message, {
-            module: compiledModule.type.name,
-            token,
-            phase: 'provider registration',
-            hint: `Remove the duplicate registration from one of the modules, use container.override() for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
-          });
-        }
-
-        if (policy === 'warn') {
-          logger?.warn(message, 'BootstrapModule');
-        }
-      }
-
-      selectedProviders.set(token, {
-        moduleName: compiledModule.type.name,
-        provider,
-        source: 'module',
-        token,
-      });
+```text
+preserve every runtime and module multi contribution in declaration order
+retain only the effective runtime/module single provider for each single Token
 ```
 
-Because `selectedProviders.set()` always runs at the end of the loop, the later Module Provider changes the map value for every policy except `throw`. This makes duplicate-tolerant modes deterministic last-write-wins.
+Tests cover both halves: duplicate single providers follow the configured policy, while `multi: true` lifecycle contributions remain independently resolvable and keep declaration order.
 
-The key implementation point here is selection order. `collectProvidersForContainer()` walks compiled Modules in dependency order, but because later writes to the map overwrite earlier writes, the last encountered Provider Token wins. The design may or may not be a good idea for a given app, but the behavior is deterministic.
-
-Tests make this clear. `path:packages/runtime/src/bootstrap.test.ts:291-317` verifies the warning path. `path:packages/runtime/src/bootstrap.test.ts:319-343` proves that the later Provider actually wins in warning mode. The runtime does not merge duplicates. Only one selected Provider remains per Token.
-
-After selection, `bootstrapModule()` uses `createRuntimeTokenSet()` and `providerToken()` to remove entries with runtime Provider Tokens from the Module Provider list. This step prevents Bootstrap-scoped runtime Tokens from being registered twice.
+After selection, `bootstrapModule()` registers effective runtime providers first and effective module providers second. A runtime single Token suppresses a module single provider with the same Token; it does not discard a multi contribution.
 
 Registration then proceeds in a deliberately simple order.
 
@@ -683,87 +627,31 @@ So the middle conclusion of Chapter 8 is this. The graph compiler decides legal 
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 Module Graph order is only half of initialization order. After registration, the runtime still has to decide which singleton instances to eagerly create, which hooks to run, and when the app becomes ready.
 
-This continuous phase lives in `bootstrapApplication()` at `path:packages/runtime/src/bootstrap.ts:1445-1590` and in `FluoFactory.createApplicationContext()` at `path:packages/runtime/src/bootstrap.ts:1619-1740`. Both flows share the same lifecycle skeleton.
+This continuous phase lives in `bootstrapApplication()` and `FluoFactory.createApplicationContext()`. Both flows share the same lifecycle skeleton.
 
-First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()` at `path:packages/runtime/src/bootstrap.ts:1280-1300` adds `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL` for a full application. `registerRuntimeApplicationContextTokens()` at `path:packages/runtime/src/bootstrap.ts:1316-1332` adds `PLATFORM_SHELL` but not the HTTP adapter for context-only Bootstrap.
+First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()` adds `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL` for a full application. `registerRuntimeApplicationContextTokens()` adds `PLATFORM_SHELL` but not the HTTP adapter for context-only Bootstrap.
 
-Second, the runtime resolves singleton instances that may have lifecycle hooks through `resolveBootstrapLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1334-1344`. This helper combines the effective runtime Providers and Module Providers, then delegates to `resolveLifecycleInstances()`.
+Second, the runtime resolves singleton instances that may have lifecycle hooks through `resolveBootstrapLifecycleInstances()`, which combines effective runtime and module providers before delegating to `resolveLifecycleInstances()`.
 
-`resolveLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1019-1072` states both the eager-instantiation and concurrency policies. In provider order, it deduplicates by Token and keeps hook-bearing value Providers plus direct singleton class/factory Providers. Because the runtime adds hook-bearing value Providers before direct-singleton filtering, hook-bearing `multi: true` value Providers can be lifecycle entries. Alias, request-scoped, transient, and non-value multi class/factory Providers are not direct top-level lifecycle entries.
+`resolveLifecycleInstances()` states both the eager-instantiation and concurrency policies. Effective single providers are deduplicated by Token. Every hook-bearing `multi: true` value contribution is a lifecycle entry, and every eligible singleton `multi: true` class/factory contribution resolves independently through the first-party `@fluojs/di/internal` contribution resolver. Alias, request-scoped, and transient providers are not lifecycle targets.
 
 This helper intentionally narrows the Providers that can become lifecycle targets.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`
-```typescript
-async function resolveLifecycleInstances(
-  container: Container,
-  providers: Provider[],
-  resolvedInstances: unknown[] = [],
-): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+`path:packages/runtime/src/bootstrap.ts:1085-1164`
 
-  for (const provider of providers) {
-    const token = providerToken(provider);
+Even after graph order, not every Provider is created immediately. Effective single-provider class/factory candidates and hook-bearing values become eager lifecycle targets after Token deduplication. `multi: true` contributions are different: each declared contribution receives its own contribution index. Hook-bearing values enter directly, while eligible singleton class/factory contributions resolve only their own contribution. This keeps every eligible contribution distinct, avoids root-resolving request/transient siblings, and retains fulfilled entries for bootstrap-failure rollback.
 
-    if (seen.has(token)) {
-      continue;
-    }
+The `Promise.allSettled(...)` map starts every top-level lifecycle entry without waiting for the previous entry to finish, so independent singleton resolution overlaps. `Promise.allSettled(...)` returns results in input order, and the following loop appends fulfilled instances in that same provider order. Resolution completion order therefore cannot reorder later hooks.
 
-    if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
-      lifecycleEntries.push({ token, useValue: provider.useValue });
-      continue;
-    }
+So Fluo's Bootstrap order is closer to "resolve independent singleton lifecycle candidates concurrently, then run their hooks deterministically" than to "instantiate every Provider in every Module sequentially." `path:packages/runtime/src/bootstrap.test.ts:887-936` proves the split directly: the second factory resolves while the first is suspended, but `first:init` still precedes `second:init`. `path:packages/runtime/src/bootstrap.test.ts:1331-1530` verifies that multi-value, class/factory, runtime, and rollback contributions retain the same startup and reverse-shutdown ordering.
 
-    if (!isDirectSingletonContextProvider(provider)) {
-      continue;
-    }
+Third, `runBootstrapLifecycle()` coordinates the actual start sequence. It resets the readiness marker, runs Bootstrap hooks, starts the platform shell, marks readiness, resolves the bootstrap-ready signal, and logs the compiled Modules.
 
-    seen.add(token);
-    lifecycleEntries.push({ token });
-  }
-
-  const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
-  );
-
-  let resolutionError: unknown;
-  let hasResolutionError = false;
-
-  for (const result of resolutionResults) {
-    if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
-      continue;
-    }
-
-    if (!hasResolutionError) {
-      resolutionError = result.reason;
-      hasResolutionError = true;
-    }
-  }
-
-  if (hasResolutionError) {
-    throw resolutionError;
-  }
-
-  return resolvedInstances;
-}
-```
-
-Even after graph order, not every Provider is created immediately. Only direct singleton class/factory candidates and hook-bearing singleton values become eager lifecycle targets after Token deduplication.
-
-The `Promise.allSettled(...)` map starts every top-level lifecycle entry without waiting for the previous entry to finish, so independent singleton resolution overlaps. DI still resolves each entry's own dependency chain before that entry settles. `Promise.allSettled(...)` returns results in input order, and the following loop appends fulfilled instances in that same provider order. Resolution completion order therefore cannot reorder later hooks.
-
-So Fluo's Bootstrap order is closer to "resolve independent unique singleton lifecycle candidates concurrently, then run their hooks deterministically" than to "instantiate every Provider in every Module sequentially." `path:packages/runtime/src/bootstrap.test.ts:887-936` proves the split directly: the second factory resolves while the first is suspended, but `first:init` still precedes `second:init`. `path:packages/runtime/src/bootstrap.test.ts:938-980` also verifies that fulfilled lifecycle instances remain available for cleanup when a parallel peer fails.
-
-Third, `runBootstrapLifecycle()` at `path:packages/runtime/src/bootstrap.ts:1346-1358` coordinates the actual start sequence. It resets the readiness marker, runs Bootstrap hooks, starts the platform shell, marks readiness, resolves the bootstrap-ready signal, and logs the compiled Modules.
-
-The internal hook ordering lives in `runBootstrapHooks()` at `path:packages/runtime/src/bootstrap.ts:1183-1195`. It consumes the provider-ordered instance array sequentially. All `onModuleInit()` hooks run first in provider order. Only after that pass completes do all `onApplicationBootstrap()` hooks run in the same order. In other words, concurrent resolution is followed by deterministic hook passes with a global phase barrier. Hooks are not interleaved instance by instance.
+The internal hook ordering lives in `runBootstrapHooks()`. It consumes the provider-ordered instance array sequentially. All `onModuleInit()` hooks run first in provider order. Only after that pass completes do all `onApplicationBootstrap()` hooks run in the same order. In other words, concurrent resolution is followed by deterministic hook passes with a global phase barrier. Hooks are not interleaved instance by instance.
 
 The Bootstrap hook runner creates a phase barrier with two passes.
 
-`path:packages/runtime/src/bootstrap.ts:1183-1195`
+`path:packages/runtime/src/bootstrap.ts:runBootstrapHooks()`
 ```typescript
 async function runBootstrapHooks(instances: unknown[]): Promise<void> {
   for (const instance of instances) {

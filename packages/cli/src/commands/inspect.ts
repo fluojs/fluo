@@ -4,22 +4,20 @@ import { createRequire } from 'node:module';
 import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import * as clack from '@clack/prompts';
-import {
-  type BootstrapTimingDiagnostics,
-  createRuntimeInspectionSnapshot,
-  FluoFactory,
-  type ModuleType,
-  PLATFORM_SHELL,
-  type PlatformDiagnosticIssue,
-  type PlatformShell,
-  type PlatformShellSnapshot,
-  type RuntimeInspectionSnapshot,
+import type {
+  BootstrapTimingDiagnostics,
+  ModuleType,
+  PlatformDiagnosticIssue,
+  PlatformShell,
+  PlatformShellSnapshot,
+  RuntimeInspectionSnapshot,
 } from '@fluojs/runtime';
 import { tsImport } from 'tsx/esm/api';
 
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
 import { inspectUsage } from '../usage.js';
+import { createCliDiagnosticsLogger } from './diagnostics.js';
+import { assertOutputDoesNotAliasModule } from './output-path-safety.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -38,6 +36,13 @@ type StudioMermaidRenderer = (snapshot: PlatformShellSnapshot) => string;
 
 type StudioMermaidRendererLoader = (cwd: string) => Promise<StudioMermaidRenderer | undefined>;
 
+type RuntimeInspectionModule = Pick<
+  typeof import('@fluojs/runtime'),
+  'createRuntimeInspectionSnapshot' | 'FluoFactory' | 'PLATFORM_SHELL'
+>;
+
+type RuntimeInspectionModuleLoader = (cwd: string) => Promise<RuntimeInspectionModule | undefined>;
+
 /**
  * Runtime options for the inspect command when used programmatically.
  */
@@ -48,6 +53,8 @@ export interface InspectCommandRuntimeOptions {
   cwd?: string;
   /** Force or disable interactive prompts for optional Studio guidance. */
   interactive?: boolean;
+  /** Optional test/editor hook for resolving the runtime inspection dependency. */
+  loadRuntimeInspectionModule?: RuntimeInspectionModuleLoader;
   /** Optional test/editor hook for resolving Studio's Mermaid renderer. */
   loadStudioMermaidRenderer?: StudioMermaidRendererLoader;
   /** Custom prompt implementation used only when Studio is missing for Mermaid output. */
@@ -87,10 +94,19 @@ type InspectReport = {
 };
 
 const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio/contracts';
+const RUNTIME_ENTRYPOINT = '@fluojs/runtime';
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
+const RUNTIME_MISSING_MESSAGE = [
+  'Runtime inspection requires @fluojs/runtime, but it is not resolvable from this project.',
+  'Install a version whose Node.js engine supports your current Node.js version (for example: pnpm add -D @fluojs/runtime) and rerun fluo inspect.',
+].join('\n');
 const STUDIO_MISSING_MESSAGE = [
   'Mermaid graph rendering is owned by @fluojs/studio, but @fluojs/studio is not resolvable from this project.',
   'Install @fluojs/studio explicitly (for example: pnpm add -D @fluojs/studio) and rerun fluo inspect --mermaid.',
+].join('\n');
+const CLACK_MISSING_MESSAGE = [
+  'Interactive inspect guidance requires @clack/prompts, but it is not resolvable from this installation.',
+  'Install a version whose Node.js engine supports your current Node.js version and rerun fluo inspect.',
 ].join('\n');
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -115,6 +131,21 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
 
     if (option === '--json') {
       json = true;
+      continue;
+    }
+
+    if (option === '--format') {
+      const format = argv[index + 1];
+      if (!format || format.startsWith('-')) {
+        throw new Error('Expected --format to have a value of "json".');
+      }
+
+      if (format !== 'json') {
+        throw new Error(`Invalid --format value "${format}". Use "json".`);
+      }
+
+      json = true;
+      index += 1;
       continue;
     }
 
@@ -259,18 +290,28 @@ function stringifySnapshotWithTiming(snapshot: RuntimeInspectionSnapshot, timing
   }, null, 2);
 }
 
-async function emitInspectPayload(payload: string, parsed: ParsedInspectArgs, cwd: string, stdout: CliStream): Promise<void> {
-  if (!parsed.outputPath) {
+async function emitInspectPayload(payload: string, outputPath: string | undefined, stdout: CliStream): Promise<void> {
+  if (!outputPath) {
     stdout.write(`${payload}\n`);
     return;
   }
 
-  const outputPath = resolve(cwd, parsed.outputPath);
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${payload}\n`, 'utf8');
 }
 
-function createInspectPrompter(): InspectPrompter {
+async function createInspectPrompter(): Promise<InspectPrompter> {
+  let clack: typeof import('@clack/prompts');
+  try {
+    clack = await import('@clack/prompts');
+  } catch (error: unknown) {
+    if (isModuleNotFoundError(error)) {
+      throw new Error(CLACK_MISSING_MESSAGE);
+    }
+
+    throw error;
+  }
+
   return {
     async confirm(message: string, defaultValue: boolean): Promise<boolean> {
       const result = await clack.confirm({
@@ -303,6 +344,39 @@ function shouldPromptForStudio(runtime: InspectCommandRuntimeOptions): boolean {
     && Boolean(runtime.stdin?.isTTY ?? process.stdin.isTTY);
 }
 
+function isModuleNotFoundError(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+  return code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND';
+}
+
+async function loadRuntimeInspectionModule(cwd: string): Promise<RuntimeInspectionModule | undefined> {
+  const resolver = createRequire(resolve(cwd, 'package.json'));
+
+  try {
+    const resolvedEntrypoint = resolver.resolve(RUNTIME_ENTRYPOINT);
+    return await import(pathToFileURL(resolvedEntrypoint).href) as RuntimeInspectionModule;
+  } catch (error: unknown) {
+    if (isModuleNotFoundError(error)) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+async function resolveRuntimeInspectionModule(
+  cwd: string,
+  runtime: InspectCommandRuntimeOptions,
+): Promise<RuntimeInspectionModule> {
+  const runtimeModule = await (runtime.loadRuntimeInspectionModule ?? loadRuntimeInspectionModule)(cwd);
+
+  if (!runtimeModule) {
+    throw new Error(RUNTIME_MISSING_MESSAGE);
+  }
+
+  return runtimeModule;
+}
+
 async function loadStudioMermaidRenderer(cwd: string): Promise<StudioMermaidRenderer | undefined> {
   const resolvers = [
     createRequire(resolve(cwd, 'package.json')),
@@ -320,8 +394,7 @@ async function loadStudioMermaidRenderer(cwd: string): Promise<StudioMermaidRend
 
       return importedContract.renderMermaid as StudioMermaidRenderer;
     } catch (error: unknown) {
-      const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-      if (code !== 'MODULE_NOT_FOUND' && code !== 'ERR_MODULE_NOT_FOUND') {
+      if (!isModuleNotFoundError(error)) {
         throw error;
       }
     }
@@ -341,7 +414,7 @@ async function resolveStudioMermaidRenderer(cwd: string, runtime: InspectCommand
     throw new Error(STUDIO_MISSING_MESSAGE);
   }
 
-  const prompt = runtime.prompt ?? createInspectPrompter();
+  const prompt = runtime.prompt ?? await createInspectPrompter();
   try {
     const approvedInstall = await prompt.confirm('Install @fluojs/studio before rendering Mermaid output?', false);
 
@@ -375,11 +448,17 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
 
     const parsed = parseInspectArgs(argv);
     const modulePath = resolve(cwd, parsed.modulePath);
+    const outputPath = parsed.outputPath === undefined ? undefined : resolve(cwd, parsed.outputPath);
+    if (outputPath !== undefined) {
+      await assertOutputDoesNotAliasModule(modulePath, outputPath);
+    }
+    const { createRuntimeInspectionSnapshot, FluoFactory, PLATFORM_SHELL } = await resolveRuntimeInspectionModule(cwd, runtime);
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
     const application = await FluoFactory.create(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
+      ...(parsed.json || parsed.report ? { logger: createCliDiagnosticsLogger(stderr) } : {}),
     });
 
     try {
@@ -389,16 +468,16 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
       const snapshot = createRuntimeInspectionSnapshot(platformSnapshot, routes);
 
       if (parsed.json) {
-        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, application.bootstrapTiming) : stringifySnapshot(snapshot), parsed, cwd, stdout);
+        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, application.bootstrapTiming) : stringifySnapshot(snapshot), outputPath, stdout);
       }
 
       if (parsed.report) {
-        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, application.bootstrapTiming), null, 2), parsed, cwd, stdout);
+        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, application.bootstrapTiming), null, 2), outputPath, stdout);
       }
 
       if (parsed.mermaid) {
         const renderMermaid = await resolveStudioMermaidRenderer(cwd, runtime);
-        await emitInspectPayload(renderMermaid(snapshot), parsed, cwd, stdout);
+        await emitInspectPayload(renderMermaid(snapshot), outputPath, stdout);
       }
     } finally {
       await application.close();

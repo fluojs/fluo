@@ -9,6 +9,26 @@ function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+function getOwningModuleBlock(content: string, factoryName: string): string {
+  const factoryDeclarationIndex = content.indexOf(`export class ${factoryName} {`);
+  const moduleDeclarationIndex = content.indexOf('@Module({', factoryDeclarationIndex);
+  const moduleEndIndex = content.indexOf('\n})', moduleDeclarationIndex);
+
+  expect(
+    factoryDeclarationIndex,
+    `must declare ${factoryName} before its owning module`,
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    moduleDeclarationIndex,
+    `must declare an owning module after ${factoryName}`,
+  ).toBeGreaterThan(factoryDeclarationIndex);
+  expect(moduleEndIndex, `must close the owning module for ${factoryName}`).toBeGreaterThan(
+    moduleDeclarationIndex,
+  );
+
+  return content.slice(moduleDeclarationIndex, moduleEndIndex + '\n})'.length);
+}
+
 describe('Redis client ownership documentation', () => {
   it('keeps client construction and raw Pub/Sub cleanup ownership aligned across companion docs', () => {
     const failureSafeShutdown = `  const shutdownErrors: unknown[] = [];
@@ -39,5 +59,44 @@ describe('Redis client ownership documentation', () => {
     expect(read('docs/getting-started/migrate-from-nestjs.ko.md')).toContain('외부 client를 받거나 채택하지 않고');
     expect(read('docs/CONTEXT.md')).toContain('Each `RedisModule.forRoot(...)` registration creates a new client');
     expect(read('docs/CONTEXT.ko.md')).toContain('각 `RedisModule.forRoot(...)` 등록은 최종 option으로 새 client를 생성');
+    expect(read('docs/CONTEXT.md')).toContain(
+      'Every named-token consumer must still be explicitly declared',
+    );
+    expect(read('docs/CONTEXT.ko.md')).toContain(
+      'named token consumer는 importing module의 `providers`에 나열하기 전에 명시적으로 선언해야',
+    );
+  });
+
+  it('registers named-token Pub/Sub factories in the owning module providers', () => {
+    const namedTokenFactoryExamples: ReadonlyArray<readonly [string, string]> = [
+      ['packages/redis/README.md', 'PubSubTransportFactory'],
+      ['packages/redis/README.ko.md', 'PubSubTransportFactory'],
+      ['book/intermediate/ch03-redis-transport.md', 'NotificationTransportFactory'],
+      ['book/intermediate/ch03-redis-transport.ko.md', 'NotificationTransportFactory'],
+    ];
+
+    for (const [relativePath, factoryName] of namedTokenFactoryExamples) {
+      const content = read(relativePath);
+      const moduleBlock = getOwningModuleBlock(content, factoryName);
+
+      expect(content, `${relativePath} must declare ${factoryName}`).toContain(
+        `export class ${factoryName} {`,
+      );
+      expect(moduleBlock, `${relativePath} must import Redis registrations`).toContain(
+        'RedisModule.forRoot(',
+      );
+      expect(moduleBlock, `${relativePath} must register ${factoryName} as a provider`).toContain(
+        `  providers: [${factoryName}],`,
+      );
+    }
+  });
+
+  it('states that named-token Redis consumers need explicit provider registration in the migration row', () => {
+    expect(read('docs/getting-started/migrate-from-nestjs.md')).toContain(
+      'Register every `getRedisClientToken(name)` consumer in the importing module graph',
+    );
+    expect(read('docs/getting-started/migrate-from-nestjs.ko.md')).toContain(
+      '`getRedisClientToken(name)` consumer는 importing module graph의 `providers`에 명시적으로 등록',
+    );
   });
 });

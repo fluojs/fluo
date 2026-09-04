@@ -17,6 +17,7 @@
 - `minor`는 하위 호환 기능 추가에 사용하며, `0.x` 단계의 파괴적 변경에도 같은 증가 규칙을 사용합니다.
 - `patch`는 문서화된 동작을 유지하는 하위 호환 수정, 보안 수정, 문서 또는 툴링 변경에만 사용합니다.
 - 공개 tooling 패키지에서 README에 문서화되는 CLI command, flag, 생성 starter mode 또는 script, inspect artifact/output mode, programmatic entrypoint 추가는 소비자에게 보이는 feature work이므로 `minor` release metadata가 필요합니다. `patch`는 새 caller path를 추가하지 않고 이미 문서화된 계약을 수정하거나 보존하는 경우에만 해당 surface를 언급할 수 있습니다.
+- Official 패키지의 `engines.node`를 좁히는 것은 기존에 지원하던 runtime을 제거하므로 파괴적 변경입니다. Release lane은 패키지의 이전 published `@fluojs/<name>@<version>` manifest tag를 baseline으로 사용하고, `--base-ref`는 변경된 candidate manifest를 고르는 데만 사용합니다. 제거되는 Node.js 지원과 대체할 Node.js version 또는 range를 명시적으로 식별하는 비어 있지 않은 `Migration:` 문단 또는 구조화된 `Migration Guide` / `Upgrade Guidance` section 및 `major` metadata가 필요합니다. `0.x`와 프리릴리스 Preview 패키지는 이 Official-tier major 규칙에서 제외됩니다.
 - 프리릴리스 버전은 하이픈 접미사가 있는 버전입니다. 이런 버전은 `next`, `beta`, `rc` 같은 non-`latest` dist-tag로 배포해야 합니다.
 - 프리릴리스 접미사가 없는 안정 버전은 `latest` dist-tag로 배포해야 합니다.
 - 공개 배포 대상 패키지의 매니페스트는 내부 `@fluojs/*` 의존성에 대해 dependency, optional dependency, peer dependency, dev dependency 전부에서 `workspace:^`를 사용해야 합니다.
@@ -24,6 +25,7 @@
 ## Breaking Change Rules
 
 - 기존 사용자 코드나 설정을 바꿔야 계속 동작하는 경우, API 형태 변경, 문서화된 동작 변경, 설정 형태 변경, 부트스트랩 순서 변경, 어댑터 계약 변경, 공개 패키지 제거를 파괴적 변경으로 취급합니다.
+- 이전 released manifest에서 지원하던 Node.js version을 제외하는 더 좁은 `engines.node` range는 파괴적 변경으로 취급합니다.
 - `0.x`에서는 파괴적 변경을 마이너 릴리스에서만 배포할 수 있고, 해당 릴리스는 `CHANGELOG.md`에 소비자 대상 업그레이드 요구사항을 포함해야 합니다.
 - `1.0+`에서는 파괴적 변경을 메이저 릴리스로만 배포해야 합니다.
 - 라이프사이클 순서, 종료 동작, 어댑터 동작, 준비 상태 동작, 공개 CLI 및 스타터 계약의 문서화된 보장을 바꾸는 경우 patch나 minor로 분류하면 안 됩니다.
@@ -49,13 +51,13 @@ Changesets(`.changeset/*.md`)는 canonical release metadata 도구입니다. 기
 2. 패키지별 semver intent, `major`, `minor`, `patch` 중 하나입니다.
 3. 변경 사항을 설명하는 summary.
 
-Release reviewer는 semver metadata를 승인하기 전에 `.changeset/*.md`, generated package `CHANGELOG.md` section, 영향받은 package `README.md` 계약을 비교해야 합니다. `@fluojs/cli` entry가 README에 문서화된 공개 CLI, starter, inspect, programmatic surface를 add, expose, support, introduce, enable, provide한다고 설명하면 해당 entry는 `minor`여야 하며, Version Packages PR을 merge하기 전에 patch metadata를 수정해야 합니다.
+Release reviewer는 semver metadata를 승인하기 전에 `.changeset/*.md`, generated package `CHANGELOG.md` section, 영향받은 package `README.md` 계약, 그리고 변경된 package `engines.node` range를 이전 published manifest tag와 비교해야 합니다. Official package가 `engines.node`를 좁히면 changeset은 `major`여야 하고, 제거되는 Node.js 지원과 대체할 Node.js version 또는 range를 명시적으로 연결하는 비어 있지 않은 `Migration:` 문단 또는 구조화된 `Migration Guide` / `Upgrade Guidance` section을 포함해야 하며 `verify:changeset-release-lane`이 이를 강제합니다. Changesets가 pending metadata를 소비한 뒤 생성된 major version delta는 생성된 `CHANGELOG.md` section에 `### Major Changes`와 소비자 migration guidance가 있을 때만 유효한 release output입니다. `@fluojs/cli` entry가 README에 문서화된 공개 CLI, starter, inspect, programmatic surface를 add, expose, support, introduce, enable, provide한다고 설명하면 해당 entry는 `minor`여야 하며, Version Packages PR을 merge하기 전에 patch metadata를 수정해야 합니다.
 
 changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거나 publish되지 않습니다. Downstream dependent 패키지는 Changesets의 내부 dependency graph를 통해 평가되며, dependent 버전 bump는 versioning 단계에서 자동으로 계산됩니다.
 
 `.github/workflows/release.yml`의 릴리스 workflow는 `main`에 push될 때 자동으로 트리거됩니다. pending changeset이 있으면 Changesets action이 "Version Packages" PR을 열어 버전을 올리고, changelog를 업데이트하며, 소비된 changeset을 제거합니다. 이 PR을 merge하면 publish 단계가 트리거되어 npm token 기반 인증과 provenance로 영향받는 패키지를 npm에 publish하고, scoped git tag와 GitHub Release를 생성합니다. publish step은 같은 `secrets.NPM_TOKEN` 값을 Changesets action용 `NPM_TOKEN`과 `actions/setup-node`가 생성한 npm user config path용 `NODE_AUTH_TOKEN`으로 모두 전달합니다.
 
-`main`은 단일 stable release lane입니다. `main` 대상 pull request와 release workflow는 모두 changeset lane gate를 실행합니다. `.github/workflows/release.yml`은 Changesets action이 Version Packages PR을 만들거나 publish하기 전에 `pnpm verify:changeset-release-lane -- --lane=stable --base-ref=${{ github.event.before }}`를 실행합니다. Stable gate는 `patch`, `minor`, `major` changeset과 generated package version delta를 모두 허용하되 release metadata 형태를 계속 검증합니다. Stable patch, minor, major release는 모두 canonical `main` Changesets GitHub Actions workflow를 통해 stable dist-tag policy로 publish합니다.
+`main`은 단일 stable release lane입니다. `main` 대상 pull request와 release workflow는 모두 changeset lane gate를 실행합니다. `.github/workflows/release.yml`은 Changesets action이 Version Packages PR을 만들거나 publish하기 전에 `pnpm verify:changeset-release-lane -- --lane=stable --base-ref=${{ github.event.before }}`를 실행합니다. Stable gate는 `patch`, `minor`, `major` changeset과 generated package version delta를 모두 허용하되 release metadata 형태를 계속 검증합니다. 변경된 각 manifest의 `engines.node`는 패키지의 이전 published tag와 비교하며, Official package narrowing에는 `major` metadata 및 `Migration:` 안내가 필요합니다. Stable patch, minor, major release는 모두 canonical `main` Changesets GitHub Actions workflow를 통해 stable dist-tag policy로 publish합니다.
 
 `major` changeset을 포함한 PR은 merge 전에 explicit maintainer approval과 consumer-facing migration note가 필요합니다. 이 승인 경로를 피하려고 semver intent를 낮추면 안 됩니다. 위 규칙상 breaking change라면 `major` changeset을 유지하고 migration impact를 문서화합니다.
 

@@ -66,6 +66,7 @@ import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/pr
 import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
+@Inject(UserRepository)
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
@@ -74,21 +75,6 @@ export class UserService {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
     return user;
-  }
-}
-
-@Inject(PrismaService)
-export class UserRepository {
-  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
-
-  async create(data: any) {
-    // The facade type exposes standard PrismaClient delegates.
-    // When called inside @Transaction(), they automatically participate in the ambient transaction.
-    return this.prisma.user.create({ data });
-  }
-
-  async initProfile(userId: string) {
-    return this.prisma.profile.create({ data: { userId } });
   }
 }
 ```
@@ -100,11 +86,16 @@ Calls to `@Transaction()` methods are reentrant. If a decorated method calls ano
 `PrismaTransactionInterceptor` is restored as a deprecated 1.x compatibility export for existing `@UseInterceptors(...)` request-wide boundaries. The unnamed `PrismaModule.forRoot(...)` and `forRootAsync(...)` registrations provide and export it. It delegates to `PrismaService.requestTransaction(...)` and forwards the request `AbortSignal`.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Controller, Post, UseInterceptors } from '@fluojs/http';
 import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+import { OrdersService } from './orders.service';
 
 @Controller('/orders')
+@Inject(OrdersService)
 export class OrdersController {
+  constructor(private readonly orders: OrdersService) {}
+
   @Post('/')
   @UseInterceptors(PrismaTransactionInterceptor)
   createOrder() {
@@ -214,8 +205,9 @@ When `transaction()` is called while a transaction context is already active, `P
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
 
 - `readiness.status` is `not-ready` before `onModuleInit()` connects the client, while Prisma is shutting down or stopped, when `strictTransactions` is enabled without `$transaction(...)` support, and when the host runtime does not provide `AsyncLocalStorage` while the client supports interactive transactions. In the ALS-unavailable case the readiness reason is `Prisma transaction context requires AsyncLocalStorage support from the host runtime.` and `details.transactionContext` reports `unavailable`; this state is distinct from an ordinary database readiness failure because the Prisma client itself may be connected and otherwise functional.
-- `health.status` is `degraded` while request transactions are draining during shutdown and `unhealthy` after disconnect.
-- `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, and `details.transactionAbortSignalSupport` describe the current request transaction and transaction-capability state.
+- `health.status` is `degraded` while open request, manual, or service transaction boundaries are draining during shutdown and `unhealthy` after disconnect.
+- `details.activeRequestTransactions`, `details.activeTransactionBoundaries`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, and `details.transactionAbortSignalSupport` describe the current transaction and transaction-capability state.
+- `details.activeTransactionBoundaries` counts currently open outer `transaction(...)` and service `@Transaction()` boundaries that shutdown drains before `$disconnect()`. It excludes request-only `requestTransaction(...)` activity, which remains visible separately through `details.activeRequestTransactions`.
 - `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries. `details.transactionContext: 'unavailable'` indicates the host runtime did not expose a usable `AsyncLocalStorage`, so `transaction()` and `requestTransaction()` reject before opening a Prisma transaction.
 - `ownership.externallyManaged: false` and `ownership.ownsResources: true` mean the package owns the registered client's `$connect()` / `$disconnect()` lifecycle hooks inside the fluo application lifecycle.
 
@@ -320,6 +312,7 @@ token are deliberately not exported.
 
 ### Related exported types
 
+- `PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>`
 - `PrismaModuleOptions`
 - `PrismaClientLike`
 - `PrismaHandleProvider`
@@ -327,6 +320,8 @@ token are deliberately not exported.
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
+- `PrismaPlatformStatusSnapshotInput`
+  - The input contract for `createPrismaPlatformStatusSnapshot(...)`; omit `activeTransactionBoundaries` when no outer service or manual transaction boundary is open and the snapshot reports `0`.
 
 ## Related Packages
 

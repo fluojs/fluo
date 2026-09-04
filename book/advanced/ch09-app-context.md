@@ -118,7 +118,7 @@ class FluoApplicationContext implements ApplicationContext {
     readonly rootModule: ModuleType,
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
-    private readonly runtimeCleanup: Array<() => void>,
+    private readonly runtimeCleanup: Array<() => MaybePromise<void>>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -428,6 +428,12 @@ Because of this structure, the application shell includes context functionality 
 
 `ApplicationState` is declared in `path:packages/runtime/src/types.ts`. The allowed values remain `'bootstrapped'`, `'ready'`, and `'closed'`. `closeStarted` is a private admission gate rather than a new public state: pending or failed teardown preserves the previous public state, while normal application operations reject from shutdown start. The public state becomes `closed` only after teardown completes successfully.
 
+Runtime-owned cleanup callbacks accept `void` or `Promise<void>`. Close and bootstrap-failure
+cleanup await registrations in order before moving to lifecycle hooks, adapters, or container
+disposal. A callback failure does not skip later registrations; close aggregates it for explicit
+retry of that incomplete phase, while bootstrap preserves its original error and reports cleanup
+failures through `ApplicationLogger`.
+
 The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:437-443`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
 
 `ready()` is not a transport bind. It is a platform readiness gate, separated as the step that checks critical component state before the adapter starts receiving requests.
@@ -559,7 +565,7 @@ The model implemented by the source is exactly this. An application shell is not
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
 The application context and application shell use two separate shutdown concepts: a public lifecycle state and a private terminal operation gate. Keeping them separate preserves the documented `bootstrapped | ready | closed` state contract while preventing new work from entering teardown.
 
-`Application.close()` sets `closeStarted` synchronously before it creates the teardown promise. From that point, `Application.listen()`, `Application.get()`, `connectMicroservice()`, and `startAllMicroservices()` reject. `ApplicationContext.close()` applies the same rule to `ApplicationContext.get()`. These gates remain closed after a failed close attempt, including while teardown is still pending. Successful teardown alone changes the public application state to `closed`; a pending or failed attempt leaves the previous public state observable. Both `get()` implementations recheck the gate after awaited provider resolution, so a lookup admitted immediately before close cannot return a provider after shutdown starts.
+`Application.close()` sets `closeStarted` synchronously before it creates the teardown promise. From that point, `Application.listen()`, `Application.get()`, `Application.dispatch()`, `connectMicroservice()`, and `startAllMicroservices()` reject. `ApplicationContext.close()` applies the same rule to `ApplicationContext.get()`. These gates remain closed after a failed close attempt, including while teardown is still pending. Successful teardown alone changes the public application state to `closed`; a pending or failed attempt leaves the previous public state observable. Both `get()` implementations recheck the gate after awaited provider resolution, so a lookup admitted immediately before close cannot return a provider after shutdown starts. `Application.dispatch()` checks once before dispatcher handoff: a request admitted before close continues under dispatcher-owned drain semantics, while a request started after close cannot enter the HTTP pipeline.
 
 The connect path checks the gate both before and after asynchronous runtime resolution. The start-all path checks before iteration and again before each child listen. Those rechecks prevent an operation admitted just before shutdown from attaching or starting a child after shutdown has begun.
 

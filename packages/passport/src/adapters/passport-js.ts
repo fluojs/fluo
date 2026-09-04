@@ -24,9 +24,14 @@ export interface PassportJsStrategyLike {
   /**
    * Performs authentication for the given request and options.
    *
-   * @param request - The raw request object from the underlying framework.
+   * @param request - The active platform adapter's raw host request when one exists,
+   *   otherwise the normalized fluo request. The bridge never constructs a
+   *   Passport-initialized host request.
    * @param options - Strategy-specific authentication options.
-   * @returns An execution result or a promise resolving to one.
+   * @returns The bridge ignores the returned value. Strategy implementations must
+   *   settle the request by calling one of the bound Passport actions (`success`,
+   *   `fail`, `redirect`, `pass`, or `error`). A returned promise only propagates
+   *   rejections; resolving it without calling an action fails authentication.
    */
   authenticate(request: unknown, options?: unknown): unknown;
 }

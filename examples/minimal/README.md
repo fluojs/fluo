@@ -10,6 +10,7 @@ The smallest runnable fluo application. This example follows the same adapter-fi
 - Standard decorator DI with `@Module`, `@Inject`, `@Controller`, `@Get`
 - Built-in `/health` and `/ready` endpoints from `HealthModule.forRoot(...)`
 - A single starter controller at `/hello`
+- Portable multipart DTO binding at `/uploads` with `@FromFiles('attachments')`
 - Unit and e2e-style testing with `@fluojs/testing`
 
 ## how to run
@@ -35,6 +36,7 @@ examples/minimal/
 │   ├── main.ts             # Entry point: adapter-first Fastify startup
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # Business logic
+│   ├── upload.controller.ts # POST /uploads portable multipart DTO
 │   └── app.test.ts         # Unit + createTestApp request-helper tests
 └── README.md
 ```

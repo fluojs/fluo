@@ -86,6 +86,27 @@ describe('@fluojs/i18n/typegen', () => {
     expect(output).toContain('readonly "admin/common": "cancel" | "nested.save";');
   });
 
+  it('includes own __proto__ message keys in generated catalog declarations', () => {
+    // Given: an in-memory catalog with an own key that collides with Object.prototype.
+    const messages: I18nMessageTree = {};
+    Object.defineProperty(messages, '__proto__', { enumerable: true, value: 'Prototype-safe' });
+
+    // When: typegen snapshots and traverses the catalog.
+    const output = generateI18nCatalogTypes([{ locale: 'en', messages }]);
+
+    // Then: the valid own key appears in the generated union.
+    expect(output).toContain('export type I18nCatalogKey = "__proto__";');
+  });
+
+  it('rejects cyclic in-memory catalogs with the stable invalid catalog code', () => {
+    // Given: an in-memory catalog whose nested tree refers to itself.
+    const messages: Record<string, string | I18nMessageTree> = {};
+    messages.self = messages;
+
+    // When/Then: typegen validation reports the documented error instead of overflowing recursion.
+    expectI18nThrow(() => generateI18nCatalogTypes([{ locale: 'en', messages }]), 'I18N_INVALID_CATALOG');
+  });
+
   it('reads locale namespace files from disk using deterministic namespace paths', async () => {
     await writeCatalog('ko', 'common/actions', { save: '저장' });
     await writeCatalog('en', 'common/actions', { cancel: 'Cancel', save: 'Save' });
@@ -230,6 +251,17 @@ export interface I18nCatalogTypedService {
 
     expect(first).toBe(second);
     expect(first).toContain('export type I18nCatalogKey = "alpha" | "beta" | "nested.zeta";');
+  });
+
+  it('rejects colliding final declaration identifiers', () => {
+    expectI18nThrow(
+      () =>
+        generateI18nCatalogTypes([], {
+          keyTypeName: 'CatalogDeclaration',
+          namespaceTypeName: 'CatalogDeclaration',
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
   });
 
   it('fails with stable errors for invalid inputs, catalogs, namespaces, and options', async () => {

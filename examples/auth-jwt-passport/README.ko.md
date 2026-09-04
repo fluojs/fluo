@@ -8,7 +8,7 @@
 
 - `DefaultJwtSigner`를 통한 access token 발급
 - `@UseAuth('jwt')`, `@RequireScopes(...)`를 사용한 보호 라우트
-- custom `AuthStrategy`를 통한 bearer token 검증
+- `@fluojs/passport`의 내장 `BearerJwtStrategy` preset을 통한 bearer token 검증
 - reflection 기반 주입 대신 명시적 DI token metadata
 - auth 라우트와 함께 동작하는 runtime-owned `/health`, `/ready`
 - `@fluojs/testing`을 사용한 unit / integration / e2e 스타일 테스트
@@ -16,7 +16,7 @@
 ## trust boundary
 
 - `@fluojs/jwt`는 Node-runtime auth 패키지입니다. 루트 import surface는 lazy load되지만, 서명, 검증, JWKS key parsing, refresh-token id 생성은 모두 Node.js 호환 `node:crypto` 구현을 필요로 합니다. Bun은 Node 호환성 레이어로 이를 만족하지만, Deno와 Cloudflare Workers는 지원되는 JWT 서명/검증 runtime이 아닙니다.
-- `JwtService.decode(token)`는 서명이나 클레임을 검증하지 않고 payload를 읽습니다. 반환된 객체는 검증되지 않은 입력(unverified input)이며 권한 결정에 사용해서는 안 됩니다. 먼저 `JwtService.verify(token, options)` 또는 `DefaultJwtVerifier.verifyAccessToken(token)`을 호출하고, 검증이 반환하는 정규화된 `JwtPrincipal`에서 신원을 읽으세요. `decode()`는 진단 및 비권위적 검사에만 사용됩니다.
+- `JwtService.decode(token)`는 서명이나 클레임을 검증하지 않고 payload를 읽습니다. 반환된 객체는 검증되지 않은 입력(unverified input)이며 권한 결정에 사용해서는 안 됩니다. `JwtService.verify(token, options)`는 검증된 클레임을 반환하며 `JwtPrincipal`을 반환하지는 않습니다. 정규화된 `JwtPrincipal` 신원이 호출 단위 재정의 없이 필요하면 `DefaultJwtVerifier.verifyAccessToken(token)`을 사용하고, 호출 단위 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`를 보존해야 하면 `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`을 사용하세요. `decode()`는 진단 및 비권위적 검사에만 사용됩니다.
 
 ## 라우트
 
@@ -55,9 +55,9 @@ examples/auth-jwt-passport/
 
 1. `src/auth/login.dto.ts` — 명시적 request boundary
 2. `src/auth/auth.service.ts` — JWT 발급
-3. `src/auth/bearer.strategy.ts` — passport core를 통한 bearer token 검증
+3. `src/auth/bearer.strategy.ts` — 내장 `BearerJwtStrategy` preset의 re-export
 4. `src/auth/auth.controller.ts` — 토큰 발급 라우트 + 보호된 profile 라우트
-5. `src/auth/auth.module.ts` — `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` 기반 module-first 등록
+5. `src/auth/auth.module.ts` — `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)`와 안정적인 `createBearerJwtStrategyRegistration()` helper 기반 module-first 등록
 6. `src/app.test.ts` — service/strategy coverage와 `createTestApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
 
 ## 관련 문서

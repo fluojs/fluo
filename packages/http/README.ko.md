@@ -10,8 +10,11 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [정적 에셋 제공](#정적-에셋-제공)
+- [응답 쿠키](#응답-쿠키)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
+- [바이트 범위 응답](#바이트-범위-응답)
 - [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
 - [공개 API](#공개-api)
@@ -23,6 +26,29 @@
 ```bash
 npm install @fluojs/http
 ```
+
+## 정적 에셋 제공
+
+`createStaticAssetsMiddleware(...)`는 애플리케이션이 소유한 명시적 `StaticAssetSource`를 통해 `GET` 및 `HEAD` 요청만 제공합니다. portable HTTP 패키지는 filesystem 접근을 가정하지 않으므로 Web 및 edge 애플리케이션은 암묵적 Node fallback 대신 자체 source를 제공해야 합니다.
+
+미들웨어는 각 URL segment를 한 번만 decode하고 source 해석 전에 traversal, encoded separator, backslash, NUL을 거부합니다. Dotfile은 명시적 policy를 사용합니다. `allow`는 해석하고, `ignore`는 이후 middleware/route에 요청을 넘기며, `deny`는 설정한 dotfile index를 포함해 `403`을 commit합니다. Directory index는 기본적으로 비활성화되며 trailing slash URL에서만 고려됩니다.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+
+const assets = createStaticAssetsMiddleware({
+  cacheControl: 'public, max-age=3600',
+  index: ['index.html'],
+  prefix: '/assets',
+  source: createNodeFileSystemAssetSource({
+    precompressed: true,
+    root: './public',
+  }),
+});
+```
+
+Runtime bootstrap의 `middleware`에 `assets`를 등록하세요. 선택된 representation은 MIME type, 정확한 byte와 length, `ETag`, `Last-Modified`, 선택적 `Content-Encoding`을 소유합니다. static write는 adapter의 dynamic compression을 우회하므로 full `GET`, `HEAD`, conditional field, `Range`, `If-Range`에서도 이 값이 일관됩니다. Source는 request가 허용한 `br`, `gzip`, identity byte만 선택하고, 허용되는 representation이 없으면 bodyless `406`을 명시적으로 반환하며, 선택이 달라질 수 있을 때 `Vary: Accept-Encoding`을 사용합니다. Byte range는 선택된 encoded representation을 대상으로 합니다.
 
 ## 사용 시점
 
@@ -41,12 +67,12 @@ class CreateUserDto {
   @FromBody()
   @IsString()
   @MinLength(3)
-  name!: string;
+  name = '';
 }
 
 class FindUserParamsDto {
   @FromPath('id')
-  id!: string;
+  id = '';
 }
 
 @Controller('/users')
@@ -64,6 +90,8 @@ export class UserController {
   }
 }
 ```
+
+데코레이터가 붙은 DTO 필드는 위 예시처럼 초기화하거나 optional로 선언하세요. `name!: string` 같은 definite assignment assertion은 Fluo가 제공하는 Babel decorator 설정에서 컴파일되지 않습니다. 해당 설정은 데코레이터가 붙은 클래스의 definitely assigned field를 `Definitely assigned fields cannot be initialized here, but only in the constructor` 오류로 거부합니다.
 
 ### 라우트 경로 계약
 
@@ -119,8 +147,24 @@ header 값을 납작하게 만들지 않으면서 case-insensitive lookup을 해
 comma list를 매번 수동으로 파싱하고 싶지 않거나, 기존 `Vary: *` contract를 실수로 확장하면 안
 될 때는 `appendVaryHeader(response, ...fields)`를 사용하세요.
 
+Adapter가 제공한 응답 header를 같은 방식으로 case-insensitive lookup하려면
+`getResponseHeader(response, name)`와 `hasResponseHeader(response, name)`를 사용하세요. 두 helper는
+원래의 `string | string[]` shape을 보존하고 header, body, status, commit state를 쓰지 않습니다.
+
+`attachment` 또는 `inline` Content-Disposition field value는
+`buildContentDisposition(disposition, filename)`으로 만드세요. 이 helper는 escape한 printable-ASCII
+`filename` fallback과 deterministic RFC 8187 UTF-8 `filename*` 값을 함께 만들고, carriage return 또는
+line feed가 있는 filename은 header value를 반환하기 전에 reject합니다.
+
 ```ts
-import { appendVaryHeader, getRequestHeader, type RequestContext } from '@fluojs/http';
+import {
+  appendVaryHeader,
+  buildContentDisposition,
+  getRequestHeader,
+  getResponseHeader,
+  hasResponseHeader,
+  type RequestContext,
+} from '@fluojs/http';
 
 export function readLanguage(context: RequestContext): string | undefined {
   const acceptLanguage = getRequestHeader(context.request, 'accept-language');
@@ -129,8 +173,53 @@ export function readLanguage(context: RequestContext): string | undefined {
 
 export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
+  context.response.setHeader(
+    'Content-Disposition',
+    buildContentDisposition('attachment', 'résumé.pdf'),
+  );
+}
+
+export function readResponseEtag(
+  context: RequestContext,
+): string | string[] | undefined {
+  return getResponseHeader(context.response, 'etag');
+}
+
+export function shouldSetResponseEtag(context: RequestContext): boolean {
+  return !hasResponseHeader(context.response, 'etag');
 }
 ```
+
+### Content negotiation
+
+응답 formatter로 `ContentNegotiationOptions`를 구성한 다음, 각 route가 반환할 수 있는
+representation은 `@Produces(...)`로 제한하세요. Dispatcher가 formatter 선택, response commit,
+`Content-Type`, canonical 406 response, `Vary: Accept`를 소유하며 handler는 값만 반환합니다.
+
+```ts
+import { Controller, Get, Produces } from '@fluojs/http';
+
+@Controller('/reports')
+export class ReportController {
+  @Produces('application/json', 'text/plain')
+  @Get('/')
+  getReport() {
+    return { ok: true };
+  }
+}
+```
+
+`Accept`가 없거나, blank이거나, `*/*`이면 구성한 default formatter를 사용합니다. 해당 formatter가
+`@Produces(...)`에서 허용되지 않으면 선언 순서상 첫 번째 허용 formatter를 대신 사용합니다. Header가
+있으면 exact range, `type/*`, `*/*`, `application/*+json` 같은 structured suffix range를
+case-insensitive로 매칭합니다. 더 높은 `q`가 먼저이고, 다음은 더 specific한 range이며, 그 다음은
+구성한 default(또는 formatter 선언 순서)입니다. 더 specific한 `q=0` range는 더 넓은 wildcard가
+positive여도 해당 representation을 제외합니다.
+
+각 `q` 값은 소수점 이하 세 자리 이하로 `0`과 `1` 사이여야 합니다. 잘못된 media range 또는 quality는
+무시하며, 유효하고 허용되는 representation이 없거나 formatter가 허용·매칭되지 않으면 dispatcher는
+canonical `406 Not Acceptable` response를 반환합니다. 성공한 모든 formatter 선택은 기존 `Vary` field를
+보존하면서 canonical하고 중복 없는 `Vary: Accept` 하나를 작성합니다.
 
 ## 주요 패턴
 
@@ -154,6 +243,33 @@ class AdminController {
 
 `onRequestSuccess`는 매칭된 handler와 모든 module-level 및 application-level middleware가 완전히 settle된 뒤에만 호출되며, 여기에는 `await next()` 이후의 작업도 포함됩니다. Middleware가 `next()` 반환 뒤 예외를 던지면 observer는 앞선 success 알림 없이 `onRequestError`를 받습니다. `onRequestFinish`는 어느 outcome에서든 그 뒤에 호출됩니다.
 
+### Access logging
+
+`createAccessLogObserver(...)`는 request-observer lifecycle을 애플리케이션 소유의 structured record로 변환합니다. Start record, dispatch error마다 error record, 그리고 monotonic duration, optional request ID, method, path, matched route, status, outcome(`success`, `handled_error`, `unhandled_error`, `not_found`, `aborted`)을 가진 terminal finish record 하나를 정확히 emit합니다. Observer가 구성되면 native route dispatch는 이 complete lifecycle으로 fallback합니다.
+
+Sink는 의도적으로 consumer-owned입니다. `AccessLogEvent`를 애플리케이션의 structured logger, telemetry pipeline, 또는 운영 데이터 보존 정책으로 전달하세요. Allowlist에 없는 header는 emit하지 않습니다. Allowlist에 넣어도 `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`는 계속 redaction되며, 조직별 header 이름은 `redact`로 추가합니다.
+
+```ts
+import { createAccessLogObserver } from '@fluojs/http';
+
+const accessLogObserver = createAccessLogObserver({
+  clientIdentity: {},
+  headers: {
+    allow: ['user-agent', 'set-cookie'],
+    redact: ['x-tenant-token'],
+  },
+  sink: {
+    emit(event) {
+      structuredLog.write(event);
+    },
+  },
+});
+```
+
+클라이언트 주소가 필요하지 않으면 `clientIdentity`를 생략하세요. `clientIdentity: {}`는 adapter의 direct transport peer를 명시적으로 opt-in하고 forwarding field를 무시합니다. 신뢰한 proxy boundary를 통해 forwarded identity를 사용해야 할 때만 `clientIdentity: { trustProxy: ['10.0.0.0/8'] }`를 사용하세요.
+
+Request ID는 optional입니다. Observer만 설치하면 ID를 만들지 않으므로 observer-only record에는 `requestId`가 없을 수 있습니다. `createCorrelationMiddleware()`를 설치하면 dispatcher가 incoming `x-request-id` 또는 legacy `x-correlation-id`를 채택하고, 둘 다 없을 때 access-log start record 전에 ID를 생성합니다.
+
 ### 비동기 요청 컨텍스트
 
 ```ts
@@ -166,6 +282,28 @@ function someDeepHelper() {
 ```
 
 `runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` export는 async-context storage를 probe하거나 instantiate하지 않고 runtime-specific entrypoint를 선택합니다. Node와 Bun은 module initialization 중 host constructor를 등록하고, Deno, worker, browser, default entry는 Node built-in import 없이 유지됩니다. Request-local store 자체는 첫 사용 시점에 계속 lazy하게 생성됩니다. Promise를 반환하는 non-async callback은 동기 호출, 반환, throw 동작을 유지하고, 반환한 promise가 settle될 때까지 continuation에서 바인딩된 context를 보존합니다. Helper는 `Promise.prototype.then`을 교체하지 않으므로 관련 없는 promise continuation이 request를 capture하지 않습니다. 비동기 컨텍스트 primitive가 없는 호스트는 awaited work가 재개되기 전에 context를 지우는 synchronous-only fallback을 사용합니다.
+
+## 응답 쿠키
+
+adapter 고유 응답 API 대신 이식 가능한 `setCookie()`와 `clearCookie()` helper를 사용하세요. 각 호출은 독립적인 `Set-Cookie` field 하나를 작성하므로, 반복 호출은 순서를 보존하며 comma-folding되지 않습니다.
+
+```ts
+import { clearCookie, setCookie } from '@fluojs/http';
+
+setCookie(context.response, 'session', sessionToken, {
+  httpOnly: true,
+  maxAgeSeconds: 60 * 60,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+
+clearCookie(context.response, 'session', {
+  path: '/',
+});
+```
+
+`maxAgeSeconds`는 모든 adapter에서 음수가 아닌 정수 초 단위 lifetime입니다. 값은 percent-encoding되고, 이름과 attribute는 응답이 변경되기 전에 검증되며, `sameSite: 'none'`에는 `secure: true`가 필요합니다. 같은 browser cookie를 삭제하려면 기존 `path`와 `domain`을 반복해야 합니다. `httpOnly`, `secure`, `sameSite`는 browser matching key가 아니라 policy attribute입니다.
 
 ## Early Hints
 
@@ -258,7 +396,17 @@ JSON write를 시작하지 않는다. HTTP가 `Accept`를 추가할 때 기존 n
 
 ### 프록시 뒤의 속도 제한
 
-`createRateLimitMiddleware(...)`는 기본적으로 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 해당 헤더를 신뢰 가능한 프록시가 덮어쓰는 환경에서만 `trustProxyHeaders: true`를 명시적으로 켜세요. 어댑터가 신뢰 가능한 프록시 체인도 raw socket 식별자도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
+`createRateLimitMiddleware(...)`는 기본적으로 어댑터가 snapshot한 직접 transport 주소로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 명시적인 hop 수, address/CIDR 목록 또는 predicate를 `trustProxy`로 구성하세요. 직접 peer가 해당 policy를 만족하지 않으면 forwarded data는 무시되며, malformed `Forwarded` data는 direct transport identity로 fail-closed 됩니다.
+
+```ts
+import { resolveHttpConnection } from '@fluojs/http';
+
+const connection = resolveHttpConnection(context.request, {
+  trustProxy: ['10.0.0.0/8', '2001:db8:feed::/48'],
+});
+```
+
+`connection`은 immutable이며 선택된 `clientAddress`, direct `remoteAddress`, 신뢰된 `proxyChain`, `protocol`, `secure`, `host`, `hostname`, `port`를 노출합니다. Fetch-only adapter는 Web `Request` contract가 direct address를 제공하지 않으므로 해당 값을 undefined로 둘 수 있습니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없는 fetch-style HTTPS `Request`는 peer, host, port를 갖지 않으며 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다. 기존 `trustProxyHeaders: true` 설정은 광범위한 compatibility 전용이며 새 deployment에는 권장하지 않습니다. deployment boundary는 `trustProxy`로 정확히 기술하세요. 두 설정 모두 해당 header를 다시 쓰는 proxy를 제어할 때만 사용해야 합니다. 어댑터가 신뢰 가능한 proxy chain과 raw socket identity를 모두 제공하지 않는다면 shared fallback bucket 대신 명시적인 `keyResolver`를 설정하세요.
 
 ### 서버 전송 이벤트
 
@@ -279,7 +427,7 @@ export class OrdersEventsController {
 }
 ```
 
-`@Sse(path)`는 `GET` 라우트를 등록하고 `text/event-stream` produced media type metadata를 선언합니다. Handler는 수동 stream 제어가 필요하면 `SseResponse`를 반환할 수 있고, managed streaming이 필요하면 `AsyncIterable<SseMessage<T> | T>`를 반환할 수 있습니다. Managed async iterable은 `SseResponse`와 같은 `encodeSseMessage(...)` 동작으로 변환됩니다. 일반 yield 값은 `data:` frame이 되고, `data` 필드가 있는 객체는 `event`, `id`, `retry`도 함께 제공할 수 있습니다. Dispatcher는 `RequestContext.request.signal`이 abort되거나 response stream이 닫히면 source 소비를 중단하고, write가 backpressure를 보고하면 `FrameworkResponseStream.waitForDrain()`을 기다리며, 완료 또는 source error 시 stream을 닫습니다. 같은 cancellation boundary가 진행 중인 `waitForDrain()`도 제한합니다. Request abort 또는 stream close는 settle되지 않은 drain promise보다 먼저 완료되고, 이후 dispatcher는 source iterator를 정확히 한 번 닫은 다음 request-scope disposal을 계속합니다. Stream write failure와 reject된 drain promise는 원래 error를 그대로 전파합니다. 취소 시에는 response stream을 즉시 닫고 request-scoped resource를 dispose하기 전에 source iterator의 `return()` cleanup을 기다립니다. Cleanup 실패는 이미 commit된 SSE response를 대체하지 않고 request observer와 dispatcher logger seam으로 보고됩니다. Source에서 던진 오류도 같은 committed-response error/observer 경계를 따릅니다. Observable 값은 계속 범위 밖이며 RxJS dependency는 필요하지 않습니다.
+`@Sse(path)`는 `GET` 라우트를 등록하고 `text/event-stream` produced media type metadata를 선언합니다. Handler는 수동 stream 제어가 필요하면 `SseResponse`를 반환할 수 있고, managed streaming이 필요하면 `AsyncIterable<SseMessage<T> | T>`를 반환할 수 있습니다. 수동 `SseResponse`는 명시적 close, request abort 또는 raw stream close까지 dispatch, request observer, request-scoped resource를 유지하고, 그 lifecycle stage는 이후 정확히 한 번 해제됩니다. Managed async iterable은 `SseResponse`와 같은 `encodeSseMessage(...)` 동작으로 변환됩니다. 일반 yield 값은 `data:` frame이 되고, `data` 필드가 있는 객체는 `event`, `id`, `retry`도 함께 제공할 수 있습니다. Dispatcher는 `RequestContext.request.signal`이 abort되거나 response stream이 닫히면 source 소비를 중단하고, write가 backpressure를 보고하면 `FrameworkResponseStream.waitForDrain()`을 기다리며, 완료 또는 source error 시 stream을 닫습니다. 같은 cancellation boundary가 진행 중인 `waitForDrain()`도 제한합니다. Request abort 또는 stream close는 settle되지 않은 drain promise보다 먼저 완료되고, 이후 dispatcher는 source iterator를 정확히 한 번 닫은 다음 request-scope disposal을 계속합니다. Stream write failure와 reject된 drain promise는 원래 error를 그대로 전파합니다. 취소 시에는 response stream을 즉시 닫고 request-scoped resource를 dispose하기 전에 source iterator의 `return()` cleanup을 기다립니다. Cleanup 실패는 이미 commit된 SSE response를 대체하지 않고 request observer와 dispatcher logger seam으로 보고됩니다. Source에서 던진 오류도 같은 committed-response error/observer 경계를 따릅니다. Observable 값은 계속 범위 밖이며 RxJS dependency는 필요하지 않습니다.
 
 Managed SSE는 `FrameworkResponse.stream`을 노출하는 adapter가 필요합니다. 활성 adapter가 response stream을 제공하지 않으면 dispatcher는 response를 처리된 것으로 표시하기 전에 managed async iterable을 거부하고, stream이 처리된 것으로 조용히 보고하는 대신 표준 dispatch error 경로(request error observer와 구성된 error response writer)를 통해 실패를 전달합니다.
 
@@ -344,19 +492,61 @@ Fluo의 HTTP 데코레이터는 TC39 표준 데코레이터이며, runtime 또�
 
 Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-specific file type으로 augment하지 말고 runtime-neutral `FrameworkRequestFile` 값을 `FrameworkRequest.files`에 붙여야 합니다. 이 seam은 모든 HTTP adapter가 제공할 수 있는 portable field(`fieldname`, `originalname`, `mimetype`, `buffer`, `size`)만 의도적으로 모델링합니다. Platform package는 더 풍부한 native file object를 raw request surface에 유지할 수 있지만, guard, binder, middleware, interceptor, controller가 cross-runtime 동작을 필요로 하면 `RequestContext.request.files`를 통해 파일을 읽어야 합니다.
 
+### Multipart DTO 필드
+
+Multipart 파일이 handler 입력 계약에 포함되면 `@RequestDto(...)`와 함께 `@FromFiles(fieldname?)`를 사용하세요.
+
+```ts
+import {
+  Controller,
+  FromFiles,
+  Optional,
+  Post,
+  RequestDto,
+  type FrameworkRequestFile,
+} from '@fluojs/http';
+
+class UploadAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+
+  @FromFiles('cover')
+  @Optional()
+  cover?: readonly FrameworkRequestFile[];
+}
+
+@Controller('/uploads')
+export class UploadController {
+  @Post('/')
+  @RequestDto(UploadAssetsDto)
+  upload(input: UploadAssetsDto) {
+    return input.attachments.map((file) => file.originalname);
+  }
+}
+```
+
+`@FromFiles(...)`는 array-only입니다. `FrameworkRequest.files`가 있으면 `fieldname`으로 필터링된 readonly 배열을 어댑터 도착 순서대로 반환하며, collection이 있지만 일치 항목이 없으면 `[]`가 됩니다. Collection이 없으면 필수 필드는 표준 missing-field 오류를 내고 `@Optional()` 필드는 `undefined`로 남습니다. Converter와 validation은 같은 portable 배열을 받습니다. DTO binder는 다섯 `FrameworkRequestFile` 필드만 projection하므로 adapter-native file property가 DTO 경계를 넘어오지 않습니다. 전체 요청 collection이 필요한 controller와 pipeline stage에서는 기존처럼 `RequestContext.request.files`에 직접 접근할 수 있습니다.
+
 응답 content negotiation formatter는 `ResponseFormatter.format(...)`에서 `string` 또는 `Uint8Array`를 반환해야 합니다. Node.js `Buffer` 값은 `Buffer`가 `Uint8Array`를 구현하므로 계속 할당 가능하지만, formatter contract는 runtime-neutral byte 동작에만 의존해야 합니다.
 
 ## 공개 API
 
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
+- **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
+- **Conditional request 타입**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
+- **바이트 범위 응답**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
+- **정적 에셋**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. 이 패키지는 middleware와 source-selection contract를 소유하며 선택적인 Node filesystem source는 `@fluojs/runtime/node`가 소유합니다.
+- **응답 transport 제어**: `FrameworkResponseSendOptions`, `FrameworkResponseStream` (`onError`는 `undefined`를 포함한 모든 transport failure 발생을 보고하고, stream이 settle된 뒤 caller가 호출할 optional remover를 반환함)
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
+- **신뢰된 연결 API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`
+- **구조화된 접근 로깅**: `createAccessLogObserver`, `CreateAccessLogObserverOptions`, `AccessLogSink`, `AccessLogEvent`, `AccessLogStartEvent`, `AccessLogErrorEvent`, `AccessLogFinishEvent`, `AccessLogOutcome`, `AccessLogHeaderOptions`, `AccessLogRequestFields`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Portable 서브경로 (`@fluojs/http/portable`)
@@ -377,6 +567,47 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, `HttpApplicationAdapter`: 전체 HTTP root barrel을 instantiate하면 안 되는 edge/fetch-style platform package를 위한 내부 adapter seam.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: first-party response integration을 위한 typed response-entry branding seam.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: typed request-local response finalization seam. Finalizer는 registration 순서대로 compose되고 각각 이전에 resolve된 값을 받으며, dispatcher가 await하므로 throw와 rejection은 기존 error policy를 따릅니다.
+
+## Conditional Requests
+
+runtime bootstrap에서 `conditionalRequest`를 구성해 representation 존재 여부와 optional validator를 분리하여 해석합니다.
+
+```ts
+const app = await bootstrapNodeApplication(AppModule, {
+  conditionalRequest: {
+    resolve({ handler, request }) {
+      return {
+        exists: true,
+        validators: {
+          etag: { opaqueValue: `${handler.route.method}:${request.path}:v1`, strength: 'strong' },
+          lastModified: new Date('2026-01-01T00:00:00Z'),
+        },
+      };
+    },
+  },
+});
+```
+
+representation이 없으면 `{ exists: false }`를, 존재하지만 validator가 의도적으로 없으면 `{ exists: true }`를 반환합니다. Dispatcher는 application/module middleware와 guard 뒤에 이 resolver를 평가하므로 conditional `304`와 `412`가 authorization 또는 audit logic을 우회하지 않습니다. 유효한 entity-tag list와 HTTP-date form만 받아들이며 malformed conditional field는 무시합니다.
+
+dispatcher는 RFC 9110 precedence와 comparison을 소유합니다. 성공한 `If-Match`는 `If-Unmodified-Since`만 건너뛰고, 이후에도 `If-None-Match`가 `If-Modified-Since`보다 우선합니다. `If-Match`는 strong comparison, `If-None-Match`는 weak comparison을 사용합니다. `304`와 `412`는 body 없이 `ETag`/`Last-Modified`를 유지하며 redirect와 지원되는 custom response-writer 경로에도 적용됩니다. 같은 selected representation에서는 `HEAD`와 `GET`이 같은 conditional 결과를 사용하고 framework-generated `HEAD` body는 억제됩니다. 명시적인 `@Head` route는 독립 route이며 custom response writer는 body emission을 소유하므로 직접 bodyless `HEAD` contract를 지켜야 합니다. 전체 실행 계약은 [HTTP Runtime Contract](../../docs/architecture/http-runtime.ko.md)를 참고하세요.
+
+## 바이트 범위 응답
+
+`Uint8Array` 또는 `ArrayBuffer`를 반환하면 `GET`과 `HEAD` metadata mirror에서 RFC 단일 `bytes` 범위 응답이 자동으로 활성화됩니다. 유효한 범위는 `206`, `Accept-Ranges: bytes`, `Content-Range`, 정확한 identity-byte `Content-Length`를 생성합니다. malformed 또는 multi-range field는 전체 representation으로 fallback하고, 충족 불가능한 범위는 `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, `Content-Length: 0`을 포함한 body 없는 `416`을 반환합니다. `POST`, unsafe, custom method는 `Range`를 무시하고 원래 full status, body, metadata를 유지합니다.
+
+portable `ReadableStream`에는 정확한 전체 크기와 함께 `createByteRangeResponse(...)`를 사용하세요. `HEAD`가 stream을 만들지 않아야 하면 factory를 전달합니다.
+
+```ts
+import { createByteRangeResponse } from '@fluojs/http';
+
+return createByteRangeResponse(
+  () => file.stream(),
+  { contentType: 'image/png', size: file.size },
+);
+```
+
+dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `If-Range`는 정확한 strong `ETag` 또는 현재 `Last-Modified` date일 때만 partial response를 허용하며, 그 외에는 전체 representation을 보냅니다. partial response는 range offset과 length를 보존하도록 identity byte를 유지하고 Node compression을 건너뜁니다. `HEAD`는 GET의 status와 metadata를 보존하면서 stream을 열지 않습니다. Byte, 정확한 size, filesystem resource는 애플리케이션이 소유합니다. `createByteRangeResponse(...)`는 file을 열거나, stat, seek, size 계산, close하지 않으며 multi-range response도 의도적으로 구성하지 않습니다.
 
 ## 관련 패키지
 

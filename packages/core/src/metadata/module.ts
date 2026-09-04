@@ -80,8 +80,8 @@ function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
   };
 }
 
-function freezeCollection<T>(collection: T[] | undefined): T[] | undefined {
-  return collection ? Object.freeze(collection) as T[] : undefined;
+function freezeCollection<T>(collection: readonly T[] | undefined): readonly T[] | undefined {
+  return collection ? Object.freeze(collection) : undefined;
 }
 
 function freezeModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {

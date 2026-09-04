@@ -49,6 +49,10 @@
       "types": "./dist/conformance/platform-conformance.d.ts",
       "import": "./dist/conformance/platform-conformance.js"
     },
+    "./platform-shell-lifecycle-conformance": {
+      "types": "./dist/conformance/platform-shell-lifecycle-conformance.d.ts",
+      "import": "./dist/conformance/platform-shell-lifecycle-conformance.js"
+    },
     "./http-adapter-portability": {
       "types": "./dist/portability/http-adapter-portability.d.ts",
       "import": "./dist/portability/http-adapter-portability.js"

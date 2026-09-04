@@ -5,7 +5,205 @@ import {
   writeTypegenArtifact,
 } from './typegen-artifact.js';
 
+const publication = vi.hoisted(() => {
+  const files = new Map<string, string>();
+  let invalidated = false;
+  let stalePublication = false;
+  let dispatchRename: () => void = () => undefined;
+  let releaseRename: () => void = () => undefined;
+  let renameDispatched = Promise.resolve();
+
+  return {
+    files,
+    get invalidated(): boolean {
+      return invalidated;
+    },
+    get stalePublication(): boolean {
+      return stalePublication;
+    },
+    beginRename(): void {
+      dispatchRename();
+    },
+    invalidateSource(): void {
+      invalidated = true;
+    },
+    publish(source: string, destination: string): void {
+      const content = files.get(source);
+      if (content === undefined) {
+        throw new Error(`Missing temporary artifact ${source}`);
+      }
+      if (invalidated) {
+        stalePublication = true;
+      }
+      files.set(destination, content);
+      files.delete(source);
+    },
+    releasePublication(): void {
+      releaseRename();
+    },
+    reset(): void {
+      files.clear();
+      invalidated = false;
+      stalePublication = false;
+      renameDispatched = new Promise<void>((resolve) => {
+        dispatchRename = resolve;
+      });
+      releaseRename = () => undefined;
+    },
+    waitForRenameDispatch(): Promise<void> {
+      return renameDispatched;
+    },
+    waitToPublish(): Promise<void> {
+      return new Promise<void>((resolve) => {
+        releaseRename = resolve;
+      });
+    },
+  };
+});
+
+vi.mock('node:fs', () => ({
+  renameSync(source: string, destination: string): void {
+    publication.publish(source, destination);
+    publication.beginRename();
+    publication.invalidateSource();
+  },
+}));
+
+vi.mock('node:fs/promises', () => ({
+  async mkdir(_path: string): Promise<void> {
+    return undefined;
+  },
+  async readFile(path: string): Promise<string> {
+    const content = publication.files.get(path);
+    if (content === undefined) {
+      throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+    }
+    return content;
+  },
+  rename(source: string, destination: string): Promise<void> {
+    publication.beginRename();
+    publication.invalidateSource();
+    return publication.waitToPublish().then(() => {
+      publication.publish(source, destination);
+    });
+  },
+  async rm(path: string): Promise<void> {
+    publication.files.delete(path);
+  },
+  async writeFile(path: string, content: string): Promise<void> {
+    publication.files.set(path, content);
+  },
+}));
+
 describe('typegen artifact commits', () => {
+  it('does not publish invalidated source after the rename dispatch boundary', async () => {
+    // Given: a replacement and an injected source invalidation at the filesystem rename boundary.
+    const outputPath = '/project/src/generated/react-pages.ts';
+    publication.reset();
+    publication.files.set(outputPath, 'last valid artifact\n');
+
+    // When: typegen commits through the production filesystem adapter.
+    const action = writeTypegenArtifact(outputPath, 'next complete artifact\n');
+    await publication.waitForRenameDispatch();
+    publication.releasePublication();
+    const result = await action;
+
+    // Then: publication completes before invalidation; an asynchronous rename would mark this stale.
+    expect(result).toBe('UPDATE');
+    expect(publication.invalidated).toBe(true);
+    expect(publication.stalePublication).toBe(false);
+    expect(publication.files.get(outputPath)).toBe('next complete artifact\n');
+    expect([...publication.files.keys()]).toEqual([outputPath]);
+  });
+
+  it('publishes one complete replacement before a queued shutdown can run after synchronous rename begins', async () => {
+    // Given: one valid target and a shutdown event queued from the synchronous publication boundary.
+    const outputPath = '/project/src/generated/react-pages.ts';
+    const files = new Map<string, string>([[outputPath, 'last valid artifact\n']]);
+    const controller = new AbortController();
+    const fileSystem: TypegenArtifactFileSystem = {
+      mkdir: vi.fn(async () => undefined),
+      readFile: vi.fn(async (path) => {
+        const content = files.get(path);
+        if (content === undefined) {
+          throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+        }
+        return content;
+      }),
+      rename: vi.fn((source, destination) => {
+        const content = files.get(source);
+        if (content === undefined) {
+          throw new Error(`Missing temporary artifact ${source}`);
+        }
+        files.set(destination, content);
+        files.delete(source);
+        queueMicrotask(() => {
+          controller.abort();
+        });
+        return undefined;
+      }),
+      rm: vi.fn(async (path) => {
+        files.delete(path);
+      }),
+      writeFile: vi.fn(async (path, content) => {
+        files.set(path, content);
+      }),
+    };
+
+    // When: the final abort check succeeds and the synchronous rename begins before shutdown dispatches.
+    const action = await writeTypegenArtifact(outputPath, 'next complete artifact\n', fileSystem, controller.signal);
+
+    // Then: lifecycle dispatch cannot interrupt the atomic publication or leave a temporary artifact.
+    expect(action).toBe('UPDATE');
+    expect(controller.signal.aborted).toBe(true);
+    expect(files.get(outputPath)).toBe('next complete artifact\n');
+    expect([...files.keys()]).toEqual([outputPath]);
+    expect(fileSystem.rename).toHaveBeenCalledOnce();
+    expect(fileSystem.rm).not.toHaveBeenCalled();
+  });
+
+  it('removes a prepared replacement when shutdown aborts before atomic publication', async () => {
+    // Given: an existing valid artifact and a shutdown signal that begins during temporary-file preparation.
+    const outputPath = '/project/src/generated/react-pages.ts';
+    const files = new Map<string, string>([[outputPath, 'last valid artifact\n']]);
+    const controller = new AbortController();
+    const fileSystem: TypegenArtifactFileSystem = {
+      mkdir: vi.fn(async () => undefined),
+      readFile: vi.fn(async (path) => {
+        const content = files.get(path);
+        if (content === undefined) {
+          throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+        }
+        return content;
+      }),
+      rename: vi.fn((source, destination) => {
+        const content = files.get(source);
+        if (content === undefined) {
+          throw new Error(`Missing temporary artifact ${source}`);
+        }
+        files.set(destination, content);
+        files.delete(source);
+        return undefined;
+      }),
+      rm: vi.fn(async (path) => {
+        files.delete(path);
+      }),
+      writeFile: vi.fn(async (path, content) => {
+        files.set(path, content);
+        controller.abort();
+      }),
+    };
+
+    // When: shutdown aborts the owned write after its complete temporary body exists.
+    const action = writeTypegenArtifact(outputPath, 'next complete artifact\n', fileSystem, controller.signal);
+
+    // Then: atomic publication never starts, the temporary file is removed, and the last valid target remains.
+    await expect(action).rejects.toMatchObject({ name: 'AbortError' });
+    expect(files.get(outputPath)).toBe('last valid artifact\n');
+    expect(fileSystem.rename).not.toHaveBeenCalled();
+    expect([...files.keys()]).toEqual([outputPath]);
+  });
+
   it('preserves the last valid artifact when the atomic replacement fails', async () => {
     // Given: one valid target and a filesystem that fails only when committing its temporary replacement.
     const outputPath = '/project/src/generated/react-pages.ts';
@@ -20,7 +218,7 @@ describe('typegen artifact commits', () => {
         }
         return content;
       }),
-      rename: vi.fn(async () => {
+      rename: vi.fn(() => {
         throw commitError;
       }),
       rm: vi.fn(async (path) => {

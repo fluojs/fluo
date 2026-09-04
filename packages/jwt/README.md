@@ -161,21 +161,46 @@ const verifier = new DefaultJwtVerifier({
 
 JWKS keys are cached for `jwksCacheTtl` milliseconds (`600_000` by default) and the in-memory cache is bounded by `jwksCacheMaxEntries` (`100` by default). Expired entries are pruned before lookups, the oldest retained key is evicted when the bound is exceeded, and `JwtModule` calls the managed `DefaultJwtVerifier` shutdown hook so retained remote key material is cleared during module teardown. Manually constructed verifiers or clients should still call `JwksClient.dispose()` / `DefaultJwtVerifier.dispose()` during manual shutdown or identity-provider reconfiguration. These dispose methods clear retained JWKS key material and abort active JWKS fetches. A `jwksCacheTtl` of `0` disables key retention while still using bounded fetch timeouts.
 
-`JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
+`DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` applies per-call algorithm and claim-policy overrides (`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
-When multiple compatible keys are configured, `kid` disambiguates the verification key. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
+When multiple compatible keys are configured, `kid` disambiguates the verification key. Every `keys[]` entry must have a non-empty, unique `kid`; `DefaultJwtSigner` and `DefaultJwtVerifier` reject empty or duplicate values with `JwtConfigurationError` during construction so key rotation cannot select different keys for signing and verification. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
 
 For multi-tenant systems, prefer putting a tenant-specific `kid` in issued token headers and configuring compatible key sources up front. `secretOrKeyProvider` is called with the decoded token header only, so request headers, route params, or other request-context tenant hints must be handled by application-level strategy/guard code before calling the JWT verifier.
 
 ### Refresh tokens
 
-`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported: after a successful consume, the service saves the replacement through `save(...)`, but only store-owned `rotate(...)` makes those two writes atomic.
+`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Set `refreshToken.algorithms` to an explicit HMAC allowlist (for example, `['HS256']`) when the access-token `algorithms` list is asymmetric-only; otherwise, existing configurations continue to derive the refresh policy from the top-level HMAC algorithms. This policy applies only to refresh-token signing and verification, so it does not widen access-token verification.
+
+```typescript
+const options = {
+  algorithms: ['RS256'],
+  privateKey: '...private PEM...',
+  publicKey: '...public PEM...',
+  refreshToken: {
+    algorithms: ['HS256'],
+    secret: 'refresh-secret',
+    expiresInSeconds: 300,
+    rotation: false,
+    store,
+  },
+};
+```
+
+Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported: after a successful consume, the service saves the replacement through `save(...)`, but only store-owned `rotate(...)` makes those two writes atomic.
 
 When reuse is detected, stores that implement the optional `revokeByFamily(family)` capability revoke only the compromised token family. Existing stores remain source-compatible: if `revokeByFamily(...)` is absent, `RefreshTokenService` conservatively falls back to `revokeBySubject(subject)`, which also revokes the subject's independent refresh-token families. Implement `revokeByFamily(...)` in production stores when separate device or session families must remain active after another family is compromised.
 
+For single-session logout, pass the compact token that the caller presented to `revokePresentedRefreshToken(...)`:
+
+```typescript
+await refreshTokens.revokePresentedRefreshToken(refreshToken);
+```
+
+This verifies the signature, expiry, `type`, `jti`, `family`, and `sub` claims before revoking the matching record. `revokeRefreshToken(tokenId)` remains available for callers that already hold a trusted record ID; do not pass a raw compact token to that ID-based method.
+
 ## Configuration Guardrails
 
-JWT signing and verification require at least one supported algorithm in `algorithms`. The built-in signer supports `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, and `ES512`; configuration with an empty algorithm list fails fast instead of issuing or accepting ambiguous tokens.
+JWT signing and access-token verification require at least one supported algorithm in `algorithms`. Refresh-token signing and verification use `refreshToken.algorithms` when configured, or the top-level HMAC algorithms for backward compatibility. The built-in signer supports `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, and `ES512`; configuration with an empty algorithm list fails fast instead of issuing or accepting ambiguous tokens.
 
 Access-token TTL must also be a positive finite number. When `accessTokenTtlSeconds` is omitted, `DefaultJwtSigner` uses the documented `3600` second default. Fractional seconds are preserved in the JWT NumericDate `exp` claim; when the option is provided as `0`, a negative number, or a non-finite value, signing fails with `JwtConfigurationError` before a token is issued.
 
@@ -189,7 +214,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 
 ### `decode()` trust boundary
 
-`JwtService.decode(token)` reads the JWT payload segment without verifying the signature, `alg`, `exp`, `nbf`, `iss`, `aud`, or any other claim. The returned object is **unverified input** and must never be used for authorization decisions, identity resolution, or any code path that grants access. Use `JwtService.verify(token, options)` (or `DefaultJwtVerifier.verifyAccessToken(token)`) first, and read identity from the normalized `JwtPrincipal` that verification returns.
+`JwtService.decode(token)` reads the JWT payload segment without verifying the signature, `alg`, `exp`, `nbf`, `iss`, `aud`, or any other claim. The returned object is **unverified input** and must never be used for authorization decisions, identity resolution, or any code path that grants access. Use `JwtService.verify(token, options)` to obtain verified claims. To obtain a normalized `JwtPrincipal`, use `DefaultJwtVerifier.verifyAccessToken(token)` without per-call overrides, or `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` when preserving per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp`.
 
 `decode()` exists for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`. Any claim value read from `decode()` — including `sub`, `roles`, `scopes`, `iss`, `aud`, and `exp` — must be treated as attacker-controlled until `verify()` succeeds. Never branch on `decode()` output to allow or deny a request, and never expose decoded claims to downstream code as if they were verified.
 
@@ -201,7 +226,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 - `DefaultJwtVerifier`: Handles token validation and normalization.
 - `JwtService`: A convenience facade combining signing and verification.
 - `JwksClient`: Fetches and caches remote JWKS keys with bounded request timeouts.
-- `RefreshTokenService`: Issues, rotates, and revokes refresh tokens when `refreshToken` options are configured.
+- `RefreshTokenService`: Issues, rotates, and revokes refresh tokens when `refreshToken` options are configured. `revokePresentedRefreshToken(...)` verifies a compact refresh token before revoking its record; `revokeRefreshToken(tokenId)` is the trusted-ID alternative.
 
 ### Types
 - `JwtPrincipal`: The normalized identity object (`subject`, `roles`, `scopes`, `claims`).
@@ -214,10 +239,11 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 ### Errors and diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
 - `createJwtPlatformStatusSnapshot(...)` and `createJwtPlatformDiagnosticIssues(...)`: Status and diagnostic helpers.
-- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer.
+- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer. `HMAC_HASH` and `ASYMMETRIC_HASH` are readonly lookup values; do not mutate them.
 
 ### Deprecated compatibility helpers
 - `normalizeRefreshTokenOptions(...)`: Retained only for root-import compatibility with existing callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` plus `RefreshTokenService` instead of calling package normalization internals.
+- `createJwtCoreProviders(...)`: Retained only for root-import compatibility with existing direct module composition callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` so registration stays aligned with the published module surface.
 
 ## Related Packages
 

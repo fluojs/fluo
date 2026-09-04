@@ -16,17 +16,27 @@ interface MockRedisInstance {
 
 interface Deferred<T> {
   promise: Promise<T>;
+  reject(reason: unknown): void;
   resolve(value: T): void;
 }
 
 function createDeferred<T>(): Deferred<T> {
+  let rejectDeferred: ((reason: unknown) => void) | undefined;
   let resolveDeferred: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
+  const promise = new Promise<T>((resolve, reject) => {
+    rejectDeferred = reject;
     resolveDeferred = resolve;
   });
 
   return {
     promise,
+    reject(reason) {
+      if (rejectDeferred === undefined) {
+        throw new Error('Deferred rejecter was not initialized.');
+      }
+
+      rejectDeferred(reason);
+    },
     resolve(value) {
       if (resolveDeferred === undefined) {
         throw new Error('Deferred resolver was not initialized.');
@@ -305,6 +315,54 @@ describe('@fluojs/redis', () => {
 
     expect(mockRedisState.events).toEqual(['connect', 'disconnect', 'disconnect']);
     expect(mockRedisState.instances[0]?.status).toBe('end');
+  });
+
+  it('observes a late default connect rejection after the lifecycle timeout expires', async () => {
+    vi.useFakeTimers();
+    const connectDeferred = createDeferred<void>();
+    const lateConnectError = new Error('late connect rejection');
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    mockRedisState.connectDeferred = connectDeferred;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          lifecycle: { connectTimeoutMs: 25 },
+          port: 6379,
+        }),
+      ],
+    });
+
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    try {
+      // Given: bootstrap abandons the still-pending connect once its lifecycle timeout expires.
+      const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+      const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow(
+        'Redis client default connect timed out after 25ms.',
+      );
+      await vi.advanceTimersByTimeAsync(25);
+      await bootstrapAssertion;
+
+      // When: the abandoned connect promise rejects after the timeout already failed bootstrap.
+      vi.useRealTimers();
+      connectDeferred.reject(lateConnectError);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+
+      // Then: the timeout remains the bootstrap failure and the late rejection stays observed.
+      expect(unhandledRejections).toEqual([]);
+      expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
+      expect(mockRedisState.instances[0]?.status).toBe('end');
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
   });
 
   it('fails bootstrap when a named lifecycle-owned connect exceeds the configured timeout', async () => {

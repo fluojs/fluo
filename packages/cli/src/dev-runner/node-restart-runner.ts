@@ -302,7 +302,7 @@ export function createContentChangeGate(projectDirectory: string, ignorePatterns
 }
 
 function getWatchTargets(projectDirectory: string): string[] {
-  return [join(projectDirectory, 'src'), ...WATCH_FILES.map((fileName) => join(projectDirectory, fileName))].filter((target) => existsSync(target));
+  return [join(projectDirectory, 'src'), ...WATCH_FILES.map((fileName) => join(projectDirectory, fileName)).filter((target) => existsSync(target))];
 }
 
 function stopChild(child: ChildProcess | undefined, shutdownTimeoutMs = DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS): void {
@@ -402,6 +402,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const childShutdownTimeoutMs = Number(env.FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS ?? DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS);
   const ignorePatterns = parseIgnorePatterns(env);
   const gate = createContentChangeGate(projectDirectory, ignorePatterns);
+  const sourceDirectory = join(projectDirectory, 'src');
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
   const pendingRestartPaths = new Set<string>();
@@ -609,9 +610,9 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
     const watchedFallbackDirectories = new Set<string>();
 
-    const watchFallbackDirectory = (directoryPath: string) => {
+    const watchFallbackDirectory = (directoryPath: string): boolean => {
       if (watchedFallbackDirectories.has(directoryPath) || shouldIgnorePath(directoryPath, projectDirectory, ignorePatterns)) {
-        return;
+        return false;
       }
 
       watchedFallbackDirectories.add(directoryPath);
@@ -621,15 +622,23 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         scheduleRestart(changedPath, resolveExitCode, cleanup);
 
         for (const nextDirectoryPath of getFallbackWatchDirectories(changedPath, projectDirectory, ignorePatterns)) {
-          watchFallbackDirectory(nextDirectoryPath);
+          if (watchedFallbackDirectories.has(nextDirectoryPath) || shouldIgnorePath(nextDirectoryPath, projectDirectory, ignorePatterns)) {
+            continue;
+          }
+          if (!watchFallbackDirectory(nextDirectoryPath)) {
+            failFromWatcher(nextDirectoryPath, new Error('required fallback watcher could not be acquired'));
+            return;
+          }
         }
       };
 
       try {
         registerWatcher(directoryPath, watchTarget(directoryPath, listener));
+        return true;
       } catch (error: unknown) {
         watchedFallbackDirectories.delete(directoryPath);
         stderr.write(`[fluo] unable to watch ${directoryPath}: ${error instanceof Error ? error.message : String(error)}\n`);
+        return false;
       }
     };
 
@@ -647,11 +656,26 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           if (!stats.isDirectory()) {
             throw error;
           }
+          let sourceCoverageAcquired = false;
           for (const directoryPath of getFallbackWatchDirectories(target, projectDirectory, ignorePatterns)) {
-            watchFallbackDirectory(directoryPath);
+            if (!watchFallbackDirectory(directoryPath)) {
+              const message = error instanceof Error ? error.message : String(error);
+              failFromWatcher(target, new Error(`${message}; required fallback watcher could not be acquired`));
+              return;
+            }
+            sourceCoverageAcquired ||= directoryPath === target;
+          }
+          if (!sourceCoverageAcquired) {
+            const message = error instanceof Error ? error.message : String(error);
+            failFromWatcher(target, new Error(`${message}; required fallback watcher could not be acquired`));
+            return;
           }
         }
       } catch (error: unknown) {
+        if (target === sourceDirectory) {
+          failFromWatcher(target, error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
         stderr.write(`[fluo] unable to watch ${target}: ${error instanceof Error ? error.message : String(error)}\n`);
       }
     }

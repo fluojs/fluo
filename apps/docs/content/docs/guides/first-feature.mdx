@@ -52,26 +52,36 @@ Providers should own business behavior. Controllers should only translate transp
 ## 3. Define the HTTP boundary
 
 ```ts
-import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
 import { UsersService } from './users.service';
 
-interface CreateUserBody {
-  name: string;
+class CreateUserDto {
+  @FromBody()
+  name!: string;
+}
+
+class FindUserParamsDto {
+  @FromPath('id')
+  id!: string;
 }
 
 @Controller('/users')
+@Inject(UsersService)
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
-  @Post()
-  create(@Body() body: CreateUserBody) {
-    return this.users.create(body.name);
+  @Post('/')
+  @RequestDto(CreateUserDto)
+  create(input: CreateUserDto) {
+    return this.users.create(input.name);
   }
 
   @Get('/:id')
-  findOne(@Param('id') id: string) {
-    return this.users.findById(id);
+  @RequestDto(FindUserParamsDto)
+  findOne(input: FindUserParamsDto) {
+    return this.users.findById(input.id);
   }
 }
 ```
@@ -83,7 +93,10 @@ The controller owns route shape and request binding. It should not hide package 
 Use `@fluojs/validation` once the route accepts real external input. Keep DTO validation at the edge and pass validated values inward.
 
 ```ts
+import { FromBody } from '@fluojs/http';
+
 export class CreateUserDto {
+  @FromBody()
   name!: string;
 }
 ```

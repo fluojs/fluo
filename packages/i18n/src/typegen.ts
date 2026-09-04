@@ -265,6 +265,18 @@ export function generateI18nCatalogTypes(
     DEFAULT_TYPED_SERVICE_TYPE_NAME,
     'Catalog typegen typedServiceTypeName',
   );
+  const generatedIdentifiers = [
+    keyTypeName,
+    namespaceTypeName,
+    keyByNamespaceTypeName,
+    namespaceKeyTypeName,
+    typedTranslateOptionsTypeName,
+    typedTranslateTypeName,
+    typedServiceTypeName,
+  ];
+  if (new Set(generatedIdentifiers).size !== generatedIdentifiers.length) {
+    throw new I18nError('Catalog typegen output identifiers must be unique.', 'I18N_INVALID_OPTIONS');
+  }
   const keys = new Set<string>();
   const namespaces = new Set<string>();
   const keysByNamespace = new Map<string, Set<string>>();

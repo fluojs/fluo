@@ -55,11 +55,11 @@ const DESCRIPTOR_OPERATION_METHODS: ReadonlyMap<string, OpenApiOperationMethod> 
   ['PATCH', 'patch'],
   ['POST', 'post'],
   ['PUT', 'put'],
+  ['TRACE', 'trace'],
 ]);
 
 const OPENAPI_OPERATION_METHODS: ReadonlySet<string> = new Set<OpenApiOperationMethod>([
   ...DESCRIPTOR_OPERATION_METHODS.values(),
-  'trace',
 ]);
 
 /**

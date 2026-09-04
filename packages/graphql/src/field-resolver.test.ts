@@ -1,5 +1,3 @@
-import { createServer } from 'node:net';
-
 import { defineModule } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { GraphQLObjectType, GraphQLString } from 'graphql';
@@ -7,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Context, FieldResolver, Parent, Query, Resolver } from './decorators.js';
 import { GraphqlModule } from './module.js';
+import { getBoundPort } from './network.test-fixture.js';
 import type { GraphQLContext } from './types.js';
 
 type Book = {
@@ -50,29 +49,45 @@ class BookFieldResolver {
   }
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+const NullableBookType = new GraphQLObjectType({
+  fields: {
+    existing: { type: GraphQLString },
+    id: { type: GraphQLString },
+  },
+  name: 'NullableFieldResolverBook',
+});
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error?: Error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
+@Resolver()
+class NullableBookQueryResolver {
+  @Query({ outputType: NullableBookType })
+  book(): { readonly id: string } {
+    return { id: 'nullable-book-1' };
+  }
 }
+
+@Resolver('NullableFieldResolverBook')
+class NullableBookFieldResolver {
+  @FieldResolver({ fieldName: 'defaultValue', type: 'string' })
+  defaultValue(): string {
+    return 'default';
+  }
+
+  @FieldResolver({ fieldName: 'existing', nullable: false })
+  existing(): string {
+    return 'existing';
+  }
+
+  @FieldResolver({ fieldName: 'nullableValue', nullable: true, type: 'string' })
+  nullableValue(): string {
+    return 'nullable';
+  }
+
+  @FieldResolver({ fieldName: 'requiredValue', nullable: false, type: 'string' })
+  requiredValue(): string {
+    return 'required';
+  }
+}
+
 
 async function postGraphql(port: number, query: string): Promise<unknown> {
   const response = await fetch(`http://127.0.0.1:${String(port)}/graphql`, {
@@ -96,16 +111,87 @@ describe('GraphQL object field resolvers', () => {
       providers: [BookQueryResolver, BookFieldResolver],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
 
     try {
       await app.listen();
+      const port = await getBoundPort(app);
       await expect(postGraphql(port, '{ book { id author { id label } } }')).resolves.toEqual({
         data: {
           book: {
             author: { id: 'author-1', label: 'Ada Lovelace' },
             id: 'book-1',
+          },
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('exposes nullable metadata for new typed fields without changing existing fields', async () => {
+    // Given
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [GraphqlModule.forRoot({ graphiql: true, resolvers: [NullableBookQueryResolver, NullableBookFieldResolver] })],
+      providers: [NullableBookQueryResolver, NullableBookFieldResolver],
+    });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+
+    try {
+      await app.listen();
+      const port = await getBoundPort(app);
+
+      // When
+      await expect(
+        postGraphql(
+          port,
+          '{ __type(name: "NullableFieldResolverBook") { fields { name type { kind name ofType { kind name } } } } }',
+        ),
+      ).resolves.toMatchObject({
+        data: {
+          __type: {
+            fields: expect.arrayContaining([
+              { name: 'defaultValue', type: { kind: 'SCALAR', name: 'String', ofType: null } },
+              { name: 'existing', type: { kind: 'SCALAR', name: 'String', ofType: null } },
+              { name: 'nullableValue', type: { kind: 'SCALAR', name: 'String', ofType: null } },
+              {
+                name: 'requiredValue',
+                type: { kind: 'NON_NULL', name: null, ofType: { kind: 'SCALAR', name: 'String' } },
+              },
+            ]),
+          },
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('executes new field resolvers across nullable option values', async () => {
+    // Given
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [GraphqlModule.forRoot({ resolvers: [NullableBookQueryResolver, NullableBookFieldResolver] })],
+      providers: [NullableBookQueryResolver, NullableBookFieldResolver],
+    });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+
+    try {
+      await app.listen();
+      const port = await getBoundPort(app);
+
+      // When
+      const response = postGraphql(port, '{ book { defaultValue existing nullableValue requiredValue } }');
+
+      // Then
+      await expect(response).resolves.toEqual({
+        data: {
+          book: {
+            defaultValue: 'default',
+            existing: 'existing',
+            nullableValue: 'nullable',
+            requiredValue: 'required',
           },
         },
       });

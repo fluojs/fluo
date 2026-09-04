@@ -139,9 +139,19 @@ export type DiscordFetchLike = (input: string, init?: {
   signal?: AbortSignal;
 }) => MaybePromise<DiscordFetchResponse>;
 
+/** Bounded retry policy accepted by {@link createDiscordWebhookTransport}. */
+export interface DiscordWebhookRetryOptions {
+  /** Total delivery attempts, including the initial request. Defaults to `3` and accepts values from `1` through `10`. */
+  attempts?: number;
+
+  /** Initial exponential-backoff delay in milliseconds. Defaults to `250` and accepts values from `0` through `60000`. */
+  baseDelayMs?: number;
+}
+
 /** Options accepted by {@link createDiscordWebhookTransport}. */
 export interface DiscordWebhookTransportOptions {
   fetch?: DiscordFetchLike;
+  retry?: DiscordWebhookRetryOptions;
   wait?: boolean;
   webhookUrl: string;
 }

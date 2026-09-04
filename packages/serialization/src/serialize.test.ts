@@ -330,6 +330,70 @@ describe('serialize', () => {
     });
   });
 
+  it('isolates inherited field metadata when a child overrides a base field', () => {
+    // Given
+    @Expose({ excludeExtraneous: true })
+    class BaseView {
+      @Expose()
+      id = 'base-1';
+
+      @Expose()
+      secret = 'base-secret';
+    }
+
+    class ChildView extends BaseView {
+      @Exclude()
+      override secret = 'child-secret';
+    }
+
+    class SiblingView extends BaseView {}
+
+    // When
+    const base = serialize(new BaseView());
+    const child = serialize(new ChildView());
+    const sibling = serialize(new SiblingView());
+
+    // Then
+    expect(base).toEqual({
+      id: 'base-1',
+      secret: 'base-secret',
+    });
+    expect(child).toEqual({ id: 'base-1' });
+    expect(sibling).toEqual({
+      id: 'base-1',
+      secret: 'base-secret',
+    });
+  });
+
+  it('isolates inherited class options when a child overrides excludeExtraneous', () => {
+    // Given
+    @Expose({ excludeExtraneous: true })
+    class BaseView {
+      @Expose()
+      id = 'base-1';
+
+      internalState = 'base-only';
+    }
+
+    @Expose({ excludeExtraneous: false })
+    class ChildView extends BaseView {}
+
+    class SiblingView extends BaseView {}
+
+    // When
+    const base = serialize(new BaseView());
+    const child = serialize(new ChildView());
+    const sibling = serialize(new SiblingView());
+
+    // Then
+    expect(base).toEqual({ id: 'base-1' });
+    expect(child).toEqual({
+      id: 'base-1',
+      internalState: 'base-only',
+    });
+    expect(sibling).toEqual({ id: 'base-1' });
+  });
+
   it('preserves inherited excludeExtraneous when derived classes use class-level Expose without options', () => {
     @Expose({ excludeExtraneous: true })
     class BaseView {
@@ -374,9 +438,15 @@ describe('serialize', () => {
     });
   });
 
-  it('merges base and derived transforms for the same field in declaration order', () => {
+  it('executes inherited transforms once each in declaration order', () => {
+    // Given
+    let transformCalls = 0;
+
     class BaseView {
-      @Transform((value) => String(value).trim())
+      @Transform((value) => {
+        transformCalls += 1;
+        return `${String(value)}B`;
+      })
       label: string;
 
       constructor(label: string) {
@@ -386,8 +456,8 @@ describe('serialize', () => {
 
     class DerivedView extends BaseView {
       @Transform((value) => {
-        const label = String(value);
-        return label.startsWith('[') && label.endsWith(']') ? label : `[${label}]`;
+        transformCalls += 1;
+        return `${String(value)}C`;
       })
       override label: string;
 
@@ -397,7 +467,12 @@ describe('serialize', () => {
       }
     }
 
-    expect(serialize(new DerivedView('  fluo  '))).toEqual({ label: '[fluo]' });
+    // When
+    const serialized = serialize(new DerivedView('x'));
+
+    // Then
+    expect(serialized).toEqual({ label: 'xBC' });
+    expect(transformCalls).toBe(2);
   });
 
   it('does not emit undecorated undefined fields when excludeExtraneous is enabled', () => {

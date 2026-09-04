@@ -1,0 +1,80 @@
+{
+  "components": [
+    {
+      "dependencies": [],
+      "details": {
+        "host": "localhost"
+      },
+      "health": {
+        "status": "healthy"
+      },
+      "id": "redis.default",
+      "kind": "redis",
+      "ownership": {
+        "externallyManaged": false,
+        "ownsResources": true
+      },
+      "readiness": {
+        "critical": true,
+        "status": "ready"
+      },
+      "state": "ready",
+      "telemetry": {
+        "namespace": "fluo.redis",
+        "tags": {
+          "env": "test"
+        }
+      }
+    },
+    {
+      "dependencies": [
+        "redis.default"
+      ],
+      "details": {
+        "workers": 2
+      },
+      "health": {
+        "reason": "Redis reconnect backoff active",
+        "status": "degraded"
+      },
+      "id": "queue.default",
+      "kind": "queue",
+      "ownership": {
+        "externallyManaged": false,
+        "ownsResources": true
+      },
+      "readiness": {
+        "critical": false,
+        "reason": "Queue running in degraded mode",
+        "status": "degraded"
+      },
+      "state": "degraded",
+      "telemetry": {
+        "namespace": "fluo.queue",
+        "tags": {
+          "env": "test"
+        }
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "QUEUE_DEPENDENCY_NOT_READY",
+      "componentId": "queue.default",
+      "dependsOn": [
+        "redis.default"
+      ],
+      "fixHint": "Verify Redis connectivity and queue configuration.",
+      "message": "Queue startup requires a ready Redis component.",
+      "severity": "warning"
+    }
+  ],
+  "generatedAt": "2026-04-02T00:00:00.000Z",
+  "health": {
+    "status": "degraded"
+  },
+  "readiness": {
+    "critical": true,
+    "status": "degraded"
+  }
+}

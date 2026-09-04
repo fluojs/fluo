@@ -1,4 +1,4 @@
-import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise, type Token } from '@fluojs/core';
+import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
 import type { Provider } from '@fluojs/di';
 
@@ -80,6 +80,21 @@ function createJwtModuleProviders(
   }
 
   return providers;
+}
+
+/**
+ * Creates the core JWT providers for advanced direct module composition.
+ *
+ * @deprecated Prefer {@link JwtModule.forRoot} or {@link JwtModule.forRootAsync} so JWT registration stays aligned with the published module surface.
+ * @param options JWT verification and signing options used for provider registration.
+ * @returns Providers for the JWT verifier, signer, facade, and optional refresh-token service.
+ */
+export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] {
+  return createJwtModuleProviders({
+    provide: JWT_OPTIONS,
+    scope: 'singleton',
+    useValue: options,
+  }, Boolean(options.refreshToken), 'singleton');
 }
 
 /**

@@ -13,6 +13,25 @@ export { normalizePackageChangelog } from './package-changelog.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
+
+const CHANGESETS_VERSION_RETRY_LIMIT = 3;
+const CHANGESETS_TRANSIENT_FAILURE_SIGNATURES = [
+  'Failed to parse data from GitHub',
+  'invalid json response body',
+];
+
+function sleepSync(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function changesetsFailureIsTransient(output) {
+  return CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => output.includes(signature));
+}
+
+function changesetsRetryDelayMilliseconds(attempt) {
+  return attempt === 1 ? 2_000 : 5_000;
+}
+
 function publicPackageChangelogPaths(packageManifests) {
   return packageManifests
     .filter(
@@ -25,18 +44,47 @@ function publicPackageChangelogPaths(packageManifests) {
     .sort((left, right) => left.localeCompare(right));
 }
 
-function runChangesetsVersion() {
-  const result = spawnSync('pnpm', ['exec', 'changeset', 'version'], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-  });
+export function runChangesetsVersion(dependencies = {}) {
+  const {
+    attempts = CHANGESETS_VERSION_RETRY_LIMIT,
+    sleep = sleepSync,
+    spawn = spawnSync,
+    writeOutput = (stream, chunk) => stream.write(chunk),
+  } = dependencies;
 
-  if (result.error) {
-    throw result.error;
-  }
+  for (let attempt = 1; ; attempt += 1) {
+    const result = spawn('pnpm', ['exec', 'changeset', 'version'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
 
-  if (result.status !== 0) {
-    throw new Error(`Changesets version command failed with exit code ${result.status ?? 'unknown'}.`);
+    if (result.stdout) {
+      writeOutput(process.stdout, result.stdout);
+    }
+
+    if (result.stderr) {
+      writeOutput(process.stderr, result.stderr);
+    }
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (result.status === 0) {
+      return;
+    }
+
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+    if (attempt >= attempts || !changesetsFailureIsTransient(output)) {
+      throw new Error(`Changesets version command failed with exit code ${result.status ?? 'unknown'}.`);
+    }
+
+    writeOutput(
+      process.stderr,
+      `Changesets version command hit a transient GitHub API failure (attempt ${attempt}/${attempts}); retrying.\n`,
+    );
+    sleep(changesetsRetryDelayMilliseconds(attempt));
   }
 }
 

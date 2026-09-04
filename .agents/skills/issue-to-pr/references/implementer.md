@@ -95,7 +95,15 @@ canonical contract, stop and report the conflict instead of silently choosing on
 5. Run the focused test to GREEN, then run changed-file diagnostics and the
    closest canonical verifier for the affected domain.
 6. Update required README, EN/KO, docs, book, example, TSDoc, or migration
-   companions in the same change.
+   companions in the same change. When the change touches a
+   contract-governing document, satisfy the platform consistency governance
+   companions in the same commit: the `docs/CONTEXT.md` and
+   `docs/CONTEXT.ko.md` discoverability lines, CI/tooling enforcement
+   updates, and any named companion test (for example
+   `tooling/governance/http-runtime-isolation.test.ts` for HTTP runtime
+   contract changes). Contract-governing doc edits also require running
+   `pnpm verify:platform-consistency-governance` before committing —
+   skipping it is the single most common cause of CI fix-back rounds.
 7. Add a Changeset for consumer-facing changes to public `@fluojs/*` packages.
    Otherwise report a concrete no-release rationale tied to policy.
 8. Inspect the scoped diff and required-file checklist before committing.

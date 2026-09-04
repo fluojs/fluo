@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -18,13 +18,19 @@ function expectBefore(order: string[], earlier: string, later: string) {
 }
 
 describe('resolveWorkspaceBuildOrder', () => {
-  it('orders @fluojs/studio behind its declaration-producing dependencies', () => {
+  it('resolves @fluojs/studio as a standalone build closure', () => {
     const order = resolveWorkspaceBuildOrder('@fluojs/studio', repoRoot);
+
+    expect(order).toEqual(['@fluojs/studio']);
+  });
+
+  it('orders @fluojs/runtime behind Studio and its declaration-producing dependencies', () => {
+    const order = resolveWorkspaceBuildOrder('@fluojs/runtime', repoRoot);
 
     expectBefore(order, '@fluojs/core', '@fluojs/di');
     expectBefore(order, '@fluojs/di', '@fluojs/http');
     expectBefore(order, '@fluojs/http', '@fluojs/runtime');
-    expectBefore(order, '@fluojs/runtime', '@fluojs/studio');
+    expectBefore(order, '@fluojs/studio', '@fluojs/runtime');
   });
 
   it('orders @fluojs/testing behind runtime/http/di/core', () => {
@@ -136,9 +142,17 @@ describe('resolveWorkspaceBuildOrder', () => {
     const packageDirectory = join(root, 'packages', 'app');
     const fakeManager = join(root, 'fake-pm.sh');
     const buildLog = join(root, 'build.log');
+    const enteredFifo = join(root, 'entered.fifo');
+    const readyFifo = join(root, 'ready.fifo');
+    const releaseFifo = join(root, 'release.fifo');
+    for (const fifo of [enteredFifo, readyFifo, releaseFifo]) {
+      expect(spawnSync('mkfifo', ['-m', '600', fifo]).status).toBe(0);
+    }
     const helperModuleUrl = new URL('./run-workspace-build-closure.mjs', import.meta.url).href;
     const runnerSource = `
+      import { writeFileSync } from 'node:fs';
       import { runWorkspaceBuildClosure } from ${JSON.stringify(helperModuleUrl)};
+      if (process.env.WORKER_ID === 'second') writeFileSync(${JSON.stringify(readyFifo)}, 'ready');
       const result = runWorkspaceBuildClosure('@test/app', ${JSON.stringify(root)}, {
         packageManager: ${JSON.stringify(fakeManager)},
         stdio: 'pipe',
@@ -163,18 +177,21 @@ describe('resolveWorkspaceBuildOrder', () => {
     );
     writeFileSync(
       fakeManager,
-      '#!/bin/sh\nprintf "start %s\\n" "$$" >> "$BUILD_LOG"\nsleep 0.2\nprintf "end %s\\n" "$$" >> "$BUILD_LOG"\n',
+      '#!/bin/sh\nprintf "start %s\\n" "$$" >> "$BUILD_LOG"\nif [ "$WORKER_ID" = first ]; then\n  printf entered > "$ENTERED_FIFO"\n  cat "$RELEASE_FIFO" >/dev/null\nfi\nprintf "end %s\\n" "$$" >> "$BUILD_LOG"\n',
       'utf8',
     );
     chmodSync(fakeManager, 0o755);
 
-    const runWorker = async () => {
+    const runWorker = async (workerId: string) => {
       await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, ['--input-type=module', '--eval', runnerSource], {
           cwd: root,
           env: {
             ...process.env,
             BUILD_LOG: buildLog,
+            ENTERED_FIFO: enteredFifo,
+            RELEASE_FIFO: releaseFifo,
+            WORKER_ID: workerId,
           },
           stdio: 'pipe',
         });
@@ -200,7 +217,30 @@ describe('resolveWorkspaceBuildOrder', () => {
       });
     };
 
-    await Promise.all([runWorker(), runWorker()]);
+    const waitForFifo = (fifo: string) => new Promise<void>((resolve, reject) => {
+      const reader = spawn('cat', [fifo], { stdio: ['ignore', 'pipe', 'pipe'] });
+      reader.stdout.once('data', () => {
+        reader.kill();
+        resolve();
+      });
+      reader.once('error', reject);
+    });
+
+    const firstEntered = waitForFifo(enteredFifo);
+    const firstWorker = runWorker('first');
+    await firstEntered;
+
+    const secondReady = waitForFifo(readyFifo);
+    const secondWorker = runWorker('second');
+    await secondReady;
+
+    expect(readFileSync(buildLog, 'utf8').trim().split('\n')).toHaveLength(1);
+    await new Promise<void>((resolve, reject) => {
+      const release = spawn('sh', ['-c', `printf release > ${JSON.stringify(releaseFifo)}`]);
+      release.once('error', reject);
+      release.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`release exited with ${code}`)));
+    });
+    await Promise.all([firstWorker, secondWorker]);
 
     const events = readFileSync(buildLog, 'utf8').trim().split('\n');
     expect(events).toHaveLength(4);

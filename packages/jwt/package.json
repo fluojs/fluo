@@ -44,10 +44,10 @@
   },
   "dependencies": {
     "@fluojs/core": "workspace:^",
-    "@fluojs/di": "workspace:^",
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/di": "workspace:^"
   },
   "devDependencies": {
+    "@fluojs/runtime": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

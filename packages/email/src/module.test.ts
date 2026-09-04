@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Constructor, Token } from '@fluojs/core';
 import { ensureMetadataSymbol, getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
-import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { NotificationsModule, NotificationsService, type NotificationLifecycleEvent } from '@fluojs/notifications';
 import type { Queue } from '@fluojs/queue';
 
 interface MockQueueJob {
@@ -734,10 +734,16 @@ describe('EmailModule', () => {
 
   it('provides a notifications queue adapter that enqueues bulk email delivery through QueueModule', async () => {
     const enqueued: object[] = [];
-    const fakeQueue: Pick<Queue, 'enqueue'> = {
+    const fakeQueue: Pick<Queue, 'enqueue' | 'enqueueMany'> = {
       async enqueue(job: object): Promise<string> {
         enqueued.push(job);
         return `queued:${enqueued.length}`;
+      },
+      async enqueueMany(entries): Promise<readonly string[]> {
+        return entries.map((entry) => {
+          enqueued.push(entry.job);
+          return `queued:${enqueued.length}`;
+        });
       },
     };
     const emailContainer = new Container();
@@ -785,6 +791,114 @@ describe('EmailModule', () => {
     await worker.handle(enqueued[1] as EmailNotificationQueueJob);
 
     expect(transportState.sent).toHaveLength(2);
+  });
+
+  it('preserves Uint8Array email attachment bytes across a deferred notification lifecycle publication', async () => {
+    const enqueued: object[] = [];
+    const fakeQueue: Pick<Queue, 'enqueue' | 'enqueueMany'> = {
+      async enqueue(job: object): Promise<string> {
+        enqueued.push(job);
+
+        return `queued:${enqueued.length}`;
+      },
+      async enqueueMany(entries): Promise<readonly string[]> {
+        return entries.map((entry) => {
+          enqueued.push(entry.job);
+          return `queued:${enqueued.length}`;
+        });
+      },
+    };
+    let publishRequested: (() => void) | undefined;
+    let continueRequested: (() => void) | undefined;
+    const lifecycleEvents: NotificationLifecycleEvent[] = [];
+    const requested = new Promise<void>((resolve) => {
+      publishRequested = resolve;
+    });
+    const resumeRequested = new Promise<void>((resolve) => {
+      continueRequested = resolve;
+    });
+    const emailContainer = new Container();
+    const emailModuleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: new RecordingTransport('attachment'),
+    });
+
+    emailContainer.register(...moduleProviders(emailModuleType));
+
+    const channel = await emailContainer.resolve(EmailChannel);
+    const worker = new EmailNotificationsQueueWorker(channel);
+    const notificationsContainer = new Container();
+    const notificationsModuleType = NotificationsModule.forRoot({
+      channels: [channel],
+      events: {
+        publishLifecycleEvents: true,
+        publisher: {
+          async publish(event: NotificationLifecycleEvent): Promise<void> {
+            lifecycleEvents.push(event);
+
+            if (event.name === 'notification.dispatch.requested') {
+              publishRequested?.();
+              await resumeRequested;
+            }
+          },
+        },
+      },
+      queue: {
+        adapter: createEmailNotificationsQueueAdapter(fakeQueue as never),
+        bulkThreshold: 2,
+      },
+    });
+
+    notificationsContainer.register(...moduleProviders(notificationsModuleType));
+
+    const notifications = await notificationsContainer.resolve(NotificationsService);
+    const attachment = new Uint8Array([1, 2, 3]);
+    const dispatch = notifications.dispatchMany([
+      {
+        channel: 'email',
+        payload: {
+          attachments: [{ content: attachment, filename: 'report.bin' }],
+          text: 'attachment',
+        },
+        recipients: ['user@example.com'],
+        subject: 'Attachment',
+      },
+      {
+        channel: 'email',
+        payload: { text: 'second' },
+        recipients: ['second@example.com'],
+        subject: 'Second',
+      },
+    ]);
+
+    await requested;
+    attachment[0] = 9;
+    continueRequested?.();
+
+    await dispatch;
+    await worker.handle(enqueued[0] as EmailNotificationQueueJob);
+
+    const deliveredAttachment = transportState.sent[0]?.attachments?.[0]?.content;
+
+    expect(deliveredAttachment).toEqual(new Uint8Array([1, 2, 3]));
+    expect(deliveredAttachment).not.toBe(attachment);
+    expect(lifecycleEvents[0]).toMatchObject({
+      notification: {
+        payload: {
+          attachments: [
+            {
+              content: {
+                byteLength: 3,
+                byteOffset: 0,
+                bytes: [1, 2, 3],
+                kind: 'ArrayBufferView',
+                view: 'Uint8Array',
+              },
+            },
+          ],
+        },
+      },
+    });
   });
 
   it('keeps the queue worker outside EmailModule providers so queue support stays opt-in', () => {
@@ -1169,6 +1283,107 @@ describe('EmailModule', () => {
       message: 'Email transport failed to close cleanly.',
     });
     expect(closeTransport.closeCalls).toBe(1);
+  });
+
+  it('closes a factory-owned transport once when verification failure overlaps shutdown', async () => {
+    let resolveClose!: () => void;
+    let signalCloseStarted!: () => void;
+    const closeCompletion = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    const closeStarted = new Promise<void>((resolve) => {
+      signalCloseStarted = resolve;
+    });
+    const transport: EmailTransport = {
+      close: vi.fn(async () => {
+        signalCloseStarted();
+        await closeCompletion;
+      }),
+      async send() {
+        return {
+          accepted: ['user@example.com'],
+          messageId: 'concurrent-cleanup-1',
+          pending: [],
+          rejected: [],
+        };
+      },
+      async verify() {
+        throw new Error('provider verify failed');
+      },
+    };
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    const initialization = service.onModuleInit();
+
+    await closeStarted;
+    const shutdown = service.onApplicationShutdown();
+    resolveClose();
+
+    await expect(initialization).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider verify failed' }),
+      message: 'Email transport failed to initialize.',
+    });
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(transport.close).toHaveBeenCalledOnce();
+  });
+
+  it('closes each factory-owned transport after a verification retry', async () => {
+    const failedTransport = new FailingLifecycleTransport('verify');
+    let retryCloseCalls = 0;
+    const retryTransport: EmailTransport = {
+      async close() {
+        retryCloseCalls += 1;
+      },
+      async send() {
+        return {
+          accepted: ['user@example.com'],
+          messageId: 'retry-cleanup-1',
+          pending: [],
+          rejected: [],
+        };
+      },
+      async verify() {
+        return undefined;
+      },
+    };
+    let createCalls = 0;
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        async create() {
+          createCalls += 1;
+          return createCalls === 1 ? failedTransport : retryTransport;
+        },
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(service.onModuleInit()).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider verify failed' }),
+      message: 'Email transport failed to initialize.',
+    });
+    expect(failedTransport.closeCalls).toBe(1);
+
+    await service.onModuleInit();
+    expect(createCalls).toBe(2);
+
+    await service.onApplicationShutdown();
+    expect(retryCloseCalls).toBe(1);
   });
 
   it('leaves caller-owned direct transport instances open during shutdown', async () => {

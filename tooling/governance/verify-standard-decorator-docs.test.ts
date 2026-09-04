@@ -157,4 +157,19 @@ class Service {
     expect(koreanMigration).toMatch(/속성 주입은 반드시 생성자 주입으로 바꾼다/u);
     expect(koreanMigration).toMatch(/모듈 `forwardRef\(\.\.\.\)`에 직접 대응하는 fluo 기능은 없다/u);
   });
+
+  it('keeps scoped and optional DI migration discoverability in both context documents', () => {
+    const englishContext = readFileSync('docs/CONTEXT.md', 'utf8');
+    const koreanContext = readFileSync('docs/CONTEXT.ko.md', 'utf8');
+
+    for (const context of [englishContext, koreanContext]) {
+      expect(context).toContain('packages/di/README');
+      expect(context).toContain('migrate-from-nestjs');
+      expect(context).toContain("@Scope('request')");
+      expect(context).toContain("@Scope('transient')");
+      expect(context).toContain('createRequestScope()');
+      expect(context).toContain('ScopeMismatchError');
+      expect(context).toContain('optional(TOKEN)');
+    }
+  });
 });

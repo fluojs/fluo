@@ -9,7 +9,7 @@ This chapter explains how to add JWT based Authentication to FluoBlog and safely
 - Understand the structure and purpose of JSON Web Token (JWT).
 - Configure `JwtModule` for token signing and token verification.
 - Implement the dual token pattern, access tokens and refresh tokens.
-- Build FluoBlog Authentication endpoints for login and token refresh.
+- Build FluoBlog login and refresh endpoints backed by a durable refresh-token store.
 - Learn about JWT principal normalization in `fluo`.
 - Understand the security implications of token based Authentication and the benefits of stateless Authentication.
 - Review basic token management strategies, including token revocation and rotation.
@@ -184,17 +184,153 @@ For production stores, implement the refresh-token store's durable `rotate(...)`
 
 Before using `RefreshTokenService.issueRefreshToken(...)` or `RefreshTokenService.rotateRefreshToken(...)`, configure `JwtModule` with `refreshToken` options and provide a durable `RefreshTokenStore`. Without those prerequisites, the service is available as part of the JWT provider surface, but the application has not completed the storage-backed refresh-token flow this chapter relies on.
 
+### Durable Store, Registration, and Service Injection
+The refresh store belongs to the application because it owns the database transaction and retention policy. Implement every required method against durable storage such as PostgreSQL or Redis. In particular, `rotate(...)` must atomically mark the presented record used and persist `replacement`; a read-then-write implementation reintroduces a replay race.
+
+```typescript
+// src/auth/auth.persistence.ts
+import { Inject } from '@fluojs/core';
+import type {
+  RefreshTokenConsumeResult,
+  RefreshTokenRecord,
+  RefreshTokenRotateInput,
+  RefreshTokenStore,
+} from '@fluojs/jwt';
+
+export type { RefreshTokenStore } from '@fluojs/jwt';
+
+export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
+export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
+export const REFRESH_TOKEN_REPOSITORY = Symbol('REFRESH_TOKEN_REPOSITORY');
+export const CREDENTIALS_REPOSITORY = Symbol('CREDENTIALS_REPOSITORY');
+
+export interface RefreshTokenRepository {
+  save(record: RefreshTokenRecord): Promise<void>;
+  find(id: string): Promise<RefreshTokenRecord | undefined>;
+  revoke(id: string): Promise<void>;
+  revokeBySubject(subject: string): Promise<void>;
+  revokeByFamily(family: string): Promise<void>;
+  rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult>;
+}
+
+@Inject(REFRESH_TOKEN_REPOSITORY)
+export class DatabaseRefreshTokenStore implements RefreshTokenStore {
+  constructor(private readonly repository: RefreshTokenRepository) {}
+
+  save(record: RefreshTokenRecord): Promise<void> {
+    return this.repository.save(record);
+  }
+
+  find(id: string): Promise<RefreshTokenRecord | undefined> {
+    return this.repository.find(id);
+  }
+
+  revoke(id: string): Promise<void> {
+    return this.repository.revoke(id);
+  }
+
+  revokeBySubject(subject: string): Promise<void> {
+    return this.repository.revokeBySubject(subject);
+  }
+
+  revokeByFamily(family: string): Promise<void> {
+    return this.repository.revokeByFamily(family);
+  }
+
+  rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult> {
+    return this.repository.rotate(input);
+  }
+}
+
+export interface AuthenticatedUser {
+  readonly id: string;
+  readonly roles: readonly string[];
+}
+
+export interface CredentialsVerifier {
+  verify(email: string, password: string): Promise<AuthenticatedUser>;
+}
+
+export interface CredentialsRepository {
+  verify(email: string, password: string): Promise<AuthenticatedUser>;
+}
+
+@Inject(CREDENTIALS_REPOSITORY)
+export class DatabaseCredentialsVerifier implements CredentialsVerifier {
+  constructor(private readonly repository: CredentialsRepository) {}
+
+  verify(email: string, password: string): Promise<AuthenticatedUser> {
+    return this.repository.verify(email, password);
+  }
+}
+```
+
+Register the application-owned repository tokens in a globally visible persistence module before the JWT options factory runs. `@Inject(...)` declares those interface dependencies explicitly because fluo does not infer constructor dependencies. The factory receives the final store instance, and `RefreshTokenService` is then available for constructor injection. This example intentionally keeps database queries in `RefreshTokenRepository`; its `rotate(...)` implementation is the single transaction boundary.
+
+```typescript
+// src/auth/auth.service.ts
+import { Inject } from '@fluojs/core';
+import {
+  RefreshTokenService,
+  JwtService,
+} from '@fluojs/jwt';
+import {
+  CREDENTIALS_VERIFIER,
+  type CredentialsVerifier,
+} from './auth.persistence.js';
+
+@Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)
+export class AuthService {
+  constructor(
+    private readonly credentials: CredentialsVerifier,
+    private readonly jwtService: JwtService,
+    private readonly refreshTokens: RefreshTokenService,
+  ) {}
+
+  async signIn(email: string, password: string) {
+    const user = await this.credentials.verify(email, password);
+    const accessToken = await this.jwtService.sign(
+      { roles: user.roles },
+      { expiresIn: '15m', subject: user.id },
+    );
+    const refreshToken = await this.refreshTokens.issueRefreshToken(user.id);
+
+    return { accessToken, refreshToken };
+  }
+
+  async refresh(refreshToken: string) {
+    return this.refreshTokens.rotateRefreshToken(refreshToken);
+  }
+
+  async signOut(refreshToken: string): Promise<void> {
+    await this.refreshTokens.revokePresentedRefreshToken(refreshToken);
+  }
+}
+```
+
+`JwtService.sign(...)` and `JwtService.verify(...)` always return Promises. When migrating NestJS code, use those names with `await`; fluo does not provide `signAsync()` or `verifyAsync()` aliases. `JwtService.decode(...)` is synchronous but only parses unverified input, so use it for diagnostics at most and call `await jwtService.verify(...)` before trusting claims.
+
+For single-session logout, pass the compact token from the caller to `RefreshTokenService.revokePresentedRefreshToken(...)`. It verifies the signature, expiry, refresh-token `type`, `jti`, `family`, and `sub` before revoking the durable record. Keep `revokeRefreshToken(tokenId)` for trusted record IDs only; it does not accept a compact token.
+
 ### Securing Refresh Tokens
 Because refresh tokens are long lived, they must be stored with special care. On the web, the standard is to store them in `httpOnly`, `secure`, `sameSite: 'strict'` cookies. This prevents JavaScript from accessing the token through cross-site scripting (XSS) attacks. Fluo's Authentication patterns are designed to work smoothly with both cookie based and header based token delivery, giving you the flexibility to choose the security model that best fits the client type, whether that client is a browser, a native mobile app, or another server. For mobile apps, it is also recommended to use secure enclaves or keychain storage to protect these persistent credentials from unauthorized extraction.
 ## 14.6 Implementing FluoBlog Auth Endpoints
-Now let's connect configuration and the token lifecycle to real endpoint flow. We will create an actual `AuthController` for FluoBlog.
+Now let's connect configuration and the token lifecycle to real endpoint flow. `AuthService.signIn(...)` above awaits both token issuance steps, and the controller should expose its result without bypassing the configured refresh service.
 
 ```typescript
 // src/auth/auth.controller.ts
 import { Inject } from '@fluojs/core';
 import { Controller, Post, RequestDto } from '@fluojs/http';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
+import { AuthService } from './auth.service.js';
+
+export class LoginDto {
+  email = '';
+  password = '';
+}
+
+export class RefreshTokenDto {
+  refreshToken = '';
+}
 
 @Inject(AuthService)
 @Controller('auth')
@@ -204,16 +340,144 @@ export class AuthController {
   @Post('login')
   @RequestDto(LoginDto)
   async login(dto: LoginDto) {
-    // 1. Verify credentials through AuthService
-    // 2. Issue the access token and call RefreshTokenService.issueRefreshToken
-    //    so the refresh token is persisted in the configured durable store
     return this.authService.signIn(dto.email, dto.password);
+  }
+
+  @Post('refresh')
+  @RequestDto(RefreshTokenDto)
+  async refresh(dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.refreshToken);
   }
 }
 ```
 
+### Executable Auth Module Wiring
+These four named source blocks form one compilable learning program: `AuthService` and `AuthModule` import each dependency from its defining file. Put the durable implementations in `auth.persistence.ts`, then bind their class instances to the tokens that the application injects. `AuthPersistenceModule` is global and exports both tokens, so the JWT options factory and `AuthService` resolve the same durable instances. `ConfigModule.forRoot()` is global by default, which makes `ConfigService` visible when the asynchronous JWT options provider resolves. Register the persistence module before `JwtModule.forRootAsync(...)`; ordinary sibling-module exports do not enter that runtime provider graph.
+
+```typescript
+// src/auth/auth.module.ts
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import {
+  JwtModule,
+  type JwtVerifierOptions,
+} from '@fluojs/jwt';
+import { AuthController } from './auth.controller.js';
+import { AuthService } from './auth.service.js';
+import {
+  CREDENTIALS_VERIFIER,
+  CREDENTIALS_REPOSITORY,
+  DatabaseCredentialsVerifier,
+  DatabaseRefreshTokenStore,
+  REFRESH_TOKEN_REPOSITORY,
+  REFRESH_TOKEN_STORE,
+  type RefreshTokenStore,
+} from './auth.persistence.js';
+
+function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
+  return typeof value === 'object'
+    && value !== null
+    && 'find' in value
+    && 'revoke' in value
+    && 'revokeBySubject' in value
+    && 'rotate' in value
+    && 'save' in value;
+}
+
+@Module({
+  global: true,
+  providers: [
+    {
+      provide: REFRESH_TOKEN_STORE,
+      useClass: DatabaseRefreshTokenStore,
+      inject: [REFRESH_TOKEN_REPOSITORY],
+    },
+    {
+      provide: CREDENTIALS_VERIFIER,
+      useClass: DatabaseCredentialsVerifier,
+      inject: [CREDENTIALS_REPOSITORY],
+    },
+  ],
+  exports: [REFRESH_TOKEN_STORE, CREDENTIALS_VERIFIER],
+})
+export class AuthPersistenceModule {}
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    AuthPersistenceModule,
+    JwtModule.forRootAsync({
+      inject: [ConfigService, REFRESH_TOKEN_STORE],
+      useFactory: async (...dependencies: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config, store] = dependencies;
+        if (!(config instanceof ConfigService) || !isRefreshTokenStore(store)) {
+          throw new TypeError('ConfigService and RefreshTokenStore are required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        const refreshSecret = config.snapshot()['JWT_REFRESH_SECRET'];
+        if (typeof secret !== 'string' || typeof refreshSecret !== 'string') {
+          throw new TypeError('JWT secrets must be configured');
+        }
+
+        return {
+          algorithms: ['HS256'],
+          audience: 'fluoblog-client',
+          issuer: 'fluoblog-api',
+          secret,
+          accessTokenTtlSeconds: 900,
+          refreshToken: {
+            secret: refreshSecret,
+            expiresInSeconds: 60 * 60 * 24 * 7,
+            rotation: true,
+            store,
+          },
+        };
+      },
+    }),
+  ],
+  providers: [AuthService],
+  controllers: [AuthController],
+})
+export class AuthModule {}
+```
+
+The two repository tokens are application-boundary inputs. Supply concrete,
+durable implementations when bootstrapping the graph; otherwise the runtime
+correctly rejects `AuthPersistenceModule` because its adapter dependencies are
+not visible. The database module in your application owns these objects and
+their transaction semantics.
+
+```typescript
+import { fluoFactory } from '@fluojs/runtime';
+import { AuthModule } from './auth/auth.module.js';
+import {
+  CREDENTIALS_REPOSITORY,
+  REFRESH_TOKEN_REPOSITORY,
+  type CredentialsRepository,
+  type RefreshTokenRepository,
+} from './auth/auth.persistence.js';
+import {
+  credentialsRepository,
+  refreshTokenRepository,
+} from './database/auth.repositories.js';
+
+const context = await fluoFactory.createApplicationContext(AuthModule, {
+  providers: [
+    {
+      provide: REFRESH_TOKEN_REPOSITORY,
+      useValue: refreshTokenRepository satisfies RefreshTokenRepository,
+    },
+    {
+      provide: CREDENTIALS_REPOSITORY,
+      useValue: credentialsRepository satisfies CredentialsRepository,
+    },
+  ],
+});
+```
+
 ### The Authentication Lifecycle
-The Authentication lifecycle in Fluo starts with a request to the `login` endpoint. After verifying credentials, usually by checking a hashed password in the database, the service can sign the short lived access token directly, but it should issue refresh tokens through `RefreshTokenService.issueRefreshToken(...)` only after `JwtModule` has `refreshToken` options and a durable `RefreshTokenStore`. That service signs the refresh token and persists its record in the configured store, so the later `refresh` endpoint can call `RefreshTokenService.rotateRefreshToken(...)` on the same configured storage path and keep rotation, reuse detection, and durable replacement persistence together. These tokens are returned to the client through the response body or secure cookies.
+Fluo Authentication lifecycle starts with a request to the `login` endpoint. After verifying credentials, usually by checking a hashed password in the database, `AuthService.signIn(...)` awaits `JwtService.sign(...)` for the short-lived access token and `RefreshTokenService.issueRefreshToken(...)` for the durable refresh-token record. The `refresh` endpoint then calls `RefreshTokenService.rotateRefreshToken(...)` on that same configured storage path. With `rotation: true`, the store's atomic `rotate(...)` operation consumes the old record and saves the replacement together, preserving replay detection and durable replacement persistence. These tokens are returned to the client through the response body or secure cookies.
 
 From that point on, the client includes the access token in the `Authorization` header of every request. When the access token expires, the client calls the `refresh` endpoint with the refresh token to obtain a new token pair. This cycle ensures continuous, safe user sessions while preserving the performance benefits of statelessness. It is the engine that keeps the application's front door both secure and welcoming. This lifecycle can also include a grace period where a slightly expired access token is still allowed for certain low-risk operations but triggers forced renewal for others.
 
@@ -255,7 +519,7 @@ By catching these specific errors, you can provide better feedback, such as tell
 - **Verify token revocation**: For critical applications, maintain a denylist of revoked tokens, stored in something like Redis, to handle logout or compromised accounts before tokens naturally expire.
 - **Implement JTI (JWT ID)**: Use a unique identifier on every token to track individual tokens and enable fine-grained revocation.
 - **Audit token issuance**: Log who received tokens and when to support post-incident analysis.
-- **Never trust `decode()` output for authorization**: `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input. Use `JwtService.verify(token, options)` or `DefaultJwtVerifier.verifyAccessToken(token)` first, and read identity from the normalized `JwtPrincipal` that verification returns. `decode()` is for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`.
+- **Never trust `decode()` output for authorization**: `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input. Use `JwtService.verify(token, options)` to obtain verified claims. To obtain a normalized `JwtPrincipal`, use `DefaultJwtVerifier.verifyAccessToken(token)` without per-call overrides, or `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` when preserving per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp`. `decode()` is for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`.
 - **Treat `@fluojs/jwt` as a Node-runtime auth package**: The root import surface loads lazily and is safe to import before selecting a runtime-specific auth path, but signing, verification, JWKS key parsing, and refresh-token id generation all require a Node.js-compatible `node:crypto` implementation. Bun satisfies this through its Node compatibility layer; Deno and Cloudflare Workers are not supported JWT signing/verification runtimes.
 
 ## 14.9 Summary
@@ -277,7 +541,7 @@ For extremely sensitive systems, you can instead use a **Whitelisting** strategy
 ### Scaling Auth with Multi-Tenancy
 In a multi-tenant environment where a single Fluo application serves multiple organizations, JWT configuration must be planned around the supported module contract. `JwtModule.forRootAsync(...)` can resolve signing and verification settings from injected providers at module startup, such as a config service that loads the global JWT policy during bootstrap, but the factory does not receive per-request context such as a tenant ID in a custom header. Treat request-context tenant routing as application-level strategy or guard logic.
 
-For tenant-specific keys, keep the request-aware routing in your application auth layer and prefer token-bound key selection. A common pattern is to resolve the tenant from the request, choose the allowed issuer/audience policy in your guard or strategy, and then call `JwtService.verify(...)` with per-call claim-policy overrides. Key selection inside `@fluojs/jwt` is based on configured key sources and token-header data such as `kid`; `secretOrKeyProvider` receives the decoded JWT header, not the request object. If a tenant must map to a distinct key, encode a stable key identifier in the token header or route the request through an application-level wrapper that selects the correct verifier configuration before calling the JWT service.
+For tenant-specific keys, keep the request-aware routing in your application auth layer and prefer token-bound key selection. A common pattern is to resolve the tenant from the request, choose the allowed issuer/audience policy in your guard or strategy, and then call `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` with per-call claim-policy overrides. Key selection inside `@fluojs/jwt` is based on configured key sources and token-header data such as `kid`; `secretOrKeyProvider` receives the decoded JWT header, not the request object. If a tenant must map to a distinct key, encode a stable key identifier in the token header or route the request through an application-level wrapper that selects the correct verifier configuration before calling the JWT service.
 
 This sophistication makes Fluo a professional choice for SaaS backends. You can start simply with a single global secret and grow into a complex multi-provider, multi-tenant Authentication system without leaving the Fluo ecosystem. The `JwtPrincipal` normalization discussed earlier is especially powerful here because it gives multi-tenant business logic a stable interface no matter how many identity sources you integrate.
 

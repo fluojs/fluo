@@ -10,6 +10,8 @@ export interface HttpHealthIndicatorOptions {
   headers?: Record<string, string>;
   key?: string;
   method?: string;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
   timeoutMs?: number;
   url: string;
 }
@@ -70,9 +72,11 @@ export function createHttpHealthIndicatorProvider(options: HttpHealthIndicatorOp
 /** Health indicator that probes an upstream HTTP endpoint with `fetch()`. */
 export class HttpHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
+  readonly readiness: boolean | undefined;
 
   constructor(private readonly options: HttpHealthIndicatorOptions) {
     this.key = options.key;
+    this.readiness = options.readiness;
   }
 
   async check(key: string): Promise<HealthIndicatorResult> {

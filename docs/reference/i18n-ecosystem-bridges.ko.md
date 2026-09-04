@@ -39,7 +39,7 @@ Bridge helper가 guidance에서 first-party runtime surface로 승격되려면 �
 
 ## Recommended user path
 
-- NestJS i18n에서 migration하는 경우: `I18nModule.forRoot(...)`로 시작하고, `@fluojs/i18n/http`로 request locale을 명시적으로 bind하며, global request context에 의존하지 말고 validation 실패 뒤 `@fluojs/i18n/validation`을 사용합니다.
+- NestJS i18n에서 migration하는 경우: [NestJS migration guide](../getting-started/migrate-from-nestjs.ko.md)를 따라 application-owned bootstrap boundary에서 모든 locale/namespace를 비동기로 preload한 뒤 `I18nModule.forRoot(...)` 전에 동기 registration을 수행합니다. Namespace tree를 보존하고 NestJS fallback을 `fallbackLocales`로 명시적으로 변환하며 runtime bridge 없이 framework-agnostic root contract를 유지합니다. Catalog가 없으면 preload는 `I18N_MISSING_CATALOG`으로 reject되고, message fallback은 catalog가 존재한 뒤에만 적용됩니다. 그 다음 `@fluojs/i18n/http`로 request locale을 명시적으로 bind하고, global request context에 의존하지 말고 validation 실패 뒤 `@fluojs/i18n/validation`을 사용합니다.
 - i18next 또는 next-intl와 catalog를 공유하는 경우: catalog conversion을 application tooling에 두고, 결과 `I18nMessageTree`를 core service 또는 loader subpath로 load합니다.
 - Third-party bridge를 만드는 경우: [Third-Party Extension Contract](../contracts/third-party-extension-contract.ko.md)를 따르고 import-time patching 대신 explicit module/config API를 노출합니다.
 

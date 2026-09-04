@@ -24,6 +24,10 @@ CQRS primitives for fluo applications with bootstrap-time handler discovery, com
 npm install @fluojs/cqrs
 ```
 
+### Node.js Support
+
+`@fluojs/cqrs` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are not supported.
+
 ## When to Use
 
 - When you want to decouple the "intent" (Commands/Queries) from the "execution" (Handlers).
@@ -174,13 +178,13 @@ When a saga, command handler, query handler, or event handler performs another C
 
 ### Event Publishing Contracts
 
-`CqrsEventBusService.publish(event)` runs the CQRS event pipeline in a fixed order: matching `@EventHandler(...)` providers first, matching `@Saga(...)` providers second, and delegated `@fluojs/event-bus` publication last. `publishAll(events)` preserves the input order by awaiting each event's CQRS handlers, sagas, and delegated publication call before publishing the next event. During application shutdown, the CQRS event bus waits for active `publish(...)` pipelines, `publishAll(...)` sequences, and saga execution chains to settle before marking itself stopped. Command and query buses reject new `execute(...)` calls once shutdown starts and clear their preloaded handler caches during shutdown, so post-close dispatch cannot reuse stale provider instances. Once shutdown starts, brand-new external `publish(...)`, `publishAll(...)`, and direct saga dispatch calls are rejected. A nested `publish(...)` or `publishAll(...)` invoked from an already active handler or saga may continue only when it passes through the CQRS-provided `CqrsDispatchContext`; this keeps drain work inside the active pipeline while still rejecting unrelated callers. Already active publish and saga work continues draining inside the bounded shutdown window. Shutdown drain is bounded by `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`, which defaults to 5000ms; if a CQRS handler, saga, or delegated publish chain is still stuck after the bound, CQRS records degraded status diagnostics, logs a warning, and lets application close continue instead of hanging indefinitely. When `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })` is configured, the delegated publication call can resolve before matching `@OnEvent(...)` subscribers finish, so `publish(...)`, `publishAll(...)`, and shutdown drain completion do not imply subscriber completion in that mode.
+`CqrsEventBusService.publish(event)` runs the CQRS event pipeline in a fixed order: matching `@EventHandler(...)` providers first, matching `@Saga(...)` providers second, and delegated `@fluojs/event-bus` publication last. `publishAll(events)` preserves the input order by awaiting each event's CQRS handlers, sagas, and delegated publication call before publishing the next event. During application shutdown, the CQRS event bus waits for active `publish(...)` pipelines, `publishAll(...)` sequences, and saga execution chains to settle before marking itself stopped. Command and query buses reject new `execute(...)` calls once shutdown starts and clear their preloaded handler caches during shutdown, so post-close dispatch cannot reuse stale provider instances. Once shutdown starts, brand-new external `publish(...)`, `publishAll(...)`, and direct saga dispatch calls are rejected. A nested `publish(...)` or `publishAll(...)` invoked from an already active handler or saga may continue only when it passes through the CQRS-provided `CqrsDispatchContext`; this keeps drain work inside the active pipeline while still rejecting unrelated callers. Already active publish and saga work drains inside one absolute shutdown window. `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })` sets that CQRS-wide bound and defaults to 5000ms; delegated `@fluojs/event-bus` shutdown always inherits its remaining budget. An explicit `eventBus.shutdown.drainTimeoutMs` may tighten that cap, but never extend the shared CQRS deadline. If a CQRS handler, saga, or delegated publish chain is still stuck when that bound expires, CQRS records degraded status diagnostics, logs a warning, and lets application close continue instead of hanging indefinitely. When `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })` is configured, the delegated publication call can resolve before matching `@OnEvent(...)` subscribers finish, so `publish(...)`, `publishAll(...)`, and shutdown drain completion do not imply subscriber completion in that mode.
 
 Each CQRS event handler and saga receives an isolated event copy with the matched event prototype restored. Mutating that copy is local to the current handler or saga route; those mutations are not visible to other CQRS handlers, sagas, the original event object, or delegated `@fluojs/event-bus` subscribers. The delegated event-bus publication receives the original event after CQRS side effects complete, so `@OnEvent(...)` projections and transports observe the caller-owned payload rather than a CQRS handler's mutated copy.
 
 Event classes should keep their payload state cloneable and enumerable. String-keyed and symbol-keyed enumerable payload fields are preserved by the shared core clone fallback, while intentionally non-cloneable resources such as open sockets, functions, or process-local handles should be represented by IDs or other serializable boundaries before publishing.
 
-CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
+CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Discovery supports direct class and `useClass` providers, `useFactory` providers whose class token carries CQRS metadata, and `useValue` providers whose instance constructor carries CQRS metadata. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
 
 ### Symbol Tokens
 
@@ -224,8 +228,24 @@ class TokenInjectedService {
 - `SagaTopologyError`: Raised when saga orchestration detects an active provider-token/event-route cycle or an over-deep in-process saga graph.
 
 ### Status and metadata
-- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces.
+- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces. Command and query adapter inputs remain optional for compatibility and default to zero discovered handlers plus the CQRS event lifecycle when omitted.
+- `CqrsEventBusService.createPlatformStatusSnapshot()`: Populates all discovery and lifecycle summaries from live bus state. Snapshot details never expose handler descriptors, provider tokens, or saga topology; command and query summaries do not change the existing event/saga readiness or health semantics.
 - Metadata helpers and symbols are exported for framework packages that need to inspect command, query, event, or saga registrations.
+
+#### Status snapshot fields
+
+Every CQRS snapshot has `readiness`, `health`, `ownership`, and `details`. `ownership` always reports `externallyManaged: false` and `ownsResources: false`: CQRS observes its own in-process lifecycle and does not claim a caller-owned external resource.
+
+| `details` field | Meaning |
+| --- | --- |
+| `dependencies` | Always `['event-bus.default']`, identifying the delegated event-bus dependency. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | The currently discovered singleton handler or saga counts. Command/query adapter inputs default to `0` when omitted; after shutdown, live-bus counts are `0`. |
+| `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | The command, query, event-pipeline, and saga runtime states. When command/query adapter inputs are omitted, their states fall back to `lifecycleState`. |
+| `inFlightSagaExecutions` | Saga executions currently owned by the runtime. |
+| `shutdownDrainTimeoutMs` | The configured bounded shutdown-drain window. |
+| `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | Recorded bounded drain timeouts for the event pipeline and saga runtime. |
+
+The lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness evaluates event and saga state in this order: both `ready` reports `ready`; otherwise any `discovering` reports `degraded`; otherwise any `stopping` reports `not-ready`; otherwise any `stopped` or `failed` reports `not-ready`; every remaining combination, including `created`, reports `not-ready`. Health evaluates in this order: any nonzero drain-timeout counter reports `degraded`; otherwise any `stopped` or `failed` reports `unhealthy`; otherwise any `discovering` or `stopping` reports `degraded`; every remaining combination reports `healthy`. Command and query lifecycle fields remain diagnostic only and do not alter these event/saga readiness or health rules.
 
 ## Related Packages
 

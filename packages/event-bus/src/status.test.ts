@@ -43,6 +43,7 @@ describe('createEventBusPlatformStatusSnapshot', () => {
       dependencies: [],
       operationMode: 'local-only',
     });
+    expect(snapshot.ownership).toEqual({ externallyManaged: false, ownsResources: false });
   });
 
   it('surfaces transport subscribe failures as degraded readiness/health', () => {
@@ -62,6 +63,7 @@ describe('createEventBusPlatformStatusSnapshot', () => {
     expect(snapshot.readiness.status).toBe('degraded');
     expect(snapshot.health.status).toBe('degraded');
     expect(snapshot.details.dependencies).toEqual(['transport.external']);
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: true });
   });
 
   it('surfaces bounded shutdown drain timeouts as degraded health diagnostics', () => {

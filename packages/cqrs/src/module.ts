@@ -6,6 +6,7 @@ import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
 import { QueryBusLifecycleService } from './buses/query-bus.js';
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
+import { CqrsShutdownDeadline } from './buses/shutdown-deadline.js';
 import { COMMAND_BUS, CQRS_MODULE_OPTIONS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandHandlerClass,
@@ -57,10 +58,15 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
 
 function resolveDelegatedEventBusOptions(options: CqrsModuleOptions): EventBusModuleOptions {
   const eventBusOptions = options.eventBus ?? {};
+  const eventBusShutdown = eventBusOptions.shutdown;
 
   return {
     ...eventBusOptions,
     global: eventBusOptions.global ?? options.global ?? true,
+    shutdown: {
+      ...eventBusShutdown,
+      drainTimeoutMs: eventBusShutdown?.drainTimeoutMs ?? options.shutdown?.drainTimeoutMs,
+    },
   };
 }
 
@@ -88,11 +94,15 @@ function assertCqrsEventBusService(service: unknown): asserts service is CqrsEve
  * @param options CQRS module options including eager handler classes and event-bus configuration.
  * @returns Providers for the command, query, event, and saga runtimes plus compatibility tokens.
  */
-function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
+function createCqrsProviders(options: CqrsModuleOptions, shutdownDeadline: CqrsShutdownDeadline): Provider[] {
   return [
     {
       provide: CQRS_MODULE_OPTIONS,
       useValue: options,
+    },
+    {
+      provide: CqrsShutdownDeadline,
+      useValue: shutdownDeadline,
     },
     CommandBusLifecycleService,
     {
@@ -139,13 +149,17 @@ function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
 /** Runtime module entrypoint for CQRS bus registration and handler discovery. */
 export class CqrsModule {
   /**
-   * Registers the CQRS buses globally and wires them to the event-bus integration.
+   * Registers CQRS buses and wires them to the event-bus integration.
+   *
+   * The exported buses are global by default. Set {@link CqrsModuleOptions.global} to `false` to
+   * keep them visible only through modules that import this module definition.
    *
    * @param options CQRS module options including explicit handler classes and event-bus settings.
    * @returns A module definition that exports the lifecycle services and compatibility tokens.
    */
   static forRoot(options: CqrsModuleOptions = {}): ModuleType {
     class CqrsModuleDefinition {}
+    const shutdownDeadline = new CqrsShutdownDeadline();
 
     return defineModule(CqrsModuleDefinition, {
       exports: [
@@ -158,7 +172,7 @@ export class CqrsModule {
       ],
       global: options.global ?? true,
       imports: [EventBusModule.forRoot(resolveDelegatedEventBusOptions(options))],
-      providers: createCqrsProviders(options),
+      providers: createCqrsProviders(options, shutdownDeadline),
     });
   }
 }

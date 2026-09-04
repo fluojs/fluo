@@ -8,7 +8,7 @@ This chapter explains how to connect FluoBlog's Authentication flow to Guards an
 ## Learning Objectives
 - Understand the role of Guards in the `fluo` request lifecycle.
 - Configure Authentication strategies with `@fluojs/passport`.
-- Verify tokens and build a principal with a custom `AuthStrategy`.
+- Register the built-in bearer JWT strategy preset and extend Authentication policy through a custom `AuthStrategy`.
 - Protect routes and controllers with `@UseAuth()`.
 - Enforce route authorization with the supported `@RequireScopes()` decorator.
 - Explore flows that combine multiple Authentication strategies.
@@ -99,51 +99,33 @@ The order is significant: configure `GoogleStrategy` as an application provider,
 
 This bridge is not full NestJS Passport compatibility. It does not install Passport middleware, sessions, serializers, deserializers, or automatic strategy discovery, and it supplies no implicit guards or host middleware ownership. Session and serializer/deserializer migration remains application-owned; configure those concerns at your bootstrap and request-host boundaries rather than adding shims to the bridge.
 
-## 15.3 Implementing the JWT AuthStrategy
-The most common strategy in FluoBlog is a custom `AuthStrategy` that reads a Bearer token and normalizes it into a `JwtPrincipal`. Following the "Standard-First" philosophy makes it easier to design the JWT implementation so it stays aligned with industry standards such as RFC 7519.
+## 15.3 The JWT Passport Strategy
+The most common strategy in FluoBlog reads a Bearer token and normalizes it into a `JwtPrincipal`. `@fluojs/passport` ships this flow as the built-in `BearerJwtStrategy` preset, so new applications no longer copy header parsing and error mapping into application code. Following the "Standard-First" philosophy, the preset stays aligned with industry standards such as RFC 7235 and RFC 7519.
 
-### 15.3.1 Defining the Strategy Class
-A strategy class is a regular Fluo Provider that implements the `AuthStrategy` contract. The real example in this repository, `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`, follows the same shape. It reads the request header directly and delegates verification to `DefaultJwtVerifier`.
+### 15.3.1 Registering the Built-in Bearer Strategy
+`BearerJwtStrategy` is a regular Fluo Provider that implements the `AuthStrategy` contract. It reads the `Authorization` header, enforces the `Bearer <token>` shape, and delegates verification to `DefaultJwtVerifier`. You import it from `@fluojs/passport` instead of writing it yourself; the runnable example in this repository, `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`, re-exports the same built-in preset.
 
 ```typescript
-import { Inject } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier } from '@fluojs/jwt';
 import {
-  AuthenticationFailedError,
-  AuthenticationRequiredError,
-  type AuthStrategy,
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
 } from '@fluojs/passport';
-
-@Inject(DefaultJwtVerifier)
-export class BearerJwtStrategy implements AuthStrategy {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
-
-  async authenticate(context: GuardContext) {
-    const authorization = context.requestContext.request.headers.authorization;
-    if (typeof authorization !== 'string') {
-      throw new AuthenticationRequiredError('Authorization header is required.');
-    }
-
-    const [scheme, token] = authorization.split(' ');
-    if (scheme !== 'Bearer' || !token) {
-      throw new AuthenticationFailedError('Authorization header must use Bearer token format.');
-    }
-
-    return await this.verifier.verifyAccessToken(token);
-  }
-}
 ```
 
+The preset defines the credential contract exactly: a missing or empty `Authorization` header fails with `AuthenticationRequiredError`; a wrong-scheme or malformed header fails with `AuthenticationFailedError` and the scheme match is case-insensitive; an expired token fails with `AuthenticationExpiredError`; and `JwtInvalidTokenError` fails with `AuthenticationFailedError`, each preserving the original JWT verifier error as `cause`. `JwtConfigurationError` and verifier-provider infrastructure failures propagate unchanged rather than becoming credential failures. Internally, `AuthGuard` converts only credential failures into the canonical `401 Unauthorized` response.
+
 ### 15.3.2 Registering the JWT and Passport Modules
-Defining the provider is not enough to make `@UseAuth('jwt')` runnable. The application module must register both the JWT verifier and the named Passport strategy. This is the same wiring used by the canonical `packages/passport/README.md` quick start and the runnable `examples/auth-jwt-passport/src/auth/auth.module.ts` example.
+Importing the strategy is not enough to make `@UseAuth('jwt')` runnable. The application module must register the JWT verifier, list the preset as a provider, and register the named Passport strategy with the stable registration helper. This is the same wiring used by the canonical `packages/passport/README.md` quick start and the runnable `examples/auth-jwt-passport/src/auth/auth.module.ts` example.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import { PassportModule } from '@fluojs/passport';
-
-import { BearerJwtStrategy } from './bearer.strategy';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 @Module({
   imports: [
@@ -154,8 +136,8 @@ import { BearerJwtStrategy } from './bearer.strategy';
       secret: 'replace-with-an-application-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [BearerJwtStrategy],
@@ -163,16 +145,18 @@ import { BearerJwtStrategy } from './bearer.strategy';
 export class AuthModule {}
 ```
 
-`JwtModule.forRoot(...)` makes `DefaultJwtVerifier` available to `BearerJwtStrategy`. `PassportModule.forRoot(...)` registers that provider under the `jwt` name resolved by `@UseAuth('jwt')`; omitting it leaves the strategy unregistered. The literal values above are tutorial placeholders. Production applications should supply secrets and environment-specific options from the application configuration boundary.
+`JwtModule.forRoot(...)` makes `DefaultJwtVerifier` available to `BearerJwtStrategy`, and the `providers` entry binds the preset to that verifier through explicit `@Inject(...)` metadata. `PassportModule.forRoot(...)` registers the preset under the stable `BEARER_JWT_STRATEGY_NAME` (`'jwt'`) name resolved by `@UseAuth('jwt')`; omitting it leaves the strategy unregistered. The literal values above are tutorial placeholders. Production applications should supply secrets and environment-specific options from the application configuration boundary.
 
 ### 15.3.3 Configuration Options
-This strategy has three key configuration points.
-- Where to read the token from, such as the `Authorization` header input boundary
-- Which verifier to delegate verification to, such as `DefaultJwtVerifier`
-- Which principal to pass to the application after verification succeeds
+The preset pins the three basic decisions of a bearer strategy.
+- Where to read the token from: the `Authorization` header input boundary
+- Which verifier to delegate verification to: `DefaultJwtVerifier`
+- Which principal to pass to the application after verification succeeds: the normalized `JwtPrincipal` returned by the verifier, unchanged
 
-### 15.3.4 The Strategy Method: Your Security Gate
-The `authenticate()` method is the core of every custom strategy. This is where you check the token format and can run additional checks on the principal returned by the verifier. For example, you may want to check whether the user account is suspended in the database or whether the password was recently changed.
+Change any of these only through a custom strategy, never by mutating the preset.
+
+### 15.3.4 The Extension Point: Custom Strategy Policy
+The built-in preset intentionally stops after credential extraction and JWT verification. When a request needs account-state checks, token revocation, claim-driven rules, or other application-owned policy, implement a custom `AuthStrategy` whose `authenticate()` method runs those checks on the principal returned by the verifier. For example, you may want to check whether the user account is suspended in the database or whether the password was recently changed.
 
 If you throw an error here, the request is rejected even if the JWT itself is technically valid. Keeping cryptographic verification and application logic checks together helps prevent revoked credentials from accessing the system before the token expires.
 
@@ -253,7 +237,7 @@ By default, Passport Authentication failures lead to a standard `UnauthorizedExc
 ### 15.6.1 The Importance of Clear Error Feedback
 Providing clear but safe feedback requires balance. You should not leak sensitive system information to attackers, but you should help legitimate users understand why a request failed. Even distinguishing "missing token" from "expired token" in logs can reduce developer debugging time while still showing users a generic message.
 
-Fluo's Passport strategies and exception handling layer provide the tools needed to implement this error management. For example, you can trigger automated alerts when suspicious patterns appear, such as a large number of requests with expired tokens from a specific IP, which may indicate a replay attack attempt. Recording specific failure reasons, such as signature mismatch versus expiration, in internal monitoring systems is essential for incident response and forensic analysis.
+When debugging Bearer Authentication, separate credential parsing from token verification. First determine whether the `Authorization` header has a `Bearer` scheme, ASCII-space separator, and one credential segment; only after parsing succeeds should you inspect the verifier result for signature, expiry, issuer, audience, or claim failures. Keep any audit logging application-owned in a custom strategy failure branch or global exception filter, and never record the credential itself.
 
 ### 15.6.2 Integration with Global Filters
 While Guards decide whether a request may proceed, they often work with Global Exception Filters to shape the final response format. If a Guard throws `UnauthorizedException`, a filter can catch it and add a trace ID or legal disclaimer to the response body. This Separation of Concerns lets Guard logic focus on the yes or no decision while filters handle how to tell the user.
@@ -348,7 +332,7 @@ A failed Authentication strategy does not always mean a security breach. The tok
 For that reason, a strategy should throw semantically clear failures such as `AuthenticationRequiredError` and `AuthenticationFailedError`, while response messages and logging are organized consistently in the layer above it. This separation helps the frontend distinguish cases such as "session expired" from "credential format is invalid".
 
 ### 15.12.2 Strategy Debugging Techniques
-If you are struggling with a strategy implementation, first separate input header reading from verifier calls and log each step, as shown in the example `BearerJwtStrategy`. This helps you see exactly which part of the verification process is failing and quickly narrow down whether the cause is a cryptographic signature or the header format. Breaking the flow into observable steps keeps Authentication from feeling like a black box, and the same habit helps when analyzing 401 responses in production.
+If you are struggling with a strategy implementation, first separate input header reading from verifier calls and log each step, as shown in the built-in `BearerJwtStrategy` preset. This helps you see exactly which part of the verification process is failing and quickly narrow down whether the cause is a cryptographic signature or the header format. Breaking the flow into observable steps keeps Authentication from feeling like a black box, and the same habit helps when analyzing 401 responses in production.
 
 ## 15.13 Security Beyond the Framework
 Security is a layered effort. Even though Fluo's Guards and Passport strategies provide strong application-level protection, they should be part of a broader security strategy.

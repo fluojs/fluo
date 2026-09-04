@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
+  NotificationQueueResultIntegrityError,
   NotificationsConfigurationError,
 } from './errors.js';
 import { NotificationsModule } from './module.js';
@@ -152,6 +153,39 @@ class FailingEnqueueOnlyQueueAdapter implements NotificationsQueueAdapter {
     this.jobs.push(job);
     return `queued:${this.jobs.length}`;
   }
+}
+
+function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  let resolvePromise = (): void => {
+    throw new Error('Deferred promise was not initialized.');
+  };
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return { promise, resolve: resolvePromise };
+}
+
+function rejectWhenAborted(
+  signal: AbortSignal | undefined,
+  started: () => void,
+  onListenerRemoved: () => void,
+): Promise<never> {
+  if (!signal) {
+    started();
+    return Promise.reject(new Error('Expected the caller abort signal.'));
+  }
+
+  return new Promise((_, reject) => {
+    const onAbort = (): void => {
+      signal.removeEventListener('abort', onAbort);
+      onListenerRemoved();
+      reject(signal.reason);
+    };
+
+    signal.addEventListener('abort', onAbort);
+    started();
+  });
 }
 
 describe('NotificationsModule', () => {
@@ -563,6 +597,117 @@ describe('NotificationsModule', () => {
       channel: 'email',
       notification: { channel: 'email', payload: { template: 'single' } },
     });
+  });
+
+  it('forwards a live caller abort signal to direct channels', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('direct dispatch aborted');
+    const channelStarted = createDeferred();
+    let listenerRemoved = false;
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send(_notification, context) {
+            return rejectWhenAborted(context.signal, channelStarted.resolve, () => {
+              listenerRemoved = true;
+            });
+          },
+        },
+      ],
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatch(
+      { channel: 'email', payload: { template: 'direct-abort' } },
+      { signal: abortController.signal },
+    );
+
+    await channelStarted.promise;
+    abortController.abort(abortError);
+
+    await expect(dispatch).rejects.toBe(abortError);
+    expect(listenerRemoved).toBe(true);
+  });
+
+  it('rejects a pre-aborted queued single dispatch before queue handoff', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('queued single dispatch aborted');
+    const publisher = new RecordingPublisher();
+    let enqueueCalls = 0;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue() {
+        enqueueCalls += 1;
+        return 'queued:unexpected';
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    abortController.abort(abortError);
+
+    await expect(
+      service.dispatch(
+        { channel: 'email', payload: { template: 'queued-single-pre-abort' } },
+        { queue: true, signal: abortController.signal },
+      ),
+    ).rejects.toBe(abortError);
+
+    expect(enqueueCalls).toBe(0);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
+    expect(publisher.events).not.toContainEqual(expect.objectContaining({ name: 'notification.dispatch.queued' }));
+  });
+
+  it('forwards a live caller abort signal to queued single dispatch and cleans up adapter listeners', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('queued single dispatch aborted');
+    const enqueueStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    let listenerRemoved = false;
+    let receivedSignal: AbortSignal | undefined;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(_job, context?: { readonly signal?: AbortSignal }) {
+        receivedSignal = context?.signal;
+        return rejectWhenAborted(context?.signal, enqueueStarted.resolve, () => {
+          listenerRemoved = true;
+        });
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatch(
+      { channel: 'email', payload: { template: 'queued-single-mid-flight' } },
+      { queue: true, signal: abortController.signal },
+    );
+
+    await enqueueStarted.promise;
+    abortController.abort(abortError);
+
+    await expect(dispatch).rejects.toBe(abortError);
+    expect(receivedSignal).toBe(abortController.signal);
+    expect(listenerRemoved).toBe(true);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
   });
 
   it('throws when single dispatch explicitly requests queue delivery without a queue adapter', async () => {
@@ -1196,6 +1341,7 @@ describe('NotificationsModule', () => {
       details: {
         bulkQueueThreshold: 7,
         dependencies: ['notifications.queue-adapter', 'notifications.event-publisher'],
+        eventPublicationEnabled: true,
         eventPublisherConfigured: true,
         operationMode: 'queue-backed-with-events',
         queueConfigured: true,
@@ -1208,6 +1354,45 @@ describe('NotificationsModule', () => {
     expect(Object.hasOwn(snapshot, 'bulkQueueThreshold')).toBe(false);
     expect(Object.hasOwn(snapshot, 'queueConfigured')).toBe(false);
     expect(Object.hasOwn(snapshot, 'eventPublisherConfigured')).toBe(false);
+    expect(Object.hasOwn(snapshot, 'eventPublicationEnabled')).toBe(false);
+  });
+
+  it('reports a configured-but-disabled event publisher as inactive in status diagnostics', async () => {
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            return { externalId: 'status-delivery' };
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: false,
+        publisher,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const snapshot = service.createPlatformStatusSnapshot();
+
+    expect(snapshot.details).toMatchObject({
+      dependencies: [],
+      eventPublicationEnabled: false,
+      eventPublisherConfigured: true,
+      operationMode: 'direct-only',
+    });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: false,
+    });
+
+    await service.dispatch({ channel: 'email', payload: { subject: 'disabled' } });
+
+    expect(publisher.events).toEqual([]);
   });
 
   it('uses the optional queue seam for bulk delivery when the threshold is met', async () => {
@@ -1271,6 +1456,56 @@ describe('NotificationsModule', () => {
         name: 'notification.dispatch.queued',
       },
     ]);
+  });
+
+  it('forwards a live caller abort signal to native bulk queue adapters and emits no queued result', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('native bulk dispatch aborted');
+    const enqueueManyStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    let listenerRemoved = false;
+    let receivedSignal: AbortSignal | undefined;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue() {
+        return 'queued:unexpected';
+      },
+      async enqueueMany(_jobs, context?: { readonly signal?: AbortSignal }) {
+        receivedSignal = context?.signal;
+        return rejectWhenAborted(context?.signal, enqueueManyStarted.resolve, () => {
+          listenerRemoved = true;
+        });
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue, bulkThreshold: 2 },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany(
+      [
+        { channel: 'email', payload: { template: 'native-bulk-first' } },
+        { channel: 'email', payload: { template: 'native-bulk-second' } },
+      ],
+      { signal: abortController.signal },
+    );
+
+    await enqueueManyStarted.promise;
+    abortController.abort(abortError);
+
+    await expect(dispatch).rejects.toBe(abortError);
+    expect(receivedSignal).toBe(abortController.signal);
+    expect(listenerRemoved).toBe(true);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+    expect(publisher.events).not.toContainEqual(expect.objectContaining({ name: 'notification.dispatch.queued' }));
   });
 
   it('lets explicit bulk queue opt-in override the configured threshold', async () => {
@@ -1351,6 +1586,147 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('rejects enqueueMany results after the adapter mutates the admitted jobs length', async () => {
+    const publisher = new RecordingPublisher();
+    const queue: NotificationsQueueAdapter = {
+      async enqueue() {
+        return 'queued:unexpected';
+      },
+      async enqueueMany(jobs) {
+        Object.defineProperty(jobs, 'length', { value: 1 });
+
+        return ['queued:1'];
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(NotificationQueueResultIntegrityError);
+    await expect(dispatch).rejects.toMatchObject({ operation: 'enqueueMany' });
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it('rejects accessor-backed enqueueMany entries without invoking the mutating accessor', async () => {
+    const result = ['queued:1', 'queued:2'];
+    Object.defineProperty(result, '0', {
+      configurable: true,
+      get() {
+        result.length = 1;
+
+        return 'queued:1';
+      },
+    });
+
+    const queue = new MalformedEnqueueManyQueueAdapter(result);
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(NotificationQueueResultIntegrityError);
+    await expect(dispatch).rejects.toMatchObject({ operation: 'enqueueMany' });
+    expect(result).toHaveLength(2);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it.each([
+    ['null', null],
+    ['object', { id: 'queued:1' }],
+    ['string', 'queued:1'],
+  ])('rejects %s enqueueMany results without fabricating queued successes', async (_label, result) => {
+    const queue = new MalformedEnqueueManyQueueAdapter(result);
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(NotificationQueueResultIntegrityError);
+    await expect(dispatch).rejects.toMatchObject({ operation: 'enqueueMany' });
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
   it('rejects empty enqueueMany ids without substituting fallback delivery ids', async () => {
     const queue = new MalformedEnqueueManyQueueAdapter(['queued:1', '']);
     const container = new Container();
@@ -1379,6 +1755,157 @@ describe('NotificationsModule', () => {
       ]),
     ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: queue id at index 1 must be a non-empty string.');
   });
+
+  it('rejects non-string enqueueMany ids without substituting fallback delivery ids', async () => {
+    const queue = new MalformedEnqueueManyQueueAdapter(['queued:1', 42]);
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany([
+        { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+        { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+      ]),
+    ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: queue id at index 1 must be a non-empty string.');
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['non-string value', 42],
+  ])('rejects %s single enqueue results without fabricating queued successes', async (_label, invalidDeliveryId) => {
+    const queue = new EnqueueOnlyQueueAdapter();
+    const publisher = new RecordingPublisher();
+    Object.defineProperty(queue, 'enqueue', {
+      value: async (job: NotificationsQueueJob): Promise<unknown> => {
+        queue.jobs.push(job);
+        return invalidDeliveryId;
+      },
+    });
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatch(
+        { channel: 'email', id: 'caller-id', payload: { template: 'digest', userId: 'u1' } },
+        { queue: true },
+      ),
+    ).rejects.toMatchObject({
+      message: 'Notifications queue adapter returned an invalid enqueue() result: queue id must be a non-empty string.',
+      name: 'NotificationQueueResultIntegrityError',
+    });
+
+    expect(queue.jobs).toHaveLength(1);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['non-string value', 42],
+  ])(
+    'captures %s sequential fallback enqueue results as failures when continueOnError is enabled',
+    async (_label, invalidDeliveryId) => {
+      const queue = new EnqueueOnlyQueueAdapter();
+      const publisher = new RecordingPublisher();
+      Object.defineProperty(queue, 'enqueue', {
+        value: async (job: NotificationsQueueJob): Promise<unknown> => {
+          queue.jobs.push(job);
+          return queue.jobs.length === 1 ? invalidDeliveryId : 'queued:2';
+        },
+      });
+      const container = new Container();
+      const moduleType = NotificationsModule.forRoot({
+        channels: [
+          {
+            channel: 'email',
+            async send() {
+              throw new Error('direct delivery should not be used for queued bulk dispatch');
+            },
+          },
+        ],
+        events: {
+          publisher,
+        },
+        queue: {
+          adapter: queue,
+          bulkThreshold: 2,
+        },
+      });
+
+      container.register(...moduleProviders(moduleType));
+      const service = await container.resolve(NotificationsService);
+      const result = await service.dispatchMany(
+        [
+          { channel: 'email', id: 'first-job', payload: { template: 'digest', userId: 'u1' } },
+          { channel: 'email', id: 'second-job', payload: { template: 'digest', userId: 'u2' } },
+        ],
+        { continueOnError: true },
+      );
+
+      expect(queue.jobs.map((job) => job.id)).toEqual(['first-job', 'second-job']);
+      expect(result).toMatchObject({
+        failed: 1,
+        queued: 1,
+        succeeded: 1,
+      });
+      expect(result.results).toEqual([
+        {
+          channel: 'email',
+          deliveryId: 'queued:2',
+          queued: true,
+          status: 'queued',
+        },
+      ]);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.error).toMatchObject({
+        message: 'Notifications queue adapter returned an invalid enqueue() result: queue id must be a non-empty string.',
+        name: 'NotificationQueueResultIntegrityError',
+      });
+      expect(result.failures[0]?.notification).toMatchObject({ id: 'first-job' });
+      expect(publisher.events.map((event) => event.name)).toEqual([
+        'notification.dispatch.requested',
+        'notification.dispatch.requested',
+        'notification.dispatch.failed',
+        'notification.dispatch.queued',
+      ]);
+    },
+  );
 
   it('rejects sparse enqueueMany results without substituting fallback delivery ids', async () => {
     const queue = new MalformedEnqueueManyQueueAdapter(new Array<string>(2));
@@ -1448,6 +1975,94 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('records abort failures without handing remaining fallback jobs to the queue', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('sequential fallback dispatch aborted');
+    const firstEnqueueStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    const receivedSignals: AbortSignal[] = [];
+    let enqueueCalls = 0;
+    let listenerRemoved = false;
+    let rejectMissingSignal = (): void => {};
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(_job, context?: { readonly signal?: AbortSignal }) {
+        enqueueCalls += 1;
+
+        const signal = context?.signal;
+
+        if (signal) {
+          receivedSignals.push(signal);
+        }
+
+        if (enqueueCalls > 1) {
+          return 'queued:unexpected';
+        }
+
+        if (!signal) {
+          firstEnqueueStarted.resolve();
+
+          return new Promise((_, reject) => {
+            rejectMissingSignal = (): void => {
+              reject(new Error('Expected the caller abort signal.'));
+            };
+          });
+        }
+
+        return new Promise((_, reject) => {
+          const onAbort = (): void => {
+            signal.removeEventListener('abort', onAbort);
+            listenerRemoved = true;
+            reject(signal.reason);
+          };
+
+          signal.addEventListener('abort', onAbort);
+          firstEnqueueStarted.resolve();
+        });
+      },
+    };
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { return { externalId: 'direct-should-not-run' }; } }],
+      events: { publisher },
+      queue: { adapter: queue, bulkThreshold: 2 },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany(
+      [
+        { channel: 'email', payload: { template: 'sequential-first' } },
+        { channel: 'email', payload: { template: 'sequential-second' } },
+      ],
+      { continueOnError: true, signal: abortController.signal },
+    );
+
+    await firstEnqueueStarted.promise;
+    abortController.abort(abortError);
+    rejectMissingSignal();
+
+    const result = await dispatch;
+
+    expect(enqueueCalls).toBe(1);
+    expect(receivedSignals).toEqual([abortController.signal]);
+    expect(listenerRemoved).toBe(true);
+    expect(result).toMatchObject({
+      failed: 2,
+      queued: 0,
+      succeeded: 0,
+    });
+    expect(result.results).toEqual([]);
+    expect(result.failures).toHaveLength(2);
+    expect(result.failures[0]?.error).toBe(abortError);
+    expect(result.failures[1]?.error).toBe(abortError);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+      'notification.dispatch.failed',
+    ]);
+  });
+
   it('reports partial enqueue results from sequential queue fallback when continueOnError is enabled', async () => {
     const queue = new FailingEnqueueOnlyQueueAdapter(2);
     const publisher = new RecordingPublisher();
@@ -1488,7 +2103,8 @@ describe('NotificationsModule', () => {
     });
     expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.notification).toEqual(notifications[1]);
+    expect(result.failures[0]?.notification).not.toBe(notifications[1]);
     expect(result.failures[0]?.error).toMatchObject({ message: 'queue enqueue failed:2' });
     expect(publisher.events).toMatchObject([
       { channel: 'email', name: 'notification.dispatch.requested' },
@@ -1545,7 +2161,8 @@ describe('NotificationsModule', () => {
     });
     expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.notification).toEqual(notifications[1]);
+    expect(result.failures[0]?.notification).not.toBe(notifications[1]);
     expect(result.failures[0]?.error).toBeInstanceOf(AggregateError);
 
     const failureError = result.failures[0]?.error;
@@ -2141,7 +2758,8 @@ describe('NotificationsModule', () => {
       'delivered:third',
     ]);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.notification).toEqual(notifications[1]);
+    expect(result.failures[0]?.notification).not.toBe(notifications[1]);
     expect(result.failures[0]?.error).toBe(providerError);
   });
 });

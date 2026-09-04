@@ -35,7 +35,9 @@ export interface ResolverMethodOptions {
  * Describes an object field resolver's field name and optional output type override.
  */
 export interface FieldResolverOptions {
+  argTypes?: Record<string, GraphqlArgType>;
   fieldName?: string;
+  input?: Function;
   type?: GraphqlRootOutputType;
   nullable?: boolean;
 }
@@ -184,7 +186,9 @@ function normalizeFieldResolverMetadata(
   }
 
   return {
+    argTypes: fieldNameOrOptions?.argTypes,
     fieldName: fieldNameOrOptions?.fieldName?.trim() || undefined,
+    inputClass: fieldNameOrOptions?.input,
     nullable: fieldNameOrOptions?.nullable,
     outputType: fieldNameOrOptions?.type,
     type: 'field',
@@ -195,19 +199,23 @@ function createFieldResolverParameterDecorator(
   kind: FieldResolverParameterKind,
   parameterIndex: number,
 ): MethodDecoratorLike {
+  const decoratorName = {
+    context: 'Context',
+    input: 'Args',
+    parent: 'Parent',
+  }[kind];
+
   if (!Number.isSafeInteger(parameterIndex) || parameterIndex < 0) {
-    throw new Error(`@${kind === 'parent' ? 'Parent' : 'Context'}() parameter index must be a non-negative integer.`);
+    throw new Error(`@${decoratorName}() parameter index must be a non-negative integer.`);
   }
 
   const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
-    const name = kind === 'parent' ? 'Parent' : 'Context';
-
     if (context.private) {
-      throw new Error(`@${name}() cannot be used on private methods.`);
+      throw new Error(`@${decoratorName}() cannot be used on private methods.`);
     }
 
     if (context.static) {
-      throw new Error(`@${name}() cannot be used on static methods.`);
+      throw new Error(`@${decoratorName}() cannot be used on static methods.`);
     }
 
     defineStandardFieldResolverParameterMetadata(context.metadata, context.name, parameterIndex, kind);
@@ -313,6 +321,21 @@ export function Parent(parameterIndex = 0): MethodDecoratorLike {
  */
 export function Context(parameterIndex = 1): MethodDecoratorLike {
   return createFieldResolverParameterDecorator('context', parameterIndex);
+}
+
+/**
+ * Binds a field resolver method parameter to the DTO materialized from GraphQL field arguments.
+ *
+ * @remarks
+ * TC39 standard decorators do not support parameter decorators, so this
+ * standard method decorator records the parameter index explicitly. The default
+ * index is `0`. Pair it with `@FieldResolver({ input: InputDto })`.
+ *
+ * @param parameterIndex Zero-based method parameter index to receive the validated input DTO.
+ * @returns A TC39 standard method decorator.
+ */
+export function Args(parameterIndex = 0): MethodDecoratorLike {
+  return createFieldResolverParameterDecorator('input', parameterIndex);
 }
 
 /**

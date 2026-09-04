@@ -9,6 +9,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
+- [Catalog Aggregation and Fallback Migration](#catalog-aggregation-and-fallback-migration)
 - [Core Translation](#core-translation)
 - [Formatting](#formatting)
 - [ICU MessageFormat](#icu-messageformat)
@@ -71,6 +72,69 @@ class AppModule {}
 `I18nModule.forRoot(...)` exports `I18nService` as a global provider by default so sibling modules can inject the shared service after the root package is imported once. Pass `global: false` when the service should stay visible only to the module that imports the i18n module.
 
 `I18nModule.forRoot(...)` is synchronous and captures final options when the module graph is defined. Finish asynchronous catalog or configuration loading at the application-owned bootstrap boundary before `I18nModule.forRoot(...)`, then pass the resolved catalogs and options into that registration call. This preserves the framework-agnostic root contract; it does not provide a NestJS dynamic-module runtime bridge or a `forRootAsync(...)` compatibility surface.
+
+## Catalog Aggregation and Fallback Migration
+
+When migrating from NestJS i18n, load every required locale and namespace before the synchronous `I18nModule.forRoot(...)` call. Do not carry a NestJS loader configuration into module registration:
+
+```ts
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const catalogLoader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const catalogEntries = await Promise.all(
+  locales.map(async (locale) => {
+    const namespaceEntries = await Promise.all(
+      namespaces.map(async (namespace) => [
+        namespace,
+        await catalogLoader.load(locale, namespace),
+      ] as const),
+    );
+
+    return [locale, Object.fromEntries(namespaceEntries)] as const;
+  }),
+);
+const catalogs = Object.fromEntries(catalogEntries);
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: locales,
+      fallbackLocales: { ko: ['en'] },
+      catalogs,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+The aggregate preserves namespace boundaries: use `i18n.translate('title', { locale: 'ko', namespace: 'common' })` for `locales/ko/common.json`, rather than shallow-merging namespace trees. A missing catalog file rejects aggregation with `I18N_MISSING_CATALOG`; `fallbackLocales` applies only to message lookup after catalogs exist.
+
+Convert NestJS i18n fallback intent explicitly:
+
+```ts
+// NestJS i18n
+I18nModule.forRoot({
+  fallbackLanguage: 'en',
+  fallbacks: { ko: 'en' },
+});
+
+// fluo
+I18nModule.forRoot({
+  defaultLocale: 'en',
+  fallbackLocales: { ko: ['en'] },
+  catalogs,
+});
+```
+
+This preserves the lookup order: explicit locale, configured fallback chain, `defaultLocale`, per-call `defaultValue`, then `missingMessage`. Completing asynchronous aggregation before registration does not change that order or add `forRootAsync(...)`.
 
 ## Core Translation
 
@@ -346,11 +410,11 @@ const loader = createRemoteI18nLoader({
 const common = await loader.load('en', 'common');
 ```
 
-The provider receives the validated `locale`, `namespace`, and an `AbortSignal` that combines the loader timeout with optional per-call cancellation. Providers may return a raw object message tree or a JSON string. `undefined` and `null` are treated as missing catalogs and throw `I18N_MISSING_CATALOG`; malformed JSON and invalid message tree shapes throw `I18N_INVALID_CATALOG`; provider failures are wrapped as `I18N_LOADER_FAILED`; timeouts throw `I18N_LOADER_TIMEOUT`; caller cancellation throws `I18N_LOADER_ABORTED`. Returned catalogs are always detached immutable `I18nMessageTree` snapshots.
+The provider receives the validated `locale`, `namespace`, and an `AbortSignal` that combines the loader timeout with optional per-call cancellation. `timeoutMs` must be a positive integer no greater than `2_147_483_647`, the largest delay that the runtime timer can represent truthfully. Providers may return a raw object message tree or a JSON string. `undefined` and `null` are treated as missing catalogs and throw `I18N_MISSING_CATALOG`; malformed JSON and invalid message tree shapes throw `I18N_INVALID_CATALOG`; provider-thrown `I18nError` instances are rethrown unchanged, while other provider failures are wrapped as `I18N_LOADER_FAILED`; timeouts throw `I18N_LOADER_TIMEOUT`; caller cancellation throws `I18N_LOADER_ABORTED`. Returned catalogs are always detached immutable `I18nMessageTree` snapshots.
 
 The remote loader never caches by default: every `load(locale, namespace)` call invokes the provider and snapshots that provider result. Applications that need memory, HTTP, CDN, database, or stale-while-revalidate caching should implement it inside the provider or in a wrapper around the provider so cache invalidation remains explicit at the application boundary.
 
-Applications that want a first-party in-memory policy can wrap the loader explicitly. Cache entries are keyed by `(locale, namespace, version)` unless the caller provides a custom key, and `invalidate(...)` / `clear()` keep invalidation application-owned:
+Applications that want a first-party in-memory policy can wrap the loader explicitly. Cache entries are keyed by `(locale, namespace, version)` unless the caller provides a custom key, begin their TTL only after a successful load, and keep invalidation application-owned through `invalidate(...)` / `clear()`:
 
 ```ts
 import { createCachedRemoteI18nLoader, createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
@@ -415,7 +479,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 
 These helper declarations are type-only and application-owned. They do not add runtime wrappers, do not import framework bridges, and do not change the broad runtime `I18nService.translate(key: string, options)` signature.
 
-Both helpers deduplicate keys across locales, sort output for stable diffs, reject invalid catalog shapes with `I18N_INVALID_CATALOG`, and reject unsafe locale or namespace paths with `I18N_INVALID_LOADER_OPTIONS`.
+Both helpers deduplicate keys across locales, sort output for stable diffs, reject invalid catalog shapes with `I18N_INVALID_CATALOG`, and reject unsafe locale or namespace paths with `I18N_INVALID_LOADER_OPTIONS`. Custom output names must be valid, distinct TypeScript identifiers; invalid or colliding names reject with `I18N_INVALID_OPTIONS`.
 
 ## Public API
 

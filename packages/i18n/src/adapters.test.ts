@@ -321,4 +321,28 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
       }),
     ).toEqual({ locale: 'ko', source: 'accept-language' });
   });
+
+  it('keeps resolver-chain provenance parity after invalid candidates', () => {
+    const adapterContext: TransportContext = {};
+    const httpContext = createMockHttpContext();
+    const unsupportedAdapter: LocaleAdapterResolver<TransportContext> = () => ({ locale: 'fr', source: 'unsupported' });
+    const selectedAdapter: LocaleAdapterResolver<TransportContext> = () => ({ locale: 'ko', source: 'selected' });
+    const unsupportedHttp: HttpLocaleResolver = () => ({ locale: 'fr', source: 'unsupported' });
+    const selectedHttp: HttpLocaleResolver = () => ({ locale: 'ko', source: 'selected' });
+
+    expect(
+      resolveLocale(adapterContext, {
+        defaultLocale: 'en',
+        resolvers: [unsupportedAdapter, selectedAdapter],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toEqual({ locale: 'ko', source: 'selected' });
+    expect(
+      resolveHttpLocale(httpContext, {
+        defaultLocale: 'en',
+        resolvers: [unsupportedHttp, selectedHttp],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toEqual({ locale: 'ko', source: 'selected' });
+  });
 });

@@ -1,0 +1,9 @@
+{
+  "retry": {
+    "modelFallback": true,
+    "fallbackChains": {
+      "ccapi/claude-opus-5": ["ccapi/claude-opus-4-8", "ccapi/claude-sonnet-4-6", "openai-codex/gpt-5.6-sol"],
+      "ccapi/claude-sonnet-4-6": ["ccapi/claude-opus-4-6", "ccapi/claude-sonnet-4-5", "openai-codex/gpt-5.6-terra"]
+    }
+  }
+}

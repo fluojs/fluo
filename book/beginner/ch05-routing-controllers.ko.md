@@ -224,6 +224,27 @@ export class PostsController {
 
 각 라우트는 자신이 받을 입력 DTO를 직접 선언합니다. `@RequestDto(...)`는 핸들러가 사용할 DTO를 고르고, `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)` 같은 필드 단위 바인딩 데코레이터는 각 DTO 필드를 어떤 요청 출처에서 채울지 말해 줍니다. `FindPostParamsDto`는 `/:id` 경로에서 바인딩된 입력 형태를 보여 주고, `SearchPostsQueryDto`는 쿼리 문자열에서 읽을 값을 하나의 입력 객체로 모읍니다. `CreatePostDto`는 요청 본문이 서비스 경계로 들어가기 전에 어떤 형태여야 하는지 드러냅니다.
 
+### Multipart 파일 입력
+
+Multipart endpoint도 같은 DTO 계약 안에 portable file input을 둘 수 있습니다. `@FromFiles(...)`는 항상 readonly 배열을 바인딩하고 multipart field name으로 필터링한 upload 순서를 보존하며 `FrameworkRequestFile` 데이터만 DTO에 전달합니다.
+
+```typescript
+import { FromFiles, RequestDto, type FrameworkRequestFile } from '@fluojs/http';
+
+class UploadPostAssetsDto {
+  @FromFiles('attachments')
+  attachments: readonly FrameworkRequestFile[] = [];
+}
+
+@Post('/:id/assets')
+@RequestDto(UploadPostAssetsDto)
+uploadAssets(input: UploadPostAssetsDto) {
+  return { uploaded: input.attachments.length };
+}
+```
+
+Adapter가 file collection을 제공하지 않았을 때 필수 `@FromFiles(...)` 필드는 일반 missing-field 오류를 사용합니다. 부재가 유효하다면 `@Optional()`을 붙이세요. Collection이 제공됐지만 일치하는 field name이 없으면 빈 배열이 됩니다. Handler가 필터링되지 않은 전체 요청 collection을 필요로 하면 `RequestContext.request.files`도 계속 사용할 수 있습니다.
+
 ### Why Explicit Binding Matters
 
 명시적인 바인딩은 처음 요청 흐름을 읽을 때 특히 큰 도움이 됩니다. 핸들러 시그니처를 보면 라우트가 어떤 DTO를 받는지 바로 확인할 수 있고, 입력 계약이 메서드마다 한 객체로 고정되어 있어 요청 흐름을 추적하기도 쉽습니다.

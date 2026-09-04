@@ -248,7 +248,9 @@ Part 1 organized how FluoShop communicates across boundaries. This chapter cover
 - Stable `eventKey` values help preserve routing contracts across refactors.
 - In-process publish and subscribe is the default, while Redis transport extends the same model beyond process boundaries.
 - `EventPublishOptions` applies caller-facing bounds to both local handlers and transport publication.
+- `@OnEvent(...)` handlers are public instance methods on normalized effective singleton registrations; `EventBusModule.forRoot()` is global by default and accepts `{ global: false }` for module-local visibility.
 - Local and inbound transport listener failures are logged and isolated, while other matching listeners continue. A local listener failure alone does not reject `publish(...)`, and inbound callback completion does not surface isolated listener failures. Publisher completion does not prove that every listener succeeded. Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract. Those failures retain their own separately documented behavior.
+- Event-bus requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`; `waitForHandlers: false` resolves after it schedules shutdown-tracked background work.
 - The Redis subpath requires the optional `ioredis` peer plus dedicated, separate `publishClient` and `subscribeClient` instances.
 - Only the Redis adapter drops malformed JSON, and the application remains responsible for closing its Redis clients after event-bus teardown.
 - Redis fan-out requires idempotent handlers, and slow or retryable reactions should hand durable work to Queue.

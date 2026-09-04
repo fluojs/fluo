@@ -1,6 +1,5 @@
 import type { Dispatch, KeyboardEvent, MouseEvent } from 'react';
-import type { PlatformSnapshot } from '@fluojs/runtime';
-import { renderMermaid } from '../../../contracts.js';
+import { renderMermaid, type PlatformSnapshot } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import {

@@ -4,30 +4,92 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+import {
+  emailNestjsMigrationMarkerPrefix,
+  enforceEmailNestjsMigrationDocs,
+  headingBoundedSection,
+} from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+import { enforceGraphqlAsyncRegistrationContract } from './graphql-async-registration-contract.mjs';
+import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
+import { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migration-boundaries.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
+import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
+  enforceRedisStreamsSubpathExportEvidence,
 } from './microservices-safety-guidance.mjs';
+import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
+import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
+import { enforcePrismaNestjsMigrationDocs } from './prisma-nestjs-migration-docs.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
+import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
+const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+const httpLifecycleContractDocs = new Set([
+  'docs/architecture/http-runtime.md',
+  'docs/architecture/http-runtime.ko.md',
+]);
+const httpRuntimeGovernanceImplementation =
+  'tooling/governance/verify-platform-consistency-governance.mjs';
+const httpRuntimeChangedPathRegression =
+  'tooling/governance/verify-platform-consistency-governance.test.ts';
+const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isolation.test.ts';
+const manualSseLifecycleRegressionTest =
+  'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
+const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
+const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
+const httpByteRangeRuntimeSourcePaths = new Set([
+  'packages/http/src/byte-range-response.ts',
+  'packages/http/src/dispatch/byte-range-response.ts',
+  'packages/http/src/dispatch/conditional-request-policy.ts',
+  'packages/http/src/dispatch/dispatch-response-policy.ts',
+]);
+const httpByteRangeRegressionEvidence = [
+  'packages/http/src/dispatch/conditional-request-policy.test.ts',
+  'packages/http/src/dispatch/byte-range-response.test.ts',
+  'packages/testing/src/portability/http-adapter-portability.ts',
+  'packages/testing/src/portability/http-adapter-portability.test.ts',
+];
+const staticAssetRuntimeSourcePaths = new Set([
+  'packages/http/src/static-assets.ts',
+  'packages/runtime/src/node/node-static-assets.ts',
+]);
+const staticAssetRegressionEvidence = [
+  'packages/http/src/static-assets.test.ts',
+  'packages/runtime/src/node/node-static-assets.test.ts',
+  'packages/testing/src/static-assets-portability.test.ts',
+];
+
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+export { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
+export { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
+  enforceRedisStreamsSubpathExportEvidence,
 } from './microservices-safety-guidance.mjs';
+export { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
+export { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
+export { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migration-boundaries.mjs';
 export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
@@ -36,6 +98,7 @@ export {
   enforceReactRscGraduationGovernance,
   enforceReactRscGraduationPolicy,
 } from './react-rsc-graduation-policy.mjs';
+export { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 export { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +114,394 @@ const nodeListenerEngineRange = nodeListenerEngineWindows
     `>=${minimumMajor}.${minimumMinor}.${minimumPatch} <${maximumMajorExclusive}`)
   .join(' || ');
 const nodeListenerEngineMarker = `engines.node ${nodeListenerEngineRange}`;
+
+function parseNodeEngineVersion(value) {
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/u.exec(value);
+  assert(match !== null, `Unsupported Node engine version "${value}".`);
+
+  return {
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2] ?? '0', 10),
+    patch: Number.parseInt(match[3] ?? '0', 10),
+  };
+}
+
+function compareNodeEngineVersions(left, right) {
+  for (const key of ['major', 'minor', 'patch']) {
+    if (left[key] !== right[key]) {
+      return left[key] < right[key] ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function parseNodeEngineComparator(value) {
+  const match = /^(\^|~|>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
+  assert(match !== null, `Unsupported Node engine comparator "${value}".`);
+
+  const version = parseNodeEngineVersion(match[2]);
+  const upperVersion = match[2].includes('.')
+    ? { major: version.major, minor: version.minor + 1, patch: 0 }
+    : { major: version.major + 1, minor: 0, patch: 0 };
+
+  if (match[1] === '^') {
+    const exclusiveUpperVersion = version.major > 0
+      ? { major: version.major + 1, minor: 0, patch: 0 }
+      : version.minor > 0
+        ? { major: 0, minor: version.minor + 1, patch: 0 }
+        : { major: 0, minor: 0, patch: version.patch + 1 };
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: exclusiveUpperVersion },
+    ];
+  }
+
+  if (match[1] === '~') {
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: upperVersion },
+    ];
+  }
+
+  if (match[2].split('.').length === 3) {
+    return [{ operator: match[1] ?? '=', version }];
+  }
+
+  switch (match[1]) {
+    case '>':
+      return [{ operator: '>=', version: upperVersion }];
+    case '>=':
+    case '<':
+      return [{ operator: match[1], version }];
+    case '<=':
+      return [{ operator: '<', version: upperVersion }];
+    case '=':
+    case undefined:
+      return [
+        { operator: '>=', version },
+        { operator: '<', version: upperVersion },
+      ];
+    default:
+      assert(false, `Unsupported Node engine comparator "${value}".`);
+  }
+}
+
+function parseNodeEngineRange(range) {
+  assert(typeof range === 'string' && range.trim().length > 0, 'engines.node must be a non-empty string.');
+
+  return range.replace(/(\^|~|>=|>|<=|<|=)\s+/gu, '$1').split('||').map((group) => {
+    const comparators = group.trim().split(/\s+/u).filter(Boolean);
+    assert(comparators.length > 0, `Unsupported empty Node engine range "${range}".`);
+    return comparators.flatMap(parseNodeEngineComparator);
+  });
+}
+
+function nodeEngineRangeIncludes(range, version) {
+  return parseNodeEngineRange(range).some((comparators) =>
+    comparators.every(({ operator, version: boundary }) => {
+      const comparison = compareNodeEngineVersions(version, boundary);
+
+      switch (operator) {
+        case '>':
+          return comparison > 0;
+        case '>=':
+          return comparison >= 0;
+        case '<':
+          return comparison < 0;
+        case '<=':
+          return comparison <= 0;
+        case '=':
+          return comparison === 0;
+        default:
+          return false;
+      }
+    }));
+}
+
+function previousNodeEngineVersion({ major, minor, patch }) {
+  if (patch > 0) {
+    return { major, minor, patch: patch - 1 };
+  }
+
+  if (minor > 0) {
+    return { major, minor: minor - 1, patch: 999 };
+  }
+
+  return { major: Math.max(0, major - 1), minor: 999, patch: 999 };
+}
+
+function nextNodeEngineVersion({ major, minor, patch }) {
+  return { major, minor, patch: patch + 1 };
+}
+
+function nodeEngineCandidates(...ranges) {
+  const candidates = new Map();
+  const addCandidate = (version) => {
+    candidates.set(`${version.major}.${version.minor}.${version.patch}`, version);
+  };
+
+  for (const range of ranges) {
+    for (const comparators of parseNodeEngineRange(range)) {
+      for (const { version } of comparators) {
+        addCandidate(previousNodeEngineVersion(version));
+        addCandidate(version);
+        addCandidate(nextNodeEngineVersion(version));
+      }
+    }
+  }
+
+  return [...candidates.values()];
+}
+
+function formatNodeEngineVersion({ major, minor, patch }) {
+  return `${major}.${minor}.${patch}`;
+}
+
+function lockfileImporterDependencyVersions(lockfileText, importerPath) {
+  const importerStart = lockfileText.indexOf(`  ${importerPath}:\n`);
+  assert(importerStart >= 0, `pnpm-lock.yaml must include the ${importerPath} importer.`);
+
+  const importerEndMatch = /\n {2}\S/u.exec(lockfileText.slice(importerStart + 1));
+  const importerEnd = importerEndMatch === null ? -1 : importerStart + 1 + importerEndMatch.index;
+  const importerText = lockfileText.slice(importerStart, importerEnd === -1 ? undefined : importerEnd);
+  const lines = importerText.split('\n');
+  const versions = new Map();
+  let dependencySection = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === '    dependencies:') {
+      dependencySection = true;
+      continue;
+    }
+
+    if (!dependencySection) {
+      continue;
+    }
+
+    if (/^ {4}\S/u.test(line)) {
+      break;
+    }
+
+    const dependencyMatch = /^[ ]{6}['"]?([^'"]+)['"]?:$/u.exec(line);
+    if (dependencyMatch === null) {
+      continue;
+    }
+
+    for (index += 1; index < lines.length; index += 1) {
+      if (/^ {6}\S/u.test(lines[index])) {
+        index -= 1;
+        break;
+      }
+
+      const versionMatch = /^[ ]{8}version: ([^\s]+)$/u.exec(lines[index]);
+      if (versionMatch !== null) {
+        versions.set(dependencyMatch[1], versionMatch[1].replace(/\(.+$/u, ''));
+        break;
+      }
+    }
+  }
+
+  return versions;
+}
+
+function lockedDependencyNodeEngineRange(lockfileText, importerPath, dependencyName) {
+  const version = lockfileImporterDependencyVersions(lockfileText, importerPath).get(dependencyName);
+  if (version === undefined || version.startsWith('link:')) {
+    return undefined;
+  }
+
+  const packagesStart = lockfileText.indexOf('\npackages:\n');
+  const snapshotsStart = lockfileText.indexOf('\nsnapshots:\n', packagesStart);
+  assert(packagesStart >= 0 && snapshotsStart > packagesStart, 'pnpm-lock.yaml must include packages and snapshots sections.');
+
+  const packageKey = `${dependencyName}@${version}`.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const packageMatch = new RegExp(`^  ['"]?${packageKey}['"]?:$`, 'mu')
+    .exec(lockfileText.slice(packagesStart, snapshotsStart));
+  const packageStart = packageMatch === null ? -1 : packagesStart + packageMatch.index;
+  assert(packageStart >= 0, `pnpm-lock.yaml must resolve ${dependencyName}@${version}.`);
+
+  const packageEndMatch = /\n {2}\S/u.exec(lockfileText.slice(packageStart + packageMatch[0].length));
+  const packageEnd = packageEndMatch === null ? -1 : packageStart + packageMatch[0].length + packageEndMatch.index;
+  const packageText = lockfileText.slice(packageStart, packageEnd === -1 ? snapshotsStart : packageEnd);
+  const engineMatch = /^\s{4}engines:\s+\{node:\s+['"]?([^'"}]+)['"]?\}$/mu.exec(packageText);
+  return engineMatch?.[1];
+}
+
+function changedPackageNames(changedFiles) {
+  return new Set(changedFiles.flatMap((relativePath) => {
+    const match = /^packages\/([^/]+)\//u.exec(relativePath);
+    return match === null ? [] : [`@fluojs/${match[1]}`];
+  }));
+}
+
+function mandatoryProductionImporterSections(lockfileText) {
+  const importersStart = lockfileText.indexOf('\nimporters:\n');
+  const packagesStart = lockfileText.indexOf('\npackages:\n', importersStart);
+  const importersText = lockfileText.slice(
+    importersStart === -1 ? 0 : importersStart + '\nimporters:\n'.length,
+    packagesStart === -1 ? lockfileText.length : packagesStart,
+  );
+  const sections = new Map();
+  let importerPath;
+  let dependencyLines;
+
+  const commit = () => {
+    if (importerPath !== undefined && dependencyLines !== undefined) {
+      sections.set(importerPath, dependencyLines.join('\n'));
+    }
+  };
+
+  for (const line of importersText.split('\n')) {
+    const importerMatch = /^[ ]{2}(?<path>\S[^:\n]*):$/u.exec(line);
+    if (importerMatch !== null) {
+      commit();
+      importerPath = importerMatch.groups.path.replace(/^['"]|['"]$/gu, '');
+      dependencyLines = undefined;
+      continue;
+    }
+
+    if (importerPath === undefined) {
+      continue;
+    }
+
+    if (line === '    dependencies:') {
+      dependencyLines = [line];
+      continue;
+    }
+
+    if (dependencyLines === undefined) {
+      continue;
+    }
+
+    if (/^[ ]{4}\S/u.test(line)) {
+      commit();
+      dependencyLines = undefined;
+      continue;
+    }
+
+    dependencyLines.push(line);
+  }
+
+  commit();
+  return sections;
+}
+
+export function mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfileText, currentLockfileText) {
+  const previousSections = mandatoryProductionImporterSections(previousLockfileText);
+  const currentSections = mandatoryProductionImporterSections(currentLockfileText);
+  const importerPaths = new Set([...previousSections.keys(), ...currentSections.keys()]);
+  const packageNames = new Set();
+
+  for (const importerPath of importerPaths) {
+    if (previousSections.get(importerPath) === currentSections.get(importerPath)) {
+      continue;
+    }
+
+    const match = /^packages\/([^/]+)$/u.exec(importerPath);
+    if (match !== null) {
+      packageNames.add(`@fluojs/${match[1]}`);
+    }
+  }
+
+  return packageNames;
+}
+
+export function enforceMandatoryProductionDependencyEngineAlignment(
+  readText = read,
+  packageNames = changedPackageNames(changedFilesFromGit()),
+) {
+  const lockfileText = readText('pnpm-lock.yaml');
+  const packageManifests = new Map();
+
+  for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const relativePath = `packages/${entry.name}/package.json`;
+    if (!existsSync(join(repoRoot, relativePath))) {
+      continue;
+    }
+
+    const manifest = JSON.parse(readText(relativePath));
+    packageManifests.set(manifest.name, { manifest, relativePath });
+  }
+
+  const selectedPackageNames = new Set(packageNames);
+  let addedReverseDependent = true;
+
+  while (addedReverseDependent) {
+    addedReverseDependent = false;
+
+    for (const [packageName, { manifest }] of packageManifests) {
+      if (
+        manifest.private ||
+        selectedPackageNames.has(packageName) ||
+        !Object.keys(manifest.dependencies ?? {}).some((dependencyName) =>
+          selectedPackageNames.has(dependencyName))
+      ) {
+        continue;
+      }
+
+      selectedPackageNames.add(packageName);
+      addedReverseDependent = true;
+    }
+  }
+
+  for (const { manifest: packageManifest, relativePath } of packageManifests.values()) {
+    if (
+      packageManifest.private ||
+      typeof packageManifest.name !== 'string' ||
+      !selectedPackageNames.has(packageManifest.name)
+    ) {
+      continue;
+    }
+
+    const packageRange = packageManifest.engines?.node;
+    if (packageRange === undefined) {
+      continue;
+    }
+
+    assert(
+      typeof packageRange === 'string' && packageRange.length > 0,
+      `${packageManifest.name} (${relativePath}) engines.node must be a non-empty string.`,
+    );
+
+    for (const dependencyName of Object.keys(packageManifest.dependencies ?? {})) {
+      const dependency = packageManifests.get(dependencyName);
+      const dependencyRange = dependency === undefined
+        ? lockedDependencyNodeEngineRange(lockfileText, relativePath.replace(/\/package\.json$/u, ''), dependencyName)
+        : dependency.manifest.engines?.node;
+      if (dependencyRange === undefined) {
+        continue;
+      }
+
+      assert(
+        typeof dependencyRange === 'string' && dependencyRange.length > 0,
+        dependency === undefined
+          ? `${dependencyName} locked engines.node must be a non-empty string.`
+          : `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
+      );
+
+      const incompatibleVersion = nodeEngineCandidates(packageRange, dependencyRange).find((version) =>
+        nodeEngineRangeIncludes(packageRange, version) &&
+        !nodeEngineRangeIncludes(dependencyRange, version));
+
+      if (incompatibleVersion !== undefined) {
+        throw new Error(
+          `${packageManifest.name} engines.node ${packageRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
+            `but mandatory ${dependencyName}${dependency === undefined ? ' locked' : ''} engines.node is ${dependencyRange}.`,
+        );
+      }
+    }
+  }
+}
+
+export const enforceMandatoryFirstPartyDependencyEngineAlignment =
+  enforceMandatoryProductionDependencyEngineAlignment;
 
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
   const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
@@ -70,6 +521,76 @@ export function enforceSocketIoNodeEngineAlignment(readText = read) {
     assert(
       manifest.engines?.node === canonicalNodeRange,
       `${packageName} engines.node must equal the canonical @fluojs/runtime range ${canonicalNodeRange}.`,
+    );
+  }
+}
+
+export function enforcePlatformFastifyEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-fastify/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-fastify must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const fastifyHeadingMatches = [...content.matchAll(/^## Fastify\s*$/gmu)];
+
+    assert(
+      fastifyHeadingMatches.length === 1,
+      `${relativePath} must include exactly one ## Fastify heading; found ${fastifyHeadingMatches.length}.`,
+    );
+
+    const fastifySectionStart = fastifyHeadingMatches[0].index;
+    const nextSectionStart = content.indexOf('\n## ', fastifySectionStart + 1);
+    const fastifySection = content.slice(
+      fastifySectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      fastifySection.includes(`\`${engineRange}\``),
+      `${relativePath} Fastify section must state @fluojs/platform-fastify engines.node ${engineRange}.`,
+    );
+  }
+}
+
+export function enforcePlatformNodejsEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-nodejs/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-nodejs must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const headingMatches = [...content.matchAll(/^## Raw Node\.js\s*$/gmu)];
+
+    assert(
+      headingMatches.length === 1,
+      `${relativePath} must include exactly one ## Raw Node.js heading; found ${headingMatches.length}.`,
+    );
+    const sectionStart = headingMatches[0].index;
+
+    const nextSectionStart = content.indexOf('\n## ', sectionStart + 1);
+    const rawNodeSection = content.slice(
+      sectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      rawNodeSection.includes(`\`${engineRange}\``),
+      `${relativePath} Raw Node.js section must state @fluojs/platform-nodejs engines.node ${engineRange}.`,
     );
   }
 }
@@ -111,11 +632,14 @@ const ssotPairs = [
   ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md'],
   ['docs/contracts/release-governance.md', 'docs/contracts/release-governance.ko.md'],
   ['docs/contracts/platform-conformance-authoring-checklist.md', 'docs/contracts/platform-conformance-authoring-checklist.ko.md'],
+  ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
   ['docs/reference/package-folder-structure.md', 'docs/reference/package-folder-structure.ko.md'],
   ['docs/reference/package-surface.md', 'docs/reference/package-surface.ko.md'],
 ];
 
 const contractGateTriggers = new Set([
+  'docs/architecture/auth-and-jwt.md',
+  'docs/architecture/auth-and-jwt.ko.md',
   'docs/architecture/http-catch-all-route-grammar.md',
   'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',
@@ -142,6 +666,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/http-runtime.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
+  // These shared files intentionally use only the generic contract gate; topic-specific prose
+  // must not impose unrelated companion-document requirements.
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
   // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
@@ -151,8 +677,11 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/realtime.ko.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-  'docs/getting-started/migrate-from-nestjs.md',
-  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'apps/docs/content/docs/guides/auth.mdx',
+  'apps/docs/content/docs/guides/auth.ko.mdx',
+  // Queue worker ownership and NestJS/Bull migration boundaries.
+  'packages/queue/README.md',
+  'packages/queue/README.ko.md',
   'docs/architecture/transactions.md',
   'docs/architecture/transactions.ko.md',
   'docs/reference/package-chooser.md',
@@ -161,7 +690,29 @@ const contractGateTriggers = new Set([
   'docs/reference/package-folder-structure.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
+
+const studioReportBootstrapFailureCompanionPaths = [
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'packages/cli/src/public-api.test.ts',
+  'book/advanced/toc.md',
+  'book/advanced/toc.ko.md',
+];
+const studioReportBootstrapFailureContractPaths = [
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const studioReportBootstrapFailureContractBegin =
+  '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->';
+const studioReportBootstrapFailureContractEnd =
+  '<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
 
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
@@ -255,6 +806,27 @@ export function changedFilesFromGit(runCommand = run, env = process.env) {
   throw new Error(
     `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
   );
+}
+
+function lockfileTextAtMergeBase(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    throw new Error(
+      `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
+    );
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const lockfileResult = runCommand('git', ['show', `${mergeBase}:pnpm-lock.yaml`], { allowFailure: true });
+  if (lockfileResult.status !== 0) {
+    throw new Error(
+      'Platform consistency governance check failed: unable to read pnpm-lock.yaml at the merge-base. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.',
+    );
+  }
+
+  return lockfileResult.stdout;
 }
 
 function normalizeHeading(line) {
@@ -364,6 +936,35 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceCliMigrationTransformDocs(readText = read) {
+  const transformSource = readText('packages/cli/src/transforms/nestjs-migrate.ts');
+  const transformList = /export const MIGRATION_TRANSFORMS = \[([\s\S]*?)\] as const;/u.exec(transformSource);
+  assert(transformList?.[1], 'unable to read the CLI migration transform declarations.');
+
+  const supportedTransforms = new Set([...transformList[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]));
+  assert(supportedTransforms.size > 0, 'CLI migration transform declarations must not be empty.');
+
+  const migrationDocs = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/cli/README.md',
+    'packages/cli/README.ko.md',
+  ];
+
+  for (const relativePath of migrationDocs) {
+    const markdown = readText(relativePath);
+    const selections = [...markdown.matchAll(/--(?:only|skip)\s+([a-z]+(?:,[a-z]+)*)/gu)];
+    for (const selection of selections) {
+      for (const transform of selection[1].split(',')) {
+        assert(
+          supportedTransforms.has(transform),
+          `documented migration transform "${transform}" in ${relativePath} is not supported by the CLI.`,
+        );
+      }
+    }
+  }
 }
 
 function hasOneArgumentGuardContextContract(markdown) {
@@ -705,10 +1306,295 @@ function enforceSsotMirrorStructure() {
   }
 }
 
-export function enforceContractCompanionUpdates(changedFiles) {
-  const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
+const nestMigrationGuidePaths = [
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const emailMigrationDocumentPaths = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const emailMigrationEnforcementTool =
+  'tooling/governance/email-nestjs-migration-docs.mjs';
+const bootstrapMigrationImplementationEvidence = [
+  'packages/cli/src/transforms/nestjs-migrate.ts',
+  'packages/cli/src/transforms/nestjs-migrate.test.ts',
+  'packages/cli/src/commands/migrate.ts',
+  'packages/cli/src/commands/migrate.test.ts',
+];
+const bootstrapMigrationBoundaryMarker =
+  '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->';
+const fastifyRawContextTokens = [
+  'context.request.raw',
+  'context.response.raw',
+  'IncomingMessage',
+  'ServerResponse',
+  'FastifyRequest',
+  'FastifyReply',
+];
+
+function nestFactoryCreateRow(documentation) {
+  const rows = documentation
+    .split('\n')
+    .filter((line) => line.startsWith('| `NestFactory.create(AppModule)` |'));
+
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
+function isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots) {
+  if (
+    !migrationGuideSnapshots
+    || !nestMigrationGuidePaths.every((path) => hasChanged(changedFiles, path))
+    || !bootstrapMigrationImplementationEvidence.every((path) => hasChanged(changedFiles, path))
+  ) {
+    return false;
+  }
+
+  return nestMigrationGuidePaths.every((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseRow = nestFactoryCreateRow(snapshot.base);
+    const headRow = nestFactoryCreateRow(snapshot.head);
+    if (!baseRow || !headRow || baseRow === headRow) {
+      return false;
+    }
+
+    return (
+      snapshot.base.replace(baseRow, '') === snapshot.head.replace(headRow, '').replace(`${bootstrapMigrationBoundaryMarker}\n`, '')
+      && snapshot.head.includes(bootstrapMigrationBoundaryMarker)
+      && headRow.includes('FluoFactory.create(AppModule, { adapter })')
+      && headRow.includes('listen()')
+      && headRow.includes('--platform express')
+    );
+  });
+}
+
+function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
+  if (!migrationGuideSnapshots) {
+    return false;
+  }
+
+  return nestMigrationGuidePaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseLines = new Set(snapshot.base.split('\n'));
+    const headLines = new Set(snapshot.head.split('\n'));
+    const changedLines = [
+      ...snapshot.base.split('\n').filter((line) => !headLines.has(line)),
+      ...snapshot.head.split('\n').filter((line) => !baseLines.has(line)),
+    ];
+
+    return changedLines.some((line) => fastifyRawContextTokens.some((token) => line.includes(token)));
+  });
+}
+
+function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    return undefined;
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const snapshots = {};
+  for (const path of paths) {
+    const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
+    if (baseResult.status !== 0) {
+      return undefined;
+    }
+
+    snapshots[path] = {
+      base: baseResult.stdout,
+      head: read(path),
+    };
+  }
+
+  return snapshots;
+}
+
+export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+  return documentSnapshotsFromGit(
+    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool],
+    runCommand,
+    env,
+  );
+}
+
+export function studioReportBootstrapFailureSnapshotsFromGit(runCommand = run, env = process.env) {
+  return documentSnapshotsFromGit(studioReportBootstrapFailureContractPaths, runCommand, env);
+}
+
+/**
+ * @param {string[]} changedFiles
+ * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
+ */
+const emailMigrationCompanions = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/contracts/nestjs-parity-gaps.md',
+  'docs/contracts/nestjs-parity-gaps.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'book/intermediate/ch16-email.md',
+  'book/intermediate/ch16-email.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+];
+const governedEmailMigrationDocuments = new Set([
+  ...emailMigrationDocumentPaths,
+]);
+
+export function enforceEmailMigrationCompanions(changedFiles) {
+  // Public Email contracts stay migration-safe only when every companion changes together.
+  assert(
+    emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
+    'Email NestJS migration documentation must include every governed Email companion.',
+  );
+}
+
+function emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) {
+  if (!changedFiles.some((path) => governedEmailMigrationDocuments.has(path))) {
+    return false;
+  }
+
+  if (
+    !migrationGuideSnapshots ||
+    !emailMigrationDocumentPaths.every((path) => {
+      const snapshot = migrationGuideSnapshots[path];
+      return typeof snapshot?.base === 'string' && typeof snapshot.head === 'string';
+    })
+  ) {
+    return true;
+  }
+
+  return emailMigrationDocumentPaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    return headingBoundedSection(
+      snapshot.base,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    ) !== headingBoundedSection(
+      snapshot.head,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    );
+  });
+}
+
+function sourceWithoutSharedEmailMigrationParserExports(source) {
+  return source
+    .replace(/^export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;\n/mu, '')
+    .replace(/\bexport function headingBoundedSection\(/u, 'function headingBoundedSection(');
+}
+
+function emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots) {
+  if (!hasChanged(changedFiles, emailMigrationEnforcementTool)) {
+    return false;
+  }
+
+  const snapshot = migrationGuideSnapshots?.[emailMigrationEnforcementTool];
+  if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') {
+    return true;
+  }
+
+  return sourceWithoutSharedEmailMigrationParserExports(snapshot.base) !==
+    sourceWithoutSharedEmailMigrationParserExports(snapshot.head);
+}
+
+export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const touchedEmailMigrationDocumentation =
+    emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
+    emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots);
+  const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
+  const touchedContractGate = changedFiles.some(
+    (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
+  );
+  const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
+  const fastifyRawContextDocumentation = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ];
+  const touchedFastifyRawContextDocumentation = [
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
+
+  if (touchedEmailMigrationDocumentation) {
+    enforceEmailMigrationCompanions(changedFiles);
+  }
+
+  if (touchedFastifyRawContextDocumentation) {
+    assert(
+      fastifyRawContextDocumentation.every((path) => hasChanged(changedFiles, path)),
+      'Fastify raw request and response migration docs must include all governed Fastify documentation.',
+    );
+    assert(
+      hasChanged(changedFiles, 'packages/platform-fastify/src/adapter.test.ts'),
+      'Fastify raw request and response migration docs must include packages/platform-fastify/src/adapter.test.ts.',
+    );
+  }
 
   if (!touchedContractGate) {
+    return;
+  }
+
+  if (touchedHttpLifecycleContract) {
+    assert(
+      [...httpLifecycleContractDocs].every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/architecture/http-runtime.md and docs/architecture/http-runtime.ko.md.',
+    );
+    assert(
+      contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeGovernanceImplementation),
+      `HTTP runtime contract updates must include ${httpRuntimeGovernanceImplementation}.`,
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeChangedPathRegression),
+      `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
+    );
+    if (includesAny(changedFiles, (path) => staticAssetRuntimeSourcePaths.has(path))) {
+      assert(
+        staticAssetRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `HTTP static asset contract changes must include ${staticAssetRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
+    if (includesAny(changedFiles, (path) => httpByteRangeRuntimeSourcePaths.has(path))) {
+      assert(
+        httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `HTTP byte-range runtime contract changes must include ${httpByteRangeRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
+    if (
+      hasChanged(changedFiles, httpConnectionIdentityRegressionTest)
+      || hasChanged(changedFiles, accessLogObserverLifecycleRegressionTest)
+    ) {
+      return;
+    }
+    assert(
+      hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
+      `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
+    );
+    assert(
+      hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+      `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
+    );
     return;
   }
 
@@ -728,7 +1614,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking, fail-open manual transaction drain, plus runtime-boundary docs,
   // raw Node.js adapter type/runtime-floor and retry/body-limit/shutdown
-  // regression coverage, Cloudflare Workers adapter public seam and lifecycle
+  // regression coverage, streaming multipart parser scope, Cloudflare Workers adapter public seam and lifecycle
   // shutdown docs, metrics shared-registry HTTP collector or platform telemetry
   // stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
@@ -737,6 +1623,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // serialization class options, committed-response ownership bypass, and
   // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
+  // custom standard-decorator Symbol.metadata preload ordering before dynamic
+  // application-graph import,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, Node.js
   // tooling runtime-floor discoverability, and CLI-owned active ingestion socket
@@ -762,6 +1650,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
+  // plus HTTP trust-proxy connection identity scope, where forwarding metadata
+  // can replace direct transport identity only behind an explicit trusted peer
+  // boundary and legacy full-chain compatibility remains distinct,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, inherited class/method render-policy
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
@@ -791,10 +1682,24 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // fetch-style runtimes do not apply a backpressure policy to room broadcasts),
   // plus terminal Node upgrade admission and retained disconnect lifecycle state
   // across the bounded cross-runtime shutdown drain, plus HTTP request-observer
-  // success ordering after module and application middleware fully settle.
+  // success ordering after module and application middleware fully settle,
+  // plus @nestjs/config migration call-shape and bootstrap ownership boundaries
+  // where ConfigModule never reads external secret Providers itself and
+  // ConfigService.get/getOrThrow accept a single key with no NestJS
+  // default-value or options overload, plus JWT refresh-token-specific HMAC
+  // algorithm policy separation from narrow access-token algorithm allowlists,
+  // plus HTTP conditional-request middleware/guard ordering, representation
+  // existence, conditional/HEAD response ownership, single-range 206 and
+  // bodyless 416 partial responses, If-Range reuse of selected validators,
+  // identity-encoded representation-byte metadata, cross-adapter conformance,
+  // and Notifications publisher wiring versus active lifecycle-publication
+  // status so configured-but-disabled publishers do not appear as active
+  // event-backed dependencies or external owners.
+  // and Studio report emission requiring completed bootstrap with no artifact
+  // emitted for failed or hanging bootstrap attempts.
 
   assert(
-    hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
+    contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
     'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
   );
   assert(
@@ -806,11 +1711,70 @@ export function enforceContractCompanionUpdates(changedFiles) {
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
   );
+  assert(
+    !touchedHttpLifecycleContract || hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+    `HTTP lifecycle contract docs must include ${manualSseLifecycleRegressionTest}.`,
+  );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
   // payload clone, byte-safe TCP UTF-8 framing, TCP 1 MiB frames, port:0 routing,
   // shutdown send guards, concurrent close-promise sharing, and gRPC abort-listener
   // cleanup docs are also covered by this companion path.
+}
+
+function studioReportBootstrapFailureContractRegion(documentation) {
+  const beginCount = documentation.split(studioReportBootstrapFailureContractBegin).length - 1;
+  const endCount = documentation.split(studioReportBootstrapFailureContractEnd).length - 1;
+  const legacy = '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+  const legacyCount = documentation.split(legacy).length - 1;
+  assert(
+    beginCount === 1 && endCount === 1 && legacyCount === 0,
+    `Studio bootstrap-failure guidance must preserve exactly one ordered canonical marker pair and no legacy markers; observed begin=${beginCount}, end=${endCount}, legacy=${legacyCount}.`,
+  );
+  const begin = documentation.indexOf(studioReportBootstrapFailureContractBegin);
+  const end = documentation.indexOf(studioReportBootstrapFailureContractEnd);
+  assert(
+    begin < end,
+    'Studio bootstrap-failure guidance contract markers must be ordered begin then end.',
+  );
+  return documentation.slice(begin, end + studioReportBootstrapFailureContractEnd.length);
+}
+
+export function enforceStudioReportBootstrapFailureCompanions(changedFiles, documentSnapshots) {
+  let contractChanged = false;
+
+  for (const path of studioReportBootstrapFailureContractPaths) {
+    if (!hasChanged(changedFiles, path)) continue;
+    const snapshot = documentSnapshots?.[path];
+    assert(snapshot && typeof snapshot.base === 'string' && typeof snapshot.head === 'string',
+      `Studio bootstrap-failure guidance cannot verify ${path} without valid base and head snapshots.`);
+    const headRegion = studioReportBootstrapFailureContractRegion(snapshot.head);
+    const legacy = '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+    const baseBeginCount = snapshot.base.split(studioReportBootstrapFailureContractBegin).length - 1;
+    const baseEndCount = snapshot.base.split(studioReportBootstrapFailureContractEnd).length - 1;
+    const legacyCount = snapshot.base.split(legacy).length - 1;
+    assert(
+      (baseBeginCount === 1 && baseEndCount === 1 && legacyCount === 0) ||
+        (baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0) ||
+        (baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1),
+      `Studio bootstrap-failure guidance BASE markers must be canonical, one legacy marker, or empty; observed begin=${baseBeginCount}, end=${baseEndCount}, legacy=${legacyCount}.`,
+    );
+    const baseRegion = baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0
+      ? ''
+      : baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1
+        ? legacy
+        : studioReportBootstrapFailureContractRegion(snapshot.base);
+    contractChanged ||= baseRegion !== headRegion;
+  }
+
+  if (!contractChanged) {
+    return;
+  }
+
+  assert(
+    studioReportBootstrapFailureCompanionPaths.every((path) => hasChanged(changedFiles, path)),
+    'Studio bootstrap-failure guidance must update the Chapter 15 EN/KO pair, NestJS migration EN/KO pair, and packages/cli/src/public-api.test.ts regression.',
+  );
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
@@ -1009,20 +1973,20 @@ const cloudflareWorkerFetchEnvGovernedDocs = [
 ];
 
 const cloudflareWorkersLifecycleDocRequirements = [
-  ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', ...cloudflareWorkerFetchEnvMarkers.english]],
-  ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', ...cloudflareWorkerFetchEnvMarkers.korean]],
-  ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application']],
-  ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap']],
-  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
-  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
-  ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', ...cloudflareWorkerFetchEnvMarkers.english]],
-  ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', ...cloudflareWorkerFetchEnvMarkers.korean]],
-  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
-  ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
-  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
-  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'fetch-time `env` boundary is mirrored specifically in the package README, intermediate book, NestJS migration map, and website runtime guide', 'request-bound bindings are validated and narrowed']],
-  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'Fetch-time `env` boundary는 package README, intermediate book, NestJS migration map, website runtime guide에만 명시적으로 반영', 'request-bound binding은 application-shaped 값이 provider method에 전달되기 전에 검증하고 좁혀야 합니다']],
+  ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', 'host-invoked shutdown callback', 'successful `worker.close()` is intentionally restartable', ...cloudflareWorkerFetchEnvMarkers.english]],
+  ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', 'host가 호출하는 shutdown callback', '성공한 `worker.close()`는 의도적으로 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean]],
+  ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application', 'Cloudflare Worker close ownership', 'host-invoked shutdown callback', 'successful lazy-entrypoint close is restartable']],
+  ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap', 'Cloudflare Worker close 소유권', 'host가 호출하는 shutdown callback', '성공한 lazy-entrypoint close는 재시작 가능']],
+  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', 'does not invoke `worker.close()`', 'successful lazy-entrypoint close is restartable', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
+  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', 'host는 exported `fetch` handler에 대해 `worker.close()`를 호출하지 않으며', '성공한 lazy-entrypoint close는 terminal이 아니라 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
+  ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', 'no host-invoked shutdown callback', 'successful lazy-entrypoint `close()` is restartable', ...cloudflareWorkerFetchEnvMarkers.english]],
+  ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', 'host가 호출하는 shutdown callback이 없으므로', '성공한 lazy-entrypoint `close()`는 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean]],
+  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', 'host-invoked shutdown callback', 'successful lazy-entrypoint close is restartable', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
+  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', 'host가 호출하는 shutdown callback', '성공한 lazy-entrypoint close는 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
+  ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`', 'does not send a shutdown callback', 'successful lazy-entrypoint close is restartable']],
+  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`', 'shutdown callback을 보내지 않습니다', '성공한 lazy-entrypoint close는 재시작 가능']],
+  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'fetch-time `env` boundary is mirrored specifically in the package README, intermediate book, NestJS migration map, and website runtime guide', 'request-bound bindings are validated and narrowed', 'A Worker `fetch` handler has no host-invoked shutdown callback', 'successful lazy-entrypoint close is restartable']],
+  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'Fetch-time `env` boundary는 package README, intermediate book, NestJS migration map, website runtime guide에만 명시적으로 반영', 'request-bound binding은 application-shaped 값이 provider method에 전달되기 전에 검증하고 좁혀야 합니다', 'Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로', '성공한 lazy-entrypoint close는 재시작 가능']],
 ];
 
 const serializerResponseOwnershipDocRequirements = [
@@ -1778,16 +2742,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
   );
   assert(
-    packageSurface.includes('NormalizedCacheModuleOptions') &&
-      docsContext.includes('NormalizedCacheModuleOptions') &&
-      cacheManagerReadme.includes('NormalizedCacheModuleOptions'),
-    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+    packageSurface.includes('NormalizedCacheModuleOptions') && packageSurface.includes('CacheModule.forRootAsync') &&
+      docsContext.includes('NormalizedCacheModuleOptions') && docsContext.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadme.includes('NormalizedCacheModuleOptions') && cacheManagerReadme.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
-    packageSurfaceKo.includes('NormalizedCacheModuleOptions') &&
-      docsContextKo.includes('NormalizedCacheModuleOptions') &&
-      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions'),
-    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+    packageSurfaceKo.includes('NormalizedCacheModuleOptions') && packageSurfaceKo.includes('CacheModule.forRootAsync') &&
+      docsContextKo.includes('NormalizedCacheModuleOptions') && docsContextKo.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions') && cacheManagerReadmeKo.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
     packageSurface.includes('createPassportJsStrategyBridge(...)') &&
@@ -1823,27 +2787,35 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageSurface.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
       packageSurface.includes('dispatchMany(...)') &&
       packageSurface.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      packageSurface.includes('immutable observation snapshots') &&
       docsContext.includes('packages/notifications/README.md') &&
       docsContext.includes('book/intermediate/ch15-notifications.md') &&
       docsContext.includes('concrete queue/event-bus ownership') &&
+      docsContext.includes('Lifecycle publishers receive immutable observer snapshots') &&
       notificationsReadme.includes('dispatchMany(...)') &&
       notificationsReadme.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsReadme.includes('separate immutable lifecycle event snapshot') &&
       notificationsChapter.includes('NotificationDispatchBatchResult') &&
+      notificationsChapter.includes('separate immutable event snapshots') &&
       notificationsChapter.includes('global: false'),
-    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, immutable lifecycle snapshots, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurfaceKo.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
       packageSurfaceKo.includes('dispatchMany(...)') &&
       packageSurfaceKo.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      packageSurfaceKo.includes('immutable observation snapshot') &&
       docsContextKo.includes('packages/notifications/README.ko.md') &&
       docsContextKo.includes('book/intermediate/ch15-notifications.ko.md') &&
       docsContextKo.includes('concrete queue/event-bus ownership') &&
+      docsContextKo.includes('immutable observer snapshot') &&
       notificationsReadmeKo.includes('dispatchMany(...)') &&
       notificationsReadmeKo.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsReadmeKo.includes('별도의 immutable lifecycle event snapshot') &&
       notificationsChapterKo.includes('NotificationDispatchBatchResult') &&
+      notificationsChapterKo.includes('별도의 immutable event snapshot') &&
       notificationsChapterKo.includes('global: false'),
-    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, immutable lifecycle snapshots, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurface.includes('@fluojs/cron') &&
@@ -2285,6 +3257,13 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const sseBackpressureRegression = read(
     'packages/http/src/dispatch/dispatcher-sse-backpressure-cancellation.test.ts',
   );
+  const byteRangeRegression = read('packages/http/src/dispatch/byte-range-response.test.ts');
+  const httpAdapterPortabilityHarness = read(
+    'packages/testing/src/portability/http-adapter-portability.ts',
+  );
+  const httpAdapterPortabilityRegression = read(
+    'packages/testing/src/portability/http-adapter-portability.test.ts',
+  );
 
   assert(
     abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
@@ -2352,6 +3331,17 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
       sseBackpressureRegression.includes('writeFailure') &&
       sseBackpressureRegression.includes('drainFailure'),
     'Managed SSE regressions must cover blocked-drain cancellation, exactly-once iterator cleanup, request-scope disposal, and original stream errors.',
+  );
+  assert(
+    byteRangeRegression.includes('if-range') &&
+      byteRangeRegression.includes('uses the complete representation when If-Range does not match') &&
+      byteRangeRegression.includes('writes a satisfiable byte range from a byte representation'),
+    'HTTP byte-range regressions must cover satisfiable range selection and If-Range fallback.',
+  );
+  assert(
+    httpAdapterPortabilityHarness.includes('assertSupportsSingleByteRanges') &&
+      httpAdapterPortabilityRegression.includes('await harness.assertSupportsSingleByteRanges()'),
+    'HTTP byte-range regressions must retain canonical listener-harness coverage.',
   );
 
   for (const documentationPath of [
@@ -2560,6 +3550,108 @@ export function enforceHttpCustomMethodContract() {
   );
 }
 
+export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
+  const assertionOrder = [
+    'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsSingleByteRanges()',
+    'assertSupportsHttpErrorRepresentations()',
+    'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+    'assertPreservesMalformedCookieValues()',
+    'assertSupportsPortableResponseCookies()',
+    'assertPreservesRawBodyForJsonAndText()',
+    'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+    'assertExcludesRawBodyForMultipart()',
+    'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+    'assertSupportsSseStreaming()',
+    'assertSettlesStreamDrainWaitOnClose()',
+    'assertReportsConfiguredHostInStartupLogs()',
+    'assertReportsHttpsStartupUrl',
+    'assertRemovesShutdownSignalListenersAfterClose()',
+  ];
+  const discoverabilityPaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/advanced/ch14-portability-testing.md',
+    'book/advanced/ch14-portability-testing.ko.md',
+  ];
+
+  for (const documentationPath of discoverabilityPaths) {
+    const documentation = readText(documentationPath);
+    const suiteStartMarker = documentationPath.startsWith('docs/')
+      ? '## HTTP Portability Harness Contract'
+      : "describe('MyCustomAdapter Portability', () => {";
+    const suiteStart = documentation.indexOf(suiteStartMarker);
+    assert(
+      suiteStart >= 0,
+      `${documentationPath} must keep the complete HTTP portability suite section discoverable.`,
+    );
+    const suite = documentation.slice(suiteStart);
+    let previousPosition = -1;
+
+    for (const assertion of assertionOrder) {
+      const position = suite.indexOf(assertion);
+      assert(
+        position >= 0,
+        `${documentationPath} must keep ${assertion} discoverable.`,
+      );
+      assert(
+        position > previousPosition,
+        `${documentationPath} must keep the complete HTTP portability suite in canonical assertion order.`,
+      );
+      previousPosition = position;
+    }
+
+    for (const supportingIdentifier of [
+      'createHttpAdapterPortabilityHarness',
+      'createErrorRepresentationBootstrapOptions',
+      'TEST_TLS_CERTIFICATE',
+      'TEST_TLS_PRIVATE_KEY',
+    ]) {
+      assert(
+        documentation.includes(supportingIdentifier),
+        `${documentationPath} must keep ${supportingIdentifier} discoverable.`,
+      );
+    }
+  }
+
+  for (const contractPath of [
+    'docs/contracts/platform-conformance-authoring-checklist.md',
+    'docs/contracts/platform-conformance-authoring-checklist.ko.md',
+  ]) {
+    const contract = readText(contractPath);
+
+    for (const marker of [
+      '## Adapter Portability Requirements',
+      'createHttpAdapterPortabilityHarness(...)',
+      'assertSupportsPortableResponseCookies()',
+      'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsSingleByteRanges()',
+      'assertSupportsHttpErrorRepresentations()',
+      'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+      'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+      'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+      'assertSettlesStreamDrainWaitOnClose()',
+      'assertReportsConfiguredHostInStartupLogs()',
+      'assertReportsHttpsStartupUrl(...)',
+      'assertRemovesShutdownSignalListenersAfterClose()',
+    ]) {
+      assert(
+        contract.includes(marker),
+        `${contractPath} must keep the HTTP portability companion contract marker ${marker}.`,
+      );
+    }
+  }
+
+  const networkHarness = readText('packages/testing/src/portability/http-adapter-portability.ts');
+  for (const assertion of assertionOrder) {
+    const identifier = assertion.replace(/\([^)]*\)$/, '');
+    assert(
+      networkHarness.includes(identifier),
+      `packages/testing/src/portability/http-adapter-portability.ts must retain ${identifier}.`,
+    );
+  }
+}
+
 export function enforceOpenApiNullableNormalizationContract() {
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -2597,6 +3689,46 @@ export function enforceOpenApiNullableNormalizationContract() {
     ['nullable: true', 'nullable: false', "type: 'array'", '$ref:'].every((marker) => regression.includes(marker)),
     'OpenAPI nullable regression coverage must include true, false, array, and $ref inputs.',
   );
+}
+
+const openApiMigrationDocumentRequirements = [
+  {
+    heading: '## OpenAPI Contract Differences',
+    markers: ["defaultErrorResponsesPolicy: 'omit'", 'operationId', 'documentTransform', 'documentPath', 'uiPath', 'useFactory(...)'],
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+  },
+  {
+    heading: '## OpenAPI 계약 차이',
+    markers: ["defaultErrorResponsesPolicy: 'omit'", 'operationId', 'documentTransform', 'documentPath', 'uiPath', 'useFactory(...)'],
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+  },
+  {
+    heading: '### Default Error Contract',
+    markers: [],
+    path: 'book/beginner/ch10-openapi.md',
+  },
+  {
+    heading: '### 기본 오류 계약',
+    markers: [],
+    path: 'book/beginner/ch10-openapi.ko.md',
+  },
+];
+
+export function enforceOpenApiMigrationDocumentStructure(readText = read) {
+  for (const { heading, markers, path } of openApiMigrationDocumentRequirements) {
+    const documentation = readText(path);
+    const headingCount = documentation.split('\n').filter((line) => line.trim() === heading).length;
+    const missingMarkers = markers.filter((marker) => !documentation.includes(marker));
+
+    assert(
+      headingCount === 1,
+      `${path} must contain exactly one ${heading.slice('#'.repeat(heading.match(/^#+/)?.[0].length ?? 0).length + 1)} heading; found ${headingCount}.`,
+    );
+    assert(
+      missingMarkers.length === 0,
+      `${path} must retain migration marker(s): ${missingMarkers.join(', ')}.`,
+    );
+  }
 }
 
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
@@ -2639,10 +3771,11 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   }
 }
 
-export function enforcePersistenceTransactionInterceptorCompatibility() {
+export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
-    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
-    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
@@ -2657,68 +3790,312 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
     'docs/reference/package-surface.ko.md',
   ];
 
-  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
-    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
-    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+  for (const [interceptor, indexPath, modulePath, sourcePath] of compatibilityExports) {
+    const indexSource = readText(indexPath);
+    const moduleSource = readText(modulePath);
+    const source = readText(sourcePath);
 
     assert(
-      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      new RegExp(`@deprecated[\\s\\S]*?export class ${interceptor}\\b`).test(source),
       `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
     );
-    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+    assert(
+      /^export \* from '\.\/transaction\.js';$/m.test(indexSource),
+      `${indexPath} must root-export the deprecated transaction interceptor.`,
+    );
+
+    if (interceptor === 'DrizzleTransactionInterceptor') {
+      const exportSection = /const DRIZZLE_MODULE_EXPORTS = \[([\s\S]*?)\];/.exec(moduleSource)?.[1];
+      const providerPath = 'packages/drizzle/src/registration-providers.ts';
+      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(
+        readText(providerPath),
+      )?.[1];
+
+      assert(
+        exportSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(exportSection),
+        `${modulePath} must register DrizzleTransactionInterceptor in DRIZZLE_MODULE_EXPORTS.`,
+      );
+      assert(
+        providerSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(providerSection),
+        `${providerPath} must register DrizzleTransactionInterceptor as a runtime provider.`,
+      );
+      assert(
+        /return this\.database\.requestTransaction\(\s*\(\) => next\.handle\(\),\s*context\.requestContext\.request\.signal\s*,?\s*\);/.test(source),
+        `${sourcePath} must delegate the request signal to requestTransaction(...).`,
+      );
+    } else {
+      assert(
+        new RegExp(`^\\s*${interceptor},\\s*$`, 'm').test(moduleSource),
+        `${modulePath} must register ${interceptor}.`,
+      );
+    }
 
     for (const contractPath of contractPaths) {
       assert(
-        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        readText(contractPath).includes(interceptor),
         `${contractPath} must keep ${interceptor} compatibility discoverable.`,
       );
     }
   }
+
+  for (const guidePath of [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+  ]) {
+    const guide = readText(guidePath);
+    const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];
+    const drizzlePublicApiRow = /^\| `@fluojs\/drizzle` \|.*$/mu.exec(guide)?.[0];
+
+    assert(
+      requestTransactionsRow !== undefined &&
+        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+          .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('deprecated') &&
+        requestTransactionsRow.includes('1.x'),
+      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+    );
+    assert(
+      drizzlePublicApiRow !== undefined &&
+        drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
+        drizzlePublicApiRow.includes('deprecated'),
+      `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+    );
+  }
 }
 
-export function enforceQueueWorkerOwnershipContract() {
-  const contractPaths = [
-    'packages/queue/README.md',
-    'packages/queue/README.ko.md',
-    'docs/CONTEXT.md',
-    'docs/CONTEXT.ko.md',
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    'docs/reference/package-surface.md',
-    'docs/reference/package-surface.ko.md',
-    'book/intermediate/ch11-queue.md',
-    'book/intermediate/ch11-queue.ko.md',
-  ];
+function enforceDrizzleNamedClientContract() {
+  const tokens = read('packages/drizzle/src/tokens.ts');
+  const namedRegistration = read('packages/drizzle/src/named-registration.ts');
+  const types = read('packages/drizzle/src/types.ts');
 
-  for (const contractPath of contractPaths) {
+  assert(
+    /name\?: string;/.test(types),
+    'packages/drizzle/src/types.ts must expose the optional named-client registration identity.',
+  );
+  assert(
+    [
+      'getDrizzleDatabaseToken',
+      'getDrizzleDisposeToken',
+      'getDrizzleHandleProviderToken',
+      'getDrizzleOptionsToken',
+    ].every((token) => tokens.includes(`function ${token}`)),
+    'packages/drizzle/src/tokens.ts must expose all named-client DI token helpers.',
+  );
+  assert(
+    namedRegistration.includes('getNormalizedOptionsToken(name)') &&
+      namedRegistration.includes('Named Drizzle registrations are scoped and cannot be registered globally.'),
+    'packages/drizzle/src/named-registration.ts must isolate named client options and reject named global registrations.',
+  );
+
+  for (const contractPath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+  ]) {
     const contract = read(contractPath);
+
+    assert(
+      contract.includes('getDrizzleDatabaseToken') && contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document explicit named-client injection and transaction selection.`,
+    );
+  }
+
+  for (const contractPath of [
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('Drizzle') &&
+        contract.includes('ALS') &&
+        contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document named-client transaction selection.`,
+    );
+  }
+}
+
+const queueWorkerOwnershipContractPaths = [
+  'packages/queue/README.md',
+  'packages/queue/README.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+  'book/intermediate/ch11-queue.md',
+  'book/intermediate/ch11-queue.ko.md',
+];
+const queueWorkerOwnershipSourcePaths = [
+  ...queueWorkerOwnershipContractPaths,
+  'packages/queue/src/worker-ownership.ts',
+  'packages/queue/src/module.ts',
+  'packages/queue/src/worker-ownership.test.ts',
+];
+
+export function enforceQueueWorkerOwnershipContractFromSources(sources) {
+  const readSource = (path) => {
+    const source = sources[path];
+    assert(typeof source === 'string', `Queue ownership contract source "${path}" must be provided.`);
+    return source;
+  };
+
+  for (const contractPath of queueWorkerOwnershipContractPaths) {
+    const contract = readSource(contractPath);
     assert(
       contract.includes('scope') && contract.includes('Redis') && contract.includes('jobName'),
       `${contractPath} must keep cross-scope Redis and jobName ownership discoverable.`,
     );
   }
 
-  const ownershipSource = read('packages/queue/src/worker-ownership.ts');
-  const moduleSource = read('packages/queue/src/module.ts');
-  const regressionSource = read('packages/queue/src/worker-ownership.test.ts');
+  const queuePackageSurfaceBulletRequirements = [
+    [
+      'docs/reference/package-surface.md',
+      [
+        'application-supplied `ownershipNamespace` identities independent of DI `clientName`',
+        'pre-resource `(ownershipNamespace, jobName)` collision validation',
+        '2.x compatibility diagnostics by default',
+        "opt-in `ownershipEnforcement: 'reject'` bootstrap rejection",
+      ],
+    ],
+    [
+      'docs/reference/package-surface.ko.md',
+      [
+        'DI `clientName`과 독립적인 application-supplied `ownershipNamespace` identity',
+        'resource 생성 전 `(ownershipNamespace, jobName)` collision validation',
+        '기본 2.x compatibility diagnostic',
+        "opt-in `ownershipEnforcement: 'reject'` bootstrap rejection",
+      ],
+    ],
+  ];
+
+  for (const [contractPath, requirements] of queuePackageSurfaceBulletRequirements) {
+    const contract = readSource(contractPath);
+    const queueBulletAnchor = '- **`@fluojs/queue`**:';
+    const queueBullets = contract.split('\n').filter((line) => line.startsWith(queueBulletAnchor));
+
+    assert(
+      queueBullets.length === 1,
+      `${contractPath} Queue package-surface bullet anchor must occur exactly once; observed ${queueBullets.length}.`,
+    );
+
+    const [queueBullet] = queueBullets;
+
+    assert(
+      requirements.every((requirement) => queueBullet.includes(requirement)),
+      `${contractPath} Queue package-surface bullet must document application ownershipNamespace identity independent of DI clientName, pre-resource collision validation, default 2.x diagnostics, and opt-in reject failure.`,
+    );
+  }
+
+  const ownershipSource = readSource('packages/queue/src/worker-ownership.ts');
+  const moduleSource = readSource('packages/queue/src/module.ts');
+  const regressionSource = readSource('packages/queue/src/worker-ownership.test.ts');
+  const unconfiguredNamespaceDiagnostic =
+    'Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.';
+  const unconfiguredNamespaceWarning = [
+    'logger.warn(',
+    `        \`${unconfiguredNamespaceDiagnostic}\`,`,
+    "        'QueueLifecycleService',",
+    '      );',
+  ].join('\n');
+  const descriptorIteration = 'const descriptors = discoverQueueWorkerDescriptors(';
+  const rejectPreferredOwnerSelection = [
+    'const existingOwner =',
+    "        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??",
+    '        compatibleOwners[0];',
+  ].join('\n');
 
   assert(
-    ownershipSource.includes('getRedisClientToken(moduleContext.options.clientName)') &&
-      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
-      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
-    'Queue ownership validation must compare the effective Redis dependency and discovered jobName inside each registration boundary.',
+    ownershipSource.includes('const ownershipNamespace = moduleContext.options.ownershipNamespace;') &&
+      !ownershipSource.includes('moduleContext.options.clientName') &&
+      ownershipSource.includes('function canShareBackend(') &&
+      ownershipSource.includes('ownershipNamespace === undefined ||') &&
+      ownershipSource.includes('existingOwner.ownershipNamespace === undefined ||') &&
+      ownershipSource.includes('ownershipNamespace === existingOwner.ownershipNamespace'),
+    'Queue ownership identity must use application-supplied ownershipNamespace, treating an absent namespace as compatible and only explicitly different namespaces as isolated.',
   );
   assert(
-    moduleSource.includes('assertUniqueQueueWorkerOwnership(typedDeps[3])') &&
-      moduleSource.indexOf('assertUniqueQueueWorkerOwnership(typedDeps[3])') <
+    ownershipSource.includes(unconfiguredNamespaceDiagnostic) &&
+      (ownershipSource.match(/Queue ownership namespace is unconfigured for scope/g) ?? []).length === 1 &&
+      ownershipSource.includes(unconfiguredNamespaceWarning) &&
+      ownershipSource.indexOf(unconfiguredNamespaceWarning) < ownershipSource.indexOf(descriptorIteration),
+    'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
+  );
+  assert(
+    ownershipSource.includes(
+      'const compatibleOwners = owners.filter((owner) => canShareBackend(ownershipNamespace, owner));',
+    ) &&
+      ownershipSource.includes(rejectPreferredOwnerSelection) &&
+      ownershipSource.includes(
+        "existingOwner.ownershipEnforcement === 'reject' ||\n          moduleContext.options.ownershipEnforcement === 'reject'",
+      ) &&
+      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
+      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
+    'Queue ownership validation must prefer a compatible owner that enforces rejection before falling back to the first compatible owner.',
+  );
+  assert(
+    moduleSource.includes(
+      'assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType)',
+    ) &&
+      moduleSource.indexOf(
+        'assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType)',
+      ) <
         moduleSource.indexOf('new QueueLifecycleService(...typedDeps)'),
     'Queue lifecycle provider creation must reject ownership collisions before BullMQ bootstrap creates worker resources.',
   );
   assert(
-    regressionSource.includes('rejects the same Redis dependency and jobName across distinct queue scopes') &&
-      regressionSource.includes('allows the same jobName across scopes backed by distinct Redis dependencies') &&
-      regressionSource.includes('expect(bullmqState.queueNames).toEqual([])'),
-    'Queue ownership regressions must cover collision rejection before resource creation and the distinct-Redis allowance.',
+    regressionSource.includes(
+      'warns about an unconfigured ownership namespace collision without creating resources first',
+    ) &&
+      regressionSource.includes('warns about a mixed configured and unconfigured ownership namespace collision') &&
+      regressionSource.includes(
+        'rejects a mixed configured and unconfigured ownership namespace collision before creating resources',
+      ) &&
+      regressionSource.includes(
+        'rejects when an unconfigured registration collides with a later reject owner',
+      ) &&
+      regressionSource.includes('warns once for a lone unconfigured ownership namespace') &&
+      regressionSource.includes(
+        'rejects the same jobName for different Redis clients with one ownership namespace',
+      ) &&
+      regressionSource.includes('allows the same jobName across explicitly distinct ownership namespaces'),
+    'Queue ownership regressions must cover unconfigured diagnostics, mixed namespace compatibility, rejection before resource creation, later-owner rejection, DI-independent ownership, and explicitly distinct namespace allowance.',
+  );
+
+  for (const regressionTitle of [
+    'rejects a mixed configured and unconfigured ownership namespace collision before creating resources',
+    'rejects when an unconfigured registration collides with a later reject owner',
+    'rejects the same jobName for different Redis clients with one ownership namespace',
+  ]) {
+    const testDeclaration = `  it('${regressionTitle}',`;
+    const matchingDeclarations = regressionSource
+      .split('\n')
+      .filter((line) => line.startsWith(testDeclaration));
+
+    assert(
+      matchingDeclarations.length === 1,
+      `Queue ownership regression "${regressionTitle}" test declaration must occur exactly once; observed ${matchingDeclarations.length}.`,
+    );
+
+    const testStart = regressionSource.indexOf(testDeclaration);
+    const nextTestStart = regressionSource.indexOf("\n  it('", testStart + 1);
+    const testSource = regressionSource.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+    assert(
+      testSource.includes('expect(bullmqState.queueNames).toEqual([])'),
+      `Queue ownership regression "${regressionTitle}" must assert no BullMQ queues are created before rejection.`,
+    );
+  }
+}
+
+export function enforceQueueWorkerOwnershipContract() {
+  return enforceQueueWorkerOwnershipContractFromSources(
+    Object.fromEntries(
+      queueWorkerOwnershipSourcePaths.map((path) => [
+        path,
+        read(path),
+      ]),
+    ),
   );
 }
 
@@ -2751,28 +4128,147 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
-export function main() {
+export function enforceStudioRuntimeBridgeDiscoverability(readText = read) {
+  const requirements = [
+    '@fluojs/runtime/devtools',
+    'StudioDevtoolsRuntime',
+    'StudioDevtoolsRuntimeTransport',
+    'studioDevtools',
+    'host-owned',
+    'observational',
+    'CLI-injected',
+  ];
+
+  for (const documentationPath of ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md']) {
+    const documentation = readText(documentationPath);
+    assert(
+      requirements.every((requirement) => documentation.includes(requirement)),
+      `${documentationPath} must document the host-owned @fluojs/runtime/devtools bridge, its bootstrap seam, and its observational precedence over CLI injection.`,
+    );
+  }
+}
+
+export function enforceNotificationsStatusDocumentationContract(readText = read) {
+  const contractSentinel =
+    '<!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->';
+  const documentationPaths = [
+    'packages/notifications/README.md',
+    'packages/notifications/README.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+  ];
+
+  for (const documentationPath of documentationPaths) {
+    assert(
+      readText(documentationPath).includes(contractSentinel),
+      `${documentationPath} must preserve the notifications configured-disabled status contract sentinel.`,
+    );
+  }
+}
+
+export function enforceStudioStaticGraphLimitsContract(readText = read) {
+  const staticLiveContractSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const documentationCompanions = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ];
+
+  for (const companionPaths of documentationCompanions) {
+    for (const relativePath of companionPaths) {
+      const documentation = readText(relativePath);
+      assert(
+        documentation.includes(staticLiveContractSentinel),
+        `${relativePath} must include the Studio static/live contract sentinel.`,
+      );
+    }
+  }
+}
+
+export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
+  const contractSentinel =
+    '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
+  const contextPaths = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
+  for (const contextPath of contextPaths) {
+    assert(
+      readText(contextPath).includes(contractSentinel),
+      `${contextPath} must preserve the machine-consumed notifications queue cancellation contract sentinel.`,
+    );
+  }
+
+  const typesSource = readText('packages/notifications/src/types.ts');
+  const serviceSource = readText('packages/notifications/src/service.ts');
+  const regressionSource = readText('packages/notifications/src/module.test.ts');
+
+  assert(
+    typesSource.includes('readonly signal?: AbortSignal;'),
+    'NotificationsQueueContext must expose the caller-owned AbortSignal.',
+  );
+  assert(
+    serviceSource.includes('throwIfAborted(options.signal);') &&
+      serviceSource.includes('await queue.enqueueMany(jobs, { signal: options.signal })') &&
+      serviceSource.includes('await queue.enqueue(job, { signal: options.signal })'),
+    'Notifications queue handoffs must reject pre-aborted signals and forward the same live signal.',
+  );
+  assert(
+    regressionSource.includes('new EnqueueOnlyQueueAdapter()') &&
+      regressionSource.includes("signal.removeEventListener('abort', onAbort)") &&
+      regressionSource.includes('expect(enqueueCalls).toBe(0);'),
+    'Notifications queue cancellation must retain native/fallback and adapter-cleanup regression evidence.',
+  );
+}
+
+export async function main() {
   const changedFiles = changedFilesFromGit();
+  const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
+  const studioReportBootstrapFailureSnapshots = studioReportBootstrapFailureSnapshotsFromGit();
 
   enforceSsotMirrorStructure();
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
+  const engineGovernancePackageNames = changedPackageNames(changedFiles);
+  if (changedFiles.includes('pnpm-lock.yaml')) {
+    for (const packageName of mandatoryProductionImporterPackageNamesForLockfileChange(
+      lockfileTextAtMergeBase(),
+      read('pnpm-lock.yaml'),
+    )) {
+      engineGovernancePackageNames.add(packageName);
+    }
+  }
+  enforceMandatoryProductionDependencyEngineAlignment(read, engineGovernancePackageNames);
   enforceSocketIoNodeEngineAlignment();
+  enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
+  enforceEmailNestjsMigrationDocs();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
+  enforceCacheManagerNestjsMigrationDocs();
+  enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
+  enforceCliMigrationTransformDocs();
+  enforceGraphqlAsyncRegistrationContract();
   enforceJwtAsyncRegistrationContract();
+  enforceJwtVerifiedClaimsContract((relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'));
+  await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
+  enforceExpressSseDocumentationContract();
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
+  enforceStudioRuntimeBridgeDiscoverability();
+  enforceStudioStaticGraphLimitsContract();
+  enforceNotificationsStatusDocumentationContract();
+  enforceNotificationsQueueCancellationDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
@@ -2786,20 +4282,31 @@ export function main() {
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCustomMethodContract();
+  enforceHttpAdapterPortabilityDocumentationContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
+  enforceOpenApiMigrationDocumentStructure();
   enforceGraphqlRuntimeBoundaryDiscoverability();
+  enforceGraphqlNestjsMigrationBoundaries();
+  enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();
+  enforceMicroservicesNestjsMigrationDocs();
+  enforceMongooseNestjsMigrationDocs();
+  enforcePrismaNestjsMigrationDocs();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
+  enforceRedisStreamsSubpathExportEvidence();
+  enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
-  enforceContractCompanionUpdates(changedFiles);
+  enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
+  enforceStudioReportBootstrapFailureCompanions(changedFiles, studioReportBootstrapFailureSnapshots);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }

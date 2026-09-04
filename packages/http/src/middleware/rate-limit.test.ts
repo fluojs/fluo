@@ -169,6 +169,25 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(200);
   });
 
+  it('uses the configured trusted proxy boundary for client buckets', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxy: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.11' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+    expect(secondContext.response.statusCode).toBe(200);
+  });
+
   it('uses X-Real-IP client buckets when trustProxyHeaders is enabled', async () => {
     const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
     const next = vi.fn(async () => {});
