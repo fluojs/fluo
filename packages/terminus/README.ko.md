@@ -149,7 +149,7 @@ TerminusModule.forRoot({
 });
 ```
 
-import된 module이나 global module 어디에서도 공급되지 않는 필수 indicator 의존성은 bootstrap 중 module graph 검증에서 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. 따라서 조합 실수는 애플리케이션이 정상 기동한 뒤 모든 `/health`와 `/ready` 요청이 실패하는 대신 시작 시점에 드러납니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
+named Redis indicator 의존성은 필수입니다. import된 module이나 global module 어디에서도 해당 token을 공급하지 않으면 bootstrap 중 module graph 검증이 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. Prisma와 Drizzle indicator 의존성은 선택 사항이므로, owner module을 생략해도 애플리케이션은 bootstrap되지만 해당 indicator는 요청 시점의 `/health`에서 `down`을 보고합니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
 
 ### Readiness 참여
 

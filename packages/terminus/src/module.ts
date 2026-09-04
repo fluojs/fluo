@@ -306,10 +306,11 @@ export class TerminusModule {
   /**
    * Register Terminus health indicators and readiness hooks.
    *
-   * DI-backed indicator providers resolve inside the Terminus module scope, so a module that
-   * owns a Prisma, Drizzle, or named Redis token must be listed in `imports`. Importing it into
-   * the surrounding application module alone leaves the token invisible to Terminus, and the
-   * missing dependency then fails module-graph validation during bootstrap.
+   * DI-backed indicator providers resolve inside the Terminus module scope. A named Redis token
+   * is required, so its owner module must be listed in `imports`; otherwise bootstrap fails with
+   * `MODULE_VISIBILITY_ERROR`. Prisma and Drizzle owner tokens are optional: omitting their
+   * modules still lets the application bootstrap, but their indicators report `down` on health
+   * checks until the owner modules are imported.
    *
    * @example
    * ```ts

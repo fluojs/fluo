@@ -208,6 +208,33 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     expect((thrownError as { code?: string }).code).toBe('MODULE_VISIBILITY_ERROR');
   });
 
+  it('boots without an optional Prisma owner module and reports Prisma down at health-check time', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        TerminusModule.forRoot({
+          indicatorProviders: [createPrismaHealthIndicatorProvider({ key: 'prisma' })],
+        }),
+      ],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: { down: ['prisma'] },
+        error: { prisma: { status: 'down' } },
+        status: 'error',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps indicator providers without external dependencies working when no imports are configured', async () => {
     class AppModule {}
 

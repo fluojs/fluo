@@ -149,7 +149,7 @@ TerminusModule.forRoot({
 });
 ```
 
-A required indicator dependency that no imported or global module supplies fails module-graph validation during bootstrap with a `MODULE_VISIBILITY_ERROR` naming the missing token. Composition mistakes therefore surface at startup instead of letting the application boot and then fail every `/health` and `/ready` request. Dependencies published by a global module — for example `RedisModule.forRoot(...)` without a `name`, which is global by default — remain visible without an explicit `imports` entry.
+A named Redis indicator dependency is required. If no imported or global module supplies its token, module-graph validation fails during bootstrap with a `MODULE_VISIBILITY_ERROR` naming the missing token. Prisma and Drizzle indicator dependencies are optional: omitting their owner modules still allows the application to bootstrap, while the corresponding indicator reports `down` in `/health` at request time. Dependencies published by a global module — for example `RedisModule.forRoot(...)` without a `name`, which is global by default — remain visible without an explicit `imports` entry.
 
 ### Readiness Participation
 

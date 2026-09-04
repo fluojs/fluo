@@ -718,6 +718,10 @@ function validateProviderVisibility(
     for (const rawToken of providerDependencies(provider)) {
       const token = resolveInjectionToken(rawToken);
 
+      if (isOptionalToken(rawToken) && !accessibleTokens.has(token)) {
+        continue;
+      }
+
       if (!accessibleTokens.has(token)) {
         throw new ModuleVisibilityError(
           `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(
@@ -745,6 +749,10 @@ function validateControllerVisibility(
 
     for (const rawToken of controllerDependencies(controller)) {
       const token = resolveInjectionToken(rawToken);
+
+      if (isOptionalToken(rawToken) && !accessibleTokens.has(token)) {
+        continue;
+      }
 
       if (!accessibleTokens.has(token)) {
         throw new ModuleVisibilityError(
