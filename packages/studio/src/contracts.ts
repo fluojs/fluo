@@ -173,7 +173,7 @@ export interface StudioGraphEdge {
 }
 
 /** Route kinds accepted by the Studio live wire contract. */
-export type StudioRouteKind = 'http' | 'react-page';
+export type StudioRouteKind = string;
 
 /** Route descriptor projected into the live Studio UI. */
 export interface StudioRouteDescriptor {
@@ -528,7 +528,7 @@ function validateStudioRouteDescriptor(value: unknown): StudioNormalizedRouteDes
   }
 
   const kind = value.kind;
-  if (kind !== undefined && kind !== 'http' && kind !== 'react-page') {
+  if (kind !== undefined && typeof kind !== 'string') {
     throw new Error('Invalid Studio live route descriptor kind payload.');
   }
 

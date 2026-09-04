@@ -252,6 +252,56 @@ describe('Studio live contracts', () => {
     expect(studio.parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
   });
 
+  it('preserves arbitrary string route kinds in live events', () => {
+    const parsed = parseStudioLiveEvent(JSON.stringify({
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:custom-route-kind',
+      payload: {
+        ...liveSnapshot,
+        routes: [{ ...liveSnapshot.routes[0], kind: 'custom-page' }],
+      },
+      sequence: 1,
+      source: { appId: 'app-test', runtime: 'node' },
+      type: 'snapshot',
+      version: 1,
+    }));
+
+    if (parsed.type !== 'snapshot') {
+      throw new Error('Expected a snapshot event.');
+    }
+
+    expect(parsed.payload.routes[0]?.kind).toBe('custom-page');
+  });
+
+  it('defaults only omitted live route kinds and rejects non-string values', () => {
+    const createEvent = (route: object) => JSON.stringify({
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:route-kind-validation',
+      payload: {
+        ...liveSnapshot,
+        routes: [route],
+      },
+      sequence: 1,
+      source: { appId: 'app-test', runtime: 'node' },
+      type: 'snapshot',
+      version: 1,
+    });
+    const { kind: _kind, ...legacyRoute } = liveSnapshot.routes[0] ?? {};
+
+    const parsedLegacyEvent = parseStudioLiveEvent(createEvent(legacyRoute));
+
+    if (parsedLegacyEvent.type !== 'snapshot') {
+      throw new Error('Expected a snapshot event.');
+    }
+
+    expect(parsedLegacyEvent.payload.routes[0]?.kind).toBe('http');
+    expect(() => parseStudioLiveEvent(createEvent({ ...legacyRoute, kind: 42 }))).toThrow(
+      'Invalid Studio live route descriptor kind payload.',
+    );
+  });
+
   it('rejects malformed runtime-connected Studio events before UI state consumes them', () => {
     expect(() =>
       parseStudioLiveEvent(
@@ -599,8 +649,8 @@ describe('parseStudioPayload', () => {
     }))).toThrow('Invalid Studio live route descriptor params payload.');
   });
 
-  it('rejects unknown supplied route kinds in static inspect snapshots', () => {
-    expect(() => parseStudioPayload(JSON.stringify({
+  it('preserves arbitrary string route kinds in static inspect snapshots', () => {
+    const parsed = parseStudioPayload(JSON.stringify({
       ...snapshotFixture,
       routes: [
         {
@@ -608,6 +658,25 @@ describe('parseStudioPayload', () => {
           handler: 'show',
           id: 'GET /products/:productId ProductRouter show',
           kind: 'unknown',
+          method: 'GET',
+          params: ['productId'],
+          path: '/products/:productId',
+        },
+      ],
+    }));
+
+    expect(parsed.payload.snapshot?.routes?.[0]?.kind).toBe('unknown');
+  });
+
+  it('rejects non-string route kinds in static inspect snapshots', () => {
+    expect(() => parseStudioPayload(JSON.stringify({
+      ...snapshotFixture,
+      routes: [
+        {
+          controller: 'ProductRouter',
+          handler: 'show',
+          id: 'GET /products/:productId ProductRouter show',
+          kind: 42,
           method: 'GET',
           params: ['productId'],
           path: '/products/:productId',

@@ -130,7 +130,7 @@ describe('runtime route inspection', () => {
     expect(snapshot.routes[0]?.kind).toBe('custom-page');
   });
 
-  it('normalizes arbitrary package-integration markers at the Studio live wire boundary', () => {
+  it('preserves arbitrary package-integration markers at the Studio live wire boundary', () => {
     // Given
     const descriptor = createDescriptor(CustomMarkerController, 'show', '/custom', []);
 
@@ -138,7 +138,7 @@ describe('runtime route inspection', () => {
     const route = handlerToStudioRouteDescriptor(descriptor);
 
     // Then
-    expect(route.kind).toBe('http');
+    expect(route.kind).toBe('custom-page');
   });
 
   it('carries route kind and effective params into live Studio descriptors', () => {
