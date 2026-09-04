@@ -7,78 +7,68 @@ import { join, resolve } from 'node:path';
 import type { ResolvedBootstrapPlan } from './resolver.js';
 import type { BootstrapOptions } from './types.js';
 
-const PACKAGE_DIRECTORY_BY_NAME = {
-  '@fluojs/platform-bun': 'platform-bun',
-  '@fluojs/cli': 'cli',
-  '@fluojs/config': 'config',
-  '@fluojs/core': 'core',
-  '@fluojs/di': 'di',
-  '@fluojs/http': 'http',
-  '@fluojs/platform-cloudflare-workers': 'platform-cloudflare-workers',
-  '@fluojs/platform-deno': 'platform-deno',
-  '@fluojs/microservices': 'microservices',
-  '@fluojs/platform-express': 'platform-express',
-  '@fluojs/platform-fastify': 'platform-fastify',
-  '@fluojs/platform-nodejs': 'platform-nodejs',
-  '@fluojs/react': 'react',
-  '@fluojs/runtime': 'runtime',
-  '@fluojs/testing': 'testing',
-  '@fluojs/validation': 'validation',
-} as const;
-
 const LOCAL_PACKAGE_CACHE_DIR = join(tmpdir(), 'fluo-cli-local-packages');
 const LOCAL_PACKAGE_CACHE_STAMP_FILE = 'cache-stamp.json';
 const LOCAL_PACKAGE_CACHE_FORMAT_VERSION = 2;
-
-type LocalPackageName = keyof typeof PACKAGE_DIRECTORY_BY_NAME;
 
 type LocalPackageCacheStamp = {
   cacheFormatVersion: number;
   dirtyFingerprint: string;
   headCommit: string;
-  packageVersions: Partial<Record<LocalPackageName, string>>;
+  packageVersions: Record<string, string>;
 };
+
+type LocalPackageManifest = {
+  dependencies?: Record<string, string>;
+  name: string;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  version: string;
+};
+
+type LocalPackage = {
+  directory: string;
+  manifest: LocalPackageManifest;
+};
+
+type LocalPackagesByName = ReadonlyMap<string, LocalPackage>;
 
 function expectedTarballName(packageName: string, version: string): string {
   return `${packageName.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
 }
 
-function readLocalPackageVersion(repoRoot: string, packageName: LocalPackageName): string {
-  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
-  const packageJson = JSON.parse(
-    readFileSync(join(repoRoot, 'packages', packageDirectory, 'package.json'), 'utf8'),
-  ) as { version: string };
+function collectLocalPackages(repoRoot: string): LocalPackagesByName {
+  const packagesByName = new Map<string, LocalPackage>();
+  const packagesRoot = join(repoRoot, 'packages');
 
-  return packageJson.version;
-}
+  for (const entry of readdirSync(packagesRoot, { withFileTypes: true })) {
+    const packageJsonPath = join(packagesRoot, entry.name, 'package.json');
 
-function readLocalPackageManifest(
-  repoRoot: string,
-  packageName: LocalPackageName,
-): {
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-  peerDependencies?: Record<string, string>;
-} {
-  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
-  return JSON.parse(
-    readFileSync(join(repoRoot, 'packages', packageDirectory, 'package.json'), 'utf8'),
-  ) as {
-    dependencies?: Record<string, string>;
-    optionalDependencies?: Record<string, string>;
-    peerDependencies?: Record<string, string>;
-  };
+    if (!entry.isDirectory() || !existsSync(packageJsonPath)) {
+      continue;
+    }
+
+    const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as LocalPackageManifest;
+
+    if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
+      continue;
+    }
+
+    packagesByName.set(manifest.name, { directory: entry.name, manifest });
+  }
+
+  return packagesByName;
 }
 
 function collectRequiredLocalPackages(
-  repoRoot: string,
+  localPackages: LocalPackagesByName,
   bootstrapPlan: ResolvedBootstrapPlan,
-): readonly LocalPackageName[] {
+): readonly string[] {
   const pending = [
     ...bootstrapPlan.dependencies.dependencies,
     ...bootstrapPlan.dependencies.devDependencies,
-  ].filter((packageName): packageName is LocalPackageName => packageName in PACKAGE_DIRECTORY_BY_NAME);
-  const selected = new Set<LocalPackageName>();
+  ].filter((packageName) => localPackages.has(packageName));
+  const selected = new Set<string>();
 
   while (pending.length > 0) {
     const packageName = pending.pop();
@@ -88,18 +78,16 @@ function collectRequiredLocalPackages(
     }
 
     selected.add(packageName);
-    const manifest = readLocalPackageManifest(repoRoot, packageName);
+    const manifest = localPackages.get(packageName)?.manifest;
+
+    if (!manifest) {
+      continue;
+    }
 
     for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
-      const dependencies = manifest[section];
-
-      if (!dependencies) {
-        continue;
-      }
-
-      for (const dependencyName of Object.keys(dependencies)) {
-        if (dependencyName in PACKAGE_DIRECTORY_BY_NAME) {
-          pending.push(dependencyName as LocalPackageName);
+      for (const dependencyName of Object.keys(manifest[section] ?? {})) {
+        if (localPackages.has(dependencyName)) {
+          pending.push(dependencyName);
         }
       }
     }
@@ -108,19 +96,16 @@ function collectRequiredLocalPackages(
   return Array.from(selected);
 }
 
-function collectLocalPackageVersions(repoRoot: string, packageNames: readonly LocalPackageName[]): Map<LocalPackageName, string> {
-  const packageVersions = new Map<LocalPackageName, string>();
-
-  for (const packageName of packageNames) {
-    packageVersions.set(packageName, readLocalPackageVersion(repoRoot, packageName));
-  }
-
-  return packageVersions;
+function collectLocalPackageVersions(
+  localPackages: LocalPackagesByName,
+  packageNames: readonly string[],
+): Map<string, string> {
+  return new Map(packageNames.map((packageName) => [packageName, localPackages.get(packageName)!.manifest.version]));
 }
 
 function getPackageVersionOrThrow(
-  packageVersions: ReadonlyMap<LocalPackageName, string>,
-  packageName: LocalPackageName,
+  packageVersions: ReadonlyMap<string, string>,
+  packageName: string,
 ): string {
   const packageVersion = packageVersions.get(packageName);
 
@@ -132,9 +117,9 @@ function getPackageVersionOrThrow(
 }
 
 function toPackageVersionRecord(
-  packageVersions: ReadonlyMap<LocalPackageName, string>,
-): Partial<Record<LocalPackageName, string>> {
-  const packageVersionRecord: Partial<Record<LocalPackageName, string>> = {};
+  packageVersions: ReadonlyMap<string, string>,
+): Record<string, string> {
+  const packageVersionRecord: Record<string, string> = {};
 
   for (const [packageName, packageVersion] of packageVersions.entries()) {
     packageVersionRecord[packageName] = packageVersion;
@@ -155,11 +140,14 @@ function runGitCommand(repoRoot: string, args: string[]): string | undefined {
   }
 }
 
-function createPackagePathArguments(packageNames: readonly LocalPackageName[]): string[] {
+function createPackagePathArguments(
+  localPackages: LocalPackagesByName,
+  packageNames: readonly string[],
+): string[] {
   const packagePaths = new Set<string>();
 
   for (const packageName of packageNames) {
-    const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+    const packageDirectory = localPackages.get(packageName)!.directory;
     const packageRoot = join('packages', packageDirectory);
     packagePaths.add(packageRoot);
     packagePaths.add(join(packageRoot, 'src'));
@@ -223,11 +211,12 @@ function collectPackageStagePaths(
 
 function stagePackageForPacking(
   repoRoot: string,
-  packageName: LocalPackageName,
+  localPackages: LocalPackagesByName,
+  packageName: string,
   packageVersions: ReadonlyMap<string, string>,
   outputDirectory: string,
 ): string {
-  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+  const packageDirectory = localPackages.get(packageName)!.directory;
   const packageRoot = join(repoRoot, 'packages', packageDirectory);
   const stageDirectory = join(outputDirectory, `.stage-${packageDirectory}`);
   const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
@@ -254,8 +243,9 @@ function stagePackageForPacking(
 
 function computeLocalPackageCacheStamp(
   repoRoot: string,
-  packageNames: readonly LocalPackageName[],
-  packageVersions: ReadonlyMap<LocalPackageName, string>,
+  localPackages: LocalPackagesByName,
+  packageNames: readonly string[],
+  packageVersions: ReadonlyMap<string, string>,
 ): LocalPackageCacheStamp | undefined {
   const headCommit = runGitCommand(repoRoot, ['rev-parse', 'HEAD']);
 
@@ -263,7 +253,7 @@ function computeLocalPackageCacheStamp(
     return undefined;
   }
 
-  const packagePaths = createPackagePathArguments(packageNames);
+  const packagePaths = createPackagePathArguments(localPackages, packageNames);
   const dirtyFingerprint = runGitCommand(repoRoot, ['status', '--porcelain', '--', ...packagePaths]);
 
   if (dirtyFingerprint === undefined) {
@@ -303,7 +293,7 @@ function cacheStampMatches(expected: LocalPackageCacheStamp, actual: LocalPackag
     return false;
   }
 
-  for (const [packageName, packageVersion] of Object.entries(expected.packageVersions) as [LocalPackageName, string][]) {
+  for (const [packageName, packageVersion] of Object.entries(expected.packageVersions)) {
     if (actual.packageVersions[packageName] !== packageVersion) {
       return false;
     }
@@ -314,8 +304,8 @@ function cacheStampMatches(expected: LocalPackageCacheStamp, actual: LocalPackag
 
 function cacheContainsTarballs(
   outputDirectory: string,
-  packageNames: readonly LocalPackageName[],
-  packageVersions: ReadonlyMap<LocalPackageName, string>,
+  packageNames: readonly string[],
+  packageVersions: ReadonlyMap<string, string>,
 ): boolean {
   const packedFiles = new Set(readdirSync(outputDirectory));
 
@@ -364,8 +354,12 @@ function latestModifiedTimeMs(path: string): number {
   return latest;
 }
 
-function packageHasOutdatedBuildOutput(repoRoot: string, packageName: LocalPackageName): boolean {
-  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+function packageHasOutdatedBuildOutput(
+  repoRoot: string,
+  localPackages: LocalPackagesByName,
+  packageName: string,
+): boolean {
+  const packageDirectory = localPackages.get(packageName)!.directory;
   const packageRoot = join(repoRoot, 'packages', packageDirectory);
   const distDirectory = join(packageRoot, 'dist');
 
@@ -393,8 +387,12 @@ function packageHasOutdatedBuildOutput(repoRoot: string, packageName: LocalPacka
   return latestDist < latestSource;
 }
 
-function shouldRunWorkspaceBuild(repoRoot: string, packageNames: readonly LocalPackageName[]): boolean {
-  return packageNames.some((packageName) => packageHasOutdatedBuildOutput(repoRoot, packageName));
+function shouldRunWorkspaceBuild(
+  repoRoot: string,
+  localPackages: LocalPackagesByName,
+  packageNames: readonly string[],
+): boolean {
+  return packageNames.some((packageName) => packageHasOutdatedBuildOutput(repoRoot, localPackages, packageName));
 }
 
 function runPackCommand(packageDirectory: string, outputDirectory: string): Promise<void> {
@@ -435,23 +433,28 @@ function runWorkspaceBuild(repoRoot: string): Promise<void> {
   });
 }
 
-async function ensureWorkspaceBuildOutput(repoRoot: string, packageNames: readonly LocalPackageName[]): Promise<void> {
-  if (shouldRunWorkspaceBuild(repoRoot, packageNames)) {
+async function ensureWorkspaceBuildOutput(
+  repoRoot: string,
+  localPackages: LocalPackagesByName,
+  packageNames: readonly string[],
+): Promise<void> {
+  if (shouldRunWorkspaceBuild(repoRoot, localPackages, packageNames)) {
     await runWorkspaceBuild(repoRoot);
   }
 }
 
 async function packLocalPackages(
   repoRoot: string,
+  localPackages: LocalPackagesByName,
   outputDirectory: string,
-  packageNames: readonly LocalPackageName[],
-  packageVersions: ReadonlyMap<LocalPackageName, string>,
+  packageNames: readonly string[],
+  packageVersions: ReadonlyMap<string, string>,
 ): Promise<void> {
   for (const packageName of packageNames) {
     const packageVersion = getPackageVersionOrThrow(packageVersions, packageName);
     const tarballName = expectedTarballName(packageName, packageVersion);
 
-    const stageDirectory = stagePackageForPacking(repoRoot, packageName, packageVersions, outputDirectory);
+    const stageDirectory = stagePackageForPacking(repoRoot, localPackages, packageName, packageVersions, outputDirectory);
 
     try {
       await runPackCommand(stageDirectory, outputDirectory);
@@ -467,8 +470,8 @@ async function packLocalPackages(
 
 function createLocalTarballSpecs(
   outputDirectory: string,
-  packageNames: readonly LocalPackageName[],
-  packageVersions: ReadonlyMap<LocalPackageName, string>,
+  packageNames: readonly string[],
+  packageVersions: ReadonlyMap<string, string>,
 ): Record<string, string> {
   const packedFiles = new Set(readdirSync(outputDirectory));
   const tarballs = new Map<string, string>();
@@ -556,9 +559,10 @@ export async function resolvePackageSpecs(
   const cacheStampPath = join(outputDirectory, LOCAL_PACKAGE_CACHE_STAMP_FILE);
   mkdirSync(outputDirectory, { recursive: true });
 
-  const packageNames = collectRequiredLocalPackages(repoRoot, bootstrapPlan);
-  const packageVersions = collectLocalPackageVersions(repoRoot, packageNames);
-  const expectedCacheStamp = computeLocalPackageCacheStamp(repoRoot, packageNames, packageVersions);
+  const localPackages = collectLocalPackages(repoRoot);
+  const packageNames = collectRequiredLocalPackages(localPackages, bootstrapPlan);
+  const packageVersions = collectLocalPackageVersions(localPackages, packageNames);
+  const expectedCacheStamp = computeLocalPackageCacheStamp(repoRoot, localPackages, packageNames, packageVersions);
   const currentCacheStamp = readLocalPackageCacheStamp(cacheStampPath);
   const canReuseCachedTarballs = expectedCacheStamp
     ? cacheStampMatches(expectedCacheStamp, currentCacheStamp)
@@ -566,9 +570,9 @@ export async function resolvePackageSpecs(
     : false;
 
   if (!canReuseCachedTarballs) {
-    await ensureWorkspaceBuildOutput(repoRoot, packageNames);
+    await ensureWorkspaceBuildOutput(repoRoot, localPackages, packageNames);
     clearLocalPackageCacheArtifacts(outputDirectory);
-    await packLocalPackages(repoRoot, outputDirectory, packageNames, packageVersions);
+    await packLocalPackages(repoRoot, localPackages, outputDirectory, packageNames, packageVersions);
 
     if (expectedCacheStamp) {
       writeFileSync(cacheStampPath, `${JSON.stringify(expectedCacheStamp, null, 2)}\n`, 'utf8');

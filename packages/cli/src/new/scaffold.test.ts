@@ -27,6 +27,7 @@ const LOCAL_PACKAGE_DIRECTORY_BY_NAME = {
   '@fluojs/platform-nodejs': 'platform-nodejs',
   '@fluojs/react': 'react',
   '@fluojs/runtime': 'runtime',
+  '@fluojs/studio': 'studio',
   '@fluojs/testing': 'testing',
   '@fluojs/validation': 'validation',
   '@fluojs/vite': 'vite',
@@ -53,6 +54,7 @@ const FIXTURE_WORKSPACE_DEPENDENCIES: Partial<Record<keyof typeof LOCAL_PACKAGE_
   '@fluojs/runtime': {
     '@fluojs/config': 'workspace:^',
     '@fluojs/core': 'workspace:^',
+    '@fluojs/studio': 'workspace:^',
   },
   '@fluojs/testing': {
     '@fluojs/runtime': 'workspace:^',
@@ -377,6 +379,50 @@ describe('scaffoldBootstrapApp', () => {
     for (const tarballPath of tarballPaths) {
       expectPackedManifestUsesPublishedWorkspaceCaretPolicy(tarballPath);
     }
+  }, 30_000);
+
+  it('installs newly introduced transitive workspace dependencies from local tarballs outside the workspace', async () => {
+    const repoRoot = createFixtureLocalRepo();
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-local-install-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp(createDefaultLocalScaffoldOptions(targetDirectory, repoRoot));
+
+    const packageJsonPath = join(targetDirectory, 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      dependencies: Record<string, string>;
+      overrides: Record<string, string>;
+      resolutions: Record<string, string>;
+    };
+    const runtimeTarballPath = packageJson.dependencies['@fluojs/runtime'].slice('file:'.length);
+
+    expect(packageJson.overrides['@fluojs/studio']).toMatch(/^file:.*fluojs-studio-1\.0\.0\.tgz$/);
+    expect(readPackedPackageManifest(runtimeTarballPath).dependencies?.['@fluojs/studio']).toBe('^1.0.0');
+
+    writeFileSync(
+      packageJsonPath,
+      `${JSON.stringify(
+        {
+          name: 'external-runtime-consumer',
+          version: '1.0.0',
+          private: true,
+          dependencies: {
+            '@fluojs/runtime': packageJson.dependencies['@fluojs/runtime'],
+          },
+          overrides: packageJson.overrides,
+          resolutions: packageJson.resolutions,
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+
+    execFileSync('pnpm', ['install', '--ignore-scripts'], {
+      cwd: targetDirectory,
+      stdio: 'pipe',
+    });
+
   }, 30_000);
 
   it('invalidates stale local package cache tarballs from the old rewrite pipeline', async () => {
