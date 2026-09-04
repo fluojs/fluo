@@ -24,6 +24,8 @@ npm install @fluojs/runtime
 
 The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
 
+`@fluojs/cli`, a mandatory runtime consumer, declares the same Node range. Upgrade CLI hosts from Node 20 to `>=20.19.3` or from Node 22 to `>=22.2.0`; Node 21 and Node 27+ hosts must move to a supported Node 20 or Node 22 line.
+
 ## Node Static Asset Source
 
 `@fluojs/http` owns portable static middleware and representation-selection contracts. `@fluojs/runtime/node` exports `createNodeFileSystemAssetSource(...)`, its Node filesystem `StaticAssetSource` implementation: it validates the root directory during configuration, keeps lexical and realpath resolution inside that root (including symlink checks), and can select `.br` or `.gz` siblings. For each selected regular-file representation, it opens the verified file, eagerly copies the entire file into an immutable byte snapshot, and closes its `FileHandle` before response writing. Its returned `source()` replays only that snapshot and never reopens or lazily streams the pathname; application owners therefore bound memory by the selected whole-file size, and `size` plus the strong `ETag` describe those exact bytes. Raw Node, Express, and Fastify adapters share this portable middleware/source seam and preserve the selected representation boundary rather than applying adapter-specific re-encoding. This Node-only helper is intentionally absent from `@fluojs/runtime/web`; Web and edge deployments must provide an application-owned source.
@@ -174,7 +176,7 @@ In `@fluojs/runtime` 2.x, overlapping `start()` calls could start the same compo
 
 ### Migrating NestJS Lifecycle Hooks
 
-The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo.
+The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. Each eligible singleton `multi: true` contribution is a distinct lifecycle instance: startup follows contribution order and shutdown reverses it. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo.
 
 Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
 
@@ -318,7 +320,7 @@ class UsersModule {}
 
 ## Behavioral Contracts
 
-- Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
+- Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. Every eligible singleton `multi: true` contribution participates as its own instance in contribution order. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests. Oversized Web bodies settle as HTTP 413 without waiting for stream cancellation, and cancellation failures do not mask that response, including on the default cloned-body path where the original request remains unread.
 - `preferNativeJsonBodyReader` remains accepted by `@fluojs/runtime/web` as a deprecated adapter compatibility option, but it no longer changes parsing. Web JSON bodies always use the bounded streaming reader so native whole-body reads cannot bypass `maxBodySize`.
 - On `@fluojs/runtime/node`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
@@ -331,6 +333,7 @@ class UsersModule {}
 - Module graph compilation validates runtime and `@Module(...)` provider declarations through DI's canonical normalization before cache-key generation or visibility traversal. Malformed `inject` values, dependency wrappers/tokens, and scopes therefore fail with `InvalidProviderError` instead of leaking traversal-specific errors.
 - If application or context bootstrap fails after runtime resources or lifecycle instances have been created, fluo resets readiness, runs registered runtime cleanup callbacks, invokes shutdown hooks for instances resolved so far with `bootstrap-failed`, disposes the container, logs cleanup failures, and rethrows the original bootstrap error.
 - `Application.listen()` and microservice `listen()` are serialized with shutdown: overlapping startup calls share the same in-flight startup, shutdown waits for in-flight startup to settle, and a startup that races with shutdown cannot transition the shell back to `ready` after close begins. The public `Application.state` contract remains `bootstrapped` or `ready` while teardown is pending and changes to `closed` only after teardown completes successfully. Independently, starting application or context close synchronously closes a terminal operation gate: `Application.get()`, `ApplicationContext.get()`, `connectMicroservice()`, `startAllMicroservices()`, and application `listen()` reject while teardown is pending and stay rejected after a failed close attempt. Provider lookups admitted immediately before close recheck that gate after asynchronous resolution and cannot return a stale value after shutdown starts. A later `close()` skips completed runtime teardown phases and re-enters incomplete adapter or lifecycle-hook stages according to their own retry contracts. Container-managed `onDestroy()` hooks are terminal best-effort cleanup: every materialized hook is attempted on the first container disposal, failed hooks are retried by a later explicit application or context `close()`, and hooks that completed successfully are never run again. Once microservice close starts, a terminal ingress gate rejects new `send()` and `emit()` calls before runtime or transport handoff, including while `listen()` is still pending and after a failed close attempt.
+- `Application.dispatch()` uses that same synchronous terminal admission gate. A direct dispatch started after `Application.close()` begins rejects before entering the HTTP dispatcher, including while teardown is pending, after a failed close, and after successful close. A dispatch admitted before the gate closes remains dispatcher-owned and is not retroactively cancelled by close.
 - `@fluojs/runtime/node` owns each pending raw Node listen operation and its `EADDRINUSE` retry timer. Calling adapter `close()` while startup is retrying cancels the retry, waits for the pending listen to settle, and prevents the listener from binding after shutdown reports completion.
 - Shutdown signal registration failures are user-observable: `runNodeApplication(...)`, `bootstrapNodeApplication(...)`, and adapter-owned runtime helpers close the already-started application with `bootstrap-failed`, log any close failure separately, and reject with the original registration error.
 - Shutdown signal unregistration failures do not skip application close: `app.close()` always continues through adapter shutdown, lifecycle hooks, runtime cleanup callbacks, and container disposal; if close otherwise succeeds it rejects with the unregistration error, and if close also fails it rejects with an aggregate containing both failures.
@@ -440,7 +443,29 @@ const jsonLogger = createJsonApplicationLogger();
 
 Use CLI reporter flags such as `fluo dev --verbose` when you need raw child-process output from the development command instead.
 
+### Node Compression Failure Migration
+
+**Breaking change:** When response compression fails before a Node response commits,
+`FrameworkResponse.send()` rejects. Adapter integrations must await that promise and handle the
+rejection; they must not swallow it or assume that an uncompressed success response was sent.
+
+For dispatcher-managed requests, the runtime recovers by writing its JSON 500 envelope. The
+adapter removes a `Content-Type` it assigned for the failed body so the envelope uses
+`application/json`; an explicit `Content-Type` set by application code remains unchanged.
+Consumers that relied on a fulfilled `send()` or a stale adapter-assigned `text/plain` or
+`application/octet-stream` header must handle the rejection or fallback explicitly and set any
+required application-owned header themselves.
+
 Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
+
+### Runtime Cleanup Callbacks
+
+Providers that receive the internal `RUNTIME_CLEANUP_REGISTRATION` token may register cleanup
+callbacks that return `void` or `Promise<void>`. Runtime close and bootstrap-failure cleanup run
+the callbacks in registration order and await each one before entering later cleanup phases.
+Failures do not prevent later callbacks from running: `close()` aggregates cleanup failures and
+leaves that incomplete phase eligible for an explicit retry, while bootstrap preserves its original
+failure and reports cleanup failures through `ApplicationLogger`.
 
 ## Related Packages
 

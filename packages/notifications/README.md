@@ -104,10 +104,10 @@ NotificationsModule.forRoot({
   channels: [emailChannel],
   queue: {
     adapter: {
-      async enqueue(job) {
+      async enqueue(job, context) {
         return queue.enqueue(job);
       },
-      async enqueueMany(jobs) {
+      async enqueueMany(jobs, context) {
         return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
@@ -123,6 +123,10 @@ Behavioral contract notes:
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
 - Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.
 - Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)` unless the caller explicitly passes `{ queue: true }`.
+- `NotificationsQueueContext` is the optional second argument of `enqueue(...)` and `enqueueMany(...)`. It carries the exact caller-owned `AbortSignal` from dispatch; existing one-argument adapters remain valid.
+- Before every queue handoff, the service checks the signal and then passes that same live signal to the adapter. A pre-aborted queued dispatch emits `requested` then `failed` when lifecycle events are enabled, but never calls `enqueue(...)` or `enqueueMany(...)`. A signal that aborts after an adapter accepts a job cannot revoke that accepted queue job.
+- Queue adapters own queue-specific cancellation policy and must remove any abort listeners when their enqueue operation settles. If an adapter rejects because the signal aborts, native bulk dispatch rejects and publishes `failed` for every requested job; sequential fallback never hands subsequent jobs to the queue. With `continueOnError: true`, earlier accepted jobs remain in `results` and aborted current/remaining jobs appear in `failures`.
+- Queue adapters must resolve every `enqueue()` result and every `enqueueMany()` result entry with a non-empty string identifier. Native `enqueueMany()` must return a dense array whose own data-property entries exactly match the admitted job count; accessor-backed entries, sparse arrays, and length drift are rejected. The service rejects malformed values with `NotificationQueueResultIntegrityError`; it never fabricates a queued delivery id from the notification envelope.
 - Queue jobs preserve caller-provided `notification.id` as the authoritative idempotency key. Otherwise, they derive a deterministic fallback `id` from a runtime-neutral serialization that orders object keys by locale-independent code-unit order and uses a wider 64-bit digest. Queue adapters should pass this value to backing queues that support deduplication. The generated fallback key is deterministic for equivalent supported inputs, including cyclic opaque payloads, but it is not a durable cross-release identity contract; set `notification.id` when callers need stable identity across application or package upgrades.
 - `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery or sequential queue fallback enqueue.
 - When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller. Queued bulk dispatch also publishes a terminal `queued` or `failed` event for every notification that already emitted `requested`, including queue-missing, channel-resolution, and provider/adapter failure paths.
@@ -154,7 +158,20 @@ Published event names:
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id so dispatch results remain stable for callers without relying on time or random data. Generated fallback ids use the same locale-independent key ordering and 64-bit runtime-neutral digest as queue job ids, while caller-provided `notification.id` remains authoritative. They are keys for the current envelope shape, not a documented full-payload hash contract; set `notification.id` when callers need durable identity across releases. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error. Publication failures for success-path lifecycle events remain best-effort so a delivered notification is not converted into an application failure. Publication failures for `notification.dispatch.failed` are caller-visible as `AggregateError` values that include both the original dispatch error and the publisher error so failed-event guarantees are not silently weakened.
+If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. The service snapshots every non-empty `dispatchMany(...)` batch at admission before its first lifecycle publication, and snapshots a single `dispatch(...)` envelope at admission for channel resolution, queue jobs, generated identity, and provider delivery. It then publishes a separate immutable lifecycle event snapshot. Lifecycle snapshots never expose native mutable built-ins: `ArrayBuffer` stores byte length and bytes, while `ArrayBufferView` values additionally preserve byte offset and view kind; `Map` and `Set` become ordered entry/value data, `Date` stores epoch milliseconds (`null` for an invalid date), `URL` stores `href`, `URLSearchParams` stores its query string, and `RegExp` stores source, flags, and `lastIndex`. Publishers must treat lifecycle events as observation-only and must not mutate them to influence delivery. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id so dispatch results remain stable for callers without relying on time or random data. Generated fallback ids use the same locale-independent key ordering and 64-bit runtime-neutral digest as queue job ids, while caller-provided `notification.id` remains authoritative. They are keys for the current envelope shape, not a documented full-payload hash contract; set `notification.id` when callers need durable identity across releases. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error. Publication failures for success-path lifecycle events remain best-effort so a delivered notification is not converted into an application failure. Publication failures for `notification.dispatch.failed` are caller-visible as `AggregateError` values that include both the original dispatch error and the publisher error so failed-event guarantees are not silently weakened.
+
+### Lifecycle built-in representations
+
+| Interface | Immutable fields |
+| --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
 ### Intentional limitations
 
@@ -192,7 +209,17 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationChannelContext`
 - `NotificationChannelDelivery`
 - `NotificationPayload`
+- `NotificationSnapshot`
+- `NotificationSnapshotDate`
+- `NotificationSnapshotMap<TKey, TValue>`
+- `NotificationSnapshotRegExp`
+- `NotificationSnapshotSet<TValue>`
+- `NotificationSnapshotUrl`
+- `NotificationSnapshotUrlSearchParams`
+- `NotificationSnapshotArrayBuffer`
+- `NotificationSnapshotArrayBufferView`
 - `NotificationsQueueAdapter`
+- `NotificationsQueueContext`
 - `NotificationsQueueJob`
 - `NotificationsQueueOptions`
 - `NotificationsModuleOptions`
@@ -212,6 +239,7 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationsConfigurationError`
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
+- `NotificationQueueResultIntegrityError`
 
 Status snapshots include `readiness`, `health`, `ownership`, and a `details` object for platform diagnostics.
 `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, and `eventPublicationEnabled` live under `details`; they are not top-level snapshot fields. `eventPublisherConfigured` records publisher wiring, while `eventPublicationEnabled` records whether that publisher emits lifecycle events. When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are enabled through an event publisher, it includes `notifications.event-publisher`. A configured publisher with `publishLifecycleEvents: false` remains visible as configured but does not add an active dependency, event-backed operation mode, or external ownership. Active optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not create, close, or drain concrete queue or event-bus resources.

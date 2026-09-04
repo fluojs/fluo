@@ -123,6 +123,23 @@ return report;
 ### 18.4.1 Strategic Monitoring
 Be careful not to include every dependency in health checks. If an auxiliary external service such as email delivery goes down, the application may still serve most users normally. Including that service in the readiness check can unnecessarily make the entire app look "offline." Focus on the core dependencies that are strictly required for the application to do its job. This is called "differentiated monitoring," and it means separating "fatal" conditions from "warning" conditions.
 
+Terminus makes that distinction explicit with an indicator's `readiness` setting. Every indicator still participates in `/health` by default, while `readiness: false` keeps a non-critical dependency out of the binary `/ready` gate:
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [
+    new HttpHealthIndicator({
+      key: 'search',
+      readiness: false,
+      url: 'https://search.example.com/health',
+    }),
+    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+  ],
+});
+```
+
+If `search` fails, `/health` returns `503` and retains its diagnostic, but `/ready` remains available while `memory`, custom readiness checks, and platform readiness succeed. Omitting `readiness` preserves the existing default: a failing indicator makes both `/health` and `/ready` unavailable.
+
 ### 18.4.2 Resource Monitoring: Memory and CPU
 Beyond external services, you should monitor server resource usage. Memory leaks slowly degrade performance before they eventually cause a crash. With the built in memory health indicator, you can mark an instance as "unhealthy" when RAM usage crosses a specific threshold. This lets the orchestrator gracefully replace the instance before it reaches a critical failure state, keeping the overall service stable and responsive.
 

@@ -507,7 +507,7 @@ describe('@fluojs/platform-deno', () => {
     }
 
     expect(server.shutdown).toHaveBeenCalledTimes(1);
-    expect(server.options?.signal?.aborted).toBe(true);
+    expect(server.options?.signal?.aborted).toBe(false);
   });
 
   it('dispatches successful requests through adapter.handle after listen binds the dispatcher', async () => {

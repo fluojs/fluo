@@ -359,6 +359,64 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['a:init', 'b:init', 'a:bootstrap', 'b:bootstrap']);
   });
 
+  it('runs interleaved multi-provider lifecycle hooks in declared runtime order', async () => {
+    const PLUGINS = Symbol('interleaved-lifecycle-plugins');
+    const events: string[] = [];
+
+    class FirstPlugin {
+      onModuleInit() {
+        events.push('first:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('first:bootstrap');
+      }
+    }
+
+    class SingletonService {
+      onModuleInit() {
+        events.push('singleton:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('singleton:bootstrap');
+      }
+    }
+
+    class SecondPlugin {
+      onModuleInit() {
+        events.push('second:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('second:bootstrap');
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: PLUGINS, useClass: FirstPlugin, multi: true },
+        SingletonService,
+        { provide: PLUGINS, useClass: SecondPlugin, multi: true },
+      ],
+    })
+    class InterleavedLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: InterleavedLifecycleModule }).compile();
+    const plugins = await testingModule.resolve<Array<FirstPlugin | SecondPlugin>>(PLUGINS);
+
+    expect(plugins[0]).toBeInstanceOf(FirstPlugin);
+    expect(plugins[1]).toBeInstanceOf(SecondPlugin);
+    expect(events).toEqual([
+      'first:init',
+      'singleton:init',
+      'second:init',
+      'first:bootstrap',
+      'singleton:bootstrap',
+      'second:bootstrap',
+    ]);
+  });
+
   it('runs singleton multi-provider lifecycle hooks when another contribution is request scoped', async () => {
     const PLUGINS = Symbol('mixed-scope-lifecycle-plugins');
     const events: string[] = [];

@@ -1,11 +1,10 @@
-import { describe, expect, it } from 'vitest';
-
 import type { FrameworkRequest, FrameworkResponse, RequestContext } from '@fluojs/http';
+import { describe, expect, it } from 'vitest';
 
 import { bootstrapApplication, defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
-import { HealthModule, type RuntimeHealthModule } from './health.js';
 import * as healthModuleExports from './health.js';
+import { HealthModule, type RuntimeHealthModule } from './health.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 
@@ -236,7 +235,7 @@ describe('createHealthModule', () => {
     await shutdownStarted.promise;
 
     const readyDuringClose = createResponse();
-    await app.dispatch(createRequest('/ready'), readyDuringClose);
+    await app.dispatcher.dispatch(createRequest('/ready'), readyDuringClose);
     expect(readyDuringClose.statusCode).toBe(503);
     expect(readyDuringClose.body).toEqual({ status: 'starting' });
 
@@ -272,7 +271,7 @@ describe('createHealthModule', () => {
     await shutdownStarted.promise;
 
     const readyDuringFailedClose = createResponse();
-    await app.dispatch(createRequest('/ready'), readyDuringFailedClose);
+    await app.dispatcher.dispatch(createRequest('/ready'), readyDuringFailedClose);
     expect(readyDuringFailedClose.statusCode).toBe(503);
     expect(readyDuringFailedClose.body).toEqual({ status: 'starting' });
 

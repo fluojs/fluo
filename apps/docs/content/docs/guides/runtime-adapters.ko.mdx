@@ -17,6 +17,10 @@ AppModule
 
 Runtime target을 선택하거나 어떤 behavior가 portable하고 어떤 behavior가 adapter 책임인지 이해해야 할 때 이 가이드를 사용하세요.
 
+## Cloudflare Worker close 소유권
+
+Exported Cloudflare Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없습니다. `worker.fetch` 밖의 application-owned trigger는 `await worker.close()`를 직접 호출할 수 있습니다. 같은 `worker.fetch` 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그 안에서 await하면 자기 자신의 active request drain을 기다리다 shutdown timeout에 도달합니다. 성공한 lazy-entrypoint close는 재시작 가능합니다. 이후의 `fetch(...)`는 새 application을 만들고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.
+
 ## 정적 에셋
 
 정적 에셋 policy는 애플리케이션이 `createStaticAssetsMiddleware(...)`에 `StaticAssetSource`를 제공할 때만 portable합니다. 이렇게 하면 모든 adapter에서 traversal protection, validator, `HEAD`, `Range`, `If-Range`, stream-cancellation behavior를 동일하게 유지하면서 모든 host에 filesystem이 있다고 주장하지 않습니다.
@@ -190,9 +194,11 @@ Adapter는 Express application을 직접 생성하고 소유하므로 기존 Exp
 Express는 shared SSE/streaming response contract를 지원합니다.
 
 ```ts
-@Get('events')
-async streamEvents(@Res() res: FrameworkResponse) {
-  const events = new SseResponse();
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+
+@Sse('events')
+async streamEvents(_input: undefined, context: RequestContext) {
+  const events = new SseResponse(context);
   events.send({ data: 'hello' });
   return events;
 }

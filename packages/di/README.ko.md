@@ -13,6 +13,7 @@
 - [NestJS scope 및 optional 의존성 마이그레이션](#nestjs-scope-및-optional-의존성-마이그레이션)
 - [순환 의존성 처리](#순환-의존성-처리)
 - [테스트 및 모킹](#테스트-및-모킹)
+- [내부 패키지 통합](#내부-패키지-통합)
 - [문제 해결](#문제-해결)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
@@ -236,6 +237,14 @@ it('uses a mock database', async () => {
   expect(mockDb.query).toHaveBeenCalledOnce();
 });
 ```
+
+## 내부 패키지 통합
+
+`@fluojs/di/internal`은 first-party framework package를 위한 typed integration
+seam입니다. 이 경로는 owning container를 통해 순서가 있는 `multi: true`
+contribution 하나를 해석하며, container의 scope, cache, cycle, ordering, disposal
+semantics를 보존합니다. 애플리케이션 코드는 `Container.resolve(...)`를 사용해야 하며,
+contribution index는 root `Container` API에 속하지 않습니다.
 
 ## 문제 해결
 

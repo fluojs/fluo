@@ -1,5 +1,5 @@
 ---
-"@fluojs/cli": patch
+"@fluojs/cli": major
 ---
 
-Restore the default NestJS Express bootstrap migration with an explicit fluo adapter while preserving explicit adapter-independent transform selections.
+`fluo migrate` now preserves Nest bootstrap by default. If you relied on the former automatic Express bootstrap transform, rerun with `--platform express`. That automatic path supports only one numeric-literal single-argument `listen(port)`; host, callback, string, environment-derived, and multiple-listen shapes remain preserved for manual migration.

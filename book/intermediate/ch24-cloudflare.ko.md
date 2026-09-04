@@ -78,11 +78,40 @@ export default {
 };
 ```
 
-### 24.3.1 Lifecycle and Shutdown Boundaries
+### 24.3.1 Env-Aware Lazy Bootstrapping
+
+첫 번째 Worker `env`가 `ConfigModule`, singleton provider, D1, KV, service binding 또는 deployment별 bootstrap option을 구성해야 하면 opt-in `createCloudflareWorkerEnvEntrypoint(...)`를 사용하세요. 이 factory는 module registration 전에 하나의 명시적 environment를 받고 root module과 final bootstrap option을 반환하며 isolate마다 한 번 실행됩니다. 반환한 configuration은 해당 isolate에 유지되고 application은 application generation마다 생성됩니다.
+
+```typescript
+import { createCloudflareWorkerEnvEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { createAppModule } from './app.module';
+
+interface WorkerEnv {
+  API_PREFIX: string;
+  DB: D1Database;
+}
+
+const worker = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => ({
+  rootModule: createAppModule({ database: env.DB }),
+  options: {
+    globalPrefix: env.API_PREFIX,
+  },
+}));
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+`worker.ready(env)`는 명시적 environment에서만 호출하세요. 첫 `env`가 singleton bootstrap configuration을 결정하고 이후 fetch는 실행 중인 application을 재사용합니다. Request별 environment는 계속 `context.request.cloudflare?.env`에 나타나지만 bootstrap configuration을 다시 구성할 수는 없습니다. 성공한 `worker.close()` 뒤에는 다음 `ready(env)` 또는 `fetch(...)`가 factory를 다시 실행하지 않고 보존한 첫 environment configuration에서 새 application generation을 만듭니다. Module과 option이 첫 host-provided environment에 의존하지 않는 zero-config bootstrap에는 `createCloudflareWorkerEntrypoint(AppModule)`를 유지하세요.
+
+### 24.3.2 Lifecycle and Shutdown Boundaries
 
 Cloudflare Workers는 장기 실행 server socket을 노출하지 않지만, `app.listen()`은 Worker handler가 traffic을 받기 전에 dispatcher를 binding하는 fluo lifecycle boundary입니다. Worker WebSocket binding은 이 boundary 전에 설정하세요. Adapter instance가 한 번 listen한 뒤에는 binding identity가 frozen되며, 다른 binding이 필요하면 새 adapter instance를 만들어야 합니다.
 
 Shutdown 중에는 adapter가 새 ingress 수락을 중단하고 HTTP 및 WebSocket upgrade request 모두에 같은 JSON `503` shutdown response를 반환합니다. Active HTTP handler, in-flight WebSocket upgrade binding work, SSE(`text/event-stream`) response는 close drain이 진행되는 동안 `ctx.waitUntil()`에 등록된 상태로 유지됩니다. SSE의 경우 drain은 body가 끝나거나 client가 cancel할 때까지 body lifecycle을 따르므로, cancellation은 generic stream detail이 아니라 shutdown contract의 일부입니다. Active work가 끝나지 않으면 `close()`는 bounded 10초 window 이후 timeout되고, shutdown이 아직 drain 중인 동안 concurrent `listen()` call은 isolate를 다시 여는 대신 reject됩니다.
+
+Worker host는 exported `fetch` handler에 대해 `worker.close()`를 호출하지 않으며 그 위치에 shutdown callback도 제공하지 않습니다. `worker.fetch` 호출 밖의 application-owned close trigger는 `await worker.close()`를 직접 호출할 수 있습니다. 같은 `worker.fetch` 호출 안의 management route는 현재 response를 반환한 뒤 `ctx.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그 안에서 await하면 해당 active request drain을 기다리다 shutdown timeout에 도달합니다. 성공한 lazy-entrypoint close는 terminal이 아니라 재시작 가능합니다. 다음 `worker.fetch(...)`는 isolate 안에서 새 application을 bootstrap하여 bootstrap lifecycle hook을 다시 실행하고 application singleton provider를 다시 생성합니다.
 
 Timeout된 lazy-entrypoint close가 isolate를 영구적으로 unusable하게 만들지는 않습니다. Entrypoint는 underlying drain이 unresolved인 동안 shutdown response를 계속 반환하고, drain이 settle된 뒤 임시 gate를 해제하여 이후 request가 새 application을 bootstrap할 수 있게 합니다.
 
@@ -97,7 +126,7 @@ Cloudflare Workers는 전통적인 Node.js 환경과 다른 제약을 갖습니�
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`에서는 `ready()`가 bootstrap을 미리 시작하지 않은 경우에만 첫 `fetch(request, env, ctx)`가 bootstrap을 시작합니다. 어느 경로든 bootstrap에는 미리 선언한 root module과 option만 전달되고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값에만 사용하세요.
+fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`는 미리 선언한 root module과 option만 받으므로 fetch-time `env`는 dispatch 중에 연결됩니다. 이 표준 경로에서는 fetch-time binding으로 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. `createCloudflareWorkerEnvEntrypoint(...)`는 명시적인 예외입니다. 첫 environment가 registration 전에 root module과 final option을 선택하고 isolate마다 한 번 cache하며, 성공한 close 후 재시작을 포함한 각 application generation이 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 이를 재사용합니다. Bootstrap-owned binding에는 이 entrypoint를 사용하고 request마다 달라지는 binding에는 request-bound mapping을 유지하세요.
 
 Mapping은 application-owned request boundary에 두세요. Handler의 `RequestContext`에서 필요한 binding을 읽고 좁힌 뒤 application-shaped 값으로 바꾸어 injected provider method에 전달합니다. `CatalogService`는 provider로, `WorkerController`는 controller로 owning module에 등록합니다.
 
@@ -274,7 +303,7 @@ export class DatabaseModule {}
 - `@fluojs/platform-cloudflare-workers`는 fluo 생명주기와 통합되는 표준 `fetch` 기반 어댑터를 제공합니다.
 - Worker 런타임에 맞추기 위해 서버 소켓을 열지 말고 `fetch` 핸들러를 내보내세요. 단, Worker handler가 traffic을 받기 전에 `app.listen()`은 fluo dispatcher를 binding합니다.
 - KV, D1, WebSockets와 같은 네이티브 엣지 기능은 전용 fluo 바인딩과 프로바이더 경계로 연결할 수 있습니다.
-- Fetch-time Worker binding은 bootstrap configuration이 아닙니다. Application request boundary에서 `context.request.cloudflare?.env`를 읽고 좁힌 뒤 application-shaped 값만 provider method에 전달하세요.
+- 첫 fetch binding이 bootstrap configuration이 되어야 하면 `createCloudflareWorkerEnvEntrypoint(...)`를 사용하세요. 이 factory는 isolate마다 한 번 실행되고 모든 application generation이 첫 environment의 cache된 module과 option을 사용합니다. 그 외에는 application request boundary에서 `context.request.cloudflare?.env`를 읽고 좁힌 뒤 application-shaped 값만 provider method에 전달하세요.
 - 배포와 환경 관리를 일관되게 유지하려면 `wrangler`를 사용하세요.
 - `ctx.waitUntil`은 fluo에 의해 처리되어 엣지에서 요청 lifecycle tracking과 SSE(`text/event-stream`) response drain을 유지합니다.
 - 엣지는 단순한 호스팅 플랫폼이 아니라, 글로벌 애플리케이션 아키텍처에 대해 생각하는 다른 방식입니다.

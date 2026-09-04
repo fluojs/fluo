@@ -24,6 +24,8 @@ npm install @fluojs/runtime
 
 배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가 아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면 peer, host, port가 없고 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
 
+mandatory runtime consumer인 `@fluojs/cli`도 같은 Node 범위를 선언합니다. CLI host는 Node 20에서 `>=20.19.3`으로, Node 22에서 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상 host는 지원되는 Node 20 또는 Node 22 line으로 옮겨야 합니다.
+
 ## Node 정적 에셋 source
 
 `@fluojs/http`는 portable static middleware와 representation-selection contract를 소유합니다. `@fluojs/runtime/node`는 Node filesystem `StaticAssetSource` 구현인 `createNodeFileSystemAssetSource(...)`를 export합니다. 이 helper는 configuration 단계에서 root directory를 검증하고 symlink 검사를 포함한 lexical 및 realpath 해석을 root 내부로 제한하며 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. 선택된 각 regular-file representation은 검증된 파일을 열어 전체 파일을 immutable byte snapshot으로 즉시 복사하고 response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열거나 lazy stream하지 않습니다. 따라서 애플리케이션 owner는 선택된 전체 파일 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 byte를 설명합니다. Raw Node, Express, Fastify adapter는 이 portable middleware/source seam을 공유하고 adapter-specific re-encoding 대신 선택된 representation boundary를 보존합니다. 이 Node 전용 helper는 의도적으로 `@fluojs/runtime/web`에 없으며 Web 및 edge deployment는 애플리케이션이 소유한 source를 제공해야 합니다.
@@ -173,7 +175,7 @@ await context.close();
 
 ### NestJS 라이프사이클 훅 마이그레이션
 
-공개 runtime lifecycle 계약에는 네 개의 hook만 있습니다. Startup은 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo가 탐지하거나 호출하지 않습니다.
+공개 runtime lifecycle 계약에는 네 개의 hook만 있습니다. Startup은 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. 적격 singleton `multi: true` contribution은 각각 별도의 lifecycle instance이며, startup은 contribution 순서를 따르고 shutdown은 이를 뒤집습니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo가 탐지하거나 호출하지 않습니다.
 
 종료 준비 작업은 소유하는 문서화된 phase로 옮기세요. Application-wide signal phase보다 먼저 끝나야 하는 module resource teardown에는 `onModuleDestroy()`를 사용하고, signal-aware application cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. `@fluojs/runtime`은 `beforeApplicationShutdown` compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않습니다.
 
@@ -317,7 +319,7 @@ class UsersModule {}
 
 ## 동작 계약
 
-- Runtime lifecycle은 네 hook 계약을 유지합니다. Startup은 provider order의 `onModuleInit()` phase를 끝낸 뒤 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 compatibility shim도 없습니다.
+- Runtime lifecycle은 네 hook 계약을 유지합니다. Startup은 provider order의 `onModuleInit()` phase를 끝낸 뒤 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. 모든 적격 singleton `multi: true` contribution은 contribution 순서에 따른 별도 instance로 참여합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 compatibility shim도 없습니다.
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다. 한도를 넘은 Web 바디는 stream cancellation을 기다리지 않고 HTTP 413으로 완료되며, cancellation 실패도 해당 응답을 가리지 않습니다. 이 계약은 원본 요청을 읽지 않는 기본 cloned-body 경로에도 적용됩니다.
 - `preferNativeJsonBodyReader`는 deprecated adapter compatibility 옵션으로 `@fluojs/runtime/web`에서 계속 허용되지만 더 이상 파싱 동작을 바꾸지 않습니다. Web JSON 바디는 항상 bounded streaming reader를 사용하므로 native whole-body read가 `maxBodySize`를 우회할 수 없습니다.
 - `@fluojs/runtime/node`에서는 Node 요청 바디 파싱 전에 primary `content-type` media type을 normalize한 뒤 JSON 및 멀티파트 여부를 판단하므로, 대소문자가 섞인 JSON/멀티파트 헤더도 문서화된 파서 동작을 그대로 유지합니다.
@@ -330,6 +332,7 @@ class UsersModule {}
 - 모듈 그래프 컴파일은 cache key 생성이나 visibility 순회 전에 runtime provider와 `@Module(...)` provider 선언을 DI의 canonical normalization으로 검증합니다. 따라서 잘못된 `inject` 값, dependency wrapper/token, scope는 순회 단계 고유 오류를 노출하지 않고 `InvalidProviderError`로 실패합니다.
 - 애플리케이션 또는 컨텍스트 bootstrap이 런타임 리소스나 lifecycle instance 생성 이후 실패하면 fluo는 readiness를 초기화하고, 등록된 runtime cleanup callback을 실행하며, 그 시점까지 해석된 instance의 shutdown hook을 `bootstrap-failed`로 호출하고, 컨테이너를 dispose하고, cleanup 실패를 로그로 남긴 뒤 원래 bootstrap error를 다시 던집니다.
 - `Application.listen()`과 microservice `listen()`은 shutdown과 직렬화됩니다. 겹치는 startup 호출은 같은 in-flight startup을 공유하고, shutdown은 진행 중인 startup이 끝날 때까지 기다리며, shutdown과 경합한 startup은 close 시작 이후 shell을 다시 `ready`로 전이할 수 없습니다. 공개 `Application.state` 계약은 teardown이 pending인 동안 `bootstrapped` 또는 `ready`를 유지하고 teardown이 성공적으로 완료된 뒤에만 `closed`로 바뀝니다. 이 상태와 별개로 application 또는 context close 시작은 terminal operation gate를 동기적으로 닫습니다. 따라서 `Application.get()`, `ApplicationContext.get()`, `connectMicroservice()`, `startAllMicroservices()`, application `listen()`은 teardown이 pending인 동안 reject되고 close 시도가 실패한 뒤에도 계속 reject됩니다. Close 직전에 admission된 provider lookup도 asynchronous resolution 뒤 이 gate를 다시 검사하므로 shutdown 시작 이후 stale value를 반환할 수 없습니다. 이후 `close()`는 완료된 runtime teardown phase를 건너뛰고 incomplete adapter 또는 lifecycle-hook stage를 각자의 retry contract에 따라 다시 실행합니다. Container-managed `onDestroy()` hook은 terminal best-effort cleanup입니다. 첫 container disposal에서 materialize된 hook을 모두 시도하고, 실패한 hook만 이후 명시적 application 또는 context `close()`에서 재시도하며, 성공한 hook은 다시 실행하지 않습니다. Microservice close가 시작되면 terminal ingress gate가 새 `send()`와 `emit()` 호출을 `listen()`이 아직 pending 상태이거나 close 시도가 실패한 뒤에도 runtime 또는 transport handoff 전에 reject합니다.
+- `Application.dispatch()`도 같은 동기 terminal admission gate를 사용합니다. `Application.close()`가 시작된 뒤의 direct dispatch는 HTTP dispatcher에 들어가기 전에 reject되며, teardown이 pending인 동안, close가 실패한 뒤, 성공적으로 close된 뒤에도 마찬가지입니다. Gate가 닫히기 전에 admission된 dispatch는 dispatcher가 소유하며 close가 소급해 취소하지 않습니다.
 - `@fluojs/runtime/node`는 pending 상태인 각 raw Node listen 작업과 해당 `EADDRINUSE` retry timer를 소유합니다. Startup이 retry 중일 때 adapter `close()`를 호출하면 retry를 취소하고 pending listen이 settle될 때까지 기다리며, shutdown 완료가 보고된 뒤 listener가 bind되지 않도록 보장합니다.
 - 종료 시그널 등록 실패는 사용자가 관찰할 수 있습니다. `runNodeApplication(...)`, `bootstrapNodeApplication(...)`, adapter 소유 runtime helper는 이미 시작된 애플리케이션을 `bootstrap-failed`로 닫고, close 실패가 있으면 별도로 로그로 남기며, 원래 registration error로 reject합니다.
 - 종료 시그널 등록 해제 실패는 애플리케이션 close를 건너뛰지 않습니다. `app.close()`는 항상 adapter shutdown, lifecycle hook, runtime cleanup callback, container dispose까지 계속 진행합니다. close 자체가 성공하면 unregistration error로 reject하고, close도 실패하면 두 실패를 모두 담은 aggregate로 reject합니다.
@@ -439,7 +442,30 @@ const jsonLogger = createJsonApplicationLogger();
 
 개발 명령의 raw child-process 출력이 필요하면 대신 `fluo dev --verbose` 같은 CLI reporter flag를 사용하세요.
 
+### Node 압축 실패 마이그레이션
+
+**호환성 깨짐:** Node response가 commit되기 전에 압축이 실패하면
+`FrameworkResponse.send()`는 reject됩니다. 어댑터 integration은 이 promise를 await하고
+rejection을 처리해야 하며, 압축되지 않은 성공 response가 전송되었다고 가정하거나 오류를
+무시하면 안 됩니다.
+
+dispatcher가 관리하는 request는 runtime의 JSON 500 envelope로 복구됩니다. 어댑터는 실패한
+body에 자신이 추가한 `Content-Type`만 제거하므로 envelope는 `application/json`을 사용하고,
+애플리케이션 코드가 명시한 `Content-Type`은 변경되지 않습니다. fulfilled `send()`나
+adapter가 추가한 오래된 `text/plain` 또는 `application/octet-stream` header에 의존한
+consumer는 rejection 또는 fallback을 명시적으로 처리하고 필요한 application-owned header를
+직접 설정해야 합니다.
+
 더 저수준의 Node compression internals는 공개 `@fluojs/runtime/node` 계약이 아니라 `@fluojs/runtime/internal-node` seam 뒤에 둡니다.
+
+### Runtime cleanup callback
+
+내부 `RUNTIME_CLEANUP_REGISTRATION` token을 받는 provider는 `void` 또는 `Promise<void>`를
+반환하는 cleanup callback을 등록할 수 있습니다. Runtime close와 bootstrap-failure cleanup은
+registration 순서대로 callback을 실행하고, 이후 cleanup phase로 넘어가기 전에 각각을 await합니다.
+실패해도 이후 callback은 계속 실행합니다. `close()`는 cleanup failure를 aggregate하고 완료되지 않은
+phase를 명시적 retry 대상으로 남기며, bootstrap은 원래 failure를 보존하고 cleanup failure를
+`ApplicationLogger`로 보고합니다.
 
 ## 관련 패키지
 

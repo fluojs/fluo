@@ -236,6 +236,55 @@ function isSubset(candidate, previous) {
   return candidate.every((interval) => previous.some((container) => contains(container, interval)));
 }
 
+function intersectLower(left, right) {
+  if (!left || !right) {
+    return left ?? right;
+  }
+
+  const comparison = compareVersions(left.parts, right.parts);
+
+  if (comparison !== 0) {
+    return comparison > 0 ? left : right;
+  }
+
+  return { inclusive: left.inclusive && right.inclusive, parts: left.parts };
+}
+
+function intersectUpper(left, right) {
+  if (!left || !right) {
+    return left ?? right;
+  }
+
+  const comparison = compareVersions(left.parts, right.parts);
+
+  if (comparison !== 0) {
+    return comparison < 0 ? left : right;
+  }
+
+  return { inclusive: left.inclusive && right.inclusive, parts: left.parts };
+}
+
+function intervalsIntersect(left, right) {
+  const lower = intersectLower(left.lower, right.lower);
+  const upper = intersectUpper(left.upper, right.upper);
+
+  if (!lower || !upper) {
+    return true;
+  }
+
+  const comparison = compareVersions(lower.parts, upper.parts);
+  return comparison < 0 || (comparison === 0 && lower.inclusive && upper.inclusive);
+}
+
+export function nodeEngineRangesIntersect(leftRange, rightRange) {
+  const left = normalizeRange(leftRange ?? '*');
+  const right = normalizeRange(rightRange ?? '*');
+
+  return left !== null && right !== null && left.some((leftInterval) =>
+    right.some((rightInterval) => intervalsIntersect(leftInterval, rightInterval)),
+  );
+}
+
 function versionTier(version) {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(version);
 

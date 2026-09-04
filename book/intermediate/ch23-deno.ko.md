@@ -237,6 +237,8 @@ Deno.test("ProductService should return products", async () => {
 
 이 테스트는 process 내부에서 dispatch하므로 파일 시스템 권한이 필요하지 않습니다. `--allow-read` 없이 실행하세요. Import된 애플리케이션 그래프가 환경 변수를 읽거나 외부 서비스에 연결한다면 `deno test --allow-env=DATABASE_URL --allow-net=database.host:5432`처럼 필요한 key나 destination만 허용하세요. Fixture를 의도적으로 읽는 테스트라면 `--allow-read=./test/fixtures`처럼 fixture 경로에만 한정된 권한을 추가할 수 있습니다.
 
+저장소는 Deno 2 네이티브 adapter smoke lane도 실행합니다. Public `npm:@fluojs/platform-deno` import를 검사하고 listener를 열지 않는 host-owned handler를 dispatch한 뒤, port `0`과 `shutdownSignals: false`로 managed listener를 시작해 실제 route를 fetch하고 애플리케이션을 닫습니다. 이 managed-listener 경로에는 `--allow-net`만 필요하며, signal ownership은 의도적으로 package contract suite에서 별도로 검증합니다.
+
 ## 23.10 Summary: The Deno Advantage
 
 - **Security**: 명시적 동의 없는 예기치 않은 네트워크나 파일 접근이 없습니다.

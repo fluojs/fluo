@@ -13,6 +13,7 @@ Minimal token-based dependency injection container powering every fluo applicati
 - [NestJS Scope and Optional Dependency Migration](#nestjs-scope-and-optional-dependency-migration)
 - [Circular Dependency Handling](#circular-dependency-handling)
 - [Testing and Mocking](#testing-and-mocking)
+- [Internal Package Integrations](#internal-package-integrations)
 - [Troubleshooting](#troubleshooting)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -236,6 +237,14 @@ it('uses a mock database', async () => {
   expect(mockDb.query).toHaveBeenCalledOnce();
 });
 ```
+
+## Internal Package Integrations
+
+`@fluojs/di/internal` is a typed integration seam for first-party framework
+packages. It resolves one ordered `multi: true` contribution through the
+owning container, preserving the container's scope, cache, cycle, ordering,
+and disposal semantics. Application code must use `Container.resolve(...)`;
+contribution indexes are not part of the root `Container` API.
 
 ## Troubleshooting
 

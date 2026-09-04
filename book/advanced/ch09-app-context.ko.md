@@ -118,7 +118,7 @@ class FluoApplicationContext implements ApplicationContext {
     readonly rootModule: ModuleType,
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
-    private readonly runtimeCleanup: Array<() => void>,
+    private readonly runtimeCleanup: Array<() => MaybePromise<void>>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -428,6 +428,12 @@ class FluoApplication implements Application {
 
 `ApplicationState`는 `path:packages/runtime/src/types.ts`에 선언되어 있습니다. 허용 값은 계속 `'bootstrapped'`, `'ready'`, `'closed'`입니다. `closeStarted`는 새 public state가 아니라 private admission gate입니다. Pending 또는 failed teardown은 이전 public state를 유지하지만 일반 application operation은 shutdown 시작부터 reject됩니다. Public state는 teardown이 성공적으로 완료된 뒤에만 `closed`가 됩니다.
 
+Runtime-owned cleanup callback은 `void` 또는 `Promise<void>`를 받을 수 있습니다. close와
+bootstrap-failure cleanup은 lifecycle hook, adapter, container disposal로 넘어가기 전에 registration을
+순서대로 await합니다. callback failure가 나도 이후 registration은 건너뛰지 않습니다. close는 failure를
+aggregate하여 완료되지 않은 phase를 명시적으로 retry하게 하고, bootstrap은 원래 error를 보존하며
+cleanup failure를 `ApplicationLogger`로 보고합니다.
+
 가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:437-443`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 
 `ready()`는 transport bind가 아니라 platform readiness gate입니다. adapter로 요청을 받기 전에 critical component 상태를 확인하는 단계로 분리되어 있습니다.
@@ -559,7 +565,7 @@ source가 구현하는 모델도 정확히 이것입니다. application shell은
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
 Application context와 application shell은 public lifecycle state와 private terminal operation gate라는 두 shutdown 개념을 사용합니다. 둘을 분리하면 문서화된 `bootstrapped | ready | closed` state 계약을 보존하면서 teardown에 새 작업이 진입하지 못하게 할 수 있습니다.
 
-`Application.close()`는 teardown promise를 만들기 전에 `closeStarted`를 동기적으로 설정합니다. 그 시점부터 `Application.listen()`, `Application.get()`, `connectMicroservice()`, `startAllMicroservices()`는 reject됩니다. `ApplicationContext.close()`도 `ApplicationContext.get()`에 같은 규칙을 적용합니다. 이 gate는 teardown이 pending인 동안은 물론 close 시도가 실패한 뒤에도 닫힌 상태를 유지합니다. 성공한 teardown만 public application state를 `closed`로 바꾸며, pending 또는 failed 시도는 이전 public state를 그대로 노출합니다. 두 `get()` 구현은 awaited provider resolution 뒤 gate를 다시 검사하므로 close 직전에 admission된 lookup도 shutdown 시작 뒤 provider를 반환할 수 없습니다.
+`Application.close()`는 teardown promise를 만들기 전에 `closeStarted`를 동기적으로 설정합니다. 그 시점부터 `Application.listen()`, `Application.get()`, `Application.dispatch()`, `connectMicroservice()`, `startAllMicroservices()`는 reject됩니다. `ApplicationContext.close()`도 `ApplicationContext.get()`에 같은 규칙을 적용합니다. 이 gate는 teardown이 pending인 동안은 물론 close 시도가 실패한 뒤에도 닫힌 상태를 유지합니다. 성공한 teardown만 public application state를 `closed`로 바꾸며, pending 또는 failed 시도는 이전 public state를 그대로 노출합니다. 두 `get()` 구현은 awaited provider resolution 뒤 gate를 다시 검사하므로 close 직전에 admission된 lookup도 shutdown 시작 뒤 provider를 반환할 수 없습니다. `Application.dispatch()`는 dispatcher handoff 전에 한 번 검사합니다. Close 전에 admission된 request는 dispatcher-owned drain semantics로 계속 진행하지만 close 뒤 시작한 request는 HTTP pipeline에 들어갈 수 없습니다.
 
 Connect 경로는 asynchronous runtime resolution 전후에 gate를 검사합니다. Start-all 경로는 iteration 전과 각 child listen 직전에 다시 검사합니다. 이 재검사는 shutdown 직전에 admission된 작업이 shutdown 시작 뒤 child를 attach하거나 start하지 못하게 합니다.
 

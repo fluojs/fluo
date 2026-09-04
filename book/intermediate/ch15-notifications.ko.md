@@ -191,11 +191,11 @@ NotificationsModule.forRoot({
   channels: [emailChannel],
   queue: {
     adapter: {
-      async enqueue(job) {
+      async enqueue(job, context) {
         // @fluojs/queue 또는 애플리케이션 소유 queue와의 통합
         return queue.enqueue(job);
       },
-      async enqueueMany(jobs) {
+      async enqueueMany(jobs, context) {
         return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
@@ -204,7 +204,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-`dispatchMany(...)`가 `bulkThreshold`에 도달하거나 옵션에서 `{ queue: true }`를 명시하면, service는 직접 전송 대신 queue adapter를 사용합니다. 명시적 `{ queue: true }` 옵션은 batch가 `bulkThreshold`보다 작아도 queue-backed batch delivery를 강제합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 authoritative value로 보존하고, 없으면 object key를 locale-independent code-unit order로 정렬하는 runtime-neutral serialization과 64-bit digest에서 deterministic fallback key를 만듭니다. 따라서 idempotent enqueue를 지원하는 queue backend는 host locale behavior나 이전 32-bit collision risk를 물려받지 않고 동등한 반복 요청을 중복 제거할 수 있습니다. 생성된 fallback key는 문서화된 recursive full-payload hash 계약이 아니므로 release를 넘어 durable identity가 필요한 caller는 `notification.id`를 제공해야 합니다. Adapter가 `enqueueMany(...)`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 성공한 queued result를 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다. Queue delivery가 요청되었지만 queue adapter가 등록되어 있지 않으면 `NotificationQueueNotConfiguredError`가 발생합니다.
+`dispatchMany(...)`가 `bulkThreshold`에 도달하거나 옵션에서 `{ queue: true }`를 명시하면, service는 직접 전송 대신 queue adapter를 사용합니다. 명시적 `{ queue: true }` 옵션은 batch가 `bulkThreshold`보다 작아도 queue-backed batch delivery를 강제합니다. `enqueue(...)`와 `enqueueMany(...)`는 caller의 정확한 `AbortSignal`을 담은 선택적 두 번째 `NotificationsQueueContext` 인자를 받으며, 기존 한 인자 adapter는 계속 유효합니다. 서비스는 모든 queue handoff 직전에 signal을 확인하므로 이미 abort된 dispatch는 lifecycle publication이 활성화된 경우 `requested` 다음 `failed`를 발행하지만 adapter를 호출하지 않습니다. In-flight queue call에는 같은 live signal을 전달하며 listener cleanup과 queue별 cancellation policy는 queue adapter가 소유합니다. Queue가 job을 수락한 뒤의 abort는 그 job을 취소하지 못합니다. Native bulk가 abort로 reject되면 모든 requested job이 실패하고, sequential fallback은 이후 job을 queue에 넘기지 않습니다. `continueOnError: true`이면 앞서 수락된 result를 보존하고 abort된 현재/나머지 job은 failure로 기록합니다. 모든 `enqueue()` 결과와 모든 `enqueueMany()` 결과 항목은 non-empty string이어야 합니다. Native `enqueueMany()`는 admission된 job count와 정확히 일치하는 own data-property 항목의 dense array를 반환해야 하며, accessor-backed 항목, sparse array, length drift는 fabricated queued delivery id로 바뀌지 않고 export된 `NotificationQueueResultIntegrityError`를 throw합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 authoritative value로 보존하고, 없으면 object key를 locale-independent code-unit order로 정렬하는 runtime-neutral serialization과 64-bit digest에서 deterministic fallback key를 만듭니다. 따라서 idempotent enqueue를 지원하는 queue backend는 host locale behavior나 이전 32-bit collision risk를 물려받지 않고 동등한 반복 요청을 중복 제거할 수 있습니다. 생성된 fallback key는 문서화된 recursive full-payload hash 계약이 아니므로 release를 넘어 durable identity가 필요한 caller는 `notification.id`를 제공해야 합니다. Adapter가 `enqueueMany(...)`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 malformed queue result를 포함해 성공한 queued result는 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다. Queue delivery가 요청되었지만 queue adapter가 등록되어 있지 않으면 `NotificationQueueNotConfiguredError`가 발생합니다.
 
 ## 15.7 Lifecycle Events
 
@@ -232,6 +232,8 @@ NotificationsModule.forRoot({
 - `notification.dispatch.failed`: 채널 해석, queue enqueue, provider delivery가 실패했을 때.
 
 `events.publisher`가 구성되어 있으면 module registration 또는 dispatch 시점에 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle publication은 기본으로 켜집니다. 채널 해석 실패는 영구적인 구성 오류입니다. 서비스는 `requested` 다음 `failed`를 발행하고, queue에 넣거나 provider를 호출하지 않은 채 `NotificationChannelNotFoundError`를 던집니다. Queue enqueue와 provider delivery 실패도 `failed`를 발행하지만, retry 정책은 underlying queue/provider error를 기준으로 판단해야 합니다. Queued bulk dispatch는 queue 미구성, channel 해석, 순차 fallback enqueue 실패를 포함해 `requested`를 발행한 모든 notification에 terminal `queued` 또는 `failed` 이벤트를 발행합니다. 채널이 `externalId`를 생략하면 서비스는 시간이나 난수가 아니라 deterministic fallback delivery id를 만듭니다. 이 ID는 queue job id와 동일한 locale-independent key ordering 및 64-bit runtime-neutral digest를 사용하며 caller-provided `notification.id`를 보존합니다. 생성된 fallback id는 현재 envelope shape를 위한 key이지 recursive full-payload hash value가 아닙니다. release를 넘어 durable identity가 중요하면 `notification.id`를 제공하세요.
+
+서비스는 channel resolution, queue job, generated identity, provider delivery에 사용할 각 dispatch envelope을 admission 시점에 snapshot한 뒤 별도의 immutable event snapshot을 발행합니다. Lifecycle publisher는 이 snapshot을 관찰만 하며 mutation으로 delivery policy를 바꿀 수 없습니다.
 
 성공 이벤트 publication failure는 이미 완료된 delivery를 애플리케이션 실패로 바꾸지 않도록 best-effort입니다. 반면 `notification.dispatch.failed` publication failure는 다르게 처리됩니다. 호출자는 원래 dispatch error와 publisher error를 모두 담은 `AggregateError`를 받으므로 실패 알림 reporting이 조용히 누락되지 않습니다.
 
@@ -265,6 +267,19 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 ```
 
 `NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 top-level `readiness`, `health`, `ownership`을 포함합니다. `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, `eventPublicationEnabled` 같은 diagnostics는 `details` 아래에 있으며, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency entry도 여기에 포함됩니다. Publisher configuration과 lifecycle enablement는 분리됩니다. `publishLifecycleEvents: false`인 publisher는 configured 상태로 남지만 active event dependency, event-backed operation mode, external ownership을 만들지 않습니다. 활성화된 선택적 seam은 `ownership.externallyManaged: true`로 표시되고, foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`는 `ownership` 아래에 유지됩니다.
+
+### Lifecycle snapshot 내장 표현
+
+| 인터페이스 | 불변 필드 |
+| --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
 ## 15.9 FluoShop Context: Order Success Flow
 

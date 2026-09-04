@@ -149,7 +149,10 @@ function createCqrsProviders(options: CqrsModuleOptions, shutdownDeadline: CqrsS
 /** Runtime module entrypoint for CQRS bus registration and handler discovery. */
 export class CqrsModule {
   /**
-   * Registers the CQRS buses globally and wires them to the event-bus integration.
+   * Registers CQRS buses and wires them to the event-bus integration.
+   *
+   * The exported buses are global by default. Set {@link CqrsModuleOptions.global} to `false` to
+   * keep them visible only through modules that import this module definition.
    *
    * @param options CQRS module options including explicit handler classes and event-bus settings.
    * @returns A module definition that exports the lifecycle services and compatibility tokens.

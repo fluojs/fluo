@@ -343,6 +343,109 @@ describe('bootstrapApplication', () => {
     }
   });
 
+  it('rejects new dispatches during pending shutdown without interrupting an admitted dispatch', async () => {
+    const adapterCloseStarted = createDeferred<void>();
+    const closeCanFinish = createDeferred<void>();
+    const dispatchCanFinish = createDeferred<void>();
+    const dispatchStarted = createDeferred<void>();
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        adapterCloseStarted.resolve();
+        await closeCanFinish.promise;
+      },
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const dispatch = vi.spyOn(app.dispatcher, 'dispatch').mockImplementation(async () => {
+      if (dispatch.mock.calls.length === 1) {
+        dispatchStarted.resolve();
+        await dispatchCanFinish.promise;
+      }
+    });
+
+    // Given: one request was admitted before shutdown and is still draining.
+    const admittedDispatch = app.dispatch({} as FrameworkRequest, {} as FrameworkResponse);
+    await dispatchStarted.promise;
+
+    // When: close begins and has reached the adapter-owned pending teardown stage.
+    const closePromise = app.close('SIGTERM');
+    await adapterCloseStarted.promise;
+
+    // Then: new direct dispatches reject while the already-admitted dispatch drains.
+    try {
+      await expect(app.dispatch({} as FrameworkRequest, {} as FrameworkResponse)).rejects.toThrow(
+        'Application cannot dispatch after shutdown has started.',
+      );
+      expect(dispatch).toHaveBeenCalledTimes(1);
+
+      dispatchCanFinish.resolve();
+      await admittedDispatch;
+    } finally {
+      closeCanFinish.resolve();
+      await closePromise;
+    }
+  });
+
+  it('rejects dispatches after a failed shutdown without changing close retry ownership', async () => {
+    let failClose = true;
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        if (failClose) {
+          failClose = false;
+          throw new Error('close failed');
+        }
+      },
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const dispatch = vi.spyOn(app.dispatcher, 'dispatch');
+
+    await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
+    await expect(app.dispatch({} as FrameworkRequest, {} as FrameworkResponse)).rejects.toThrow(
+      'Application cannot dispatch after shutdown has started.',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+
+    await app.close('SIGTERM');
+  });
+
+  it('rejects dispatches after successful shutdown', async () => {
+    const adapter: HttpApplicationAdapter = {
+      async close() {},
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const dispatch = vi.spyOn(app.dispatcher, 'dispatch');
+
+    await app.close('SIGTERM');
+
+    await expect(app.dispatch({} as FrameworkRequest, {} as FrameworkResponse)).rejects.toThrow(
+      'Application cannot dispatch after shutdown has started.',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it('rejects Application.get() when shutdown starts during provider resolution', async () => {
     const resolutionStarted = createDeferred<void>();
     const providerCanResolve = createDeferred<void>();
@@ -471,8 +574,18 @@ describe('bootstrapApplication', () => {
     ]);
   });
 
-  it('runs internally registered runtime cleanup callbacks on close', async () => {
+  it('awaits runtime cleanup callbacks before later shutdown phases and retries failed cleanup', async () => {
     const events: string[] = [];
+    const cleanupCanFinish = createDeferred<void>();
+    const cleanupStarted = createDeferred<void>();
+    const cleanupFailure = new Error('runtime cleanup failed');
+    let failCleanup = true;
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        events.push('adapter:close');
+      },
+      async listen() {},
+    };
 
     @Inject(RUNTIME_CLEANUP_REGISTRATION)
     class RuntimeCleanupProbe implements OnModuleInit {
@@ -480,23 +593,154 @@ describe('bootstrapApplication', () => {
 
       onModuleInit() {
         this.registerCleanup(() => {
-          events.push('runtime:cleanup');
+          events.push('runtime:waiting:start');
+          cleanupStarted.resolve();
+
+          return cleanupCanFinish.promise.then(() => {
+            events.push('runtime:waiting:end');
+          });
         });
+        this.registerCleanup(() => {
+          events.push('runtime:failing');
+
+          if (failCleanup) {
+            failCleanup = false;
+            throw cleanupFailure;
+          }
+        });
+        this.registerCleanup(() => {
+          events.push('runtime:after-failure');
+        });
+      }
+    }
+
+    class AppService {
+      onApplicationShutdown() {
+        events.push('application:shutdown');
+      }
+
+      onModuleDestroy() {
+        events.push('module:destroy');
       }
     }
 
     class AppModule {}
     defineModule(AppModule, {
-      providers: [RuntimeCleanupProbe],
+      providers: [RuntimeCleanupProbe, AppService],
     });
 
     const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
       rootModule: AppModule,
     }));
 
-    await app.close('SIGTERM');
+    const closePromise = app.close('SIGTERM');
 
-    expect(events).toEqual(['runtime:cleanup']);
+    try {
+      await cleanupStarted.promise;
+      expect(events).toEqual(['runtime:waiting:start']);
+
+      cleanupCanFinish.resolve();
+
+      await expect(closePromise).rejects.toBe(cleanupFailure);
+      expect(events).toEqual([
+        'runtime:waiting:start',
+        'runtime:waiting:end',
+        'runtime:failing',
+        'runtime:after-failure',
+        'module:destroy',
+        'application:shutdown',
+        'adapter:close',
+      ]);
+
+      await expect(app.close('SIGTERM')).resolves.toBeUndefined();
+      expect(events).toEqual([
+        'runtime:waiting:start',
+        'runtime:waiting:end',
+        'runtime:failing',
+        'runtime:after-failure',
+        'module:destroy',
+        'application:shutdown',
+        'adapter:close',
+        'runtime:waiting:start',
+        'runtime:waiting:end',
+        'runtime:failing',
+        'runtime:after-failure',
+      ]);
+    } finally {
+      cleanupCanFinish.resolve();
+      await closePromise.catch(() => undefined);
+    }
+  });
+
+  it('aggregates runtime cleanup failures while continuing later callbacks', async () => {
+    const events: string[] = [];
+    const firstFailure = new Error('first runtime cleanup failed');
+    const secondFailure = new Error('second runtime cleanup failed');
+    const secondFailurePromise = Promise.reject(secondFailure);
+    void secondFailurePromise.catch(() => undefined);
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        events.push('adapter:close');
+      },
+      async listen() {},
+    };
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class RuntimeCleanupProbe implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          events.push('runtime:first-failure');
+          throw firstFailure;
+        });
+        this.registerCleanup(() => {
+          events.push('runtime:second-failure');
+          return secondFailurePromise;
+        });
+        this.registerCleanup(() => {
+          events.push('runtime:after-failures');
+        });
+      }
+    }
+
+    class AppService {
+      onApplicationShutdown() {
+        events.push('application:shutdown');
+      }
+
+      onModuleDestroy() {
+        events.push('module:destroy');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [RuntimeCleanupProbe, AppService],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    const closeError = await app.close('SIGTERM').then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(closeError).toBeInstanceOf(AggregateError);
+    if (closeError instanceof AggregateError) {
+      expect(closeError.errors).toEqual([firstFailure, secondFailure]);
+    }
+    expect(events).toEqual([
+      'runtime:first-failure',
+      'runtime:second-failure',
+      'runtime:after-failures',
+      'module:destroy',
+      'application:shutdown',
+      'adapter:close',
+    ]);
   });
 
   it('retries only a failed shutdown hook without repeating completed adapter cleanup', async () => {

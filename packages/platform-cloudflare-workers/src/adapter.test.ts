@@ -1,27 +1,27 @@
 import { readFileSync } from 'node:fs';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import {
   Controller,
-  Get,
-  Post,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
+  Post,
   type RequestContext,
 } from '@fluojs/http';
 import { defineModule, fluoFactory } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import {
   bootstrapCloudflareWorkerApplication,
+  type CloudflareWorkerExecutionContext,
   CloudflareWorkerHttpApplicationAdapter,
-  createCloudflareWorkerAdapter,
-  createCloudflareWorkerEntrypoint,
   type CloudflareWorkerWebSocket,
   type CloudflareWorkerWebSocketBinding,
   type CloudflareWorkerWebSocketPair,
-  type CloudflareWorkerExecutionContext,
+  createCloudflareWorkerAdapter,
+  createCloudflareWorkerEnvEntrypoint,
+  createCloudflareWorkerEntrypoint,
 } from './adapter.js';
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -37,6 +37,17 @@ type DocumentedRealtimeCapability = {
   readonly mode: string;
   readonly support: string;
   readonly version: number;
+};
+
+type DocumentedWorkerCloseOwnership = {
+  readonly inFetchManagement: string;
+  readonly outOfBand: string;
+  readonly restart: string;
+};
+
+type DocumentedWorkerLifecycleContract = {
+  readonly closeOwnership: DocumentedWorkerCloseOwnership;
+  readonly realtimeCapability: DocumentedRealtimeCapability;
 };
 
 const REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR = '<!-- fluo-contract: realtime-capability -->';
@@ -56,7 +67,19 @@ function isDocumentedRealtimeCapability(value: unknown): value is DocumentedReal
   );
 }
 
-function readDocumentedRealtimeCapability(readme: string, locale: string): DocumentedRealtimeCapability {
+function isDocumentedWorkerCloseOwnership(value: unknown): value is DocumentedWorkerCloseOwnership {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+
+  return (
+    typeof Reflect.get(value, 'inFetchManagement') === 'string'
+    && typeof Reflect.get(value, 'outOfBand') === 'string'
+    && typeof Reflect.get(value, 'restart') === 'string'
+  );
+}
+
+function readDocumentedWorkerLifecycleContract(readme: string, locale: string): DocumentedWorkerLifecycleContract {
   const anchorOffset = readme.indexOf(REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR);
 
   if (anchorOffset === -1) {
@@ -83,13 +106,18 @@ function readDocumentedRealtimeCapability(readme: string, locale: string): Docum
   if (
     !parsed
     || typeof parsed !== 'object'
+    || !('closeOwnership' in parsed)
     || !('realtimeCapability' in parsed)
+    || !isDocumentedWorkerCloseOwnership(parsed.closeOwnership)
     || !isDocumentedRealtimeCapability(parsed.realtimeCapability)
   ) {
     throw new Error(`${locale} README realtime capability documentation contract has an invalid shape.`);
   }
 
-  return parsed.realtimeCapability;
+  return {
+    closeOwnership: parsed.closeOwnership,
+    realtimeCapability: parsed.realtimeCapability,
+  };
 }
 
 function createMockWorkerWebSocket(): CloudflareWorkerWebSocket {
@@ -156,6 +184,12 @@ afterEach(() => {
 });
 
 describe('@fluojs/platform-cloudflare-workers', () => {
+  it('requires an execution context in the concrete adapter fetch contract', () => {
+    expectTypeOf<
+      Parameters<CloudflareWorkerHttpApplicationAdapter['fetch']>[2]
+    >().toEqualTypeOf<CloudflareWorkerExecutionContext>();
+  });
+
   it('rejects invalid explicit numeric adapter options during setup', () => {
     expect(() => createCloudflareWorkerAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
     expect(() => createCloudflareWorkerAdapter({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);
@@ -171,16 +205,23 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
 
     const expectedDocumentationContract = {
-      bindingInstallationVersion: capability.bindingInstallation.version,
-      contract: capability.contract,
-      kind: capability.kind,
-      mode: capability.mode,
-      support: capability.support,
-      version: capability.version,
+      closeOwnership: {
+        inFetchManagement: 'wait-until',
+        outOfBand: 'await',
+        restart: 'restartable',
+      },
+      realtimeCapability: {
+        bindingInstallationVersion: capability.bindingInstallation.version,
+        contract: capability.contract,
+        kind: capability.kind,
+        mode: capability.mode,
+        support: capability.support,
+        version: capability.version,
+      },
     };
 
-    expect(readDocumentedRealtimeCapability(englishReadme, 'English')).toEqual(expectedDocumentationContract);
-    expect(readDocumentedRealtimeCapability(koreanReadme, 'Korean')).toEqual(expectedDocumentationContract);
+    expect(readDocumentedWorkerLifecycleContract(englishReadme, 'English')).toEqual(expectedDocumentationContract);
+    expect(readDocumentedWorkerLifecycleContract(koreanReadme, 'Korean')).toEqual(expectedDocumentationContract);
   });
 
   it('keeps the Worker adapter runtime import path free of the HTTP root barrel', () => {
@@ -903,6 +944,196 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       expect(second.status).toBe(200);
       await expect(first.json()).resolves.toEqual({ ok: true });
       await expect(second.json()).resolves.toEqual({ ok: true });
+    } finally {
+      await entrypoint.close();
+    }
+  });
+
+  it('reboots a lazy Worker entrypoint after successful close and reconstructs application singletons', async () => {
+    let bootstrapCount = 0;
+    let singletonConstructionCount = 0;
+
+    class StartupProbe {
+      constructor() {
+        singletonConstructionCount += 1;
+      }
+
+      onApplicationBootstrap() {
+        bootstrapCount += 1;
+      }
+    }
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      providers: [StartupProbe],
+    });
+
+    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+      cors: false,
+    });
+
+    try {
+      // Given a bootstrapped lazy entrypoint.
+      const firstResponse = await entrypoint.fetch(
+        new Request('https://worker.test/health'),
+        {},
+        createExecutionContext(),
+      );
+
+      // When its application closes successfully and the host dispatches another fetch.
+      await entrypoint.close();
+      const restartedResponse = await entrypoint.fetch(
+        new Request('https://worker.test/health'),
+        {},
+        createExecutionContext(),
+      );
+
+      // Then the fetch succeeds through a newly bootstrapped application instance.
+      expect(firstResponse.status).toBe(200);
+      expect(restartedResponse.status).toBe(200);
+      expect(singletonConstructionCount).toBe(2);
+      expect(bootstrapCount).toBe(2);
+    } finally {
+      await entrypoint.close();
+    }
+  });
+
+  it('reuses the first explicit environment configuration after a successful lazy-entrypoint restart', async () => {
+    type WorkerEnv = {
+      readonly prefix: string;
+    };
+    let bootstrapCount = 0;
+    const configuredEnvironments: WorkerEnv[] = [];
+
+    class StartupProbe {
+      onApplicationBootstrap() {
+        bootstrapCount += 1;
+      }
+    }
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      providers: [StartupProbe],
+    });
+
+    const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
+      configuredEnvironments.push(env);
+
+      return {
+        options: {
+          cors: false,
+          globalPrefix: env.prefix,
+        },
+        rootModule: AppModule,
+      };
+    });
+
+    expectTypeOf(entrypoint.ready).parameter(0).toEqualTypeOf<WorkerEnv>();
+
+    try {
+      const firstEnvironment = { prefix: '/configured' };
+      const secondEnvironment = { prefix: '/ignored-for-bootstrap' };
+
+      const firstApplication = await entrypoint.ready(firstEnvironment);
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(bootstrapCount).toBe(1);
+
+      await entrypoint.close();
+
+      const restartedResponse = await entrypoint.fetch(
+        new Request('https://worker.test/configured/health'),
+        secondEnvironment,
+        createExecutionContext(),
+      );
+
+      expect(restartedResponse.status).toBe(200);
+      await expect(restartedResponse.json()).resolves.toEqual({ ok: true });
+      const secondApplication = await entrypoint.ready(secondEnvironment);
+
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(secondApplication).not.toBe(firstApplication);
+      expect(bootstrapCount).toBe(2);
+    } finally {
+      await entrypoint.close();
+    }
+  });
+
+  it('retries failed bootstrap with the first explicit environment configuration', async () => {
+    type WorkerEnv = {
+      readonly prefix: string;
+    };
+    let bootstrapAttempts = 0;
+    const configuredEnvironments: WorkerEnv[] = [];
+
+    class StartupProbe {
+      onApplicationBootstrap() {
+        bootstrapAttempts += 1;
+        if (bootstrapAttempts === 1) {
+          throw new Error('first bootstrap failed');
+        }
+      }
+    }
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      providers: [StartupProbe],
+    });
+
+    const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
+      configuredEnvironments.push(env);
+
+      return {
+        options: {
+          cors: false,
+          globalPrefix: env.prefix,
+        },
+        rootModule: AppModule,
+      };
+    });
+
+    const firstEnvironment = { prefix: '/configured' };
+    const secondEnvironment = { prefix: '/ignored-for-bootstrap' };
+
+    try {
+      await expect(entrypoint.ready(firstEnvironment)).rejects.toThrow('first bootstrap failed');
+
+      const response = await entrypoint.fetch(
+        new Request('https://worker.test/configured/health'),
+        secondEnvironment,
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(configuredEnvironments).toEqual([firstEnvironment]);
+      expect(bootstrapAttempts).toBe(2);
     } finally {
       await entrypoint.close();
     }

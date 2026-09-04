@@ -1,5 +1,6 @@
 import { InvariantError, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
+import { resolveMultiContribution } from '@fluojs/di/internal';
 import {
   createDispatcher,
   createHandlerMapping,
@@ -78,6 +79,7 @@ type MutableBootstrapReadySignal = BootstrapReadySignal & {
 };
 
 type CacheInvalidatingContainer = Container & { override(...providers: Provider[]): Container };
+type RuntimeCleanupCallback = Parameters<RuntimeCleanupRegistration>[0];
 
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
@@ -125,12 +127,12 @@ async function disposeContainer(container: Container): Promise<void> {
   await container.dispose();
 }
 
-async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<unknown[]> {
+async function runCleanupCallbacks(cleanups: readonly RuntimeCleanupCallback[]): Promise<unknown[]> {
   const errors: unknown[] = [];
 
   for (const cleanup of cleanups) {
     try {
-      cleanup();
+      await cleanup();
     } catch (error) {
       errors.push(error);
     }
@@ -139,7 +141,7 @@ async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<u
   return errors;
 }
 
-function createRuntimeCleanupRegistration(cleanups: Array<() => void>): RuntimeCleanupRegistration {
+function createRuntimeCleanupRegistration(cleanups: RuntimeCleanupCallback[]): RuntimeCleanupRegistration {
   return (cleanup) => {
     cleanups.push(cleanup);
 
@@ -179,7 +181,7 @@ async function closeRuntimeResources(options: {
   container: Container;
   lifecycleInstances: readonly unknown[];
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   shutdownState: RetryableShutdownState<RuntimeShutdownPhase>;
   signal?: string;
 }): Promise<void> {
@@ -237,7 +239,7 @@ async function runBootstrapFailureCleanup(options: {
   lifecycleInstances: readonly unknown[];
   logger: ApplicationLogger;
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   scope: 'application' | 'application context';
 }): Promise<void> {
   const errors: unknown[] = [];
@@ -719,7 +721,9 @@ class FluoApplication implements Application {
     }
   }
 
-  private assertApplicationOperationAllowed(operation: 'connect a microservice' | 'start microservices'): void {
+  private assertApplicationOperationAllowed(
+    operation: 'connect a microservice' | 'dispatch' | 'start microservices',
+  ): void {
     if (this.closeStarted) {
       throw new InvariantError(`Application cannot ${operation} after shutdown has started.`);
     }
@@ -785,6 +789,7 @@ class FluoApplication implements Application {
   }
 
   dispatch = async (...args: Parameters<Dispatcher['dispatch']>): Promise<void> => {
+    this.assertApplicationOperationAllowed('dispatch');
     await this.dispatcher.dispatch(...args);
   };
 
@@ -1029,9 +1034,15 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
     }
 
     this.closeStarted = true;
-    this.runtime.markShutdownStarted?.();
+    let resolveClose: () => void = () => undefined;
+    let rejectClose: (reason?: unknown) => void = () => undefined;
+    this.closingPromise = new Promise<void>((resolve, reject) => {
+      resolveClose = resolve;
+      rejectClose = reject;
+    });
+    void (async () => {
+      this.runtime.markShutdownStarted?.();
 
-    this.closingPromise = (async () => {
       if (this.listenPromise) {
         try {
           await this.listenPromise;
@@ -1062,14 +1073,9 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
 
       this.closed = true;
       this.microserviceState = 'closed';
-    })();
+    })().then(resolveClose, rejectClose);
 
-    try {
-      await this.closingPromise;
-    } catch (error) {
-      this.closingPromise = undefined;
-      throw error;
-    }
+    await this.closingPromise;
   }
 
   private assertTransportIngressOpen(operation: 'emit' | 'send'): void {
@@ -1087,18 +1093,35 @@ async function resolveLifecycleInstances(
   providers: Provider[],
   resolvedInstances: unknown[] = [],
 ): Promise<unknown[]> {
-  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
-  const seen = new Set<Token>();
+  const lifecycleEntries: Array<{ contributionIndex?: number; token: Token; useValue?: unknown }> = [];
+  const seenSingleTokens = new Set<Token>();
+  const multiContributionIndexes = new Map<Token, number>();
 
   for (const provider of providers) {
     const token = providerToken(provider);
 
-    if (seen.has(token)) {
+    if (isMultiProvider(provider)) {
+      const contributionIndex = multiContributionIndexes.get(token) ?? 0;
+      multiContributionIndexes.set(token, contributionIndex + 1);
+
+      if (isHookBearingValueProvider(provider)) {
+        lifecycleEntries.push({ token, useValue: provider.useValue });
+        continue;
+      }
+
+      if (isDirectSingletonContextProvider(provider, true)) {
+        lifecycleEntries.push({ contributionIndex, token });
+      }
+
+      continue;
+    }
+
+    if (seenSingleTokens.has(token)) {
       continue;
     }
 
     if (isHookBearingValueProvider(provider)) {
-      seen.add(token);
+      seenSingleTokens.add(token);
       lifecycleEntries.push({ token, useValue: provider.useValue });
       continue;
     }
@@ -1107,20 +1130,35 @@ async function resolveLifecycleInstances(
       continue;
     }
 
-    seen.add(token);
+    seenSingleTokens.add(token);
     lifecycleEntries.push({ token });
   }
 
   const resolutionResults = await Promise.allSettled(
-    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
+    lifecycleEntries.map((entry) => {
+      if (entry.useValue !== undefined) {
+        return entry.useValue;
+      }
+
+      if (entry.contributionIndex === undefined) {
+        return container.resolve(entry.token);
+      }
+
+      return resolveMultiContribution(container, entry.token, entry.contributionIndex);
+    }),
   );
 
   let resolutionError: unknown;
   let hasResolutionError = false;
 
-  for (const result of resolutionResults) {
+  for (const [index, result] of resolutionResults.entries()) {
     if (result.status === 'fulfilled') {
-      resolvedInstances.push(result.value);
+      const entry = lifecycleEntries[index];
+
+      if (entry.contributionIndex === undefined || hasLifecycleHook(result.value)) {
+        resolvedInstances.push(result.value);
+      }
+
       continue;
     }
 
@@ -1162,8 +1200,8 @@ function createContextCacheableTokenSet(
   return cacheableTokens;
 }
 
-function isDirectSingletonContextProvider(provider: Provider): boolean {
-  if (isMultiProvider(provider)) {
+function isDirectSingletonContextProvider(provider: Provider, includeMulti = false): boolean {
+  if (isMultiProvider(provider) && !includeMulti) {
     return false;
   }
 
@@ -1367,7 +1405,7 @@ function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -1402,7 +1440,7 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
 function registerRuntimeApplicationContextTokens(
   bootstrapped: BootstrapResult,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -1549,7 +1587,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     async close() {},
     async listen() {},
   };
-  const runtimeCleanup: Array<() => void> = [];
+  const runtimeCleanup: RuntimeCleanupCallback[] = [];
   if (studioDevtools) {
     runtimeCleanup.push(() => studioDevtools.close());
   }
@@ -1721,7 +1759,7 @@ export class FluoFactory {
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
-    const runtimeCleanup: Array<() => void> = [];
+    const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
       runtimeCleanup.push(() => studioDevtools.close());
     }

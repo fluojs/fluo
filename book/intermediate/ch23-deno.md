@@ -237,6 +237,8 @@ Deno.test("ProductService should return products", async () => {
 
 This test performs in-process dispatch and needs no filesystem permission. Run it without `--allow-read`; if the imported application graph reads environment variables or contacts an external service, grant only the required keys or destinations, for example `deno test --allow-env=DATABASE_URL --allow-net=database.host:5432`. Tests that intentionally load fixtures may add a fixture-only scope such as `--allow-read=./test/fixtures`.
 
+The repository also runs a Deno 2 native adapter smoke lane: it checks the public `npm:@fluojs/platform-deno` import, dispatches a host-owned handler without opening a listener, then starts a managed listener on port `0` with `shutdownSignals: false`, fetches a real route, and closes the application. That managed-listener path needs only `--allow-net`; signal ownership is intentionally tested by the package contract suite instead.
+
 ## 23.10 Summary: The Deno Advantage
 
 - **Security**: No unexpected network or file access without explicit consent.

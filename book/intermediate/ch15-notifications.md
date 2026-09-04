@@ -191,11 +191,11 @@ NotificationsModule.forRoot({
   channels: [emailChannel],
   queue: {
     adapter: {
-      async enqueue(job) {
+      async enqueue(job, context) {
         // Integration with @fluojs/queue or another application-owned queue
         return queue.enqueue(job);
       },
-      async enqueueMany(jobs) {
+      async enqueueMany(jobs, context) {
         return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
@@ -204,7 +204,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-When `dispatchMany(...)` reaches `bulkThreshold`, or when options explicitly request `{ queue: true }`, the service uses the queue adapter instead of direct delivery. The explicit `{ queue: true }` option forces queue-backed batch delivery even when the batch is below `bulkThreshold`. Each queued job carries a stable idempotency key: `notification.id` is preserved as authoritative when supplied; otherwise, the service creates a deterministic fallback key from a runtime-neutral serialization that orders object keys by locale-independent code-unit order and applies a 64-bit digest. This lets queue backends that support idempotent enqueue operations deduplicate repeated equivalent requests without inheriting host locale behavior or the previous 32-bit collision risk. Generated fallback keys are not a documented recursive full-payload hash contract, so callers that need durable identity across releases should provide `notification.id`. If an adapter does not implement `enqueueMany(...)`, fluo enqueues jobs one by one in input order; `continueOnError: true` preserves successful queued results while returning failed enqueue attempts in the batch failures list. Queue-backed delivery throws `NotificationQueueNotConfiguredError` when queue delivery is requested but no queue adapter is registered.
+When `dispatchMany(...)` reaches `bulkThreshold`, or when options explicitly request `{ queue: true }`, the service uses the queue adapter instead of direct delivery. The explicit `{ queue: true }` option forces queue-backed batch delivery even when the batch is below `bulkThreshold`. `enqueue(...)` and `enqueueMany(...)` receive an optional second `NotificationsQueueContext` argument containing the caller's exact `AbortSignal`; existing one-argument adapters remain valid. The service checks a signal immediately before every queue handoff, so a pre-aborted dispatch emits `requested` then `failed` when lifecycle publication is enabled but never calls the adapter. It passes the same live signal to in-flight queue calls, while queue adapters own listener cleanup and queue-specific cancellation policy. An abort after queue acceptance cannot revoke that job. Native bulk abort rejection fails every requested job; sequential fallback does not hand later jobs to the queue, and with `continueOnError: true` retains earlier accepted results while recording aborted current and remaining jobs as failures. Every `enqueue()` result and every `enqueueMany()` result entry must be a non-empty string. Native `enqueueMany()` must return a dense array whose own data-property entries exactly match the admitted job count; accessor-backed entries, sparse arrays, and length drift throw the exported `NotificationQueueResultIntegrityError` rather than becoming fabricated queued delivery ids. Each queued job carries a stable idempotency key: `notification.id` is preserved as authoritative when supplied; otherwise, the service creates a deterministic fallback key from a runtime-neutral serialization that orders object keys by locale-independent code-unit order and applies a 64-bit digest. This lets queue backends that support idempotent enqueue operations deduplicate repeated equivalent requests without inheriting host locale behavior or the previous 32-bit collision risk. Generated fallback keys are not a documented recursive full-payload hash contract, so callers that need durable identity across releases should provide `notification.id`. If an adapter does not implement `enqueueMany(...)`, fluo enqueues jobs one by one in input order; `continueOnError: true` preserves successful queued results while returning failed enqueue attempts, including malformed queue results, in the batch failures list. Queue-backed delivery throws `NotificationQueueNotConfiguredError` when queue delivery is requested but no queue adapter is registered.
 
 ## 15.7 Lifecycle Events
 
@@ -232,6 +232,8 @@ NotificationsModule.forRoot({
 - `notification.dispatch.failed`: When channel resolution, queue enqueue, or provider delivery fails.
 
 If `events.publisher` is configured, lifecycle publication defaults to enabled unless `publishLifecycleEvents: false` is set at module registration or dispatch time. Channel resolution failures are permanent configuration errors: the service publishes `requested`, then `failed`, and throws `NotificationChannelNotFoundError` without enqueueing or calling a provider. Queue enqueue and provider delivery failures also publish `failed`, but retry policy should be based on the underlying queue or provider error. Queued bulk dispatch publishes a terminal `queued` or `failed` event for every notification that emitted `requested`, including queue-missing, channel-resolution, and sequential fallback enqueue failures. When a channel omits `externalId`, the service creates a deterministic fallback delivery id rather than using time or random data. It uses the same locale-independent key ordering and 64-bit runtime-neutral digest as queue job ids, while preserving caller-provided `notification.id`. Treat generated fallback ids as keys for the current envelope shape, not recursive full-payload hash values; provide `notification.id` when durable cross-release identity matters.
+
+The service snapshots each dispatch envelope at admission for channel resolution, queue jobs, generated identity, and provider delivery, then publishes separate immutable event snapshots. A lifecycle publisher observes those snapshots and cannot mutate one to alter delivery policy.
 
 Publication failures for success events are best-effort so they do not turn a completed delivery into an application failure. Publication failures for `notification.dispatch.failed` are different: the caller receives an `AggregateError` containing both the original dispatch error and the publisher error so failed notification reporting is never silently swallowed.
 
@@ -265,6 +267,19 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 ```
 
 `NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include top-level `readiness`, `health`, and `ownership`. Diagnostics such as `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`, and `eventPublicationEnabled` live under `details`, including dependency entries such as `notifications.queue-adapter` and `notifications.event-publisher`. Publisher configuration and lifecycle enablement are separate: a publisher with `publishLifecycleEvents: false` remains configured but does not produce an active event dependency, event-backed operation mode, or external ownership. Active optional seams set `ownership.externallyManaged: true`, and `ownsResources: false` stays top-level under `ownership` because the foundation package does not create, close, or drain concrete queue or event-bus resources.
+
+### Lifecycle snapshot built-in representations
+
+| Interface | Immutable fields |
+| --- | --- |
+| `NotificationSnapshotArrayBuffer` | `kind: 'ArrayBuffer'`, `byteLength`, `bytes` |
+| `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `byteOffset`, `byteLength`, `bytes`, `view` |
+| `NotificationSnapshotDate` | `kind: 'Date'`, `epochMilliseconds: number \| null` |
+| `NotificationSnapshotMap<TKey, TValue>` | `kind: 'Map'`, `entries` |
+| `NotificationSnapshotRegExp` | `kind: 'RegExp'`, `source`, `flags`, `lastIndex` |
+| `NotificationSnapshotSet<TValue>` | `kind: 'Set'`, `values` |
+| `NotificationSnapshotUrl` | `kind: 'URL'`, `href` |
+| `NotificationSnapshotUrlSearchParams` | `kind: 'URLSearchParams'`, `query` |
 
 ## 15.9 FluoShop Context: Order Success Flow
 

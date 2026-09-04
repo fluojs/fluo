@@ -13,6 +13,7 @@
 - [라이프사이클과 종료](#라이프사이클과-종료)
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [기존 문서 저장](#기존-문서-저장)
   - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
 - [공개 API](#공개-api)
@@ -33,7 +34,7 @@ pnpm add mongoose
 - 요청 단위 트랜잭션에 명시적 `requestTransaction(...)` 경계가 필요할 때.
 - 애플리케이션이 이미 concrete Mongoose connection을 생성·구성하고 있고, fluo가 그 ownership을 대체하지 않고 관측하기를 원할 때.
 
-Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며, package manifest의 `engines.node >=20.0.0`과 동일하게 Node.js 20 이상을 지원합니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
+Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 mandatory `@fluojs/runtime` dependency와 동일하게 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
 
 ## 빠른 시작
 
@@ -86,7 +87,15 @@ Request cancellation 또는 shutdown이 callback 시작 후 boundary를 abort하
 import { Inject } from '@fluojs/core';
 import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
 
-type UserDocument = { readonly _id: string; readonly name: string };
+type UserDocumentSaveOptions = {
+  readonly validateBeforeSave?: boolean;
+  readonly session?: object | null;
+};
+type UserDocument = {
+  readonly _id: string;
+  readonly name: string;
+  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;
+};
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
@@ -134,6 +143,21 @@ export class AnalyticsService {
   }
 }
 ```
+
+### 기존 문서 저장
+
+<!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
+
+기존 Mongoose 문서를 활성 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 안에서 저장해야 하면 opt-in `MongooseConnection.saveDocument(...)` helper를 사용하세요.
+
+```ts
+@Transaction()
+async rename(document: UserDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+helper는 native Mongoose save option을 전달하고 ambient session을 붙인 뒤 동일한 document instance를 반환합니다. 활성 트랜잭션 밖에서는 fail-closed하며, 실수로 현재 트랜잭션을 벗어나지 않도록 `{ session: null }` 또는 다른 명시적 session을 거부합니다. document, prototype, model cache를 patch하지 않으므로 `doc.save()` 직접 호출은 계속 native Mongoose 동작이며 자동 session을 받지 않습니다.
 
 ### 요청 트랜잭션 인터셉터 호환성
 
@@ -190,6 +214,7 @@ await this.conn.transaction(async () => {
 
 ## 공개 API
 
+- `MongooseConnection.saveDocument(document, options?)` — native save option과 document identity를 보존하면서 현재 트랜잭션 session으로 기존 문서를 명시적으로 저장합니다.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.

@@ -1,12 +1,15 @@
 import { Inject } from '@fluojs/core';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 import {
+  type ActiveRequestTransaction,
+  type ActiveRequestTransactionHandle,
   createAbortError,
   createRequestAbortContext,
+  type OnApplicationShutdown,
+  type OnModuleInit,
   raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@fluojs/runtime';
+} from './integration.js';
 
 import { markPrismaServiceHandle } from './prisma-service-brand.js';
 import { createPrismaPlatformStatusSnapshot } from './status.js';
@@ -28,16 +31,6 @@ const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
 interface PrismaServiceOptions {
   strictTransactions: boolean;
 }
-
-type ActiveRequestTransaction = {
-  abort(reason?: unknown): void;
-  settled: Promise<void>;
-};
-
-type ActiveRequestTransactionHandle = {
-  active: ActiveRequestTransaction;
-  settle(): void;
-};
 
 type ActiveTransactionBoundary = {
   settled: Promise<void>;
@@ -170,6 +163,7 @@ export class PrismaService<
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionBoundaries = new Set<ActiveTransactionBoundary>();
   private connectTransition?: Promise<void>;
+  private shutdownTransition?: Promise<void>;
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
 
@@ -298,7 +292,27 @@ export class PrismaService<
     }
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  onApplicationShutdown(): Promise<void> {
+    if (this.lifecycleState === 'stopped') {
+      return Promise.resolve();
+    }
+
+    if (this.shutdownTransition) {
+      return this.shutdownTransition;
+    }
+
+    const shutdownTransition = this.completeApplicationShutdown();
+    this.shutdownTransition = shutdownTransition;
+    void shutdownTransition.then(undefined, () => {
+      if (this.shutdownTransition === shutdownTransition) {
+        this.shutdownTransition = undefined;
+      }
+    });
+
+    return shutdownTransition;
+  }
+
+  private async completeApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
 
     for (const transaction of this.activeRequestTransactions) {
@@ -326,6 +340,7 @@ export class PrismaService<
    */
   createPlatformStatusSnapshot() {
     return createPrismaPlatformStatusSnapshot({
+      activeTransactionBoundaries: this.activeTransactionBoundaries.size,
       activeRequestTransactions: this.activeRequestTransactions.size,
       lifecycleState: this.lifecycleState,
       strictTransactions: this.serviceOptions.strictTransactions,

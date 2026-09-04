@@ -3,7 +3,12 @@ import { Inject } from '@fluojs/core';
 import {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
+  NotificationQueueResultIntegrityError,
 } from './errors.js';
+import {
+  createNotificationDispatchSnapshot,
+  createNotificationLifecycleEventSnapshot,
+} from './snapshots.js';
 import { createNotificationsPlatformStatusSnapshot } from './status.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATIONS_OPTIONS } from './tokens.js';
 import type {
@@ -49,6 +54,7 @@ export class NotificationsService implements Notifications {
    * @returns A normalized dispatch result describing direct vs queued delivery.
    * @throws {NotificationChannelNotFoundError} When no registered channel matches `notification.channel`.
    * @throws {NotificationQueueNotConfiguredError} When queue delivery is requested without a queue adapter.
+   * @throws {NotificationQueueResultIntegrityError} When a queue adapter returns an invalid delivery identifier.
    *
    * @example
    * ```ts
@@ -64,35 +70,51 @@ export class NotificationsService implements Notifications {
     notification: TRequest,
     options: NotificationDispatchOptions = {},
   ): Promise<NotificationDispatchResult> {
+    const dispatchNotification = createNotificationDispatchSnapshot(notification);
+
+    return this.dispatchAdmitted(dispatchNotification, options);
+  }
+
+  private async dispatchAdmitted<TRequest extends NotificationDispatchRequest>(
+    dispatchNotification: TRequest,
+    options: NotificationDispatchOptions,
+  ): Promise<NotificationDispatchResult> {
     const requestedPublicationError = await this.publishLifecycleEventBestEffort(
       'notification.dispatch.requested',
-      notification,
+      dispatchNotification,
       options,
     );
 
     if (this.shouldQueueSingleDispatch(options)) {
       try {
-        this.requireChannel(notification.channel);
+        this.requireChannel(dispatchNotification.channel);
       } catch (error) {
-        await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
         throw error;
       }
 
-      const job = this.createQueueJob(notification);
+      const job = this.createQueueJob(dispatchNotification);
       try {
-        const deliveryId = await this.requireQueueAdapter().enqueue(job);
+        const queue = this.requireQueueAdapter();
+        throwIfAborted(options.signal);
+        const deliveryId = validateQueueDeliveryId(await queue.enqueue(job, { signal: options.signal }));
         const result: NotificationDispatchResult = {
-          channel: notification.channel,
-          deliveryId: this.normalizeDeliveryId(deliveryId, notification),
+          channel: dispatchNotification.channel,
+          deliveryId,
           queued: true,
           status: 'queued',
         };
 
-        await this.publishLifecycleEventBestEffort('notification.dispatch.queued', notification, options, result.deliveryId);
+        await this.publishLifecycleEventBestEffort(
+          'notification.dispatch.queued',
+          dispatchNotification,
+          options,
+          result.deliveryId,
+        );
 
         return result;
       } catch (error) {
-        await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
         throw error;
       }
     }
@@ -100,17 +122,17 @@ export class NotificationsService implements Notifications {
     let channel: NotificationChannel;
 
     try {
-      channel = this.requireChannel(notification.channel);
+      channel = this.requireChannel(dispatchNotification.channel);
     } catch (error) {
-      await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
       throw error;
     }
 
     try {
-      const delivery = await channel.send(notification, { signal: options.signal });
+      const delivery = await channel.send(dispatchNotification, { signal: options.signal });
       const result: NotificationDispatchResult = {
-        channel: notification.channel,
-        deliveryId: this.normalizeDeliveryId(delivery.externalId, notification),
+        channel: dispatchNotification.channel,
+        deliveryId: this.normalizeDeliveryId(delivery.externalId, dispatchNotification),
         metadata: delivery.metadata,
         queued: delivery.status === 'queued',
         status: delivery.status ?? 'delivered',
@@ -118,14 +140,14 @@ export class NotificationsService implements Notifications {
 
       await this.publishLifecycleEventBestEffort(
         result.queued ? 'notification.dispatch.queued' : 'notification.dispatch.delivered',
-        notification,
+        dispatchNotification,
         options,
         result.deliveryId,
       );
 
       return result;
     } catch (error) {
-      await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationError);
+      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
       throw error;
     }
   }
@@ -138,6 +160,7 @@ export class NotificationsService implements Notifications {
    * @param options Optional queue preference and tolerant error-handling controls.
    * @returns A batch summary containing successes and captured failures.
    * @throws {NotificationQueueNotConfiguredError} When queue-backed bulk delivery is requested without a queue adapter.
+   * @throws {NotificationQueueResultIntegrityError} When a queue adapter returns invalid delivery identifiers.
    */
   async dispatchMany<TRequest extends NotificationDispatchRequest>(
     notifications: readonly TRequest[],
@@ -153,51 +176,67 @@ export class NotificationsService implements Notifications {
       };
     }
 
+    const dispatchNotifications = notifications.map((notification) => createNotificationDispatchSnapshot(notification));
+
     if (this.shouldQueue(notifications.length, options)) {
-      const requestedPublicationErrors = await this.publishRequestedLifecycleEvents(notifications, options);
+      const requestedPublicationErrors = await this.publishRequestedLifecycleEvents(dispatchNotifications, options);
 
       let queue: ReturnType<NotificationsService['requireQueueAdapter']>;
 
       try {
         queue = this.requireQueueAdapter();
       } catch (error) {
-        await this.publishFailureLifecycleEvents(notifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
 
       try {
-        for (const notification of notifications) {
+        for (const notification of dispatchNotifications) {
           this.requireChannel(notification.channel);
         }
       } catch (error) {
-        await this.publishFailureLifecycleEvents(notifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
 
-      const jobs = notifications.map((notification) => this.createQueueJob(notification));
+      const jobs = dispatchNotifications.map((notification) => this.createQueueJob(notification));
 
       if (!queue.enqueueMany) {
-        return this.dispatchManyThroughSequentialQueueFallback(notifications, jobs, options, requestedPublicationErrors);
+        return this.dispatchManyThroughSequentialQueueFallback(
+          dispatchNotifications,
+          jobs,
+          options,
+          requestedPublicationErrors,
+        );
       }
 
-      let ids: readonly string[];
+      const admittedJobCount = jobs.length;
+      let results: NotificationDispatchResult[];
 
       try {
-        ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs), jobs.length);
+        throwIfAborted(options.signal);
+        const ids = validateQueueBatchDeliveryIds(await queue.enqueueMany(jobs, { signal: options.signal }), admittedJobCount);
+        results = dispatchNotifications.map((notification, index) => {
+          const deliveryId = ids[index];
+
+          if (deliveryId === undefined) {
+            throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be present`);
+          }
+
+          return {
+            channel: notification.channel,
+            deliveryId,
+            queued: true,
+            status: 'queued' as const,
+          };
+        });
       } catch (error) {
-        await this.publishFailureLifecycleEvents(notifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
         throw error;
       }
 
-      const results = notifications.map((notification, index) => ({
-        channel: notification.channel,
-        deliveryId: this.normalizeDeliveryId(ids[index], notification),
-        queued: true,
-        status: 'queued' as const,
-      }));
-
-      for (let index = 0; index < notifications.length; index += 1) {
-        const notification = notifications[index];
+      for (let index = 0; index < dispatchNotifications.length; index += 1) {
+        const notification = dispatchNotifications[index];
         await this.publishLifecycleEventBestEffort('notification.dispatch.queued', notification, options, results[index]?.deliveryId);
       }
 
@@ -213,9 +252,9 @@ export class NotificationsService implements Notifications {
     const results: NotificationDispatchResult[] = [];
     const failures: Array<{ error: Error; notification: TRequest }> = [];
 
-    for (const notification of notifications) {
+    for (const notification of dispatchNotifications) {
       try {
-        results.push(await this.dispatch(notification, options));
+        results.push(await this.dispatchAdmitted(notification, options));
       } catch (error) {
         const failure = {
           error: error instanceof Error ? error : new Error('Notification dispatch failed.'),
@@ -336,7 +375,7 @@ export class NotificationsService implements Notifications {
       return;
     }
 
-    const event: NotificationLifecycleEvent<TRequest> = {
+    const event = createNotificationLifecycleEventSnapshot({
       channel: notification.channel,
       deliveryId,
       error: error instanceof Error
@@ -348,7 +387,7 @@ export class NotificationsService implements Notifications {
       name,
       notification,
       occurredAt: new Date().toISOString(),
-    };
+    });
 
     await this.options.events.publisher.publish(event);
   }
@@ -452,7 +491,8 @@ export class NotificationsService implements Notifications {
       }
 
       try {
-        const deliveryId = this.normalizeDeliveryId(await queue.enqueue(job), notification);
+        throwIfAborted(options.signal);
+        const deliveryId = validateQueueDeliveryId(await queue.enqueue(job, { signal: options.signal }));
         const result: NotificationDispatchResult = {
           channel: notification.channel,
           deliveryId,
@@ -495,39 +535,73 @@ export class NotificationsService implements Notifications {
   }
 }
 
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  signal?.throwIfAborted();
+}
+
 function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): readonly string[] {
   if (!Array.isArray(value)) {
-    throw createQueueBatchResultIntegrityError(`expected ${expectedCount} queue ids but received a non-array result`);
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received a non-array result`);
   }
 
-  if (value.length !== expectedCount) {
-    throw createQueueBatchResultIntegrityError(`expected ${expectedCount} queue ids but received ${value.length}`);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+
+  if (!isOwnDataPropertyDescriptor(lengthDescriptor)) {
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received an invalid length descriptor`);
+  }
+
+  if (lengthDescriptor.value !== expectedCount) {
+    throw createQueueResultIntegrityError('enqueueMany', `expected ${expectedCount} queue ids but received ${String(lengthDescriptor.value)}`);
   }
 
   const ids: string[] = [];
 
-  for (let index = 0; index < value.length; index += 1) {
-    if (!Object.hasOwn(value, index)) {
-      throw createQueueBatchResultIntegrityError(`queue id at index ${index} must be present`);
+  for (let index = 0; index < expectedCount; index += 1) {
+    const descriptor = descriptors[String(index)];
+
+    if (!descriptor) {
+      throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be present`);
     }
 
-    const entry = value[index];
+    if (!isOwnDataPropertyDescriptor(descriptor)) {
+      throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be an own data property`);
+    }
+
+    const entry = descriptor.value;
 
     if (typeof entry !== 'string' || entry.length === 0) {
-      throw createQueueBatchResultIntegrityError(`queue id at index ${index} must be a non-empty string`);
+      throw createQueueResultIntegrityError('enqueueMany', `queue id at index ${index} must be a non-empty string`);
     }
 
     ids.push(entry);
   }
 
-  return ids;
+  return Object.freeze(ids);
 }
 
-function createQueueBatchResultIntegrityError(message: string): Error {
-  const error = new Error(`Notifications queue adapter returned an invalid enqueueMany() result: ${message}.`);
-  error.name = 'NotificationQueueResultIntegrityError';
+function isOwnDataPropertyDescriptor(
+  descriptor: PropertyDescriptor | undefined,
+): descriptor is PropertyDescriptor & { value: unknown } {
+  return descriptor !== undefined
+    && Object.hasOwn(descriptor, 'value')
+    && !Object.hasOwn(descriptor, 'get')
+    && !Object.hasOwn(descriptor, 'set');
+}
 
-  return error;
+function validateQueueDeliveryId(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw createQueueResultIntegrityError('enqueue', 'queue id must be a non-empty string');
+  }
+
+  return value;
+}
+
+function createQueueResultIntegrityError(
+  operation: 'enqueue' | 'enqueueMany',
+  message: string,
+): NotificationQueueResultIntegrityError {
+  return new NotificationQueueResultIntegrityError(operation, message);
 }
 
 function createLifecyclePublicationFailureError(dispatchError: unknown, ...publicationErrors: unknown[]): AggregateError {
@@ -619,6 +693,20 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
     return `Circular:${circularReferenceId}`;
   }
 
+  if (value instanceof ArrayBuffer) {
+    const serialized = `ArrayBuffer:{byteLength:${value.byteLength},bytes:${stableByteArray(new Uint8Array(value))}}`;
+    context.seen.delete(value);
+
+    return serialized;
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    const serialized = `ArrayBufferView:{view:${JSON.stringify(Object.prototype.toString.call(value).slice(8, -1))},byteOffset:${value.byteOffset},byteLength:${value.byteLength},bytes:${stableByteArray(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))}}`;
+    context.seen.delete(value);
+
+    return serialized;
+  }
+
   if (value instanceof Date) {
     const serialized = Number.isNaN(value.getTime()) ? 'Date:Invalid' : `Date:${JSON.stringify(value.toISOString())}`;
     context.seen.delete(value);
@@ -693,4 +781,8 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
   context.seen.delete(value);
 
   return serialized;
+}
+
+function stableByteArray(bytes: Uint8Array): string {
+  return `[${Array.from(bytes).join(',')}]`;
 }

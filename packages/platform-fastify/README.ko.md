@@ -112,6 +112,14 @@ const adapter = createFastifyAdapter(
 );
 ```
 
+### 네이티브 Raw Request 및 Response 객체
+
+기본적으로 `RequestContext`의 이식 가능한 `FrameworkRequest` 및 `FrameworkResponse` field와 method를 사용하세요. `context.request`로 request 데이터를 읽고 `context.response`로 status, header, redirect, body를 작성하면 controller가 fluo HTTP adapter 간에 이식성을 유지합니다.
+
+Fastify의 공유 `raw` field는 의도적으로 비대칭입니다. `context.request.raw`는 기반 Node.js `IncomingMessage`이고 `context.response.raw`는 Fastify의 `FastifyReply`입니다. Request raw 객체는 `FastifyRequest`가 아니며 response raw 객체는 Node.js `ServerResponse`가 아닙니다.
+
+NestJS `@Req()` 또는 `@Res()` 코드를 마이그레이션할 때 이 `unknown` field에 안전하지 않은 cast를 의존하지 마세요. 이 adapter는 현재 typed Fastify-native request accessor를 공개하지 않습니다. 이식 가능한 framework 작업으로 충족할 수 없는 native Fastify 요구 사항이 있으면 shared controller 코드를 cast에 결합하지 말고 계약을 보존하는 typed accessor를 요청하세요.
+
 ### 서버 기반 실시간 통신 (Real-Time)
 Fastify는 `@fluojs/websockets`가 기본 Node.js HTTP 서버에 직접 연결될 수 있도록 `server-backed` 기능을 제공합니다.
 

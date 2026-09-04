@@ -14,6 +14,7 @@ Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dis
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
   - [요청 전체 컨트롤러 경계](#요청-전체-컨트롤러-경계)
+  - [이름 있는 클라이언트](#이름-있는-클라이언트)
   - [종료와 상태 계약](#종료와-상태-계약)
 - [수동 모듈 구성](#수동-모듈-구성)
 - [공개 API 개요](#공개-api-개요)
@@ -32,7 +33,7 @@ npm install pg
 
 ## 런타임 지원
 
-루트 `@fluojs/drizzle` 패키지는 현재 Node.js 20+ 통합입니다. ambient transaction context를 유지하기 위해 Node의 `node:async_hooks` 모듈을 import하고, package manifest는 `engines.node >=20.0.0`을 선언합니다.
+루트 `@fluojs/drizzle` 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. ambient transaction context를 유지하기 위해 Node의 `node:async_hooks` 모듈을 import하며 mandatory `@fluojs/runtime` dependency와 같은 package manifest 범위를 선언합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다.
 
 Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 할 수 있지만, 비 Node transaction-context adapter가 문서화되기 전까지 해당 driver runtime은 이 fluo wrapper 범위 밖입니다.
 
@@ -40,14 +41,14 @@ Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 
 
 ## 사용 시점
 
-- Node.js 20+ 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
+- Node.js `>=20.19.3 <21 || >=22.2.0 <27` 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
 - repository 코드가 root handle과 현재 트랜잭션 handle 사이를 `current()` 하나로 다루고 싶을 때
 - 애플리케이션 종료 시 underlying driver 정리 로직도 함께 실행해야 할 때
 
 ## 빠른 시작
 
 ```ts
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -55,6 +56,12 @@ import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      global: true,
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -74,6 +81,8 @@ import { Pool } from 'pg';
 })
 export class AppModule {}
 ```
+
+`forRootAsync(...)`는 factory 의존성으로 `inject`와 `useFactory`만 받으며 NestJS `imports`, `useClass`, `useExisting`, decorator metadata를 탐색하지 않습니다. 생성되는 async module에는 `imports`가 없으므로 sibling module이 export하거나 parent module이 import한 token은 option provider에 보이지 않습니다. 대신 factory 의존성을 global module로 등록하세요. 위의 `ConfigModule.forRoot(...)` 등록은 기본적으로 `ConfigService`를 전역 export하며, 생성된 async Drizzle module이 `ConfigService`를 볼 수 있는 전역 export임을 명확히 하기 위해 `global: true`를 명시했습니다. 다른 token도 importing application의 `providers`나 imports에 의존하지 말고, 해당 token을 소유하고 export하는 module을 bootstrap 전에 global로 만드세요.
 
 ## 주요 패턴
 
@@ -172,13 +181,16 @@ Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, ro
 비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ```ts
-import { Controller, Post } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { CheckoutService } from './checkout.service';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 export class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,
@@ -186,16 +198,41 @@ export class CheckoutController {
   ) {}
 
   @Post()
-  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+  create(input: CheckoutInput, context: RequestContext) {
     return this.db.requestTransaction(
       () => this.checkout.createOrder(input),
-      requestSignal,
+      context.request.signal,
     );
   }
 }
 ```
 
-import할 수 있는 Drizzle `*TransactionInterceptor` export는 없습니다. 기존 NestJS interceptor 설계는 대부분의 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 호환성 사례에만 명시적 `requestTransaction(...)`을 남기세요. controller가 명시적 `DrizzleDatabase` 대상을 소유한다면 controller method에 `@Transaction()`을 붙이는 방식도 호환성 경로로 유지되지만, request `AbortSignal`을 직접 받을 수 있는 `requestTransaction(...)`이 더 명확한 request-wide API입니다.
+`DrizzleTransactionInterceptor`는 기존 NestJS interceptor import를 위한 deprecated 1.x 호환성 bridge입니다. 이 interceptor는 `requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다. 새 코드에서는 비즈니스 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 사례에만 명시적 `requestTransaction(...)`을 사용하세요. controller가 명시적 `DrizzleDatabase` 대상을 소유한다면 controller method에 `@Transaction()`을 붙이는 방식도 호환성 경로로 유지되지만, request `AbortSignal`을 직접 받을 수 있는 `requestTransaction(...)`이 더 명확한 request-wide API입니다.
+
+### 이름 있는 클라이언트
+
+추가 client는 비어 있지 않은 `name`으로 등록하고 `DrizzleDatabase` class token 대신 package-owned token을 주입합니다.
+
+```ts
+const ANALYTICS_DRIZZLE = getDrizzleHandleProviderToken('analytics');
+
+DrizzleModule.forRoot({ database: primaryDatabase });
+DrizzleModule.forRoot({ database: analyticsDatabase, name: 'analytics' });
+
+@Inject(ANALYTICS_DRIZZLE)
+class AnalyticsService {
+  constructor(private readonly analytics: DrizzleDatabase<AnalyticsDatabase>) {}
+
+  @Transaction((self: AnalyticsService) => self.analytics)
+  async rebuild() {}
+}
+```
+
+`getDrizzleDatabaseToken`, `getDrizzleDisposeToken`, `getDrizzleOptionsToken`,
+`getDrizzleHandleProviderToken`은 trim된 이름마다 서로 다른 안정적인 identity를 반환합니다. 이름 있는 client는
+non-global이며 ALS transaction context, shutdown drain, disposal, status를 독립적으로 소유합니다. consumer는 일치하는
+이름 있는 token을 export하는 module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. `name`을 생략하면
+기존 default token, `DrizzleDatabase` class token, interceptor 동작이 유지됩니다.
 
 ### 종료와 상태 계약
 
@@ -237,8 +274,10 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
+- `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
+- `getDrizzleDatabaseToken(name?)`, `getDrizzleDisposeToken(name?)`, `getDrizzleHandleProviderToken(name?)`, `getDrizzleOptionsToken(name?)`
 - `DrizzleDatabase.createFacade(...)` (호환성 전용 provider wiring helper; 애플리케이션 등록은 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -246,6 +285,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER`는 lifecycle-aware `DrizzleDatabase` wrapper를 가리키는 alias token입니다. `@fluojs/terminus` 같은 health integration은 이 token을 통해 raw database ping으로 fallback하기 전에 `createPlatformStatusSnapshot()`을 읽습니다.
+
+`DrizzleModule`은 importing module을 위해 `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`를 export합니다. `DRIZZLE_DATABASE`는 설정된 raw Drizzle handle을 주입하므로 lifecycle-aware facade와 ambient transaction handle 선택을 우회합니다. 애플리케이션 repository에는 `DrizzleDatabase` 또는 `DrizzleDatabaseFacade`를 우선 사용하고, 설정된 driver handle이 꼭 필요한 integration에만 raw token을 주입하세요. `DRIZZLE_DISPOSE`는 설정된 선택적 cleanup hook을, `DRIZZLE_OPTIONS`는 정규화된 runtime option을 노출합니다.
 
 provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다. `DrizzleDatabase.createFacade(...)`는 module provider wiring을 위한 low-level compatibility helper로 유지됩니다. 애플리케이션 코드는 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용하세요.
 
@@ -257,6 +298,7 @@ provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `forRootAsync(...)`는 database/dispose/transaction 설정을 factory에서 반환하는 DI-aware Drizzle 옵션을 받습니다. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요.
 - `forRootAsync(...)`는 애플리케이션 container마다 옵션을 한 번 resolve합니다. 테스트나 multi-app process에서 같은 module definition을 재사용해도 memoized factory result를 공유하지 않고 각 container가 독립적인 database/dispose 결과를 받습니다.
 - `strictTransactions: true`를 설정하면 transaction 지원이 없는 database handle에서 예외를 던집니다.
+- 추가 이름 있는 등록은 non-global입니다. Consumer는 일치하는 `getDrizzle*Token(name)`을 export하는 module을 import하고 해당 token으로 주입하며, 이름이 runtime container를 분리하지는 않습니다. 각 등록은 독립 ALS transaction context, drain, disposal, status를 소유하고 `@Transaction((self) => self.analytics)`로 명시적으로 선택합니다.
 - sync 및 async 등록 모두에서 `database`는 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
 
 ## 관련 패키지

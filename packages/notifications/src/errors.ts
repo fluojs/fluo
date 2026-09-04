@@ -27,3 +27,16 @@ export class NotificationQueueNotConfiguredError extends Error {
     this.name = 'NotificationQueueNotConfiguredError';
   }
 }
+
+/**
+ * Thrown when a queue adapter returns an invalid queue-assigned delivery identifier.
+ */
+export class NotificationQueueResultIntegrityError extends Error {
+  constructor(
+    readonly operation: 'enqueue' | 'enqueueMany',
+    message: string,
+  ) {
+    super(`Notifications queue adapter returned an invalid ${operation}() result: ${message}.`);
+    this.name = 'NotificationQueueResultIntegrityError';
+  }
+}

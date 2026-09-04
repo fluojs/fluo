@@ -6,10 +6,17 @@ import { fileURLToPath } from 'node:url';
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+import {
+  emailNestjsMigrationMarkerPrefix,
+  enforceEmailNestjsMigrationDocs,
+  headingBoundedSection,
+} from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceGraphqlAsyncRegistrationContract } from './graphql-async-registration-contract.mjs';
+import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
@@ -66,9 +73,11 @@ const staticAssetRegressionEvidence = [
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+export { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 export { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
@@ -103,6 +112,394 @@ const nodeListenerEngineRange = nodeListenerEngineWindows
     `>=${minimumMajor}.${minimumMinor}.${minimumPatch} <${maximumMajorExclusive}`)
   .join(' || ');
 const nodeListenerEngineMarker = `engines.node ${nodeListenerEngineRange}`;
+
+function parseNodeEngineVersion(value) {
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/u.exec(value);
+  assert(match !== null, `Unsupported Node engine version "${value}".`);
+
+  return {
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2] ?? '0', 10),
+    patch: Number.parseInt(match[3] ?? '0', 10),
+  };
+}
+
+function compareNodeEngineVersions(left, right) {
+  for (const key of ['major', 'minor', 'patch']) {
+    if (left[key] !== right[key]) {
+      return left[key] < right[key] ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function parseNodeEngineComparator(value) {
+  const match = /^(\^|~|>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
+  assert(match !== null, `Unsupported Node engine comparator "${value}".`);
+
+  const version = parseNodeEngineVersion(match[2]);
+  const upperVersion = match[2].includes('.')
+    ? { major: version.major, minor: version.minor + 1, patch: 0 }
+    : { major: version.major + 1, minor: 0, patch: 0 };
+
+  if (match[1] === '^') {
+    const exclusiveUpperVersion = version.major > 0
+      ? { major: version.major + 1, minor: 0, patch: 0 }
+      : version.minor > 0
+        ? { major: 0, minor: version.minor + 1, patch: 0 }
+        : { major: 0, minor: 0, patch: version.patch + 1 };
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: exclusiveUpperVersion },
+    ];
+  }
+
+  if (match[1] === '~') {
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: upperVersion },
+    ];
+  }
+
+  if (match[2].split('.').length === 3) {
+    return [{ operator: match[1] ?? '=', version }];
+  }
+
+  switch (match[1]) {
+    case '>':
+      return [{ operator: '>=', version: upperVersion }];
+    case '>=':
+    case '<':
+      return [{ operator: match[1], version }];
+    case '<=':
+      return [{ operator: '<', version: upperVersion }];
+    case '=':
+    case undefined:
+      return [
+        { operator: '>=', version },
+        { operator: '<', version: upperVersion },
+      ];
+    default:
+      assert(false, `Unsupported Node engine comparator "${value}".`);
+  }
+}
+
+function parseNodeEngineRange(range) {
+  assert(typeof range === 'string' && range.trim().length > 0, 'engines.node must be a non-empty string.');
+
+  return range.replace(/(\^|~|>=|>|<=|<|=)\s+/gu, '$1').split('||').map((group) => {
+    const comparators = group.trim().split(/\s+/u).filter(Boolean);
+    assert(comparators.length > 0, `Unsupported empty Node engine range "${range}".`);
+    return comparators.flatMap(parseNodeEngineComparator);
+  });
+}
+
+function nodeEngineRangeIncludes(range, version) {
+  return parseNodeEngineRange(range).some((comparators) =>
+    comparators.every(({ operator, version: boundary }) => {
+      const comparison = compareNodeEngineVersions(version, boundary);
+
+      switch (operator) {
+        case '>':
+          return comparison > 0;
+        case '>=':
+          return comparison >= 0;
+        case '<':
+          return comparison < 0;
+        case '<=':
+          return comparison <= 0;
+        case '=':
+          return comparison === 0;
+        default:
+          return false;
+      }
+    }));
+}
+
+function previousNodeEngineVersion({ major, minor, patch }) {
+  if (patch > 0) {
+    return { major, minor, patch: patch - 1 };
+  }
+
+  if (minor > 0) {
+    return { major, minor: minor - 1, patch: 999 };
+  }
+
+  return { major: Math.max(0, major - 1), minor: 999, patch: 999 };
+}
+
+function nextNodeEngineVersion({ major, minor, patch }) {
+  return { major, minor, patch: patch + 1 };
+}
+
+function nodeEngineCandidates(...ranges) {
+  const candidates = new Map();
+  const addCandidate = (version) => {
+    candidates.set(`${version.major}.${version.minor}.${version.patch}`, version);
+  };
+
+  for (const range of ranges) {
+    for (const comparators of parseNodeEngineRange(range)) {
+      for (const { version } of comparators) {
+        addCandidate(previousNodeEngineVersion(version));
+        addCandidate(version);
+        addCandidate(nextNodeEngineVersion(version));
+      }
+    }
+  }
+
+  return [...candidates.values()];
+}
+
+function formatNodeEngineVersion({ major, minor, patch }) {
+  return `${major}.${minor}.${patch}`;
+}
+
+function lockfileImporterDependencyVersions(lockfileText, importerPath) {
+  const importerStart = lockfileText.indexOf(`  ${importerPath}:\n`);
+  assert(importerStart >= 0, `pnpm-lock.yaml must include the ${importerPath} importer.`);
+
+  const importerEndMatch = /\n {2}\S/u.exec(lockfileText.slice(importerStart + 1));
+  const importerEnd = importerEndMatch === null ? -1 : importerStart + 1 + importerEndMatch.index;
+  const importerText = lockfileText.slice(importerStart, importerEnd === -1 ? undefined : importerEnd);
+  const lines = importerText.split('\n');
+  const versions = new Map();
+  let dependencySection = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === '    dependencies:') {
+      dependencySection = true;
+      continue;
+    }
+
+    if (!dependencySection) {
+      continue;
+    }
+
+    if (/^ {4}\S/u.test(line)) {
+      break;
+    }
+
+    const dependencyMatch = /^[ ]{6}['"]?([^'"]+)['"]?:$/u.exec(line);
+    if (dependencyMatch === null) {
+      continue;
+    }
+
+    for (index += 1; index < lines.length; index += 1) {
+      if (/^ {6}\S/u.test(lines[index])) {
+        index -= 1;
+        break;
+      }
+
+      const versionMatch = /^[ ]{8}version: ([^\s]+)$/u.exec(lines[index]);
+      if (versionMatch !== null) {
+        versions.set(dependencyMatch[1], versionMatch[1].replace(/\(.+$/u, ''));
+        break;
+      }
+    }
+  }
+
+  return versions;
+}
+
+function lockedDependencyNodeEngineRange(lockfileText, importerPath, dependencyName) {
+  const version = lockfileImporterDependencyVersions(lockfileText, importerPath).get(dependencyName);
+  if (version === undefined || version.startsWith('link:')) {
+    return undefined;
+  }
+
+  const packagesStart = lockfileText.indexOf('\npackages:\n');
+  const snapshotsStart = lockfileText.indexOf('\nsnapshots:\n', packagesStart);
+  assert(packagesStart >= 0 && snapshotsStart > packagesStart, 'pnpm-lock.yaml must include packages and snapshots sections.');
+
+  const packageKey = `${dependencyName}@${version}`.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const packageMatch = new RegExp(`^  ['"]?${packageKey}['"]?:$`, 'mu')
+    .exec(lockfileText.slice(packagesStart, snapshotsStart));
+  const packageStart = packageMatch === null ? -1 : packagesStart + packageMatch.index;
+  assert(packageStart >= 0, `pnpm-lock.yaml must resolve ${dependencyName}@${version}.`);
+
+  const packageEndMatch = /\n {2}\S/u.exec(lockfileText.slice(packageStart + packageMatch[0].length));
+  const packageEnd = packageEndMatch === null ? -1 : packageStart + packageMatch[0].length + packageEndMatch.index;
+  const packageText = lockfileText.slice(packageStart, packageEnd === -1 ? snapshotsStart : packageEnd);
+  const engineMatch = /^\s{4}engines:\s+\{node:\s+['"]?([^'"}]+)['"]?\}$/mu.exec(packageText);
+  return engineMatch?.[1];
+}
+
+function changedPackageNames(changedFiles) {
+  return new Set(changedFiles.flatMap((relativePath) => {
+    const match = /^packages\/([^/]+)\//u.exec(relativePath);
+    return match === null ? [] : [`@fluojs/${match[1]}`];
+  }));
+}
+
+function mandatoryProductionImporterSections(lockfileText) {
+  const importersStart = lockfileText.indexOf('\nimporters:\n');
+  const packagesStart = lockfileText.indexOf('\npackages:\n', importersStart);
+  const importersText = lockfileText.slice(
+    importersStart === -1 ? 0 : importersStart + '\nimporters:\n'.length,
+    packagesStart === -1 ? lockfileText.length : packagesStart,
+  );
+  const sections = new Map();
+  let importerPath;
+  let dependencyLines;
+
+  const commit = () => {
+    if (importerPath !== undefined && dependencyLines !== undefined) {
+      sections.set(importerPath, dependencyLines.join('\n'));
+    }
+  };
+
+  for (const line of importersText.split('\n')) {
+    const importerMatch = /^[ ]{2}(?<path>\S[^:\n]*):$/u.exec(line);
+    if (importerMatch !== null) {
+      commit();
+      importerPath = importerMatch.groups.path.replace(/^['"]|['"]$/gu, '');
+      dependencyLines = undefined;
+      continue;
+    }
+
+    if (importerPath === undefined) {
+      continue;
+    }
+
+    if (line === '    dependencies:') {
+      dependencyLines = [line];
+      continue;
+    }
+
+    if (dependencyLines === undefined) {
+      continue;
+    }
+
+    if (/^[ ]{4}\S/u.test(line)) {
+      commit();
+      dependencyLines = undefined;
+      continue;
+    }
+
+    dependencyLines.push(line);
+  }
+
+  commit();
+  return sections;
+}
+
+export function mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfileText, currentLockfileText) {
+  const previousSections = mandatoryProductionImporterSections(previousLockfileText);
+  const currentSections = mandatoryProductionImporterSections(currentLockfileText);
+  const importerPaths = new Set([...previousSections.keys(), ...currentSections.keys()]);
+  const packageNames = new Set();
+
+  for (const importerPath of importerPaths) {
+    if (previousSections.get(importerPath) === currentSections.get(importerPath)) {
+      continue;
+    }
+
+    const match = /^packages\/([^/]+)$/u.exec(importerPath);
+    if (match !== null) {
+      packageNames.add(`@fluojs/${match[1]}`);
+    }
+  }
+
+  return packageNames;
+}
+
+export function enforceMandatoryProductionDependencyEngineAlignment(
+  readText = read,
+  packageNames = changedPackageNames(changedFilesFromGit()),
+) {
+  const lockfileText = readText('pnpm-lock.yaml');
+  const packageManifests = new Map();
+
+  for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const relativePath = `packages/${entry.name}/package.json`;
+    if (!existsSync(join(repoRoot, relativePath))) {
+      continue;
+    }
+
+    const manifest = JSON.parse(readText(relativePath));
+    packageManifests.set(manifest.name, { manifest, relativePath });
+  }
+
+  const selectedPackageNames = new Set(packageNames);
+  let addedReverseDependent = true;
+
+  while (addedReverseDependent) {
+    addedReverseDependent = false;
+
+    for (const [packageName, { manifest }] of packageManifests) {
+      if (
+        manifest.private ||
+        selectedPackageNames.has(packageName) ||
+        !Object.keys(manifest.dependencies ?? {}).some((dependencyName) =>
+          selectedPackageNames.has(dependencyName))
+      ) {
+        continue;
+      }
+
+      selectedPackageNames.add(packageName);
+      addedReverseDependent = true;
+    }
+  }
+
+  for (const { manifest: packageManifest, relativePath } of packageManifests.values()) {
+    if (
+      packageManifest.private ||
+      typeof packageManifest.name !== 'string' ||
+      !selectedPackageNames.has(packageManifest.name)
+    ) {
+      continue;
+    }
+
+    const packageRange = packageManifest.engines?.node;
+    if (packageRange === undefined) {
+      continue;
+    }
+
+    assert(
+      typeof packageRange === 'string' && packageRange.length > 0,
+      `${packageManifest.name} (${relativePath}) engines.node must be a non-empty string.`,
+    );
+
+    for (const dependencyName of Object.keys(packageManifest.dependencies ?? {})) {
+      const dependency = packageManifests.get(dependencyName);
+      const dependencyRange = dependency === undefined
+        ? lockedDependencyNodeEngineRange(lockfileText, relativePath.replace(/\/package\.json$/u, ''), dependencyName)
+        : dependency.manifest.engines?.node;
+      if (dependencyRange === undefined) {
+        continue;
+      }
+
+      assert(
+        typeof dependencyRange === 'string' && dependencyRange.length > 0,
+        dependency === undefined
+          ? `${dependencyName} locked engines.node must be a non-empty string.`
+          : `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
+      );
+
+      const incompatibleVersion = nodeEngineCandidates(packageRange, dependencyRange).find((version) =>
+        nodeEngineRangeIncludes(packageRange, version) &&
+        !nodeEngineRangeIncludes(dependencyRange, version));
+
+      if (incompatibleVersion !== undefined) {
+        throw new Error(
+          `${packageManifest.name} engines.node ${packageRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
+            `but mandatory ${dependencyName}${dependency === undefined ? ' locked' : ''} engines.node is ${dependencyRange}.`,
+        );
+      }
+    }
+  }
+}
+
+export const enforceMandatoryFirstPartyDependencyEngineAlignment =
+  enforceMandatoryProductionDependencyEngineAlignment;
 
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
   const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
@@ -280,9 +677,6 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'apps/docs/content/docs/guides/auth.mdx',
   'apps/docs/content/docs/guides/auth.ko.mdx',
-  // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
-  'docs/getting-started/migrate-from-nestjs.md',
-  'docs/getting-started/migrate-from-nestjs.ko.md',
   // Queue worker ownership and NestJS/Bull migration boundaries.
   'packages/queue/README.md',
   'packages/queue/README.ko.md',
@@ -294,6 +688,8 @@ const contractGateTriggers = new Set([
   'docs/reference/package-folder-structure.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
 
 const removedRuntimeModuleFactoryNames = [
@@ -388,6 +784,27 @@ export function changedFilesFromGit(runCommand = run, env = process.env) {
   throw new Error(
     `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
   );
+}
+
+function lockfileTextAtMergeBase(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    throw new Error(
+      `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
+    );
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const lockfileResult = runCommand('git', ['show', `${mergeBase}:pnpm-lock.yaml`], { allowFailure: true });
+  if (lockfileResult.status !== 0) {
+    throw new Error(
+      'Platform consistency governance check failed: unable to read pnpm-lock.yaml at the merge-base. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.',
+    );
+  }
+
+  return lockfileResult.stdout;
 }
 
 function normalizeHeading(line) {
@@ -867,9 +1284,237 @@ function enforceSsotMirrorStructure() {
   }
 }
 
-export function enforceContractCompanionUpdates(changedFiles) {
-  const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
+const nestMigrationGuidePaths = [
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const emailMigrationDocumentPaths = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const emailMigrationEnforcementTool =
+  'tooling/governance/email-nestjs-migration-docs.mjs';
+const bootstrapMigrationImplementationEvidence = [
+  'packages/cli/src/transforms/nestjs-migrate.ts',
+  'packages/cli/src/transforms/nestjs-migrate.test.ts',
+  'packages/cli/src/commands/migrate.ts',
+  'packages/cli/src/commands/migrate.test.ts',
+];
+const bootstrapMigrationBoundaryMarker =
+  '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->';
+const fastifyRawContextTokens = [
+  'context.request.raw',
+  'context.response.raw',
+  'IncomingMessage',
+  'ServerResponse',
+  'FastifyRequest',
+  'FastifyReply',
+];
+
+function nestFactoryCreateRow(documentation) {
+  const rows = documentation
+    .split('\n')
+    .filter((line) => line.startsWith('| `NestFactory.create(AppModule)` |'));
+
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
+function isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots) {
+  if (
+    !migrationGuideSnapshots
+    || !nestMigrationGuidePaths.every((path) => hasChanged(changedFiles, path))
+    || !bootstrapMigrationImplementationEvidence.every((path) => hasChanged(changedFiles, path))
+  ) {
+    return false;
+  }
+
+  return nestMigrationGuidePaths.every((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseRow = nestFactoryCreateRow(snapshot.base);
+    const headRow = nestFactoryCreateRow(snapshot.head);
+    if (!baseRow || !headRow || baseRow === headRow) {
+      return false;
+    }
+
+    return (
+      snapshot.base.replace(baseRow, '') === snapshot.head.replace(headRow, '').replace(`${bootstrapMigrationBoundaryMarker}\n`, '')
+      && snapshot.head.includes(bootstrapMigrationBoundaryMarker)
+      && headRow.includes('FluoFactory.create(AppModule, { adapter })')
+      && headRow.includes('listen()')
+      && headRow.includes('--platform express')
+    );
+  });
+}
+
+function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
+  if (!migrationGuideSnapshots) {
+    return false;
+  }
+
+  return nestMigrationGuidePaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseLines = new Set(snapshot.base.split('\n'));
+    const headLines = new Set(snapshot.head.split('\n'));
+    const changedLines = [
+      ...snapshot.base.split('\n').filter((line) => !headLines.has(line)),
+      ...snapshot.head.split('\n').filter((line) => !baseLines.has(line)),
+    ];
+
+    return changedLines.some((line) => fastifyRawContextTokens.some((token) => line.includes(token)));
+  });
+}
+
+export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    return undefined;
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const snapshots = {};
+  for (const path of [
+    ...nestMigrationGuidePaths,
+    ...emailMigrationDocumentPaths,
+    emailMigrationEnforcementTool,
+  ]) {
+    const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
+    if (baseResult.status !== 0) {
+      return undefined;
+    }
+
+    snapshots[path] = {
+      base: baseResult.stdout,
+      head: read(path),
+    };
+  }
+
+  return snapshots;
+}
+
+/**
+ * @param {string[]} changedFiles
+ * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
+ */
+const emailMigrationCompanions = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/contracts/nestjs-parity-gaps.md',
+  'docs/contracts/nestjs-parity-gaps.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'book/intermediate/ch16-email.md',
+  'book/intermediate/ch16-email.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+];
+const governedEmailMigrationDocuments = new Set([
+  ...emailMigrationDocumentPaths,
+]);
+
+export function enforceEmailMigrationCompanions(changedFiles) {
+  // Public Email contracts stay migration-safe only when every companion changes together.
+  assert(
+    emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
+    'Email NestJS migration documentation must include every governed Email companion.',
+  );
+}
+
+function emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) {
+  if (!changedFiles.some((path) => governedEmailMigrationDocuments.has(path))) {
+    return false;
+  }
+
+  if (
+    !migrationGuideSnapshots ||
+    !emailMigrationDocumentPaths.every((path) => {
+      const snapshot = migrationGuideSnapshots[path];
+      return typeof snapshot?.base === 'string' && typeof snapshot.head === 'string';
+    })
+  ) {
+    return true;
+  }
+
+  return emailMigrationDocumentPaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    return headingBoundedSection(
+      snapshot.base,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    ) !== headingBoundedSection(
+      snapshot.head,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    );
+  });
+}
+
+function sourceWithoutSharedEmailMigrationParserExports(source) {
+  return source
+    .replace(/^export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;\n/mu, '')
+    .replace(/\bexport function headingBoundedSection\(/u, 'function headingBoundedSection(');
+}
+
+function emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots) {
+  if (!hasChanged(changedFiles, emailMigrationEnforcementTool)) {
+    return false;
+  }
+
+  const snapshot = migrationGuideSnapshots?.[emailMigrationEnforcementTool];
+  if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') {
+    return true;
+  }
+
+  return sourceWithoutSharedEmailMigrationParserExports(snapshot.base) !==
+    sourceWithoutSharedEmailMigrationParserExports(snapshot.head);
+}
+
+export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const touchedEmailMigrationDocumentation =
+    emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
+    emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots);
+  const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
+  const touchedContractGate = changedFiles.some(
+    (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
+  );
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
+  const fastifyRawContextDocumentation = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ];
+  const touchedFastifyRawContextDocumentation = [
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
+
+  if (touchedEmailMigrationDocumentation) {
+    enforceEmailMigrationCompanions(changedFiles);
+  }
+
+  if (touchedFastifyRawContextDocumentation) {
+    assert(
+      fastifyRawContextDocumentation.every((path) => hasChanged(changedFiles, path)),
+      'Fastify raw request and response migration docs must include all governed Fastify documentation.',
+    );
+    assert(
+      hasChanged(changedFiles, 'packages/platform-fastify/src/adapter.test.ts'),
+      'Fastify raw request and response migration docs must include packages/platform-fastify/src/adapter.test.ts.',
+    );
+  }
 
   if (!touchedContractGate) {
     return;
@@ -1241,20 +1886,20 @@ const cloudflareWorkerFetchEnvGovernedDocs = [
 ];
 
 const cloudflareWorkersLifecycleDocRequirements = [
-  ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', ...cloudflareWorkerFetchEnvMarkers.english]],
-  ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', ...cloudflareWorkerFetchEnvMarkers.korean]],
-  ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application']],
-  ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap']],
-  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
-  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
-  ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', ...cloudflareWorkerFetchEnvMarkers.english]],
-  ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', ...cloudflareWorkerFetchEnvMarkers.korean]],
-  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
-  ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
-  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
-  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'fetch-time `env` boundary is mirrored specifically in the package README, intermediate book, NestJS migration map, and website runtime guide', 'request-bound bindings are validated and narrowed']],
-  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'Fetch-time `env` boundary는 package README, intermediate book, NestJS migration map, website runtime guide에만 명시적으로 반영', 'request-bound binding은 application-shaped 값이 provider method에 전달되기 전에 검증하고 좁혀야 합니다']],
+  ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', 'host-invoked shutdown callback', 'successful `worker.close()` is intentionally restartable', ...cloudflareWorkerFetchEnvMarkers.english]],
+  ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', 'host가 호출하는 shutdown callback', '성공한 `worker.close()`는 의도적으로 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean]],
+  ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application', 'Cloudflare Worker close ownership', 'host-invoked shutdown callback', 'successful lazy-entrypoint close is restartable']],
+  ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap', 'Cloudflare Worker close 소유권', 'host가 호출하는 shutdown callback', '성공한 lazy-entrypoint close는 재시작 가능']],
+  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', 'does not invoke `worker.close()`', 'successful lazy-entrypoint close is restartable', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
+  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', 'host는 exported `fetch` handler에 대해 `worker.close()`를 호출하지 않으며', '성공한 lazy-entrypoint close는 terminal이 아니라 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
+  ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', 'no host-invoked shutdown callback', 'successful lazy-entrypoint `close()` is restartable', ...cloudflareWorkerFetchEnvMarkers.english]],
+  ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', 'host가 호출하는 shutdown callback이 없으므로', '성공한 lazy-entrypoint `close()`는 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean]],
+  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', 'host-invoked shutdown callback', 'successful lazy-entrypoint close is restartable', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
+  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', 'host가 호출하는 shutdown callback', '성공한 lazy-entrypoint close는 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
+  ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`', 'does not send a shutdown callback', 'successful lazy-entrypoint close is restartable']],
+  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`', 'shutdown callback을 보내지 않습니다', '성공한 lazy-entrypoint close는 재시작 가능']],
+  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'fetch-time `env` boundary is mirrored specifically in the package README, intermediate book, NestJS migration map, and website runtime guide', 'request-bound bindings are validated and narrowed', 'A Worker `fetch` handler has no host-invoked shutdown callback', 'successful lazy-entrypoint close is restartable']],
+  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'Fetch-time `env` boundary는 package README, intermediate book, NestJS migration map, website runtime guide에만 명시적으로 반영', 'request-bound binding은 application-shaped 값이 provider method에 전달되기 전에 검증하고 좁혀야 합니다', 'Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로', '성공한 lazy-entrypoint close는 재시작 가능']],
 ];
 
 const serializerResponseOwnershipDocRequirements = [
@@ -2055,27 +2700,35 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageSurface.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
       packageSurface.includes('dispatchMany(...)') &&
       packageSurface.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      packageSurface.includes('immutable observation snapshots') &&
       docsContext.includes('packages/notifications/README.md') &&
       docsContext.includes('book/intermediate/ch15-notifications.md') &&
       docsContext.includes('concrete queue/event-bus ownership') &&
+      docsContext.includes('Lifecycle publishers receive immutable observer snapshots') &&
       notificationsReadme.includes('dispatchMany(...)') &&
       notificationsReadme.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsReadme.includes('separate immutable lifecycle event snapshot') &&
       notificationsChapter.includes('NotificationDispatchBatchResult') &&
+      notificationsChapter.includes('separate immutable event snapshots') &&
       notificationsChapter.includes('global: false'),
-    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, immutable lifecycle snapshots, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurfaceKo.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
       packageSurfaceKo.includes('dispatchMany(...)') &&
       packageSurfaceKo.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      packageSurfaceKo.includes('immutable observation snapshot') &&
       docsContextKo.includes('packages/notifications/README.ko.md') &&
       docsContextKo.includes('book/intermediate/ch15-notifications.ko.md') &&
       docsContextKo.includes('concrete queue/event-bus ownership') &&
+      docsContextKo.includes('immutable observer snapshot') &&
       notificationsReadmeKo.includes('dispatchMany(...)') &&
       notificationsReadmeKo.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsReadmeKo.includes('별도의 immutable lifecycle event snapshot') &&
       notificationsChapterKo.includes('NotificationDispatchBatchResult') &&
+      notificationsChapterKo.includes('별도의 immutable event snapshot') &&
       notificationsChapterKo.includes('global: false'),
-    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, immutable lifecycle snapshots, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurface.includes('@fluojs/cron') &&
@@ -3031,10 +3684,11 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   }
 }
 
-export function enforcePersistenceTransactionInterceptorCompatibility() {
+export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
-    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
-    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
@@ -3049,22 +3703,127 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
     'docs/reference/package-surface.ko.md',
   ];
 
-  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
-    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
-    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+  for (const [interceptor, indexPath, modulePath, sourcePath] of compatibilityExports) {
+    const indexSource = readText(indexPath);
+    const moduleSource = readText(modulePath);
+    const source = readText(sourcePath);
 
     assert(
-      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      new RegExp(`@deprecated[\\s\\S]*?export class ${interceptor}\\b`).test(source),
       `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
     );
-    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+    assert(
+      /^export \* from '\.\/transaction\.js';$/m.test(indexSource),
+      `${indexPath} must root-export the deprecated transaction interceptor.`,
+    );
+
+    if (interceptor === 'DrizzleTransactionInterceptor') {
+      const exportSection = /const DRIZZLE_MODULE_EXPORTS = \[([\s\S]*?)\];/.exec(moduleSource)?.[1];
+      const providerPath = 'packages/drizzle/src/registration-providers.ts';
+      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(
+        readText(providerPath),
+      )?.[1];
+
+      assert(
+        exportSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(exportSection),
+        `${modulePath} must register DrizzleTransactionInterceptor in DRIZZLE_MODULE_EXPORTS.`,
+      );
+      assert(
+        providerSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(providerSection),
+        `${providerPath} must register DrizzleTransactionInterceptor as a runtime provider.`,
+      );
+      assert(
+        /return this\.database\.requestTransaction\(\s*\(\) => next\.handle\(\),\s*context\.requestContext\.request\.signal\s*,?\s*\);/.test(source),
+        `${sourcePath} must delegate the request signal to requestTransaction(...).`,
+      );
+    } else {
+      assert(
+        new RegExp(`^\\s*${interceptor},\\s*$`, 'm').test(moduleSource),
+        `${modulePath} must register ${interceptor}.`,
+      );
+    }
 
     for (const contractPath of contractPaths) {
       assert(
-        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        readText(contractPath).includes(interceptor),
         `${contractPath} must keep ${interceptor} compatibility discoverable.`,
       );
     }
+  }
+
+  for (const guidePath of [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+  ]) {
+    const guide = readText(guidePath);
+    const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];
+    const drizzlePublicApiRow = /^\| `@fluojs\/drizzle` \|.*$/mu.exec(guide)?.[0];
+
+    assert(
+      requestTransactionsRow !== undefined &&
+        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+          .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('deprecated') &&
+        requestTransactionsRow.includes('1.x'),
+      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+    );
+    assert(
+      drizzlePublicApiRow !== undefined &&
+        drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
+        drizzlePublicApiRow.includes('deprecated'),
+      `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+    );
+  }
+}
+
+function enforceDrizzleNamedClientContract() {
+  const tokens = read('packages/drizzle/src/tokens.ts');
+  const namedRegistration = read('packages/drizzle/src/named-registration.ts');
+  const types = read('packages/drizzle/src/types.ts');
+
+  assert(
+    /name\?: string;/.test(types),
+    'packages/drizzle/src/types.ts must expose the optional named-client registration identity.',
+  );
+  assert(
+    [
+      'getDrizzleDatabaseToken',
+      'getDrizzleDisposeToken',
+      'getDrizzleHandleProviderToken',
+      'getDrizzleOptionsToken',
+    ].every((token) => tokens.includes(`function ${token}`)),
+    'packages/drizzle/src/tokens.ts must expose all named-client DI token helpers.',
+  );
+  assert(
+    namedRegistration.includes('getNormalizedOptionsToken(name)') &&
+      namedRegistration.includes('Named Drizzle registrations are scoped and cannot be registered globally.'),
+    'packages/drizzle/src/named-registration.ts must isolate named client options and reject named global registrations.',
+  );
+
+  for (const contractPath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('getDrizzleDatabaseToken') && contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document explicit named-client injection and transaction selection.`,
+    );
+  }
+
+  for (const contractPath of [
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('Drizzle') &&
+        contract.includes('ALS') &&
+        contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document named-client transaction selection.`,
+    );
   }
 }
 
@@ -3322,23 +4081,90 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
   }
 }
 
+export function enforceStudioStaticGraphLimitsContract(readText = read) {
+  const staticLiveContractSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const documentationCompanions = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ];
+
+  for (const companionPaths of documentationCompanions) {
+    for (const relativePath of companionPaths) {
+      const documentation = readText(relativePath);
+      assert(
+        documentation.includes(staticLiveContractSentinel),
+        `${relativePath} must include the Studio static/live contract sentinel.`,
+      );
+    }
+  }
+}
+
+export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
+  const contractSentinel =
+    '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
+  const contextPaths = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
+  for (const contextPath of contextPaths) {
+    assert(
+      readText(contextPath).includes(contractSentinel),
+      `${contextPath} must preserve the machine-consumed notifications queue cancellation contract sentinel.`,
+    );
+  }
+
+  const typesSource = readText('packages/notifications/src/types.ts');
+  const serviceSource = readText('packages/notifications/src/service.ts');
+  const regressionSource = readText('packages/notifications/src/module.test.ts');
+
+  assert(
+    typesSource.includes('readonly signal?: AbortSignal;'),
+    'NotificationsQueueContext must expose the caller-owned AbortSignal.',
+  );
+  assert(
+    serviceSource.includes('throwIfAborted(options.signal);') &&
+      serviceSource.includes('await queue.enqueueMany(jobs, { signal: options.signal })') &&
+      serviceSource.includes('await queue.enqueue(job, { signal: options.signal })'),
+    'Notifications queue handoffs must reject pre-aborted signals and forward the same live signal.',
+  );
+  assert(
+    regressionSource.includes('new EnqueueOnlyQueueAdapter()') &&
+      regressionSource.includes("signal.removeEventListener('abort', onAbort)") &&
+      regressionSource.includes('expect(enqueueCalls).toBe(0);'),
+    'Notifications queue cancellation must retain native/fallback and adapter-cleanup regression evidence.',
+  );
+}
+
 export async function main() {
   const changedFiles = changedFilesFromGit();
+  const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
 
   enforceSsotMirrorStructure();
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
+  const engineGovernancePackageNames = changedPackageNames(changedFiles);
+  if (changedFiles.includes('pnpm-lock.yaml')) {
+    for (const packageName of mandatoryProductionImporterPackageNamesForLockfileChange(
+      lockfileTextAtMergeBase(),
+      read('pnpm-lock.yaml'),
+    )) {
+      engineGovernancePackageNames.add(packageName);
+    }
+  }
+  enforceMandatoryProductionDependencyEngineAlignment(read, engineGovernancePackageNames);
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
+  enforceEmailNestjsMigrationDocs();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceCacheManagerNestjsMigrationDocs();
+  enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceGraphqlAsyncRegistrationContract();
@@ -3348,10 +4174,13 @@ export async function main() {
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
+  enforceExpressSseDocumentationContract();
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
+  enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
+  enforceNotificationsQueueCancellationDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
@@ -3372,6 +4201,7 @@ export async function main() {
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
   enforceMongooseNestjsMigrationDocs();
@@ -3381,7 +4211,7 @@ export async function main() {
   enforceRedisStreamsSubpathExportEvidence();
   enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
-  enforceContractCompanionUpdates(changedFiles);
+  enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');

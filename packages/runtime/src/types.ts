@@ -1,14 +1,14 @@
 import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
+  ConditionalRequestOptions,
   ContentNegotiationOptions,
   ConverterLike,
-  ConditionalRequestOptions,
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
-  HttpErrorRepresentationOptions,
   HttpApplicationAdapter,
+  HttpErrorRepresentationOptions,
   InterceptorLike,
   MiddlewareLike,
   RequestObserverLike,
@@ -118,8 +118,8 @@ export interface ApplicationLogger {
   warn(message: string, context?: string): void;
 }
 
-/** Registers runtime-owned cleanup callbacks that must run during bootstrap failure or shutdown. */
-export type RuntimeCleanupRegistration = (cleanup: () => void) => () => void;
+/** Registers runtime-owned cleanup callbacks that must settle during bootstrap failure or shutdown. */
+export type RuntimeCleanupRegistration = (cleanup: () => MaybePromise<void>) => () => void;
 
 /** Runtime-visible application states for HTTP and microservice shells. */
 export type ApplicationState = 'bootstrapped' | 'ready' | 'closed';
@@ -208,7 +208,12 @@ export interface CreateApplicationContextOptions
 
 /** Runtime transport contract used by microservice application shells. */
 export interface MicroserviceRuntime {
-  /** Release transport resources owned by the microservice runtime during shutdown. */
+  /**
+   * Releases transport resources owned by the microservice runtime during shutdown.
+   *
+   * The owning {@link MicroserviceApplication} invokes this collaborator at most
+   * once and preserves its terminal success or failure for every later shell close.
+   */
   close?(signal?: string): MaybePromise<void>;
   /** Emit a fire-and-forget message for the given transport pattern. */
   emit?(pattern: string, payload: unknown): MaybePromise<void>;
@@ -220,7 +225,8 @@ export interface MicroserviceRuntime {
    * Implementations that expose their own ingress admission gate must close it
    * before the first await in this call so that new send()/emit()/listen()
    * attempts are rejected while a racing listen() is still settling. The
-   * terminal gate must stay closed even if close() later rejects.
+   * owning shell caches its terminal close result before invoking this callback,
+   * and the terminal gate must stay closed even if close() later rejects.
    */
   markShutdownStarted?(): void;
   /** Send a request/response message for the given transport pattern. */
@@ -239,6 +245,7 @@ export interface ApplicationContext {
   readonly modules: CompiledModule[];
   readonly rootModule: ModuleType;
 
+  /** Closes the shell and retries incomplete teardown after a failed close. */
   close(signal?: string): Promise<void>;
   get<T>(token: Token<T>): Promise<T>;
 }
@@ -265,6 +272,11 @@ export interface Application {
 export interface MicroserviceApplication extends ApplicationContext {
   readonly state: ApplicationState;
 
+  /**
+   * Closes the microservice shell once; later calls share its terminal success
+   * or failure result without re-invoking shutdown collaborators.
+   */
+  close(signal?: string): Promise<void>;
   emit(pattern: string, payload: unknown): Promise<void>;
   listen(): Promise<void>;
   send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown>;

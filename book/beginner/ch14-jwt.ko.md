@@ -301,10 +301,16 @@ export class AuthService {
   async refresh(refreshToken: string) {
     return this.refreshTokens.rotateRefreshToken(refreshToken);
   }
+
+  async signOut(refreshToken: string): Promise<void> {
+    await this.refreshTokens.revokePresentedRefreshToken(refreshToken);
+  }
 }
 ```
 
 `JwtService.sign(...)`과 `JwtService.verify(...)`는 항상 Promise를 반환합니다. NestJS 코드를 마이그레이션할 때는 이 이름과 `await`를 사용하세요. fluo는 `signAsync()`나 `verifyAsync()` alias를 제공하지 않습니다. `JwtService.decode(...)`는 동기이지만 검증되지 않은 입력만 parse하므로 진단 용도로만 사용하고, claim을 신뢰하기 전에는 `await jwtService.verify(...)`를 호출하세요.
+
+단일 세션 로그아웃에서는 caller가 제시한 compact token을 `RefreshTokenService.revokePresentedRefreshToken(...)`에 전달하세요. 이 method는 durable record를 revoke하기 전에 signature, expiry, refresh-token `type`, `jti`, `family`, `sub`를 검증합니다. `revokeRefreshToken(tokenId)`는 신뢰할 수 있는 record ID에만 사용하세요. 이 API는 compact token을 받지 않습니다.
 
 ### Securing Refresh Tokens
 리프레시 토큰은 수명이 길기 때문에 각별히 주의해서 저장해야 합니다. 웹에서는 `httpOnly`, `secure`, `sameSite: 'strict'` 쿠키에 저장하는 것이 표준입니다. 이는 크로스 사이트 스크립팅(XSS) 공격을 통해 JavaScript로 토큰에 접근하는 것을 방지합니다. Fluo의 인증 패턴은 쿠키 기반과 헤더 기반 토큰 전달 방식 모두와 원활하게 작동하도록 설계되어, 브라우저, 네이티브 모바일 앱, 또는 다른 서버 등 특정 클라이언트 유형에 가장 적합한 보안 모델을 선택할 수 있는 유연성을 제공합니다. 또한 모바일 앱의 경우 보안 인클레이브(secure enclaves)나 키체인 저장소를 활용하여 이러한 영구적인 자격 증명을 무단 추출로부터 보호하는 것이 권장됩니다.

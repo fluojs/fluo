@@ -68,6 +68,22 @@ const documentationRequirements = [
     path: 'book/intermediate/ch19-mongoose.ko.md',
   },
 ];
+const saveDocumentContractMarker =
+  '<!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->';
+const saveDocumentRequirements = [
+  {
+    path: 'packages/mongoose/README.md',
+    typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
+  },
+  {
+    path: 'packages/mongoose/README.ko.md',
+    typeConstraint: '  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;',
+  },
+];
+const saveDocumentMigrationRequirements = [
+  { path: 'docs/getting-started/migrate-from-nestjs.md' },
+  { path: 'docs/getting-started/migrate-from-nestjs.ko.md' },
+];
 
 function assert(condition, message) {
   if (!condition) {
@@ -125,6 +141,35 @@ function enforceExplicitDiExample(content, relativePath) {
   );
 }
 
+function enforceSaveDocumentContract(content, requirement) {
+  enforceUniqueLine(content, saveDocumentContractMarker, requirement.path);
+  const typeConstraints = content
+    .split('\n')
+    .filter((candidate) => candidate === requirement.typeConstraint);
+  assert(
+    typeConstraints.length === 1,
+    `${requirement.path} must include exactly one save-compatible document type constraint; found ${typeConstraints.length}.`,
+  );
+}
+
+function enforceSaveDocumentMigrationExample(content, requirement) {
+  const examples = [...content.matchAll(/```(?:ts|typescript)\s*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((example) => example.includes('class ProfileService') && example.includes('saveDocument'));
+  assert(
+    examples.length === 1,
+    `${requirement.path} must include exactly one fenced ProfileService saveDocument migration example.`,
+  );
+
+  const injectionMatches = [
+    ...examples[0].matchAll(/@Inject\(MongooseConnection\)\s*\n(?:export\s+)?class ProfileService\b/gu),
+  ];
+  assert(
+    injectionMatches.length === 1,
+    `${requirement.path} must declare MongooseConnection explicitly for ProfileService.`,
+  );
+}
+
 export function enforceMongooseNestjsMigrationDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
@@ -136,6 +181,14 @@ export function enforceMongooseNestjsMigrationDocs(
     if (requirement.requiresExplicitDiExample) {
       enforceExplicitDiExample(content, requirement.path);
     }
+  }
+
+  for (const requirement of saveDocumentRequirements) {
+    enforceSaveDocumentContract(readText(requirement.path), requirement);
+  }
+
+  for (const requirement of saveDocumentMigrationRequirements) {
+    enforceSaveDocumentMigrationExample(readText(requirement.path), requirement);
   }
 }
 

@@ -354,6 +354,21 @@ async alertOps(event: OrderPlacedEvent) {
 - **취소 인식 backoff**: Discord retry wait는 signal이 이미 abort된 경우 전체 delay를 기다리지 않고 즉시 reject합니다.
 - **명시적 에러**: 영구적인 실패(404, 403 등)는 `SlackTransportError` 또는 `DiscordTransportError`로 드러내 애플리케이션 레벨에서 처리하게 합니다.
 
+Discord workload는 1st-party webhook transport를 교체하지 않고도 bounded in-process 재시도 정책을 구성할 수 있습니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base delay로 사용하는 기본값을 유지합니다. `attempts`는 `1`부터 `10`까지의 정수이고, `baseDelayMs`는 `0`부터 `60000`까지의 정수입니다.
+
+```typescript
+const transport = createDiscordWebhookTransport({
+  fetch: runtime.fetch,
+  retry: {
+    attempts: 5,
+    baseDelayMs: 500,
+  },
+  webhookUrl: config.discordWebhookUrl,
+});
+```
+
+각 재시도 대기 시간은 `baseDelayMs`를 기준으로 두 배씩 증가하며, attempts 횟수에는 최초 요청이 포함됩니다. 이는 latency가 제한된 in-process 정책이며 durable delivery가 아닙니다. 프로세스 재시작 뒤에도 notification을 보존해야 하거나, durable scheduling이 필요하거나, request latency와 독립적으로 실행해야 한다면 queue-backed `@fluojs/notifications` delivery로 route하세요.
+
 ## 17.8 Status Snapshots
 
 채팅 연동은 웹훅 URL 만료, 권한 변경, 외부 서비스 장애로 중단될 수 있습니다. 상태 스냅샷을 운영 지표와 알림에 연결해 조기에 감지합니다. 이 정보를 주기적으로 확인하면 알림이 필요한 순간에야 채널 장애를 발견하는 상황을 줄일 수 있습니다.

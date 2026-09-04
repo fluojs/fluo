@@ -1,4 +1,5 @@
-import type { MicroserviceTransport, TransportHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 interface KafkaConsumerLike {
   subscribe(topic: string, handler: (message: string) => Promise<void> | void): Promise<void>;
@@ -45,11 +46,29 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
+  private logger: MicroserviceTransportLogger | undefined;
   private readonly eventTopic: string;
   private readonly messageTopic: string;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly requestTimeoutMs: number;
   private readonly responseTopic: string;
+
+  private logEventHandlerFailure(error: unknown): void {
+    try {
+      logTransportEventHandlerFailure(this.logger, 'KafkaMicroserviceTransport', error);
+    } catch {
+      // A failing logger must not mask the event failure the broker still has to observe.
+    }
+  }
+
+  /**
+   * Registers the runtime logger that receives inbound event handler failures.
+   *
+   * @param logger Logger used to report event handler failures.
+   */
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Creates a Kafka transport with explicit producer and consumer collaborators.
@@ -295,11 +314,16 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    await this.handler({
-      kind: 'event',
-      pattern: message.pattern,
-      payload: message.payload,
-    });
+    try {
+      await this.handler({
+        kind: 'event',
+        pattern: message.pattern,
+        payload: message.payload,
+      });
+    } catch (error) {
+      this.logEventHandlerFailure(error);
+      throw error;
+    }
   }
 
   private async handleInboundRequest(rawMessage: string): Promise<void> {

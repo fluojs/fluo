@@ -1,6 +1,6 @@
 import { type ChildProcess, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, type FSWatcher, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, type FSWatcher, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -10,9 +10,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { generatorManifest } from './generators/manifest.js';
-import { CliPromptCancelledError, runCli } from './index.js';
+import { CliPromptCancelledError, runCli as runCliImplementation } from './index.js';
 
 const createdDirectories: string[] = [];
+const cliPackageDirectory = dirname(fileURLToPath(import.meta.url));
 
 const inspectFixtureModulePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -33,6 +34,21 @@ const inspectReactFixtureModulePath = join(
 const updateCheckEnv: NodeJS.ProcessEnv = {
   PATH: process.env.PATH,
 };
+
+function runCli(
+  argv: Parameters<typeof runCliImplementation>[0],
+  runtime?: Parameters<typeof runCliImplementation>[1],
+) {
+  if (argv?.[0] === 'inspect' && runtime?.cwd === process.cwd()) {
+    return runCliImplementation(argv, { ...runtime, cwd: cliPackageDirectory });
+  }
+
+  return runCliImplementation(argv, runtime);
+}
+
+function loadRuntimeInspectionModule() {
+  return import('@fluojs/runtime');
+}
 
 function createTtyBufferStream(buffer: string[]): { isTTY: true; write(message: string): void } {
   return {
@@ -154,6 +170,98 @@ afterEach(() => {
 });
 
 describe('CLI command runner', () => {
+  it('states the Node-only Studio live-mode scope and gives Bun projects complete inspect-artifact fallbacks', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(projectDirectory);
+    writeFileSync(
+      join(projectDirectory, 'package.json'),
+      JSON.stringify({ name: 'bun-project', dependencies: { '@fluojs/platform-bun': 'workspace:*' } }, null, 2),
+    );
+    const helpOutput: string[] = [];
+    const errorOutput: string[] = [];
+
+    const helpExitCode = await runCli(['dev', '--help'], {
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => helpOutput.push(message) },
+    });
+    const studioExitCode = await runCli(['dev', '--studio', '--dry-run'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => errorOutput.push(message) },
+      stdout: { write: () => undefined },
+    });
+    const fluoRunnerExitCode = await runCli(['dev', '--studio', '--dry-run', '--runner', 'fluo'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => errorOutput.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(helpExitCode).toBe(0);
+    expect(helpOutput.join('')).toContain('Start the local Fluo Studio sidecar for Node dev runner projects only.');
+    expect(studioExitCode).toBe(1);
+    expect(fluoRunnerExitCode).toBe(1);
+    expect(errorOutput.join('')).toContain('fluo dev --studio supports Node dev runner projects only.');
+    expect(errorOutput.join('')).toContain('fluo inspect <module-path> --json --output <path>');
+    expect(errorOutput.join('')).toContain('fluo inspect <module-path> --report --output <path>');
+  });
+
+  it('accepts inspect --format json with one JSON stdout document and stderr diagnostics', async () => {
+    // Given: a CLI caller capturing each process stream independently.
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When: inspect renders a runtime snapshot through the documented format option.
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json'], {
+      ci: true,
+      loadRuntimeInspectionModule,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    // Then: stdout is one JSON artifact and runtime diagnostics remain on stderr.
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+    expect(() => JSON.parse(stdoutBuffer.join(''))).not.toThrow();
+    expect(stderrBuffer.join('')).not.toBe('');
+  });
+
+  it('rejects unsupported inspect --format values before bootstrap', async () => {
+    // Given: a caller requesting an unsupported inspect serialization format.
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When: inspect parses the format at its CLI boundary.
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'yaml'], {
+      ci: true,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    // Then: no payload is emitted and the invalid value is diagnosed.
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
+  });
+
+  it('rejects inspect --format without a value before bootstrap', async () => {
+    // Given: a CLI caller that omits the documented format value.
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When: inspect parses an incomplete format option at its CLI boundary.
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format'], {
+      ci: true,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    // Then: no payload is emitted and the failure is observable on stderr.
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
+  });
+
   it('publishes fluo as the canonical bin', () => {
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
@@ -2048,33 +2156,6 @@ void bootstrap();
     expect(nativeEnvExitCode).toBe(1);
     expect(spawnedCommands).toEqual([]);
     expect(stderrBuffer.join('')).toContain('fluo dev --studio requires the fluo-owned Node restart runner.');
-  });
-
-  it('keeps Studio dev support Node-only until non-Node bridges are verified', async () => {
-    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
-    createdDirectories.push(workspaceDirectory);
-    writeFileSync(
-      join(workspaceDirectory, 'package.json'),
-      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
-    );
-    const stderrBuffer: string[] = [];
-
-    const nativeExitCode = await runCli(['dev', '--dry-run', '--studio'], {
-      cwd: workspaceDirectory,
-      env: {},
-      stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: () => undefined },
-    });
-    const fluoExitCode = await runCli(['dev', '--dry-run', '--studio', '--runner', 'fluo'], {
-      cwd: workspaceDirectory,
-      env: {},
-      stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: () => undefined },
-    });
-
-    expect(nativeExitCode).toBe(1);
-    expect(fluoExitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('fluo dev --studio currently supports Node dev runner projects only');
   });
 
   it('prints development lifecycle dry-runs with Next.js-like env defaults', async () => {
@@ -4037,8 +4118,10 @@ exit 7
     try {
       exitCode = await runCli(['inspect', inspectFixtureModulePath], {
         cwd: process.cwd(),
+        loadRuntimeInspectionModule,
         stderr: { write: (message) => stderrBuffer.push(message) },
         stdout: { write: (message) => stdoutBuffer.push(message) },
+        updateCheck: false,
       });
     } finally {
       lifecycleFixture.resetInspectLifecycleLogPath();
@@ -4057,7 +4140,7 @@ exit 7
     };
 
     expect(exitCode).toBe(0);
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.generatedAt).toEqual(expect.any(String));
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
@@ -4066,11 +4149,61 @@ exit 7
     expect(readFileSync(lifecycleLogPath, 'utf8')).toBe('close\n');
   });
 
+  it('resolves inspect runtime only from the inspected project dependency tree', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-inspect-project-runtime-'));
+    createdDirectories.push(projectDirectory);
+    const runtimeDirectory = join(projectDirectory, 'node_modules', '@fluojs', 'runtime');
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    mkdirSync(runtimeDirectory, { recursive: true });
+    writeFileSync(join(projectDirectory, 'package.json'), JSON.stringify({ name: 'inspected-project', type: 'module' }));
+    writeFileSync(
+      join(runtimeDirectory, 'package.json'),
+      JSON.stringify({
+        exports: { '.': { default: './index.mjs', import: './index.mjs' } },
+        name: '@fluojs/runtime',
+        type: 'module',
+      }),
+    );
+    writeFileSync(
+      join(runtimeDirectory, 'index.mjs'),
+      [
+        "export const PLATFORM_SHELL = Symbol.for('project-runtime-platform-shell');",
+        'export const FluoFactory = {',
+        '  async create() {',
+        '    return {',
+        '      async close() {},',
+        '      dispatcher: { describeRoutes: () => [] },',
+        '      async get() {',
+        "        return { snapshot: async () => ({ components: [], diagnostics: [], generatedAt: 'project-runtime', health: { status: 'healthy' }, readiness: { status: 'ready' }, runtimeSource: 'project-local' }) };",
+        '      },',
+        '    };',
+        '  },',
+        '};',
+        'export const createRuntimeInspectionSnapshot = (snapshot) => snapshot;',
+        '',
+      ].join('\n'),
+    );
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    expect(exitCode, stderrBuffer.join('')).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(JSON.parse(stdoutBuffer.join(''))).toMatchObject({ runtimeSource: 'project-local' });
+  });
+
   it('loads TypeScript source modules for inspect without narrowing native JavaScript module support', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--export', 'AdminModule', '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4084,7 +4217,7 @@ exit 7
       readiness: { status: string };
     };
 
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
@@ -4097,12 +4230,13 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectReactFixtureModulePath, '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
     expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
 
     const payload = JSON.parse(stdoutBuffer.join('')) as {
       routes: Array<{
@@ -4127,7 +4261,7 @@ exit 7
     ]);
   });
 
-  it('writes inspect JSON artifacts to an explicit output path without stdout payloads', async () => {
+  it('executes the JSON artifact fallback with a module fixture without stdout payloads', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     const stdoutBuffer: string[] = [];
@@ -4136,6 +4270,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4143,17 +4278,21 @@ exit 7
     const payload = JSON.parse(readFileSync(outputPath, 'utf8')) as {
       components: unknown[];
       diagnostics: unknown[];
+      generatedAt: string;
       health: { status: string };
       readiness: { status: string };
+      routes: unknown[];
     };
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    expect(payload.generatedAt).toEqual(expect.any(String));
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+    expect(payload.routes).toEqual([]);
   });
 
   it('emits snapshot JSON with timing diagnostics when --json and --timing are combined', async () => {
@@ -4161,6 +4300,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--timing'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4192,6 +4332,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--report'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4236,6 +4377,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--report', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4249,17 +4391,50 @@ exit 7
     };
 
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(report.version).toBe(1);
     expect(report.snapshot.diagnostics).toEqual([]);
     expect(report.summary.readinessStatus).toBe('ready');
     expect(report.summary.healthStatus).toBe('healthy');
   });
 
+  it.each(['direct path', 'symlink'] as const)('rejects a %s output alias to the inspected application module', async (aliasKind) => {
+    // Given
+    const fixtureDirectory = mkdtempSync(join(dirname(inspectFixtureModulePath), 'inspect-output-alias-'));
+    createdDirectories.push(fixtureDirectory);
+    const modulePath = join(fixtureDirectory, 'app.module.mjs');
+    const source = readFileSync(inspectFixtureModulePath, 'utf8');
+    writeFileSync(modulePath, source, 'utf8');
+    const outputPath = aliasKind === 'direct path'
+      ? modulePath
+      : join(fixtureDirectory, 'inspect-output.json');
+    if (aliasKind === 'symlink') {
+      symlinkSync(modulePath, outputPath);
+    }
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When
+    const exitCode = await runCli(['inspect', modulePath, '--output', outputPath], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer).toEqual([]);
+    expect(stderrBuffer).toHaveLength(1);
+    expect(readFileSync(modulePath, 'utf8')).toBe(source);
+    // The lazy `runCli` facade transforms the full CLI module graph on first use,
+    // which exceeds the default per-test budget on a cold Vitest cache.
+  }, 90000);
+
   it('delegates inspect --mermaid output to Studio when resolvable', async () => {
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -4278,6 +4453,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -4296,6 +4472,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: false,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdin: { isTTY: false },
@@ -4318,6 +4495,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async (message) => {
@@ -4351,6 +4529,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async (message) => {
@@ -4380,6 +4559,7 @@ exit 7
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async () => {
@@ -4432,6 +4612,7 @@ exit 7
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4467,6 +4648,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4478,7 +4660,7 @@ exit 7
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
     expect(payload.snapshot.diagnostics).toEqual([]);
     expect(payload.snapshot.readiness.status).toBe('ready');
     expect(payload.snapshot.health.status).toBe('healthy');
@@ -4487,17 +4669,19 @@ exit 7
     expect(payload.timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
   });
 
-  it('rejects conflicting inspect JSON and Mermaid output modes', async () => {
+  it('rejects --format json when another primary inspect mode is selected', async () => {
+    const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--mermaid'], {
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json', '--mermaid'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Choose only one inspect output mode');
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).not.toBe('');
   });
 
   it('rejects Mermaid timing because graph rendering stays Studio-owned', async () => {
@@ -5048,6 +5232,7 @@ exit 7
     expect(output).toContain('platform snapshot');
     expect(output).toContain('diagnostics');
     expect(output).toContain('timing');
+    expect(output).toContain('--format <json>');
   });
 
   it('generate schematics help uses canonical provider/module registration vocabulary', async () => {
@@ -5636,7 +5821,7 @@ void bootstrap();
     expect(dryRunStdout.join('')).toContain('Mode: dry-run');
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toContain('NestFactory.create');
 
-    const applyExitCode = await runCli(['migrate', './src', '--apply'], {
+    const applyExitCode = await runCli(['migrate', './src', '--platform', 'express', '--apply'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },

@@ -102,6 +102,11 @@ const INSPECT_OPTION_HELP: CommandOptionHelpEntry[] = [
   },
   {
     aliases: [],
+    description: 'Select JSON output explicitly; equivalent to --json.',
+    option: '--format <json>',
+  },
+  {
+    aliases: [],
     description: 'Emit a Mermaid graph through the optional @fluojs/studio rendering contract.',
     option: '--mermaid',
   },

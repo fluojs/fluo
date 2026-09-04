@@ -28,7 +28,7 @@ export default mergeConfig(
           extends: true,
           test: {
             name: 'packages',
-            exclude: [...configDefaults.exclude, 'packages/cli/.sandbox/**'],
+            exclude: [...configDefaults.exclude, 'packages/**/deno/**', 'packages/cli/.sandbox/**'],
             include: ['packages/**/*.test.ts'],
           },
         },

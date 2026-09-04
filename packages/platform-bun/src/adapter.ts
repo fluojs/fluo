@@ -242,12 +242,33 @@ const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const MINIMUM_BUN_NATIVE_ROUTES_VERSION = '1.2.3';
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 const BUN_ADAPTER_CLOSE_TIMEOUT_MS = Symbol('fluo.bunAdapterCloseTimeoutMs');
+const BUN_ADAPTER_DIAGNOSTIC_CODES = {
+  invalidOption: 'BUN_ADAPTER_INVALID_OPTION',
+  realtimeBindingInvalid: 'BUN_ADAPTER_REALTIME_BINDING_INVALID',
+  realtimeBindingLocked: 'BUN_ADAPTER_REALTIME_BINDING_LOCKED',
+  runtimeUnavailable: 'BUN_ADAPTER_RUNTIME_UNAVAILABLE',
+  shutdownTimeout: 'BUN_ADAPTER_SHUTDOWN_TIMEOUT',
+} as const;
 const BUN_WEBSOCKET_SUPPORT_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
+
+type BunAdapterDiagnosticCode = typeof BUN_ADAPTER_DIAGNOSTIC_CODES[keyof typeof BUN_ADAPTER_DIAGNOSTIC_CODES];
 
 type BunAdapterInternalOptions = BunAdapterOptions & {
   [BUN_ADAPTER_CLOSE_TIMEOUT_MS]?: number;
 };
+
+function attachBunAdapterDiagnosticCode<TError extends Error>(
+  error: TError,
+  code: BunAdapterDiagnosticCode,
+): TError {
+  Object.defineProperty(error, 'code', {
+    enumerable: true,
+    value: code,
+  });
+
+  return error;
+}
 
 function isBunWebSocketBinding(value: unknown): value is BunWebSocketBinding<unknown> {
   return typeof value === 'object'
@@ -325,7 +346,10 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     }
 
     if (!isBunWebSocketBinding(binding)) {
-      throw new TypeError('Bun realtime binding installation requires fetch and websocket host contracts.');
+      throw attachBunAdapterDiagnosticCode(
+        new TypeError('Bun realtime binding installation requires fetch and websocket host contracts.'),
+        BUN_ADAPTER_DIAGNOSTIC_CODES.realtimeBindingInvalid,
+      );
     }
 
     this.configureRealtimeBinding(binding);
@@ -334,7 +358,10 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   /** Configures the official realtime binding before the Bun server starts. */
   configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
     if (this.server) {
-      throw new Error('Bun websocket binding must be configured before Bun adapter listen() starts the server.');
+      throw attachBunAdapterDiagnosticCode(
+        new Error('Bun websocket binding must be configured before Bun adapter listen() starts the server.'),
+        BUN_ADAPTER_DIAGNOSTIC_CODES.realtimeBindingLocked,
+      );
     }
 
     this.realtimeBinding = binding;
@@ -655,7 +682,10 @@ function requireBunGlobal(): BunGlobal {
   const bun = (globalThis as typeof globalThis & { Bun?: BunGlobal }).Bun;
 
   if (!bun || typeof bun.serve !== 'function') {
-    throw new Error('Bun adapter requires globalThis.Bun.serve(). Run this package inside Bun or provide a Bun-compatible test double.');
+    throw attachBunAdapterDiagnosticCode(
+      new Error('Bun adapter requires globalThis.Bun.serve(). Run this package inside Bun or provide a Bun-compatible test double.'),
+      BUN_ADAPTER_DIAGNOSTIC_CODES.runtimeUnavailable,
+    );
   }
 
   return bun;
@@ -669,7 +699,10 @@ function validatePortOption(port: number | undefined): number {
   const resolved = port ?? DEFAULT_PORT;
 
   if (!Number.isInteger(resolved) || resolved < 0 || resolved > 65535) {
-    throw new Error(`Invalid port value: ${String(resolved)}. Expected an integer between 0 and 65535.`);
+    throw attachBunAdapterDiagnosticCode(
+      new Error(`Invalid port value: ${String(resolved)}. Expected an integer between 0 and 65535.`),
+      BUN_ADAPTER_DIAGNOSTIC_CODES.invalidOption,
+    );
   }
 
   return resolved;
@@ -681,7 +714,10 @@ function validateNonNegativeIntegerOption(name: string, value: number | undefine
   }
 
   if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
+    throw attachBunAdapterDiagnosticCode(
+      new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`),
+      BUN_ADAPTER_DIAGNOSTIC_CODES.invalidOption,
+    );
   }
 }
 
@@ -948,7 +984,10 @@ function createShutdownResponse(): Response {
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
-      reject(new Error(`Bun adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+      reject(attachBunAdapterDiagnosticCode(
+        new Error(`Bun adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`),
+        BUN_ADAPTER_DIAGNOSTIC_CODES.shutdownTimeout,
+      ));
     }, timeoutMs);
 
     void closePromise.then(

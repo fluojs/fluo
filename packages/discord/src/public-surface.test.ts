@@ -9,6 +9,7 @@ import type {
   DiscordTemplateRenderer,
   DiscordTransport,
   DiscordTransportFactory,
+  DiscordWebhookRetryOptions,
   DiscordWebhookTransportOptions,
 } from './index.js';
 import * as discordPublicApi from './index.js';
@@ -39,6 +40,9 @@ describe('@fluojs/discord public API surface', () => {
     expectTypeOf<DiscordTransportFactory>().toHaveProperty('create');
     expectTypeOf<DiscordNotificationDispatchRequest>().toHaveProperty('channel');
     expectTypeOf<DiscordWebhookTransportOptions>().toHaveProperty('webhookUrl');
+    expectTypeOf<DiscordWebhookTransportOptions>().toHaveProperty('retry');
+    expectTypeOf<DiscordWebhookRetryOptions>().toHaveProperty('attempts');
+    expectTypeOf<DiscordWebhookRetryOptions>().toHaveProperty('baseDelayMs');
     expectTypeOf<DiscordFetchLike>().toBeFunction();
     expectTypeOf<DiscordTemplateRenderer>().toHaveProperty('render');
     expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('channelName');

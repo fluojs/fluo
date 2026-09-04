@@ -2,6 +2,8 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 CLI sidecar and React viewer workflow for fluo diagnostics, with a Node dev-runner live MVP and backward-compatible static/report artifact loading.
 
 ## Table of Contents
@@ -78,7 +80,7 @@ MVP request flow intentionally means route/handler and dependency-graph correlat
 
 Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics. New snapshots may include compiled `routes`; Studio validates `kind` and parameter-name-only `params`, displays `react-page` as **React page**, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics.
 
-This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and launch them with `fluo-studio-viewer` instead of expecting live sidecar events in the MVP. Integrations that need the HTML asset path resolve the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`) even when the inspected artifact came from a non-Node runtime fallback workflow.
+This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. After a successful bootstrap, `fluo inspect` reads `PlatformShell.snapshot()` and routes to produce a `PlatformShellSnapshot` with reported platform components and their dependencies; it does not contain the compiled module/provider graph or provider scope metadata that Node live Studio derives at runtime. The live path publishes compiled module, provider, controller, and route graph data (including provider scope metadata), separate bootstrap timing events, and request trace events. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and launch them with the packaged `fluo-studio-viewer` instead of expecting live sidecar events in the MVP. Workflows that need that compiled DI graph must stay on the supported Node live path with `fluo dev --studio`. Integrations that need the HTML asset path resolve the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`) even when the inspected artifact came from a non-Node runtime fallback workflow.
 
 1. **Export a snapshot**:
    ```bash
@@ -126,7 +128,7 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 |---|---|
 | `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
-| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
+| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. Filtered snapshots render deterministically, producing identical Mermaid text before and after JSON serialization. |
 | `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate runtime-connected sidecar/SSE envelopes before UI state consumes them. |
 | `isStudioLiveEvent(value)` | Runtime-safe type guard for checking sidecar/SSE envelopes before parsing or dispatch. |
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
@@ -185,6 +187,5 @@ The MVP is local and runtime-connected. Future releases should consider, but do 
 
 ## Example Sources
 
-- [main.ts](./src/main.ts) - Test-compatible application entry point.
 - [main.tsx](./src/main.tsx) - React browser viewer entry point.
 - [contracts.ts](./src/contracts.ts) - Static and live Studio contract definitions.

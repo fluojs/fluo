@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 
 import { FluoFactory } from './bootstrap.js';
 import { defineRuntimeModuleMetadata } from './internal/core-metadata.js';
@@ -24,6 +24,7 @@ function createDeferred(): { readonly promise: Promise<void>; readonly resolve: 
 it('rejects send before transport admission when close races with listen', async () => {
   // Given
   const events: string[] = [];
+  const listenStarted = createDeferred();
   const listenCanFinish = createDeferred();
   const microserviceToken = Symbol.for('fluo.microservices.service');
 
@@ -34,6 +35,7 @@ it('rejects send before transport admission when close races with listen', async
 
     async listen(): Promise<void> {
       events.push('runtime:listen:start');
+      listenStarted.resolve();
       await listenCanFinish.promise;
       events.push('runtime:listen:end');
     }
@@ -51,9 +53,7 @@ it('rejects send before transport admission when close races with listen', async
 
   const microservice = await FluoFactory.createMicroservice(AppModule);
   const listenPromise = microservice.listen();
-  await vi.waitFor(() => {
-    expect(events).toEqual(['runtime:listen:start']);
-  });
+  await listenStarted.promise;
 
   // When
   const closePromise = microservice.close();
@@ -74,6 +74,7 @@ it('rejects send before transport admission when close races with listen', async
 it('rejects emit before transport admission when close races with listen', async () => {
   // Given
   const events: string[] = [];
+  const listenStarted = createDeferred();
   const listenCanFinish = createDeferred();
   const microserviceToken = Symbol.for('fluo.microservices.service');
 
@@ -88,6 +89,7 @@ it('rejects emit before transport admission when close races with listen', async
 
     async listen(): Promise<void> {
       events.push('runtime:listen:start');
+      listenStarted.resolve();
       await listenCanFinish.promise;
       events.push('runtime:listen:end');
     }
@@ -100,9 +102,7 @@ it('rejects emit before transport admission when close races with listen', async
 
   const microservice = await FluoFactory.createMicroservice(AppModule);
   const listenPromise = microservice.listen();
-  await vi.waitFor(() => {
-    expect(events).toEqual(['runtime:listen:start']);
-  });
+  await listenStarted.promise;
 
   // When
   const closePromise = microservice.close();
@@ -123,12 +123,15 @@ it('rejects emit before transport admission when close races with listen', async
 it('notifies runtime facade of shutdown start before awaiting in-flight listen', async () => {
   // Given
   const events: string[] = [];
+  const listenStarted = createDeferred();
+  const shutdownStarted = createDeferred();
   const listenCanFinish = createDeferred();
   const microserviceToken = Symbol.for('fluo.microservices.service');
 
   class StubMicroserviceRuntime implements MicroserviceRuntime {
     markShutdownStarted(): void {
       events.push('runtime:mark-shutdown');
+      shutdownStarted.resolve();
     }
 
     async close(): Promise<void> {
@@ -137,6 +140,7 @@ it('notifies runtime facade of shutdown start before awaiting in-flight listen',
 
     async listen(): Promise<void> {
       events.push('runtime:listen:start');
+      listenStarted.resolve();
       await listenCanFinish.promise;
       events.push('runtime:listen:end');
     }
@@ -155,17 +159,13 @@ it('notifies runtime facade of shutdown start before awaiting in-flight listen',
       throw new Error('microservice not bootstrapped');
     }
     const listenPromise = app.listen();
-    await vi.waitFor(() => {
-      expect(events).toEqual(['runtime:listen:start']);
-    });
+    await listenStarted.promise;
 
     // When
     const closePromise = app.close();
 
     // Then
-    await vi.waitFor(() => {
-      expect(events).toContain('runtime:mark-shutdown');
-    });
+    await shutdownStarted.promise;
     await expect(app.send('orders.create', { id: 'order-1' })).rejects.toThrow(
       'Microservice cannot send after shutdown has started.',
     );
@@ -230,6 +230,150 @@ it('keeps send and emit rejected after a failed close attempt', async () => {
     );
     expect(events).not.toContain('runtime:send');
     expect(events).not.toContain('runtime:emit');
+  } finally {
+    await disposeApp(app);
+  }
+});
+
+it('caches a failed shell close without retrying terminal teardown', async () => {
+  // Given
+  const microserviceToken = Symbol.for('fluo.microservices.service');
+  const closeError = new Error('transport close failed');
+  let closeCalls = 0;
+
+  class StubMicroserviceRuntime implements MicroserviceRuntime {
+    async close(): Promise<void> {
+      closeCalls += 1;
+      throw closeError;
+    }
+
+    async listen(): Promise<void> {}
+  }
+
+  class AppModule {}
+  defineRuntimeModuleMetadata(AppModule, {
+    providers: [{ provide: microserviceToken, useClass: StubMicroserviceRuntime }],
+  });
+
+  let app: MicroserviceApplication | undefined;
+
+  try {
+    app = await FluoFactory.createMicroservice(AppModule);
+    if (!app) {
+      throw new Error('microservice not bootstrapped');
+    }
+    await app.listen();
+    const firstClose = app.close();
+    const secondClose = app.close();
+
+    // When
+    await expect(firstClose).rejects.toThrow(closeError);
+    await expect(secondClose).rejects.toThrow(closeError);
+    await expect(app.close()).rejects.toThrow(closeError);
+
+    // Then
+    expect(closeCalls).toBe(1);
+  } finally {
+    await disposeApp(app);
+  }
+});
+
+it('caches a synchronous shutdown-mark failure without retrying it', async () => {
+  // Given
+  const microserviceToken = Symbol.for('fluo.microservices.service');
+  const shutdownError = new Error('shutdown mark failed');
+  let closeCalls = 0;
+  let shutdownMarkCalls = 0;
+
+  class StubMicroserviceRuntime implements MicroserviceRuntime {
+    markShutdownStarted(): void {
+      shutdownMarkCalls += 1;
+      throw shutdownError;
+    }
+
+    async close(): Promise<void> {
+      closeCalls += 1;
+    }
+
+    async listen(): Promise<void> {}
+  }
+
+  class AppModule {}
+  defineRuntimeModuleMetadata(AppModule, {
+    providers: [{ provide: microserviceToken, useClass: StubMicroserviceRuntime }],
+  });
+
+  let app: MicroserviceApplication | undefined;
+
+  try {
+    app = await FluoFactory.createMicroservice(AppModule);
+    if (!app) {
+      throw new Error('microservice not bootstrapped');
+    }
+    const firstClose = app.close();
+    const secondClose = app.close();
+
+    // When
+    await expect(firstClose).rejects.toBe(shutdownError);
+    await expect(secondClose).rejects.toBe(shutdownError);
+    await expect(app.close()).rejects.toBe(shutdownError);
+
+    // Then
+    expect(shutdownMarkCalls).toBe(1);
+    expect(closeCalls).toBe(0);
+  } finally {
+    await disposeApp(app);
+  }
+});
+
+it('caches close before a synchronous shutdown-mark reentry', async () => {
+  // Given
+  const microserviceToken = Symbol.for('fluo.microservices.service');
+  let closeCalls = 0;
+  let reenteredClose: Promise<void> | undefined;
+  let shutdownMarkCalls = 0;
+  let app: MicroserviceApplication | undefined;
+
+  class StubMicroserviceRuntime implements MicroserviceRuntime {
+    markShutdownStarted(): void {
+      shutdownMarkCalls += 1;
+
+      if (!app) {
+        throw new Error('microservice not bootstrapped');
+      }
+
+      reenteredClose = app.close();
+    }
+
+    async close(): Promise<void> {
+      closeCalls += 1;
+    }
+
+    async listen(): Promise<void> {}
+  }
+
+  class AppModule {}
+  defineRuntimeModuleMetadata(AppModule, {
+    providers: [{ provide: microserviceToken, useClass: StubMicroserviceRuntime }],
+  });
+
+  try {
+    app = await FluoFactory.createMicroservice(AppModule);
+    if (!app) {
+      throw new Error('microservice not bootstrapped');
+    }
+
+    // When
+    const firstClose = app.close();
+
+    // Then
+    await expect(firstClose).resolves.toBeUndefined();
+    if (!reenteredClose) {
+      throw new Error('expected synchronous shutdown-mark reentry');
+    }
+    await expect(reenteredClose).resolves.toBeUndefined();
+    expect(shutdownMarkCalls).toBe(1);
+    expect(closeCalls).toBe(1);
   } finally {
     await disposeApp(app);
   }

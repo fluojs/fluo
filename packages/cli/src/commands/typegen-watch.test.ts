@@ -14,6 +14,14 @@ import {
 
 const tempDirectories: string[] = [];
 
+function createDeferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+  let resolveResult: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolveResult = resolve;
+  });
+  return { promise, resolve: resolveResult };
+}
+
 function createScheduler(): TypegenWatchScheduler & { flush(): void } {
   let sequence = 0;
   const callbacks = new Map<number, () => void>();
@@ -60,6 +68,123 @@ afterEach(async () => {
 });
 
 describe('fluo typegen watch lifecycle', () => {
+  it('withholds an invalidated generation until its requested rerun publishes current source', async () => {
+    // Given: a ready watcher whose next generation holds a source snapshot while its inputs can change.
+    const scheduler = createScheduler();
+    const signalTarget = createSignalTarget();
+    const rerunStarted = createDeferred<void>();
+    const staleGeneration = createDeferred<string>();
+    const currentSourcePublished = createDeferred<void>();
+    const publishedSources: string[] = [];
+    let generationCount = 0;
+    let listener: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const watcher: TypegenWatcher = { close: vi.fn(), on: vi.fn(() => watcher) };
+    const runPromise = runTypegenWatch({
+      commit: async (source) => {
+        publishedSources.push(source);
+        if (source === 'current source') {
+          currentSourcePublished.resolve();
+        }
+      },
+      modulePath: '/project/src/app.ts',
+      onReady: () => undefined,
+      outputPath: '/project/src/generated/react-pages.ts',
+      scheduler,
+      signalTarget,
+      startGeneration() {
+        generationCount += 1;
+        switch (generationCount) {
+          case 1:
+            return { cancel: () => undefined, result: Promise.resolve('initial source') };
+          case 2:
+            rerunStarted.resolve();
+            return { cancel: () => undefined, result: staleGeneration.promise };
+          case 3:
+            return { cancel: () => undefined, result: Promise.resolve('current source') };
+          default:
+            throw new Error(`Unexpected generation ${String(generationCount)}`);
+        }
+      },
+      watchTarget: (_target, _options, nextListener) => {
+        listener = nextListener;
+        return watcher;
+      },
+    });
+    await Promise.resolve();
+    if (listener === undefined) {
+      throw new Error('Typegen watch listener was not installed.');
+    }
+
+    // When: another source event arrives after the active generation captured stale bytes.
+    listener('change', 'page.tsx');
+    scheduler.flush();
+    await rerunStarted.promise;
+    listener('change', 'page.tsx');
+    staleGeneration.resolve('stale source');
+    await currentSourcePublished.promise;
+    signalTarget.emit('SIGTERM');
+
+    // Then: only the successor generated from current inputs can replace the initial artifact.
+    await expect(runPromise).resolves.toBe(0);
+    expect(publishedSources).toEqual(['initial source', 'current source']);
+  });
+
+  it('aborts an owned asynchronous commit before it can publish during shutdown', async () => {
+    // Given: a ready watcher whose regeneration has entered an asynchronous artifact commit.
+    const scheduler = createScheduler();
+    const signalTarget = createSignalTarget();
+    const commitStarted = createDeferred<void>();
+    const releaseCommit = createDeferred<void>();
+    const publishedSources: string[] = [];
+    let generationCount = 0;
+    let listener: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const watcher: TypegenWatcher = { close: vi.fn(), on: vi.fn(() => watcher) };
+    const runPromise = runTypegenWatch({
+      async commit(source, signal?: AbortSignal) {
+        if (source === 'initial source') {
+          publishedSources.push(source);
+          return;
+        }
+        commitStarted.resolve();
+        await releaseCommit.promise;
+        if (signal?.aborted !== true) {
+          publishedSources.push(source);
+        }
+      },
+      modulePath: '/project/src/app.ts',
+      onReady: () => undefined,
+      outputPath: '/project/src/generated/react-pages.ts',
+      scheduler,
+      signalTarget,
+      startGeneration() {
+        generationCount += 1;
+        return {
+          cancel: () => undefined,
+          result: Promise.resolve(generationCount === 1 ? 'initial source' : 'next source'),
+        };
+      },
+      watchTarget: (_target, _options, nextListener) => {
+        listener = nextListener;
+        return watcher;
+      },
+    });
+    await Promise.resolve();
+    if (listener === undefined) {
+      throw new Error('Typegen watch listener was not installed.');
+    }
+
+    // When: shutdown begins after the commit has started but before its final publication boundary.
+    listener('change', 'page.tsx');
+    scheduler.flush();
+    await commitStarted.promise;
+    signalTarget.emit('SIGTERM');
+    releaseCommit.resolve();
+
+    // Then: shutdown owns the in-flight commit and the target remains at its last valid artifact.
+    await expect(runPromise).resolves.toBe(0);
+    expect(publishedSources).toEqual(['initial source']);
+  });
+
   it('coalesces rapid changes, serializes regeneration, and shuts down cleanly', async () => {
     // Given: a successful startup generation and an injectable watcher lifecycle.
     const scheduler = createScheduler();
@@ -86,14 +211,18 @@ describe('fluo typegen watch lifecycle', () => {
         });
       }
       active -= 1;
+      return `source ${String(generationCount)}`;
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async () => undefined,
       modulePath: '/project/src/app.ts',
       onReady,
       outputPath: '/project/src/generated/react-pages.ts',
       scheduler,
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
@@ -140,16 +269,21 @@ describe('fluo typegen watch lifecycle', () => {
       if (generationCount === 2) {
         throw new Error('application bootstrap failed');
       }
-      await writeTypegenArtifact(outputPath, generationCount === 1 ? 'valid one\n' : 'valid two\n');
+      return generationCount === 1 ? 'valid one\n' : 'valid two\n';
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async (source) => {
+        await writeTypegenArtifact(outputPath, source);
+      },
       modulePath: join(cwd, 'src', 'app.ts'),
       onError,
       onReady,
       outputPath,
       scheduler,
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
@@ -185,15 +319,20 @@ describe('fluo typegen watch lifecycle', () => {
     });
     const onReady = vi.fn();
     const generate = vi.fn(async () => {
-      await writeTypegenArtifact(outputPath, 'stable artifact\n');
+      return 'stable artifact\n';
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async (source) => {
+        await writeTypegenArtifact(outputPath, source);
+      },
       modulePath: join(cwd, 'src', 'app.ts'),
       onReady,
       outputPath,
       scheduler,
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());

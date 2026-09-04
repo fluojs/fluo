@@ -13,6 +13,7 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Lifecycle and Shutdown](#lifecycle-and-shutdown)
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
+  - [Saving an Existing Document](#saving-an-existing-document)
   - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
   - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
 - [Public API](#public-api)
@@ -33,7 +34,7 @@ pnpm add mongoose
 - when request-scoped transactions need explicit `requestTransaction(...)` boundaries
 - when an application already creates and configures its concrete Mongoose connection and wants fluo to observe, not replace, that ownership
 
-The root `@fluojs/mongoose` wrapper uses Node.js `node:async_hooks` for ambient transaction context and supports Node.js 20 or newer, matching the package manifest `engines.node >=20.0.0`. For non-Node runtimes, register raw Mongoose-compatible handles behind application-owned providers instead of importing the root wrapper until a runtime-specific transaction-context adapter is documented.
+The root `@fluojs/mongoose` wrapper uses Node.js `node:async_hooks` for ambient transaction context and requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Upgrade Node 20 hosts to `>=20.19.3` or Node 22 hosts to `>=22.2.0`; Node 21 and Node 27+ are unsupported. For non-Node runtimes, register raw Mongoose-compatible handles behind application-owned providers instead of importing the root wrapper until a runtime-specific transaction-context adapter is documented.
 
 ## Quick Start
 
@@ -83,7 +84,15 @@ The `@Transaction()` decorator is the recommended way to define transaction boun
 import { Inject } from '@fluojs/core';
 import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
 
-type UserDocument = { readonly _id: string; readonly name: string };
+type UserDocumentSaveOptions = {
+  readonly validateBeforeSave?: boolean;
+  readonly session?: object | null;
+};
+type UserDocument = {
+  readonly _id: string;
+  readonly name: string;
+  save(options?: UserDocumentSaveOptions): Promise<UserDocument>;
+};
 type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
 type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
@@ -131,6 +140,21 @@ export class AnalyticsService {
   }
 }
 ```
+
+### Saving an Existing Document
+
+<!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
+
+Use the opt-in `MongooseConnection.saveDocument(...)` helper when an existing Mongoose document must save inside an active `@Transaction()`, `transaction()`, or `requestTransaction()` boundary:
+
+```ts
+@Transaction()
+async rename(document: UserDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+The helper forwards native Mongoose save options, attaches the ambient session, and returns the same document instance. It fails closed outside an active transaction and rejects `{ session: null }` or a different explicit session so a save cannot leave the current transaction accidentally. It never patches documents, prototypes, or model caches: calling `doc.save()` directly remains native Mongoose behavior and does not receive an automatic session.
 
 ### Request Transaction Interceptor Compatibility
 
@@ -187,6 +211,7 @@ For supported facade methods, fluo preserves existing Mongoose operation options
 
 ## Public API
 
+- `MongooseConnection.saveDocument(document, options?)` — explicitly saves an existing document with the current transaction session while preserving native save options and document identity.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — reports health/readiness, resource ownership, active request/session drain counts, and strict transaction support diagnostics for platform observability surfaces.

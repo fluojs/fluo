@@ -228,8 +228,24 @@ class TokenInjectedService {
 - `SagaTopologyError`: 활성 provider-token/event-route cycle 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
 
 ### status와 metadata
-- `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다.
+- `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다. Snapshot `details`는 Command, Query, Event handler, saga의 탐색된 개수와 각 lifecycle summary를 보고합니다. Command와 Query adapter input은 호환성을 위해 optional로 유지하며, 생략하면 탐색된 handler 수는 0이고 lifecycle은 CQRS event lifecycle을 사용합니다.
+- `CqrsEventBusService.createPlatformStatusSnapshot()`: live bus state에서 Command와 Query discovery summary를 채웁니다. Snapshot details는 handler descriptor, provider token, saga topology를 절대 노출하지 않으며 Command와 Query summary는 기존 event/saga readiness 또는 health semantics를 바꾸지 않습니다.
 - command, query, event, saga registration을 검사해야 하는 framework package를 위해 metadata helper와 symbol이 export됩니다.
+
+#### Status snapshot field
+
+모든 CQRS snapshot은 `readiness`, `health`, `ownership`, `details`를 가집니다. `ownership`은 항상 `externallyManaged: false`, `ownsResources: false`를 보고합니다. CQRS는 자체 in-process lifecycle을 관찰하며 caller-owned external resource를 소유한다고 주장하지 않습니다.
+
+| `details` field | 의미 |
+| --- | --- |
+| `dependencies` | 위임된 event-bus dependency를 나타내는 항상 `['event-bus.default']` 값입니다. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Command/Query adapter input을 생략하면 `0`을 사용하며, shutdown 후 live-bus count는 `0`입니다. |
+| `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, Query, event-pipeline, saga runtime의 lifecycle state입니다. Command/Query adapter input을 생략하면 `lifecycleState`로 fallback합니다. |
+| `inFlightSagaExecutions` | 현재 runtime이 소유한 saga execution 수입니다. |
+| `shutdownDrainTimeoutMs` | 설정된 bounded shutdown-drain window입니다. |
+| `shutdownDrainTimeouts`, `sagaShutdownDrainTimeouts` | event pipeline과 saga runtime에서 기록된 bounded drain timeout입니다. |
+
+유효한 lifecycle state는 `created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`입니다. Readiness는 event와 saga state를 다음 순서로 평가합니다. 둘 다 `ready`이면 `ready`, 그 외에는 하나라도 `discovering`이면 `degraded`, 그 외에는 하나라도 `stopping`이면 `not-ready`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `not-ready`, `created`를 포함한 나머지 조합은 `not-ready`입니다. Health는 다음 순서로 평가합니다. 0이 아닌 drain-timeout counter가 하나라도 있으면 `degraded`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `unhealthy`, 그 외에는 하나라도 `discovering` 또는 `stopping`이면 `degraded`, 나머지 조합은 `healthy`입니다. Command와 Query lifecycle field는 diagnostic 전용이며 기존 event/saga readiness 또는 health rule을 바꾸지 않습니다.
 
 ## 관련 패키지
 
