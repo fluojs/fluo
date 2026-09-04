@@ -23,6 +23,32 @@ const localizedAsyncRegistrationSections = [
   ['docs/reference/package-surface.ko.md', '## GraphQL 비동기 module 등록', '동기 전용 등록'],
 ] as const;
 
+const semanticSynchronousOnlyClaims = [
+  [
+    'book/intermediate/ch18-graphql.md',
+    '### Resolving Module Options Asynchronously',
+    'GraphqlModule only supports synchronous registration.',
+  ],
+  [
+    'book/intermediate/ch18-graphql.ko.md',
+    '### 비동기 Module Option 해석',
+    'GraphqlModule은 동기 등록만 지원합니다.',
+  ],
+] as const;
+
+const migrationTableContradictions = [
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'Async registration supports only explicit `inject` tokens and `useFactory`;',
+    '`GraphqlModule` supports synchronous registration only; `forRootAsync(...)` has no contract.',
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'Async registration은 명시적인 `inject` token과 `useFactory`만 지원합니다.',
+    '`GraphqlModule`은 동기 등록만 지원하며 `forRootAsync(...)` 계약은 없습니다.',
+  ],
+] as const;
+
 describe('GraphQL async registration contract', () => {
   it('keeps the injected async registration source and documentation contract synchronized', () => {
     expect(() => enforceGraphqlAsyncRegistrationContract()).not.toThrow();
@@ -62,6 +88,34 @@ describe('GraphQL async registration contract', () => {
           : read(relativePath);
 
       expect(() => enforceGraphqlAsyncRegistrationContract(readWithContradictoryClaim)).toThrow(
+        /contradictory async registration claim/u,
+      );
+    },
+  );
+
+  it.each(semanticSynchronousOnlyClaims)(
+    'rejects a semantic synchronous-only variant in %s',
+    (documentationPath, sectionHeading, contradiction) => {
+      const readWithSemanticContradiction = (relativePath: string): string =>
+        relativePath === documentationPath
+          ? read(relativePath).replace(sectionHeading, `${sectionHeading}\n\n${contradiction}`)
+          : read(relativePath);
+
+      expect(() => enforceGraphqlAsyncRegistrationContract(readWithSemanticContradiction)).toThrow(
+        /contradictory async registration claim/u,
+      );
+    },
+  );
+
+  it.each(migrationTableContradictions)(
+    'rejects a GraphQL migration-table contradiction in %s',
+    (documentationPath, supportedClaim, contradiction) => {
+      const readWithMigrationTableContradiction = (relativePath: string): string =>
+        relativePath === documentationPath
+          ? read(relativePath).replace(supportedClaim, contradiction)
+          : read(relativePath);
+
+      expect(() => enforceGraphqlAsyncRegistrationContract(readWithMigrationTableContradiction)).toThrow(
         /contradictory async registration claim/u,
       );
     },

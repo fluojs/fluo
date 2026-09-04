@@ -1,4 +1,11 @@
-import type { InjectionToken, MaybePromise, MetadataPropertyKey, Token } from '@fluojs/core';
+import type {
+  ForwardRefToken,
+  InjectionToken,
+  MaybePromise,
+  MetadataPropertyKey,
+  OptionalInjectToken,
+  Token,
+} from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { FrameworkRequest, Principal } from '@fluojs/http';
 import type { GraphQLObjectType, GraphQLSchema, GraphQLUnionType } from 'graphql';
@@ -270,22 +277,36 @@ export interface GraphqlModuleOptions {
   subscriptions?: GraphqlSubscriptionsOptions;
 }
 
+type GraphqlAsyncFactoryDependencies<TTokens extends readonly InjectionToken[]> = {
+  -readonly [Index in keyof TTokens]: TTokens[Index] extends OptionalInjectToken<infer TDependency>
+    ? TDependency | undefined
+    : TTokens[Index] extends ForwardRefToken<infer TDependency>
+      ? TDependency
+      : TTokens[Index] extends Token<infer TDependency>
+        ? TDependency
+        : never;
+};
+
 /**
  * Configures GraphQL registration through explicitly injected application dependencies.
  *
  * Only `inject` and `useFactory` are supported. NestJS-style `imports`, `useClass`,
  * `useExisting`, and implicit provider discovery are intentionally unavailable.
  *
- * @typeParam TDependencies Tuple of values resolved from `inject` and passed to
- * `useFactory` in the same order.
+ * @typeParam TTokens Tuple of injection tokens whose resolved values are passed
+ * to `useFactory` in the same order. Optional tokens resolve as `T | undefined`.
  */
-export interface GraphqlAsyncModuleOptions<TDependencies extends readonly unknown[] = readonly unknown[]> {
+export interface GraphqlAsyncModuleOptions<
+  TTokens extends readonly InjectionToken[] = readonly InjectionToken[],
+> {
   /**
    * Application-graph tokens whose resolved values are passed to `useFactory` in order.
    */
-  inject?: { readonly [Index in keyof TDependencies]: InjectionToken<TDependencies[Index]> };
+  inject?: TTokens;
   /**
    * Resolves the GraphQL module options from the explicitly injected dependency values.
    */
-  useFactory: (...dependencies: TDependencies) => MaybePromise<GraphqlModuleOptions>;
+  useFactory: (
+    ...dependencies: GraphqlAsyncFactoryDependencies<TTokens>
+  ) => MaybePromise<GraphqlModuleOptions>;
 }

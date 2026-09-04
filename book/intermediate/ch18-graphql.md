@@ -37,7 +37,7 @@ First, install the required dependencies.
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-The center of the integration is `GraphqlModule`. Unlike many fluo modules, `GraphqlModule` currently uses synchronous `forRoot` configuration.
+The center of the integration is `GraphqlModule`. Use synchronous `forRoot` configuration for prepared options, or `forRootAsync({ inject, useFactory })` when options depend on providers in the application graph.
 
 ## 18.3 Building Code-first Resolvers
 

@@ -21,8 +21,8 @@
 
 `@fluojs/graphql`은 `GraphqlModule.forRoot(...)`와 함께
 `GraphqlModule.forRootAsync({ inject, useFactory })`를 제공합니다.
-`GraphqlAsyncModuleOptions<TDependencies>`는 각 명시적인 `inject` token을 순서대로
-`useFactory` parameter에 연결합니다. 이는 NestJS dynamic-module 호환성이 아니므로
+`GraphqlAsyncModuleOptions<TTokens>`는 각 명시적인 `inject` token을 순서대로
+`useFactory` parameter에 연결하고 optional token의 값을 `T | undefined`로 모델링합니다. 이는 NestJS dynamic-module 호환성이 아니므로
 `imports`, `useClass`, `useExisting`, 암시적인 provider discovery를 거부합니다.
 
 ## canonical runtime package matrix

@@ -1,4 +1,5 @@
-import { GraphqlModule, type GraphqlAsyncModuleOptions } from '@fluojs/graphql';
+import { type OptionalToken, optional } from '@fluojs/di';
+import { type GraphqlAsyncModuleOptions, GraphqlModule } from '@fluojs/graphql';
 
 class GraphqlSettings {
   readonly graphiql = true;
@@ -9,6 +10,15 @@ const asyncOptions = {
   useFactory: async (settings: GraphqlSettings) => ({
     graphiql: settings.graphiql,
   }),
-} satisfies GraphqlAsyncModuleOptions<[GraphqlSettings]>;
+} satisfies GraphqlAsyncModuleOptions<[typeof GraphqlSettings]>;
 
 void GraphqlModule.forRootAsync(asyncOptions);
+
+const optionalAsyncOptions = {
+  inject: [optional(GraphqlSettings)],
+  useFactory: async (settings) => ({
+    graphiql: settings?.graphiql ?? false,
+  }),
+} satisfies GraphqlAsyncModuleOptions<[OptionalToken<GraphqlSettings>]>;
+
+void GraphqlModule.forRootAsync(optionalAsyncOptions);

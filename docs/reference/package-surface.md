@@ -20,8 +20,9 @@
 ## GraphQL async module registration
 
 `@fluojs/graphql` exposes `GraphqlModule.forRootAsync({ inject, useFactory })` alongside
-`GraphqlModule.forRoot(...)`. `GraphqlAsyncModuleOptions<TDependencies>` ties each explicit
-`inject` token to its ordered `useFactory` parameter. This is not NestJS dynamic-module
+`GraphqlModule.forRoot(...)`. `GraphqlAsyncModuleOptions<TTokens>` ties each explicit `inject`
+token to its ordered `useFactory` parameter and models an optional token's value as
+`T | undefined`. This is not NestJS dynamic-module
 compatibility: `imports`, `useClass`, `useExisting`, and implicit provider discovery are rejected.
 
 ## canonical runtime package matrix

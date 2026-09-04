@@ -37,7 +37,7 @@
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-통합의 중심은 `GraphqlModule`입니다. 현재 `GraphqlModule`은 여러 fluo 모듈과 달리 동기적인 `forRoot` 설정 방식을 사용합니다.
+통합의 중심은 `GraphqlModule`입니다. 준비된 option에는 동기 `forRoot` 설정을 사용하고, option이 application graph의 provider에 의존하면 `forRootAsync({ inject, useFactory })`를 사용합니다.
 
 ## 18.3 Building Code-first Resolvers
 
