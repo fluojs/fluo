@@ -15,6 +15,7 @@ import {
   headingBoundedSection,
 } from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+import { enforceGraphqlAsyncRegistrationContract } from './graphql-async-registration-contract.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migration-boundaries.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
@@ -4082,6 +4083,26 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
   }
 }
 
+export function enforceStudioStaticGraphLimitsContract(readText = read) {
+  const staticLiveContractSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const documentationCompanions = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ];
+
+  for (const companionPaths of documentationCompanions) {
+    for (const relativePath of companionPaths) {
+      const documentation = readText(relativePath);
+      assert(
+        documentation.includes(staticLiveContractSentinel),
+        `${relativePath} must include the Studio static/live contract sentinel.`,
+      );
+    }
+  }
+}
+
 export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
   const contractSentinel =
     '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
@@ -4148,6 +4169,7 @@ export async function main() {
   enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
+  enforceGraphqlAsyncRegistrationContract();
   enforceJwtAsyncRegistrationContract();
   enforceJwtVerifiedClaimsContract((relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'));
   await enforceJwtLearningPathModuleWiring();
@@ -4158,6 +4180,7 @@ export async function main() {
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
+  enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();

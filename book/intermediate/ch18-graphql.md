@@ -37,7 +37,7 @@ First, install the required dependencies.
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-The center of the integration is `GraphqlModule`. Unlike many fluo modules, `GraphqlModule` currently uses synchronous `forRoot` configuration.
+The center of the integration is `GraphqlModule`. Use synchronous `forRoot` configuration for prepared options, or `forRootAsync({ inject, useFactory })` when options depend on providers in the application graph.
 
 ## 18.3 Building Code-first Resolvers
 
@@ -110,6 +110,35 @@ import { ProductResolver } from './product.resolver';
     }),
   ],
   providers: [ProductResolver],
+})
+export class AppModule {}
+```
+
+### Resolving Module Options Asynchronously
+
+Use `GraphqlModule.forRootAsync({ inject, useFactory })` when application-graph dependencies
+must resolve GraphQL options before the endpoint lifecycle starts. The factory runs once per
+application context. This narrow API intentionally does not accept NestJS-style `imports`,
+`useClass`, `useExisting`, or implicit discovery.
+`GraphqlModule.forRoot(...)` remains available for synchronous options, but it is not the only
+GraphQL registration API.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [ProductResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, ProductResolver],
 })
 export class AppModule {}
 ```

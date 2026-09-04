@@ -35,7 +35,31 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## 빠른 시작
 
-`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. 현재 `@fluojs/graphql`는 동기 모듈 엔트리포인트만 제공하며 `GraphqlModule.forRootAsync(...)` 계약은 없습니다.
+`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. GraphQL 등록 전에 명시적인 application graph 의존성에서 module option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요.
+
+`forRootAsync(...)`는 GraphQL lifecycle이 시작되기 전에 application context마다 factory를 한 번 해석합니다. 명시적인 `inject` token과 `useFactory`만 지원하며 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery는 거부합니다.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [HelloResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, HelloResolver],
+})
+export class AppModule {}
+```
+
+Async registration 전용 example application은 추가하지 않습니다. 이 Quick Start와 [Chapter 18](../../book/intermediate/ch18-graphql.ko.md)이 유지 관리되는 example surface입니다.
 
 Code-first resolver discovery 대신 schema-first 통합을 원하면 executable `GraphQLSchema`를 `schema`로 전달할 수도 있습니다.
 
@@ -298,6 +322,8 @@ GraphqlModule.forRoot({
 ## 공개 API
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
+- `GraphqlModule.forRootAsync(options)`: Endpoint wiring 전에 명시적인 application-graph 의존성으로 GraphQL option을 비동기 해석합니다.
+- `GraphqlAsyncModuleOptions<TDependencies>`: 주입된 의존성 tuple에 맞춰 순서대로 `useFactory` parameter를 typing하는 공개 비동기 등록 계약입니다.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver 및 root operation 데코레이터.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution과 명시적 DTO input, parent, context parameter-index binding.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
@@ -305,7 +331,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
 - `GraphQLContext` 및 export되는 option/metadata type: `subscriptions.websocket.limits`에 사용하는 `GraphqlWebSocketLimitsOptions`를 포함한 GraphQL 실행과 module 설정을 위한 타입 정의.
 
-지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다.
+동기 `GraphqlModule.forRoot(...)` option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다. `GraphqlModule.forRootAsync({ inject, useFactory })`는 별도의 비동기 등록 API이며, 명시적인 `inject` token과 `useFactory`만 받습니다.
 
 ## 관련 패키지
 
