@@ -6,8 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+import {
+  emailNestjsMigrationMarkerPrefix,
+  enforceEmailNestjsMigrationDocs,
+  headingBoundedSection,
+} from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
@@ -66,6 +72,7 @@ const staticAssetRegressionEvidence = [
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -127,13 +134,32 @@ function compareNodeEngineVersions(left, right) {
 }
 
 function parseNodeEngineComparator(value) {
-  const match = /^(>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
+  const match = /^(\^|~|>=|>|<=|<|=)?(\d+(?:\.\d+){0,2})$/u.exec(value);
   assert(match !== null, `Unsupported Node engine comparator "${value}".`);
 
   const version = parseNodeEngineVersion(match[2]);
   const upperVersion = match[2].includes('.')
     ? { major: version.major, minor: version.minor + 1, patch: 0 }
     : { major: version.major + 1, minor: 0, patch: 0 };
+
+  if (match[1] === '^') {
+    const exclusiveUpperVersion = version.major > 0
+      ? { major: version.major + 1, minor: 0, patch: 0 }
+      : version.minor > 0
+        ? { major: 0, minor: version.minor + 1, patch: 0 }
+        : { major: 0, minor: 0, patch: version.patch + 1 };
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: exclusiveUpperVersion },
+    ];
+  }
+
+  if (match[1] === '~') {
+    return [
+      { operator: '>=', version },
+      { operator: '<', version: upperVersion },
+    ];
+  }
 
   if (match[2].split('.').length === 3) {
     return [{ operator: match[1] ?? '=', version }];
@@ -161,7 +187,7 @@ function parseNodeEngineComparator(value) {
 function parseNodeEngineRange(range) {
   assert(typeof range === 'string' && range.trim().length > 0, 'engines.node must be a non-empty string.');
 
-  return range.split('||').map((group) => {
+  return range.replace(/(\^|~|>=|>|<=|<|=)\s+/gu, '$1').split('||').map((group) => {
     const comparators = group.trim().split(/\s+/u).filter(Boolean);
     assert(comparators.length > 0, `Unsupported empty Node engine range "${range}".`);
     return comparators.flatMap(parseNodeEngineComparator);
@@ -229,6 +255,77 @@ function formatNodeEngineVersion({ major, minor, patch }) {
   return `${major}.${minor}.${patch}`;
 }
 
+function lockfileImporterDependencyVersions(lockfileText, importerPath) {
+  const importerStart = lockfileText.indexOf(`  ${importerPath}:\n`);
+  assert(importerStart >= 0, `pnpm-lock.yaml must include the ${importerPath} importer.`);
+
+  const importerEndMatch = /\n {2}\S/u.exec(lockfileText.slice(importerStart + 1));
+  const importerEnd = importerEndMatch === null ? -1 : importerStart + 1 + importerEndMatch.index;
+  const importerText = lockfileText.slice(importerStart, importerEnd === -1 ? undefined : importerEnd);
+  const lines = importerText.split('\n');
+  const versions = new Map();
+  let dependencySection = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === '    dependencies:') {
+      dependencySection = true;
+      continue;
+    }
+
+    if (!dependencySection) {
+      continue;
+    }
+
+    if (/^ {4}\S/u.test(line)) {
+      break;
+    }
+
+    const dependencyMatch = /^[ ]{6}['"]?([^'"]+)['"]?:$/u.exec(line);
+    if (dependencyMatch === null) {
+      continue;
+    }
+
+    for (index += 1; index < lines.length; index += 1) {
+      if (/^ {6}\S/u.test(lines[index])) {
+        index -= 1;
+        break;
+      }
+
+      const versionMatch = /^[ ]{8}version: ([^\s]+)$/u.exec(lines[index]);
+      if (versionMatch !== null) {
+        versions.set(dependencyMatch[1], versionMatch[1].replace(/\(.+$/u, ''));
+        break;
+      }
+    }
+  }
+
+  return versions;
+}
+
+function lockedDependencyNodeEngineRange(lockfileText, importerPath, dependencyName) {
+  const version = lockfileImporterDependencyVersions(lockfileText, importerPath).get(dependencyName);
+  if (version === undefined || version.startsWith('link:')) {
+    return undefined;
+  }
+
+  const packagesStart = lockfileText.indexOf('\npackages:\n');
+  const snapshotsStart = lockfileText.indexOf('\nsnapshots:\n', packagesStart);
+  assert(packagesStart >= 0 && snapshotsStart > packagesStart, 'pnpm-lock.yaml must include packages and snapshots sections.');
+
+  const packageKey = `${dependencyName}@${version}`.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const packageMatch = new RegExp(`^  ['"]?${packageKey}['"]?:$`, 'mu')
+    .exec(lockfileText.slice(packagesStart, snapshotsStart));
+  const packageStart = packageMatch === null ? -1 : packagesStart + packageMatch.index;
+  assert(packageStart >= 0, `pnpm-lock.yaml must resolve ${dependencyName}@${version}.`);
+
+  const packageEndMatch = /\n {2}\S/u.exec(lockfileText.slice(packageStart + packageMatch[0].length));
+  const packageEnd = packageEndMatch === null ? -1 : packageStart + packageMatch[0].length + packageEndMatch.index;
+  const packageText = lockfileText.slice(packageStart, packageEnd === -1 ? snapshotsStart : packageEnd);
+  const engineMatch = /^\s{4}engines:\s+\{node:\s+['"]?([^'"}]+)['"]?\}$/mu.exec(packageText);
+  return engineMatch?.[1];
+}
+
 function changedPackageNames(changedFiles) {
   return new Set(changedFiles.flatMap((relativePath) => {
     const match = /^packages\/([^/]+)\//u.exec(relativePath);
@@ -236,10 +333,83 @@ function changedPackageNames(changedFiles) {
   }));
 }
 
-export function enforceMandatoryFirstPartyDependencyEngineAlignment(
+function mandatoryProductionImporterSections(lockfileText) {
+  const importersStart = lockfileText.indexOf('\nimporters:\n');
+  const packagesStart = lockfileText.indexOf('\npackages:\n', importersStart);
+  const importersText = lockfileText.slice(
+    importersStart === -1 ? 0 : importersStart + '\nimporters:\n'.length,
+    packagesStart === -1 ? lockfileText.length : packagesStart,
+  );
+  const sections = new Map();
+  let importerPath;
+  let dependencyLines;
+
+  const commit = () => {
+    if (importerPath !== undefined && dependencyLines !== undefined) {
+      sections.set(importerPath, dependencyLines.join('\n'));
+    }
+  };
+
+  for (const line of importersText.split('\n')) {
+    const importerMatch = /^[ ]{2}(?<path>\S[^:\n]*):$/u.exec(line);
+    if (importerMatch !== null) {
+      commit();
+      importerPath = importerMatch.groups.path.replace(/^['"]|['"]$/gu, '');
+      dependencyLines = undefined;
+      continue;
+    }
+
+    if (importerPath === undefined) {
+      continue;
+    }
+
+    if (line === '    dependencies:') {
+      dependencyLines = [line];
+      continue;
+    }
+
+    if (dependencyLines === undefined) {
+      continue;
+    }
+
+    if (/^[ ]{4}\S/u.test(line)) {
+      commit();
+      dependencyLines = undefined;
+      continue;
+    }
+
+    dependencyLines.push(line);
+  }
+
+  commit();
+  return sections;
+}
+
+export function mandatoryProductionImporterPackageNamesForLockfileChange(previousLockfileText, currentLockfileText) {
+  const previousSections = mandatoryProductionImporterSections(previousLockfileText);
+  const currentSections = mandatoryProductionImporterSections(currentLockfileText);
+  const importerPaths = new Set([...previousSections.keys(), ...currentSections.keys()]);
+  const packageNames = new Set();
+
+  for (const importerPath of importerPaths) {
+    if (previousSections.get(importerPath) === currentSections.get(importerPath)) {
+      continue;
+    }
+
+    const match = /^packages\/([^/]+)$/u.exec(importerPath);
+    if (match !== null) {
+      packageNames.add(`@fluojs/${match[1]}`);
+    }
+  }
+
+  return packageNames;
+}
+
+export function enforceMandatoryProductionDependencyEngineAlignment(
   readText = read,
   packageNames = changedPackageNames(changedFilesFromGit()),
 ) {
+  const lockfileText = readText('pnpm-lock.yaml');
   const packageManifests = new Map();
 
   for (const entry of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
@@ -299,18 +469,18 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
 
     for (const dependencyName of Object.keys(packageManifest.dependencies ?? {})) {
       const dependency = packageManifests.get(dependencyName);
-      if (dependency === undefined) {
-        continue;
-      }
-
-      const dependencyRange = dependency.manifest.engines?.node;
+      const dependencyRange = dependency === undefined
+        ? lockedDependencyNodeEngineRange(lockfileText, relativePath.replace(/\/package\.json$/u, ''), dependencyName)
+        : dependency.manifest.engines?.node;
       if (dependencyRange === undefined) {
         continue;
       }
 
       assert(
         typeof dependencyRange === 'string' && dependencyRange.length > 0,
-        `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
+        dependency === undefined
+          ? `${dependencyName} locked engines.node must be a non-empty string.`
+          : `${dependencyName} (${dependency.relativePath}) engines.node must be a non-empty string.`,
       );
 
       const incompatibleVersion = nodeEngineCandidates(packageRange, dependencyRange).find((version) =>
@@ -320,12 +490,15 @@ export function enforceMandatoryFirstPartyDependencyEngineAlignment(
       if (incompatibleVersion !== undefined) {
         throw new Error(
           `${packageManifest.name} engines.node ${packageRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
-            `but mandatory ${dependencyName} engines.node is ${dependencyRange}.`,
+            `but mandatory ${dependencyName}${dependency === undefined ? ' locked' : ''} engines.node is ${dependencyRange}.`,
         );
       }
     }
   }
 }
+
+export const enforceMandatoryFirstPartyDependencyEngineAlignment =
+  enforceMandatoryProductionDependencyEngineAlignment;
 
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
   const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
@@ -610,6 +783,27 @@ export function changedFilesFromGit(runCommand = run, env = process.env) {
   throw new Error(
     `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
   );
+}
+
+function lockfileTextAtMergeBase(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+
+  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
+    throw new Error(
+      `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
+    );
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+  const lockfileResult = runCommand('git', ['show', `${mergeBase}:pnpm-lock.yaml`], { allowFailure: true });
+  if (lockfileResult.status !== 0) {
+    throw new Error(
+      'Platform consistency governance check failed: unable to read pnpm-lock.yaml at the merge-base. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.',
+    );
+  }
+
+  return lockfileResult.stdout;
 }
 
 function normalizeHeading(line) {
@@ -1093,6 +1287,14 @@ const nestMigrationGuidePaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ];
+const emailMigrationDocumentPaths = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const emailMigrationEnforcementTool =
+  'tooling/governance/email-nestjs-migration-docs.mjs';
 const bootstrapMigrationImplementationEvidence = [
   'packages/cli/src/transforms/nestjs-migrate.ts',
   'packages/cli/src/transforms/nestjs-migrate.test.ts',
@@ -1180,7 +1382,11 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
 
   const mergeBase = mergeBaseResult.stdout.trim();
   const snapshots = {};
-  for (const path of nestMigrationGuidePaths) {
+  for (const path of [
+    ...nestMigrationGuidePaths,
+    ...emailMigrationDocumentPaths,
+    emailMigrationEnforcementTool,
+  ]) {
     const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
     if (baseResult.status !== 0) {
       return undefined;
@@ -1199,7 +1405,85 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
  * @param {string[]} changedFiles
  * @param {Record<string, { base: string, head: string }>} [migrationGuideSnapshots]
  */
+const emailMigrationCompanions = [
+  'packages/email/README.md',
+  'packages/email/README.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/contracts/nestjs-parity-gaps.md',
+  'docs/contracts/nestjs-parity-gaps.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'book/intermediate/ch16-email.md',
+  'book/intermediate/ch16-email.ko.md',
+  'tooling/governance/verify-platform-consistency-governance.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+];
+const governedEmailMigrationDocuments = new Set([
+  ...emailMigrationDocumentPaths,
+]);
+
+export function enforceEmailMigrationCompanions(changedFiles) {
+  // Public Email contracts stay migration-safe only when every companion changes together.
+  assert(
+    emailMigrationCompanions.every((path) => hasChanged(changedFiles, path)),
+    'Email NestJS migration documentation must include every governed Email companion.',
+  );
+}
+
+function emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) {
+  if (!changedFiles.some((path) => governedEmailMigrationDocuments.has(path))) {
+    return false;
+  }
+
+  if (
+    !migrationGuideSnapshots ||
+    !emailMigrationDocumentPaths.every((path) => {
+      const snapshot = migrationGuideSnapshots[path];
+      return typeof snapshot?.base === 'string' && typeof snapshot.head === 'string';
+    })
+  ) {
+    return true;
+  }
+
+  return emailMigrationDocumentPaths.some((path) => {
+    const snapshot = migrationGuideSnapshots[path];
+    return headingBoundedSection(
+      snapshot.base,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    ) !== headingBoundedSection(
+      snapshot.head,
+      emailNestjsMigrationMarkerPrefix,
+      path,
+    );
+  });
+}
+
+function sourceWithoutSharedEmailMigrationParserExports(source) {
+  return source
+    .replace(/^export const emailNestjsMigrationMarkerPrefix = emailMigrationMarkerPrefix;\n/mu, '')
+    .replace(/\bexport function headingBoundedSection\(/u, 'function headingBoundedSection(');
+}
+
+function emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots) {
+  if (!hasChanged(changedFiles, emailMigrationEnforcementTool)) {
+    return false;
+  }
+
+  const snapshot = migrationGuideSnapshots?.[emailMigrationEnforcementTool];
+  if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') {
+    return true;
+  }
+
+  return sourceWithoutSharedEmailMigrationParserExports(snapshot.base) !==
+    sourceWithoutSharedEmailMigrationParserExports(snapshot.head);
+}
+
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const touchedEmailMigrationDocumentation =
+    emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
+    emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots);
   const bootstrapOnlyMigrationGuideUpdate = isBootstrapOnlyMigrationGuideUpdate(changedFiles, migrationGuideSnapshots);
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
@@ -1215,6 +1499,10 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
     'packages/platform-fastify/README.md',
     'packages/platform-fastify/README.ko.md',
   ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
+
+  if (touchedEmailMigrationDocumentation) {
+    enforceEmailMigrationCompanions(changedFiles);
+  }
 
   if (touchedFastifyRawContextDocumentation) {
     assert(
@@ -3395,10 +3683,11 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   }
 }
 
-export function enforcePersistenceTransactionInterceptorCompatibility() {
+export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
-    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
-    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
@@ -3413,22 +3702,127 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
     'docs/reference/package-surface.ko.md',
   ];
 
-  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
-    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
-    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+  for (const [interceptor, indexPath, modulePath, sourcePath] of compatibilityExports) {
+    const indexSource = readText(indexPath);
+    const moduleSource = readText(modulePath);
+    const source = readText(sourcePath);
 
     assert(
-      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      new RegExp(`@deprecated[\\s\\S]*?export class ${interceptor}\\b`).test(source),
       `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
     );
-    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+    assert(
+      /^export \* from '\.\/transaction\.js';$/m.test(indexSource),
+      `${indexPath} must root-export the deprecated transaction interceptor.`,
+    );
+
+    if (interceptor === 'DrizzleTransactionInterceptor') {
+      const exportSection = /const DRIZZLE_MODULE_EXPORTS = \[([\s\S]*?)\];/.exec(moduleSource)?.[1];
+      const providerPath = 'packages/drizzle/src/registration-providers.ts';
+      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(
+        readText(providerPath),
+      )?.[1];
+
+      assert(
+        exportSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(exportSection),
+        `${modulePath} must register DrizzleTransactionInterceptor in DRIZZLE_MODULE_EXPORTS.`,
+      );
+      assert(
+        providerSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(providerSection),
+        `${providerPath} must register DrizzleTransactionInterceptor as a runtime provider.`,
+      );
+      assert(
+        /return this\.database\.requestTransaction\(\s*\(\) => next\.handle\(\),\s*context\.requestContext\.request\.signal\s*,?\s*\);/.test(source),
+        `${sourcePath} must delegate the request signal to requestTransaction(...).`,
+      );
+    } else {
+      assert(
+        new RegExp(`^\\s*${interceptor},\\s*$`, 'm').test(moduleSource),
+        `${modulePath} must register ${interceptor}.`,
+      );
+    }
 
     for (const contractPath of contractPaths) {
       assert(
-        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        readText(contractPath).includes(interceptor),
         `${contractPath} must keep ${interceptor} compatibility discoverable.`,
       );
     }
+  }
+
+  for (const guidePath of [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+  ]) {
+    const guide = readText(guidePath);
+    const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];
+    const drizzlePublicApiRow = /^\| `@fluojs\/drizzle` \|.*$/mu.exec(guide)?.[0];
+
+    assert(
+      requestTransactionsRow !== undefined &&
+        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+          .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('deprecated') &&
+        requestTransactionsRow.includes('1.x'),
+      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+    );
+    assert(
+      drizzlePublicApiRow !== undefined &&
+        drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
+        drizzlePublicApiRow.includes('deprecated'),
+      `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+    );
+  }
+}
+
+function enforceDrizzleNamedClientContract() {
+  const tokens = read('packages/drizzle/src/tokens.ts');
+  const namedRegistration = read('packages/drizzle/src/named-registration.ts');
+  const types = read('packages/drizzle/src/types.ts');
+
+  assert(
+    /name\?: string;/.test(types),
+    'packages/drizzle/src/types.ts must expose the optional named-client registration identity.',
+  );
+  assert(
+    [
+      'getDrizzleDatabaseToken',
+      'getDrizzleDisposeToken',
+      'getDrizzleHandleProviderToken',
+      'getDrizzleOptionsToken',
+    ].every((token) => tokens.includes(`function ${token}`)),
+    'packages/drizzle/src/tokens.ts must expose all named-client DI token helpers.',
+  );
+  assert(
+    namedRegistration.includes('getNormalizedOptionsToken(name)') &&
+      namedRegistration.includes('Named Drizzle registrations are scoped and cannot be registered globally.'),
+    'packages/drizzle/src/named-registration.ts must isolate named client options and reject named global registrations.',
+  );
+
+  for (const contractPath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('getDrizzleDatabaseToken') && contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document explicit named-client injection and transaction selection.`,
+    );
+  }
+
+  for (const contractPath of [
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+  ]) {
+    const contract = read(contractPath);
+
+    assert(
+      contract.includes('Drizzle') &&
+        contract.includes('ALS') &&
+        contract.includes('@Transaction((self) => self.analytics)'),
+      `${contractPath} must document named-client transaction selection.`,
+    );
   }
 }
 
@@ -3686,6 +4080,26 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
   }
 }
 
+export function enforceStudioStaticGraphLimitsContract(readText = read) {
+  const staticLiveContractSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const documentationCompanions = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ];
+
+  for (const companionPaths of documentationCompanions) {
+    for (const relativePath of companionPaths) {
+      const documentation = readText(relativePath);
+      assert(
+        documentation.includes(staticLiveContractSentinel),
+        `${relativePath} must include the Studio static/live contract sentinel.`,
+      );
+    }
+  }
+}
+
 export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
   const contractSentinel =
     '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
@@ -3728,17 +4142,28 @@ export async function main() {
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
-  enforceMandatoryFirstPartyDependencyEngineAlignment(read, changedPackageNames(changedFiles));
+  const engineGovernancePackageNames = changedPackageNames(changedFiles);
+  if (changedFiles.includes('pnpm-lock.yaml')) {
+    for (const packageName of mandatoryProductionImporterPackageNamesForLockfileChange(
+      lockfileTextAtMergeBase(),
+      read('pnpm-lock.yaml'),
+    )) {
+      engineGovernancePackageNames.add(packageName);
+    }
+  }
+  enforceMandatoryProductionDependencyEngineAlignment(read, engineGovernancePackageNames);
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
+  enforceEmailNestjsMigrationDocs();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceCacheManagerNestjsMigrationDocs();
+  enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
@@ -3751,6 +4176,7 @@ export async function main() {
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
+  enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
@@ -3773,6 +4199,7 @@ export async function main() {
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
   enforceMongooseNestjsMigrationDocs();

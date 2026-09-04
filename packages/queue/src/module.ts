@@ -26,6 +26,8 @@ import {
 import type {
   NormalizedQueueModuleOptions,
   QueueDeadLetterInspectionOptions,
+  QueueEnqueueManyEntry,
+  QueueEnqueueOptions,
   QueueModuleOptions,
 } from './types.js';
 import { assertUniqueQueueWorkerOwnership } from './worker-ownership.js';
@@ -213,7 +215,9 @@ function createQueueProviders(
       inject: [tokens.lifecycleServiceToken],
       provide: tokens.queueToken,
       useFactory: (service: unknown) => ({
-        enqueue: (job: object) => (service as QueueLifecycleService).enqueue(job),
+        enqueue: (job: object, options?: QueueEnqueueOptions) => (service as QueueLifecycleService).enqueue(job, options),
+        enqueueMany: (entries: readonly QueueEnqueueManyEntry[]) =>
+          (service as QueueLifecycleService).enqueueMany(entries),
         inspectDeadLetters: (jobName: string, options?: QueueDeadLetterInspectionOptions) =>
           (service as QueueLifecycleService).inspectDeadLetters(jobName, options),
       }),

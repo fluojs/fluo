@@ -35,6 +35,7 @@ export type {
   DiscordTransportContext,
   DiscordTransportFactory,
   DiscordTransportReceipt,
+  DiscordWebhookRetryOptions,
   DiscordWebhookTransportOptions,
   NormalizedDiscordMessage,
 } from './types.js';

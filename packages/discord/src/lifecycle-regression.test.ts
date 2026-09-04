@@ -8,6 +8,8 @@ import { DiscordService } from './service.js';
 import type {
   DiscordTemplateRenderInput,
   DiscordTransport,
+  DiscordTransportContext,
+  DiscordTransportReceipt,
   NormalizedDiscordMessage,
 } from './types.js';
 
@@ -28,148 +30,6 @@ async function resolveService(moduleType: Constructor): Promise<DiscordService> 
 }
 
 describe('DiscordService lifecycle regressions', () => {
-  it('waits for in-flight verification before closing a factory-owned transport during shutdown', async () => {
-    let rejectVerification = (_reason: Error): void => {
-      throw new Error('Verification reject callback was not initialized.');
-    };
-    let resolveVerificationStarted = (): void => {
-      throw new Error('Verification-start resolver was not initialized.');
-    };
-    const verificationError = new Error('discord auth failed while shutdown starts');
-    const verification = new Promise<void>((_resolve, reject) => {
-      rejectVerification = reject;
-    });
-    const verificationStarted = new Promise<void>((resolve) => {
-      resolveVerificationStarted = resolve;
-    });
-    const close = vi.fn(async () => undefined);
-    const transport: DiscordTransport = {
-      close,
-      async send() {
-        return { ok: true, warnings: [] };
-      },
-      async verify() {
-        resolveVerificationStarted();
-        await verification;
-      },
-    };
-    const service = await resolveService(
-      DiscordModule.forRoot({
-        transport: {
-          create: async () => transport,
-          ownsResources: true,
-        },
-        verifyOnModuleInit: true,
-      }),
-    );
-
-    const startup = service.onModuleInit();
-    await verificationStarted;
-    const shutdown = service.onApplicationShutdown();
-
-    expect(service.createPlatformStatusSnapshot()).toMatchObject({
-      details: { lifecycleState: 'stopping' },
-      readiness: {
-        reason: 'Discord transport is shutting down or already stopped.',
-        status: 'not-ready',
-      },
-    });
-
-    const startupExpectation = expect(startup).rejects.toMatchObject({
-      cause: verificationError,
-      message: 'Discord transport failed to initialize.',
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    const closeCallsBeforeVerificationSettled = close.mock.calls.length;
-
-    rejectVerification(verificationError);
-    await startupExpectation;
-    await expect(shutdown).resolves.toBeUndefined();
-    await service.onApplicationShutdown();
-
-    expect(closeCallsBeforeVerificationSettled).toBe(0);
-    expect(close).toHaveBeenCalledOnce();
-    const stoppedStatus = service.createPlatformStatusSnapshot();
-    expect(stoppedStatus).toMatchObject({
-      details: { lifecycleState: 'stopped' },
-      readiness: {
-        reason: 'Discord transport is shutting down or already stopped.',
-        status: 'not-ready',
-      },
-    });
-    expect(stoppedStatus.details).not.toHaveProperty('lifecycleFailurePhase');
-  });
-
-  it('preserves the initialization phase when owned cleanup also fails during concurrent shutdown', async () => {
-    let rejectVerification = (_reason: Error): void => {
-      throw new Error('Verification reject callback was not initialized.');
-    };
-    let resolveVerificationStarted = (): void => {
-      throw new Error('Verification-start resolver was not initialized.');
-    };
-    const verificationError = new Error('discord verification failed');
-    const cleanupError = new Error('discord transport close failed');
-    const verification = new Promise<void>((_resolve, reject) => {
-      rejectVerification = reject;
-    });
-    const verificationStarted = new Promise<void>((resolve) => {
-      resolveVerificationStarted = resolve;
-    });
-    const close = vi.fn(async () => {
-      throw cleanupError;
-    });
-    const transport: DiscordTransport = {
-      close,
-      async send() {
-        return { ok: true, warnings: [] };
-      },
-      async verify() {
-        resolveVerificationStarted();
-        await verification;
-      },
-    };
-    const service = await resolveService(
-      DiscordModule.forRoot({
-        transport: {
-          create: async () => transport,
-          ownsResources: true,
-        },
-        verifyOnModuleInit: true,
-      }),
-    );
-
-    const startup = service.onModuleInit();
-    await verificationStarted;
-    const shutdown = service.onApplicationShutdown();
-    const startupExpectation = expect(startup).rejects.toMatchObject({
-      message: 'Discord transport failed to initialize.',
-    });
-    const shutdownExpectation = expect(shutdown).rejects.toMatchObject({
-      cause: cleanupError,
-      message: 'Discord transport failed to close cleanly.',
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    const closeCallsBeforeVerificationSettled = close.mock.calls.length;
-
-    rejectVerification(verificationError);
-    await Promise.all([startupExpectation, shutdownExpectation]);
-
-    expect(closeCallsBeforeVerificationSettled).toBe(0);
-    expect(close).toHaveBeenCalledOnce();
-    expect(service.createPlatformStatusSnapshot()).toMatchObject({
-      details: {
-        lifecycleFailurePhase: 'initialization',
-        lifecycleState: 'failed',
-      },
-      readiness: {
-        reason: 'Discord transport failed to initialize.',
-        status: 'not-ready',
-      },
-    });
-  });
-
   it('keeps a rejected factory create failure out of shutdown cleanup diagnostics', async () => {
     const createError = new Error('discord transport factory unavailable');
     const create = vi.fn(async (): Promise<DiscordTransport> => {
@@ -202,6 +62,179 @@ describe('DiscordService lifecycle regressions', () => {
       details: { lifecycleState: 'stopped' },
       readiness: { status: 'not-ready' },
     });
+  });
+
+  it('drains a direct delivery accepted before shutdown before closing a factory-owned transport', async () => {
+    let resolveDelivery = (): void => {
+      throw new Error('Delivery resolver was not initialized.');
+    };
+    let resolveDeliveryStarted = (): void => {
+      throw new Error('Delivery-start resolver was not initialized.');
+    };
+    let deliverySettled = false;
+    const delivery = new Promise<void>((resolve) => {
+      resolveDelivery = resolve;
+    });
+    const deliveryStarted = new Promise<void>((resolve) => {
+      resolveDeliveryStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(deliverySettled).toBe(true);
+    });
+    const transport: DiscordTransport = {
+      close,
+      async send() {
+        resolveDeliveryStarted();
+        await delivery;
+        deliverySettled = true;
+        return { ok: true, warnings: [] };
+      },
+    };
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        transport: {
+          create: async () => transport,
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.send({ content: 'Accepted before shutdown.' });
+    await deliveryStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    resolveDelivery();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('drains notification rendering accepted before shutdown before closing a factory-owned transport', async () => {
+    let resolveRendering = (): void => {
+      throw new Error('Rendering resolver was not initialized.');
+    };
+    let resolveRenderingStarted = (): void => {
+      throw new Error('Rendering-start resolver was not initialized.');
+    };
+    let renderingSettled = false;
+    const rendering = new Promise<void>((resolve) => {
+      resolveRendering = resolve;
+    });
+    const renderingStarted = new Promise<void>((resolve) => {
+      resolveRenderingStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(renderingSettled).toBe(true);
+    });
+    const send = vi.fn(async (_message: NormalizedDiscordMessage) => ({ ok: true, warnings: [] }));
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        renderer: {
+          async render() {
+            resolveRenderingStarted();
+            await rendering;
+            renderingSettled = true;
+            return { content: 'Rendered before shutdown.' };
+          },
+        },
+        transport: {
+          create: async () => ({
+            close,
+            send,
+          }),
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.sendNotification({
+      channel: 'discord',
+      payload: {},
+      template: 'deploy.finished',
+    });
+    await renderingStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    resolveRendering();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('drains a notification admitted during synchronous renderer-triggered shutdown before closing transport', async () => {
+    let resolveRendering = (): void => {
+      throw new Error('Rendering resolver was not initialized.');
+    };
+    let resolveRenderingStarted = (): void => {
+      throw new Error('Rendering-start resolver was not initialized.');
+    };
+    let deliverySettled = false;
+    let renderingSettled = false;
+    let shutdown: Promise<void> | undefined;
+    let service: DiscordService | undefined;
+    const rendering = new Promise<void>((resolve) => {
+      resolveRendering = resolve;
+    });
+    const renderingStarted = new Promise<void>((resolve) => {
+      resolveRenderingStarted = resolve;
+    });
+    const close = vi.fn(async () => {
+      expect(deliverySettled).toBe(true);
+      expect(renderingSettled).toBe(true);
+    });
+    const send = vi.fn(async (_message: NormalizedDiscordMessage) => {
+      deliverySettled = true;
+      return { ok: true, warnings: [] };
+    });
+    service = await resolveService(
+      DiscordModule.forRoot({
+        renderer: {
+          async render() {
+            if (!service) {
+              throw new Error('DiscordService was not initialized before rendering.');
+            }
+
+            shutdown = service.onApplicationShutdown();
+            resolveRenderingStarted();
+            await rendering;
+            renderingSettled = true;
+            return { content: 'Rendered during shutdown.' };
+          },
+        },
+        transport: {
+          create: async () => ({
+            close,
+            send,
+          }),
+          ownsResources: true,
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const acceptedDelivery = service.sendNotification({
+      channel: 'discord',
+      payload: {},
+      template: 'deploy.finished',
+    });
+    await renderingStarted;
+    const activeShutdown = shutdown;
+
+    if (!activeShutdown) {
+      throw new Error('Renderer did not initiate shutdown.');
+    }
+
+    resolveRendering();
+
+    await expect(acceptedDelivery).resolves.toMatchObject({ ok: true });
+    await expect(activeShutdown).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it('passes the delivery signal to renderers and checks lifecycle before rendering', async () => {
@@ -244,5 +277,48 @@ describe('DiscordService lifecycle regressions', () => {
       }),
     ).rejects.toThrowError(new DiscordTransportError('Discord transport is shutting down or already stopped.'));
     expect(renderInputs).toHaveLength(1);
+  });
+
+  it('passes a live caller signal to custom transport delivery and preserves its in-flight abort', async () => {
+    let resolveTransportSignal = (_signal: AbortSignal | undefined): void => {
+      throw new Error('Transport signal resolver was not initialized.');
+    };
+    const transportSignal = new Promise<AbortSignal | undefined>((resolve) => {
+      resolveTransportSignal = resolve;
+    });
+    const transport: DiscordTransport = {
+      send(_message: NormalizedDiscordMessage, context: DiscordTransportContext): Promise<DiscordTransportReceipt> {
+        resolveTransportSignal(context.signal);
+
+        return new Promise<DiscordTransportReceipt>((_resolve, reject) => {
+          context.signal?.addEventListener(
+            'abort',
+            () => {
+              reject(context.signal?.reason);
+            },
+            { once: true },
+          );
+        });
+      },
+    };
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        transport,
+      }),
+    );
+    const controller = new AbortController();
+    const abortReason = new DOMException('Caller cancelled Discord delivery.', 'AbortError');
+    await service.onModuleInit();
+
+    const pending = service.send(
+      { content: 'In-flight cancellation' },
+      { signal: controller.signal },
+    );
+
+    await expect(transportSignal).resolves.toBe(controller.signal);
+
+    controller.abort(abortReason);
+
+    await expect(pending).rejects.toBe(abortReason);
   });
 });

@@ -1,5 +1,25 @@
 # fluo — AI Context Document
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone`은 `timezone`으로 매핑되며 `CronTaskOptions.timezone`은 문자열입니다. |
+| `wait-for-completion` | `protect: true`가 Croner 호출의 중복을 막고 `CronLifecycleService`는 작업 실행 중 tick을 거부합니다. |
+| `unsupported-options` | 문서화된 fluo 옵션 외 NestJS scheduler 옵션은 지원되지 않습니다. |
+| `absolute-time` | `@Cron`은 cron-expression 문자열만 받고 `Date`와 `DateTime` overload는 지원되지 않습니다. |
+| `named-interval-timeout` | `@Interval(ms, options)`와 `@Timeout(ms, options)`는 millisecond와 선택적 named task option을 받습니다. |
+| `async-configuration` | `CronModule.forRoot(...)`는 동기식이며 async configuration은 호출 전에 해석합니다. |
+| `global-visibility` | `CronModule.forRoot(...)`는 기본적으로 local이고 필요할 때 `global: true`를 명시합니다. |
+| `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
+
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
@@ -10,6 +30,23 @@ bootstrap-failure cleanup은 각 registration을 순서대로 await하고 failur
 cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 자세한 내용은
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.ko.md)와
 [`@fluojs/runtime` README](../packages/runtime/README.ko.md)를 참고하세요.
+
+## Cron Runtime 3 호환성
+
+`@fluojs/cron` 3은 mandatory `@fluojs/runtime` 3 dependency를 가지며 Node.js
+`>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Cron 2에서 업그레이드하는 consumer는
+업그레이드하기 전에 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js
+`22.0.0`–`22.1.x`, Node.js 27+ host를 이 지원 범위로 옮겨야 합니다.
+[`@fluojs/cron` README](../packages/cron/README.ko.md)와
+[package surface](./reference/package-surface.ko.md)를 참고하세요.
+
+## Drizzle 이름 있는 client 계약
+
+`@fluojs/drizzle` 이름 있는 등록은 non-global이며 각각 독립 transaction ALS, shutdown drain,
+disposal, status를 소유합니다. Consumer는 일치하는 package-owned 이름 있는 token을 export하는
+module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. 해당 helper와 명시적
+`@Transaction((self) => self.client)` accessor를 사용하세요. [Transaction Context](./architecture/transactions.ko.md)와
+[Drizzle README](../packages/drizzle/README.ko.md)를 참고하세요.
 
 ## Cloudflare Worker close 소유권
 
@@ -44,6 +81,8 @@ Structured HTTP access logging은 `@fluojs/http`의 `createAccessLogObserver(...
 ## Migration Reference
 
 NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에서 시작한다. i18n handoff는 각 custom resolver를 `HttpLocaleResolver`로 mapping하고, application-owned `Middleware` 하나를 `fluoFactory.create(AppModule, { middleware })`로 등록하며, 선택된 locale은 현재 `RequestContext`에만 저장한다. global locale fallback은 없다.
+
+Queue producer idempotency는 `packages/queue/README.md`와 `packages/queue/README.ko.md`에 문서화되어 있다. 공개 Queue facade는 호출자 소유 `deduplicationKey`를 받고 이를 BullMQ에 유효한 job id로 결정적으로 매핑하므로, 콜론을 포함하거나 숫자만으로 이루어진 notification identity도 deduplicate할 수 있다.
 
 NestJS HTTP pipeline migration에서 portable bootstrap `middleware`는 `handle(MiddlewareContext, next)`를 구현하며, Express `(req, res, next)` handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 둔다.
 
@@ -202,6 +241,8 @@ Drizzle transaction drain discoverability는 특히 `packages/drizzle/README.ko.
 
 Drizzle transaction 대상 선택은 `this.db`, 직접 host property, 중첩 `.db` 후보가 `transaction(...)`을 노출하지 않을 때 데코레이터가 붙은 인스턴스 자체로 fallback한다. 가능한 Drizzle client가 둘 이상인 서비스는 계속 `@Transaction((self) => self.ordersDb)` 같은 명시적 accessor를 사용해야 한다.
 
+`DrizzleTransactionInterceptor`는 기존 NestJS import를 위한 deprecated 1.x 호환성 bridge입니다. `DrizzleDatabase.requestTransaction(...)`에 위임하고 `RequestContext.request.signal`을 전달하며, Drizzle README, transaction architecture contract, NestJS migration map, intermediate Drizzle chapter에서 기본 서비스 boundary 및 명시적 request boundary 지침과 함께 문서화됩니다.
+
 Prisma transaction boundary discoverability는 특히 `packages/prisma/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), beginner Prisma/transaction/production chapter에 실린다. `@fluojs/prisma`는 host `AsyncLocalStorage` 기반 Node.js 20+ Prisma 통합 경로이고, 서비스 `@Transaction()`이 기본 business boundary이며, 명시적 request-wide `requestTransaction(...)` 호출은 `RequestContext.request.signal`을 전달해야 한다. `PrismaService<TClient>`는 lifecycle/transaction wrapper method를 소유하고 `PrismaServiceFacade<TClient>`는 생성된 delegate를 전달한다. 기본 `@Transaction()` 해석은 branded Prisma service/facade host만 선택하고 모호한 host는 명시적 accessor를 전달해야 하며, `$transaction(...)` 미지원은 `strictTransactions`를 활성화하지 않으면 rollback 원자성 없이 fallback한다. ALS host lookup을 사용할 수 없거나 lookup이 throw하면 `transactionContext: 'unavailable'`로 fail closed하고, shutdown은 `$disconnect()` 전에 활성 request 및 service/manual transaction boundary를 drain한다. 자동 primary/read-replica routing, 내장 transaction metric, ALS가 제공하는 공개 transaction ID는 package contract가 아니다.
 
 Mongoose integration discoverability도 패키지 문서와 governed package-surface docs로 나뉜다. `packages/mongoose/README.ko.md`는 root `@fluojs/mongoose`의 Node.js 20+ runtime boundary(`node:async_hooks`, `engines.node >=20.0.0`), `MongooseModule.forRoot(...)` / `forRootAsync(...)`, 애플리케이션이 소유하는 concrete connection requirement와 `dispose(connection)` ownership, `MongooseAsyncModuleOptions<TConnection>` 및 `MongoosePlatformStatusSnapshotInput` 같은 exported option/status input type, lifecycle/session behavior, 서비스 `@Transaction()` session facade behavior, `create`, `find`, `findOne`, `aggregate`, `bulkWrite`를 위한 `MongooseConnection.model(...)` auto-session 지원, 지원되지 않는 `doc.save()` / raw model method의 `currentSession()` escape hatch, delegated `connection.transaction(...)` semantics, `strictTransactions`가 활성화되지 않았고 transaction API가 없을 때의 fail-open direct execution, `dispose(connection)` 전 fail-open 수동 `transaction(...)` callback drain, `MongooseConnection.createPlatformStatusSnapshot()` / `createMongoosePlatformStatusSnapshot(...)` diagnostics, `createMongooseProviders(...)`의 compatibility-only 역할을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 애플리케이션 등록을 `MongooseModule.forRoot(...)` / `forRootAsync(...)`에 두고 provider helper는 수동 composition compatibility 용도로 남기는 namespace-facade policy 및 동일한 Node-only root-wrapper boundary를 담는다. [`docs/reference/package-chooser.ko.md`](./reference/package-chooser.ko.md)는 runtime-specific transaction-context adapter가 문서화되기 전까지 비 Node 런타임에서 애플리케이션 소유 raw Mongoose-compatible provider를 사용하도록 안내한다. [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md)는 transaction lifecycle, readiness, shutdown 문서 parity를 관리한다.
@@ -210,7 +251,7 @@ JWT auth 및 NestJS migration discoverability는 package README, governed packag
 
 Passport auth 및 NestJS migration discoverability는 `packages/passport/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch15-passport.ko.md`](../book/beginner/ch15-passport.ko.md)로 나뉜다. Package README는 `PassportModule.forRoot(...)` strategy registry wiring, `AuthGuard`, optional auth/scope decorator, Passport.js strategy bridge provider bundle, cookie-auth 및 refresh-token preset, account-linking helper, 공개 auth metadata helper, `createPassportPlatformStatusSnapshot(...)`를 문서화하고, governed package surface는 `createPassportJsStrategyBridge(...)` namespace-facade 예외와 compatibility-only `createCookieAuthPreset(...)` provider bundle을 기록한다. Migration/book companion은 명시적 `bridge.providers`, named `bridge.strategy` registration, `requestContext.principal`로 향하는 `mapPrincipal(...)` mapping을 요구한다. Bridge는 full NestJS Passport compatibility, middleware, sessions, serializers/deserializers, automatic strategy discovery를 제공하지 않고 implicit guards, principal mapping을 넘어서는 request augmentation, host middleware ownership도 추가하지 않는다. Session, serializer/deserializer, host 책임은 application-owned 상태로 남는다.
 
-Email discoverability도 패키지 README, governed package-surface docs, NestJS migration docs, intermediate book으로 나뉜다. `packages/email/README.ko.md`는 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider의 기본 global visibility, 명시적인 `global: false` local-visibility opt-out, 지원하지 않는 NestJS `imports` / `useClass` / `useExisting` async-registration 형태, 직접 `EmailService` 전달, `@fluojs/notifications` channel 통합, queue-backed worker 등록, `stopping`/`stopped`/`failed` 상태에서 항상 적용되는 `EmailLifecycleError` 거부, `created`/`starting` 전달이 성공적인 bootstrap 검증을 기다리게 하는 opt-in `verifyOnModuleInit` gate와 이 옵션이 없으면 전달이 진행될 수 있다는 경계, caller-owned transport shutdown boundary, notification email field forwarding, 그리고 caller가 queue detail을 명시적으로 제공할 때만 queue metadata가 포함되는 platform status snapshot을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/email` responsibility boundary를 기록한다. [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)는 NestJS dynamic-module async 형태를 fluo injected factory로 옮기는 migration boundary를 기록하고, [`book/intermediate/ch16-email.ko.md`](../book/intermediate/ch16-email.ko.md)는 FluoShop 학습 경로에서 동일한 registration 및 visibility 규칙을 설명한다.
+Email discoverability도 패키지 README, governed package-surface docs, NestJS migration docs, intermediate book으로 나뉜다. `packages/email/README.ko.md`는 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider의 기본 global visibility, 명시적인 `global: false` local-visibility opt-out, 지원하지 않는 NestJS `imports` / `useClass` / `useExisting` async-registration 형태, 직접 `EmailService` 전달, `@fluojs/notifications` channel 통합, queue-backed worker 등록, `stopping`/`stopped`/`failed` 상태에서 항상 적용되는 `EmailLifecycleError` 거부, `created`/`starting` 전달이 성공적인 bootstrap 검증을 기다리게 하는 opt-in `verifyOnModuleInit` gate와 이 옵션이 없으면 전달이 진행될 수 있다는 경계, caller-owned transport shutdown boundary, notification email field forwarding, 그리고 caller가 queue detail을 명시적으로 제공할 때만 queue metadata가 포함되는 platform status snapshot을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/email` responsibility boundary를 기록한다. [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)는 애플리케이션이 소유한 이식 가능한 `EmailTransport`, factory가 소유하는 Node SMTP transport, 기존 호출자 소유 Nodemailer transporter를 구분하고, pre-rendered `EmailService.send(...)` 전달과 `payload.templateData`를 사용하는 renderer-backed `sendNotification(...)` 전달을 별도로 매핑한다. [`book/intermediate/ch16-email.ko.md`](../book/intermediate/ch16-email.ko.md)는 FluoShop 학습 경로에서 이에 대응하는 registration 및 renderer 규칙을 설명한다.
 
 Slack discoverability도 패키지 README, governed package-surface docs, NestJS migration docs, intermediate chat book chapter로 나뉜다. `packages/slack/README.ko.md`는 `SlackModule.forRoot(...)` / `forRootAsync(...)`, application graph에 의존성을 등록한 뒤 `inject`와 `useFactory`로 구성하는 injected-factory-only async registration, `global: false` local opt-out을 포함한 기본 global provider visibility, singleton compatibility token `SLACK`과 `SLACK_CHANNEL`, `createSlackProviders(...)`를 통한 수동 singleton provider composition, 여러 Slack client를 위한 app-owned composition, 직접 `SlackService` 전달, `@fluojs/notifications` channel 통합, abort-signal 전파, lifecycle-gated send, optional `verify()`를 노출하는 transport를 위한 `verifyOnModuleInit` bootstrap 검증, verification이 settle될 때까지 factory-owned transport를 열어 두는 공유 bootstrap/shutdown 순서, bootstrap 실패와 shutdown 사이에서 직렬화되는 factory-owned transport cleanup, payload-over-rendered merge precedence를 따르는 `SlackTemplateRenderer` template rendering, platform status snapshot을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 직접 `process.env`를 읽지 않는 webhook-first, singleton, transport-agnostic Slack delivery에 대한 정식 `@fluojs/slack` responsibility boundary를 기록하고, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)는 NestJS `imports` / `useClass` / `useExisting`, multi-client assumption, `isGlobal`에서 Slack injected factory, application graph 의존성 등록, singleton token, `global?: boolean`로 옮기는 migration boundary를 기록하며, [`book/intermediate/ch17-slack-discord.ko.md`](../book/intermediate/ch17-slack-discord.ko.md)는 FluoShop 학습 경로에서 같은 module visibility, async registration, singleton token, bootstrap 검증, template-backed notification dispatch surface를 설명한다.
 
@@ -312,6 +353,10 @@ Migration transform contract는 `packages/cli/README.ko.md`와
 `appliedTransforms`에서 안정적인 transform token인 `injectable`과 `testing`을 보존하므로 CLI
 input alias가 이 report contract를 바꾸지 않습니다.
 
+## Studio Static-Graph Limits
+
+Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)로 나뉩니다. successful bootstrap 뒤 file-first inspection은 보고된 platform component, 그 dependencies, `routes`가 담긴 `PlatformShellSnapshot`을 내보내며, Node live Studio가 런타임에 만드는 compiled module/provider graph는 만들지 않습니다. Non-Node fallback workflow는 inspect/static artifact를 생성하고 열며 live sidecar event를 약속하지 않습니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 유지합니다.
+
 ## File Structure
 
 | Path | Role |
@@ -322,6 +367,10 @@ input alias가 이 report contract를 바꾸지 않습니다.
 | `docs/guides/` | AI 대상 안티패턴 및 의사결정 참조 문서를 제공한다. |
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
+
+## Cron Scheduling Migration
+
+Scheduling migration contract는 [`packages/cron/README.ko.md`](../packages/cron/README.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/contracts/nestjs-parity-gaps.ko.md`](./contracts/nestjs-parity-gaps.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에 걸쳐 있습니다. `@fluojs/cron`은 `timezone`을 지원하지만 NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 지원하지 않습니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` plan과 disabled/category-specific schedule, threshold/recovery policy는 application-owned로 유지합니다. Named interval/timeout decorator는 `(ms, { name })`로 바꾸고, async schedule configuration은 동기 `CronModule.forRoot(...)` 전에 해석하며, 필요하면 `global: true`를 명시하고 NestJS category switch를 기대하지 마세요.
 
 ## Studio Runtime Bridge
 
@@ -336,6 +385,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | Need | Read first | Follow with |
 | --- | --- | --- |
 | Passport refresh-token module 소유권과 alias visibility | `packages/passport/README.ko.md` | `apps/docs/content/docs/guides/auth.ko.mdx` 및 `packages/passport/src/refresh/refresh-token.ts` |
+| `@fluojs/email` NestJS 마이그레이션 | `packages/email/README.ko.md` | `docs/getting-started/migrate-from-nestjs.ko.md` 및 `book/intermediate/ch16-email.ko.md` |
 | 저장소 정체성과 위반 불가 규칙 확인 | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | 아키텍처 모델, 요청 흐름, 런타임 경계 확인 | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar 결정과 재검토 gate 확인 | `docs/architecture/http-catch-all-route-grammar.ko.md` | 활성 explicit-route contract는 `packages/http/README.ko.md` 및 `packages/react/README.ko.md` |
@@ -389,6 +439,10 @@ NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 �
 - major bump 없이 `1.0+`의 문서화된 동작을 변경하는 것, release governance를 위반한다.
 
 전체 안티패턴 목록 경로: `docs/guides/anti-patterns.md`.
+
+## Email queue batch 계약
+
+`Queue`와 `QueueLifecycleService`는 호환되는 `enqueueMany(entries)` producer API를 제공합니다. 순서가 있는 `QueueEnqueueManyEntry` 값은 하나의 등록된 BullMQ queue를 대상으로 해야 하며, Queue는 한 번의 atomic `addBulk(...)` persist 전에 검증하고 입력 순서대로 ID를 반환하며 각 entry의 `deduplicationKey`를 보존합니다. `@fluojs/email/queue` notification adapter는 parallel `enqueue(...)` 호출 대신 이 seam에 bulk 전달을 위임하고, single-job `enqueue(job, options?)` 계약은 바뀌지 않습니다.
 
 ## Notifications 상태 계약
 

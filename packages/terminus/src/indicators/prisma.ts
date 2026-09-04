@@ -43,6 +43,8 @@ export interface PrismaHealthIndicatorOptions {
   name?: string;
   /** Custom ping callback for manual probes or tests. Lifecycle state is only mapped when `service` is available. */
   ping?: () => Promise<unknown> | unknown;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
   /** Lifecycle-aware Prisma service/facade handle, usually resolved from `getPrismaServiceToken(name)`. */
   service?: PrismaServiceLike;
   /** Explicit Prisma service token to resolve when using `createPrismaHealthIndicatorProvider(...)`. */
@@ -234,9 +236,11 @@ export function createPrismaHealthIndicatorProvider(
 /** Health indicator that maps Prisma lifecycle status and probes connectivity with a trivial query. */
 export class PrismaHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
+  readonly readiness: boolean | undefined;
 
   constructor(private readonly options: PrismaHealthIndicatorOptions = {}) {
     this.key = options.key;
+    this.readiness = options.readiness;
   }
 
   async check(key: string): Promise<HealthIndicatorResult> {

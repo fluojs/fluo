@@ -10,7 +10,7 @@ This document defines the current transaction-context contract across `@fluojs/p
 | Package | Ambient context carrier | Primary access API | Request boundary API | Current support scope |
 | --- | --- | --- | --- | --- |
 | `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | `@Transaction()` on Services | Explicit `PrismaService.requestTransaction(...)` or deprecated `PrismaTransactionInterceptor` compatibility | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` or deprecated `DrizzleTransactionInterceptor` compatibility | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
 | `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | `@Transaction()` on Services | Explicit `MongooseConnection.requestTransaction(...)` or deprecated `MongooseTransactionInterceptor` compatibility | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
 
 ## Service Transaction Boundary (Primary)
@@ -41,6 +41,7 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | --- | --- | --- |
 | Service -> Repository flow | Decorators on services establish the boundary; repositories consume the client without needing to pass sessions or access `current()` explicitly. | `packages/core/src/decorators/transaction.ts` (abstract), `packages/mongoose/src/connection.ts` (auto-session) |
 | Root vs ambient handle | Prisma and Drizzle persistence handles resolve the active transaction handle when one exists, otherwise the root client/database. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| Named Drizzle handles | Each named Drizzle handle owns a separate ALS context. Multi-client services select a named handle explicitly with `@Transaction((self) => self.analytics)` rather than relying on decorator target discovery. | `packages/drizzle/src/named-registration.ts`, `packages/drizzle/src/transaction.ts` |
 | Mongoose document save helper | `MongooseConnection.saveDocument(document, options?)` is an opt-in path for an existing document: it merges the ambient session with native save options, preserves document identity, and rejects missing or conflicting sessions. It does not change direct `doc.save()` behavior. | `packages/mongoose/src/connection.ts` |
 | Mongoose session auto-binding | Supported `MongooseConnection.model(...)` facade operations (`create`, `find`, `findOne`, `aggregate`, `bulkWrite`) automatically attach the ambient transaction session. Unsupported model methods, `doc.save()`, raw `conn.current().model(...)` calls, and advanced cross-connection scenarios require explicit session passing. | `packages/mongoose/src/connection.ts` |
 | Mongoose decorator target selection | Mongoose `@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It rejects multiple nested candidates rather than selecting one arbitrarily; pass an accessor such as `@Transaction((self) => self.analytics.conn)` for multi-connection services or nonstandard fields. | `packages/mongoose/src/transaction.ts` |
@@ -67,9 +68,9 @@ Mongoose connection ownership remains application-owned: `MongooseModule.forRoot
 | Pattern | Behavior |
 | --- | --- |
 | Explicit request boundary | Application code can call `requestTransaction(...)` at a controller, route adapter, or request orchestration boundary when an entire request must be transactional. |
-| Deprecated interceptor compatibility | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` are restored for existing 1.x imports and delegate to each package's `requestTransaction(...)` API. `DrizzleTransactionInterceptor` remains unavailable. Prefer service `@Transaction()` and explicit request boundaries for new code. |
+| Deprecated interceptor compatibility | `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor` are restored for existing 1.x imports and delegate to each package's `requestTransaction(...)` API. Prefer service `@Transaction()` and explicit request boundaries for new code. |
 
-When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Existing Prisma or Mongoose applications may retain the deprecated compatibility interceptor while migrating, but new request-wide boundaries should call `requestTransaction(...)` explicitly. Drizzle has no transaction interceptor compatibility export. Pass the request `AbortSignal` when available.
+When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Existing Prisma, Drizzle, or Mongoose applications may retain the deprecated compatibility interceptor while migrating, but new request-wide boundaries should call `requestTransaction(...)` explicitly. Pass the request `AbortSignal` when available.
 
 ## Advanced / Escape Hatch
 

@@ -113,6 +113,7 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   private lifecycleState: EmailServiceLifecycleState = 'created';
   private bootstrapPromise: Promise<void> | undefined;
   private shutdownPromise: Promise<void> | undefined;
+  private readonly ownedTransportCleanupPromises = new WeakMap<EmailTransport, Promise<void>>();
   private readonly inFlightOperations = new Set<Promise<unknown>>();
   private resolvedTransport: EmailTransport | undefined;
   private transportPromise: Promise<EmailTransport> | undefined;
@@ -138,8 +139,8 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     try {
       await this.drainInFlightOperations();
 
-      if (transport && this.options.transport.ownsResources && transport.close) {
-        await transport.close();
+      if (transport) {
+        await this.closeOwnedTransport(transport);
       }
 
       this.lifecycleState = 'stopped';
@@ -377,6 +378,24 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     this.transportPromise = undefined;
   }
 
+  private closeOwnedTransport(transport: EmailTransport): Promise<void> {
+    if (!this.options.transport.ownsResources || !transport.close) {
+      return Promise.resolve();
+    }
+
+    const existingCleanup = this.ownedTransportCleanupPromises.get(transport);
+
+    if (existingCleanup) {
+      return existingCleanup;
+    }
+
+    const close = transport.close;
+    const cleanup = Promise.resolve().then(() => close.call(transport));
+    this.ownedTransportCleanupPromises.set(transport, cleanup);
+
+    return cleanup;
+  }
+
   private async handleTransportInitializationFailure(
     error: unknown,
     options: { preserveShutdownState?: boolean } = {},
@@ -394,9 +413,9 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     let cause: unknown = error;
     const transport = this.resolvedTransport;
 
-    if (transport && this.options.transport.ownsResources && transport.close) {
+    if (transport) {
       try {
-        await transport.close();
+        await this.closeOwnedTransport(transport);
       } catch (cleanupError) {
         cause = createCleanupFailureCause(error, cleanupError);
       }

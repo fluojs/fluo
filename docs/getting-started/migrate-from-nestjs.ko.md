@@ -1,8 +1,28 @@
 # NestJS → fluo Migration Map
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./migrate-from-nestjs.md"><kbd>English</kbd></a></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone`은 `timezone`으로 매핑되며 `CronTaskOptions.timezone`은 문자열입니다. |
+| `wait-for-completion` | `protect: true`가 Croner 호출의 중복을 막고 `CronLifecycleService`는 작업 실행 중 tick을 거부합니다. |
+| `unsupported-options` | 문서화된 fluo 옵션 외 NestJS scheduler 옵션은 지원되지 않습니다. |
+| `absolute-time` | `@Cron`은 cron-expression 문자열만 받고 `Date`와 `DateTime` overload는 지원되지 않습니다. |
+| `named-interval-timeout` | `@Interval(ms, options)`와 `@Timeout(ms, options)`는 millisecond와 선택적 named task option을 받습니다. |
+| `async-configuration` | `CronModule.forRoot(...)`는 동기식이며 async configuration은 호출 전에 해석합니다. |
+| `global-visibility` | `CronModule.forRoot(...)`는 기본적으로 local이고 필요할 때 `global: true`를 명시합니다. |
+| `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
+
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
@@ -71,6 +91,7 @@ await import('./bootstrap.js');
 | 반환 DTO, `@Res()`, 또는 passthrough/manual response write와 함께 쓰는 `ClassSerializerInterceptor` | framework-managed 반환값에는 `@fluojs/serialization`의 `SerializerInterceptor`; 명시적인 handler ownership에는 `RequestContext.response` | Response가 commit되지 않은 동안에만 반환값을 직렬화한다. `send(...)`, `redirect(...)`, 또는 수동 stream이 response를 commit하면 `SerializerInterceptor`는 serialization 대신 `next.handle()`에서 받은 값을 그대로 반환한다. 다른 interceptor는 chain 결과를 계속 변환할 수 있으며, dispatcher는 두 번째 success-response write를 건너뛴다. |
 | `class-transformer`의 `@Expose()`, `@Exclude()`, `@Transform()` | `@fluojs/serialization`의 `@Expose()`, `@Exclude()`, `@Transform()` | interceptor뿐 아니라 decorator도 교체합니다. fluo transform callback은 동기식이며 field value만 받으므로 여러 field를 조합한 출력은 DTO field를 할당하기 전에 계산하세요. Base metadata는 상속되지만 child override는 base와 sibling DTO에서 분리됩니다. |
 | `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | HTTP listen에는 `createFastifyAdapter()` 같은 명시적 platform adapter가 필요하다. `FluoFactory.create(AppModule)`은 adapterless application shell도 만들 수 있지만 그 shell은 `listen()`을 호출할 수 없다. CLI codemod은 지원되는 platform을 명시적으로 선택하지 않으면 이 bootstrap을 유지하고 필요한 adapter-selection warning을 출력한다. Express에는 `fluo migrate ./src --apply --platform express`를 사용해 `createExpressAdapter({ port })`를 생성하세요. |
+| Nest Devtools `SerializedGraph` | static 일대일 대응 없음; compiled DI graph 분석이 필요하면 지원되는 Node live 경로에서 `fluo dev --studio` 사용 | successful bootstrap 뒤 static `fluo inspect`는 보고된 platform component, 그 dependencies, `routes`가 담긴 `PlatformShellSnapshot`을 내보냅니다. 이는 Nest Devtools `SerializedGraph`와 호환되지 않으며 compiled module/provider graph와 provider scope metadata를 생략합니다. 해당 graph가 필요한 workflow는 file-first migration fallback을 graph parity로 취급하지 말고 Node live Studio에 유지하세요. |
 | NestJS `beforeApplicationShutdown(signal?)` | 직접 대응 없음; `@fluojs/runtime`의 `onModuleDestroy()` 또는 `onApplicationShutdown(signal?)` 사용 | `beforeApplicationShutdown`은 지원하지 않는다. Application-wide signal phase보다 먼저 수행할 shutdown preparation은 `onModuleDestroy()`에 두고, signal이 필요한 cleanup은 `onApplicationShutdown(signal?)`에 둔다. fluo는 compatibility shim이나 추가 runtime hook을 제공하지 않는다. |
 | `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, `isGlobal` | `@fluojs/config`의 `ConfigModule.forRoot({ processEnv, schema, global? })` | fluo registration은 동기 방식이다. 명시적 `processEnv` snapshot을 전달하고 동기 Standard Schema validator를 사용하며 visibility에는 기본값이 `true`인 `global?: boolean`을 사용한다. Async factory는 module registration 전에 resolve하되 nested object를 deep merge와 dot-path access를 위해 보존하고, 하나의 validated snapshot을 `ConfigModule`과 HTTP adapter input에 함께 사용한다. `ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받으며, `get(key, defaultValue)`나 `get(key, { infer: true })` 같은 NestJS default-value 및 options overload에 대응하는 fluo API는 없다. 기본값은 `defaults` 또는 `schema` output이 소유하거나, `get(key)` 결과에 call-site `??` fallback을 명시적으로 적용한다. |
 | `@nestjs/passport` `PassportModule.register(...)`, `PassportStrategy(...)`, named `AuthGuard(...)`, session, serializer | `@fluojs/passport`의 `createPassportJsStrategyBridge(...)`, `PassportModule.forRoot(...)`, 명시적 bridge provider/named registration, `mapPrincipal(...)` | 명시적으로 제공한 Passport.js strategy를 한 번에 하나씩 adapt한다. `bridge.providers`를 등록하고 `bridge.strategy`를 fluo registry에 전달한 뒤 Passport user를 fluo principal로 map한다. Middleware, sessions, serializers/deserializers, strategy discovery, host integration은 bridge 외부에 남는다. |
@@ -91,7 +112,7 @@ await import('./bootstrap.js');
 | `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 같은 controller parameter decorator와 `Pipe` / `ValidationPipe` transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)`; 고급 request/response 접근을 위한 `RequestContext` handler parameter | fluo는 NestJS-style controller parameter decorator나 public parameter Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. 고급 접근에는 `RequestContext`의 이식 가능한 request/response facade를 우선 사용하세요. `@fluojs/platform-fastify`에서는 `request.raw`가 Node.js `IncomingMessage`이고 `response.raw`가 `FastifyReply`입니다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `@fluojs/testing`의 `createTestingModule({ rootModule }).overrideModule(...)` | fluo testing은 명시적 `rootModule`과 replacement compile seam을 사용하므로 전역 module metadata를 mutate하지 않고 authored module identity를 보존한다. |
-| NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | `PrismaTransactionInterceptor`와 `MongooseTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다. 새 코드는 비즈니스 transaction을 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용하며 가능한 경우 `RequestContext.request.signal`을 전달한다. Drizzle은 호환성 interceptor export를 제공하지 않는다. |
+| NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다. 새 코드는 비즈니스 transaction을 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용하며 가능한 경우 `RequestContext.request.signal`을 전달한다. |
 | `HealthCheckService.check([...])`를 호출하는 `@HealthCheck()` 컨트롤러 메서드 | `@fluojs/terminus`의 `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` | Module-level registration이 기본 API이므로 runtime `/health`와 `/ready` route가 indicator 및 platform diagnostics를 일관되게 포함한다. |
 | NestJS Terminus memory/disk 또는 Redis check | `@fluojs/terminus/node`와 `@fluojs/terminus/redis` | Node.js memory/disk helper와 Redis helper는 전용 subpath에 있다. Root package는 Redis peer나 Node filesystem access를 기본 import 경계에 포함하지 않는다. |
 | NestJS Prometheus module registration 또는 shared `prom-client` Registry | `@fluojs/metrics`의 `MetricsModule.forRoot(...)`, `MetricsService`, `Registry` | 이는 NestJS Dynamic Module 호환 계층이 아니라 fluo 고유의 Prometheus integration입니다. 최종 option은 module composition 전에 동기적으로 구성하세요. 기본 scrape route는 `GET /metrics`이고 HTTP collector는 `http`로 opt-in하며, `registry`를 생략하면 application bootstrap마다 격리된 Registry를 만듭니다. Framework metric과 application metric이 하나의 scrape surface를 의도적으로 공유할 때만 `Registry`를 명시적으로 전달하세요. |
@@ -106,11 +127,51 @@ await import('./bootstrap.js');
 | NestJS Redis async module registration 또는 shared Redis Pub/Sub client | `@fluojs/redis`의 `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, `getRedisClientToken(name)` | fluo Redis registration은 동기 방식이며 각 `forRoot(...)` 호출이 최종 option으로 client를 생성한다. 환경별 option은 registration 전에 해석하되 외부에서 만든 client를 전달하거나 module이 채택한다고 기대하면 안 된다. Pub/Sub subscriber는 일반 command client를 재사용하지 말고 전용 duplicate 또는 named client로 분리한다. `getRedisClientToken(name)` consumer는 importing module graph의 `providers`에 명시적으로 등록해야 하며, `@Inject(...)`는 생성자 토큰을 선언할 뿐 클래스를 등록하지 않는다. |
 | `@Processor(...)`, `@Process(...)` 또는 provider metadata를 통한 `@nestjs/bull` / `@nestjs/bullmq` processor discovery | `@fluojs/queue`, `@fluojs/redis`, `@fluojs/core`의 `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` provider, 명시적 `@Inject(...)` | fluo는 compiled module graph의 decorated singleton provider/controller만 discovery한다. Worker는 `handle(job)`을 노출해야 하며, Queue는 NestJS metadata를 읽거나 legacy Bull/BullMQ `queueName`, named job, 영속 payload 또는 그 topology를 자동 보존하지 않는다. Queue는 필수 runtime dependency와 일치하는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요하다. |
 | `@InjectQueue('queue')` producer의 `queue.add('job', payload)` 또는 `queue.add(payload)` 호출 | `@fluojs/queue`의 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)에서 `queue.enqueue(new JobClass(...))` 호출 | fluo에는 name과 payload를 받는 producer signature가 없다. `enqueue(job)`은 job instance의 정확한 constructor로 worker를 찾고, BullMQ queue/named job은 해당 worker에 등록된 `jobName`에서 가져오므로 job-name 문자열은 더 이상 producer argument가 아니다. Plain payload object의 constructor는 `Object`이므로 등록된 JobClass worker를 식별할 수 없다. `enqueue<TJob extends object>`는 모든 object를 허용하므로 이 실수는 type-check를 통과하지만 runtime에서 `No @QueueWorker() registered for job type Object.`로 거부된다. |
-| `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | NestJS `timeZone`을 fluo `timezone`으로 바꾼다. fluo에는 `waitForCompletion` 옵션이 없고 같은 task instance가 아직 실행 중이면 항상 해당 tick을 건너뛰므로 이 옵션을 옮기지 않는다. fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
-| `imports`, `useClass`, `useExisting`를 사용하는 NestJS-style email async module registration | `@fluojs/email`의 `EmailModule.forRootAsync({ inject, useFactory, global? })` | fluo email async registration은 injected factory option만 지원한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열하며, 기본 global provider visibility에서 벗어나야 할 때만 `global: false`를 설정한다. |
+| `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | NestJS `timeZone`을 fluo `timezone`으로 바꾼다. `waitForCompletion`, `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 옮기지 않는다. fluo에는 대응 option이 없다. `@Cron`은 cron-expression string만 받으므로 NestJS `Date` / Luxon `DateTime` absolute schedule은 startup-relative `@Timeout`으로 바꾸지 말고 application code에서 해석한다. Named `@Interval(name, ms)` / `@Timeout(name, ms)` overload는 `(ms, { name })` 형태로 바꾼다. `ScheduleModule.forRootAsync(...)` input은 동기 `CronModule.forRoot(...)` 전에 해석하며, fluo는 module-local visibility가 기본값이므로 NestJS global visibility가 필요하면 `{ global: true }`를 명시한다. NestJS category switch의 대안은 application composition 또는 dynamic registration이 소유한다. fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
+| NestJS mailer async registration, implicit transporter discovery, 또는 `MailerService.sendMail(...)` | `@fluojs/email`의 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, 명시적 `EmailTransport` 선택, `EmailService.send(...)` 또는 `sendNotification(...)` | fluo email async registration은 injected factory option만 지원한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열하며, 기본 global provider visibility에서 벗어나야 할 때만 `global: false`를 설정한다. 애플리케이션이 소유한 이식 가능한 transport, `@fluojs/email/node`의 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter wrapper 중 하나를 선택한다. `MailerService` 호환 API나 implicit transport discovery는 없다. |
 | NestJS-style notification module, decorator-discovered channel provider, 또는 implicit queue/event integration | `@fluojs/notifications`의 `NotificationsModule.forRoot({ channels, queue?, events?, global? })` 또는 `NotificationsModule.forRootAsync({ inject, useFactory, global? })` | fluo notifications registration은 `channels`에 전달된 명시적 `NotificationChannel` 값을 사용한다. Queue adapter와 event publisher는 module-owned resource가 아니라 애플리케이션 소유 seam이며, `global: false`를 설정하지 않으면 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`가 기본 global로 export된다. |
 | `imports`, `useClass`, `useExisting`, package-level multi-client registry 또는 `isGlobal`을 가정하는 NestJS Slack module | `@fluojs/slack`의 `SlackModule.forRoot({ ..., global? })` 또는 `SlackModule.forRootAsync({ inject, useFactory, global? })` | fluo Slack async registration은 injected factory option만 소비한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환한다. 여러 client에는 app-owned module/provider 또는 facade를 조합한다. |
 | `imports`, `useClass`, `useExisting`, `isGlobal`, 또는 custom internal provider token을 가정하는 NestJS Discord module | `@fluojs/discord`의 `DiscordModule.forRoot({ ..., global? })` 또는 `DiscordModule.forRootAsync({ inject, useFactory, global? })` | fluo Discord registration은 singleton 중심이며 async setup은 injected factory만 지원한다. 이 패키지는 `global: false`가 설정되지 않으면 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export하고, 내부 provider helper와 option token은 의도적으로 private으로 유지한다. |
+
+## 이메일 Transport, Ownership, Delivery 마이그레이션
+
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+
+NestJS mailer 설정은 구성 조회, transporter 생성, template rendering, delivery 호출을 한데 섞는 경우가 많습니다. fluo에서는 이 결정을 애플리케이션 경계에서 명시적으로 유지합니다.
+
+주입형 async configuration에는 `EmailModule.forRootAsync({ inject, useFactory, global: false })`를 사용하세요. `global: false`는 선택 사항이며 반환된 module을 local로 유지합니다.
+
+1. 이식 가능한 HTTP, API, Bun, Deno, Cloudflare, custom 구현에는 루트 `@fluojs/email` 패키지에 `EmailTransport` 또는 `EmailTransportFactory`를 전달합니다. 애플리케이션이 `kind`를 정하고 transport를 만들며, email module이 factory가 만든 resource를 닫아야 할 때 `ownsResources`를 설정합니다.
+2. email module이 소유할 1st-party Node SMTP transporter에는 `@fluojs/email/node`의 `createNodemailerEmailTransportFactory(...)`를 사용합니다. 이 factory는 ownership을 알리므로 bootstrap verification과 shutdown close가 자신이 만든 transporter에 적용됩니다.
+3. 다른 애플리케이션 component가 만들고 닫는 기존 Nodemailer transporter에는 `createNodemailerEmailTransport({ transporter })`로 감쌉니다. 이 wrapper는 resource ownership을 넘기지 않고 shared transport contract를 만족하므로 `EmailService`를 통한 두 번째 close 경로를 만들지 마세요.
+
+```ts
+import { EmailModule, type EmailTransport } from '@fluojs/email';
+import {
+  createNodemailerEmailTransport,
+  type NodemailerTransporter,
+} from '@fluojs/email/node';
+
+declare const providerTransport: EmailTransport;
+declare const existingTransporter: NodemailerTransporter;
+
+const portableTransport = {
+  kind: 'transactional-http',
+  create: () => providerTransport,
+  ownsResources: false,
+};
+
+EmailModule.forRoot({ transport: portableTransport });
+EmailModule.forRoot({
+  transport: createNodemailerEmailTransport({ transporter: existingTransporter }),
+});
+```
+
+호출자가 수신자, subject, body, 선택적 attachment 또는 header를 포함한 완전한 pre-rendered `EmailMessage`를 이미 가지고 있다면 `EmailService.send(...)`로 직접 `MailerService.sendMail(...)` 호출을 대체합니다. `EmailMessage`에 template field를 추가하지 마세요.
+
+Template-backed delivery에는 `EmailService.sendNotification(...)`을 사용합니다. Notification에 template key를 넣고 renderer 전용 값은 `payload.templateData`에 두며, `EmailModule`에 `EmailTemplateRenderer`를 등록합니다. Template과 renderer가 모두 있을 때만 rendering이 실행됩니다. Rendering 결과의 `subject`, `text`, `html`은 fallback입니다. 명시적 notification `subject`는 rendered subject보다 우선하고, `payload.text`와 `payload.html`은 rendered body보다 우선합니다. `payload.to`는 notification `recipients`보다 우선합니다. 실행 가능한 등록 및 renderer 예제는 [email chapter](../../book/intermediate/ch16-email.ko.md)를 참고하세요.
+
+이 경계에 NestJS `imports`, `useClass`, `useExisting`, `MailerService` 호환, implicit transport discovery, implicit template field를 가져오지 마세요.
 
 ## Mongoose 루트와 feature 마이그레이션
 
@@ -202,7 +263,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - OpenAPI migration은 reflection-driven `SwaggerModule` 치환이 아니다. `OpenApiModule`에는 `title`과 `version`이 필요하며, 문서화할 operation은 명시적 `sources`, 명시적 `descriptors`, 또는 둘 모두에서 와야 한다. Application `controllers`는 자동 추론되지 않는다. Handler 반환값과 TypeScript 반환 타입은 response schema를 만들지 않는다. `@ApiResponse(...)`가 없으면 생성된 success response에는 method-derived 또는 `@HttpCode(...)` status와 `OK` description만 포함된다. Response content가 필요하면 `@ApiResponse(...)`에 `schema` 또는 `type`을 제공한다. 같은 OpenAPI path/method operation이 겹치면 나중 descriptor가 우선하며, module composition은 explicit `descriptors`를 discovered `sources` 뒤에 두므로 충돌 시 explicit descriptor가 이긴다.
 - 컨트롤러 데코레이터는 반드시 `@fluojs/http`에서 가져오고, `@Module` 같은 구조 데코레이터는 `@fluojs/core`에서 가져온다.
 - Observable을 반환하는 NestJS `@Sse()` 핸들러는 반드시 `SseResponse`를 만들거나 `AsyncIterable`을 반환하도록 재작성해야 한다. 수동 `SseResponse` stream은 `send(...)` 또는 `comment(...)`를 호출하고 request abort 또는 application cleanup 경로에서 닫아야 하며, managed async iterable은 request abort 또는 response stream close 시 dispatcher가 닫는다.
-- Drizzle transaction migration은 interceptor-for-interceptor 치환이 아니다. `@fluojs/drizzle`은 서비스 `@Transaction()`을 기본 경계로 사용하고, 드문 controller/request-wide 호환성 사례에만 명시적 `DrizzleDatabase.requestTransaction(...)`을 사용한다.
+- `DrizzleTransactionInterceptor`는 기존 NestJS interceptor import를 위한 deprecated 1.x bridge다. `@fluojs/drizzle`은 서비스 `@Transaction()`을 기본 경계로 사용하고, 새 controller/request-wide boundary에는 명시적 `DrizzleDatabase.requestTransaction(...)`을 사용한다.
 - Drizzle `@Transaction()`은 `this.db`, 직접 host property, 중첩 `.db` property에서 대상을 추론할 수 있다. Drizzle client가 둘 이상인 서비스는 property discovery에 의존하지 말고 `@Transaction((self) => self.ordersDb)` 같은 명시적 accessor를 반드시 사용한다.
 - Drizzle은 등록된 handle에 `database.transaction(...)`이 없고 `strictTransactions`가 `false`이면 fail-open direct execution을 기본값으로 사용한다. rollback 보장이 필요한 production migration 흐름에서는 `strictTransactions: true`를 설정해, transaction 지원 누락이 원자성 없이 조용히 실행되지 않고 readiness 및 helper 호출 실패로 드러나게 한다.
 - Vite build transform과 Vitest test transform은 의도적으로 분리되어 있다. 생성된 non-Deno `vite.config.ts`는 애플리케이션 `.ts` 파일에 Babel `{ version: '2023-11' }` decorator transform을 적용하기 위해 `@fluojs/vite`를 사용하고, 생성된 `vitest.config.ts`는 테스트에 `@fluojs/testing/vitest`를 사용한다. 레거시 decorator compiler flag를 다시 켜거나 하나의 transform config가 build와 test 파일을 모두 소유한다고 가정하지 않는다.
@@ -253,6 +314,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - Queue는 각 job class와 실제 `jobName`에 singleton worker owner 하나만 허용한다. 중복 등록은 BullMQ resource 생성 전에 bootstrap을 실패시키며 provider discovery 순서와 무관하다. 마이그레이션하는 NestJS `@Process(...)` handler마다 별도 job class와 `jobName`을 부여하거나 여러 handler를 worker 하나의 `handle(job)` 뒤로 통합해야 한다.
 - Cron migration은 `SchedulerRegistry`/`CronJob` handle을 그대로 보존하는 치환이 아니다. `@Cron`, `@Interval`, `@Timeout`은 public instance method에 사용하고, private 또는 static scheduled work는 공개 provider method 뒤로 옮기며, live `CronJob` handle을 mutate하는 대신 `SCHEDULING_REGISTRY.get(...)` / `getAll()`의 `SchedulingTaskDescriptor` snapshot을 사용한다.
 - NestJS cron option도 명시적으로 마이그레이션해야 한다. `timeZone`은 `timezone`으로 바꾼다. fluo는 scheduler-level no-overlap protection과 in-process running guard를 항상 적용하므로 `waitForCompletion`은 생략한다. 같은 task instance가 실행 중일 때 도착한 tick은 queue되지 않고 건너뛴다. NestJS에서 `waitForCompletion: false` 또는 기본 overlapping behavior에 의존한 task는 지원되지 않는 fluo flag를 만들지 말고 concurrent work를 application-owned queue나 worker로 옮겨야 한다. 이 local guard는 application instance 사이의 Redis distributed locking을 대체하지 않는다.
+- NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`을 `CronTaskOptions`로 옮기지 마세요. fluo에는 대응 동작이 없습니다. Disabled/category-specific schedule은 conditional provider/module composition으로 소유하거나 application-owned condition이 참일 때만 dynamic task를 등록하세요. Threshold/recovery policy도 application-owned 상태로 둡니다. `@Timeout(ms, ...)`은 startup-relative이므로 NestJS `@Cron(Date)` 또는 `@Cron(DateTime)` absolute schedule을 대체하면 안 됩니다. Absolute-time plan은 application code에서 해석하세요. Named `@Interval(name, ms)`와 `@Timeout(name, ms)`는 각각 `@Interval(ms, { name })`, `@Timeout(ms, { name })`로 바꿉니다. `ScheduleModule.forRootAsync(...)` configuration은 동기 `CronModule.forRoot(...)` 호출 전에 해석하고, NestJS global visibility가 필요하면 `global: true`를 명시하며, NestJS `cronJobs`, `intervals`, `timeouts` category switch가 있다고 기대하지 마세요.
 - Email migration은 NestJS dynamic-module 형태를 그대로 복제하지 않는다. `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `EmailModule`은 기본적으로 global이므로 migrated code에 module-local visibility가 필요할 때만 `global: false`를 설정한다.
 - Notifications migration은 provider-discovery 또는 decorator-metadata clone이 아니다. 명시적인 `NotificationChannel` 값을 `NotificationsModule.forRoot(...)`에 전달하거나 `NotificationsModule.forRootAsync({ inject, useFactory, global? })`에서 반환해야 한다. 이 패키지는 channel 등록을 위해 NestJS provider, `@Injectable()` metadata, emitted design type을 scan하지 않는다.
 - `@fluojs/notifications`는 concrete queue 또는 event-bus resource를 create/import/close/drain하지 않는다. Queue adapter와 event publisher는 애플리케이션 소유 integration이며, status snapshot은 이를 `ownsResources: false`인 externally managed dependency로 보고한다.
@@ -1104,6 +1166,10 @@ const files = assertRequestContext().request.files ?? [];
 ```
 
 각 file은 `fieldname`, `originalname`, `mimetype`, `buffer`, `size`를 가진 portable `FrameworkRequestFile`입니다. storage, validation, application policy는 adapter-specific upload interceptor 밖에 두세요.
+
+## Queue 기반 이메일 알림 batch
+
+병렬 NestJS Bull producer 호출은 `Queue.enqueueMany(entries)` 또는 `QueueLifecycleService.enqueueMany(entries)`로 바꾸세요. 각 `QueueEnqueueManyEntry`는 자신의 `deduplicationKey`를 유지하지만, 모든 entry는 같은 등록된 BullMQ queue로 해석되어야 합니다. Queue는 전체 batch를 검증한 뒤 한 번의 atomic `addBulk(...)` persist를 수행하고 입력 순서대로 backing job ID를 반환합니다. 기존 `enqueue(job, options?)` 호출은 호환되며, 내장 `@fluojs/email/queue` notification adapter는 parallel single-job enqueue 대신 이 atomic batch seam을 사용합니다.
 
 ## Event-bus migration limits
 

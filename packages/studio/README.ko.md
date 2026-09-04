@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 fluo 진단을 위한 CLI sidecar 및 React viewer workflow입니다. Node dev-runner live MVP와 기존 static/report artifact 로딩을 함께 지원합니다.
 
 ## 목차
@@ -80,7 +82,7 @@ MVP request flow는 route/handler와 dependency-graph correlation을 의미합�
 
 Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 문자열 `kind` 값과 parameter-name-only `params`를 검증하고, `react-page`를 **React page**로 표시하며, 임의의 route kind 문자열을 보존하고, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다. 파싱된 route 결과는 생략된 legacy `kind`를 `http`로, `params`를 `[]`로 normalize하지만 non-string `kind` 값은 거부하며 producer 호환성을 위해 export된 wire-input field는 optional로 유지합니다.
 
-이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 `fluo-studio-viewer`로 시작해야 합니다. HTML asset 경로가 필요한 integration은 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
+이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. successful bootstrap 뒤 `fluo inspect`는 `PlatformShell.snapshot()`과 routes를 읽어 보고된 platform component와 dependencies가 담긴 `PlatformShellSnapshot`을 만들며, Node live Studio가 런타임에 만드는 compiled module/provider graph나 provider scope metadata는 만들지 않습니다. Live 경로는 provider scope metadata를 포함한 compiled module, provider, controller, route graph data, 별도 bootstrap timing event, request trace event를 publish합니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 패키징된 `fluo-studio-viewer`로 시작해야 합니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 남아야 합니다. HTML asset 경로가 필요한 integration은 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
 
 1. **Snapshot 내보내기**:
    ```bash

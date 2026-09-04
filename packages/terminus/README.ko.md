@@ -107,6 +107,25 @@ Prisma의 경우 `createPrismaHealthIndicatorProvider()`는 `@fluojs/prisma`가 
 
 Provider factory는 반복 등록할 수 있습니다. 각 인스턴스가 서로 다른 indicator key나 dependency option을 사용한다면 같은 factory가 만든 provider 여러 개를 하나의 `indicatorProviders` 배열에 등록할 수 있으며, Terminus는 나중에 등록된 같은 타입 provider가 앞선 provider를 덮어쓰지 않도록 각 provider 인스턴스를 별도 DI token으로 보관합니다.
 
+### Readiness 참여
+
+기본적으로 모든 indicator는 `/health`와 `/ready` 양쪽에 참여합니다. 의존성 상태를 `/health`에는 계속 노출하되 그 외에는 준비된 인스턴스를 rotation에서 제외하지 않아야 한다면 `readiness: false`를 설정하세요.
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [
+    new HttpHealthIndicator({
+      key: 'search',
+      readiness: false,
+      url: 'https://search.example.com/health',
+    }),
+    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+  ],
+});
+```
+
+`search`가 `down`을 보고하면 `/health`는 해당 diagnostic과 함께 `503`을 반환하지만, `/ready`는 계속 `memory`, custom `readinessChecks`, platform readiness를 평가합니다. `readiness`를 생략하거나 `true`로 둔 indicator가 실패하면 이전과 같이 두 endpoint 모두 unavailable 상태가 됩니다.
+
 ### 실행 가드레일
 
 커스텀 인디케이터가 멈추거나 느린 하위 서비스에 의존할 수 있다면 `execution.indicatorTimeoutMs`를 사용하세요. probe가 설정된 시간을 넘기면 Terminus는 무기한 대기하지 않고 해당 인디케이터를 `down`으로 표시합니다.
@@ -131,7 +150,7 @@ TerminusModule.forRoot({
 인디케이터가 `down` 결과를 반환하거나 `HealthCheckError`를 던지면, `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
 - 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
-- 등록된 indicator가 실패하거나, custom readiness check가 `false`를 반환하거나, runtime shutdown이 시작되었거나, platform readiness가 `ready`가 아닌 경우 `/ready`는 HTTP `503`을 반환합니다. Platform `critical` metadata는 diagnostics에 보존되지만 HTTP readiness endpoint 자체는 binary ready/unavailable gate이며 warning severity bucket을 노출하지 않습니다.
+- `readiness`를 생략했거나 `true`인 indicator가 실패하거나, custom readiness check가 `false`를 반환하거나, runtime shutdown이 시작되었거나, platform readiness가 `ready`가 아닌 경우 `/ready`는 HTTP `503`을 반환합니다. `readiness: false`인 indicator는 `/health`에는 계속 기여하지만 `/ready`를 차단하지 않습니다. Platform `critical` metadata는 diagnostics에 보존되지만 HTTP readiness endpoint 자체는 binary ready/unavailable gate이며 warning severity bucket을 노출하지 않습니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 - 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
@@ -165,6 +184,13 @@ Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js m
   - 현재 등록된 인디케이터를 실행해 집계된 보고서를 반환합니다.
 - `isHealthy(): Promise<boolean>`
   - 현재 집계 결과가 완전히 healthy 상태인지 반환합니다.
+- `isReady(): Promise<boolean>`
+  - readiness에 참여하는 모든 indicator가 현재 `up`을 보고하는지 반환합니다.
+
+### `HealthIndicator`
+
+- `readiness?: boolean`
+  - indicator의 `/ready` 참여 여부를 제어하며 기본값은 `true`입니다. 내장 indicator의 모든 option 객체가 이 설정을 지원합니다.
 
 ### 직접 helper와 token
 

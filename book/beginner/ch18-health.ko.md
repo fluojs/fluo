@@ -123,6 +123,23 @@ return report;
 ### 18.4.1 Strategic Monitoring
 모든 의존성을 헬스 체크에 포함하지 않도록 주의하십시오. 만약 이메일 발송과 같은 부가적인 외부 서비스가 중단되더라도, 애플리케이션은 대부분의 사용자에게 정상적인 서비스를 제공할 수 있습니다. 이러한 서비스를 준비성(Readiness) 체크에 포함하면 앱 전체가 불필요하게 "오프라인" 상태가 될 수 있습니다. 애플리케이션이 제 기능을 하기 위해 엄격하게 요구되는 핵심 의존성에 집중하십시오. 이를 "차등 모니터링"이라고 하며 "치명적(Fatal)" 조건과 "경고(Warning)" 조건을 구분하는 것입니다.
 
+Terminus는 indicator의 `readiness` 설정으로 이 구분을 명시적으로 지원합니다. 기본적으로 모든 indicator는 계속 `/health`에 참여하고, `readiness: false`를 설정하면 비임계 의존성을 binary `/ready` gate에서 제외할 수 있습니다.
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [
+    new HttpHealthIndicator({
+      key: 'search',
+      readiness: false,
+      url: 'https://search.example.com/health',
+    }),
+    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+  ],
+});
+```
+
+`search`가 실패하면 `/health`는 `503`과 해당 diagnostic을 유지하지만, `memory`, custom readiness check, platform readiness가 성공하는 동안 `/ready`는 available 상태를 유지합니다. `readiness`를 생략하면 기존 기본 동작이 보존되어, indicator 하나의 실패가 `/health`와 `/ready`를 모두 unavailable 상태로 만듭니다.
+
 ### 18.4.2 Resource Monitoring: Memory and CPU
 외부 서비스 외에도 서버의 리소스 사용량을 모니터링해야 합니다. 메모리 누수는 최종적으로 크래시를 일으키기 전에 서서히 성능을 저하시킵니다. 내장된 메모리 헬스 인디케이터를 사용하면 RAM 사용량이 특정 임계값을 초과할 때 인스턴스를 "비정상"으로 표시할 수 있습니다. 이를 통해 오케스트레이터가 인스턴스가 임계 실패 상태에 도달하기 전에 우아하게 교체하도록 하여 전체 서비스가 안정적이고 응답성 있게 유지되도록 할 수 있습니다.
 

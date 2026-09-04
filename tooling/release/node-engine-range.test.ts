@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { narrowsStableNodeEngineRange } from './node-engine-range.mjs';
+import { narrowsStableNodeEngineRange, nodeEngineRangesIntersect } from './node-engine-range.mjs';
 import { verifyChangesetReleaseLane } from './verify-changeset-release-lane.mjs';
 
 const temporaryDirectories: string[] = [];
@@ -61,6 +61,29 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
   }
+});
+
+describe('nodeEngineRangesIntersect', () => {
+  it.each([
+    ['an exact version excluded by an upper bound', '21.0.0', '>=20.19.3 <21'],
+    ['an exact version excluded by a lower bound', '21.0.0', '>21 <=22'],
+    ['an exact version excluded by a union upper-bound edge', '21.0.0', '>=20.19.3 <21 || >=22.2.0 <27'],
+  ])('rejects %s', (_fixture, leftRange, rightRange) => {
+    // Given: a guidance version at an exclusive Node engine upper boundary.
+    // When: release-lane validation compares it with supported engine ranges.
+    // Then: the excluded version has no intersection, including across a union.
+    expect(nodeEngineRangesIntersect(leftRange, rightRange)).toBe(false);
+  });
+
+  it.each([
+    ['equal inclusive boundaries', '21.0.0', '>=20.19.3 <=21'],
+    ['an overlapping union', '21.0.0', '>=20.19.3 <21 || >=21 <22'],
+  ])('preserves %s', (_fixture, leftRange, rightRange) => {
+    // Given: a guidance version that an engine range includes.
+    // When: release-lane validation compares the ranges.
+    // Then: valid touching and overlapping intervals still intersect.
+    expect(nodeEngineRangesIntersect(leftRange, rightRange)).toBe(true);
+  });
 });
 
 describe('narrowsStableNodeEngineRange', () => {

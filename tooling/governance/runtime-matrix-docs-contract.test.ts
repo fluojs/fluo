@@ -5,6 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const drizzleRuntimeDocumentationPaths = [
+  'packages/drizzle/README.md',
+  'packages/drizzle/README.ko.md',
+  'docs/reference/package-chooser.md',
+  'docs/reference/package-chooser.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+] as const;
 
 function read(relativePath: string) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -14,6 +22,14 @@ function expectAll(document: string, snippets: string[]) {
   for (const snippet of snippets) {
     expect(document).toContain(snippet);
   }
+}
+
+function expectDrizzleRuntimeClaim(document: string, runtimeNodeEngine: string) {
+  const drizzleLinesDeclaringTheRange = document
+    .split('\n')
+    .filter((line) => line.includes('@fluojs/drizzle') && line.includes(runtimeNodeEngine));
+
+  expect(drizzleLinesDeclaringTheRange).not.toHaveLength(0);
 }
 
 describe('runtime matrix docs contract', () => {
@@ -216,6 +232,35 @@ describe('runtime matrix docs contract', () => {
     ]) {
       expect(read(path)).toContain(nodeListenerEngine);
     }
+  });
+
+  it('keeps Drizzle runtime support aligned to its mandatory runtime dependency range', () => {
+    const runtimeNodeEngine = JSON.parse(read('packages/runtime/package.json')).engines.node;
+
+    expect(JSON.parse(read('packages/drizzle/package.json'))).toMatchObject({
+      engines: { node: runtimeNodeEngine },
+    });
+
+    for (const path of drizzleRuntimeDocumentationPaths) {
+      expectDrizzleRuntimeClaim(read(path), runtimeNodeEngine);
+    }
+  });
+
+  it.each(drizzleRuntimeDocumentationPaths)('rejects a stale Drizzle runtime claim in %s', (path) => {
+    const runtimeNodeEngine = JSON.parse(read('packages/runtime/package.json')).engines.node;
+    const staleRuntimeNodeEngine = '>=0.0.0 <1';
+    const document = read(path);
+    const documentWithStaleDrizzleClaim = document
+      .split('\n')
+      .map((line) =>
+        line.includes('@fluojs/drizzle') && line.includes(runtimeNodeEngine)
+          ? line.replace(runtimeNodeEngine, staleRuntimeNodeEngine)
+          : line,
+      )
+      .join('\n');
+
+    expect(documentWithStaleDrizzleClaim).not.toBe(document);
+    expect(() => expectDrizzleRuntimeClaim(documentWithStaleDrizzleClaim, runtimeNodeEngine)).toThrow();
   });
 
   it('keeps the openapi runtime boundary aligned to its mandatory runtime dependency range', () => {

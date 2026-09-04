@@ -22,6 +22,8 @@ export interface MemoryHealthIndicatorOptions {
   heapUsedThresholdRatio?: number;
   key?: string;
   memoryUsage?: MemoryUsageSampler;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
   rssThresholdBytes?: number;
 }
 
@@ -63,9 +65,11 @@ export function createMemoryHealthIndicatorProvider(options: MemoryHealthIndicat
 /** Health indicator that checks local process heap and RSS usage. */
 export class MemoryHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
+  readonly readiness: boolean | undefined;
 
   constructor(private readonly options: MemoryHealthIndicatorOptions = {}) {
     this.key = options.key;
+    this.readiness = options.readiness;
   }
 
   async check(key: string): Promise<HealthIndicatorResult> {
