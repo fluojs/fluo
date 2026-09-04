@@ -31,12 +31,12 @@ The branch points are visible directly in the source. `bootstrapApplication()` i
 
 The representative point in the full application branch is the return statement. The earlier module bootstrap and lifecycle execution are shared, but only this branch passes the dispatcher, adapter, adapter availability flag, and platform shell reference into `FluoApplication`.
 
-`path:packages/runtime/src/bootstrap.ts:1000-1012`
+`path:packages/runtime/src/bootstrap.ts:1680-1703`
 ```typescript
     return new FluoApplication(
       bootstrapped.container,
       bootstrapped.modules,
-      options.rootModule,
+      effectiveOptions.rootModule,
       dispatcher,
       bootstrapTiming,
       adapter,
@@ -45,6 +45,17 @@ The representative point in the full application branch is the return statement.
       lifecycleInstances,
       logger,
       runtimeCleanup,
+      createContextCacheableTokenSet(
+        bootstrapped.effectiveProviders,
+        [
+          RUNTIME_CONTAINER,
+          COMPILED_MODULES,
+          HTTP_APPLICATION_ADAPTER,
+          PLATFORM_SHELL,
+          RUNTIME_CLEANUP_REGISTRATION,
+          BOOTSTRAP_READY_SIGNAL,
+        ],
+      ),
     );
 ```
 
@@ -52,7 +63,7 @@ The fact that `dispatcher` and `adapter` enter together marks the application sh
 
 The context branch passes through the same spine, but returns a different object. It does not create a dispatcher or HTTP adapter. It only wraps the values needed for DI and lifecycle control in `FluoApplicationContext`.
 
-`path:packages/runtime/src/bootstrap.ts:1128-1135`
+`path:packages/runtime/src/bootstrap.ts:1838-1855`
 ```typescript
       return new FluoApplicationContext(
         bootstrapped.container,
@@ -61,6 +72,16 @@ The context branch passes through the same spine, but returns a different object
         bootstrapTiming,
         lifecycleInstances,
         runtimeCleanup,
+        createContextCacheableTokenSet(
+          bootstrapped.effectiveProviders,
+          [
+            RUNTIME_CONTAINER,
+            COMPILED_MODULES,
+            PLATFORM_SHELL,
+            RUNTIME_CLEANUP_REGISTRATION,
+            BOOTSTRAP_READY_SIGNAL,
+          ],
+        ),
       );
 ```
 
@@ -106,13 +127,14 @@ This shared bootstrap spine is the foundation of this chapter. To understand the
 
 The context shell itself shows that intent. The stored values are the ones needed for the compiled Module baseline and lifecycle cleanup, and the public behavior is DI lookup and close.
 
-`path:packages/runtime/src/bootstrap.ts:856-896`
+`path:packages/runtime/src/bootstrap.ts:860-900`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
 
   constructor(
     readonly container: Container,
@@ -120,7 +142,7 @@ class FluoApplicationContext implements ApplicationContext {
     readonly rootModule: ModuleType,
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
-    private readonly runtimeCleanup: Array<() => MaybePromise<void>>,
+    private readonly runtimeCleanup: Array<() => void>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -179,8 +201,8 @@ function createContextCacheableTokenSet(
   return cacheableTokens;
 }
 
-function isDirectSingletonContextProvider(provider: Provider): boolean {
-  if (isMultiProvider(provider)) {
+function isDirectSingletonContextProvider(provider: Provider, includeMulti = false): boolean {
+  if (isMultiProvider(provider) && !includeMulti) {
     return false;
   }
 
@@ -399,13 +421,17 @@ That is why the context API is especially useful for advanced tooling. You get t
 
 The application shell constructor shows directly what is added on top of the context baseline. It receives the same `container`, `modules`, and `rootModule`, but dispatcher and adapter state come with them.
 
-`path:packages/runtime/src/bootstrap.ts:403-424`
+`path:packages/runtime/src/bootstrap.ts:600-628`
 ```typescript
 class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
+  private listenPromise: Promise<void> | undefined;
+  private connectedMicroservicesClosed = false;
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
 
@@ -421,8 +447,10 @@ class FluoApplication implements Application {
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
     private readonly runtimeCleanup: Array<() => void>,
+    private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     this.lifecycleInstances = lifecycleInstances;
+    installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
   }
 ```
 
@@ -673,19 +701,33 @@ NestJS `beforeApplicationShutdown` is unsupported and does not create an interme
 
 Shutdown hook ordering is fixed in a separate helper. Both hook families run in reverse order, so singleton lifecycle instances created during startup are cleaned up in the opposite direction.
 
-`path:packages/runtime/src/bootstrap.ts:1267-1279`
+`path:packages/runtime/src/bootstrap.ts:1304-1330`
 ```typescript
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  const errors: unknown[] = [];
+
   for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
+    try {
+      if (isOnModuleDestroy(instance)) {
+        await instance.onModuleDestroy();
+      }
+    } catch (error) {
+      errors.push(error);
     }
   }
 
   for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
+    try {
+      if (isOnApplicationShutdown(instance)) {
+        await instance.onApplicationShutdown(signal);
+      }
+    } catch (error) {
+      errors.push(error);
     }
+  }
+
+  if (errors.length > 0) {
+    throw createLifecycleCloseError(errors);
   }
 }
 ```
@@ -734,18 +776,51 @@ The implementation is `RuntimePlatformShell` in `path:packages/runtime/src/platf
 
 The startup branch first fixes dependency validation and ordering, then starts components in order. If start fails, it tries to roll back components that have already started.
 
-`path:packages/runtime/src/platform-shell.ts:160-207`
+`path:packages/runtime/src/platform-shell.ts:60-86`
 ```typescript
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runLifecycleTransition('start', () => this.startComponents());
+  }
+
+  stop(): Promise<void> {
+    return this.runLifecycleTransition('stop', () => this.stopComponents());
+  }
+
+  private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
+    const activeTransition = this.activeLifecycleTransition;
+    if (activeTransition) {
+      return Promise.reject(new PlatformLifecycleConflictError(activeTransition.operation, operation));
+    }
+
+    const transition: PlatformLifecycleTransition = { operation };
+    this.activeLifecycleTransition = transition;
+    const promise = Promise.resolve(run());
+
+    const clearActiveTransition = (): void => {
+      if (this.activeLifecycleTransition === transition) {
+        this.activeLifecycleTransition = undefined;
+      }
+    };
+    void promise.then(clearActiveTransition, clearActiveTransition);
+
+    return promise;
+  }
+```
+
+This excerpt shows that platform shell start proceeds only after validation and dependency ordering pass. The following branch narrows the focus to the ordered start loop and rollback handling.
+
+`path:packages/runtime/src/platform-shell.ts:88-135`
+```typescript
+  private async startComponents(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
     }
 
     if (this.rollbackPendingComponents.length > 0) {
-      await this.stop();
+      await this.stopComponents();
     }
 
-    this.validateIdentityAndDependencies();
+    assertValidPlatformComponentGraph(this.registeredComponents);
 
     const validationFailures = await this.validateComponents();
     if (validationFailures.length > 0) {
@@ -753,13 +828,8 @@ The startup branch first fixes dependency validation and ordering, then starts c
         `Platform shell validation failed: ${validationFailures.map((issue) => `${issue.componentId}:${issue.code}`).join(', ')}`,
       );
     }
-```
 
-This excerpt shows that platform shell start proceeds only after validation and dependency ordering pass. The following branch narrows the focus to the ordered start loop and rollback handling.
-
-`path:packages/runtime/src/platform-shell.ts:178-207`
-```typescript
-    this.orderedComponents = this.orderByDependency();
+    this.orderedComponents = orderPlatformComponents(this.registeredComponents);
     const startedComponents: RegisteredPlatformComponent[] = [];
 
     for (const component of this.orderedComponents) {
@@ -767,7 +837,7 @@ This excerpt shows that platform shell start proceeds only after validation and 
         await component.component.start();
         startedComponents.push(component);
       } catch (error) {
-        this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start', error));
+        this.diagnostics.append([createPlatformFailureIssue(component.component.id, 'start', error)]);
         const startFailure = new InvariantError(
           `Platform component "${component.component.id}" failed to start: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
@@ -777,8 +847,9 @@ This excerpt shows that platform shell start proceeds only after validation and 
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.rollbackPendingComponents = [...startedComponents];
-          this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
+          this.diagnostics.append([
+            createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
+          ]);
         }
 
         throw startFailure;
@@ -786,19 +857,18 @@ This excerpt shows that platform shell start proceeds only after validation and 
     }
 
     this.started = true;
-    this.stopped = false;
     this.rollbackPendingComponents = [];
   }
 ```
 
 The stop branch cleans up components in the reverse of startup order. This differs from HTTP adapter close because the platform shell manages dependency order for multiple host components, not just one request adapter.
 
-`path:packages/runtime/src/platform-shell.ts:209-226`
+`path:packages/runtime/src/platform-shell.ts:137-157`
 ```typescript
-  async stop(): Promise<void> {
+  private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
-    if ((!this.started && !hasRollbackPending) || this.stopped) {
+    if (!this.started && !hasRollbackPending) {
       return;
     }
 
@@ -811,39 +881,33 @@ The stop branch cleans up components in the reverse of startup order. This diffe
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
     this.started = false;
-    this.stopped = true;
   }
 ```
 
 The readiness branch is what application `ready()` calls. It gathers component reports, returns aggregate readiness, and `assertCriticalReadiness()` turns a critical not-ready state into an invariant error.
 
-`path:packages/runtime/src/platform-shell.ts:228-253`
+`path:packages/runtime/src/platform-shell.ts:160-181`
 ```typescript
-  async ready(): Promise<PlatformReadinessReport> {
-    if (!this.hasRegisteredComponents()) {
-      return {
-        critical: false,
-        status: 'ready',
-      };
+  ready(): Promise<PlatformReadinessReport> {
+    return this.probes.ready();
+  }
+
+  health(): Promise<PlatformHealthReport> {
+    return this.probes.health();
+  }
+
+  snapshot(): Promise<PlatformShellSnapshot> {
+    return this.probes.snapshot();
+  }
+
+  async assertCriticalReadiness(): Promise<void> {
+    const readiness = await this.ready();
+
+    if (readiness.status === 'not-ready') {
+      throw new InvariantError(
+        `Runtime platform shell is not ready: ${readiness.reason ?? 'critical platform component is unavailable.'}`,
+      );
     }
-
-    const reports: PlatformReadinessReport[] = [];
-
-    for (const component of this.registeredComponents) {
-      try {
-        reports.push(await component.component.ready());
-      } catch (error) {
-        const issue = createUnknownFailureIssue(component.component.id, 'ready', error);
-        this.diagnostics.push(issue);
-        reports.push({
-          critical: true,
-          reason: issue.cause,
-          status: 'not-ready',
-        });
-      }
-    }
-
-    return aggregateReadiness(reports);
   }
 ```
 

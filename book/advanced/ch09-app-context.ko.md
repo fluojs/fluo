@@ -31,12 +31,12 @@ source에서도 분기 지점이 직접 보입니다. `path:packages/runtime/src
 
 full application branch의 대표 지점은 반환부입니다. 앞선 module bootstrap과 lifecycle 실행은 공유하지만, 이 branch만 dispatcher, adapter, adapter 보유 여부, platform shell reference를 함께 넣어 `FluoApplication`을 만듭니다.
 
-`path:packages/runtime/src/bootstrap.ts:1000-1012`
+`path:packages/runtime/src/bootstrap.ts:1680-1703`
 ```typescript
     return new FluoApplication(
       bootstrapped.container,
       bootstrapped.modules,
-      options.rootModule,
+      effectiveOptions.rootModule,
       dispatcher,
       bootstrapTiming,
       adapter,
@@ -45,6 +45,17 @@ full application branch의 대표 지점은 반환부입니다. 앞선 module bo
       lifecycleInstances,
       logger,
       runtimeCleanup,
+      createContextCacheableTokenSet(
+        bootstrapped.effectiveProviders,
+        [
+          RUNTIME_CONTAINER,
+          COMPILED_MODULES,
+          HTTP_APPLICATION_ADAPTER,
+          PLATFORM_SHELL,
+          RUNTIME_CLEANUP_REGISTRATION,
+          BOOTSTRAP_READY_SIGNAL,
+        ],
+      ),
     );
 ```
 
@@ -52,7 +63,7 @@ full application branch의 대표 지점은 반환부입니다. 앞선 module bo
 
 context branch는 같은 spine을 지나지만 반환 객체가 다릅니다. dispatcher와 HTTP adapter를 만들지 않고, DI와 lifecycle 제어에 필요한 값만 `FluoApplicationContext`로 감쌉니다.
 
-`path:packages/runtime/src/bootstrap.ts:1128-1135`
+`path:packages/runtime/src/bootstrap.ts:1838-1855`
 ```typescript
       return new FluoApplicationContext(
         bootstrapped.container,
@@ -61,6 +72,16 @@ context branch는 같은 spine을 지나지만 반환 객체가 다릅니다. di
         bootstrapTiming,
         lifecycleInstances,
         runtimeCleanup,
+        createContextCacheableTokenSet(
+          bootstrapped.effectiveProviders,
+          [
+            RUNTIME_CONTAINER,
+            COMPILED_MODULES,
+            PLATFORM_SHELL,
+            RUNTIME_CLEANUP_REGISTRATION,
+            BOOTSTRAP_READY_SIGNAL,
+          ],
+        ),
       );
 ```
 
@@ -106,13 +127,14 @@ bootstrap graph + container + lifecycle baseline
 
 context shell 자체도 그 의도를 그대로 드러냅니다. 저장하는 값은 compiled module baseline과 lifecycle cleanup에 필요한 값이고, public 동작은 DI lookup과 close입니다.
 
-`path:packages/runtime/src/bootstrap.ts:856-896`
+`path:packages/runtime/src/bootstrap.ts:860-900`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
 
   constructor(
     readonly container: Container,
@@ -120,7 +142,7 @@ class FluoApplicationContext implements ApplicationContext {
     readonly rootModule: ModuleType,
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
-    private readonly runtimeCleanup: Array<() => MaybePromise<void>>,
+    private readonly runtimeCleanup: Array<() => void>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -179,8 +201,8 @@ function createContextCacheableTokenSet(
   return cacheableTokens;
 }
 
-function isDirectSingletonContextProvider(provider: Provider): boolean {
-  if (isMultiProvider(provider)) {
+function isDirectSingletonContextProvider(provider: Provider, includeMulti = false): boolean {
+  if (isMultiProvider(provider) && !includeMulti) {
     return false;
   }
 
@@ -399,13 +421,17 @@ createApplicationContext(rootModule)
 
 application shell의 constructor는 context baseline 위에 무엇이 추가되는지 직접 보여 줍니다. 같은 `container`, `modules`, `rootModule`을 받지만, dispatcher와 adapter 상태가 함께 들어옵니다.
 
-`path:packages/runtime/src/bootstrap.ts:403-424`
+`path:packages/runtime/src/bootstrap.ts:600-628`
 ```typescript
 class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
+  private listenPromise: Promise<void> | undefined;
+  private connectedMicroservicesClosed = false;
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
 
@@ -421,8 +447,10 @@ class FluoApplication implements Application {
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
     private readonly runtimeCleanup: Array<() => void>,
+    private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     this.lifecycleInstances = lifecycleInstances;
+    installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
   }
 ```
 
@@ -673,19 +701,33 @@ NestJS `beforeApplicationShutdown`은 지원하지 않으며 이 flow에 중간 
 
 shutdown hook ordering은 별도 helper로 고정되어 있습니다. 두 hook family 모두 reverse order로 처리되므로, startup 때 만들어진 singleton lifecycle instance를 반대 방향으로 정리합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1267-1279`
+`path:packages/runtime/src/bootstrap.ts:1304-1330`
 ```typescript
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  const errors: unknown[] = [];
+
   for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
+    try {
+      if (isOnModuleDestroy(instance)) {
+        await instance.onModuleDestroy();
+      }
+    } catch (error) {
+      errors.push(error);
     }
   }
 
   for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
+    try {
+      if (isOnApplicationShutdown(instance)) {
+        await instance.onApplicationShutdown(signal);
+      }
+    } catch (error) {
+      errors.push(error);
     }
+  }
+
+  if (errors.length > 0) {
+    throw createLifecycleCloseError(errors);
   }
 }
 ```
@@ -734,18 +776,51 @@ export interface PlatformShell {
 
 startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 component를 순서대로 시작합니다. start 실패 시에는 이미 시작한 component를 rollback하려고 시도합니다.
 
-`path:packages/runtime/src/platform-shell.ts:160-207`
+`path:packages/runtime/src/platform-shell.ts:60-86`
 ```typescript
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runLifecycleTransition('start', () => this.startComponents());
+  }
+
+  stop(): Promise<void> {
+    return this.runLifecycleTransition('stop', () => this.stopComponents());
+  }
+
+  private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
+    const activeTransition = this.activeLifecycleTransition;
+    if (activeTransition) {
+      return Promise.reject(new PlatformLifecycleConflictError(activeTransition.operation, operation));
+    }
+
+    const transition: PlatformLifecycleTransition = { operation };
+    this.activeLifecycleTransition = transition;
+    const promise = Promise.resolve(run());
+
+    const clearActiveTransition = (): void => {
+      if (this.activeLifecycleTransition === transition) {
+        this.activeLifecycleTransition = undefined;
+      }
+    };
+    void promise.then(clearActiveTransition, clearActiveTransition);
+
+    return promise;
+  }
+```
+
+이 발췌는 platform shell start가 validation과 dependency ordering을 통과한 뒤에만 진행된다는 점을 보여 줍니다. 이어지는 branch는 실제 ordered start loop와 rollback 처리를 좁혀 보여 줍니다.
+
+`path:packages/runtime/src/platform-shell.ts:88-135`
+```typescript
+  private async startComponents(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
     }
 
     if (this.rollbackPendingComponents.length > 0) {
-      await this.stop();
+      await this.stopComponents();
     }
 
-    this.validateIdentityAndDependencies();
+    assertValidPlatformComponentGraph(this.registeredComponents);
 
     const validationFailures = await this.validateComponents();
     if (validationFailures.length > 0) {
@@ -753,13 +828,8 @@ startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 comp
         `Platform shell validation failed: ${validationFailures.map((issue) => `${issue.componentId}:${issue.code}`).join(', ')}`,
       );
     }
-```
 
-이 발췌는 platform shell start가 validation과 dependency ordering을 통과한 뒤에만 진행된다는 점을 보여 줍니다. 이어지는 branch는 실제 ordered start loop와 rollback 처리를 좁혀 보여 줍니다.
-
-`path:packages/runtime/src/platform-shell.ts:178-207`
-```typescript
-    this.orderedComponents = this.orderByDependency();
+    this.orderedComponents = orderPlatformComponents(this.registeredComponents);
     const startedComponents: RegisteredPlatformComponent[] = [];
 
     for (const component of this.orderedComponents) {
@@ -767,7 +837,7 @@ startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 comp
         await component.component.start();
         startedComponents.push(component);
       } catch (error) {
-        this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start', error));
+        this.diagnostics.append([createPlatformFailureIssue(component.component.id, 'start', error)]);
         const startFailure = new InvariantError(
           `Platform component "${component.component.id}" failed to start: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
@@ -777,8 +847,9 @@ startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 comp
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.rollbackPendingComponents = [...startedComponents];
-          this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
+          this.diagnostics.append([
+            createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
+          ]);
         }
 
         throw startFailure;
@@ -786,19 +857,18 @@ startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 comp
     }
 
     this.started = true;
-    this.stopped = false;
     this.rollbackPendingComponents = [];
   }
 ```
 
 stop branch는 시작 순서의 반대로 component를 정리합니다. 이 부분이 HTTP adapter close와 다른 이유는 platform shell이 request adapter 하나가 아니라 여러 host component의 dependency order를 관리하기 때문입니다.
 
-`path:packages/runtime/src/platform-shell.ts:209-226`
+`path:packages/runtime/src/platform-shell.ts:137-157`
 ```typescript
-  async stop(): Promise<void> {
+  private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
-    if ((!this.started && !hasRollbackPending) || this.stopped) {
+    if (!this.started && !hasRollbackPending) {
       return;
     }
 
@@ -811,39 +881,33 @@ stop branch는 시작 순서의 반대로 component를 정리합니다. 이 부�
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
     this.started = false;
-    this.stopped = true;
   }
 ```
 
 readiness branch는 application `ready()`가 호출하는 대상입니다. component report를 모아 aggregate readiness로 반환하고, critical not-ready 상태는 `assertCriticalReadiness()`에서 invariant error가 됩니다.
 
-`path:packages/runtime/src/platform-shell.ts:228-253`
+`path:packages/runtime/src/platform-shell.ts:160-181`
 ```typescript
-  async ready(): Promise<PlatformReadinessReport> {
-    if (!this.hasRegisteredComponents()) {
-      return {
-        critical: false,
-        status: 'ready',
-      };
+  ready(): Promise<PlatformReadinessReport> {
+    return this.probes.ready();
+  }
+
+  health(): Promise<PlatformHealthReport> {
+    return this.probes.health();
+  }
+
+  snapshot(): Promise<PlatformShellSnapshot> {
+    return this.probes.snapshot();
+  }
+
+  async assertCriticalReadiness(): Promise<void> {
+    const readiness = await this.ready();
+
+    if (readiness.status === 'not-ready') {
+      throw new InvariantError(
+        `Runtime platform shell is not ready: ${readiness.reason ?? 'critical platform component is unavailable.'}`,
+      );
     }
-
-    const reports: PlatformReadinessReport[] = [];
-
-    for (const component of this.registeredComponents) {
-      try {
-        reports.push(await component.component.ready());
-      } catch (error) {
-        const issue = createUnknownFailureIssue(component.component.id, 'ready', error);
-        this.diagnostics.push(issue);
-        reports.push({
-          critical: true,
-          reason: issue.cause,
-          status: 'not-ready',
-        });
-      }
-    }
-
-    return aggregateReadiness(reports);
   }
 ```
 
