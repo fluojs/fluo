@@ -135,7 +135,7 @@ Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, 
 | `isStudioLiveEvent(value)` | parsing 또는 dispatch 전에 sidecar/SSE envelope를 확인하는 runtime-safe type guard입니다. |
 | `StudioLiveSnapshot` | React UI가 소비하는 live graph/routes/requests/timing/diagnostics snapshot입니다. |
 | `StudioLiveEvent` | `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, `heartbeat`를 위한 versioned live event envelope입니다. |
-| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Optional compiled route diagnostics를 포함하는 static/report 호환성 계약입니다. |
+| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Optional compiled route diagnostics를 포함하는 static/report 호환성 계약이며, Studio는 report artifact의 canonical seven-field summary를 렌더링하고 raw snapshot 또는 snapshot-plus-timing envelope에서는 같은 view를 파생하며 raw snapshot에 timing이 없음을 명시적으로 표시합니다. |
 
 ### Root type export
 

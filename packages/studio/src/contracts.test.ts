@@ -1087,8 +1087,14 @@ describe('parseStudioPayload', () => {
     });
 
     expect(document.querySelector('#drop-zone')?.textContent).toContain('Diagnostics file loaded successfully.');
-    expect(document.querySelector('section:nth-of-type(2)')?.textContent).toContain('components: 2');
-    expect(document.querySelector('section:nth-of-type(2)')?.textContent).toContain('diagnostics: 1');
+    expect(document.body.textContent).toContain('Snapshot-derived report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: unavailable');
     expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
   });
 
@@ -1131,8 +1137,15 @@ describe('parseStudioPayload', () => {
       expect(document.querySelector('#graph-host')?.textContent).toContain('redis.default');
     });
 
+    expect(document.body.textContent).toContain('Snapshot-derived report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: 3.210ms');
     expect(document.body.textContent).toContain('Static/report timing');
-    expect(document.body.textContent).toContain('3.210ms');
     expect(document.body.textContent).toContain('bootstrap_module');
   });
 
@@ -1166,7 +1179,14 @@ describe('parseStudioPayload', () => {
     });
 
     expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
-    expect(document.body.textContent).toContain('components: 2');
+    expect(document.body.textContent).toContain('Canonical report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: 4.560ms');
     expect(document.body.textContent).toContain('Static/report timing');
     expect(document.body.textContent).toContain('4.560ms');
   });
