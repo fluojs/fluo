@@ -28,7 +28,7 @@ Instead of detecting the host name, that center assembles already prepared adapt
 `path:packages/runtime/src/bootstrap.ts:920-938`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = options.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
   const hasHttpAdapter = options.adapter !== undefined;
@@ -46,6 +46,8 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logger.log('Starting fluo application...', 'FluoFactory');
     const runtimeProviders = createRuntimeProviders(options, logger);
 ```
+
+The root default is `createDefaultApplicationLogger()`, which keeps the shared bootstrap surface transport-neutral. Choose `createConsoleApplicationLogger()` only for an explicit Node-only setup imported from `@fluojs/runtime/node`.
 
 The branch shown by this excerpt is about adapter presence, not host kind. Because of that, the shared Bootstrap shell can exist before any Node server creation or Web Request normalization happens. The real host differences are pushed out to the edge where the adapter enters.
 
