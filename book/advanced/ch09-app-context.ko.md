@@ -878,9 +878,9 @@ stop branch는 시작 순서의 반대로 component를 정리합니다. 이 부�
       ? [...this.orderedComponents]
       : [...this.registeredComponents];
 
+    this.started = false;
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
-    this.started = false;
   }
 ```
 
@@ -900,19 +900,6 @@ readiness branch는 application `ready()`가 호출하는 대상입니다. compo
     return this.probes.snapshot();
   }
 
-  async assertCriticalReadiness(): Promise<void> {
-    const readiness = await this.ready();
-
-    if (readiness.status === 'not-ready') {
-      throw new InvariantError(
-        `Runtime platform shell is not ready: ${readiness.reason ?? 'critical platform component is unavailable.'}`,
-      );
-    }
-  }
-```
-
-`path:packages/runtime/src/platform-shell.ts:331-339`
-```typescript
   async assertCriticalReadiness(): Promise<void> {
     const readiness = await this.ready();
 

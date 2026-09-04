@@ -878,9 +878,9 @@ The stop branch cleans up components in the reverse of startup order. This diffe
       ? [...this.orderedComponents]
       : [...this.registeredComponents];
 
+    this.started = false;
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
-    this.started = false;
   }
 ```
 
@@ -900,19 +900,6 @@ The readiness branch is what application `ready()` calls. It gathers component r
     return this.probes.snapshot();
   }
 
-  async assertCriticalReadiness(): Promise<void> {
-    const readiness = await this.ready();
-
-    if (readiness.status === 'not-ready') {
-      throw new InvariantError(
-        `Runtime platform shell is not ready: ${readiness.reason ?? 'critical platform component is unavailable.'}`,
-      );
-    }
-  }
-```
-
-`path:packages/runtime/src/platform-shell.ts:331-339`
-```typescript
   async assertCriticalReadiness(): Promise<void> {
     const readiness = await this.ready();
 
