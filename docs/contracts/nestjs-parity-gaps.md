@@ -1,6 +1,24 @@
 # NestJS Parity Map
 
 <p><strong><kbd>English</kbd></strong> <a href="./nestjs-parity-gaps.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone` maps to `timezone`; `CronTaskOptions.timezone` is a string. |
+| `wait-for-completion` | `protect: true` prevents overlapping Croner invocations, and `CronLifecycleService` rejects a tick while its task is running. |
+| `unsupported-options` | NestJS scheduler options other than the documented fluo options are unsupported. |
+| `absolute-time` | `@Cron` accepts a cron-expression string only; `Date` and `DateTime` overloads are unsupported. |
+| `named-interval-timeout` | `@Interval(ms, options)` and `@Timeout(ms, options)` accept milliseconds and optional named task options. |
+| `async-configuration` | `CronModule.forRoot(...)` is synchronous; resolve async configuration before calling it. |
+| `global-visibility` | `CronModule.forRoot(...)` is local by default; pass `global: true` explicitly when needed. |
+| `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 
 This document maps current fluo coverage against common NestJS expectations.
 
@@ -20,6 +38,7 @@ This document maps current fluo coverage against common NestJS expectations.
 | Cache manager module, service, decorators, and metadata helpers | Implemented through `@fluojs/cache-manager` with synchronous `CacheModule.forRoot(...)`, injected-factory `CacheModule.forRootAsync({ inject, useFactory, global? })`, injectable `CacheService`, response-cache decorators, function-valued `httpKeyStrategy`, `@CacheKey(...)`, and exported cache metadata helper functions. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 | Cron scheduling decorators and runtime registry | Implemented through `@fluojs/cron` with `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, Redis distributed locks, bounded shutdown, and `SCHEDULING_REGISTRY` descriptor snapshots. | `packages/cron/README.md`, `book/intermediate/ch12-cron.md`, `docs/getting-started/migrate-from-nestjs.md` |
 | Prometheus metrics, HTTP instrumentation, and runtime telemetry | Implemented through `@fluojs/metrics` with synchronous `MetricsModule.forRoot(...)`, `MetricsService`, optional HTTP instrumentation, explicit `Registry` sharing, and a configurable scrape endpoint. | `packages/metrics/README.md`, `docs/getting-started/migrate-from-nestjs.md` |
+| Email transport ownership and direct/template-backed delivery | Implemented through explicit `EmailTransport` selection, Node-only `@fluojs/email/node` factories and existing-transporter wrappers, plus `EmailService.send(...)` for pre-rendered messages and `sendNotification(...)` for renderer-backed notifications. | `packages/email/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch16-email.md` |
 
 ## Not Implemented
 
@@ -44,3 +63,12 @@ This document maps current fluo coverage against common NestJS expectations.
 | NestJS Swagger controller scanning, reflection-driven response schemas, and implicit documentation UI setup | Intentionally replaced by explicit `OpenApiModule` registration. Applications list `sources` and/or `descriptors`, opt into `/docs` with `ui: true`, and declare response content with `@ApiResponse(200, { schema })` or `@ApiResponse(200, { type: UserDto })`; handler return values are not inspected for response shape. | `packages/openapi/README.md`, `docs/architecture/openapi.md`, `docs/getting-started/migrate-from-nestjs.md` |
 | `@nestjs/cache-manager` `imports`/`useClass`/`useExisting` async registration and interceptor subclassing as migration defaults | Intentionally replaced by synchronous `CacheModule.forRoot(...)`, injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, explicit `CacheService` injection, and documented key seams through `httpKeyStrategy`, `@CacheKey(...)`, and exported metadata helpers. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 | `SchedulerRegistry` / `CronJob` live handle mutation and private scheduled methods | Intentionally replaced by public instance method decorators and descriptor-based `SCHEDULING_REGISTRY` controls. `get` and `getAll` describe tasks rather than exposing mutable scheduler-engine handles. | `packages/cron/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch12-cron.md` |
+| `@nestjs/schedule` option parity, absolute-time `@Cron` inputs, named interval/timeout overloads, and async/global/category module registration | Intentionally not one-to-one. fluo accepts `timezone` but not `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`; `@Cron` accepts only cron-expression strings, so NestJS `Date` / Luxon `DateTime` schedules remain application-owned absolute-time plans rather than startup-relative `@Timeout` rewrites. Rewrite `@Interval(name, ms)` / `@Timeout(name, ms)` as `(ms, { name })`. Resolve async configuration before synchronous `CronModule.forRoot(...)`, pass `global: true` explicitly when required, and own `cronJobs` / `intervals` / `timeouts` category alternatives through application composition or dynamic registration. | `packages/cron/src/types.ts`, `packages/cron/src/decorators.ts`, `packages/cron/src/module.ts`, `packages/cron/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/intermediate/ch12-cron.md` |
+
+## Cron Overlap Admission Boundary
+
+NestJS `waitForCompletion` has no fluo option because overlap is not configurable. `CronLifecycleService` always schedules cron tasks with scheduler-level no-overlap protection and additionally keeps an in-process running guard, so a tick that arrives while the same task instance is still running is skipped rather than queued. A NestJS task with `waitForCompletion: true` therefore omits the option when migrated, and a task that relied on `waitForCompletion: false` or the NestJS overlapping default must move its concurrent work to an application-owned queue or worker instead of expecting an overlap opt-out. This guard covers one task instance in one process; excluding the same task across application instances still requires Redis distributed locking.
+
+## Queue-backed email notification batches
+
+NestJS Bull producers that fan out notification jobs with parallel single enqueues are replaced by `Queue.enqueueMany(entries)` or `QueueLifecycleService.enqueueMany(entries)`. The ordered `QueueEnqueueManyEntry` values must resolve to one registered BullMQ queue; Queue validates the full batch before one atomic `addBulk(...)` persistence call, returns IDs in input order, and preserves each entry's `deduplicationKey`. The built-in `@fluojs/email/queue` adapter delegates notification bulk delivery to that seam while standalone `enqueue(job, options?)` remains unchanged.

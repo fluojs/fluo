@@ -10,9 +10,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { generatorManifest } from './generators/manifest.js';
-import { CliPromptCancelledError, runCli } from './index.js';
+import { CliPromptCancelledError, runCli as runCliImplementation } from './index.js';
 
 const createdDirectories: string[] = [];
+const cliPackageDirectory = dirname(fileURLToPath(import.meta.url));
 
 const inspectFixtureModulePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -33,6 +34,21 @@ const inspectReactFixtureModulePath = join(
 const updateCheckEnv: NodeJS.ProcessEnv = {
   PATH: process.env.PATH,
 };
+
+function runCli(
+  argv: Parameters<typeof runCliImplementation>[0],
+  runtime?: Parameters<typeof runCliImplementation>[1],
+) {
+  if (argv?.[0] === 'inspect' && runtime?.cwd === process.cwd()) {
+    return runCliImplementation(argv, { ...runtime, cwd: cliPackageDirectory });
+  }
+
+  return runCliImplementation(argv, runtime);
+}
+
+function loadRuntimeInspectionModule() {
+  return import('@fluojs/runtime');
+}
 
 function createTtyBufferStream(buffer: string[]): { isTTY: true; write(message: string): void } {
   return {
@@ -196,6 +212,7 @@ describe('CLI command runner', () => {
     // When: inspect renders a runtime snapshot through the documented format option.
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--format', 'json'], {
       ci: true,
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
       updateCheck: false,
@@ -4101,6 +4118,7 @@ exit 7
     try {
       exitCode = await runCli(['inspect', inspectFixtureModulePath], {
         cwd: process.cwd(),
+        loadRuntimeInspectionModule,
         stderr: { write: (message) => stderrBuffer.push(message) },
         stdout: { write: (message) => stdoutBuffer.push(message) },
         updateCheck: false,
@@ -4131,11 +4149,61 @@ exit 7
     expect(readFileSync(lifecycleLogPath, 'utf8')).toBe('close\n');
   });
 
+  it('resolves inspect runtime only from the inspected project dependency tree', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-inspect-project-runtime-'));
+    createdDirectories.push(projectDirectory);
+    const runtimeDirectory = join(projectDirectory, 'node_modules', '@fluojs', 'runtime');
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    mkdirSync(runtimeDirectory, { recursive: true });
+    writeFileSync(join(projectDirectory, 'package.json'), JSON.stringify({ name: 'inspected-project', type: 'module' }));
+    writeFileSync(
+      join(runtimeDirectory, 'package.json'),
+      JSON.stringify({
+        exports: { '.': { default: './index.mjs', import: './index.mjs' } },
+        name: '@fluojs/runtime',
+        type: 'module',
+      }),
+    );
+    writeFileSync(
+      join(runtimeDirectory, 'index.mjs'),
+      [
+        "export const PLATFORM_SHELL = Symbol.for('project-runtime-platform-shell');",
+        'export const FluoFactory = {',
+        '  async create() {',
+        '    return {',
+        '      async close() {},',
+        '      dispatcher: { describeRoutes: () => [] },',
+        '      async get() {',
+        "        return { snapshot: async () => ({ components: [], diagnostics: [], generatedAt: 'project-runtime', health: { status: 'healthy' }, readiness: { status: 'ready' }, runtimeSource: 'project-local' }) };",
+        '      },',
+        '    };',
+        '  },',
+        '};',
+        'export const createRuntimeInspectionSnapshot = (snapshot) => snapshot;',
+        '',
+      ].join('\n'),
+    );
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json'], {
+      cwd: projectDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    expect(exitCode, stderrBuffer.join('')).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(JSON.parse(stdoutBuffer.join(''))).toMatchObject({ runtimeSource: 'project-local' });
+  });
+
   it('loads TypeScript source modules for inspect without narrowing native JavaScript module support', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--export', 'AdminModule', '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4162,6 +4230,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectReactFixtureModulePath, '--json'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4201,6 +4270,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4230,6 +4300,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--timing'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4261,6 +4332,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--report'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4305,6 +4377,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--report', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4361,6 +4434,7 @@ exit 7
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -4379,6 +4453,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -4397,6 +4472,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: false,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdin: { isTTY: false },
@@ -4419,6 +4495,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async (message) => {
@@ -4452,6 +4529,7 @@ exit 7
       ci: true,
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async (message) => {
@@ -4481,6 +4559,7 @@ exit 7
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
       interactive: true,
+      loadRuntimeInspectionModule,
       loadStudioMermaidRenderer: async () => undefined,
       prompt: {
         confirm: async () => {
@@ -4533,6 +4612,7 @@ exit 7
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing'], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -4568,6 +4648,7 @@ exit 7
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing', '--output', outputPath], {
       cwd: process.cwd(),
+      loadRuntimeInspectionModule,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });

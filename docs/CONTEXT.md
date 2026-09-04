@@ -1,4 +1,22 @@
 # fluo — AI Context Document
+<!-- fluo:cron-nestjs-migration: timezone-mapping -->
+<!-- fluo:cron-nestjs-migration: wait-for-completion -->
+<!-- fluo:cron-nestjs-migration: unsupported-options -->
+<!-- fluo:cron-nestjs-migration: absolute-time -->
+<!-- fluo:cron-nestjs-migration: named-interval-timeout -->
+<!-- fluo:cron-nestjs-migration: async-configuration -->
+<!-- fluo:cron-nestjs-migration: global-visibility -->
+<!-- fluo:cron-nestjs-migration: category-switches -->
+| Migration proposition | Governed fluo rule |
+| --- | --- |
+| `timezone-mapping` | `timeZone` maps to `timezone`; `CronTaskOptions.timezone` is a string. |
+| `wait-for-completion` | `protect: true` prevents overlapping Croner invocations, and `CronLifecycleService` rejects a tick while its task is running. |
+| `unsupported-options` | NestJS scheduler options other than the documented fluo options are unsupported. |
+| `absolute-time` | `@Cron` accepts a cron-expression string only; `Date` and `DateTime` overloads are unsupported. |
+| `named-interval-timeout` | `@Interval(ms, options)` and `@Timeout(ms, options)` accept milliseconds and optional named task options. |
+| `async-configuration` | `CronModule.forRoot(...)` is synchronous; resolve async configuration before calling it. |
+| `global-visibility` | `CronModule.forRoot(...)` is local by default; pass `global: true` explicitly when needed. |
+| `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
@@ -10,6 +28,22 @@ bootstrap-failure cleanup await each registration in order, continue after failu
 the original bootstrap failure while reporting cleanup failures. See the [Lifecycle & Shutdown
 Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 [`@fluojs/runtime` README](../packages/runtime/README.md).
+
+## Cron Runtime 3 Compatibility
+
+`@fluojs/cron` 3 has a mandatory `@fluojs/runtime` 3 dependency and requires Node.js
+`>=20.19.3 <21 || >=22.2.0 <27`. Consumers upgrading from Cron 2 must move Node.js
+`20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ hosts to that
+supported range before upgrading. See the [`@fluojs/cron` README](../packages/cron/README.md)
+and [package surface](./reference/package-surface.md).
+
+## Drizzle named-client contract
+
+`@fluojs/drizzle` named registrations are non-global and each owns independent transaction ALS,
+shutdown drain, disposal, and status. Consumers import a module that exports the matching package-owned
+named tokens; names do not create isolated runtime containers. Use those helpers and an explicit
+`@Transaction((self) => self.client)` accessor; see [Transaction Context](./architecture/transactions.md)
+and the [Drizzle README](../packages/drizzle/README.md).
 
 ## Cloudflare Worker Close Ownership
 
@@ -44,6 +78,8 @@ For structured HTTP access logging, start at `@fluojs/http` with `createAccessLo
 ## Migration Reference
 
 For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `fluoFactory.create(AppModule, { middleware })`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
+
+Queue producer idempotency is documented in `packages/queue/README.md` and `packages/queue/README.ko.md`: the public Queue facade accepts a caller-owned `deduplicationKey` and deterministically maps it to a BullMQ-safe job id, so notification identities containing colons or numeric-only values remain deduplicable.
 
 For NestJS HTTP pipeline migration, portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`; keep Express `(req, res, next)` handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`.
 
@@ -202,6 +238,8 @@ Drizzle transaction drain discoverability specifically lives in `packages/drizzl
 
 Drizzle transaction target selection falls back to the decorated instance itself after `this.db`, direct host properties, and nested `.db` candidates fail to expose `transaction(...)`; services with multiple possible Drizzle clients should keep using an explicit accessor such as `@Transaction((self) => self.ordersDb)`.
 
+`DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS imports. It delegates to `DrizzleDatabase.requestTransaction(...)`, forwards `RequestContext.request.signal`, and is documented with the primary service-boundary and explicit request-boundary guidance in the Drizzle README, transaction architecture contract, NestJS migration map, and intermediate Drizzle chapter.
+
 Prisma transaction boundary discoverability is specifically carried by `packages/prisma/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), and the beginner Prisma, transaction, and production chapters: `@fluojs/prisma` is the Node.js 20+ Prisma integration path backed by host `AsyncLocalStorage`; service `@Transaction()` is the primary business boundary; explicit request-wide `requestTransaction(...)` calls should forward `RequestContext.request.signal`; `PrismaService<TClient>` owns lifecycle/transaction wrapper methods while `PrismaServiceFacade<TClient>` forwards generated delegates; default `@Transaction()` resolution selects only branded Prisma service/facade hosts and ambiguous hosts should pass explicit accessors; unsupported `$transaction(...)` falls back without rollback atomicity unless `strictTransactions` is enabled; unavailable or throwing ALS host lookups fail closed with `transactionContext: 'unavailable'`; shutdown drains active request plus service/manual transaction boundaries before `$disconnect()`; and automatic primary/read-replica routing, built-in transaction metrics, and ALS-provided public transaction IDs are not package contracts.
 
 Mongoose integration discoverability is split across the package and governed package-surface docs: `packages/mongoose/README.md` documents the root `@fluojs/mongoose` Node.js 20+ runtime boundary (`node:async_hooks`, `engines.node >=20.0.0`), `MongooseModule.forRoot(...)` / `forRootAsync(...)`, application-owned concrete connection requirements and `dispose(connection)` ownership, exported option and status input types such as `MongooseAsyncModuleOptions<TConnection>` and `MongoosePlatformStatusSnapshotInput`, lifecycle/session behavior, service `@Transaction()` session facade behavior, `MongooseConnection.model(...)` auto-session support for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`, unsupported `doc.save()` / raw model-method escape hatches through `currentSession()`, delegated `connection.transaction(...)` semantics, fail-open direct execution when transaction APIs are unavailable unless `strictTransactions` is enabled, fail-open manual `transaction(...)` callback drain before `dispose(connection)`, `MongooseConnection.createPlatformStatusSnapshot()` / `createMongoosePlatformStatusSnapshot(...)` diagnostics, and the compatibility-only role of `createMongooseProviders(...)`; [`docs/reference/package-surface.md`](./reference/package-surface.md) carries the namespace-facade policy that keeps application registration on `MongooseModule.forRoot(...)` / `forRootAsync(...)` while reserving provider helpers for manual composition compatibility and records the same Node-only root-wrapper boundary; [`docs/reference/package-chooser.md`](./reference/package-chooser.md) directs non-Node runtimes to application-owned raw Mongoose-compatible providers until a runtime-specific transaction-context adapter is documented; and [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md) governs transaction lifecycle, readiness, and shutdown documentation parity.
@@ -210,7 +248,7 @@ JWT auth and NestJS migration discoverability is split across the package README
 
 Passport auth and NestJS migration discoverability is split across `packages/passport/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), and [`book/beginner/ch15-passport.md`](../book/beginner/ch15-passport.md): the package README documents `PassportModule.forRoot(...)` strategy registry wiring, `AuthGuard`, optional auth/scope decorators, Passport.js strategy bridge provider bundles, cookie-auth and refresh-token presets, account-linking helpers, public auth metadata helpers, and `createPassportPlatformStatusSnapshot(...)`; the governed package surface records the namespace-facade exception for `createPassportJsStrategyBridge(...)` plus the compatibility-only `createCookieAuthPreset(...)` provider bundle; and the migration/book companions require explicit `bridge.providers`, named `bridge.strategy` registration, and `mapPrincipal(...)` mapping to `requestContext.principal`. The bridge does not provide full NestJS Passport compatibility, install middleware, sessions, serializers/deserializers, or automatic strategy discovery, and it adds no implicit guards, request augmentation beyond principal mapping, or host middleware ownership. Those session, serializer/deserializer, and host responsibilities remain application-owned.
 
-Email discoverability is split across the package README, governed package-surface docs, NestJS migration docs, and the intermediate book: `packages/email/README.md` documents `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, global-by-default provider visibility for `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL`, the explicit `global: false` local-visibility opt-out, the unsupported NestJS `imports` / `useClass` / `useExisting` async-registration shapes, direct `EmailService` delivery, `@fluojs/notifications` channel integration, queue-backed worker registration, unconditional `EmailLifecycleError` rejection in `stopping`, `stopped`, or `failed`, opt-in `verifyOnModuleInit` gating that makes `created` or `starting` delivery wait for successful bootstrap verification while delivery without that option may proceed, caller-owned transport shutdown boundaries, notification email field forwarding, and platform status snapshots whose queue metadata is present only when callers provide queue details explicitly; [`docs/reference/package-surface.md`](./reference/package-surface.md) records the canonical `@fluojs/email` responsibility boundary; [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md) records the migration boundary from NestJS dynamic-module async shapes to fluo's injected factory; and [`book/intermediate/ch16-email.md`](../book/intermediate/ch16-email.md) teaches the same registration and visibility rules in the FluoShop learning path.
+Email discoverability is split across the package README, governed package-surface docs, NestJS migration docs, and the intermediate book: `packages/email/README.md` documents `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, global-by-default provider visibility for `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL`, the explicit `global: false` local-visibility opt-out, the unsupported NestJS `imports` / `useClass` / `useExisting` async-registration shapes, direct `EmailService` delivery, `@fluojs/notifications` channel integration, queue-backed worker registration, unconditional `EmailLifecycleError` rejection in `stopping`, `stopped`, or `failed`, opt-in `verifyOnModuleInit` gating that makes `created` or `starting` delivery wait for successful bootstrap verification while delivery without that option may proceed, caller-owned transport shutdown boundaries, notification email field forwarding, and platform status snapshots whose queue metadata is present only when callers provide queue details explicitly; [`docs/reference/package-surface.md`](./reference/package-surface.md) records the canonical `@fluojs/email` responsibility boundary; [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md) distinguishes an application-owned portable `EmailTransport`, the factory-owned Node SMTP transport, and an existing caller-owned Nodemailer transporter, then maps direct pre-rendered `EmailService.send(...)` delivery separately from renderer-backed `sendNotification(...)` delivery with `payload.templateData`; and [`book/intermediate/ch16-email.md`](../book/intermediate/ch16-email.md) teaches the corresponding registration and renderer rules in the FluoShop learning path.
 
 Slack discoverability is split across the package README, governed package-surface docs, NestJS migration docs, and the intermediate chat book chapter: `packages/slack/README.md` documents `SlackModule.forRoot(...)` / `forRootAsync(...)`, injected-factory-only async registration through `inject` and `useFactory` after application-graph dependency registration, default global provider visibility with `global: false` local opt-out, singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, manual singleton provider composition through `createSlackProviders(...)`, app-owned composition for multiple Slack clients, direct `SlackService` delivery, `@fluojs/notifications` channel integration, abort-signal propagation, lifecycle-gated sends, `verifyOnModuleInit` bootstrap verification for transports that expose optional `verify()`, shared bootstrap/shutdown ordering that keeps factory-owned transports open until verification settles, serialized factory-owned transport cleanup across bootstrap failure and shutdown, `SlackTemplateRenderer` template rendering with payload-over-rendered merge precedence, and platform status snapshots; [`docs/reference/package-surface.md`](./reference/package-surface.md) records the canonical `@fluojs/slack` responsibility boundary for webhook-first, singleton, transport-agnostic Slack delivery without direct `process.env` reads; [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md) records the migration boundary from NestJS `imports` / `useClass` / `useExisting`, multi-client assumptions, and `isGlobal` to Slack's injected factory, app-graph dependency registration, singleton tokens, and `global?: boolean`; and [`book/intermediate/ch17-slack-discord.md`](../book/intermediate/ch17-slack-discord.md) teaches the same module visibility, async registration, singleton token, bootstrap verification, and template-backed notification dispatch surfaces in the FluoShop learning path.
 
@@ -325,6 +363,10 @@ transform tokens (`injectable` and `testing`) in `transforms` and per-file
 | `docs/getting-started/` | Bootstrap and setup facts for common starting paths. |
 | `docs/reference/` | Lookup-oriented tables, glossary terms, package matrices, and support snapshots. |
 
+## Cron Scheduling Migration
+
+The scheduling migration contract spans [`packages/cron/README.md`](../packages/cron/README.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`docs/contracts/nestjs-parity-gaps.md`](./contracts/nestjs-parity-gaps.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md). `@fluojs/cron` supports `timezone`, not NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`; absolute-time `@Cron(Date)` / `@Cron(DateTime)` plans stay application-owned, as do disabled/category-specific schedules and threshold/recovery policy. Named interval/timeout decorators become `(ms, { name })`; resolve async schedule configuration before synchronous `CronModule.forRoot(...)`, use `global: true` explicitly when necessary, and do not expect NestJS category switches.
+
 ## Studio Runtime Bridge
 
 Studio bridge discoverability is split between [`packages/runtime/README.md`](../packages/runtime/README.md) and [`docs/reference/package-surface.md`](./reference/package-surface.md): package integrations import `StudioDevtoolsRuntime`, `StudioDevtoolsRuntimeTransport`, and `StudioLiveEvent` from `@fluojs/runtime/devtools`, then pass their host-owned bridge as `studioDevtools` to `bootstrapApplication`, `FluoFactory.create`, or `FluoFactory.createApplicationContext`. Delivery is observational: synchronous transport throws and async rejections never change application behavior. An explicit bridge takes precedence over CLI-injected Studio configuration; without either bridge or injected configuration, Studio remains inactive.
@@ -338,6 +380,7 @@ Studio bridge discoverability is split between [`packages/runtime/README.md`](..
 | Need | Read first | Follow with |
 | --- | --- | --- |
 | Passport refresh-token module ownership and alias visibility | `packages/passport/README.md` | `apps/docs/content/docs/guides/auth.mdx` and `packages/passport/src/refresh/refresh-token.ts` |
+| `@fluojs/email` NestJS migration | `packages/email/README.md` | `docs/getting-started/migrate-from-nestjs.md` and `book/intermediate/ch16-email.md` |
 | Repository identity and non-negotiable rules | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | Architecture model, request flow, and runtime boundaries | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |
@@ -385,6 +428,10 @@ NestJS Mongoose migration and transaction semantics are documented in [Transacti
 - Changing documented behavior in `1.0+` without a major bump, this violates release governance.
 
 Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
+
+## Email queue batch contract
+
+`Queue` and `QueueLifecycleService` expose compatible `enqueueMany(entries)` producer APIs. Ordered `QueueEnqueueManyEntry` values must target one registered BullMQ queue; Queue validates before one atomic `addBulk(...)` persistence call, returns IDs in input order, and preserves each entry's `deduplicationKey`. The `@fluojs/email/queue` notification adapter delegates bulk delivery to this seam rather than parallel `enqueue(...)` calls, while the single-job `enqueue(job, options?)` contract is unchanged.
 
 ## Notifications Queue Cancellation
 

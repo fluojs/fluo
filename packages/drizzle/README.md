@@ -14,6 +14,7 @@ Node.js-only Drizzle ORM integration for fluo with a transaction-aware database 
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Manual Transactions and current()](#manual-transactions-and-current)
   - [Request-Wide Controller Boundaries](#request-wide-controller-boundaries)
+  - [Named clients](#named-clients)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
 - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
@@ -47,7 +48,7 @@ Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare 
 ## Quick Start
 
 ```ts
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -55,6 +56,12 @@ import { Pool } from 'pg';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      global: true,
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+    }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
@@ -74,6 +81,8 @@ import { Pool } from 'pg';
 })
 export class AppModule {}
 ```
+
+`forRootAsync(...)` accepts only `inject` and `useFactory` for its factory dependencies; it does not discover NestJS `imports`, `useClass`, `useExisting`, or decorator metadata. Its generated async module has no `imports`, so a token exported only by a sibling module or by a parent module's import is not visible to the options provider. Register factory dependencies through a global module instead. The `ConfigModule.forRoot(...)` registration above exports `ConfigService` globally by default; `global: true` is shown explicitly because that global export makes `ConfigService` visible to the generated async Drizzle module. For another token, make the module that owns and exports it global before bootstrap rather than relying on the importing application's `providers` or imports.
 
 ## Common Patterns
 
@@ -172,13 +181,16 @@ Async work created inside a transaction can inherit its ALS context even when it
 Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
 
 ```ts
-import { Controller, Post } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { CheckoutService } from './checkout.service';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
 @Controller('/checkout')
+@Inject(DrizzleDatabase, CheckoutService)
 export class CheckoutController {
   constructor(
     private readonly db: DrizzleDatabase<AppDatabase>,
@@ -186,16 +198,41 @@ export class CheckoutController {
   ) {}
 
   @Post()
-  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+  create(input: CheckoutInput, context: RequestContext) {
     return this.db.requestTransaction(
       () => this.checkout.createOrder(input),
-      requestSignal,
+      context.request.signal,
     );
   }
 }
 ```
 
-There is no Drizzle `*TransactionInterceptor` export to import. Existing NestJS interceptor designs should move most transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level compatibility cases where all request work, not just a service method, must share the same boundary. Decorating a controller method with `@Transaction()` remains a compatibility path when the controller owns an explicit `DrizzleDatabase` target, but `requestTransaction(...)` is the clearer request-wide API because it can receive the request `AbortSignal` directly.
+`DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS interceptor imports. It delegates to `requestTransaction(...)` and forwards the request `AbortSignal`. New code should move business transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level cases where all request work, not just a service method, must share the same boundary. Decorating a controller method with `@Transaction()` remains a compatibility path when the controller owns an explicit `DrizzleDatabase` target, but `requestTransaction(...)` is the clearer request-wide API because it can receive the request `AbortSignal` directly.
+
+### Named clients
+
+Register each additional client with a non-empty `name` and inject its package-owned token instead of the `DrizzleDatabase` class token:
+
+```ts
+const ANALYTICS_DRIZZLE = getDrizzleHandleProviderToken('analytics');
+
+DrizzleModule.forRoot({ database: primaryDatabase });
+DrizzleModule.forRoot({ database: analyticsDatabase, name: 'analytics' });
+
+@Inject(ANALYTICS_DRIZZLE)
+class AnalyticsService {
+  constructor(private readonly analytics: DrizzleDatabase<AnalyticsDatabase>) {}
+
+  @Transaction((self: AnalyticsService) => self.analytics)
+  async rebuild() {}
+}
+```
+
+`getDrizzleDatabaseToken`, `getDrizzleDisposeToken`, `getDrizzleOptionsToken`, and
+`getDrizzleHandleProviderToken` return distinct stable identities for each trimmed name. Named clients are
+non-global and independently own ALS transaction context, shutdown drain, disposal, and status. A consumer must import
+a module that exports the matching named token; names do not create isolated runtime containers. Omitting `name`
+preserves the existing default tokens, `DrizzleDatabase` class token, and interceptor behavior.
 
 ### Shutdown and status contracts
 
@@ -237,8 +274,10 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
+- `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
+- `getDrizzleDatabaseToken(name?)`, `getDrizzleDisposeToken(name?)`, `getDrizzleHandleProviderToken(name?)`, `getDrizzleOptionsToken(name?)`
 - `DrizzleDatabase.createFacade(...)` (compatibility-only provider wiring helper; prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)` for application registration)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -246,6 +285,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER` is an alias token for the lifecycle-aware `DrizzleDatabase` wrapper. Health integrations such as `@fluojs/terminus` use this token to read `createPlatformStatusSnapshot()` before falling back to raw database pings.
+
+`DrizzleModule` exports `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, and `DRIZZLE_OPTIONS` for importing modules. `DRIZZLE_DATABASE` injects the configured raw Drizzle handle, so it bypasses the lifecycle-aware facade and ambient transaction-handle selection. Prefer `DrizzleDatabase` or `DrizzleDatabaseFacade` for application repositories; inject the raw token only for integrations that require the configured driver handle. `DRIZZLE_DISPOSE` exposes the configured optional cleanup hook, and `DRIZZLE_OPTIONS` exposes normalized runtime options.
 
 Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. `DrizzleDatabase.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)`.
 
@@ -257,6 +298,7 @@ Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such
 - `forRootAsync(...)` accepts DI-aware Drizzle options whose factory returns the database/dispose/transaction settings; pass `global` on the top-level async registration when the providers should be visible globally.
 - `forRootAsync(...)` resolves options once per application container. Reusing the same module definition across tests or multi-app processes creates isolated database/dispose results for each container instead of sharing a memoized factory result.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
+- Additional named registrations are non-global. Consumers import a module that exports the matching `getDrizzle*Token(name)` and inject through that token; names do not create isolated runtime containers. Each registration owns independent ALS transaction context, drain, disposal, and status; select it explicitly with `@Transaction((self) => self.analytics)`.
 - `database` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
 
 ## Related Packages

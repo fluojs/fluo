@@ -1,3 +1,9 @@
+import { Inject } from '@fluojs/core';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+
+import { DrizzleDatabase } from './database.js';
+import type { DrizzleDatabaseLike } from './types.js';
+
 type TransactionCapableDrizzle<TTransactionOptions = unknown> = {
   transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T>;
 };
@@ -31,7 +37,9 @@ function findNestedTransactionTarget<TTransactionOptions>(value: unknown): Trans
     if (isTransactionCapableDrizzle<TTransactionOptions>(propertyValue)) {
       return propertyValue;
     }
+  }
 
+  for (const propertyValue of Object.values(value)) {
     const nestedDatabase = (propertyValue as { db?: unknown } | null)?.db;
     if (isTransactionCapableDrizzle<TTransactionOptions>(nestedDatabase)) {
       return nestedDatabase;
@@ -88,4 +96,31 @@ export function Transaction<THost, TTransactionOptions = unknown>(
       );
     };
   };
+}
+
+/**
+ * Compatibility HTTP interceptor that opens a Drizzle request transaction around a routed handler.
+ *
+ * @remarks
+ * This deprecated 1.x bridge forwards the request `AbortSignal` to `DrizzleDatabase.requestTransaction(...)`.
+ * Prefer service-layer `@Transaction()` or an explicit request boundary for new code.
+ *
+ * @deprecated Prefer service-layer `@Transaction()` or explicit `DrizzleDatabase.requestTransaction(...)`.
+ */
+@Inject(DrizzleDatabase)
+export class DrizzleTransactionInterceptor implements Interceptor {
+  constructor(
+    private readonly database: DrizzleDatabase<DrizzleDatabaseLike<unknown, unknown>, unknown, unknown>,
+  ) {}
+
+  /**
+   * Runs the downstream handler inside the compatibility request transaction.
+   *
+   * @param context Interceptor context containing the request cancellation signal.
+   * @param next Downstream handler chain.
+   * @returns The downstream result after the request transaction settles.
+   */
+  async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+    return this.database.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+  }
 }

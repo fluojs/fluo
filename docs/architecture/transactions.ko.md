@@ -10,7 +10,7 @@
 | 패키지 | ambient 문맥 운반체 | 주요 접근 API | 요청 경계 API | 현재 지원 범위 |
 | --- | --- | --- | --- | --- |
 | `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | 서비스의 `@Transaction()` | 명시적 `PrismaService.requestTransaction(...)` 또는 deprecated `PrismaTransactionInterceptor` 호환성 | `$transaction(...)`을 사용할 수 있을 때 활성 Prisma interactive transaction client를 공유합니다. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 `DrizzleDatabase.requestTransaction(...)` | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 `DrizzleDatabase.requestTransaction(...)` 또는 deprecated `DrizzleTransactionInterceptor` 호환성 | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
 | `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | 서비스의 `@Transaction()` | 명시적 `MongooseConnection.requestTransaction(...)` 또는 deprecated `MongooseTransactionInterceptor` 호환성 | `connection.startSession()` 또는 위임된 `connection.transaction(...)`을 사용할 수 있을 때 활성 Mongoose session을 공유합니다. |
 
 ## 서비스 트랜잭션 경계 (기본)
@@ -41,6 +41,7 @@ fluo 에코시스템에 추가되는 모든 새로운 ORM 연동 패키지는 �
 | --- | --- | --- |
 | 서비스 -> 레포지토리 흐름 | 서비스의 데코레이터가 경계를 설정하며, 레포지토리는 세션을 전달하거나 `current()`에 명시적으로 접근할 필요 없이 클라이언트를 사용합니다. | `packages/core/src/decorators/transaction.ts` (추상), `packages/mongoose/src/connection.ts` (자동 세션) |
 | 루트 vs ambient 핸들 | Prisma와 Drizzle 영속성 핸들은 활성 트랜잭션 핸들이 있으면 그 값을, 없으면 루트 client/database를 해석합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| 이름 있는 Drizzle 핸들 | 이름 있는 Drizzle 핸들은 각각 분리된 ALS context를 소유합니다. multi-client service는 decorator target discovery에 의존하지 않고 `@Transaction((self) => self.analytics)`로 이름 있는 핸들을 명시적으로 선택합니다. | `packages/drizzle/src/named-registration.ts`, `packages/drizzle/src/transaction.ts` |
 | Mongoose 문서 저장 helper | `MongooseConnection.saveDocument(document, options?)`는 기존 문서를 위한 opt-in 경로입니다. ambient session과 native save option을 병합하고 document identity를 보존하며, 누락되거나 충돌하는 session을 거부합니다. 직접 `doc.save()` 동작은 바꾸지 않습니다. | `packages/mongoose/src/connection.ts` |
 | Mongoose 세션 자동 바인딩 | 지원되는 `MongooseConnection.model(...)` facade 작업(`create`, `find`, `findOne`, `aggregate`, `bulkWrite`)은 ambient 트랜잭션 세션을 자동으로 첨부합니다. 지원되지 않는 model 메서드, `doc.save()`, raw `conn.current().model(...)` 호출, 고급 교차 연결 시나리오에는 명시적인 세션 전달이 필요합니다. | `packages/mongoose/src/connection.ts` |
 | Mongoose decorator 대상 선택 | Mongoose `@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 여러 중첩 후보 중 하나를 임의로 선택하지 않고 거부하므로, multi-connection service 또는 비표준 field에는 `@Transaction((self) => self.analytics.conn)` 같은 accessor를 전달하세요. | `packages/mongoose/src/transaction.ts` |
@@ -67,9 +68,9 @@ Mongoose connection ownership은 애플리케이션에 남아 있습니다. `Mon
 | 패턴 | 동작 |
 | --- | --- |
 | 명시적 요청 경계 | 전체 요청을 트랜잭션으로 감싸야 하는 경우 애플리케이션 코드가 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 직접 호출할 수 있습니다. |
-| Deprecated 인터셉터 호환성 | `PrismaTransactionInterceptor`와 `MongooseTransactionInterceptor`는 기존 1.x import를 위해 복원되었으며 각 패키지의 `requestTransaction(...)` API에 위임합니다. `DrizzleTransactionInterceptor`는 계속 제공되지 않습니다. 새 코드에는 서비스 `@Transaction()`과 명시적 request boundary를 우선 사용하세요. |
+| Deprecated 인터셉터 호환성 | `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`는 기존 1.x import를 위해 복원되었으며 각 패키지의 `requestTransaction(...)` API에 위임합니다. 새 코드에는 서비스 `@Transaction()`과 명시적 request boundary를 우선 사용하세요. |
 
-NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할 때 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. 기존 Prisma 또는 Mongoose 애플리케이션은 migration 동안 deprecated 호환성 interceptor를 유지할 수 있지만, 새 request-wide boundary는 `requestTransaction(...)`을 명시적으로 호출해야 합니다. Drizzle은 transaction interceptor 호환성 export를 제공하지 않습니다. 가능한 경우 request `AbortSignal`을 전달하세요.
+NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할 때 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. 기존 Prisma, Drizzle 또는 Mongoose 애플리케이션은 migration 동안 deprecated 호환성 interceptor를 유지할 수 있지만, 새 request-wide boundary는 `requestTransaction(...)`을 명시적으로 호출해야 합니다. 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ## 고급 / 탈출구 (Escape Hatch)
 

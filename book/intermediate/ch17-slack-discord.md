@@ -356,6 +356,21 @@ The built-in webhook transports are designed around failure patterns seen in pro
 - **Cancellation-aware backoff**: Discord retry waits reject immediately when their signal is already aborted instead of sleeping through the full delay.
 - **Explicit errors**: Permanent failures, such as 404 or 403, are surfaced as `SlackTransportError` or `DiscordTransportError` so the application level can handle them.
 
+Discord workloads can configure the first-party webhook transport's bounded in-process retry policy without replacing it. Omitting `retry` preserves three total attempts and a 250ms base delay; `attempts` accepts integers from `1` through `10`, while `baseDelayMs` accepts integers from `0` through `60000`.
+
+```typescript
+const transport = createDiscordWebhookTransport({
+  fetch: runtime.fetch,
+  retry: {
+    attempts: 5,
+    baseDelayMs: 500,
+  },
+  webhookUrl: config.discordWebhookUrl,
+});
+```
+
+Each retry wait doubles from `baseDelayMs`, and the attempt count includes the initial request. This is a latency-bounded, in-process policy, not durable delivery. Route notifications through queue-backed `@fluojs/notifications` delivery when they must survive a process restart, be scheduled durably, or run independently of request latency.
+
 ## 17.8 Status Snapshots
 
 Chat integrations can stop working because webhook URLs expire, permissions change, or external services fail. Connect status snapshots to operational metrics and alerts so you can detect issues early.

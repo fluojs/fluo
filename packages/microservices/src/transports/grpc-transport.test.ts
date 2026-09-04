@@ -162,9 +162,20 @@ class FakeBidiHalf extends FakeReadableStream {
   private writeEnded = false;
   readonly written: unknown[] = [];
   private peer: FakeBidiHalf | undefined;
+  cancelCount = 0;
+  destroyCount = 0;
 
   setPeer(peer: FakeBidiHalf): void {
     this.peer = peer;
+  }
+
+  // Real grpc-js ClientDuplexStream.cancel() aborts the RPC in both directions:
+  // the peer reader errors instead of observing a clean EOF, and the local stream errors too.
+  override cancel(): void {
+    this.cancelCount += 1;
+    this.writeEnded = true;
+    this.peer?.emit('error', new Error('Cancelled on client'));
+    super.cancel();
   }
 
   write(data: unknown): boolean {
@@ -183,16 +194,23 @@ class FakeBidiHalf extends FakeReadableStream {
     }
   }
 
+  // Real grpc-js duplex destroy(err) terminates both halves: the peer observes the failure and
+  // the local readable side emits 'error' rather than hanging open.
   destroy(err?: Error): void {
+    this.destroyCount += 1;
+
     if (!this.writeEnded) {
       this.writeEnded = true;
     }
 
     if (err) {
       this.peer?.emit('error', err);
-    } else {
-      this.peer?.emit('end');
+      this.emit('error', err);
+      return;
     }
+
+    this.peer?.emit('end');
+    this.emit('end');
   }
 }
 
@@ -272,9 +290,23 @@ class FakeGrpcRuntime {
               callback: (error: { code?: number; message?: string } | null, response: unknown) => void,
             ) => {
               const inboundStream = new FakeReadableStream();
+              let settled = false;
+              const settleOnce = (
+                error: { code?: number; message?: string } | null,
+                response: unknown,
+              ) => {
+                if (settled) {
+                  return;
+                }
+
+                settled = true;
+                callback(error, response);
+              };
               const writable = {
                 written: [] as unknown[],
                 ended: false,
+                cancelCount: 0,
+                destroyCount: 0,
                 write(data: unknown): boolean {
                   this.written.push(data);
                   inboundStream.emit('data', data);
@@ -283,6 +315,21 @@ class FakeGrpcRuntime {
                 end(): void {
                   this.ended = true;
                   inboundStream.emit('end');
+                },
+                // Real grpc-js ClientWritableStream aborts the RPC: the server-side reader
+                // errors instead of seeing a clean EOF, and the unary callback settles CANCELLED.
+                cancel(): void {
+                  this.cancelCount += 1;
+                  this.ended = true;
+                  inboundStream.emit('error', new Error('Cancelled on client'));
+                  settleOnce({ code: runtime.status.CANCELLED, message: 'Cancelled on client' }, undefined);
+                },
+                destroy(err?: Error): void {
+                  this.destroyCount += 1;
+                  this.ended = true;
+                  const failure = err ?? new Error('Cancelled on client');
+                  inboundStream.emit('error', failure);
+                  settleOnce({ code: runtime.status.CANCELLED, message: failure.message }, undefined);
                 },
               };
 
@@ -293,7 +340,7 @@ class FakeGrpcRuntime {
                 methodName,
                 metadata,
                 inboundStream,
-                callback,
+                settleOnce,
               );
 
               return writable;
@@ -1636,6 +1683,230 @@ describe('GrpcMicroserviceTransport', () => {
     expect(() => transport.bidiStream('invalid-pattern')).toThrow(
       'Invalid gRPC pattern "invalid-pattern". Expected "<Service>.<Method>"',
     );
+
+    await transport.close();
+  });
+
+  it('clientStream() writer.error() aborts the call instead of completing it as a clean EOF', async () => {
+    const { transport } = createGrpcTransport();
+    let readerFailure: Error | undefined;
+    let collected: unknown[] = [];
+    let resolveHandlerSettled: () => void = () => {
+      throw new Error('Expected the client-stream handler gate to be initialized.');
+    };
+    const handlerSettled = new Promise<void>((resolve) => {
+      resolveHandlerSettled = resolve;
+    });
+
+    transport.listenClientStreaming(async (_pattern, reader) => {
+      const items: unknown[] = [];
+
+      try {
+        for await (const item of reader) {
+          items.push(item);
+        }
+      } catch (err) {
+        readerFailure = err as Error;
+      } finally {
+        collected = items;
+        resolveHandlerSettled();
+      }
+
+      return { total: items.length };
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { writer, result } = transport.clientStream('MathService.StreamAll');
+    writer.write({ value: 1 });
+    writer.error(new Error('producer exploded'));
+
+    await expect(result).rejects.toThrow('producer exploded');
+
+    await handlerSettled;
+
+    expect(readerFailure).toBeDefined();
+    expect(collected).toEqual([{ value: 1 }]);
+
+    await transport.close();
+  });
+
+  it('clientStream() writer.error() rejects the result with the original error even after end()', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenClientStreaming(async (_pattern, reader) => {
+      try {
+        for await (const item of reader) {
+          void item;
+        }
+      } catch {
+        // The aborted call surfaces on the server reader; the client-side result is asserted below.
+      }
+
+      return { total: 0 };
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { writer, result } = transport.clientStream('MathService.StreamAll');
+    writer.error(new Error('first failure'));
+    writer.error(new Error('second failure'));
+    writer.end();
+
+    await expect(result).rejects.toThrow('first failure');
+
+    await transport.close();
+  });
+
+  it('clientStream() writer.error() removes its AbortSignal listener exactly once', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenClientStreaming(async (_pattern, reader) => {
+      try {
+        for await (const item of reader) {
+          void item;
+        }
+      } catch {
+        // Server-side abort is expected here.
+      }
+
+      return { total: 0 };
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const { writer, result } = transport.clientStream('MathService.StreamAll', controller.signal);
+
+    writer.error(new Error('cleanup failure'));
+
+    await expect(result).rejects.toThrow('cleanup failure');
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+
+    await transport.close();
+  });
+
+  it('bidiStream() writer.error() aborts the call instead of completing it as a clean EOF', async () => {
+    const { transport } = createGrpcTransport();
+    let serverReaderFailure: Error | undefined;
+    let resolveHandlerSettled: () => void = () => {
+      throw new Error('Expected the bidi handler gate to be initialized.');
+    };
+    const handlerSettled = new Promise<void>((resolve) => {
+      resolveHandlerSettled = resolve;
+    });
+
+    transport.listenBidiStreaming(async (_pattern, reader, _writer) => {
+      try {
+        for await (const item of reader) {
+          void item;
+        }
+      } catch (err) {
+        serverReaderFailure = err as Error;
+      } finally {
+        resolveHandlerSettled();
+      }
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { reader, writer } = transport.bidiStream('MathService.StreamBidi');
+    writer.write({ value: 1 });
+    writer.error(new Error('bidi producer exploded'));
+
+    const collected: unknown[] = [];
+    let readerFailure: Error | undefined;
+
+    try {
+      for await (const item of reader) {
+        collected.push(item);
+      }
+    } catch (err) {
+      readerFailure = err as Error;
+    }
+
+    expect(readerFailure).toBeDefined();
+    expect(readerFailure!.message).toContain('bidi producer exploded');
+    expect(collected).toEqual([]);
+
+    await handlerSettled;
+
+    expect(serverReaderFailure).toBeDefined();
+
+    await transport.close();
+  });
+
+  it('bidiStream() writer.error() is idempotent and does not cancel the call twice', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenBidiStreaming(async (_pattern, reader) => {
+      try {
+        for await (const item of reader) {
+          void item;
+        }
+      } catch {
+        // Client-side abort is expected here.
+      }
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { reader, writer } = transport.bidiStream('MathService.StreamBidi');
+
+    writer.error(new Error('first bidi failure'));
+    writer.error(new Error('second bidi failure'));
+    writer.end();
+
+    let readerFailure: Error | undefined;
+
+    try {
+      for await (const item of reader) {
+        void item;
+      }
+    } catch (err) {
+      readerFailure = err as Error;
+    }
+
+    expect(readerFailure).toBeDefined();
+    expect(readerFailure!.message).toContain('first bidi failure');
+
+    await transport.close();
+  });
+
+  it('bidiStream() writer.error() removes its AbortSignal listeners exactly once', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenBidiStreaming(async (_pattern, reader) => {
+      try {
+        for await (const item of reader) {
+          void item;
+        }
+      } catch {
+        // Client-side abort is expected here.
+      }
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const { reader, writer } = transport.bidiStream('MathService.StreamBidi', controller.signal);
+
+    writer.error(new Error('bidi cleanup failure'));
+
+    let readerFailure: Error | undefined;
+
+    try {
+      for await (const item of reader) {
+        void item;
+      }
+    } catch (err) {
+      readerFailure = err as Error;
+    }
+
+    expect(readerFailure).toBeDefined();
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
 
     await transport.close();
   });
