@@ -234,7 +234,7 @@ describe('resolveWorkspaceBuildOrder', () => {
     const secondWorker = runWorker('second');
     await secondReady;
 
-    expect(readFileSync(buildLog, 'utf8').trim().split('\\n')).toHaveLength(1);
+    expect(readFileSync(buildLog, 'utf8').trim().split('\n')).toHaveLength(1);
     await new Promise<void>((resolve, reject) => {
       const release = spawn('sh', ['-c', `printf release > ${JSON.stringify(releaseFifo)}`]);
       release.once('error', reject);
