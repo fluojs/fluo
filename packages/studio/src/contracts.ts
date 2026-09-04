@@ -740,7 +740,7 @@ function validateStudioLiveEventSource(value: unknown): StudioLiveEventSource {
   };
 }
 
-function validateStudioLiveEventPayload(type: unknown, payload: unknown): StudioLiveEvent['payload'] {
+function validateStudioLiveEventPayload(type: unknown, payload: unknown): StudioParsedLiveEvent['payload'] {
   if (type === 'snapshot') {
     return validateStudioLiveSnapshot(payload);
   }
@@ -1087,7 +1087,7 @@ export function parseStudioPayload(rawJson: string): ParsedPayload {
  * @param filter - Active readiness, severity, and query filters.
  * @returns A filtered snapshot containing only the matching components and diagnostics.
  */
-export function applyFilters(snapshot: PlatformShellSnapshot, filter: FilterState): PlatformShellSnapshot {
+export function applyFilters<TSnapshot extends PlatformShellSnapshot>(snapshot: TSnapshot, filter: FilterState): TSnapshot {
   const query = filter.query.trim().toLowerCase();
 
   const components = snapshot.components.filter((component: PlatformSnapshot) => {

@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, type StudioLiveEvent } from './contracts.js';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type {
+  StudioLiveEvent,
+  StudioNormalizedRouteDescriptor,
+  StudioParsedLiveEvent,
+  StudioParsedLiveSnapshot,
+  StudioParsedPayload,
+} from './contracts.js';
+import { isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, validateStudioLiveEvent } from './contracts.js';
+import type { StudioAction } from './entities/studio/actions.js';
+import type { StudioDashboardState, selectLiveRoutes, selectRoutes } from './entities/studio/model.js';
 import { initialStudioState } from './entities/studio/model.js';
 import { studioReducer } from './features/live-connection/model/reducer.js';
 
@@ -79,6 +88,21 @@ const liveEvents: readonly StudioLiveEvent[] = [
 ] as const;
 
 describe('Studio live event contracts', () => {
+  it('carries validated route correlation types through every dashboard state layer', () => {
+    type LiveEventAction = Extract<StudioAction, { type: 'live-event' }>;
+    type StaticPayloadAction = Extract<StudioAction, { type: 'static-payload' }>;
+
+    expectTypeOf<LiveEventAction['event']>().toEqualTypeOf<StudioParsedLiveEvent>();
+    expectTypeOf<StaticPayloadAction['parsed']['payload']>().toEqualTypeOf<StudioParsedPayload>();
+    expectTypeOf<StudioDashboardState['events']>().toEqualTypeOf<StudioParsedLiveEvent[]>();
+    expectTypeOf<StudioDashboardState['liveSnapshot']>().toEqualTypeOf<StudioParsedLiveSnapshot | undefined>();
+    expectTypeOf<NonNullable<StudioDashboardState['staticReport']['payload']>>()
+      .toEqualTypeOf<StudioParsedPayload>();
+    expectTypeOf<ReturnType<typeof selectLiveRoutes>>().toEqualTypeOf<StudioNormalizedRouteDescriptor[]>();
+    expectTypeOf<ReturnType<typeof selectRoutes>>().toEqualTypeOf<StudioNormalizedRouteDescriptor[]>();
+    expectTypeOf<ReturnType<typeof selectRoutes>[number]['graphNodeId']>().toEqualTypeOf<string>();
+  });
+
   it('accepts every documented runtime-connected event kind', () => {
     for (const event of liveEvents) {
       expect(isStudioLiveEvent(event)).toBe(true);
@@ -153,21 +177,33 @@ describe('Studio live event contracts', () => {
   });
 
   it('maps restart and disconnect events to documented connection states', () => {
-    const restarting = studioReducer(initialStudioState, { event: liveEvents[5], type: 'live-event' });
+    const restarting = studioReducer(initialStudioState, {
+      event: validateStudioLiveEvent(liveEvents[5]),
+      type: 'live-event',
+    });
     expect(restarting.connection.status).toBe('restarting');
     expect(restarting.connection.message).toBe('source changed');
 
     const restartedEvent: StudioLiveEvent = { ...eventBase(8), payload: { phase: 'started' }, type: 'restart' };
-    const restarted = studioReducer(restarting, { event: restartedEvent, type: 'live-event' });
+    const restarted = studioReducer(restarting, {
+      event: validateStudioLiveEvent(restartedEvent),
+      type: 'live-event',
+    });
     expect(restarted.connection.status).toBe('connected');
 
-    const disconnected = studioReducer(restarted, { event: liveEvents[6], type: 'live-event' });
+    const disconnected = studioReducer(restarted, {
+      event: validateStudioLiveEvent(liveEvents[6]),
+      type: 'live-event',
+    });
     expect(disconnected.connection.status).toBe('disconnected');
     expect(disconnected.connection.message).toBe('dev server closed');
   });
 
   it('clears stale live session state when static/report loading takes over', () => {
-    const liveState = studioReducer(initialStudioState, { event: liveEvents[0], type: 'live-event' });
+    const liveState = studioReducer(initialStudioState, {
+      event: validateStudioLiveEvent(liveEvents[0]),
+      type: 'live-event',
+    });
     expect(liveState.mode).toBe('live');
     expect(liveState.liveSnapshot).toBeDefined();
     expect(liveState.selectedGraphNodeId).toBe('module:app');

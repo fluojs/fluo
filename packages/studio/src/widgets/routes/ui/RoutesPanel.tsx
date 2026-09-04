@@ -1,5 +1,5 @@
 import type { Dispatch } from 'react';
-import type { StudioRouteDescriptor } from '../../../contracts.js';
+import type { StudioNormalizedRouteDescriptor } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectRoutes, selectSelectedRoute } from '../../../entities/studio/model.js';
@@ -10,12 +10,12 @@ interface RoutesPanelProps {
   state: StudioDashboardState;
 }
 
-function routeGraphNodeId(route: StudioRouteDescriptor, state: StudioDashboardState): string | undefined {
+function routeGraphNodeId(route: StudioNormalizedRouteDescriptor, state: StudioDashboardState): string | undefined {
   return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.id === route.graphNodeId)?.id;
 }
 
-function routeKindLabel(route: StudioRouteDescriptor): string {
-  return route.kind === 'react-page' ? 'React page' : route.kind === 'http' || route.kind === undefined ? 'HTTP handler' : route.kind;
+function routeKindLabel(route: StudioNormalizedRouteDescriptor): string {
+  return route.kind === 'react-page' ? 'React page' : route.kind === 'http' ? 'HTTP handler' : route.kind;
 }
 
 /**

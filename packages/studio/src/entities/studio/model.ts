@@ -1,15 +1,15 @@
 import type {
   BootstrapTimingDiagnostics,
   FilterState,
-  PlatformShellSnapshot,
   PlatformSnapshot,
   StudioConnectionState,
-  StudioInspectionSnapshot,
   StudioLiveDiagnostic,
-  StudioLiveEvent,
-  StudioLiveSnapshot,
+  StudioNormalizedRouteDescriptor,
+  StudioParsedInspectionSnapshot,
+  StudioParsedLiveEvent,
+  StudioParsedLiveSnapshot,
+  StudioParsedPayload,
   StudioRequestTrace,
-  StudioRouteDescriptor,
 } from '../../contracts.js';
 import { applyFilters } from '../../contracts.js';
 
@@ -22,11 +22,8 @@ export type StudioMode = 'live' | 'static';
  * Describes Static Report State data used by the Studio devtool.
  */
 export interface StaticReportState {
-  filteredSnapshot?: PlatformShellSnapshot;
-  payload?: {
-    snapshot?: StudioInspectionSnapshot;
-    timing?: BootstrapTimingDiagnostics;
-  };
+  filteredSnapshot?: StudioParsedInspectionSnapshot;
+  payload?: StudioParsedPayload;
   rawJson?: string;
   selectedComponentId?: string;
 }
@@ -38,9 +35,9 @@ export interface StudioDashboardState {
   appId?: string;
   connection: StudioConnectionState;
   epoch?: string;
-  events: StudioLiveEvent[];
+  events: StudioParsedLiveEvent[];
   filter: FilterState;
-  liveSnapshot?: StudioLiveSnapshot;
+  liveSnapshot?: StudioParsedLiveSnapshot;
   message?: string;
   mode: StudioMode;
   selectedGraphNodeId?: string;
@@ -49,18 +46,7 @@ export interface StudioDashboardState {
   staticReport: StaticReportState;
 }
 
-type StudioDisplayRouteDescriptor = Omit<StudioRouteDescriptor, 'kind' | 'params'> & {
-  kind: NonNullable<StudioRouteDescriptor['kind']>;
-  params: string[];
-};
-
-function normalizeStudioRouteDescriptor(route: StudioRouteDescriptor): StudioDisplayRouteDescriptor {
-  return {
-    ...route,
-    kind: route.kind ?? 'http',
-    params: route.params === undefined ? [] : [...route.params],
-  };
-}
+type StudioDisplayRouteDescriptor = StudioNormalizedRouteDescriptor;
 
 /**
  * Provides initial Studio State defaults for the Studio devtool.
@@ -86,7 +72,7 @@ export const initialStudioState: StudioDashboardState = {
  * @param state state value used by select Static Snapshot.
  * @returns The select Static Snapshot result.
  */
-export function selectStaticSnapshot(state: StudioDashboardState): PlatformShellSnapshot | undefined {
+export function selectStaticSnapshot(state: StudioDashboardState): StudioParsedInspectionSnapshot | undefined {
   return state.staticReport.filteredSnapshot;
 }
 
@@ -96,7 +82,7 @@ export function selectStaticSnapshot(state: StudioDashboardState): PlatformShell
  * @param state state value used by select Original Static Snapshot.
  * @returns The unfiltered static snapshot, when one has been loaded.
  */
-export function selectOriginalStaticSnapshot(state: StudioDashboardState): PlatformShellSnapshot | undefined {
+export function selectOriginalStaticSnapshot(state: StudioDashboardState): StudioParsedInspectionSnapshot | undefined {
   return state.staticReport.payload?.snapshot;
 }
 
@@ -146,7 +132,7 @@ export function selectLiveDiagnostics(state: StudioDashboardState): StudioLiveDi
  * @param state state value used by select Live Routes.
  * @returns The select Live Routes result.
  */
-export function selectLiveRoutes(state: StudioDashboardState): StudioRouteDescriptor[] {
+export function selectLiveRoutes(state: StudioDashboardState): StudioNormalizedRouteDescriptor[] {
   return state.liveSnapshot?.routes ?? [];
 }
 
@@ -157,10 +143,9 @@ export function selectLiveRoutes(state: StudioDashboardState): StudioRouteDescri
  * @returns Live routes in live mode or compiled routes from the loaded static snapshot.
  */
 export function selectRoutes(state: StudioDashboardState): StudioDisplayRouteDescriptor[] {
-  const routes = state.mode === 'live'
+  return state.mode === 'live'
     ? selectLiveRoutes(state)
     : state.staticReport.payload?.snapshot?.routes ?? [];
-  return routes.map(normalizeStudioRouteDescriptor);
 }
 
 /**
@@ -220,7 +205,7 @@ export function selectSelectedRequest(state: StudioDashboardState): StudioReques
  * @param filter filter value used by filter Static Snapshot.
  * @returns The filter Static Snapshot result.
  */
-export function filterStaticSnapshot(payload: StaticReportState['payload'], filter: FilterState): PlatformShellSnapshot | undefined {
+export function filterStaticSnapshot(payload: StaticReportState['payload'], filter: FilterState): StudioParsedInspectionSnapshot | undefined {
   return payload?.snapshot ? applyFilters(payload.snapshot, filter) : undefined;
 }
 
@@ -231,7 +216,7 @@ export function filterStaticSnapshot(payload: StaticReportState['payload'], filt
  * @param maxEvents max Events value used by retain Recent Events.
  * @returns The retain Recent Events result.
  */
-export function retainRecentEvents(events: StudioLiveEvent[], maxEvents = 120): StudioLiveEvent[] {
+export function retainRecentEvents(events: StudioParsedLiveEvent[], maxEvents = 120): StudioParsedLiveEvent[] {
   return events.length > maxEvents ? events.slice(events.length - maxEvents) : events;
 }
 
