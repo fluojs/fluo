@@ -167,7 +167,7 @@ The snapshot gives Studio the resolved component graph and diagnostics. Timing d
 
 ## 15.6 Scenario: Reviewing a Completed Bootstrap
 
-Studio reports are post-bootstrap artifacts. `fluo inspect` must finish creating the application before it can collect a snapshot or timing data, so it cannot emit a report when bootstrap fails or hangs. fluo has no `PartialGraphHost` equivalent that can export a partial graph from a failed bootstrap; use the existing CLI stderr and underlying bootstrap error diagnostics for that failure, and design partial-graph support separately if it is needed.
+<!-- fluo-studio-report-bootstrap-failure-contract --> Studio reports are post-bootstrap artifacts. `fluo inspect` must finish creating the application before it can collect a snapshot or timing data, so it cannot emit a report when bootstrap fails or hangs. fluo has no `PartialGraphHost` equivalent that can export a partial graph from a failed bootstrap; use the existing CLI stderr and underlying bootstrap error diagnostics for that failure, and design partial-graph support separately if it is needed.
 
 When bootstrap completes and you need to inspect the resolved graph, diagnostics, or startup timing, generate a report artifact.
 

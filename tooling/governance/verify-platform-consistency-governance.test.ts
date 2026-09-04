@@ -155,7 +155,10 @@ async function loadGovernanceInternals() {
     enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
-    enforceStudioReportBootstrapFailureCompanions: (changedFiles: string[]) => void;
+    enforceStudioReportBootstrapFailureCompanions: (
+      changedFiles: string[],
+      documentSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
+    ) => void;
   };
 }
 
@@ -1805,34 +1808,71 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
   });
 
-  it('requires the exact #3338 bilingual guidance and CLI regression companions', async () => {
+  it('ignores unrelated NestJS migration guide edits for #3338 companions', async () => {
     const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
-    const studioBook = 'book/advanced/ch15-studio.md';
-    const studioBookKo = 'book/advanced/ch15-studio.ko.md';
-    const nestMigration = 'docs/getting-started/migrate-from-nestjs.md';
-    const nestMigrationKo = 'docs/getting-started/migrate-from-nestjs.ko.md';
-    const cliRegression = 'packages/cli/src/public-api.test.ts';
-    const exactCompanions = [studioBook, studioBookKo, nestMigration, nestMigrationKo, cliRegression];
+    const migrationPaths = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      migrationPaths.map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+          head: 'unrelated migration edit\n<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+        },
+      ]),
+    );
 
-    expect(() => enforceStudioReportBootstrapFailureCompanions([studioBook])).not.toThrow();
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(migrationPaths, snapshots),
+    ).not.toThrow();
+  });
+
+  it.each([
+    'book/advanced/ch15-studio.md',
+    'book/advanced/ch15-studio.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('requires exact #3338 companions for a contract edit in %s', async (triggerPath) => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+          head:
+            path === triggerPath
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract --> changed contract section'
+              : '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([triggerPath], snapshots),
+    ).toThrowError(/Studio bootstrap-failure guidance/);
     for (const missingCompanion of exactCompanions) {
+      if (missingCompanion === triggerPath) {
+        continue;
+      }
+
       expect(() =>
         enforceStudioReportBootstrapFailureCompanions(
           exactCompanions.filter((companion) => companion !== missingCompanion),
+          snapshots,
         ),
       ).toThrowError(/Studio bootstrap-failure guidance/);
     }
     expect(() =>
-      enforceStudioReportBootstrapFailureCompanions([
-        studioBook,
-        studioBookKo,
-        nestMigration,
-        nestMigrationKo,
-        'packages/studio/src/contracts.test.ts',
-      ]),
-    ).toThrowError(/packages\/cli\/src\/public-api\.test\.ts/);
-    expect(() =>
-      enforceStudioReportBootstrapFailureCompanions(exactCompanions),
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
     ).not.toThrow();
   });
 

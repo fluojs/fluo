@@ -525,10 +525,14 @@ const studioReportBootstrapFailureCompanionPaths = [
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'packages/cli/src/public-api.test.ts',
 ];
-const studioReportBootstrapFailureTriggers = new Set([
+const studioReportBootstrapFailureContractPaths = [
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
-]);
+];
+const studioReportBootstrapFailureContractSentinel =
+  '<!-- fluo-studio-report-bootstrap-failure-contract -->';
 
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
@@ -1183,7 +1187,7 @@ function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
   });
 }
 
-export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
   const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
   const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
   if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
@@ -1192,7 +1196,7 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
 
   const mergeBase = mergeBaseResult.stdout.trim();
   const snapshots = {};
-  for (const path of nestMigrationGuidePaths) {
+  for (const path of paths) {
     const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
     if (baseResult.status !== 0) {
       return undefined;
@@ -1205,6 +1209,14 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
   }
 
   return snapshots;
+}
+
+export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+  return documentSnapshotsFromGit(nestMigrationGuidePaths, runCommand, env);
+}
+
+export function studioReportBootstrapFailureSnapshotsFromGit(runCommand = run, env = process.env) {
+  return documentSnapshotsFromGit(studioReportBootstrapFailureContractPaths, runCommand, env);
 }
 
 /**
@@ -1415,8 +1427,29 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // cleanup docs are also covered by this companion path.
 }
 
-export function enforceStudioReportBootstrapFailureCompanions(changedFiles) {
-  if (!changedFiles.some((path) => studioReportBootstrapFailureTriggers.has(path))) {
+function studioReportBootstrapFailureContractLine(documentation) {
+  return documentation
+    .split('\n')
+    .find((line) => line.includes(studioReportBootstrapFailureContractSentinel));
+}
+
+export function enforceStudioReportBootstrapFailureCompanions(changedFiles, documentSnapshots) {
+  const contractChanged = studioReportBootstrapFailureContractPaths.some((path) => {
+    if (!hasChanged(changedFiles, path)) {
+      return false;
+    }
+
+    const snapshot = documentSnapshots?.[path];
+    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
+      return false;
+    }
+
+    const baseLine = studioReportBootstrapFailureContractLine(snapshot.base);
+    const headLine = studioReportBootstrapFailureContractLine(snapshot.head);
+    return Boolean(baseLine && headLine && baseLine !== headLine);
+  });
+
+  if (!contractChanged) {
     return;
   }
 
@@ -3748,6 +3781,7 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
 export async function main() {
   const changedFiles = changedFilesFromGit();
   const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
+  const studioReportBootstrapFailureSnapshots = studioReportBootstrapFailureSnapshotsFromGit();
 
   enforceSsotMirrorStructure();
   enforcePackageDirectoriesHaveManifests();
@@ -3808,7 +3842,7 @@ export async function main() {
   enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
-  enforceStudioReportBootstrapFailureCompanions(changedFiles);
+  enforceStudioReportBootstrapFailureCompanions(changedFiles, studioReportBootstrapFailureSnapshots);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');
