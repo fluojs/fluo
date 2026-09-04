@@ -13,6 +13,7 @@
 - `./auth-jwt-passport/` — JWT 발급과 passport core 기반 보호 라우트를 보여주는 bearer-token auth 예제
 - `./ops-metrics-terminus/` — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
 - `./openapi-multiple-documents/` — 서로 다른 라우트의 OpenAPI JSON 문서 두 개와 Swagger UI 페이지
+- `./graphql/` — GraphQL module registration, resolver discovery, operation 범위 DataLoader, SSE subscription
 - `./react-stable-ssr/` — HTTP-owned route, DTO-bound params/search, lifecycle middleware, 명시적인
   hydration asset을 포함한 안정 `@fluojs/react` SSR MVP 예제
 - `./react-vite-ssr/` — manifest-fed asset, streamed Suspense, hydration, HTTP-first client
@@ -27,10 +28,11 @@
 3. `./auth-jwt-passport/README.ko.md` — auth, JWT 발급, 보호 라우트 경로
 4. `./ops-metrics-terminus/README.ko.md` — metrics와 health/readiness 경로
 5. `./openapi-multiple-documents/README.ko.md` — 여러 OpenAPI JSON 및 Swagger UI 라우트
-6. `./react-stable-ssr/README.ko.md` — HTTP-owned handler로서의 안정 React SSR page
-7. `./react-vite-ssr/README.ko.md` — SSR baseline 위에 Vite build manifest와 hydration 추가
-8. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
-9. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
+6. `./graphql/README.ko.md` — code-first GraphQL query, DataLoader, SSE subscription 흐름
+7. `./react-stable-ssr/README.ko.md` — HTTP-owned handler로서의 안정 React SSR page
+8. `./react-vite-ssr/README.ko.md` — SSR baseline 위에 Vite build manifest와 hydration 추가
+9. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
+10. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
 
 ## 예제가 문서에서 맡는 역할
 
@@ -39,6 +41,7 @@
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다
 - `openapi-multiple-documents`는 하나의 앱이 독립적으로 구성된 OpenAPI JSON과 Swagger UI 라우트를 제공할 수 있음을 증명합니다
+- `graphql`은 resolver discovery, operation 범위 DataLoader 재사용, 기본 SSE subscription lifecycle을 증명합니다
 - `react-stable-ssr`은 안정 `@fluojs/react` root contract를 증명합니다. `@Router`/`@Path`는
   `@fluojs/http` 위의 lexical facade이고, URL matching과 route grammar는 HTTP-owned 상태로 남으며,
   DTO validation과 request lifecycle은 보존되고, hydration asset은 명시적이며, RSC/server functions는
@@ -67,6 +70,7 @@ pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport
 pnpm vitest run examples/ops-metrics-terminus
 pnpm vitest run examples/openapi-multiple-documents
+pnpm vitest run examples/graphql
 pnpm vitest run examples/react-stable-ssr
 pnpm vitest run examples/react-vite-ssr
 ```

@@ -8,6 +8,13 @@ import { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migrat
 const repoRoot = join(import.meta.dirname, '..', '..');
 const migrationMarker =
   '<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->';
+const resolverMigrationFacts = [
+  ['field-argument-dto', 'code-first-input-args-arg-types'],
+  ['schema-first-field-resolver', 'unsupported'],
+  ['async-registration', 'inject-use-factory'],
+  ['nest-dynamic-options', 'unsupported'],
+  ['subscription-topics', 'unsupported'],
+] as const;
 const governedDocumentationPaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
@@ -25,6 +32,46 @@ const canonicalMigrationLinks = [
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function replaceResolverMigrationMarker(
+  document: string,
+  transform: (resolverMigrationMarker: string) => string,
+): string {
+  const resolverMigrationMarker = document.match(
+    /<!-- fluo:graphql-resolver-migration: [\s\S]*? -->/u,
+  )?.[0];
+  if (resolverMigrationMarker === undefined) {
+    throw new Error('Expected a resolver migration sentinel.');
+  }
+
+  const changedMarker = transform(resolverMigrationMarker);
+  expect(changedMarker).not.toBe(resolverMigrationMarker);
+
+  const changedDocument = document.replace(resolverMigrationMarker, changedMarker);
+  expect(changedDocument).not.toBe(document);
+  return changedDocument;
+}
+
+function rewordResolverMigrationHeading(document: string): string {
+  const resolverMigrationMarkerIndex = document.indexOf('<!-- fluo:graphql-resolver-migration: ');
+  if (resolverMigrationMarkerIndex === -1) {
+    throw new Error('Expected a resolver migration sentinel.');
+  }
+
+  const headingStart = document.lastIndexOf('\n### ', resolverMigrationMarkerIndex);
+  if (headingStart === -1) {
+    throw new Error('Expected a resolver migration subsection heading.');
+  }
+
+  const headingEnd = document.indexOf('\n', headingStart + 1);
+  const changedDocument = [
+    document.slice(0, headingStart),
+    '\n### Reworded resolver migration boundary',
+    document.slice(headingEnd),
+  ].join('');
+  expect(changedDocument).not.toBe(document);
+  return changedDocument;
 }
 
 describe('GraphQL NestJS migration boundaries', () => {
@@ -62,6 +109,47 @@ describe('GraphQL NestJS migration boundaries', () => {
         : read(relativePath);
 
     expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithDuplicateMarker)).toThrow(
+      governedDocumentationPaths[0],
+    );
+  });
+
+  it.each(governedDocumentationPaths.slice(0, 2))(
+    'rejects each changed legacy resolver migration fact in %s',
+    (driftedPath) => {
+      for (const [name, value] of resolverMigrationFacts) {
+        const readWithDriftedResolverFact = (relativePath: string): string =>
+          relativePath === driftedPath
+            ? replaceResolverMigrationMarker(read(relativePath), (resolverMigrationMarker) =>
+              resolverMigrationMarker.replace(`${name}=${value}`, `${name}=regressed`),
+            )
+            : read(relativePath);
+
+        expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithDriftedResolverFact)).toThrow(
+          driftedPath,
+        );
+      }
+    },
+  );
+
+  it.each(governedDocumentationPaths.slice(0, 2))(
+    'accepts a reworded resolver subsection heading in %s',
+    (driftedPath) => {
+      const readWithRewordedResolverHeading = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? rewordResolverMigrationHeading(read(relativePath))
+          : read(relativePath);
+
+      expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithRewordedResolverHeading)).not.toThrow();
+    },
+  );
+
+  it('rejects a missing legacy resolver migration sentinel', () => {
+    const readWithoutResolverMigrationMarker = (relativePath: string): string =>
+      relativePath === governedDocumentationPaths[0]
+        ? replaceResolverMigrationMarker(read(relativePath), () => '')
+        : read(relativePath);
+
+    expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithoutResolverMigrationMarker)).toThrow(
       governedDocumentationPaths[0],
     );
   });
