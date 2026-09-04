@@ -166,7 +166,7 @@ The package also exports option and subscription types such as `ConfigModuleOpti
 
 ## Related Packages
 
-- **`@fluojs/runtime`**: Calls `loadConfig` internally during application bootstrap.
+- **`@fluojs/runtime`**: Does not provide configuration loading transitively. Applications that use `ConfigModule.forRoot(...)` or inject `ConfigService` must declare `@fluojs/config` as a direct dependency.
 - **Standard Schema validators**: Zod, Valibot, ArkType, and other compatible schema libraries can be passed through the `schema` option.
 
 ## Example Sources

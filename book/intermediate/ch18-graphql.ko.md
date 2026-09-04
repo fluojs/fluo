@@ -27,7 +27,7 @@
 - **표준 데코레이터**: 레거시 `experimentalDecorators` 플래그에 의존하지 않습니다.
 - **성능**: 런타임 퍼사드(facade)와 직접 통합해 불필요한 오버헤드를 줄입니다.
 
-배포되는 `@fluojs/graphql` manifest는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node listener-capable `@fluojs/runtime`이 RFC `QUERY`에 이 검증된 window를 요구하므로 이 값은 필수 first-party dependency graph와 일치합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. `@fluojs/config`는 독립적인 Node.js `>=20.16.0` 하한을 유지합니다. HTTP/SSE 구현 내부의 Web-standard request/response primitive가 Bun, Deno, Edge Workers를 지원되는 GraphQL package runtime으로 만들지는 않습니다. 해당 target이 계약에 포함되려면 dependency metadata 정렬과 native runtime 검증이 먼저 필요합니다.
+배포되는 `@fluojs/graphql` manifest는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node listener-capable `@fluojs/runtime`이 RFC `QUERY`에 이 검증된 window를 요구하므로 이 값은 필수 first-party dependency graph와 일치합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. `@fluojs/config`는 이 필수 dependency graph에 포함되지 않으며 독립적인 Node.js `>=20.16.0` 하한을 유지합니다. HTTP/SSE 구현 내부의 Web-standard request/response primitive가 Bun, Deno, Edge Workers를 지원되는 GraphQL package runtime으로 만들지는 않습니다. 해당 target이 계약에 포함되려면 dependency metadata 정렬과 native runtime 검증이 먼저 필요합니다.
 
 ## 18.2 Installation and Setup
 

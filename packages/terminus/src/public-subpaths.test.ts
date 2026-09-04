@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -25,5 +27,41 @@ describe('@fluojs/terminus subpath exports', () => {
         types: './dist/redis.d.ts',
       },
     });
+  });
+
+  it('imports emitted node and redis subpaths with their declarations', () => {
+    const packageRoot = fileURLToPath(new URL('../', import.meta.url));
+    const declarationFixture = fileURLToPath(new URL('../test-fixtures/public-subpaths-import.ts', import.meta.url));
+
+    expect(() => {
+      execFileSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '--eval',
+          "const [node, redis] = await Promise.all([import('@fluojs/terminus/node'), import('@fluojs/terminus/redis')]); const exports = [node.MemoryHealthIndicator, node.createMemoryHealthIndicator, node.createMemoryHealthIndicatorProvider, redis.RedisHealthIndicator, redis.createRedisHealthIndicator, redis.createRedisHealthIndicatorProvider]; if (!exports.every((value) => typeof value === 'function')) process.exitCode = 1;",
+        ],
+        { cwd: packageRoot },
+      );
+      execFileSync(
+        'pnpm',
+        [
+          'exec',
+          'tsc',
+          '--noEmit',
+          '--ignoreConfig',
+          '--module',
+          'NodeNext',
+          '--moduleResolution',
+          'NodeNext',
+          '--skipLibCheck',
+          '--strict',
+          '--target',
+          'ES2022',
+          declarationFixture,
+        ],
+        { cwd: packageRoot },
+      );
+    }).not.toThrow();
   });
 });

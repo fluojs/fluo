@@ -3742,8 +3742,8 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
     `packages/graphql/package.json must cover the effective mandatory dependency floor with Node.js ${expectedNodeEngine}.`,
   );
   assert(
-    runtimePackageJson.dependencies?.['@fluojs/config'] === 'workspace:^',
-    'packages/runtime/package.json must keep the mandatory @fluojs/config dependency edge covered by the GraphQL runtime contract.',
+    runtimePackageJson.dependencies?.['@fluojs/config'] === undefined,
+    'packages/runtime/package.json must not reintroduce an unused @fluojs/config runtime dependency edge into the GraphQL dependency graph.',
   );
   assert(
     configPackageJson.engines?.node === '>=20.16.0',

@@ -2,9 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 import { HealthCheckError } from './errors.js';
 import { assertHealthCheck, runHealthCheck, TerminusHealthService } from './health-check.js';
+import { RedisHealthIndicator } from './indicators/redis.js';
 import type { HealthIndicator } from './types.js';
 
 type TestHealthIndicatorResult = Awaited<ReturnType<HealthIndicator['check']>>;
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T | PromiseLike<T>): void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: Deferred<T>['resolve'];
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
 
 function unsafeHealthIndicatorResult(result: unknown): TestHealthIndicatorResult {
   return result as TestHealthIndicatorResult;
@@ -103,6 +118,40 @@ describe('runHealthCheck', () => {
       latencyMs: 1_500,
       message: 'timeout',
       status: 'down',
+    });
+  });
+
+  it('normalizes every all-up HealthCheckError cause as down', async () => {
+    const report = await runHealthCheck([
+      {
+        key: 'database',
+        check: async () => {
+          throw new HealthCheckError('database failed', {
+            database: {
+              latencyMs: 1_500,
+              status: 'up',
+            },
+            replica: {
+              status: 'up',
+            },
+          });
+        },
+      },
+    ]);
+
+    expect(report.status).toBe('error');
+    expect(report.error).toEqual({
+      database: {
+        latencyMs: 1_500,
+        status: 'down',
+      },
+      replica: {
+        status: 'down',
+      },
+    });
+    expect(report.contributors).toEqual({
+      down: ['database', 'replica'],
+      up: [],
     });
   });
 
@@ -244,33 +293,34 @@ describe('runHealthCheck', () => {
     });
   });
 
-  it('does not start overlapping probes for the same indicator after a timeout', async () => {
+  it('retains probe ownership after an indicator timeout until the raw probe settles', async () => {
+    const probeStarted = createDeferred<void>();
     let starts = 0;
-    let releaseProbe: (() => void) | undefined;
-    const indicator: HealthIndicator = {
+    const releaseProbe = createDeferred<void>();
+    const indicator = new RedisHealthIndicator({
       key: 'database',
-      check: async (key: string) => {
+      ping: async () => {
         starts += 1;
 
         if (starts > 1) {
-          return { [key]: { status: 'up' } };
+          return;
         }
 
-        return new Promise<TestHealthIndicatorResult>((resolve) => {
-          releaseProbe = () => {
-            resolve({ [key]: { status: 'up' } });
-          };
-        });
+        probeStarted.resolve();
+        await releaseProbe.promise;
       },
-    };
+      timeoutMs: 20,
+    });
 
-    const service = new TerminusHealthService([indicator], { indicatorTimeoutMs: 5 });
-    const timedOutReport = await service.check();
+    const service = new TerminusHealthService([indicator]);
+    const timedOutReportPromise = service.check();
+    await probeStarted.promise;
+    const timedOutReport = await timedOutReportPromise;
     const overlappingReport = await service.check();
 
     expect(starts).toBe(1);
     expect(timedOutReport.error.database).toEqual({
-      message: 'Health indicator timed out after 5ms.',
+      message: 'database health indicator timed out after 20ms.',
       status: 'down',
     });
     expect(overlappingReport.error.database).toEqual({
@@ -278,8 +328,8 @@ describe('runHealthCheck', () => {
       status: 'down',
     });
 
-    releaseProbe?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    releaseProbe.resolve();
+    await indicator.getPendingHealthCheckSettlement();
     const recoveredReport = await service.check();
 
     expect(starts).toBe(2);

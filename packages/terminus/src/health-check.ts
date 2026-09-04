@@ -16,6 +16,10 @@ type ExecutedIndicatorResult = {
 
 type RunningIndicatorChecks = WeakMap<HealthIndicator, Promise<HealthIndicatorResult>>;
 
+type SettlementAwareHealthIndicator = {
+  getPendingHealthCheckSettlement?: () => Promise<void> | undefined;
+};
+
 function normalizeIndicatorTimeoutMs(value: number | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -50,20 +54,49 @@ function startSerializedIndicatorCheck(
 
   const check = Promise.resolve().then(() => indicator.check(key));
   runningIndicatorChecks.set(indicator, check);
+
+  const releaseIndicatorOwnership = () => {
+    const settlement = (indicator as SettlementAwareHealthIndicator).getPendingHealthCheckSettlement?.();
+
+    if (settlement) {
+      void settlement.then(
+        () => {
+          if (runningIndicatorChecks.get(indicator) === check) {
+            runningIndicatorChecks.delete(indicator);
+          }
+        },
+        () => {
+          if (runningIndicatorChecks.get(indicator) === check) {
+            runningIndicatorChecks.delete(indicator);
+          }
+        },
+      );
+      return;
+    }
+
+    if (runningIndicatorChecks.get(indicator) === check) {
+      runningIndicatorChecks.delete(indicator);
+    }
+  };
+
   check.then(
-    () => {
-      if (runningIndicatorChecks.get(indicator) === check) {
-        runningIndicatorChecks.delete(indicator);
-      }
-    },
-    () => {
-      if (runningIndicatorChecks.get(indicator) === check) {
-        runningIndicatorChecks.delete(indicator);
-      }
-    },
+    releaseIndicatorOwnership,
+    releaseIndicatorOwnership,
   );
 
   return check;
+}
+
+function normalizeHealthCheckErrorCauses(key: string, causes: HealthIndicatorResult): HealthCheckEntry[] {
+  return normalizeIndicatorResult(key, causes).map(
+    ([entryKey, state]): HealthCheckEntry => [
+      entryKey,
+      {
+        ...state,
+        status: 'down',
+      },
+    ],
+  );
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -278,7 +311,7 @@ async function runIndicator(
   } catch (error: unknown) {
     if (error instanceof HealthCheckError) {
       return {
-        entries: normalizeIndicatorResult(key, error.causes),
+        entries: normalizeHealthCheckErrorCauses(key, error.causes),
         indicatorKey: key,
       };
     }
@@ -372,7 +405,7 @@ export async function runHealthCheck(
  * @param report Health report returned by `runHealthCheck(...)` or `TerminusHealthService.check()`.
  * @param message Error message used when one or more indicators are down.
  * @returns The same health report when every indicator is healthy.
- * @throws {HealthCheckError} When the report contains at least one down indicator.
+ * @throws {HealthCheckError} When one or more indicators are down.
  */
 export function assertHealthCheck(report: HealthCheckReport, message = 'Health check failed.'): HealthCheckReport {
   if (report.status === 'error') {

@@ -6,7 +6,6 @@ const nodeEngineFloorPattern = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=(\d+)\.(\d+
 const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 const mandatoryFluoDependencyManifests = [
   '../../core/package.json',
-  '../../config/package.json',
   '../../di/package.json',
   '../../http/package.json',
   '../../runtime/package.json',

@@ -49,12 +49,99 @@ const objectTokenIds = new WeakMap<Function, number>();
 const symbolTokenIds = new Map<symbol, number>();
 let nextTokenId = 0;
 const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 2;
-const moduleGraphCompileCache = new Map<string, readonly CompiledModule[]>();
+const DEFAULT_MODULE_GRAPH_CACHE_ENTRIES = 100;
 const EMPTY_MODULE_REPLACEMENTS: ModuleReplacementMap = new Map<ModuleType, ModuleType>();
+
+/**
+ * Bounds retained module graph compile snapshots for an owning application or host.
+ *
+ * @remarks
+ * Cache reads update recency. Call {@link dispose} when the owner no longer needs
+ * cache hits so retained module constructors and compiled graph snapshots are released.
+ */
+export class ModuleGraphCompileCache {
+  private disposed = false;
+  private readonly entries = new Map<string, readonly CompiledModule[]>();
+
+  /**
+   * Creates a bounded module graph compile cache.
+   *
+   * @param maxEntries Maximum successful compile snapshots retained by this cache.
+   * @throws {RangeError} When `maxEntries` is not a positive safe integer.
+   */
+  constructor(private readonly maxEntries = DEFAULT_MODULE_GRAPH_CACHE_ENTRIES) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
+      throw new RangeError('Module graph cache maxEntries must be a positive safe integer.');
+    }
+  }
+
+  /**
+   * Reads a snapshot and updates its recency.
+   *
+   * @param key Cache key for the requested compile input.
+   * @returns The retained snapshot when available and not disposed.
+   *
+   * @internal
+   */
+  get(key: string): readonly CompiledModule[] | undefined {
+    if (this.disposed) {
+      return undefined;
+    }
+
+    const snapshot = this.entries.get(key);
+    if (snapshot === undefined) {
+      return undefined;
+    }
+
+    this.entries.delete(key);
+    this.entries.set(key, snapshot);
+
+    return snapshot;
+  }
+
+  /**
+   * Retains a successful snapshot and evicts the least-recently-used entry when full.
+   *
+   * @param key Cache key for the compile input.
+   * @param snapshot Isolated successful compile snapshot to retain.
+   *
+   * @internal
+   */
+  set(key: string, snapshot: readonly CompiledModule[]): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.entries.delete(key);
+    this.entries.set(key, snapshot);
+
+    if (this.entries.size <= this.maxEntries) {
+      return;
+    }
+
+    const oldest = this.entries.keys().next();
+    if (!oldest.done) {
+      this.entries.delete(oldest.value);
+    }
+  }
+
+  /** Releases every retained snapshot and permanently disables future cache retention. */
+  dispose(): void {
+    this.entries.clear();
+    this.disposed = true;
+  }
+
+  /** Returns the number of compile snapshots currently retained. */
+  get size(): number {
+    return this.entries.size;
+  }
+}
+
+let moduleGraphCompileCache = new ModuleGraphCompileCache();
 
 /** Clears the process-local module graph compile cache for isolated regression tests. */
 export function clearModuleGraphCompileCacheForTesting(): void {
-  moduleGraphCompileCache.clear();
+  moduleGraphCompileCache = new ModuleGraphCompileCache();
 }
 
 /**
@@ -853,12 +940,17 @@ function validateCompiledModules(
  * @returns Compiled modules in dependency order after visibility and injection validation succeed.
  */
 export function compileModuleGraph(rootModule: ModuleType, options: BootstrapModuleOptions = {}): CompiledModule[] {
-  const cacheKey = options.moduleGraphCache === true
+  const cache = options.moduleGraphCache === true
+    ? moduleGraphCompileCache
+    : options.moduleGraphCache instanceof ModuleGraphCompileCache
+      ? options.moduleGraphCache
+      : undefined;
+  const cacheKey = cache !== undefined
     ? createModuleGraphCacheKey(rootModule, options)
     : undefined;
 
-  if (cacheKey !== undefined) {
-    const cachedModules = moduleGraphCompileCache.get(cacheKey);
+  if (cache !== undefined && cacheKey !== undefined) {
+    const cachedModules = cache.get(cacheKey);
 
     if (cachedModules !== undefined) {
       return cloneCompiledModules(cachedModules);
@@ -873,9 +965,9 @@ export function compileModuleGraph(rootModule: ModuleType, options: BootstrapMod
   compileModule(rootModule, runtimeProviderTokens, moduleReplacements, new Map(), new Set(), ordered);
   validateCompiledModules(ordered, runtimeProviders, runtimeProviderTokens);
 
-  if (cacheKey !== undefined) {
+  if (cache !== undefined && cacheKey !== undefined) {
     const cacheSnapshot = createModuleGraphCacheSnapshot(ordered);
-    moduleGraphCompileCache.set(cacheKey, cacheSnapshot);
+    cache.set(cacheKey, cacheSnapshot);
 
     return cloneCompiledModules(cacheSnapshot);
   }
