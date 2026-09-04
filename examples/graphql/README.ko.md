@@ -44,7 +44,8 @@ examples/graphql/
 ├── src/
 │   ├── app.ts       # Module registration, resolver, DataLoader, SSE update
 │   ├── app.test.ts  # startup, query, subscription 검증
-│   └── main.ts      # Node runtime 진입점
+│   ├── main.ts      # Node runtime 진입점
+│   └── test-helpers.ts # 제한 시간이 있는 GraphQL HTTP/SSE 테스트 헬퍼
 ├── package.json
 ├── README.md
 ├── README.ko.md

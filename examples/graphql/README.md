@@ -44,7 +44,8 @@ examples/graphql/
 ├── src/
 │   ├── app.ts       # Module registration, resolvers, DataLoader, SSE updates
 │   ├── app.test.ts  # Startup, query, and subscription verification
-│   └── main.ts      # Node runtime entry point
+│   ├── main.ts      # Node runtime entry point
+│   └── test-helpers.ts # Bounded GraphQL HTTP/SSE test helpers
 ├── package.json
 ├── README.md
 ├── README.ko.md

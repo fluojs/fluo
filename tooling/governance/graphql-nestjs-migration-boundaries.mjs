@@ -22,6 +22,13 @@ const requiredMigrationFacts = {
   'root-signature': 'input-context',
   'schema-first-field-resolver': 'unsupported',
 };
+const requiredResolverMigrationFacts = {
+  'async-registration': 'inject-use-factory',
+  'field-argument-dto': 'code-first-input-args-arg-types',
+  'nest-dynamic-options': 'unsupported',
+  'schema-first-field-resolver': 'unsupported',
+  'subscription-topics': 'unsupported',
+};
 const migrationDocumentationRequirements = [
   {
     heading: '## GraphQL Migration Boundaries',
@@ -64,6 +71,16 @@ const discoverabilityRequirements = [
   {
     destination: '../../docs/getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계',
     path: 'packages/graphql/README.ko.md',
+  },
+];
+const resolverMigrationDocumentationRequirements = [
+  {
+    heading: '### GraphQL Resolver Migration',
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+  },
+  {
+    heading: '### GraphQL Resolver Migration',
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
   },
 ];
 
@@ -156,6 +173,40 @@ function parseMigrationFacts(section, relativePath) {
   }
 }
 
+function parseResolverMigrationFacts(section, relativePath) {
+  const markers = [...section.matchAll(/<!-- fluo:graphql-resolver-migration: ([\s\S]*?) -->/gu)];
+  assert(
+    markers.length === 1,
+    `${relativePath} must include exactly one legacy GraphQL resolver migration sentinel; found ${markers.length}.`,
+  );
+
+  const facts = new Map();
+  for (const field of markers[0][1].split(';').map((value) => value.trim()).filter(Boolean)) {
+    const match = /^(?<name>[a-z][a-z-]*)=(?<value>[a-z0-9][a-z0-9/-]*)$/u.exec(field);
+    assert(match?.groups !== undefined, `${relativePath} contains an invalid resolver migration fact ${field}.`);
+    assert(!facts.has(match.groups.name), `${relativePath} repeats resolver migration fact ${match.groups.name}.`);
+    facts.set(match.groups.name, match.groups.value);
+  }
+
+  const requiredNames = Object.keys(requiredResolverMigrationFacts);
+  const unexpectedNames = [...facts.keys()].filter((name) => !(name in requiredResolverMigrationFacts));
+  assert(
+    unexpectedNames.length === 0,
+    `${relativePath} contains unsupported resolver migration fact(s): ${unexpectedNames.join(', ')}.`,
+  );
+  assert(
+    facts.size === requiredNames.length,
+    `${relativePath} must declare every resolver migration fact; found ${facts.size} of ${requiredNames.length}.`,
+  );
+
+  for (const [name, value] of Object.entries(requiredResolverMigrationFacts)) {
+    assert(
+      facts.get(name) === value,
+      `${relativePath} must declare resolver migration fact ${name}=${value}.`,
+    );
+  }
+}
+
 function extractLinkDestinations(content) {
   return [...renderedMarkdown(content).matchAll(/\[[^\]\n]+\]\((?<destination>[^)\s]+)(?:\s+["'][^)]*["'])?\)/gu)]
     .map((match) => match.groups?.destination)
@@ -177,6 +228,14 @@ export function enforceGraphqlNestjsMigrationBoundaries(
   for (const requirement of migrationDocumentationRequirements) {
     const content = readText(requirement.path);
     parseMigrationFacts(
+      extractSection(content, requirement.heading, requirement.path),
+      requirement.path,
+    );
+  }
+
+  for (const requirement of resolverMigrationDocumentationRequirements) {
+    const content = readText(requirement.path);
+    parseResolverMigrationFacts(
       extractSection(content, requirement.heading, requirement.path),
       requirement.path,
     );
