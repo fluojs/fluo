@@ -1,5 +1,7 @@
 export type {
   StudioLiveEvent,
+  StudioLiveSnapshot,
+  StudioRouteDescriptor,
 } from './contracts.js';
 export {
   StudioDevtoolsRuntime,
