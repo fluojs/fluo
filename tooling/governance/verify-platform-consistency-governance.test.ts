@@ -5040,4 +5040,3 @@ describe('mandatory first-party dependency Node engine alignment', () => {
       .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 20\.19\.3.*@fluojs\/core/u);
   });
 });
-
