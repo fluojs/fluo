@@ -297,7 +297,6 @@ describe('runHealthCheck', () => {
     const probeStarted = createDeferred<void>();
     let starts = 0;
     const releaseProbe = createDeferred<void>();
-    const probeSettled = createDeferred<void>();
     const indicator = new RedisHealthIndicator({
       key: 'database',
       ping: async () => {
@@ -309,7 +308,6 @@ describe('runHealthCheck', () => {
 
         probeStarted.resolve();
         await releaseProbe.promise;
-        probeSettled.resolve();
       },
       timeoutMs: 20,
     });
@@ -331,9 +329,7 @@ describe('runHealthCheck', () => {
     });
 
     releaseProbe.resolve();
-    await probeSettled.promise;
-    await new Promise<void>(queueMicrotask);
-    await new Promise<void>(queueMicrotask);
+    await indicator.getPendingHealthCheckSettlement();
     const recoveredReport = await service.check();
 
     expect(starts).toBe(2);
