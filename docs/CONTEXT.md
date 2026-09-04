@@ -85,6 +85,8 @@ For structured HTTP access logging, start at `@fluojs/http` with `createAccessLo
 
 For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `fluoFactory.create(AppModule, { middleware })`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
 
+For a NestJS `app.enableShutdownHooks()` migration, use `runNodeApplication(...)` for the default Node `SIGINT` / `SIGTERM` wiring. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, and adapter-first Node bootstrap require explicit signal registration; fetch-style hosts own their shutdown event and call `app.close(signal?)`. Fluo lifecycle hooks complete before `adapter.close(signal?)`, so listener-close or completed-drain work belongs at the adapter or host shutdown boundary rather than a same-named hook.
+
 Queue producer idempotency is documented in `packages/queue/README.md` and `packages/queue/README.ko.md`: the public Queue facade accepts a caller-owned `deduplicationKey` and deterministically maps it to a BullMQ-safe job id, so notification identities containing colons or numeric-only values remain deduplicable.
 
 For NestJS HTTP pipeline migration, portable bootstrap `middleware` implements `handle(MiddlewareContext, next)`; keep Express `(req, res, next)` handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`.

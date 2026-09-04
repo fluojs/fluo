@@ -71,6 +71,18 @@ const requirements = [
     'effectiveOptions.adapter ??',
     'Application cannot listen without an HTTP adapter.',
   ]],
+  ['packages/runtime/README.md', [
+    'app.enableShutdownHooks()',
+    'runNodeApplication(...)',
+    'createNodeShutdownSignalRegistration(...)',
+    'adapter.close(signal?)',
+  ]],
+  ['packages/runtime/README.ko.md', [
+    'app.enableShutdownHooks()',
+    'runNodeApplication(...)',
+    'createNodeShutdownSignalRegistration(...)',
+    'adapter.close(signal?)',
+  ]],
   ['docs/getting-started/migrate-from-nestjs.md', [
     '@nestjs/config',
     'ConfigModule.forRoot(...)',
@@ -80,6 +92,9 @@ const requirements = [
     "ConfigService.get('http.port')",
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
+    'app.enableShutdownHooks()',
+    'runNodeApplication(...)',
+    'adapter.close(signal?)',
   ]],
   ['docs/getting-started/migrate-from-nestjs.ko.md', [
     '@nestjs/config',
@@ -90,6 +105,9 @@ const requirements = [
     "ConfigService.get('http.port')",
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
+    'app.enableShutdownHooks()',
+    'runNodeApplication(...)',
+    'adapter.close(signal?)',
   ]],
   ['book/beginner/ch11-config.md', [
     'loadConfig(configSources)',
@@ -113,6 +131,9 @@ const requirements = [
     'plain-object deep merge',
     'FluoFactory.createApplicationContext(AppModule)',
     'only `listen()` requires',
+    'app.enableShutdownHooks()',
+    'runNodeApplication(...)',
+    'adapter.close(signal?)',
   ]],
   ['docs/CONTEXT.ko.md', [
     '@nestjs/config',
@@ -120,6 +141,9 @@ const requirements = [
     'plain-object deep merge',
     'FluoFactory.createApplicationContext(AppModule)',
     '`listen()`에만 적용',
+    'app.enableShutdownHooks()',
+    'runNodeApplication(...)',
+    'adapter.close(signal?)',
   ]],
 ];
 

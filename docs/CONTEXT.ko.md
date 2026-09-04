@@ -86,6 +86,8 @@ Structured HTTP access logging은 `@fluojs/http`의 `createAccessLogObserver(...
 
 NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에서 시작한다. i18n handoff는 각 custom resolver를 `HttpLocaleResolver`로 mapping하고, application-owned `Middleware` 하나를 `fluoFactory.create(AppModule, { middleware })`로 등록하며, 선택된 locale은 현재 `RequestContext`에만 저장한다. global locale fallback은 없다.
 
+NestJS `app.enableShutdownHooks()`를 마이그레이션할 때 기본 Node `SIGINT` / `SIGTERM` wiring에는 `runNodeApplication(...)`을 사용하세요. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, adapter-first Node bootstrap에서는 signal을 명시적으로 등록해야 하며, Fetch-style host는 shutdown event를 소유하고 `app.close(signal?)`를 호출합니다. Fluo lifecycle hook은 `adapter.close(signal?)`보다 먼저 완료되므로 listener close 또는 완료된 drain이 필요한 작업은 같은 이름의 hook이 아니라 adapter 또는 host shutdown boundary에 둡니다.
+
 Queue producer idempotency는 `packages/queue/README.md`와 `packages/queue/README.ko.md`에 문서화되어 있다. 공개 Queue facade는 호출자 소유 `deduplicationKey`를 받고 이를 BullMQ에 유효한 job id로 결정적으로 매핑하므로, 콜론을 포함하거나 숫자만으로 이루어진 notification identity도 deduplicate할 수 있다.
 
 NestJS HTTP pipeline migration에서 portable bootstrap `middleware`는 `handle(MiddlewareContext, next)`를 구현하며, Express `(req, res, next)` handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 둔다.

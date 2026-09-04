@@ -63,6 +63,16 @@ const staticAssetContractCompanions = [
   'packages/runtime/src/node/node-static-assets.ts',
   'packages/runtime/src/node/node-static-assets.test.ts',
 ];
+const nestjsShutdownMigrationCompanions = [
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'packages/runtime/README.md',
+  'packages/runtime/README.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'tooling/governance/config-nestjs-migration-docs.mjs',
+  'tooling/governance/verify-platform-consistency-governance.test.ts',
+] as const;
 const fastifyRawContextCompanions = [
   'packages/platform-fastify/README.md',
   'packages/platform-fastify/README.ko.md',
@@ -143,6 +153,12 @@ describe('static asset contract companions', () => {
       ...staticAssetContractCompanions,
       'packages/testing/src/static-assets-portability.test.ts',
     ])).not.toThrow();
+  });
+});
+
+describe('NestJS shutdown migration contract companions', () => {
+  it('requires governance enforcement beside documented migration guidance', () => {
+    expect(() => enforceContractCompanionUpdates([...nestjsShutdownMigrationCompanions])).not.toThrow();
   });
 });
 
