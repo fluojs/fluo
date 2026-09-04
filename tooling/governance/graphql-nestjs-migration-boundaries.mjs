@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const englishAuthenticationClaim =
-  'Application middleware registered before `GraphqlModule` must establish `requestContext.principal`; GraphQL HTTP route guards registered after it do not run because `GraphqlLifecycleService` handles `/graphql` without calling `next()`.';
+  'Only bootstrap/application middleware registered before GraphQL consumes a request can establish `requestContext.principal`; HTTP route guards registered after `GraphqlModule` do not run. Authorize each operation in its resolver using `context.principal`.';
 const koreanAuthenticationClaim =
-  '`GraphqlModule`보다 먼저 등록된 application middleware가 `requestContext.principal`을 설정해야 합니다. `GraphqlLifecycleService`가 `next()`를 호출하지 않고 `/graphql`을 처리하므로 그 뒤에 등록된 GraphQL HTTP route guard는 실행되지 않습니다.';
+  'GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요.';
 const migrationBoundaryRequirements = [
   {
     path: 'docs/getting-started/migrate-from-nestjs.md',
@@ -44,12 +44,23 @@ const migrationBoundaryRequirements = [
     heading: '### NestJS 마이그레이션 경계',
     claims: [koreanAuthenticationClaim],
   },
+  {
+    path: 'packages/graphql/README.md',
+    heading: '## Resolver Lifecycle Contracts',
+    claims: [englishAuthenticationClaim],
+  },
+  {
+    path: 'packages/graphql/README.ko.md',
+    heading: '## Resolver Lifecycle 계약',
+    claims: [koreanAuthenticationClaim],
+  },
 ];
 const obsoleteAuthorizationGuidance = [
   /\b(?:application-owned\s+)?middleware\s+or\s+(?:HTTP\s+route\s+)?guards?\b/iu,
   /\bGraphQL HTTP route guards?\s+(?:can|may|should|must|will)\b/iu,
+  /\bGraphQL HTTP route guards?\s+(?:do|does)\s+run\s+after\s+`?GraphqlModule`?\b/iu,
   /middleware\s*또는\s*(?:HTTP\s+route\s+)?guard/iu,
-  /GraphQL HTTP route guard(?:는|가)?\s*(?:실행(?!되지)|인증)/iu,
+  /GraphQL HTTP route guard(?:는|은|가|도)?\s*(?:실행(?!되지)|인증)/iu,
 ];
 const discoverabilityRequirements = [
   {
@@ -109,6 +120,14 @@ function renderedMarkdown(content) {
   return renderedLines.join('\n');
 }
 
+function renderedLinkMarkdown(content) {
+  return renderedMarkdown(content)
+    .split('\n')
+    .filter((line) => !/^(?: {4}|\t)/u.test(line))
+    .join('\n')
+    .replace(/(`+)[\s\S]*?\1/gu, '');
+}
+
 function extractSection(content, heading, relativePath) {
   const headings = content.split('\n').filter((line) => line === heading);
   assert(
@@ -127,17 +146,26 @@ function extractSection(content, heading, relativePath) {
 
 function hasAffirmativeClaim(section, claim) {
   const boundary = '(?:^|[.!?]\\s+|:\\s+|^[-*]\\s+)';
-  return new RegExp(`${boundary}${escapeRegExp(claim)}`, 'mu').test(section);
+  const match = new RegExp(`${boundary}${escapeRegExp(claim)}`, 'mu').exec(section);
+  if (match === null) {
+    return false;
+  }
+
+  const suffix = section.slice(match.index + match[0].length);
+  return !/^\s*(?:(?:This|That) statement|The (?:preceding|previous) (?:statement|claim))\s+is\s+(?:false|not true)\b|^\s*(?:이|그|위)\s*(?:설명|문장|주장)(?:은|는|이|가)\s*(?:사실이\s+아닙니다|거짓입니다|맞지\s+않습니다)/iu.test(
+    suffix,
+  );
 }
 
 function enforceSectionClaims(content, requirement) {
-  const section = extractSection(renderedMarkdown(content), requirement.heading, requirement.path);
+  const renderedContent = renderedMarkdown(content);
+  const section = extractSection(renderedContent, requirement.heading, requirement.path);
   const missingClaims = requirement.claims.filter((claim) => !hasAffirmativeClaim(section, claim));
   assert(
     missingClaims.length === 0,
     `${requirement.path} ${requirement.heading} must retain explicit GraphQL migration claim(s): ${missingClaims.join(', ')}.`,
   );
-  const obsoleteClaim = obsoleteAuthorizationGuidance.find((pattern) => pattern.test(section));
+  const obsoleteClaim = obsoleteAuthorizationGuidance.find((pattern) => pattern.test(renderedContent));
   assert(
     obsoleteClaim === undefined,
     `${requirement.path} ${requirement.heading} must not recommend GraphQL HTTP route guards that run after GraphqlModule.`,
@@ -145,7 +173,9 @@ function enforceSectionClaims(content, requirement) {
 }
 
 function enforceDiscoverabilityLink(content, requirement) {
-  const occurrences = [...renderedMarkdown(content).matchAll(new RegExp(escapeRegExp(requirement.link), 'gu'))];
+  const occurrences = [
+    ...renderedLinkMarkdown(content).matchAll(new RegExp(escapeRegExp(requirement.link), 'gu')),
+  ];
   assert(
     occurrences.length === 1,
     `${requirement.path} must include exactly one canonical GraphQL migration link; found ${occurrences.length}.`,

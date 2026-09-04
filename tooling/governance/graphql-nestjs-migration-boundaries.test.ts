@@ -10,10 +10,12 @@ const englishMigrationPath = 'docs/getting-started/migrate-from-nestjs.md';
 const koreanMigrationPath = 'docs/getting-started/migrate-from-nestjs.ko.md';
 const englishBookPath = 'book/intermediate/ch18-graphql.md';
 const koreanBookPath = 'book/intermediate/ch18-graphql.ko.md';
+const englishReadmePath = 'packages/graphql/README.md';
+const koreanReadmePath = 'packages/graphql/README.ko.md';
 const englishAuthenticationClaim =
-  'Application middleware registered before `GraphqlModule` must establish `requestContext.principal`; GraphQL HTTP route guards registered after it do not run because `GraphqlLifecycleService` handles `/graphql` without calling `next()`.';
+  'Only bootstrap/application middleware registered before GraphQL consumes a request can establish `requestContext.principal`; HTTP route guards registered after `GraphqlModule` do not run. Authorize each operation in its resolver using `context.principal`.';
 const koreanAuthenticationClaim =
-  '`GraphqlModule`보다 먼저 등록된 application middleware가 `requestContext.principal`을 설정해야 합니다. `GraphqlLifecycleService`가 `next()`를 호출하지 않고 `/graphql`을 처리하므로 그 뒤에 등록된 GraphQL HTTP route guard는 실행되지 않습니다.';
+  'GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요.';
 const migrationBoundaryRequirements = [
   [
     englishMigrationPath,
@@ -119,6 +121,19 @@ describe('GraphQL NestJS migration boundaries', () => {
     expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithFencedOnlyClaim)).toThrow(englishMigrationPath);
   });
 
+  it.each([
+    ['an inline code span', (link: string) => `\`${link}\``],
+    ['an indented code block', (link: string) => `\n    ${link}\n`],
+  ])('rejects a canonical migration link hidden in %s', (_description, hideLink) => {
+    // Given: the canonical link exists only in Markdown code rather than rendered prose.
+    const [driftedPath, link] = discoverabilityRequirements[0];
+    const readWithCodeOnlyLink = (relativePath: string): string =>
+      relativePath === driftedPath ? read(relativePath).replace(link, hideLink(link)) : read(relativePath);
+
+    // When/Then: code-rendered text cannot satisfy the discoverability contract.
+    expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithCodeOnlyLink)).toThrow(driftedPath);
+  });
+
   it('rejects a negated canonical claim', () => {
     // Given: the document contains the canonical words only as a negated statement.
     const claim = migrationBoundaryRequirements[0][2][0];
@@ -173,6 +188,34 @@ describe('GraphQL NestJS migration boundaries', () => {
 
     // When/Then: governance rejects the contradictory rendered guidance.
     expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithObsoleteGuidance)).toThrow(driftedPath);
+  });
+
+  it.each([
+    [englishMigrationPath, englishAuthenticationClaim, 'GraphQL HTTP route guards do run after GraphqlModule.'],
+    [englishBookPath, englishAuthenticationClaim, 'This statement is false.'],
+    [koreanMigrationPath, koreanAuthenticationClaim, '이 설명은 사실이 아닙니다.'],
+    [koreanBookPath, koreanAuthenticationClaim, '`GraphqlModule` 뒤의 GraphQL HTTP route guard도 실행됩니다.'],
+  ])('rejects adversarial authentication contradictions in %s', (driftedPath, claim, contradiction) => {
+    // Given: the governed claim remains present while nearby prose reverses its meaning.
+    const readWithContradiction = (relativePath: string): string =>
+      relativePath === driftedPath
+        ? read(relativePath).replace(claim, `${claim}\n\n${contradiction}`)
+        : read(relativePath);
+
+    // When/Then: contradictory rendered governance is rejected independently of exact paragraph wording.
+    expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithContradiction)).toThrow(driftedPath);
+  });
+
+  it.each([
+    [englishReadmePath, 'GraphQL HTTP route guards may establish the authenticated principal.'],
+    [koreanReadmePath, 'GraphQL HTTP route guard가 인증된 principal을 설정할 수 있습니다.'],
+  ])('rejects stale principal guidance across the governed package surface in %s', (driftedPath, staleClaim) => {
+    // Given: a governed package README reintroduces an impossible principal source.
+    const readWithStaleClaim = (relativePath: string): string =>
+      relativePath === driftedPath ? `${read(relativePath)}\n${staleClaim}\n` : read(relativePath);
+
+    // When/Then: every governed GraphQL documentation surface rejects the stale claim.
+    expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithStaleClaim)).toThrow(driftedPath);
   });
 
   it.each([

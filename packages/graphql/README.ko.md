@@ -203,7 +203,8 @@ class UserResolver {
 - Singleton resolver가 기본값이며, 각 operation에서 애플리케이션 컨테이너를 통해 resolve됩니다.
 - Request-scoped provider를 주입하는 resolver는 resolver 자체에도 `@Scope('request')`를 지정해야 합니다. 이렇게 해야 DI lifetime 규칙이 명시적으로 유지되고 singleton-to-request dependency mismatch를 피할 수 있습니다.
 - `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
-- Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, middleware 또는 guard가 설정한 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
+- GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요.
+- Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, 앞서 설정된 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Object field resolver는 root resolver와 같은 provider scope 및 operation container를 사용합니다. `@Parent()`와 `@Context()`는 positional method argument만 제어합니다.
 - GraphQL operation 범위 DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
 - 애플리케이션 shutdown은 WebSocket transport를 등록 해제하고, 살아 있는 WebSocket client를 닫으며, 아직 활성 상태인 WebSocket operation container를 정상 operation 완료 때와 같은 request-scoped provider teardown 경로로 dispose합니다.

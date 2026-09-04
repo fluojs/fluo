@@ -240,7 +240,7 @@ Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is support
 
 ### Authorization, Context, and Endpoint
 
-NestJS resolver guards and `GqlExecutionContext` do not transfer to `@fluojs/graphql`. Application middleware registered before `GraphqlModule` must establish `requestContext.principal`; GraphQL HTTP route guards registered after it do not run because `GraphqlLifecycleService` handles `/graphql` without calling `next()`. Resolvers must apply the operation-appropriate authorization checks to the resulting `GraphQLContext.principal`. For WebSocket subscriptions, `GraphQLContext.connectionParams` is an untrusted `Record<string, unknown>` supplied by the client. Parse and authorize it in application-owned subscription setup before creating or using an application stream; never treat a token-shaped `connectionParams` value as an authenticated principal.
+NestJS resolver guards and `GqlExecutionContext` do not transfer to `@fluojs/graphql`. Only bootstrap/application middleware registered before GraphQL consumes a request can establish `requestContext.principal`; HTTP route guards registered after `GraphqlModule` do not run. Authorize each operation in its resolver using `context.principal`. For WebSocket subscriptions, `GraphQLContext.connectionParams` is an untrusted `Record<string, unknown>` supplied by the client. Parse and authorize it in application-owned subscription setup before creating or using an application stream; never treat a token-shaped `connectionParams` value as an authenticated principal.
 
 `GraphqlModule` mounts the GraphQL HTTP endpoint at the fixed `/graphql` path. Do not migrate a NestJS `GraphQLModule.forRoot({ path })` setting as though it were a fluo option.
 

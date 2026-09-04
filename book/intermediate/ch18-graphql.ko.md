@@ -85,11 +85,11 @@ export class ProductResolver {
 
 fluo는 TypeScript 반환 타입이나 emit된 metadata에서 GraphQL output type을 추론하지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용하므로, 위 예제처럼 object 결과에는 GraphQL output type을 선언하고 array에는 `listOf(itemType)`을 사용해야 합니다.
 
-Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, HTTP middleware나 guard가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
+Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, GraphQL이 request를 소비하기 전에 bootstrap/application middleware가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
 
 ### NestJS 마이그레이션 경계
 
-NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니다. `GraphqlModule`보다 먼저 등록된 application middleware가 `requestContext.principal`을 설정해야 합니다. `GraphqlLifecycleService`가 `next()`를 호출하지 않고 `/graphql`을 처리하므로 그 뒤에 등록된 GraphQL HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`과 root resolver signature `(input, context)`를 사용해 적절한 authorization check를 적용하세요. `@Args()`, `@Context()`, `@Parent()`는 code-first object field resolver용 method decorator이며 root operation parameter decorator가 아닙니다.
+NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니다. GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요. Root resolver signature는 `(input, context)`입니다. `@Args()`, `@Context()`, `@Parent()`는 code-first object field resolver용 method decorator이며 root operation parameter decorator가 아닙니다.
 
 WebSocket `context.connectionParams`는 인증된 identity가 아니라 client가 제공한 `Record<string, unknown>`입니다. Subscription setup을 application-owned로 두고 stream을 만들기 전에 이를 parse 및 authorize하세요. GraphQL endpoint는 `/graphql`로 고정되므로 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
 
