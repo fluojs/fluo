@@ -1,4 +1,4 @@
-import type { ParsedPayload, StudioConnectionState, StudioLiveEvent } from '../../contracts.js';
+import type { ParsedPayload, StudioConnectionState, StudioParsedLiveEvent } from '../../contracts.js';
 import type { StudioDashboardState } from './model.js';
 
 /**
@@ -10,7 +10,7 @@ export type StudioAction =
   | { type: 'filter-readiness-toggle'; readiness: StudioDashboardState['filter']['readinessStatuses'][number] }
   | { type: 'filter-query'; query: string }
   | { type: 'filter-severity-toggle'; severity: StudioDashboardState['filter']['severities'][number] }
-  | { type: 'live-event'; event: StudioLiveEvent }
+  | { type: 'live-event'; event: StudioParsedLiveEvent }
   | { type: 'select-component'; componentId: string }
   | { type: 'select-graph-node'; nodeId: string }
   | { type: 'select-request'; requestId: string }

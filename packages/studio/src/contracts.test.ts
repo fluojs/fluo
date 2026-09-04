@@ -212,6 +212,7 @@ describe('Studio live contracts', () => {
     routes: [
       {
         controller: 'HealthController',
+        graphNodeId: 'runtime-route-node:health',
         handler: 'getHealth',
         id: 'GET /health HealthController getHealth',
         kind: 'react-page',
@@ -288,7 +289,7 @@ describe('Studio live contracts', () => {
       type: 'snapshot',
       version: 1,
     });
-    const { kind: _kind, ...legacyRoute } = liveSnapshot.routes[0] ?? {};
+    const { graphNodeId: _graphNodeId, kind: _kind, ...legacyRoute } = liveSnapshot.routes[0] ?? {};
 
     const parsedLegacyEvent = parseStudioLiveEvent(createEvent(legacyRoute));
 
@@ -296,7 +297,10 @@ describe('Studio live contracts', () => {
       throw new Error('Expected a snapshot event.');
     }
 
-    expect(parsedLegacyEvent.payload.routes[0]?.kind).toBe('http');
+    expect(parsedLegacyEvent.payload.routes[0]).toMatchObject({
+      graphNodeId: 'route:GET__health_HealthController_getHealth',
+      kind: 'http',
+    });
     expect(() => parseStudioLiveEvent(createEvent({ ...legacyRoute, kind: 42 }))).toThrow(
       'Invalid Studio live route descriptor kind payload.',
     );
@@ -622,6 +626,7 @@ describe('parseStudioPayload', () => {
       routes: [
         {
           controller: 'ProductRouter',
+          graphNodeId: 'runtime-route-node:product',
           handler: 'show',
           id: 'GET /products/:productId ProductRouter show',
           kind: 'react-page',
@@ -635,6 +640,7 @@ describe('parseStudioPayload', () => {
     expect(parsed.payload.snapshot?.routes).toEqual([
       {
         controller: 'ProductRouter',
+        graphNodeId: 'runtime-route-node:product',
         handler: 'show',
         id: 'GET /products/:productId ProductRouter show',
         kind: 'react-page',

@@ -156,8 +156,8 @@ function externalNodeId(tokenLabel: string): string {
   return `external:${slug(tokenLabel)}`;
 }
 
-function routeNodeId(route: StudioRouteDescriptor): string {
-  return `route:${slug(route.id)}`;
+function routeNodeId(routeId: string): string {
+  return `route:${slug(routeId)}`;
 }
 
 function edgeId(kind: StudioGraphEdgeKind, from: string, to: string): string {
@@ -221,6 +221,7 @@ export function handlerToStudioRouteDescriptor(descriptor: HandlerDescriptor): S
   const inspection = createRuntimeRouteInspection(descriptor);
   const route: StudioRouteDescriptor = {
     controller: inspection.controller,
+    graphNodeId: routeNodeId(inspection.id),
     handler: inspection.handler,
     id: inspection.id,
     kind: inspection.kind,
@@ -393,9 +394,8 @@ export function createStudioLiveSnapshot(input: StudioLiveSnapshotInput): Studio
 
   const routes = (input.routes ?? []).map((descriptor) => handlerToStudioRouteDescriptor(descriptor));
   for (const route of routes) {
-    const id = routeNodeId(route);
     addNode(nodes, {
-      id,
+      id: route.graphNodeId,
       kind: 'route',
       label: `${route.method} ${route.path}`,
       metadata: {
@@ -411,9 +411,9 @@ export function createStudioLiveSnapshot(input: StudioLiveSnapshotInput): Studio
       if (controllerId) {
         addEdge(edges, {
           from: controllerId,
-          id: edgeId('exposes_route', controllerId, id),
+          id: edgeId('exposes_route', controllerId, route.graphNodeId),
           kind: 'exposes_route',
-          to: id,
+          to: route.graphNodeId,
         });
       }
     }
