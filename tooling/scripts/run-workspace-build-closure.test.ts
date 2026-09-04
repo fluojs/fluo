@@ -177,7 +177,7 @@ describe('resolveWorkspaceBuildOrder', () => {
     );
     writeFileSync(
       fakeManager,
-      '#!/bin/sh\nprintf "start %s\\n" "$$" >> "$BUILD_LOG"\nprintf entered > "$ENTERED_FIFO"\ncat "$RELEASE_FIFO" >/dev/null\nprintf "end %s\\n" "$$" >> "$BUILD_LOG"\n',
+      '#!/bin/sh\nprintf "start %s\\n" "$$" >> "$BUILD_LOG"\nif [ "$WORKER_ID" = first ]; then\n  printf entered > "$ENTERED_FIFO"\n  cat "$RELEASE_FIFO" >/dev/null\nfi\nprintf "end %s\\n" "$$" >> "$BUILD_LOG"\n',
       'utf8',
     );
     chmodSync(fakeManager, 0o755);
