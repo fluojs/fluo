@@ -1,4 +1,13 @@
-import type { FrameworkRequest, FrameworkResponse, RequestContext } from '@fluojs/http';
+import {
+  Controller,
+  Get,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  type Middleware,
+  type MiddlewareContext,
+  type Next,
+  type RequestContext,
+} from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
 import { bootstrapApplication, defineModule } from '../bootstrap.js';
@@ -91,6 +100,73 @@ describe('createHealthModule', () => {
     expect(readyResponse.body).toEqual({ status: 'ready' });
 
     await app.close();
+  });
+
+  it('applies declared endpoint middleware to default health routes only', async () => {
+    const calls: string[] = [];
+
+    class FirstEndpointMiddleware implements Middleware {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push(`first:${context.request.path}`);
+        await next();
+      }
+    }
+
+    class SecondEndpointMiddleware implements Middleware {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push(`second:${context.request.path}`);
+        await next();
+      }
+    }
+
+    @Controller('/unrelated')
+    class UnrelatedController {
+      @Get('/')
+      getUnrelated() {
+        return { status: 'unrelated' };
+      }
+    }
+
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot({
+      endpointMiddleware: [FirstEndpointMiddleware, SecondEndpointMiddleware],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [UnrelatedController],
+      imports: [healthModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const healthResponse = createResponse();
+      await app.dispatch(createRequest('/health'), healthResponse);
+      expect(healthResponse.statusCode).toBe(200);
+      expect(healthResponse.body).toEqual({ status: 'ok' });
+
+      const readyResponse = createResponse();
+      await app.dispatch(createRequest('/ready'), readyResponse);
+      expect(readyResponse.statusCode).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+
+      const unrelatedResponse = createResponse();
+      await app.dispatch(createRequest('/unrelated'), unrelatedResponse);
+      expect(unrelatedResponse.statusCode).toBe(200);
+      expect(unrelatedResponse.body).toEqual({ status: 'unrelated' });
+
+      expect(calls).toEqual([
+        'first:/health',
+        'second:/health',
+        'first:/ready',
+        'second:/ready',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('returns a starting readiness status until the runtime marks the module ready', async () => {
