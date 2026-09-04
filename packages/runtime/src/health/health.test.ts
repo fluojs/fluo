@@ -1,8 +1,8 @@
 import {
   Controller,
-  Get,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
   type Middleware,
   type MiddlewareContext,
   type Next,
