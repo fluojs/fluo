@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 const RUNTIME_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const CORE_INTERNAL_IMPORT = '@fluojs/core' + '/internal';
 const HTTP_INTERNAL_IMPORT = '@fluojs/http' + '/internal';
+const CONFIG_PACKAGE_NAME = '@fluojs/' + 'config';
 
 async function collectTypeScriptFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -53,5 +54,23 @@ describe('runtime peer package internal dependencies', () => {
       { file: 'internal/http-runtime.ts', specifier: HTTP_INTERNAL_IMPORT },
       { file: 'internal/route-inspection-metadata.ts', specifier: CORE_INTERNAL_IMPORT },
     ]);
+  });
+
+  it('does not publish a production dependency the runtime source never imports', async () => {
+    const manifest = JSON.parse(
+      await readFile(resolve(RUNTIME_SRC_DIR, '../package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const files = await collectTypeScriptFiles(RUNTIME_SRC_DIR);
+    const importingFiles: string[] = [];
+
+    for (const file of files) {
+      if ((await readFile(file, 'utf8')).includes(CONFIG_PACKAGE_NAME)) {
+        importingFiles.push(relative(RUNTIME_SRC_DIR, file));
+      }
+    }
+
+    expect(importingFiles).toEqual([]);
+    expect(manifest.dependencies ?? {}).not.toHaveProperty(CONFIG_PACKAGE_NAME);
+    expect(manifest.devDependencies ?? {}).not.toHaveProperty(CONFIG_PACKAGE_NAME);
   });
 });

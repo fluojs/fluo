@@ -27,7 +27,7 @@ fluo's philosophy of **Explicit Over Implicit** fits well with GraphQL's typed s
 - **Standard Decorators**: It does not depend on the legacy `experimentalDecorators` flag.
 - **Performance**: Direct integration with the runtime facade reduces unnecessary overhead.
 
-The published `@fluojs/graphql` manifest declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory first-party dependency graph because the Node listener-capable `@fluojs/runtime` requires those verified windows for RFC `QUERY`. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. `@fluojs/config` independently retains its Node.js `>=20.16.0` floor. Web-standard request/response primitives inside the HTTP and SSE implementation do not make Bun, Deno, or Edge Workers supported GraphQL package runtimes; those targets require aligned dependency metadata and native runtime verification before they can become part of the contract.
+The published `@fluojs/graphql` manifest declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory first-party dependency graph because the Node listener-capable `@fluojs/runtime` requires those verified windows for RFC `QUERY`. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. `@fluojs/config` is not part of that mandatory dependency graph and independently retains its Node.js `>=20.16.0` floor. Web-standard request/response primitives inside the HTTP and SSE implementation do not make Bun, Deno, or Edge Workers supported GraphQL package runtimes; those targets require aligned dependency metadata and native runtime verification before they can become part of the contract.
 
 ## 18.2 Installation and Setup
 
