@@ -254,6 +254,7 @@ The prior migration limitation for field argument DTO binding is superseded for 
 Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is supported. The remaining limitation is schema-first field-resolver attachment only.
 
 ## GraphQL Migration Boundaries
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 ### Authorization, Context, and Endpoint
 

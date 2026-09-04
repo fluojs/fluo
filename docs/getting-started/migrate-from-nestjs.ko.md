@@ -247,6 +247,7 @@ Field argument DTO binding에 대한 이전 migration 제한은 code-first objec
 Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding은 지원합니다. 남아 있는 제한은 schema-first field-resolver attachment뿐입니다.
 
 ## GraphQL 마이그레이션 경계
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 ### 인가, Context, Endpoint
 

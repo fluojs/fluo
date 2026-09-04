@@ -3,81 +3,67 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const englishAuthenticationClaim =
-  'Only bootstrap/application middleware registered before GraphQL consumes a request can establish `requestContext.principal`; HTTP route guards registered after `GraphqlModule` do not run. Authorize each operation in its resolver using `context.principal`.';
-const koreanAuthenticationClaim =
-  'GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요.';
-const migrationBoundaryRequirements = [
+const migrationMarkerPrefix = '<!-- fluo:graphql-nestjs-migration: ';
+const requiredMigrationFacts = {
+  'arg-nullability': 'nullable',
+  'async-iterable-cleanup': 'application-owned',
+  'connection-params': 'untrusted-record',
+  'decorator-targets': 'public-instance',
+  'endpoint': 'fixed-/graphql',
+  'field-resolver': 'code-first',
+  'nest-dynamic-module': 'unsupported',
+  'nest-path-option': 'unsupported',
+  'operation-disposal': 'completion-or-disconnect',
+  'output-nullability': 'explicit',
+  'parameter-decorators': 'unsupported',
+  'principal': 'before-graphql',
+  'private-static-targets': 'rejected',
+  'resolver-scope': 'request',
+  'root-signature': 'input-context',
+  'schema-first-field-resolver': 'unsupported',
+};
+const migrationDocumentationRequirements = [
   {
-    path: 'docs/getting-started/migrate-from-nestjs.md',
     heading: '## GraphQL Migration Boundaries',
-    claims: [
-      'NestJS resolver guards and `GqlExecutionContext` do not transfer to `@fluojs/graphql`.',
-      englishAuthenticationClaim,
-      '`GraphqlModule` mounts the GraphQL HTTP endpoint at the fixed `/graphql` path.',
-      'All resolver decorators target public instance members:',
-      'Root `outputType` is never inferred:',
-      "Resolvers that inject request-scoped providers must themselves use `@Scope('request')`.",
-      'the application must return a typed `AsyncIterable` and close application resources when GraphQL stops consuming it.',
-    ],
+    path: 'docs/getting-started/migrate-from-nestjs.md',
   },
   {
-    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
     heading: '## GraphQL 마이그레이션 경계',
-    claims: [
-      'NestJS resolver guard와 `GqlExecutionContext`는 `@fluojs/graphql`로 이전되지 않습니다.',
-      koreanAuthenticationClaim,
-      '`GraphqlModule`은 GraphQL HTTP endpoint를 고정된 `/graphql` path에 mount합니다.',
-      '모든 resolver decorator는 public instance member를 대상으로 합니다.',
-      'Root `outputType`은 추론되지 않습니다.',
-      "Request-scoped provider를 주입하는 resolver에는 반드시 `@Scope('request')`를 붙여야 합니다.",
-      'Application은 typed `AsyncIterable`을 반환하고 GraphQL이 소비를 멈출 때 application resource를 닫아야 합니다.',
-    ],
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
   },
   {
-    path: 'book/intermediate/ch18-graphql.md',
-    heading: '### NestJS Migration Boundaries',
-    claims: [englishAuthenticationClaim],
-  },
-  {
-    path: 'book/intermediate/ch18-graphql.ko.md',
-    heading: '### NestJS 마이그레이션 경계',
-    claims: [koreanAuthenticationClaim],
-  },
-  {
-    path: 'packages/graphql/README.md',
     heading: '## Resolver Lifecycle Contracts',
-    claims: [englishAuthenticationClaim],
+    path: 'packages/graphql/README.md',
   },
   {
-    path: 'packages/graphql/README.ko.md',
     heading: '## Resolver Lifecycle 계약',
-    claims: [koreanAuthenticationClaim],
+    path: 'packages/graphql/README.ko.md',
   },
-];
-const obsoleteAuthorizationGuidance = [
-  /\b(?:application-owned\s+)?middleware\s+or\s+(?:HTTP\s+route\s+)?guards?\b/iu,
-  /\bGraphQL HTTP route guards?\s+(?:can|may|should|must|will)\b/iu,
-  /\bGraphQL HTTP route guards?\s+(?:do|does)\s+run\s+after\s+`?GraphqlModule`?\b/iu,
-  /middleware\s*또는\s*(?:HTTP\s+route\s+)?guard/iu,
-  /GraphQL HTTP route guard(?:는|은|가|도)?\s*(?:실행(?!되지)|인증)/iu,
+  {
+    heading: '### NestJS Migration Boundaries',
+    path: 'book/intermediate/ch18-graphql.md',
+  },
+  {
+    heading: '### NestJS 마이그레이션 경계',
+    path: 'book/intermediate/ch18-graphql.ko.md',
+  },
 ];
 const discoverabilityRequirements = [
   {
+    destination: './getting-started/migrate-from-nestjs.md#graphql-migration-boundaries',
     path: 'docs/CONTEXT.md',
-    link: '[GraphQL Migration Boundaries](./getting-started/migrate-from-nestjs.md#graphql-migration-boundaries)',
   },
   {
+    destination: './getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계',
     path: 'docs/CONTEXT.ko.md',
-    link: '[GraphQL 마이그레이션 경계](./getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계)',
   },
   {
+    destination: '../../docs/getting-started/migrate-from-nestjs.md#graphql-migration-boundaries',
     path: 'packages/graphql/README.md',
-    link: '[NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.md#graphql-migration-boundaries)',
   },
   {
+    destination: '../../docs/getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계',
     path: 'packages/graphql/README.ko.md',
-    link: '[NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계)',
   },
 ];
 
@@ -112,20 +98,12 @@ function renderedMarkdown(content) {
       continue;
     }
 
-    if (fence === undefined) {
+    if (fence === undefined && !/^(?: {4}|\t)/u.test(line)) {
       renderedLines.push(line);
     }
   }
 
-  return renderedLines.join('\n');
-}
-
-function renderedLinkMarkdown(content) {
-  return renderedMarkdown(content)
-    .split('\n')
-    .filter((line) => !/^(?: {4}|\t)/u.test(line))
-    .join('\n')
-    .replace(/(`+)[\s\S]*?\1/gu, '');
+  return renderedLines.join('\n').replace(/(`+)[\s\S]*?\1/gu, '');
 }
 
 function extractSection(content, heading, relativePath) {
@@ -144,58 +122,64 @@ function extractSection(content, heading, relativePath) {
   return remainder.slice(0, nextHeading?.index);
 }
 
-function hasAffirmativeClaim(section, claim) {
-  const boundary = '(?:^|[.!?]\\s+|:\\s+|^[-*]\\s+)';
-  const match = new RegExp(`${boundary}${escapeRegExp(claim)}`, 'mu').exec(section);
-  if (match === null) {
-    return false;
-  }
-
-  const prefix = section.slice(0, match.index + match[0].length - claim.length);
-  if (
-    /(?:The following|This|That) (?:statement|claim) is (?:false|not true)\s*:\s*$|(?:다음|이|그|위)\s*(?:설명|문장|주장)(?:은|는|이|가)\s*(?:사실이\s+아닙니다|거짓입니다|맞지\s+않습니다)\s*:\s*$/iu.test(
-      prefix,
-    )
-  ) {
-    return false;
-  }
-
-  const suffix = section.slice(match.index + match[0].length);
-  return !/^\s*(?:(?:This|That) statement|The (?:preceding|previous) (?:statement|claim))\s+is\s+(?:false|not true)\b|^\s*(?:이|그|위)\s*(?:설명|문장|주장)(?:은|는|이|가)\s*(?:사실이\s+아닙니다|거짓입니다|맞지\s+않습니다)/iu.test(
-    suffix,
+function parseMigrationFacts(section, relativePath) {
+  const markers = [...section.matchAll(/<!-- fluo:graphql-nestjs-migration: ([\s\S]*?) -->/gu)];
+  assert(
+    markers.length === 1,
+    `${relativePath} must include exactly one ${migrationMarkerPrefix}... --> sentinel in its governed section; found ${markers.length}.`,
   );
+
+  const facts = new Map();
+  for (const field of markers[0][1].split(';').map((value) => value.trim()).filter(Boolean)) {
+    const match = /^(?<name>[a-z][a-z-]*)=(?<value>[a-z0-9][a-z0-9/-]*)$/u.exec(field);
+    assert(match?.groups !== undefined, `${relativePath} contains an invalid GraphQL migration sentinel field ${field}.`);
+    assert(!facts.has(match.groups.name), `${relativePath} repeats GraphQL migration fact ${match.groups.name}.`);
+    facts.set(match.groups.name, match.groups.value);
+  }
+
+  const requiredNames = Object.keys(requiredMigrationFacts);
+  const unexpectedNames = [...facts.keys()].filter((name) => !(name in requiredMigrationFacts));
+  assert(
+    unexpectedNames.length === 0,
+    `${relativePath} contains unsupported GraphQL migration fact(s): ${unexpectedNames.join(', ')}.`,
+  );
+  assert(
+    facts.size === requiredNames.length,
+    `${relativePath} must declare every GraphQL migration fact; found ${facts.size} of ${requiredNames.length}.`,
+  );
+
+  for (const [name, value] of Object.entries(requiredMigrationFacts)) {
+    assert(
+      facts.get(name) === value,
+      `${relativePath} must declare GraphQL migration fact ${name}=${value}.`,
+    );
+  }
 }
 
-function enforceSectionClaims(content, requirement) {
-  const renderedContent = renderedMarkdown(content);
-  const section = extractSection(renderedContent, requirement.heading, requirement.path);
-  const missingClaims = requirement.claims.filter((claim) => !hasAffirmativeClaim(section, claim));
-  assert(
-    missingClaims.length === 0,
-    `${requirement.path} ${requirement.heading} must retain explicit GraphQL migration claim(s): ${missingClaims.join(', ')}.`,
-  );
-  const obsoleteClaim = obsoleteAuthorizationGuidance.find((pattern) => pattern.test(renderedContent));
-  assert(
-    obsoleteClaim === undefined,
-    `${requirement.path} ${requirement.heading} must not recommend GraphQL HTTP route guards that run after GraphqlModule.`,
-  );
+function extractLinkDestinations(content) {
+  return [...renderedMarkdown(content).matchAll(/\[[^\]\n]+\]\((?<destination>[^)\s]+)(?:\s+["'][^)]*["'])?\)/gu)]
+    .map((match) => match.groups?.destination)
+    .filter((destination) => destination !== undefined);
 }
 
 function enforceDiscoverabilityLink(content, requirement) {
-  const occurrences = [
-    ...renderedLinkMarkdown(content).matchAll(new RegExp(escapeRegExp(requirement.link), 'gu')),
-  ];
+  const destinations = extractLinkDestinations(content);
+  const occurrences = destinations.filter((destination) => destination === requirement.destination);
   assert(
     occurrences.length === 1,
-    `${requirement.path} must include exactly one canonical GraphQL migration link; found ${occurrences.length}.`,
+    `${requirement.path} must include exactly one canonical GraphQL migration destination ${requirement.destination}; found ${occurrences.length}.`,
   );
 }
 
 export function enforceGraphqlNestjsMigrationBoundaries(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
-  for (const requirement of migrationBoundaryRequirements) {
-    enforceSectionClaims(readText(requirement.path), requirement);
+  for (const requirement of migrationDocumentationRequirements) {
+    const content = readText(requirement.path);
+    parseMigrationFacts(
+      extractSection(content, requirement.heading, requirement.path),
+      requirement.path,
+    );
   }
 
   for (const requirement of discoverabilityRequirements) {
