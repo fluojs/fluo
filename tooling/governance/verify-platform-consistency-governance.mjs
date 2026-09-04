@@ -35,6 +35,10 @@ import { enforceReactPageCatalogContract } from './react-page-catalog-contract.m
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
+import {
+  enforceTerminusRuntimeHealthContract,
+  enforceTerminusRuntimeHealthContractCompanions,
+} from './terminus-runtime-health-contract.mjs';
 
 const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
 const httpLifecycleContractDocs = new Set([
@@ -100,6 +104,10 @@ export {
 } from './react-rsc-graduation-policy.mjs';
 export { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 export { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
+export {
+  enforceTerminusRuntimeHealthContract,
+  enforceTerminusRuntimeHealthContractCompanions,
+} from './terminus-runtime-health-contract.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -4222,198 +4230,6 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
   );
 }
 
-export function enforceTerminusMigrationDiscoverability(readText = read) {
-  const contractSentinel =
-    '<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready=binary-status;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary -->';
-  const contextPaths = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
-  const readmePaths = ['packages/terminus/README.md', 'packages/terminus/README.ko.md'];
-  const migrationPaths = [
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-  ];
-  const runtimeSource = readText('packages/terminus/src/module.ts');
-
-  assert(
-    runtimeSource.includes('HealthModule.forRoot({')
-      && runtimeSource.includes("statusCode: reportWithPlatform.status === 'ok' ? 200 : 503")
-      && runtimeSource.includes('healthModule.addReadinessCheck'),
-    'packages/terminus/src/module.ts must keep Terminus health, readiness, and unhealthy HTTP 503 behavior.',
-  );
-
-  for (const contextPath of contextPaths) {
-    assert(
-      readText(contextPath).includes(contractSentinel),
-      `${contextPath} must preserve the Terminus NestJS migration contract sentinel.`,
-    );
-  }
-
-  for (const readmePath of readmePaths) {
-    const readme = readText(readmePath);
-    assert(
-      readme.includes('TerminusModule.forRoot()')
-        && readme.includes('/health')
-        && readme.includes('/ready')
-        && readme.includes('contributors'),
-      `${readmePath} must document Terminus registration, endpoints, and aggregated response behavior.`,
-    );
-  }
-
-  for (const migrationPath of migrationPaths) {
-    const migration = readText(migrationPath);
-    assert(
-      migration.includes('@HealthCheck()')
-        && migration.includes('TerminusModule.forRoot(...)')
-        && migration.includes('GET /health')
-        && migration.includes('GET /ready'),
-      `${migrationPath} must document the Terminus NestJS migration boundary and default health endpoints.`,
-    );
-  }
-}
-
-const terminusRuntimeHealthContractSentinel =
-  'fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready=binary-status;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary';
-
-const terminusRuntimeHealthContractDocuments = [
-  {
-    path: 'packages/terminus/README.md',
-    facts: {
-      registration: 'TerminusModule.forRoot({',
-      healthAggregation: '`/health` returns the aggregated `HealthCheckReport` diagnostics',
-      binaryReadiness: 'binary ready/unavailable gate',
-      defaultLiveness: 'process-only liveness route by default',
-      unhealthyStatus: 'HTTP `503`',
-      routeProtection: 'path-scoped application or adapter middleware',
-    },
-  },
-  {
-    path: 'packages/terminus/README.ko.md',
-    facts: {
-      registration: 'TerminusModule.forRoot({',
-      healthAggregation: '`/health`는 집계된 `HealthCheckReport` 진단을 반환',
-      binaryReadiness: 'binary ready/unavailable gate',
-      defaultLiveness: 'process-only liveness route',
-      unhealthyStatus: 'HTTP `503`',
-      routeProtection: 'path-scoped application 또는 adapter middleware',
-    },
-  },
-  {
-    path: 'docs/getting-started/migrate-from-nestjs.md',
-    facts: {
-      registration: 'TerminusModule.forRoot(...)',
-      healthAggregation: '`/health` returns aggregated diagnostics',
-      binaryReadiness: '`/ready` is binary',
-      defaultLiveness: 'no default liveness route exists',
-      unhealthyStatus: 'HTTP `200` or `503`',
-      routeProtection: 'controller `@UseGuards()` metadata',
-    },
-  },
-  {
-    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
-    facts: {
-      registration: 'TerminusModule.forRoot(...)',
-      healthAggregation: '`/health`는 집계 진단을 반환',
-      binaryReadiness: '`/ready`는 HTTP `200` 또는 `503`의 binary status',
-      defaultLiveness: '기본 liveness route는 없고',
-      unhealthyStatus: 'HTTP `200` 또는 `503`',
-      routeProtection: 'controller `@UseGuards()` metadata',
-    },
-  },
-  {
-    path: 'docs/CONTEXT.md',
-    facts: {
-      contract: terminusRuntimeHealthContractSentinel,
-      registration: 'TerminusModule.forRoot(...)',
-      healthAggregation: '`/health` returns aggregated `HealthCheckReport` diagnostics',
-      binaryReadiness: '`/ready` is a binary ready/unavailable endpoint',
-      defaultLiveness: 'no default process-only liveness route',
-      unhealthyStatus: 'HTTP `503`',
-      routeProtection: 'controller `@UseGuards()` metadata',
-    },
-  },
-  {
-    path: 'docs/CONTEXT.ko.md',
-    facts: {
-      contract: terminusRuntimeHealthContractSentinel,
-      registration: 'TerminusModule.forRoot(...)',
-      healthAggregation: '`/health`는 집계된 `HealthCheckReport` 진단을 반환',
-      binaryReadiness: '`/ready`는 binary ready/unavailable endpoint',
-      defaultLiveness: '기본 process-only liveness route를 만들지 않으며',
-      unhealthyStatus: 'HTTP `503`',
-      routeProtection: 'controller `@UseGuards()` metadata',
-    },
-  },
-  {
-    path: 'book/beginner/ch18-health.md',
-    facts: {
-      contract: terminusRuntimeHealthContractSentinel,
-      registration: 'TerminusModule.forRoot({ indicators })',
-      healthAggregation: '`GET /health` returns aggregated diagnostics',
-      binaryReadiness: '`GET /ready` is a binary ready/unavailable status',
-      defaultLiveness: 'process-only liveness route by default',
-      unhealthyStatus: 'HTTP `503`',
-      routeProtection: 'controller `@UseGuards()` metadata',
-    },
-  },
-  {
-    path: 'book/beginner/ch18-health.ko.md',
-    facts: {
-      contract: terminusRuntimeHealthContractSentinel,
-      registration: 'TerminusModule.forRoot({ indicators })',
-      healthAggregation: '`GET /health`는 집계된 진단을 반환',
-      binaryReadiness: '`GET /ready`는 binary ready/unavailable 상태',
-      defaultLiveness: 'process-only liveness route를 기본으로 제공하지는 않습니다',
-      unhealthyStatus: 'HTTP `503`',
-      routeProtection: 'Controller `@UseGuards()` metadata',
-    },
-  },
-];
-
-const terminusRuntimeHealthContractCompanions = [
-  ...terminusRuntimeHealthContractDocuments.map(({ path }) => path),
-  'tooling/governance/verify-platform-consistency-governance.mjs',
-  'tooling/governance/verify-platform-consistency-governance.test.ts',
-];
-
-export function enforceTerminusRuntimeHealthContract(readText = read) {
-  const runtimeSource = readText('packages/terminus/src/module.ts');
-
-  assert(
-    runtimeSource.includes('HealthModule.forRoot({')
-      && runtimeSource.includes("statusCode: reportWithPlatform.status === 'ok' ? 200 : 503"),
-    'packages/terminus/src/module.ts must keep Terminus aggregated health and unhealthy HTTP 503 behavior.',
-  );
-  assert(
-    runtimeSource.includes('healthModule.addReadinessCheck(check);'),
-    'packages/terminus/src/module.ts must keep Terminus binary readiness behavior.',
-  );
-  assert(
-    !runtimeSource.includes('addLivenessCheck'),
-    'packages/terminus/src/module.ts must not register a default liveness route.',
-  );
-
-  for (const { path, facts } of terminusRuntimeHealthContractDocuments) {
-    const document = readText(path);
-    assert(
-      Object.values(facts).every((fact) => document.includes(fact)),
-      `${path} must preserve the Terminus runtime health contract facts.`,
-    );
-  }
-}
-
-export function enforceTerminusRuntimeHealthContractCompanions(changedFiles) {
-  if (!changedFiles.some((path) => terminusRuntimeHealthContractCompanions.includes(path))) {
-    return;
-  }
-
-  const missingCompanions = terminusRuntimeHealthContractCompanions.filter(
-    (path) => !changedFiles.includes(path),
-  );
-  assert(
-    missingCompanions.length === 0,
-    `Terminus runtime health contract updates must include ${missingCompanions.join(', ')}.`,
-  );
-}
-
 export async function main() {
   const changedFiles = changedFilesFromGit();
   const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
@@ -4461,7 +4277,6 @@ export async function main() {
   enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
-  enforceTerminusMigrationDiscoverability();
   enforceTerminusRuntimeHealthContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();

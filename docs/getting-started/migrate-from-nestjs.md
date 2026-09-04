@@ -21,10 +21,11 @@
 | `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
+<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 <!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
 
-Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one. For Terminus, compose indicators in the authored module with `TerminusModule.forRoot(...)`: `/health` returns aggregated diagnostics, `/ready` is binary and returns HTTP `200` or `503`, no default liveness route exists, and runtime-owned routes reject controller `@UseGuards()` metadata in favor of path-scoped application or adapter middleware, network policy, or deployment-owned probe boundaries.
+Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one. For Terminus, compose indicators in the authored module with `TerminusModule.forRoot(...)`: `/health` returns aggregated diagnostics, while `/ready` makes a binary traffic-admission decision with HTTP `200` or `503` and a body status of `ready`, `starting`, or `unavailable`. Indicators gate readiness by default; set an indicator's `readiness: false` when it should remain visible in `/health` without blocking traffic. `readinessChecks` adds application-owned readiness conditions and does not exclude indicators. No default liveness route exists, and runtime-owned routes reject controller `@UseGuards()` metadata in favor of path-scoped application or adapter middleware, network policy, or deployment-owned probe boundaries.
 
 ## GraphQL async registration migration
 

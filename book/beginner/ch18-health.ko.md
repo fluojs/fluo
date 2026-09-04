@@ -1,5 +1,5 @@
 <!-- packages: @fluojs/terminus, @fluojs/metrics -->
-<!-- project-state: FluoBlog v1.15; fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready=binary-status;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary -->
+<!-- project-state: FluoBlog v1.15; fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 # Chapter 18. Health Checks and Reliability
 
@@ -30,7 +30,7 @@ Kubernetes나 AWS ECS와 같은 현대적인 인프라는 두 가지 유형의 �
 - **Liveness (활성)**: "프로세스가 실행 중인가?" 이에 실패하면 컨테이너가 재시작됩니다. 이는 앱이 데드락 상태에 빠져 재부팅 없이는 복구될 수 없는 상황을 감지하기 위한 것입니다.
 - **Readiness (준비성)**: "애플리케이션이 트래픽을 처리할 준비가 되었는가?" 이에 실패하면 해당 인스턴스는 로드 밸런서에서 일시적으로 제외되지만, 반드시 재시작되지는 않습니다. 이는 시작 단계나 의존성이 일시적으로 과부하된 상황에서 사용됩니다.
 
-이 두 가지 상태를 이해하면, 불필요한 다운타임을 피하면서도 건강한 인스턴스만 사용자에게 서비스를 제공하도록 보장하는 정교한 신뢰성 전략을 구현할 수 있습니다. 현재 Fluo 계약에서 `GET /health`는 집계된 진단을 반환하고 `GET /ready`는 binary ready/unavailable 상태이며, 각각 조건이 성공하면 HTTP `200`, 실패하면 HTTP `503`을 반환합니다. `@fluojs/terminus`는 별도 process-only liveness route를 기본으로 제공하지는 않습니다.
+이 두 가지 상태를 이해하면, 불필요한 다운타임을 피하면서도 건강한 인스턴스만 사용자에게 서비스를 제공하도록 보장하는 정교한 신뢰성 전략을 구현할 수 있습니다. 현재 Fluo 계약에서 `GET /health`는 집계된 진단을 반환합니다. `GET /ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결정을 내리면서 body에는 `ready`, `starting`, `unavailable` 중 하나를 보고합니다. `@fluojs/terminus`는 별도 process-only liveness route를 기본으로 제공하지는 않습니다.
 
 ### 18.1.1 The Startup Sequence
 새로운 Fluo 인스턴스가 시작될 때, 데이터베이스 마이그레이션을 수행하거나 캐시를 예열하고 원격 메시지 브로커와의 연결을 수립해야 할 수 있습니다. 이 시간 동안 프로세스는 "살아있지만"(Liveness 통과) 아직 "준비되지 않은"(Readiness 실패) 상태입니다. 적절한 준비성 프로브를 사용하면 사용자가 아직 준비 중인 인스턴스에 도달하는 것을 방지하여 배포 직후에 흔히 발생하는 "Service Unavailable" 에러를 막을 수 있습니다. 이러한 "조율된 시작(Coordinated Startup)"은 고가용성 아키텍처의 특징입니다.
@@ -51,7 +51,7 @@ Kubernetes나 AWS ECS와 같은 현대적인 인프라는 두 가지 유형의 �
 Terminus는 확장 가능하도록 설계되었습니다. 가장 일반적인 의존성들에 대해 내장 인디케이터를 제공하면서, 커스텀 로직을 위한 애플리케이션 전용 인디케이터도 작성할 수 있게 해 줍니다. 또한 `/health`와 `/ready` 경로에서 런타임 준비 상태와 인디케이터 결과를 함께 집계하고, 종료 중인 인스턴스를 rotation에서 제외하기 위한 readiness signal을 제공합니다. 종료 신호 등록, 강제 종료 시간 설정, 정리 순서의 소유권은 Terminus가 아니라 호스트, 어댑터, 런타임 close 경로에 있습니다.
 
 ### 18.2.1 The Standardized Health Response
-`GET /health`는 단순히 "OK"라는 문자열만 반환하지 않습니다. 업계 표준을 따라 등록된 모든 서브 체크 상태를 포함하는 집계 진단 JSON 객체를 제공합니다. 이를 통해 모니터링 도구는 무언가 잘못되었다는 사실뿐만 아니라 *정확히 무엇이* 잘못되었는지 알 수 있습니다. `GET /ready`는 트래픽 수용을 위한 binary 상태로 남으며 HTTP `200` 또는 `503`을 반환하고, 별도 진단 grouping을 제공하지 않습니다. 예를 들어 health 응답은 데이터베이스는 건강하지만 캐시는 다운되었다는 것을 명확히 보여줄 수 있습니다. 이 정도의 세부 정보는 SRE 팀이 압박 속에서 복잡한 프로덕션 문제를 진단할 때 매우 귀중한 자산이 됩니다.
+`GET /health`는 단순히 "OK"라는 문자열만 반환하지 않습니다. 업계 표준을 따라 등록된 모든 서브 체크 상태를 포함하는 집계 진단 JSON 객체를 제공합니다. 이를 통해 모니터링 도구는 무언가 잘못되었다는 사실뿐만 아니라 *정확히 무엇이* 잘못되었는지 알 수 있습니다. `GET /ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결과를 유지하며, body에는 진단 severity group 대신 더 구체적인 runtime 상태 `ready`, `starting`, `unavailable`을 보존합니다. 예를 들어 health 응답은 데이터베이스는 건강하지만 캐시는 다운되었다는 것을 명확히 보여줄 수 있습니다. 이 정도의 세부 정보는 SRE 팀이 압박 속에서 복잡한 프로덕션 문제를 진단할 때 매우 귀중한 자산이 됩니다.
 
 ### 18.2.2 Decoupling from Domain Logic
 `@fluojs/terminus`의 핵심 설계 목표 중 하나는 헬스 체크 로직을 메인 비즈니스 로직과 분리하는 것입니다. 서비스 코드 곳곳에 "데이터베이스가 정상인가?"와 같은 체크 로직을 흩뿌려 놓을 필요가 없습니다. 대신 헬스 인디케이터는 독립적으로 실행되며, 최적화된 경로를 통해 인프라의 상태를 조회합니다. 이는 애플리케이션을 모니터링하는 행위가 사용자가 실제로 관심을 갖는 기능에 불필요한 오버헤드나 복잡성을 추가하지 않도록 보장합니다.
@@ -147,7 +147,7 @@ return {
 ```
 
 ### 18.4.1 Strategic Monitoring
-모든 의존성을 헬스 체크에 포함하지 않도록 주의하십시오. 만약 이메일 발송과 같은 부가적인 외부 서비스가 중단되더라도, 애플리케이션은 대부분의 사용자에게 정상적인 서비스를 제공할 수 있습니다. 이러한 서비스를 준비성(Readiness) 체크에 포함하면 앱 전체가 불필요하게 "오프라인" 상태가 될 수 있습니다. 애플리케이션이 제 기능을 하기 위해 엄격하게 요구되는 핵심 의존성에 집중하십시오. 이를 "차등 모니터링"이라고 하며 "치명적(Fatal)" 조건과 "경고(Warning)" 조건을 구분하는 것입니다.
+등록한 indicator 중 어떤 것이 트래픽을 차단할지 명시적으로 선택하세요. Indicator는 기본적으로 `/ready`에 참여하고, `readiness: false`는 비임계 dependency를 `/health`에만 보존하며, `readinessChecks`는 application condition을 추가할 수 있지만 indicator를 제외할 수는 없습니다.
 
 Terminus는 indicator의 `readiness` 설정으로 이 구분을 명시적으로 지원합니다. 기본적으로 모든 indicator는 계속 `/health`에 참여하고, `readiness: false`를 설정하면 비임계 의존성을 binary `/ready` gate에서 제외할 수 있습니다.
 
@@ -172,9 +172,9 @@ TerminusModule.forRoot({
 ### 18.4.3 Dependency Priority and Cascading Failures
 고도로 연결된 마이크로서비스 아키텍처에서는 작은 서비스 하나가 실패했을 때 전체 시스템이 중단되는 "연쇄 실패(Cascading Failure)"가 발생할 수 있습니다. 차등 모니터링을 사용하면 각 의존성에 **우선순위 레벨(Priority Level)**을 지정할 수 있습니다.
 - **Critical Dependencies (임계 의존성)**: 기본 데이터베이스와 같이 실패 시 준비성 체크가 즉시 실패해야 하는 핵심 요소입니다.
-- **Non-Critical Dependencies (비임계 의존성)**: 필수적이지 않은 검색 인덱서와 같이 실패하더라도 대부분의 사용자 요청을 처리할 수 있다면 binary `/ready` gate 대신 health detail, metrics, alert로 보고하는 편이 적합한 요소입니다.
+- **Non-Critical Dependencies (비임계 의존성)**: 필수적이지 않은 검색 인덱서와 같이 실패하더라도 대부분의 사용자 요청을 처리할 수 있다면 `readiness: false`로 `/health` 진단은 보존하되 트래픽은 차단하지 않는 요소입니다.
 
-애플리케이션의 헬스에 치명적인 의존성이 무엇인지 전략적으로 결정함으로써, 완전히 실패하기보다는 우아하게 기능이 저하되는 더욱 강력한 시스템을 구축할 수 있습니다. 트래픽 수용에 필수인 의존성만 binary `/ready` 결정에 두고, non-critical degradation은 readiness severity bucket을 만들지 말고 집계 `/health` 진단, metrics, alert로 보고하세요.
+애플리케이션의 헬스에 치명적인 의존성이 무엇인지 전략적으로 결정함으로써, 완전히 실패하기보다는 우아하게 기능이 저하되는 더욱 강력한 시스템을 구축할 수 있습니다. 트래픽 수용에 필수인 indicator는 기본 readiness 동작을 유지하고, non-gating 진단에는 `readiness: false`를 사용하며, `readinessChecks`는 application-owned condition 추가에만 사용하세요.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 파일 업로드를 처리하거나 집중적인 로깅을 수행하는 애플리케이션에서 **디스크 공간**은 매우 중요한 리소스입니다. 디스크가 가득 차면 메모리 누수와 마찬가지로 애플리케이션이 충돌하거나 응답하지 않게 될 수 있습니다. Terminus는 최소 free bytes 또는 최소 free ratio 같은 여유 공간 임계값을 점검하는 Node disk indicator를 제공합니다. 이 신호를 사용하면 프로덕션 비상 사태가 발생하기 전에 임시 파일 정리나 스토리지 확장과 같은 조치를 취할 수 있습니다. I/O latency나 throughput 모니터링도 필요하다면, 이를 Terminus disk indicator 출력으로 간주하지 말고 metrics 또는 host observability stack에서 수집하세요.

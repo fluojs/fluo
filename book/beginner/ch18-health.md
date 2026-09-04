@@ -1,5 +1,5 @@
 <!-- packages: @fluojs/terminus, @fluojs/metrics -->
-<!-- project-state: FluoBlog v1.15; fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready=binary-status;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary -->
+<!-- project-state: FluoBlog v1.15; fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 # Chapter 18. Health Checks and Reliability
 
@@ -30,7 +30,7 @@ Modern infrastructure such as Kubernetes or AWS ECS distinguishes between two ki
 - **Liveness (active)**: "Is the process running?" If this check fails, the container is restarted. It is meant to detect situations where the app is deadlocked and cannot recover without a reboot.
 - **Readiness**: "Is the application ready to handle traffic?" If this check fails, the instance is temporarily removed from the load balancer, but it is not always restarted. This is used during startup or when a dependency is temporarily overloaded.
 
-Understanding these two states lets you build a precise reliability strategy that avoids unnecessary downtime while still ensuring that only healthy instances serve users. In the current Fluo contract, `GET /health` returns aggregated diagnostics, while `GET /ready` is a binary ready/unavailable status: each returns HTTP `200` when its condition succeeds and HTTP `503` when it does not. `@fluojs/terminus` does not provide a separate process-only liveness route by default.
+Understanding these two states lets you build a precise reliability strategy that avoids unnecessary downtime while still ensuring that only healthy instances serve users. In the current Fluo contract, `GET /health` returns aggregated diagnostics. `GET /ready` makes a binary traffic-admission decision with HTTP `200` or `503`, while its body reports `ready`, `starting`, or `unavailable`. `@fluojs/terminus` does not provide a separate process-only liveness route by default.
 
 ### 18.1.1 The Startup Sequence
 When a new Fluo instance starts, it may need to run database migrations, warm caches, or establish connections to remote message brokers. During this time, the process is "alive" and passes liveness, but it is not yet "ready" and fails readiness. A proper readiness probe prevents users from reaching an instance that is still preparing, which avoids the "Service Unavailable" errors that often appear right after deployment. This kind of "coordinated startup" is a hallmark of high availability architecture.
@@ -51,7 +51,7 @@ Health checks are essential for every application, but they play different roles
 Terminus is designed to be extensible. It provides built in indicators for the most common dependencies while still letting you write application specific indicators for custom logic. It aggregates runtime readiness state and indicator results on the `/health` and `/ready` routes and supplies the readiness signal that removes a shutting-down instance from rotation. It does not register shutdown signals, set forced-shutdown timing, or own cleanup order; those responsibilities belong to the host, adapter, and runtime close path.
 
 ### 18.2.1 The Standardized Health Response
-`GET /health` does not return only a simple "OK" string. Following industry standards, it provides aggregated diagnostics in a detailed JSON object that includes the status of every registered subcheck. This lets monitoring tools understand not only that something is wrong, but *exactly what* is wrong. `GET /ready` remains a binary status for traffic admission and returns HTTP `200` or `503`, not an alternate diagnostic grouping. For example, the health response can clearly show that the database is healthy but the cache is down. This level of detail is invaluable when SRE teams diagnose complex production problems under pressure.
+`GET /health` does not return only a simple "OK" string. Following industry standards, it provides aggregated diagnostics in a detailed JSON object that includes the status of every registered subcheck. This lets monitoring tools understand not only that something is wrong, but *exactly what* is wrong. `GET /ready` keeps a binary traffic-admission outcome through HTTP `200` or `503`; its body preserves the more specific runtime state `ready`, `starting`, or `unavailable` rather than creating diagnostic severity groups. For example, the health response can clearly show that the database is healthy but the cache is down. This level of detail is invaluable when SRE teams diagnose complex production problems under pressure.
 
 ### 18.2.2 Decoupling from Domain Logic
 One of the core design goals of `@fluojs/terminus` is to separate health check logic from the main business logic. You do not need to scatter checks like "is the database healthy?" throughout service code. Instead, health indicators run independently and query infrastructure state through optimized paths. This ensures that monitoring the application does not add unnecessary overhead or complexity to the features users actually care about.
@@ -147,7 +147,7 @@ return {
 ```
 
 ### 18.4.1 Strategic Monitoring
-Be careful not to include every dependency in health checks. If an auxiliary external service such as email delivery goes down, the application may still serve most users normally. Including that service in the readiness check can unnecessarily make the entire app look "offline." Focus on the core dependencies that are strictly required for the application to do its job. This is called "differentiated monitoring," and it means separating "fatal" conditions from "warning" conditions.
+Choose explicitly which registered indicators gate traffic. Indicators participate in `/ready` by default, `readiness: false` keeps a non-critical dependency visible only through `/health`, and `readinessChecks` can add application conditions but cannot exclude an indicator.
 
 Terminus makes that distinction explicit with an indicator's `readiness` setting. Every indicator still participates in `/health` by default, while `readiness: false` keeps a non-critical dependency out of the binary `/ready` gate:
 
@@ -172,9 +172,9 @@ Beyond external services, you should monitor server resource usage. Memory leaks
 ### 18.4.3 Dependency Priority and Cascading Failures
 In highly connected microservice architectures, the failure of a small service can cause a "cascading failure" that brings down the entire system. With differentiated monitoring, you can assign a **priority level** to each dependency.
 - **Critical Dependencies**: Core elements such as the primary database, where failure should immediately fail the readiness check.
-- **Non-Critical Dependencies**: Elements such as a nonessential search indexer, where failure should usually be reported through health details, metrics, or alerts instead of the binary `/ready` gate if the application can still handle most user requests.
+- **Non-Critical Dependencies**: Elements such as a nonessential search indexer, where `readiness: false` preserves `/health` diagnostics without blocking traffic when the application can still handle most user requests.
 
-By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Put required traffic-admission dependencies in the binary `/ready` decision, and report non-critical degradation through aggregated `/health` diagnostics, metrics, or alerts instead of inventing readiness severity buckets.
+By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Keep required traffic-admission indicators on the default readiness behavior, use `readiness: false` for non-gating diagnostics, and use `readinessChecks` only to add application-owned conditions.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 For applications that handle file uploads or heavy logging, **disk space** is a critical resource. If the disk fills up, the application can crash or stop responding just as it would with a memory leak. Terminus includes a Node disk indicator for free-space thresholds, such as minimum free bytes or minimum free ratio. Use that signal to take action before a production emergency occurs, such as cleaning temporary files or expanding storage. If you also need I/O latency or throughput monitoring, collect those metrics through your metrics or host observability stack rather than treating them as Terminus disk-indicator output.

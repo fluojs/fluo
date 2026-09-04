@@ -1,4 +1,5 @@
 # @fluojs/terminus
+<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
@@ -215,14 +216,14 @@ TerminusModule.forRoot({
 });
 ```
 
-Use `path` to mount the health endpoints under a custom path, and `readinessChecks` to compose application-specific readiness logic with Terminus indicator and platform readiness checks.
+Use `path` to mount the health endpoints under a custom path. Indicators gate `/ready` by default; set an indicator's `readiness: false` to retain its `/health` diagnostics without blocking traffic. `readinessChecks` composes additional application-specific conditions with indicator and platform readiness checks; it does not exclude indicators.
 
 ### Failure Semantics
 
 When an indicator returns a `down` result or throws a `HealthCheckError`, the `TerminusHealthService` aggregates the failure into a report:
 
 - `/health` returns the aggregated `HealthCheckReport` diagnostics and returns HTTP `200` only when that report is healthy; any indicator failure returns HTTP `503`.
-- `/ready` returns HTTP `503` when an indicator whose `readiness` is omitted or `true` fails, a custom readiness check returns `false`, runtime shutdown has begun, or platform readiness is anything other than `ready`. Indicators with `readiness: false` still contribute to `/health` but do not block `/ready`. Platform `critical` metadata is preserved in diagnostics, but the HTTP readiness endpoint itself is a binary ready/unavailable gate and does not expose warning severity buckets.
+- `/ready` makes a binary traffic-admission decision: HTTP `200` admits traffic and HTTP `503` removes the instance from rotation. Its JSON body reports `{ status: 'ready' }`, `{ status: 'starting' }`, or `{ status: 'unavailable' }`. An indicator whose `readiness` is omitted or `true` can block the gate; `readiness: false` retains its `/health` diagnostics without blocking `/ready`. Custom `readinessChecks` only add conditions. Platform `critical` metadata stays in `/health` diagnostics, not readiness severity buckets.
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
