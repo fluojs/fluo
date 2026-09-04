@@ -163,7 +163,7 @@ Module registration과 reloader 생성은 `schema`로 전달한 nested Standard 
 
 ## 관련 패키지
 
-- `@fluojs/runtime`: 부트스트랩 중 `loadConfig()`를 호출합니다.
+- `@fluojs/runtime`: configuration loading을 transitive하게 제공하지 않습니다. `ConfigModule.forRoot(...)`를 사용하거나 `ConfigService`를 주입하는 애플리케이션은 `@fluojs/config`를 direct dependency로 선언해야 합니다.
 - Standard Schema validator: Zod, Valibot, ArkType 및 호환 schema 라이브러리를 `schema` 옵션으로 전달할 수 있습니다.
 
 ## 예제 소스
