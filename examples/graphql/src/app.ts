@@ -55,9 +55,18 @@ const BookType = new GraphQLObjectType({
   name: 'Book',
 });
 
-const authorById = createDataLoader<string, Author | null>(async (ids) =>
-  ids.map((id) => authors.get(id) ?? null),
-);
+@Inject()
+export class AuthorBatchRecorder {
+  private readonly batches: string[][] = [];
+
+  record(ids: readonly string[]): void {
+    this.batches.push([...ids]);
+  }
+
+  getBatches(): readonly (readonly string[])[] {
+    return this.batches.map((ids) => [...ids]);
+  }
+}
 
 @Inject()
 export class LiveUpdates implements OnApplicationShutdown {
@@ -172,12 +181,22 @@ class CatalogResolver {
 }
 
 @Resolver('Book')
+@Inject(AuthorBatchRecorder)
 class BookResolver {
+  private readonly authorById;
+
+  constructor(private readonly batches: AuthorBatchRecorder) {
+    this.authorById = createDataLoader<string, Author | null>(async (ids) => {
+      this.batches.record(ids);
+      return ids.map((id) => authors.get(id) ?? null);
+    });
+  }
+
   @FieldResolver('author')
   @Parent()
   @Context()
   async author(book: Book, context: GraphQLContext): Promise<Author | null> {
-    return await authorById(context).load(book.authorId);
+    return await this.authorById(context).load(book.authorId);
   }
 }
 
@@ -203,6 +222,12 @@ class PublicationResolver {
       resolvers: [CatalogResolver, BookResolver, PublicationResolver],
     }),
   ],
-  providers: [LiveUpdates, CatalogResolver, BookResolver, PublicationResolver],
+  providers: [
+    AuthorBatchRecorder,
+    LiveUpdates,
+    CatalogResolver,
+    BookResolver,
+    PublicationResolver,
+  ],
 })
 export class AppModule {}
