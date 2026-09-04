@@ -21,6 +21,14 @@
 | **UI** | React 통합. | `@fluojs/react` |
 | **Tooling** | CLI 검사 내보내기, CLI가 실행하는 Studio sidecar/viewer 진단, inspect artifact 렌더링, 테스트 진단, Vite 빌드 통합. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
+## GraphQL 비동기 module 등록
+
+`@fluojs/graphql`은 `GraphqlModule.forRoot(...)`와 함께
+`GraphqlModule.forRootAsync({ inject, useFactory })`를 제공합니다.
+`GraphqlAsyncModuleOptions<TTokens>`는 각 명시적인 `inject` token을 순서대로
+`useFactory` parameter에 연결하고 optional token의 값을 `T | undefined`로 모델링합니다. 이는 NestJS dynamic-module 호환성이 아니므로
+`imports`, `useClass`, `useExisting`, 암시적인 provider discovery를 거부합니다.
+
 ## canonical runtime package matrix
 
 | 런타임 대상 | 어댑터 패키지 | 비고 |

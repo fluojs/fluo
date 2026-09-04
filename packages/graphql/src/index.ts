@@ -7,6 +7,7 @@ export type {
   FieldResolverParameterKind,
   GraphQLContext,
   GraphqlArgType,
+  GraphqlAsyncModuleOptions,
   GraphqlListTypeRef,
   GraphqlModuleOptions,
   GraphqlRequestContext,

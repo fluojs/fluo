@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
-import type { GraphqlWebSocketLimitsOptions } from './index.js';
+import type { GraphqlAsyncModuleOptions, GraphqlWebSocketLimitsOptions } from './index.js';
 
 let graphqlPublicApi: typeof import('./index.js');
 
@@ -53,9 +53,10 @@ describe('@fluojs/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('isGraphqlListTypeRef');
   });
 
-  it('keeps GraphqlModule limited to the documented synchronous entrypoint', () => {
+  it('exports the injected async registration API and options type', () => {
     expect(graphqlPublicApi.GraphqlModule).toHaveProperty('forRoot');
-    expect(graphqlPublicApi.GraphqlModule).not.toHaveProperty('forRootAsync');
+    expect(graphqlPublicApi.GraphqlModule).toHaveProperty('forRootAsync');
+    expectTypeOf<GraphqlAsyncModuleOptions['useFactory']>().toBeFunction();
   });
 
   it('keeps low-level registration helpers out of the documented root barrel', () => {

@@ -15,6 +15,7 @@ import {
   headingBoundedSection,
 } from './email-nestjs-migration-docs.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+import { enforceGraphqlAsyncRegistrationContract } from './graphql-async-registration-contract.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
@@ -4166,6 +4167,7 @@ export async function main() {
   enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
+  enforceGraphqlAsyncRegistrationContract();
   enforceJwtAsyncRegistrationContract();
   enforceJwtVerifiedClaimsContract((relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'));
   await enforceJwtLearningPathModuleWiring();

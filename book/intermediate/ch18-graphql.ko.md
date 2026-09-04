@@ -37,7 +37,7 @@
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-통합의 중심은 `GraphqlModule`입니다. 현재 `GraphqlModule`은 여러 fluo 모듈과 달리 동기적인 `forRoot` 설정 방식을 사용합니다.
+통합의 중심은 `GraphqlModule`입니다. 준비된 option에는 동기 `forRoot` 설정을 사용하고, option이 application graph의 provider에 의존하면 `forRootAsync({ inject, useFactory })`를 사용합니다.
 
 ## 18.3 Building Code-first Resolvers
 
@@ -102,6 +102,31 @@ import { ProductResolver } from './product.resolver';
     }),
   ],
   providers: [ProductResolver],
+})
+export class AppModule {}
+```
+
+### 비동기 Module Option 해석
+
+Endpoint lifecycle이 시작되기 전에 application graph 의존성에서 GraphQL option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Factory는 application context마다 한 번 실행됩니다. 이 좁은 API는 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery를 의도적으로 허용하지 않습니다.
+`GraphqlModule.forRoot(...)`는 동기 option에 계속 사용할 수 있지만, 유일한 GraphQL 등록 API는 아닙니다.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [ProductResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, ProductResolver],
 })
 export class AppModule {}
 ```

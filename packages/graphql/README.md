@@ -35,7 +35,36 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## Quick Start
 
-Register `GraphqlModule.forRoot(...)` and define a resolver using standard decorators. `@fluojs/graphql` currently exposes a synchronous module entrypoint only; there is no `GraphqlModule.forRootAsync(...)` contract.
+Register `GraphqlModule.forRoot(...)` and define a resolver using standard decorators. Use
+`GraphqlModule.forRootAsync({ inject, useFactory })` when module options must be resolved from
+explicit application-graph dependencies before GraphQL registration.
+
+`forRootAsync(...)` resolves its factory once per application context before the GraphQL lifecycle
+starts. It supports only explicit `inject` tokens and `useFactory`; NestJS-style `imports`,
+`useClass`, `useExisting`, and implicit discovery are rejected.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [HelloResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, HelloResolver],
+})
+export class AppModule {}
+```
+
+No separate example application is added for async registration: this Quick Start and
+[Chapter 18](../../book/intermediate/ch18-graphql.md) are the maintained example surfaces.
 
 You can also pass an executable `GraphQLSchema` via `schema` when you want schema-first integration instead of code-first resolver discovery.
 
@@ -295,6 +324,8 @@ GraphqlModule.forRoot({
 ## Public API
 
 - `GraphqlModule.forRoot(options)`: Main entry point for GraphQL integration.
+- `GraphqlModule.forRootAsync(options)`: Asynchronously resolves GraphQL options from explicit application-graph dependencies before endpoint wiring.
+- `GraphqlAsyncModuleOptions<TDependencies>`: Public async registration contract whose injected dependency tuple types the `useFactory` parameters in order.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver and root operation decorators.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution and explicit DTO input, parent, and context parameter-index bindings.
 - `Arg`: Input DTO field-to-GraphQL-argument mapping decorator.
@@ -302,7 +333,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
 - `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration, including `GraphqlWebSocketLimitsOptions` for `subscriptions.websocket.limits`.
 
-Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`.
+Supported synchronous `GraphqlModule.forRoot(...)` options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`. `GraphqlModule.forRootAsync({ inject, useFactory })` is the separate asynchronous registration API; it accepts only explicit `inject` tokens and `useFactory`.
 
 ## Related Packages
 
