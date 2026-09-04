@@ -14,6 +14,7 @@ export {
   createRuntimeDiagnosticsGraph,
 } from './health/diagnostics.js';
 export * from './health/health.js';
+export { ModuleGraphCompileCache } from './module-graph.js';
 export type {
   MultipartFieldPart,
   MultipartFilePart,
