@@ -107,6 +107,50 @@ For Prisma, `createPrismaHealthIndicatorProvider()` prefers the lifecycle-aware 
 
 Provider factories are repeatable. You may register multiple providers created by the same factory in one `indicatorProviders` array when each instance uses a distinct indicator key or dependency option; Terminus keeps every provider instance under its own DI token instead of letting later same-type providers overwrite earlier ones.
 
+### Composing DI-Backed Indicators With Dependency Modules
+
+Terminus resolves `indicatorProviders` inside its own module scope. Importing `PrismaModule`, `DrizzleModule`, or a named `RedisModule` registration into the surrounding application module does **not** make its exported tokens visible to Terminus, because ordinary module exports are only visible to the modules that import them. Pass the dependency-owning modules through `imports` so Terminus resolves them in the scope where the indicators live.
+
+```typescript
+import { DrizzleModule } from '@fluojs/drizzle';
+import { PrismaModule } from '@fluojs/prisma';
+import { TerminusModule } from '@fluojs/terminus';
+import { createDrizzleHealthIndicatorProvider, createPrismaHealthIndicatorProvider } from '@fluojs/terminus';
+
+const prismaModule = PrismaModule.forRoot({ client });
+const drizzleModule = DrizzleModule.forRoot({ database, dispose });
+
+@Module({
+  imports: [
+    prismaModule,
+    drizzleModule,
+    TerminusModule.forRoot({
+      imports: [prismaModule, drizzleModule],
+      indicatorProviders: [
+        createPrismaHealthIndicatorProvider({ key: 'prisma' }),
+        createDrizzleHealthIndicatorProvider({ key: 'drizzle' }),
+      ],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+The same rule applies to named Redis registrations, which are always scoped and can never be reached through a global module:
+
+```typescript
+const cacheRedisModule = RedisModule.forRoot({ host: '127.0.0.1', name: 'cache', port: 6379 });
+
+TerminusModule.forRoot({
+  imports: [cacheRedisModule],
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
+A named Redis indicator dependency is required. If no imported or global module supplies its token, module-graph validation fails during bootstrap with a `MODULE_VISIBILITY_ERROR` naming the missing token. Prisma and Drizzle indicator dependencies are optional only when their tokens are absent from the bootstrap graph: omitting their owner modules then allows the application to bootstrap and the corresponding indicator reports `down` in `/health` at request time. If a Prisma or Drizzle owner module exists elsewhere in the application but is omitted from Terminus `imports`, bootstrap instead fails with `MODULE_VISIBILITY_ERROR`; optional injection never bypasses module visibility. Dependencies published by a global module — for example `RedisModule.forRoot(...)` without a `name`, which is global by default — remain visible without an explicit `imports` entry.
+
 ### Readiness Participation
 
 Every indicator participates in both `/health` and `/ready` by default. Set `readiness: false` when a dependency must remain visible in `/health` but must not remove an otherwise ready instance from rotation.
@@ -176,7 +220,7 @@ Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` fo
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - Main entry point for registering indicators and providers.
-  - Options include `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
+  - Options include `imports`, `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
 
 ### `TerminusHealthService`
 

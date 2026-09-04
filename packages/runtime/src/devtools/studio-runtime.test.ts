@@ -1,9 +1,9 @@
 import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
 import type {
-  StudioLiveEvent as StudioWireLiveEvent,
   StudioNormalizedRouteDescriptor,
   StudioParsedLiveSnapshot,
+  StudioLiveEvent as StudioWireLiveEvent,
   StudioRouteDescriptor as StudioWireRouteDescriptor,
 } from '@fluojs/studio/contracts';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
@@ -13,9 +13,9 @@ import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../in
 import type { ApplicationLogger } from '../types.js';
 import type {
   StudioLiveEvent as RuntimeStudioLiveEvent,
-  StudioLiveEvent,
   StudioLiveSnapshot as RuntimeStudioLiveSnapshot,
   StudioRouteDescriptor as RuntimeStudioRouteDescriptor,
+  StudioLiveEvent,
 } from './contracts.js';
 import { createStudioLiveSnapshot } from './snapshot.js';
 import { createStudioDevtoolsRuntimeFromConfig, createStudioDevtoolsRuntimeFromEnv, StudioDevtoolsRuntime } from './studio-runtime.js';
@@ -44,12 +44,15 @@ describe('Studio devtools runtime bridge', () => {
   it('keeps Runtime producer route fields required while Studio preserves legacy wire inputs', () => {
     type RuntimeSnapshotEvent = Extract<RuntimeStudioLiveEvent, { type: 'snapshot' }>;
 
+    expectTypeOf<StudioWireRouteDescriptor['graphNodeId']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<StudioWireRouteDescriptor['kind']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<StudioWireRouteDescriptor['params']>().toEqualTypeOf<string[] | undefined>();
+    expectTypeOf<StudioNormalizedRouteDescriptor['graphNodeId']>().toEqualTypeOf<string>();
     expectTypeOf<StudioNormalizedRouteDescriptor['kind']>().toEqualTypeOf<string>();
     expectTypeOf<StudioNormalizedRouteDescriptor['params']>().toEqualTypeOf<string[]>();
     expectTypeOf<StudioParsedLiveSnapshot['routes'][number]['kind']>().toEqualTypeOf<string>();
     expectTypeOf<StudioParsedLiveSnapshot['routes'][number]['params']>().toEqualTypeOf<string[]>();
+    expectTypeOf<RuntimeStudioRouteDescriptor['graphNodeId']>().toEqualTypeOf<string>();
     expectTypeOf<RuntimeStudioRouteDescriptor['kind']>().toEqualTypeOf<string>();
     expectTypeOf<RuntimeStudioRouteDescriptor['params']>().toEqualTypeOf<string[]>();
     expectTypeOf<RuntimeStudioLiveSnapshot['routes'][number]['kind']>().toEqualTypeOf<string>();

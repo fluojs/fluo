@@ -1,8 +1,8 @@
 import type { Provider } from '@fluojs/di';
 import { createRedisPlatformStatusSnapshot, getRedisClientToken, getRedisComponentId, type RedisStatusAdapterInput } from '@fluojs/redis';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, waitForIndicatorProbeSettlement, withIndicatorTimeout } from './utils.js';
 
 interface RedisClientLike {
   ping?: () => Promise<unknown>;
@@ -115,6 +115,10 @@ export function createRedisHealthIndicator(options: RedisHealthIndicatorOptions 
  * default-vs-named client lifecycle boundary from `@fluojs/redis` while keeping the
  * Redis-specific peer dependency isolated to `@fluojs/terminus/redis`.
  *
+ * The Redis client token is a required dependency of the indicator, so it must be visible in
+ * the Terminus module scope. Pass the owning module through `TerminusModule.forRoot({ imports })`;
+ * a missing registration fails at bootstrap rather than degrading `/health` and `/ready` afterwards.
+ *
  * @param options Optional named-client hint, timeout, key override, or custom ping callback.
  * @returns A factory provider that exposes `RedisHealthIndicator` from the DI container.
  */
@@ -132,6 +136,7 @@ export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndi
 export class RedisHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
+  private pendingProbeSettlement: Promise<void> | undefined;
 
   constructor(private readonly options: RedisHealthIndicatorOptions = {}) {
     this.key = options.key;
@@ -149,7 +154,9 @@ export class RedisHealthIndicator implements HealthIndicator {
         throwHealthCheckError('Redis health check failed.', lifecycleDownResult);
       }
 
-      await withIndicatorTimeout(runRedisPing(this.options), timeoutMs, indicatorKey);
+      const probe = runRedisPing(this.options);
+      this.pendingProbeSettlement = waitForIndicatorProbeSettlement(probe);
+      await withIndicatorTimeout(probe, timeoutMs, indicatorKey);
       return createUpResult(indicatorKey, createRedisLifecycleUpDetails(this.options));
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'HealthCheckError') {
@@ -161,5 +168,9 @@ export class RedisHealthIndicator implements HealthIndicator {
         error instanceof Error ? error.message : 'Redis health check failed.',
       ));
     }
+  }
+
+  getPendingHealthCheckSettlement(): Promise<void> | undefined {
+    return this.pendingProbeSettlement;
   }
 }

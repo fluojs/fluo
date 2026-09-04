@@ -107,6 +107,50 @@ Prisma의 경우 `createPrismaHealthIndicatorProvider()`는 `@fluojs/prisma`가 
 
 Provider factory는 반복 등록할 수 있습니다. 각 인스턴스가 서로 다른 indicator key나 dependency option을 사용한다면 같은 factory가 만든 provider 여러 개를 하나의 `indicatorProviders` 배열에 등록할 수 있으며, Terminus는 나중에 등록된 같은 타입 provider가 앞선 provider를 덮어쓰지 않도록 각 provider 인스턴스를 별도 DI token으로 보관합니다.
 
+### 의존성 모듈과 DI 기반 인디케이터 조합하기
+
+Terminus는 `indicatorProviders`를 자신의 module scope 안에서 해석합니다. `PrismaModule`, `DrizzleModule`, 또는 named `RedisModule` registration을 바깥 application module에 import하더라도 그 export token이 Terminus에 보이지는 **않습니다**. 일반 module export는 그것을 import한 module에만 보이기 때문입니다. 인디케이터가 실제로 해석되는 scope에서 의존성을 볼 수 있도록, 의존성을 소유한 module을 `imports`로 전달하세요.
+
+```typescript
+import { DrizzleModule } from '@fluojs/drizzle';
+import { PrismaModule } from '@fluojs/prisma';
+import { TerminusModule } from '@fluojs/terminus';
+import { createDrizzleHealthIndicatorProvider, createPrismaHealthIndicatorProvider } from '@fluojs/terminus';
+
+const prismaModule = PrismaModule.forRoot({ client });
+const drizzleModule = DrizzleModule.forRoot({ database, dispose });
+
+@Module({
+  imports: [
+    prismaModule,
+    drizzleModule,
+    TerminusModule.forRoot({
+      imports: [prismaModule, drizzleModule],
+      indicatorProviders: [
+        createPrismaHealthIndicatorProvider({ key: 'prisma' }),
+        createDrizzleHealthIndicatorProvider({ key: 'drizzle' }),
+      ],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+항상 scoped로 등록되어 global module로는 절대 도달할 수 없는 named Redis registration에도 같은 규칙이 적용됩니다.
+
+```typescript
+const cacheRedisModule = RedisModule.forRoot({ host: '127.0.0.1', name: 'cache', port: 6379 });
+
+TerminusModule.forRoot({
+  imports: [cacheRedisModule],
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
+named Redis indicator 의존성은 필수입니다. import된 module이나 global module 어디에서도 해당 token을 공급하지 않으면 bootstrap 중 module graph 검증이 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. Prisma와 Drizzle indicator 의존성은 해당 token이 bootstrap graph 전체에 없을 때만 선택 사항입니다. 이 경우 owner module을 생략해도 애플리케이션은 bootstrap되지만 해당 indicator는 요청 시점의 `/health`에서 `down`을 보고합니다. Prisma 또는 Drizzle owner module이 애플리케이션의 다른 위치에 존재하지만 Terminus `imports`에서 생략된 경우에는 bootstrap이 `MODULE_VISIBILITY_ERROR`로 실패합니다. optional injection은 module visibility를 우회하지 않습니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
+
 ### Readiness 참여
 
 기본적으로 모든 indicator는 `/health`와 `/ready` 양쪽에 참여합니다. 의존성 상태를 `/health`에는 계속 노출하되 그 외에는 준비된 인스턴스를 rotation에서 제외하지 않아야 한다면 `readiness: false`를 설정하세요.
@@ -176,7 +220,7 @@ Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js m
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - 인디케이터 및 provider 등록을 위한 메인 엔트리 포인트입니다.
-  - Option에는 `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, `path`가 포함됩니다.
+  - Option에는 `imports`, `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, `path`가 포함됩니다.
 
 ### `TerminusHealthService`
 

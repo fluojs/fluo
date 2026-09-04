@@ -212,6 +212,7 @@ describe('Studio live contracts', () => {
     routes: [
       {
         controller: 'HealthController',
+        graphNodeId: 'runtime-route-node:health',
         handler: 'getHealth',
         id: 'GET /health HealthController getHealth',
         kind: 'react-page',
@@ -288,7 +289,7 @@ describe('Studio live contracts', () => {
       type: 'snapshot',
       version: 1,
     });
-    const { kind: _kind, ...legacyRoute } = liveSnapshot.routes[0] ?? {};
+    const { graphNodeId: _graphNodeId, kind: _kind, ...legacyRoute } = liveSnapshot.routes[0] ?? {};
 
     const parsedLegacyEvent = parseStudioLiveEvent(createEvent(legacyRoute));
 
@@ -296,7 +297,10 @@ describe('Studio live contracts', () => {
       throw new Error('Expected a snapshot event.');
     }
 
-    expect(parsedLegacyEvent.payload.routes[0]?.kind).toBe('http');
+    expect(parsedLegacyEvent.payload.routes[0]).toMatchObject({
+      graphNodeId: 'route:GET__health_HealthController_getHealth',
+      kind: 'http',
+    });
     expect(() => parseStudioLiveEvent(createEvent({ ...legacyRoute, kind: 42 }))).toThrow(
       'Invalid Studio live route descriptor kind payload.',
     );
@@ -622,6 +626,7 @@ describe('parseStudioPayload', () => {
       routes: [
         {
           controller: 'ProductRouter',
+          graphNodeId: 'runtime-route-node:product',
           handler: 'show',
           id: 'GET /products/:productId ProductRouter show',
           kind: 'react-page',
@@ -635,6 +640,7 @@ describe('parseStudioPayload', () => {
     expect(parsed.payload.snapshot?.routes).toEqual([
       {
         controller: 'ProductRouter',
+        graphNodeId: 'runtime-route-node:product',
         handler: 'show',
         id: 'GET /products/:productId ProductRouter show',
         kind: 'react-page',
@@ -1081,8 +1087,14 @@ describe('parseStudioPayload', () => {
     });
 
     expect(document.querySelector('#drop-zone')?.textContent).toContain('Diagnostics file loaded successfully.');
-    expect(document.querySelector('section:nth-of-type(2)')?.textContent).toContain('components: 2');
-    expect(document.querySelector('section:nth-of-type(2)')?.textContent).toContain('diagnostics: 1');
+    expect(document.body.textContent).toContain('Snapshot-derived report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: unavailable');
     expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
   });
 
@@ -1125,8 +1137,15 @@ describe('parseStudioPayload', () => {
       expect(document.querySelector('#graph-host')?.textContent).toContain('redis.default');
     });
 
+    expect(document.body.textContent).toContain('Snapshot-derived report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: 3.210ms');
     expect(document.body.textContent).toContain('Static/report timing');
-    expect(document.body.textContent).toContain('3.210ms');
     expect(document.body.textContent).toContain('bootstrap_module');
   });
 
@@ -1160,7 +1179,14 @@ describe('parseStudioPayload', () => {
     });
 
     expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
-    expect(document.body.textContent).toContain('components: 2');
+    expect(document.body.textContent).toContain('Canonical report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: 4.560ms');
     expect(document.body.textContent).toContain('Static/report timing');
     expect(document.body.textContent).toContain('4.560ms');
   });

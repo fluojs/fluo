@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import type { Token } from '@fluojs/core';
 
 import { Inject } from '@fluojs/core';
-import type { Token } from '@fluojs/core';
 import { forwardRef, optional } from '@fluojs/di';
 import type { MiddlewareRouteConfig } from '@fluojs/http';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   defineRuntimeClassDiMetadata,
@@ -90,7 +90,7 @@ describe('module graph cache-key prerequisites', () => {
     class AppModule {}
     defineRuntimeModuleMetadata(AppModule, {});
 
-    expect(createModuleGraphCacheKey(AppModule)).toContain('algorithm:1');
+    expect(createModuleGraphCacheKey(AppModule)).toContain('algorithm:2');
   });
 
   it('changes when module metadata changes', () => {

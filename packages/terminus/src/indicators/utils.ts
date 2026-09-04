@@ -109,6 +109,19 @@ export function withIndicatorTimeout<T>(
 }
 
 /**
+ * Convert a probe promise into a settlement signal that never rejects.
+ *
+ * @param promise Probe promise whose completion releases its execution ownership.
+ * @returns A promise that resolves after the probe either fulfills or rejects.
+ */
+export function waitForIndicatorProbeSettlement(promise: Promise<unknown>): Promise<void> {
+  return promise.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
  * Resolve the effective key used in reports for one indicator execution.
  *
  * @param fallbackKey Built-in fallback key for the indicator type.

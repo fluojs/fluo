@@ -180,6 +180,10 @@ The public runtime lifecycle contract has four hooks: startup runs `onModuleInit
 
 Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
 
+NestJS `app.enableShutdownHooks()` is not an implicit result of every fluo bootstrap path. For the default Node `SIGINT` / `SIGTERM` wiring, use `runNodeApplication(...)` from `@fluojs/runtime/node`; it installs the default Node shutdown registration. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, and adapter-first Node bootstrap leave signal ownership explicit, so use `createNodeShutdownSignalRegistration(...)` or `registerShutdownSignals(...)` at that Node application boundary when signal handling is required. Fetch-style hosts such as Bun, Deno, and Cloudflare Workers own their own shutdown boundary: do not install Node process signals there, and have the host call `app.close(signal?)` when it receives its shutdown event.
+
+Lifecycle hooks are not the listener-close or connection-drain phase. During `app.close(signal?)`, fluo runs the shutdown hooks before `adapter.close(signal?)`; migrated cleanup that requires a closed listener or completed adapter drain belongs at the adapter or host shutdown boundary after close, not in a same-named lifecycle hook.
+
 ### Studio Devtools Bridge
 
 `@fluojs/runtime` can publish live Studio snapshots and request traces without reading `process.env` directly. `fluo dev --studio` remains the default Node path: the CLI starts the sidecar, creates tokenized Studio config, and injects it before the app imports runtime. Runtime reads those injected fields once, validates the HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the legacy process-global cannot change instrumentation inputs.
@@ -199,7 +203,7 @@ const studioDevtools = new StudioDevtoolsRuntime({
 const app = await fluoFactory.create(AppModule, { studioDevtools });
 ```
 
-This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history. Failed-request events use only the fixed `Request failed` message and never include raw exception text, names, stacks, causes, or stringified values.
+This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Live route descriptors include the exact `graphNodeId` of their route node; Runtime retains the existing node-ID format while Studio consumes this explicit correlation instead of reproducing it. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history. Failed-request events use only the fixed `Request failed` message and never include raw exception text, names, stacks, causes, or stringified values.
 
 ### Global Exception Filters
 

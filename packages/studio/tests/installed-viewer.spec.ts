@@ -11,6 +11,21 @@ import { readViewerUrl, stopViewerProcess } from '../src/viewer-process.js';
 const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const evidenceDirectory = resolve(packageDirectory, 'evidence');
 const snapshotFixture = readFileSync(join(packageDirectory, 'tests', 'fixtures', 'studio-snapshot.json'));
+const snapshotFixturePayload = JSON.parse(snapshotFixture.toString()) as Record<string, unknown>;
+const timingFixture = {
+  phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+  totalMs: 4.56,
+  version: 1,
+} as const;
+const reportSummaryFixture = {
+  componentCount: 2,
+  diagnosticCount: 1,
+  errorCount: 0,
+  healthStatus: 'degraded',
+  readinessStatus: 'degraded',
+  timingTotalMs: 4.56,
+  warningCount: 1,
+} as const;
 const COMMIT_COMMAND_TIMEOUT_MS = 10_000;
 const BUILD_COMMAND_TIMEOUT_MS = 120_000;
 const PACKAGE_COMMAND_TIMEOUT_MS = 60_000;
@@ -162,6 +177,89 @@ test.afterAll(async () => {
   }
 });
 
+test('selects explicitly correlated graph nodes for colliding routes in the installed viewer', async ({ browser }) => {
+  if (!viewerUrl) {
+    throw new Error('Installed viewer setup did not complete.');
+  }
+
+  const { context, page } = await openViewer(browser, viewports[0]);
+  const snapshotEvent = {
+    emittedAt: '2026-09-04T00:00:01.000Z',
+    epoch: 'epoch-installed-route-collision',
+    eventId: 'epoch-installed-route-collision:1',
+    payload: {
+      appId: 'app-installed-route-collision',
+      diagnostics: [],
+      generatedAt: '2026-09-04T00:00:00.000Z',
+      graph: {
+        edges: [],
+        nodes: [
+          { id: 'route-node:first', kind: 'route', label: 'GET /users' },
+          { id: 'route-node:second', kind: 'route', label: 'GET /users' },
+        ],
+      },
+      requests: [],
+      routes: [
+        {
+          controller: 'Users Controller',
+          graphNodeId: 'route-node:first',
+          handler: 'list',
+          id: 'GET /users Users Controller list',
+          kind: 'react-page',
+          method: 'GET',
+          params: [],
+          path: '/users',
+        },
+        {
+          controller: 'Users_Controller',
+          graphNodeId: 'route-node:second',
+          handler: 'list',
+          id: 'GET /users Users_Controller list',
+          kind: 'http',
+          method: 'GET',
+          params: [],
+          path: '/users',
+        },
+      ],
+      version: 1,
+    },
+    sequence: 1,
+    source: { appId: 'app-installed-route-collision', runtime: 'node' },
+    type: 'snapshot',
+    version: 1,
+  };
+
+  try {
+    await page.addInitScript((event) => {
+      class FakeEventSource {
+        onerror: ((event: Event) => void) | null = null;
+        onopen: ((event: Event) => void) | null = null;
+        addEventListener(): void {}
+        close(): void {}
+        removeEventListener(): void {}
+      }
+
+      Object.defineProperty(window, 'EventSource', { configurable: true, value: FakeEventSource });
+      Object.defineProperty(window, 'fetch', {
+        configurable: true,
+        value: async () => ({ json: async () => ({ events: [event], sequence: 1 }), ok: true, status: 200 }),
+      });
+      (window as typeof window & { __FLUO_STUDIO__: { eventsUrl: string; stateUrl: string } }).__FLUO_STUDIO__ = {
+        eventsUrl: '/api/events',
+        stateUrl: '/api/state',
+      };
+    }, snapshotEvent);
+    await page.goto(viewerUrl.href);
+    await expect(page.locator('.route-row')).toHaveCount(2);
+
+    await page.locator('.route-row').nth(1).click();
+
+    await expect(page.locator('.live-graph-details')).toContainText('id: route-node:second');
+  } finally {
+    await context.close();
+  }
+});
+
 test('opens the installed public viewer bin and exercises its file workflow in Chrome', async ({ browser }) => {
   if (!consumerDirectory || !viewerUrl) {
     throw new Error('Installed viewer setup did not complete.');
@@ -192,23 +290,68 @@ test('opens the installed public viewer bin and exercises its file workflow in C
       await expect(page.locator('.notice')).toHaveText('Diagnostics file loaded successfully.');
       await expect(page.getByRole('heading', { name: 'QUEUE_DEPENDENCY_NOT_READY' })).toBeVisible();
       await expect(page.getByText('Verify Redis connectivity and queue configuration.')).toBeVisible();
-      await expect(page.getByText('components: 2')).toBeVisible();
-      await expect(page.getByText('diagnostics: 1')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Snapshot-derived report summary' })).toBeVisible();
+      await expect(page.getByText('report components: 2')).toBeVisible();
+      await expect(page.getByText('report diagnostics: 1')).toBeVisible();
+      await expect(page.getByText('report errors: 0')).toBeVisible();
+      await expect(page.getByText('report warnings: 1')).toBeVisible();
+      await expect(page.getByText('report health: degraded')).toBeVisible();
+      await expect(page.getByText('report readiness: degraded')).toBeVisible();
+      await expect(page.getByText('report timing: unavailable')).toBeVisible();
       await captureEvidence(page, '03-snapshot-loaded', viewport, url);
 
+      await page.setInputFiles('#file-input', {
+        buffer: Buffer.from(JSON.stringify({ snapshot: snapshotFixturePayload, timing: timingFixture })),
+        mimeType: 'application/json',
+        name: 'snapshot-with-timing.json',
+      });
+      await expect(page.getByRole('heading', { name: 'Snapshot-derived report summary' })).toBeVisible();
+      await expect(page.getByText('report components: 2')).toBeVisible();
+      await expect(page.getByText('report diagnostics: 1')).toBeVisible();
+      await expect(page.getByText('report errors: 0')).toBeVisible();
+      await expect(page.getByText('report warnings: 1')).toBeVisible();
+      await expect(page.getByText('report health: degraded')).toBeVisible();
+      await expect(page.getByText('report readiness: degraded')).toBeVisible();
+      await expect(page.getByText('report timing: 4.560ms')).toBeVisible();
+
+      await page.setInputFiles('#file-input', {
+        buffer: Buffer.from(JSON.stringify({
+          generatedAt: snapshotFixturePayload.generatedAt,
+          snapshot: snapshotFixturePayload,
+          summary: reportSummaryFixture,
+          timing: timingFixture,
+          version: 1,
+        })),
+        mimeType: 'application/json',
+        name: 'inspect-report.json',
+      });
+      await expect(page.getByRole('heading', { name: 'Canonical report summary' })).toBeVisible();
+      await expect(page.getByText('report components: 2')).toBeVisible();
+      await expect(page.getByText('report diagnostics: 1')).toBeVisible();
+      await expect(page.getByText('report errors: 0')).toBeVisible();
+      await expect(page.getByText('report warnings: 1')).toBeVisible();
+      await expect(page.getByText('report health: degraded')).toBeVisible();
+      await expect(page.getByText('report readiness: degraded')).toBeVisible();
+      await expect(page.getByText('report timing: 4.560ms')).toBeVisible();
+
+      await page.setInputFiles('#file-input', {
+        buffer: snapshotFixture,
+        mimeType: 'application/json',
+        name: 'snapshot.json',
+      });
       await page.locator('#search').fill('does-not-match');
-      await expect(page.getByText('components: 0')).toBeVisible();
-      await expect(page.getByText('diagnostics: 0')).toBeVisible();
+      await expect(page.getByText('report components: 0')).toBeVisible();
+      await expect(page.getByText('report diagnostics: 0')).toBeVisible();
       await captureEvidence(page, '04-filtered-empty', viewport, url);
       await page.locator('#search').fill('');
-      await expect(page.getByText('components: 2')).toBeVisible();
+      await expect(page.getByText('report components: 2')).toBeVisible();
       await page.locator('#readiness-degraded').check();
-      await expect(page.getByText('components: 1')).toBeVisible();
+      await expect(page.getByText('report components: 1')).toBeVisible();
       await page.locator('#severity-warning').check();
-      await expect(page.getByText('diagnostics: 1')).toBeVisible();
+      await expect(page.getByText('report diagnostics: 1')).toBeVisible();
       await page.locator('#readiness-degraded').uncheck();
       await page.locator('#severity-warning').uncheck();
-      await expect(page.getByText('components: 2')).toBeVisible();
+      await expect(page.getByText('report components: 2')).toBeVisible();
 
       await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url.origin });
       await page.getByRole('button', { name: 'Copy Mermaid' }).click();

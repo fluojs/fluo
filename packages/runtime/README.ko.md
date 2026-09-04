@@ -179,6 +179,10 @@ await context.close();
 
 종료 준비 작업은 소유하는 문서화된 phase로 옮기세요. Application-wide signal phase보다 먼저 끝나야 하는 module resource teardown에는 `onModuleDestroy()`를 사용하고, signal-aware application cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. `@fluojs/runtime`은 `beforeApplicationShutdown` compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않습니다.
 
+NestJS `app.enableShutdownHooks()`는 모든 fluo bootstrap path에서 암묵적으로 적용되지 않습니다. 기본 Node `SIGINT` / `SIGTERM` wiring에는 `@fluojs/runtime/node`의 `runNodeApplication(...)`을 사용하세요. 이 helper가 기본 Node shutdown registration을 설치합니다. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, adapter-first Node bootstrap은 signal ownership을 명시적으로 남겨 두므로 signal handling이 필요하면 해당 Node application boundary에서 `createNodeShutdownSignalRegistration(...)` 또는 `registerShutdownSignals(...)`를 사용하세요. Bun, Deno, Cloudflare Workers 같은 Fetch-style host는 자체 shutdown boundary를 소유합니다. 그 환경에 Node process signal을 설치하지 말고 host가 shutdown event를 받으면 `app.close(signal?)`를 호출하세요.
+
+Lifecycle hook은 listener close 또는 connection drain phase가 아닙니다. `app.close(signal?)` 중 fluo는 `adapter.close(signal?)`보다 먼저 shutdown hook을 실행합니다. 닫힌 listener 또는 완료된 adapter drain이 필요한 migrated cleanup은 같은 이름의 lifecycle hook이 아니라 close 이후의 adapter 또는 host shutdown boundary에 두세요.
+
 ### Studio Devtools Bridge
 
 `@fluojs/runtime`은 `process.env`를 직접 읽지 않고 live Studio snapshot과 request trace를 publish할 수 있습니다. `fluo dev --studio`는 기본 Node 경로로 유지됩니다. CLI가 sidecar를 시작하고 tokenized Studio config를 만든 뒤 앱이 runtime을 import하기 전에 주입합니다. Runtime은 주입된 field를 한 번씩 읽고 HTTP(S) endpoint를 검증한 후 freeze된 private snapshot을 유지하므로 legacy process-global이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다.
@@ -198,7 +202,7 @@ const studioDevtools = new StudioDevtoolsRuntime({
 const app = await fluoFactory.create(AppModule, { studioDevtools });
 ```
 
-이 package는 transport-neutral seam을 publish하며 Bun, Deno, Cloudflare Workers sidecar 구현을 제공하지는 않습니다. Non-Node host는 소유자가 bridge와 executable host integration evidence를 제공한 경우에만 live Studio를 지원합니다. 그렇지 않으면 inspect/static artifact path를 사용하세요. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다. Failed-request event는 고정된 `Request failed` message만 사용하며 raw exception text, name, stack, cause, stringified value를 포함하지 않습니다.
+이 package는 transport-neutral seam을 publish하며 Bun, Deno, Cloudflare Workers sidecar 구현을 제공하지는 않습니다. Non-Node host는 소유자가 bridge와 executable host integration evidence를 제공한 경우에만 live Studio를 지원합니다. 그렇지 않으면 inspect/static artifact path를 사용하세요. Live route descriptor는 해당 route node의 정확한 `graphNodeId`를 포함합니다. Runtime은 기존 node-ID 형식을 유지하고 Studio는 이를 다시 구현하는 대신 명시적 correlation을 소비합니다. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다. Failed-request event는 고정된 `Request failed` message만 사용하며 raw exception text, name, stack, cause, stringified value를 포함하지 않습니다.
 
 ### 전역 예외 필터
 
