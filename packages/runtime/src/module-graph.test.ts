@@ -15,6 +15,7 @@ import {
   compileModuleGraph,
   createModuleGraphCacheKey,
   getModuleGraphCompileCacheSizeForTesting,
+  ModuleGraphCompileCache,
 } from './module-graph.js';
 
 type MutableRuntimeForwardRef = {
@@ -316,6 +317,25 @@ describe('module graph cache-key prerequisites', () => {
 
     expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);
     expect(compileModuleGraph(AppModule)[0]?.providerTokens.has(Logger)).toBe(true);
+  });
+
+  it('bounds dynamic module identities and releases an owned cache on disposal', () => {
+    const cache = new ModuleGraphCompileCache(2);
+    const dynamicModules = Array.from({ length: 3 }, () => {
+      class DynamicModule {}
+      defineRuntimeModuleMetadata(DynamicModule, {});
+      return DynamicModule;
+    });
+
+    for (const dynamicModule of dynamicModules) {
+      compileModuleGraph(dynamicModule, { moduleGraphCache: cache });
+    }
+
+    expect(cache.size).toBe(2);
+
+    cache.dispose();
+
+    expect(cache.size).toBe(0);
   });
 
   it('compiles replacement metadata under the original logical module identity', () => {

@@ -17,6 +17,7 @@ import type {
 
 import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
+import type { ModuleGraphCompileCache } from './module-graph.js';
 import type { PlatformComponentInput } from './platform-contract.js';
 
 /** Module class accepted by bootstrap and module-graph compilation helpers. */
@@ -46,9 +47,10 @@ export interface BootstrapModuleOptions {
    * The cache is disabled by default. When enabled, successful graph compiles are
    * keyed by root module identity, runtime provider inputs, validation tokens,
    * module replacement pairs, core metadata write versions, and the runtime compile algorithm version.
-   * Failed compilations are never cached.
+   * Failed compilations are never cached. Pass a {@link ModuleGraphCompileCache}
+   * to bound and dispose cache retention under the caller's ownership.
    */
-  moduleGraphCache?: boolean;
+  moduleGraphCache?: boolean | ModuleGraphCompileCache;
   /**
    * Low-level testing seam for compiling a module with replacement metadata while
    * preserving the original logical module identity in the compiled graph.
@@ -165,9 +167,11 @@ export interface BootstrapApplicationOptions {
   /**
    * Enables the opt-in process-local module graph compile result cache for this
    * bootstrap. The default is `false`, so each bootstrap compiles a fresh graph
-   * unless callers explicitly request cache reuse.
+   * unless callers explicitly request cache reuse. Pass a
+   * {@link ModuleGraphCompileCache} to retain a bounded, caller-owned cache that
+   * can be disposed with its application lifecycle.
    */
-  moduleGraphCache?: boolean;
+  moduleGraphCache?: boolean | ModuleGraphCompileCache;
   /**
    * Policy for duplicate provider tokens across modules.
    *
