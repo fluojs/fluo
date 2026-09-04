@@ -916,19 +916,6 @@ readiness branch는 application `ready()`가 호출하는 대상입니다. compo
   }
 ```
 
-`path:packages/runtime/src/platform-shell.ts:331-339`
-```typescript
-  async assertCriticalReadiness(): Promise<void> {
-    const readiness = await this.ready();
-
-    if (readiness.status === 'not-ready') {
-      throw new InvariantError(
-        `Runtime platform shell is not ready: ${readiness.reason ?? 'critical platform component is unavailable.'}`,
-      );
-    }
-  }
-```
-
 `path:packages/runtime/src/platform-shell.test.ts:94-219`의 테스트가 핵심 동작을 보여 줍니다. dependency order가 start에 반영되고, reverse order가 stop에 반영되며, unknown dependency id는 거부되고, aggregate snapshot은 readiness, health, component dependency, diagnostics를 함께 묶습니다.
 
 이 platform shell은 `runBootstrapLifecycle()` 동안 시작되고, `FluoApplication.ready()`가 `listen()` 전에 다시 검사합니다. 즉 platform shell은 runtime의 host-readiness governor입니다.

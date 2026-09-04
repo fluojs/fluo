@@ -916,19 +916,6 @@ The readiness branch is what application `ready()` calls. It gathers component r
   }
 ```
 
-`path:packages/runtime/src/platform-shell.ts:331-339`
-```typescript
-  async assertCriticalReadiness(): Promise<void> {
-    const readiness = await this.ready();
-
-    if (readiness.status === 'not-ready') {
-      throw new InvariantError(
-        `Runtime platform shell is not ready: ${readiness.reason ?? 'critical platform component is unavailable.'}`,
-      );
-    }
-  }
-```
-
 The tests in `path:packages/runtime/src/platform-shell.test.ts:94-219` show the core behavior. Dependency order affects start, reverse order affects stop, unknown dependency IDs are rejected, and the aggregate snapshot includes readiness, health, component dependencies, and diagnostics.
 
 This platform shell is started during `runBootstrapLifecycle()`, and `FluoApplication.ready()` checks it again before `listen()`. So the platform shell is the host-readiness governor of the runtime.
