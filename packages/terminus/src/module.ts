@@ -41,6 +41,7 @@ function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[
   const normalizedOptions: TerminusModuleOptions = {
     ...options,
     execution: { ...(options.execution ?? {}) },
+    imports: [...(options.imports ?? [])],
     indicators: copyIndicators(options.indicators),
     indicatorProviders: copyProviders(options.indicatorProviders),
     readinessChecks: [...(options.readinessChecks ?? [])],
@@ -233,6 +234,7 @@ function withPlatformDiagnostics(
 
 function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): ModuleType {
   const readinessChecks = [...(options.readinessChecks ?? [])];
+  const terminusImports = [...(options.imports ?? [])];
   const healthModule = HealthModule.forRoot({
     healthCheck: async (ctx: RequestContext) => {
       const healthService = await ctx.container.resolve<TerminusHealthService>(TerminusHealthService);
@@ -262,10 +264,11 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
 
   return defineModule(TerminusRuntimeModule, {
     exports: [TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS, TerminusHealthService],
-    imports: [healthModule],
+    imports: [healthModule, ...terminusImports],
     providers: [
       ...createTerminusProviders({
         execution: options.execution,
+        imports: terminusImports,
         indicatorProviders: options.indicatorProviders,
         indicators: options.indicators,
         path: options.path,
@@ -303,6 +306,11 @@ export class TerminusModule {
   /**
    * Register Terminus health indicators and readiness hooks.
    *
+   * DI-backed indicator providers resolve inside the Terminus module scope, so a module that
+   * owns a Prisma, Drizzle, or named Redis token must be listed in `imports`. Importing it into
+   * the surrounding application module alone leaves the token invisible to Terminus, and the
+   * missing dependency then fails module-graph validation during bootstrap.
+   *
    * @example
    * ```ts
    * import { MemoryHealthIndicator } from '@fluojs/terminus/node';
@@ -312,7 +320,17 @@ export class TerminusModule {
    * });
    * ```
    *
-   * @param options Terminus health indicator and readiness configuration.
+   * @example
+   * ```ts
+   * const prismaModule = PrismaModule.forRoot({ client });
+   *
+   * TerminusModule.forRoot({
+   *   imports: [prismaModule],
+   *   indicatorProviders: [createPrismaHealthIndicatorProvider({ key: 'prisma' })],
+   * });
+   * ```
+   *
+   * @param options Terminus health indicator, dependency import, and readiness configuration.
    * @returns A runtime module exposing health endpoints and `TerminusHealthService`.
    */
   static forRoot(options: TerminusModuleOptions = {}): ModuleType {

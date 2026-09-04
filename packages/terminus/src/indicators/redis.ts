@@ -115,6 +115,10 @@ export function createRedisHealthIndicator(options: RedisHealthIndicatorOptions 
  * default-vs-named client lifecycle boundary from `@fluojs/redis` while keeping the
  * Redis-specific peer dependency isolated to `@fluojs/terminus/redis`.
  *
+ * The Redis client token is a required dependency of the indicator, so it must be visible in
+ * the Terminus module scope. Pass the owning module through `TerminusModule.forRoot({ imports })`;
+ * a missing registration fails at bootstrap rather than degrading `/health` and `/ready` afterwards.
+ *
  * @param options Optional named-client hint, timeout, key override, or custom ping callback.
  * @returns A factory provider that exposes `RedisHealthIndicator` from the DI container.
  */

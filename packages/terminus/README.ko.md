@@ -107,6 +107,50 @@ Prisma의 경우 `createPrismaHealthIndicatorProvider()`는 `@fluojs/prisma`가 
 
 Provider factory는 반복 등록할 수 있습니다. 각 인스턴스가 서로 다른 indicator key나 dependency option을 사용한다면 같은 factory가 만든 provider 여러 개를 하나의 `indicatorProviders` 배열에 등록할 수 있으며, Terminus는 나중에 등록된 같은 타입 provider가 앞선 provider를 덮어쓰지 않도록 각 provider 인스턴스를 별도 DI token으로 보관합니다.
 
+### 의존성 모듈과 DI 기반 인디케이터 조합하기
+
+Terminus는 `indicatorProviders`를 자신의 module scope 안에서 해석합니다. `PrismaModule`, `DrizzleModule`, 또는 named `RedisModule` registration을 바깥 application module에 import하더라도 그 export token이 Terminus에 보이지는 **않습니다**. 일반 module export는 그것을 import한 module에만 보이기 때문입니다. 인디케이터가 실제로 해석되는 scope에서 의존성을 볼 수 있도록, 의존성을 소유한 module을 `imports`로 전달하세요.
+
+```typescript
+import { DrizzleModule } from '@fluojs/drizzle';
+import { PrismaModule } from '@fluojs/prisma';
+import { TerminusModule } from '@fluojs/terminus';
+import { createDrizzleHealthIndicatorProvider, createPrismaHealthIndicatorProvider } from '@fluojs/terminus';
+
+const prismaModule = PrismaModule.forRoot({ client });
+const drizzleModule = DrizzleModule.forRoot({ database, dispose });
+
+@Module({
+  imports: [
+    prismaModule,
+    drizzleModule,
+    TerminusModule.forRoot({
+      imports: [prismaModule, drizzleModule],
+      indicatorProviders: [
+        createPrismaHealthIndicatorProvider({ key: 'prisma' }),
+        createDrizzleHealthIndicatorProvider({ key: 'drizzle' }),
+      ],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+항상 scoped로 등록되어 global module로는 절대 도달할 수 없는 named Redis registration에도 같은 규칙이 적용됩니다.
+
+```typescript
+const cacheRedisModule = RedisModule.forRoot({ host: '127.0.0.1', name: 'cache', port: 6379 });
+
+TerminusModule.forRoot({
+  imports: [cacheRedisModule],
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
+import된 module이나 global module 어디에서도 공급되지 않는 필수 indicator 의존성은 bootstrap 중 module graph 검증에서 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. 따라서 조합 실수는 애플리케이션이 정상 기동한 뒤 모든 `/health`와 `/ready` 요청이 실패하는 대신 시작 시점에 드러납니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
+
 ### Readiness 참여
 
 기본적으로 모든 indicator는 `/health`와 `/ready` 양쪽에 참여합니다. 의존성 상태를 `/health`에는 계속 노출하되 그 외에는 준비된 인스턴스를 rotation에서 제외하지 않아야 한다면 `readiness: false`를 설정하세요.

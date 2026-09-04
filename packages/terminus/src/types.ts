@@ -1,5 +1,5 @@
 import type { Provider } from '@fluojs/di';
-import type { PlatformHealthReport, PlatformReadinessReport, ReadinessCheck } from '@fluojs/runtime';
+import type { ModuleType, PlatformHealthReport, PlatformReadinessReport, ReadinessCheck } from '@fluojs/runtime';
 
 /** Status values returned by one health indicator execution. */
 export type HealthIndicatorStatus = 'up' | 'down';
@@ -53,6 +53,16 @@ export interface HealthCheckExecutionOptions {
  */
 export interface TerminusModuleOptions {
   execution?: HealthCheckExecutionOptions;
+  /**
+   * Modules whose exported tokens must be visible to `indicatorProviders`.
+   *
+   * Terminus registers `indicatorProviders` inside its own module scope, so a
+   * dependency-owning module such as `PrismaModule`, `DrizzleModule`, or a named
+   * `RedisModule` registration must be imported here for its exported tokens to
+   * resolve. Importing the module into the parent application module alone does
+   * not make its exports visible to Terminus.
+   */
+  imports?: readonly ModuleType[];
   indicators?: readonly HealthIndicator[];
   indicatorProviders?: readonly Provider[];
   path?: string;
