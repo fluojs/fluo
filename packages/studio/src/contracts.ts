@@ -178,6 +178,7 @@ export type StudioRouteKind = string;
 /** Route descriptor projected into the live Studio UI. */
 export interface StudioRouteDescriptor {
   controller: string;
+  graphNodeId?: string;
   handler: string;
   id: string;
   kind?: StudioRouteKind;
@@ -189,7 +190,8 @@ export interface StudioRouteDescriptor {
 }
 
 /** Route descriptor returned after Studio normalizes legacy wire defaults. */
-export interface StudioNormalizedRouteDescriptor extends Omit<StudioRouteDescriptor, 'kind' | 'params'> {
+export interface StudioNormalizedRouteDescriptor extends Omit<StudioRouteDescriptor, 'graphNodeId' | 'kind' | 'params'> {
+  graphNodeId: string;
   kind: StudioRouteKind;
   params: string[];
 }
@@ -553,10 +555,13 @@ function validateStudioRouteDescriptor(value: unknown): StudioNormalizedRouteDes
     throw new Error('Invalid Studio live route descriptor params payload.');
   }
 
+  const id = validateString(value.id, 'Invalid Studio live route descriptor payload.');
   const route: StudioNormalizedRouteDescriptor = {
     controller: validateString(value.controller, 'Invalid Studio live route descriptor payload.'),
+    graphNodeId: validateOptionalString(value.graphNodeId, 'Invalid Studio live route descriptor graph node payload.')
+      ?? `route:${id.replaceAll(/[^a-zA-Z0-9_.:-]/g, '_') || 'anonymous'}`,
     handler: validateString(value.handler, 'Invalid Studio live route descriptor payload.'),
-    id: validateString(value.id, 'Invalid Studio live route descriptor payload.'),
+    id,
     kind: kind ?? 'http',
     method: validateString(value.method, 'Invalid Studio live route descriptor payload.'),
     params: params === undefined ? [] : [...params],
@@ -735,7 +740,7 @@ function validateStudioLiveEventSource(value: unknown): StudioLiveEventSource {
   };
 }
 
-function validateStudioLiveEventPayload(type: unknown, payload: unknown): StudioLiveEvent['payload'] {
+function validateStudioLiveEventPayload(type: unknown, payload: unknown): StudioParsedLiveEvent['payload'] {
   if (type === 'snapshot') {
     return validateStudioLiveSnapshot(payload);
   }
@@ -1082,7 +1087,7 @@ export function parseStudioPayload(rawJson: string): ParsedPayload {
  * @param filter - Active readiness, severity, and query filters.
  * @returns A filtered snapshot containing only the matching components and diagnostics.
  */
-export function applyFilters(snapshot: PlatformShellSnapshot, filter: FilterState): PlatformShellSnapshot {
+export function applyFilters<TSnapshot extends PlatformShellSnapshot>(snapshot: TSnapshot, filter: FilterState): TSnapshot {
   const query = filter.query.trim().toLowerCase();
 
   const components = snapshot.components.filter((component: PlatformSnapshot) => {

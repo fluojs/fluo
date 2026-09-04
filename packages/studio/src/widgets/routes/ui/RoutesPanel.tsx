@@ -1,5 +1,5 @@
 import type { Dispatch } from 'react';
-import type { StudioRouteDescriptor } from '../../../contracts.js';
+import type { StudioNormalizedRouteDescriptor } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectRoutes, selectSelectedRoute } from '../../../entities/studio/model.js';
@@ -10,18 +10,12 @@ interface RoutesPanelProps {
   state: StudioDashboardState;
 }
 
-function routeNodeId(route: StudioRouteDescriptor): string {
-  const slug = route.id.replaceAll(/[^a-zA-Z0-9_.:-]/g, '_') || 'anonymous';
-  return `route:${slug}`;
+function routeGraphNodeId(route: StudioNormalizedRouteDescriptor, state: StudioDashboardState): string | undefined {
+  return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.id === route.graphNodeId)?.id;
 }
 
-function routeGraphNodeId(route: StudioRouteDescriptor, state: StudioDashboardState): string | undefined {
-  const expectedNodeId = routeNodeId(route);
-  return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.id === expectedNodeId)?.id;
-}
-
-function routeKindLabel(route: StudioRouteDescriptor): string {
-  return route.kind === 'react-page' ? 'React page' : route.kind === 'http' || route.kind === undefined ? 'HTTP handler' : route.kind;
+function routeKindLabel(route: StudioNormalizedRouteDescriptor): string {
+  return route.kind === 'react-page' ? 'React page' : route.kind === 'http' ? 'HTTP handler' : route.kind;
 }
 
 /**
