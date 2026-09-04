@@ -17,6 +17,7 @@ import {
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceGraphqlAsyncRegistrationContract } from './graphql-async-registration-contract.mjs';
 import { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
+import { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migration-boundaries.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import { enforceJwtVerifiedClaimsContract } from './jwt-verified-claims-contract.mjs';
@@ -88,6 +89,7 @@ export {
 } from './microservices-safety-guidance.mjs';
 export { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
 export { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
+export { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migration-boundaries.mjs';
 export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
@@ -4199,6 +4201,7 @@ export async function main() {
   enforceOpenApiNullableNormalizationContract();
   enforceOpenApiMigrationDocumentStructure();
   enforceGraphqlRuntimeBoundaryDiscoverability();
+  enforceGraphqlNestjsMigrationBoundaries();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceDrizzleNamedClientContract();

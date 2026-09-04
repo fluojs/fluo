@@ -253,6 +253,68 @@ The prior migration limitation for field argument DTO binding is superseded for 
 
 Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is supported. The remaining limitation is schema-first field-resolver attachment only.
 
+## GraphQL Migration Boundaries
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+
+### Authorization, Context, and Endpoint
+
+NestJS resolver guards and `GqlExecutionContext` do not transfer to `@fluojs/graphql`. Only bootstrap/application middleware registered before GraphQL consumes a request can establish `requestContext.principal`; HTTP route guards registered after `GraphqlModule` do not run. Authorize each operation in its resolver using `context.principal`. For WebSocket subscriptions, `GraphQLContext.connectionParams` is an untrusted `Record<string, unknown>` supplied by the client. Parse and authorize it in application-owned subscription setup before creating or using an application stream; never treat a token-shaped `connectionParams` value as an authenticated principal.
+
+`GraphqlModule` mounts the GraphQL HTTP endpoint at the fixed `/graphql` path. Do not migrate a NestJS `GraphQLModule.forRoot({ path })` setting as though it were a fluo option.
+
+Root operations receive their materialized input (or `undefined` when no input is declared) as the first method argument and `GraphQLContext` as the second. NestJS root `@Args()`, `@Context()`, and `GqlExecutionContext` parameter assumptions do not apply:
+
+```ts
+@Resolver()
+class AccountResolver {
+  @Query({ input: AccountInput, outputType: AccountType })
+  account(input: AccountInput, context: GraphQLContext) {
+    return this.accounts.findAuthorized(input.id, context.principal);
+  }
+}
+```
+
+`@Args()`, `@Parent()`, and `@Context()` are only for code-first object field resolvers. All resolver decorators target public instance members: `@Query()`, `@Mutation()`, `@Subscription()`, `@FieldResolver()`, `@Args()`, `@Parent()`, and `@Context()` reject private or static methods, while `@Arg()` rejects private or static fields.
+
+### Schema and Lifetime Checks
+
+Before cutover, compare the generated fluo SDL with the NestJS schema rather than relying on TypeScript types:
+
+- Root `outputType` is never inferred: omitting it produces GraphQL `String`; preserve object and list shapes with an explicit output type and `listOf(...)`.
+- Preserve required output fields explicitly. A newly added code-first object field becomes non-null only with `nullable: false`; an omitted option or `nullable: true` is nullable. Preserve existing non-null wrappers in the declared GraphQL output type.
+- `@Arg(...)` fields produce nullable scalar or list GraphQL arguments. Validation can reject an absent value at execution time, but it does not make the schema argument non-null. Treat a NestJS-required GraphQL argument as a compatibility gap until the emitted SDL matches the required contract; do not silently accept a widened nullable argument.
+
+Resolvers that inject request-scoped providers must themselves use `@Scope('request')`. fluo creates one operation DI container for every HTTP request and WebSocket operation, shares it among that operation's root and field resolvers, then disposes it on HTTP completion, operation completion, or disconnect. That DI disposal does not own external event subscriptions: the application must return a typed `AsyncIterable` and close application resources when GraphQL stops consuming it.
+
+```ts
+type Notification = { id: string; message: string };
+
+async function* ownedNotifications(
+  source: AsyncIterable<Notification>,
+  close: () => Promise<void>,
+): AsyncIterable<Notification> {
+  try {
+    yield* source;
+  } finally {
+    await close();
+  }
+}
+
+@Resolver()
+class NotificationResolver {
+  @Subscription({ outputType: NotificationType })
+  notifications(_input: undefined, context: GraphQLContext): AsyncIterable<Notification> {
+    const principal = requireAuthorizedPrincipal(context.principal);
+    return ownedNotifications(
+      this.events.subscribe(principal.id),
+      () => this.events.unsubscribe(principal.id),
+    );
+  }
+}
+```
+
+The runtime rejects subscription resolver results that are not `AsyncIterable`; returning a NestJS `Observable` or an application resource without iterator cleanup is not a compatible migration.
+
 ## Breaking Differences
 
 - Decorators MUST follow the TC39 standard model. NestJS legacy decorator assumptions do not carry over.

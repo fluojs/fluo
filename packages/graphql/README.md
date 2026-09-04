@@ -103,6 +103,8 @@ await app.listen(3000);
 //   -d '{"query": "{ hello(name: \"fluo\") }"}'
 ```
 
+Migrating from NestJS? Read the [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.md#graphql-migration-boundaries) before porting resolver authorization, schema nullability, scopes, or subscriptions.
+
 ## Core Capabilities
 
 ### Code-first Resolvers
@@ -226,11 +228,17 @@ class UserResolver {
 ```
 
 ## Resolver Lifecycle Contracts
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 - Singleton resolvers are the default and are resolved from the application container for every operation.
 - Resolvers that inject request-scoped providers must also be marked with `@Scope('request')`; this keeps DI lifetime rules explicit and avoids singleton-to-request dependency mismatches.
 - `@fluojs/graphql` creates one operation-scoped DI container for each HTTP GraphQL request or websocket subscription operation, shares it across resolver calls in that operation, and disposes it when the operation completes or the websocket operation disconnects.
-- Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, the authenticated HTTP `principal` when middleware or guards set one, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
+- Only bootstrap/application middleware registered before GraphQL consumes a request can establish `requestContext.principal`; HTTP route guards registered after `GraphqlModule` do not run. Authorize each operation in its resolver using `context.principal`.
+- WebSocket `connectionParams` is an untrusted client-provided `Record<string, unknown>`; parse and authorize it in application-owned subscription setup before creating an application stream.
+- The HTTP endpoint is fixed at `/graphql`; a NestJS `GraphQLModule.forRoot({ path })` setting has no fluo option.
+- Resolver decorators require public instance targets: root and field decorators reject private or static methods, and `@Arg()` rejects private or static input fields.
+- New output fields are non-null only with `nullable: false`; omitted or `nullable: true` fields remain nullable. `@Arg(...)` produces nullable scalar or list arguments, and DTO validation does not make them non-null in the SDL.
+- Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, that pre-established authenticated HTTP `principal`, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Object field resolvers use the same provider scope and operation container as root resolvers; `@Parent()` and `@Context()` only control positional method arguments.
 - GraphQL-operation-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
 - Application shutdown unregisters the websocket transport, closes live websocket clients, and disposes any still-active websocket operation containers through the same request-scoped provider teardown path used when an operation completes normally.
