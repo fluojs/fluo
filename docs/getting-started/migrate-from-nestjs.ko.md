@@ -240,7 +240,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 
 ### 인가, Context, Endpoint
 
-NestJS resolver guard와 `GqlExecutionContext`는 `@fluojs/graphql`로 이전되지 않습니다. HTTP request는 application-owned middleware 또는 guard 경계에서 인증하고, resolver에서는 그 결과인 `GraphQLContext.principal`을 사용하세요. WebSocket subscription의 `GraphQLContext.connectionParams`는 client가 제공하는 신뢰할 수 없는 `Record<string, unknown>`입니다. Application-owned subscription setup에서 이를 parse 및 authorize한 뒤 application stream을 만들거나 사용해야 하며, token처럼 보이는 `connectionParams` 값을 인증된 principal로 취급하면 안 됩니다.
+NestJS resolver guard와 `GqlExecutionContext`는 `@fluojs/graphql`로 이전되지 않습니다. `GraphqlModule`보다 먼저 등록된 application middleware가 `requestContext.principal`을 설정해야 합니다. `GraphqlLifecycleService`가 `next()`를 호출하지 않고 `/graphql`을 처리하므로 그 뒤에 등록된 GraphQL HTTP route guard는 실행되지 않습니다. Resolver는 그 결과인 `GraphQLContext.principal`에 operation별로 적절한 authorization check를 적용해야 합니다. WebSocket subscription의 `GraphQLContext.connectionParams`는 client가 제공하는 신뢰할 수 없는 `Record<string, unknown>`입니다. Application-owned subscription setup에서 이를 parse 및 authorize한 뒤 application stream을 만들거나 사용해야 하며, token처럼 보이는 `connectionParams` 값을 인증된 principal로 취급하면 안 됩니다.
 
 `GraphqlModule`은 GraphQL HTTP endpoint를 고정된 `/graphql` path에 mount합니다. NestJS `GraphQLModule.forRoot({ path })` 설정을 fluo option처럼 이전하지 마세요.
 

@@ -89,7 +89,7 @@ Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 
 
 ### NestJS 마이그레이션 경계
 
-NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니다. HTTP request는 application-owned middleware 또는 guard에서 인증한 뒤 root resolver의 `(input, context)` signature에서 `context.principal`을 사용하세요. `@Args()`, `@Context()`, `@Parent()`는 code-first object field resolver용 method decorator이며 root operation parameter decorator가 아닙니다.
+NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니다. `GraphqlModule`보다 먼저 등록된 application middleware가 `requestContext.principal`을 설정해야 합니다. `GraphqlLifecycleService`가 `next()`를 호출하지 않고 `/graphql`을 처리하므로 그 뒤에 등록된 GraphQL HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`과 root resolver signature `(input, context)`를 사용해 적절한 authorization check를 적용하세요. `@Args()`, `@Context()`, `@Parent()`는 code-first object field resolver용 method decorator이며 root operation parameter decorator가 아닙니다.
 
 WebSocket `context.connectionParams`는 인증된 identity가 아니라 client가 제공한 `Record<string, unknown>`입니다. Subscription setup을 application-owned로 두고 stream을 만들기 전에 이를 parse 및 authorize하세요. GraphQL endpoint는 `/graphql`로 고정되므로 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
 

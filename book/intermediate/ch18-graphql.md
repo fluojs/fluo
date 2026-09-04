@@ -89,7 +89,7 @@ Resolver methods can also receive `context: GraphQLContext`. That context carrie
 
 ### NestJS Migration Boundaries
 
-NestJS resolver guards and `GqlExecutionContext` do not carry into fluo. Authenticate HTTP requests in application-owned middleware or guards, then use `context.principal` in a root resolver method with the signature `(input, context)`. `@Args()`, `@Context()`, and `@Parent()` are method decorators for code-first object field resolvers only; they are not root-operation parameter decorators.
+NestJS resolver guards and `GqlExecutionContext` do not carry into fluo. Application middleware registered before `GraphqlModule` must establish `requestContext.principal`; GraphQL HTTP route guards registered after it do not run because `GraphqlLifecycleService` handles `/graphql` without calling `next()`. Apply the authorization checks appropriate to each operation in its resolver using `context.principal` and the root resolver signature `(input, context)`. `@Args()`, `@Context()`, and `@Parent()` are method decorators for code-first object field resolvers only; they are not root-operation parameter decorators.
 
 WebSocket `context.connectionParams` is client-provided `Record<string, unknown>`, not an authenticated identity. Parse and authorize it in application-owned subscription setup before using it to create a stream. The GraphQL endpoint is fixed at `/graphql`, so a NestJS `GraphQLModule.forRoot({ path })` configuration has no fluo equivalent.
 
