@@ -64,6 +64,15 @@ async function readSubscriptionPayload(
   }
 }
 
+async function waitWithin<T>(promise: Promise<T>, message: string): Promise<T> {
+  const timeout = AbortSignal.timeout(1_000);
+  const timedOut = new Promise<never>((_, reject) => {
+    timeout.addEventListener('abort', () => reject(new Error(message)), { once: true });
+  });
+
+  return await Promise.race([promise, timedOut]);
+}
+
 describe('GraphQL example application', () => {
   it('rejects a malformed SSE data payload', () => {
     // Given: an SSE frame whose data field is not JSON.
@@ -93,6 +102,31 @@ describe('GraphQL example application', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('removes the EventEmitter listener when the subscription iterator is cancelled', async () => {
+    // Given: a subscription whose pending read has installed the EventEmitter listener.
+    const updates = new LiveUpdates();
+    const subscription = updates.subscribe();
+    const pendingRead = subscription.next();
+    await updates.waitForSubscriber();
+    expect(updates.getSubscriberListenerCount()).toBe(1);
+
+    // When: the consumer cancels the iterator before another event arrives.
+    if (!subscription.return) {
+      throw new Error('Expected the GraphQL subscription iterator to support cancellation.');
+    }
+
+    const cancellation = subscription.return();
+
+    // Then: cancellation settles the pending read and removes the listener within the deadline.
+    await expect(
+      waitWithin(cancellation, 'Timed out cancelling the GraphQL subscription iterator.'),
+    ).resolves.toEqual({ done: true, value: undefined });
+    await expect(
+      waitWithin(pendingRead, 'Timed out settling the cancelled GraphQL subscription read.'),
+    ).resolves.toEqual({ done: true, value: undefined });
+    expect(updates.getSubscriberListenerCount()).toBe(0);
   });
 
   it('serves a DataLoader-backed query and an SSE subscription after startup', async () => {
@@ -151,6 +185,7 @@ describe('GraphQL example application', () => {
 
       const updates = await app.get<LiveUpdates>(LiveUpdates);
       await updates.waitForSubscriber();
+      expect(updates.getSubscriberListenerCount()).toBe(1);
 
       const publishResponse = await fetch(`${origin}/graphql`, {
         body: JSON.stringify({
@@ -184,12 +219,19 @@ describe('GraphQL example application', () => {
         },
       });
     } finally {
+      const updates = await app.get<LiveUpdates>(LiveUpdates);
+
       try {
-        await reader?.cancel();
+        await waitWithin(
+          reader?.cancel() ?? Promise.resolve(),
+          'Timed out closing the GraphQL SSE response body.',
+        );
       } finally {
         abortController.abort();
-        await app.close();
+        await waitWithin(app.close(), 'Timed out closing the GraphQL example application.');
       }
+
+      expect(updates.getSubscriberListenerCount()).toBe(0);
     }
   });
 });
