@@ -13,7 +13,7 @@ const sourceRequirements = [
     'packages/studio/src/contracts.ts',
     [
       'StudioRouteDescriptor',
-      "kind !== undefined && kind !== 'http' && kind !== 'react-page'",
+      "kind !== undefined && typeof kind !== 'string'",
       "kind: kind ?? 'http'",
       'params: params === undefined ? []',
     ],

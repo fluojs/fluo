@@ -21,7 +21,7 @@ function routeGraphNodeId(route: StudioRouteDescriptor, state: StudioDashboardSt
 }
 
 function routeKindLabel(route: StudioRouteDescriptor): string {
-  return route.kind === 'react-page' ? 'React page' : 'HTTP handler';
+  return route.kind === 'react-page' ? 'React page' : route.kind === 'http' || route.kind === undefined ? 'HTTP handler' : route.kind;
 }
 
 /**

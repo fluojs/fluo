@@ -1,11 +1,22 @@
 import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type {
+  StudioLiveEvent as StudioWireLiveEvent,
+  StudioNormalizedRouteDescriptor,
+  StudioParsedLiveSnapshot,
+  StudioRouteDescriptor as StudioWireRouteDescriptor,
+} from '@fluojs/studio/contracts';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from '../bootstrap.js';
 import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../internal/core-metadata.js';
 import type { ApplicationLogger } from '../types.js';
-import type { StudioLiveEvent } from './contracts.js';
+import type {
+  StudioLiveEvent as RuntimeStudioLiveEvent,
+  StudioLiveEvent,
+  StudioLiveSnapshot as RuntimeStudioLiveSnapshot,
+  StudioRouteDescriptor as RuntimeStudioRouteDescriptor,
+} from './contracts.js';
 import { createStudioLiveSnapshot } from './snapshot.js';
 import { createStudioDevtoolsRuntimeFromConfig, createStudioDevtoolsRuntimeFromEnv, StudioDevtoolsRuntime } from './studio-runtime.js';
 
@@ -30,6 +41,24 @@ afterEach(() => {
 });
 
 describe('Studio devtools runtime bridge', () => {
+  it('keeps Runtime producer route fields required while Studio preserves legacy wire inputs', () => {
+    type RuntimeSnapshotEvent = Extract<RuntimeStudioLiveEvent, { type: 'snapshot' }>;
+
+    expectTypeOf<StudioWireRouteDescriptor['kind']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<StudioWireRouteDescriptor['params']>().toEqualTypeOf<string[] | undefined>();
+    expectTypeOf<StudioNormalizedRouteDescriptor['kind']>().toEqualTypeOf<string>();
+    expectTypeOf<StudioNormalizedRouteDescriptor['params']>().toEqualTypeOf<string[]>();
+    expectTypeOf<StudioParsedLiveSnapshot['routes'][number]['kind']>().toEqualTypeOf<string>();
+    expectTypeOf<StudioParsedLiveSnapshot['routes'][number]['params']>().toEqualTypeOf<string[]>();
+    expectTypeOf<RuntimeStudioRouteDescriptor['kind']>().toEqualTypeOf<string>();
+    expectTypeOf<RuntimeStudioRouteDescriptor['params']>().toEqualTypeOf<string[]>();
+    expectTypeOf<RuntimeStudioLiveSnapshot['routes'][number]['kind']>().toEqualTypeOf<string>();
+    expectTypeOf<RuntimeStudioLiveSnapshot['routes'][number]['params']>().toEqualTypeOf<string[]>();
+    expectTypeOf<RuntimeSnapshotEvent['payload']['routes'][number]['kind']>().toEqualTypeOf<string>();
+    expectTypeOf<RuntimeSnapshotEvent['payload']['routes'][number]['params']>().toEqualTypeOf<string[]>();
+    expectTypeOf<StudioWireLiveEvent>().not.toEqualTypeOf<RuntimeStudioLiveEvent>();
+  });
+
   it('stays disabled unless Studio env injection includes a token-protected endpoint', () => {
     expect(createStudioDevtoolsRuntimeFromConfig()).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({})).toBeUndefined();

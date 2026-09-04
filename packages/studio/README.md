@@ -74,11 +74,13 @@ Live mode shows:
 - bootstrap timing summaries for live and static/report data;
 - runtime/request diagnostics with severity, target, message, and fix hints where available.
 
+Runtime inspection integrations may retain arbitrary string route `kind` markers. At the live Studio wire boundary, `react-page` remains distinct, and omitted `kind` defaults to `http`; every supplied `kind` must be a string, with non-string values rejected. Studio preserves accepted route kind strings end-to-end.
+
 MVP request flow intentionally means route/handler and dependency-graph correlation, not full method-level service call-chain tracing.
 
 ## Static/Report Compatibility
 
-Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics. New snapshots may include compiled `routes`; Studio validates `kind` and parameter-name-only `params`, displays `react-page` as **React page**, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics.
+Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics. New snapshots may include compiled `routes`; Studio validates string `kind` values and parameter-name-only `params`, displays `react-page` as **React page**, preserves arbitrary route kind strings, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics. Parsed route results normalize omitted legacy `kind` to `http` and `params` to `[]`, while non-string `kind` values are rejected and the exported wire-input fields remain optional for producer compatibility.
 
 This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. After a successful bootstrap, `fluo inspect` reads `PlatformShell.snapshot()` and routes to produce a `PlatformShellSnapshot` with reported platform components and their dependencies; it does not contain the compiled module/provider graph or provider scope metadata that Node live Studio derives at runtime. The live path publishes compiled module, provider, controller, and route graph data (including provider scope metadata), separate bootstrap timing events, and request trace events. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and launch them with the packaged `fluo-studio-viewer` instead of expecting live sidecar events in the MVP. Workflows that need that compiled DI graph must stay on the supported Node live path with `fluo dev --studio`. Integrations that need the HTML asset path resolve the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`) even when the inspected artifact came from a non-Node runtime fallback workflow.
 
@@ -129,7 +131,7 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 | `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
 | `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. Filtered snapshots render deterministically, producing identical Mermaid text before and after JSON serialization. |
-| `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate runtime-connected sidecar/SSE envelopes before UI state consumes them. |
+| `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate runtime-connected sidecar/SSE envelopes and return normalized route entries before UI state consumes them. |
 | `isStudioLiveEvent(value)` | Runtime-safe type guard for checking sidecar/SSE envelopes before parsing or dispatch. |
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
 | `StudioLiveEvent` | Versioned live event envelope for `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`. |
@@ -166,6 +168,9 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 | `StudioRequestTrace` | Request trace metadata emitted without request or response bodies. |
 | `StudioRestartPayload` | Runtime/app restart lifecycle payload emitted by CLI-owned dev supervision. |
 | `StudioRouteDescriptor` | Live/static route descriptor with `kind`, method/effective path, parameter names, and controller-handler identity. |
+| `StudioRouteKind` | Open string route kind accepted by Studio validators and Runtime producers; arbitrary string markers are preserved, omitted input defaults to `http`, and non-string input is rejected. |
+| `StudioNormalizedRouteDescriptor` | Parsed route descriptor with legacy `kind` and `params` defaults materialized. |
+| `StudioParsedInspectionSnapshot` / `StudioParsedLiveSnapshot` / `StudioParsedPayload` / `StudioParsedLiveEvent` | Parsed outputs that expose normalized route entries while preserving the legacy optional wire-input contract. |
 
 ### Published package entrypoints
 

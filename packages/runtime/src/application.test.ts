@@ -1,5 +1,5 @@
 import { request as httpsRequest } from 'node:https';
-import { type AddressInfo, createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { Inject, Scope } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import {
@@ -30,31 +30,6 @@ import { createHealthModule } from './health/health.js';
 import { bootstrapNodeApplication, createNodeHttpAdapter, NodeHttpApplicationAdapter, runNodeApplication } from './node/node.js';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
-
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve an available port.'));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -105,6 +80,21 @@ async function resolveNodeApplicationUrl(app: Awaited<ReturnType<typeof bootstra
   }
 
   return adapter.getListenTarget().url;
+}
+
+async function resolveNodeApplicationPort(app: Awaited<ReturnType<typeof bootstrapNodeApplication>>): Promise<number> {
+  const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+
+  if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+    throw new Error('Expected the test application to use the Node HTTP adapter.');
+  }
+
+  const address = adapter.getServer().address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve the bound test port.');
+  }
+
+  return address.port;
 }
 
 afterEach(async () => {
@@ -1025,15 +1015,14 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`, {
       body: JSON.stringify({ name: 'Ada' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1059,15 +1048,14 @@ describe('bootstrapApplication', () => {
       controllers: [SearchController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/search?page=1&tag=a&tag=b&tag=c`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/search?page=1&tag=a&tag=b&tag=c`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -1108,15 +1096,14 @@ describe('bootstrapApplication', () => {
       controllers: [SearchController],
     });
 
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       converters: [QueryNumberConverter],
       cors: false,
-      port,
+      port: 0,
       shutdownSignals: false,
     });
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/search?id=42`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/search?id=42`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
@@ -1220,22 +1207,21 @@ describe('bootstrapApplication', () => {
       controllers: [WebhookController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       rawBody: true,
     }));
 
     await app.listen();
 
     const [jsonResponse, textResponse] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/webhooks/json`, {
         body: JSON.stringify({ provider: 'stripe' }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       }),
-      fetchForTest(`http://127.0.0.1:${String(port)}/webhooks/text`, {
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/webhooks/text`, {
         body: 'ping=1',
         headers: { 'content-type': 'text/plain; charset=utf-8' },
         method: 'POST',
@@ -1274,15 +1260,14 @@ describe('bootstrapApplication', () => {
       controllers: [WebhookController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/webhooks/json`, {
       body: JSON.stringify({ provider: 'stripe' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1315,10 +1300,9 @@ describe('bootstrapApplication', () => {
       controllers: [UploadController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       rawBody: true,
     }));
 
@@ -1328,7 +1312,7 @@ describe('bootstrapApplication', () => {
     form.set('name', 'Ada');
     form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/uploads`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/uploads`, {
       body: form,
       method: 'POST',
     });
@@ -1360,11 +1344,10 @@ describe('bootstrapApplication', () => {
       controllers: [UploadController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       maxBodySize: 10,
-      port,
+      port: 0,
     }));
 
     await app.listen();
@@ -1373,7 +1356,7 @@ describe('bootstrapApplication', () => {
     form.set('name', 'Ada Lovelace');
     form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/uploads`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/uploads`, {
       body: form,
       headers: { 'x-request-id': 'req-multipart-fallback' },
       method: 'POST',
@@ -1418,17 +1401,16 @@ describe('bootstrapApplication', () => {
       controllers: [RuntimeController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
     const [docsResponse, metricsResponse] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/docs`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/metrics`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/docs`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/metrics`),
     ]);
 
     expect(docsResponse.status).toBe(200);
@@ -1456,16 +1438,15 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       middleware: [createSecurityHeadersMiddleware()],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/health`);
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-security-policy')).toBe("default-src 'self'");
@@ -1503,15 +1484,14 @@ describe('bootstrapApplication', () => {
       controllers: [RuntimeController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       observers: [new StatusObserver()],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/created`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/created`);
 
     expect(response.status).toBe(201);
     expect(observedStatusCodes).toEqual([201]);
@@ -1540,16 +1520,15 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       maxBodySize: 8,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`, {
       body: JSON.stringify({ name: 'Ada Lovelace' }),
       headers: { 'content-type': 'application/json', 'x-request-id': 'req-oversized-body' },
       method: 'POST',
@@ -1585,17 +1564,16 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
     const [versioned, unversioned] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/v1/users`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/users`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/v1/users`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`),
     ]);
 
     expect(versioned.status).toBe(200);
@@ -1626,10 +1604,9 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       versioning: {
         header: 'X-API-Version',
         type: VersioningType.HEADER,
@@ -1639,13 +1616,13 @@ describe('bootstrapApplication', () => {
     await app.listen();
 
     const [v1, v2, missing] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`, {
         headers: { 'x-api-version': '1' },
       }),
-      fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`, {
         headers: { 'X-API-Version': '2' },
       }),
-      fetchForTest(`http://127.0.0.1:${String(port)}/users`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`),
     ]);
 
     expect(v1.status).toBe(200);
@@ -1678,10 +1655,9 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       versioning: {
         key: 'v=',
         type: VersioningType.MEDIA_TYPE,
@@ -1690,7 +1666,7 @@ describe('bootstrapApplication', () => {
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`, {
       headers: {
         accept: 'application/json;v=2',
       },
@@ -1723,10 +1699,9 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       versioning: {
         extractor: (request) => {
           const raw = request.headers['x-custom-version'];
@@ -1738,7 +1713,7 @@ describe('bootstrapApplication', () => {
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/users`, {
       headers: {
         'x-custom-version': '2',
       },
@@ -1766,13 +1741,13 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
-      port,
+      port: 0,
     });
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
-    const corsPreflight = await fetchForTest(`http://127.0.0.1:${String(port)}/health`, {
+    const url = await resolveNodeApplicationUrl(app);
+    const response = await fetchForTest(`${url}/health`);
+    const corsPreflight = await fetchForTest(`${url}/health`, {
       headers: { origin: 'https://example.com' },
       method: 'OPTIONS',
     });
@@ -1782,7 +1757,7 @@ describe('bootstrapApplication', () => {
     // CORS is opt-in — without explicit cors option, no CORS middleware is applied
     expect(corsPreflight.status).toBe(404);
     expect(corsPreflight.headers.get('access-control-allow-origin')).toBeNull();
-    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://localhost:${String(port)}`))).toBe(true);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on ${url}`))).toBe(true);
 
     await app.close();
     log.mockRestore();
@@ -1804,18 +1779,18 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
-      port,
+      port: 0,
     });
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
+    const url = await resolveNodeApplicationUrl(app);
+    const response = await fetchForTest(`${url}/health`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on ${url}`))).toBe(true);
 
     await app.close();
     log.mockRestore();
@@ -1837,10 +1812,9 @@ describe('bootstrapApplication', () => {
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = process.listeners(signal).length;
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownSignals: [signal],
     });
 
@@ -1870,11 +1844,10 @@ describe('bootstrapApplication', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
       forceExitTimeoutMs: 25,
-      port,
+      port: 0,
       shutdownSignals: ['SIGTERM'],
     });
 
@@ -1919,10 +1892,9 @@ describe('bootstrapApplication', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownSignals: ['SIGTERM'],
     });
     const originalClose = app.close.bind(app);
@@ -1963,7 +1935,6 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
@@ -1971,8 +1942,10 @@ describe('bootstrapApplication', () => {
         cert: TEST_TLS_CERTIFICATE,
         key: TEST_TLS_PRIVATE_KEY,
       },
-      port,
+      port: 0,
     });
+
+    const port = await resolveNodeApplicationPort(app);
 
     const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
 
@@ -2000,19 +1973,19 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
       host: '0.0.0.0',
-      port,
+      port: 0,
     });
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
+    const url = await resolveNodeApplicationUrl(app);
+    const response = await fetchForTest(`${url}/health`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
 
-    const listenEvent = log.mock.calls.find(([message]) => String(message).includes(`Listening on http://localhost:${String(port)}`));
+    const listenEvent = log.mock.calls.find(([message]) => String(message).includes(`Listening on ${url}`));
     expect(listenEvent).toBeDefined();
     expect(String(listenEvent?.[0])).toContain('bound to');
 
@@ -2055,25 +2028,24 @@ describe('bootstrapApplication', () => {
       imports: [HealthModule],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
     const [prefixedApp, unprefixedApp, prefixedHealth, prefixedReady, prefixedDocs, prefixedMetrics, prefixedOpenapi, health, docs] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/app/info`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/health`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/ready`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/docs`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/metrics`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/openapi.json`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/health`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/docs`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/app/info`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/app/info`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/health`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/ready`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/docs`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/metrics`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/openapi.json`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/health`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/docs`),
     ]);
 
     expect(prefixedApp.status).toBe(200);
@@ -2121,22 +2093,21 @@ describe('bootstrapApplication', () => {
       imports: [HealthModule],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/health', '/ready'],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
     const [health, ready, prefixedHealth, prefixedReady, prefixedDocs] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/health`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/ready`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/health`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/ready`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/docs`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/health`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/ready`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/health`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/ready`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/docs`),
     ]);
 
     expect(health.status).toBe(200);
@@ -2173,17 +2144,16 @@ describe('bootstrapApplication', () => {
       controllers: [AppController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       observers: [new PathObserver()],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/app/info`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
@@ -2214,21 +2184,20 @@ describe('bootstrapApplication', () => {
       controllers: [AppController, InternalController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/internal/*'],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
     const [internal, prefixedInternal, prefixedApp, unprefixedApp] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/internal/ping`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/internal/ping`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/app/info`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/internal/ping`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/internal/ping`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/app/info`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/app/info`),
     ]);
 
     expect(internal.status).toBe(200);
@@ -2263,20 +2232,19 @@ describe('bootstrapApplication', () => {
       controllers: [AppController, InternalController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '///api//',
       globalPrefixExclude: ['//internal//*'],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
     const [prefixedApp, internal, prefixedInternal] = await Promise.all([
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/internal/ping`),
-      fetchForTest(`http://127.0.0.1:${String(port)}/api/internal/ping`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/app/info`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/internal/ping`),
+      fetchForTest(`${await resolveNodeApplicationUrl(app)}/api/internal/ping`),
     ]);
 
     expect(prefixedApp.status).toBe(200);
@@ -2302,16 +2270,15 @@ describe('bootstrapApplication', () => {
       controllers: [AppController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/',
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/app/info`);
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/app/info`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
@@ -2433,16 +2400,15 @@ describe('bootstrapApplication', () => {
       controllers: [HangingController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownTimeoutMs: 50,
     }));
 
     await app.listen();
 
-    const responsePromise = fetchForTest(`http://127.0.0.1:${String(port)}/hang`);
+    const responsePromise = fetchForTest(`${await resolveNodeApplicationUrl(app)}/hang`);
     await requestStarted.promise;
 
     await expect(app.close()).resolves.toBeUndefined();
@@ -3008,16 +2974,16 @@ describe('bootstrapApplication', () => {
       providers: [RequestScopedCounter],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
+    const url = await resolveNodeApplicationUrl(app);
     const responses = await Promise.all(
-      Array.from({ length: 20 }, () => fetchForTest(`http://127.0.0.1:${String(port)}/concurrent-scope`)),
+      Array.from({ length: 20 }, () => fetchForTest(`${url}/concurrent-scope`)),
     );
     const bodies = await Promise.all(responses.map(async (response) => response.json() as Promise<{ id: number }>));
 
@@ -3048,15 +3014,14 @@ describe('bootstrapApplication', () => {
       controllers: [CookieController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/cookie-test`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/cookie-test`, {
       headers: { cookie: 'session=abc123; other=value' },
     });
 
@@ -3077,15 +3042,14 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: 'https://my-frontend.com',
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/ping`, {
       headers: { origin: 'https://my-frontend.com' },
     });
 
@@ -3108,18 +3072,17 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: ['https://a.com', 'https://b.com'],
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const responseA = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
+    const responseA = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/ping`, {
       headers: { origin: 'https://a.com' },
     });
-    const responseB = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
+    const responseB = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/ping`, {
       headers: { origin: 'https://c.com' },
     });
 
@@ -3142,15 +3105,14 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: { allowOrigin: 'https://my-frontend.com', maxAge: 600 },
-      port,
+      port: 0,
     }));
 
     await app.listen();
 
-    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
+    const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/ping`, {
       headers: { origin: 'https://my-frontend.com' },
     });
 
@@ -3179,13 +3141,14 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [SlowController] });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
+
+    const port = await resolveNodeApplicationPort(app);
 
     const net = await import('node:net');
     const socket = net.createConnection(port, '127.0.0.1');
@@ -3250,13 +3213,14 @@ describe('bootstrapApplication', () => {
       controllers: [EventsController],
     });
 
-    const port = await findAvailablePort();
     const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     }));
 
     await app.listen();
+
+    const port = await resolveNodeApplicationPort(app);
 
     const http = await import('node:http');
     const clientRequest = http.request({

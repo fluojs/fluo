@@ -5,44 +5,20 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type {
-  BootstrapTimingDiagnostics as RuntimeBootstrapTimingDiagnostics,
-  PlatformCheckResult as RuntimePlatformCheckResult,
-  PlatformDiagnosticIssue as RuntimePlatformDiagnosticIssue,
-  PlatformHealthReport as RuntimePlatformHealthReport,
-  PlatformReadinessReport as RuntimePlatformReadinessReport,
-  PlatformShellSnapshot as RuntimePlatformShellSnapshot,
-  PlatformSnapshot as RuntimePlatformSnapshot,
-} from '@fluojs/runtime';
 import type { Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import {
   applyFilters,
   isStudioLiveEvent,
+  type PlatformShellSnapshot,
   parseStudioLiveEvent,
   parseStudioPayload,
   renderMermaid,
-  type BootstrapTimingDiagnostics,
-  type PlatformCheckResult,
-  type PlatformDiagnosticIssue,
-  type PlatformHealthReport,
-  type PlatformReadinessReport,
-  type PlatformShellSnapshot,
-  type PlatformSnapshot,
 } from './contracts.js';
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 import * as studio from './index.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
-
-type Exact<Left, Right> =
-  (<Type>() => Type extends Left ? 1 : 2) extends (<Type>() => Type extends Right ? 1 : 2)
-    ? (<Type>() => Type extends Right ? 1 : 2) extends (<Type>() => Type extends Left ? 1 : 2)
-      ? true
-      : false
-    : false;
-
-function assertExactContract<Condition extends true>(...condition: Condition[]): void { void condition; }
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -268,9 +244,62 @@ describe('Studio live contracts', () => {
       version: 1,
     };
 
-    expect(parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
+    const parsed = parseStudioLiveEvent(JSON.stringify(event));
+
+    expectTypeOf(parsed).toEqualTypeOf<studio.StudioParsedLiveEvent>();
+    expect(parsed).toEqual(event);
     expect(isStudioLiveEvent(event)).toBe(true);
     expect(studio.parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
+  });
+
+  it('preserves arbitrary string route kinds in live events', () => {
+    const parsed = parseStudioLiveEvent(JSON.stringify({
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:custom-route-kind',
+      payload: {
+        ...liveSnapshot,
+        routes: [{ ...liveSnapshot.routes[0], kind: 'custom-page' }],
+      },
+      sequence: 1,
+      source: { appId: 'app-test', runtime: 'node' },
+      type: 'snapshot',
+      version: 1,
+    }));
+
+    if (parsed.type !== 'snapshot') {
+      throw new Error('Expected a snapshot event.');
+    }
+
+    expect(parsed.payload.routes[0]?.kind).toBe('custom-page');
+  });
+
+  it('defaults only omitted live route kinds and rejects non-string values', () => {
+    const createEvent = (route: object) => JSON.stringify({
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:route-kind-validation',
+      payload: {
+        ...liveSnapshot,
+        routes: [route],
+      },
+      sequence: 1,
+      source: { appId: 'app-test', runtime: 'node' },
+      type: 'snapshot',
+      version: 1,
+    });
+    const { kind: _kind, ...legacyRoute } = liveSnapshot.routes[0] ?? {};
+
+    const parsedLegacyEvent = parseStudioLiveEvent(createEvent(legacyRoute));
+
+    if (parsedLegacyEvent.type !== 'snapshot') {
+      throw new Error('Expected a snapshot event.');
+    }
+
+    expect(parsedLegacyEvent.payload.routes[0]?.kind).toBe('http');
+    expect(() => parseStudioLiveEvent(createEvent({ ...legacyRoute, kind: 42 }))).toThrow(
+      'Invalid Studio live route descriptor kind payload.',
+    );
   });
 
   it('rejects malformed runtime-connected Studio events before UI state consumes them', () => {
@@ -531,23 +560,34 @@ describe('parseStudioPayload', () => {
     const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      fluo?: {
+        declarationBuildDevDependencies?: readonly string[];
+      };
     };
     const runtimeCoupledSources = [
       'src/contracts.ts',
       'src/entities/studio/model.ts',
       'src/shared/lib/viewer-rendering.ts',
+      'src/widgets/static-report/ui/StaticReportPanel.tsx',
+      'src/widgets/timing/ui/TimingPanel.tsx',
     ].filter((sourcePath) => readFileSync(resolve(packageDir, sourcePath), 'utf8').includes('@fluojs/runtime'));
 
     expect(packageManifest.dependencies?.['@fluojs/runtime']).toBeUndefined();
-    expect(packageManifest.devDependencies?.['@fluojs/runtime']).toBe('workspace:^');
+    expect(packageManifest.devDependencies?.['@fluojs/runtime']).toBeUndefined();
+    expect(packageManifest.fluo?.declarationBuildDevDependencies).toBeUndefined();
     expect(runtimeCoupledSources).toEqual([]);
-    assertExactContract<Exact<PlatformCheckResult, RuntimePlatformCheckResult>>();
-    assertExactContract<Exact<PlatformReadinessReport, RuntimePlatformReadinessReport>>();
-    assertExactContract<Exact<PlatformHealthReport, RuntimePlatformHealthReport>>();
-    assertExactContract<Exact<PlatformDiagnosticIssue, RuntimePlatformDiagnosticIssue>>();
-    assertExactContract<Exact<PlatformSnapshot, RuntimePlatformSnapshot>>();
-    assertExactContract<Exact<PlatformShellSnapshot, RuntimePlatformShellSnapshot>>();
-    assertExactContract<Exact<BootstrapTimingDiagnostics, RuntimeBootstrapTimingDiagnostics>>();
+  });
+
+  it('gives runtime live bridge types one Studio-owned wire contract seam', () => {
+    const runtimeManifest = JSON.parse(readFileSync(resolve(packageDir, '../runtime/package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const runtimeLiveContracts = readFileSync(resolve(packageDir, '../runtime/src/devtools/contracts.ts'), 'utf8');
+
+    expect(runtimeManifest.dependencies?.['@fluojs/studio']).toBe('workspace:^');
+    expect(runtimeLiveContracts).toContain("from '@fluojs/studio/contracts';");
+    expect(runtimeLiveContracts).not.toContain('export interface StudioRouteDescriptor');
+    expect(runtimeLiveContracts).not.toContain('export type StudioLiveEvent =');
   });
 
   it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {
@@ -609,8 +649,8 @@ describe('parseStudioPayload', () => {
     }))).toThrow('Invalid Studio live route descriptor params payload.');
   });
 
-  it('rejects unknown supplied route kinds in static inspect snapshots', () => {
-    expect(() => parseStudioPayload(JSON.stringify({
+  it('preserves arbitrary string route kinds in static inspect snapshots', () => {
+    const parsed = parseStudioPayload(JSON.stringify({
       ...snapshotFixture,
       routes: [
         {
@@ -618,6 +658,25 @@ describe('parseStudioPayload', () => {
           handler: 'show',
           id: 'GET /products/:productId ProductRouter show',
           kind: 'unknown',
+          method: 'GET',
+          params: ['productId'],
+          path: '/products/:productId',
+        },
+      ],
+    }));
+
+    expect(parsed.payload.snapshot?.routes?.[0]?.kind).toBe('unknown');
+  });
+
+  it('rejects non-string route kinds in static inspect snapshots', () => {
+    expect(() => parseStudioPayload(JSON.stringify({
+      ...snapshotFixture,
+      routes: [
+        {
+          controller: 'ProductRouter',
+          handler: 'show',
+          id: 'GET /products/:productId ProductRouter show',
+          kind: 42,
           method: 'GET',
           params: ['productId'],
           path: '/products/:productId',
@@ -640,7 +699,9 @@ describe('parseStudioPayload', () => {
       ],
     }));
 
+    expectTypeOf(parsed.payload).toEqualTypeOf<studio.StudioParsedPayload>();
     expect(parsed.payload.snapshot?.routes?.[0]?.kind).toBe('http');
+    expect(parsed.payload.snapshot?.routes?.[0]?.params).toEqual([]);
   });
 
   it('rejects arbitrary JSON objects that are not Studio inspect artifacts', () => {
