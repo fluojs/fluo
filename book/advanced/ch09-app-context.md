@@ -728,22 +728,55 @@ export interface PlatformShell {
 }
 ```
 
-The implementation is `RuntimePlatformShell` in `path:packages/runtime/src/platform-shell.ts:137-465`. This class normalizes component registration, validates dependency identity, sorts components in dependency order, starts them in that order, stops them in reverse order, and aggregates readiness and health reports.
+The implementation is `RuntimePlatformShell` in `path:packages/runtime/src/platform-shell.ts`. Its public methods do not expose re-entrant component work. Instead, they claim one lifecycle transition before delegating to the private `startComponents()` or `stopComponents()` implementation:
 
-The startup branch first fixes dependency validation and ordering, then starts components in order. If start fails, it tries to roll back components that have already started.
-
-`path:packages/runtime/src/platform-shell.ts:160-207`
+`path:packages/runtime/src/platform-shell.ts:56-83`
 ```typescript
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runLifecycleTransition('start', () => this.startComponents());
+  }
+
+  stop(): Promise<void> {
+    return this.runLifecycleTransition('stop', () => this.stopComponents());
+  }
+
+  private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
+    const activeTransition = this.activeLifecycleTransition;
+    if (activeTransition) {
+      return Promise.reject(new PlatformLifecycleConflictError(activeTransition.operation, operation));
+    }
+
+    const transition: PlatformLifecycleTransition = { operation };
+    this.activeLifecycleTransition = transition;
+    const promise = Promise.resolve(run());
+
+    const clearActiveTransition = (): void => {
+      if (this.activeLifecycleTransition === transition) {
+        this.activeLifecycleTransition = undefined;
+      }
+    };
+    void promise.then(clearActiveTransition, clearActiveTransition);
+
+    return promise;
+  }
+```
+
+The transition owner is published before component work starts. Any overlapping `start()` or `stop()` immediately returns a rejected promise with `PlatformLifecycleConflictError`; the shell does not share, queue, or coalesce lifecycle work. Only the transition that claimed the gate can release it after settlement.
+
+`startComponents()` and `stopComponents()` remain private so a startup rollback never re-enters the public gate. Startup first retries any pending private rollback, then validates and starts components in dependency order:
+
+`path:packages/runtime/src/platform-shell.ts:85-132`
+```typescript
+  private async startComponents(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
     }
 
     if (this.rollbackPendingComponents.length > 0) {
-      await this.stop();
+      await this.stopComponents();
     }
 
-    this.validateIdentityAndDependencies();
+    assertValidPlatformComponentGraph(this.registeredComponents);
 
     const validationFailures = await this.validateComponents();
     if (validationFailures.length > 0) {
@@ -751,52 +784,35 @@ The startup branch first fixes dependency validation and ordering, then starts c
         `Platform shell validation failed: ${validationFailures.map((issue) => `${issue.componentId}:${issue.code}`).join(', ')}`,
       );
     }
+
+    this.orderedComponents = orderPlatformComponents(this.registeredComponents);
+    const startedComponents: RegisteredPlatformComponent[] = [];
 ```
 
-This excerpt shows that platform shell start proceeds only after validation and dependency ordering pass. The following branch narrows the focus to the ordered start loop and rollback handling.
+If a component fails to start, the private rollback stops already-started components. A failed stop records only the pending components for a later explicit sequential transition; no callback can seize lifecycle ownership while the current transition is active.
 
-`path:packages/runtime/src/platform-shell.ts:178-207`
+`path:packages/runtime/src/platform-shell.ts:136-160`
 ```typescript
-    this.orderedComponents = this.orderByDependency();
-    const startedComponents: RegisteredPlatformComponent[] = [];
-
-    for (const component of this.orderedComponents) {
-      try {
-        await component.component.start();
-        startedComponents.push(component);
-      } catch (error) {
-        this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start', error));
-        const startFailure = new InvariantError(
-          `Platform component "${component.component.id}" failed to start: ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
-
         try {
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.rollbackPendingComponents = [...startedComponents];
-          this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
+          this.diagnostics.append([
+            createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
+          ]);
         }
 
         throw startFailure;
-      }
-    }
-
-    this.started = true;
-    this.stopped = false;
-    this.rollbackPendingComponents = [];
-  }
 ```
 
-The stop branch cleans up components in the reverse of startup order. This differs from HTTP adapter close because the platform shell manages dependency order for multiple host components, not just one request adapter.
+The private stop branch cleans up components in reverse startup order and clears pending rollback only after a successful stop. This differs from HTTP adapter close because the platform shell manages dependency order for multiple host components, not just one request adapter.
 
-`path:packages/runtime/src/platform-shell.ts:209-226`
+`path:packages/runtime/src/platform-shell.ts:167-186`
 ```typescript
-  async stop(): Promise<void> {
+  private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
-    if ((!this.started && !hasRollbackPending) || this.stopped) {
+    if (!this.started && !hasRollbackPending) {
       return;
     }
 
@@ -806,10 +822,10 @@ The stop branch cleans up components in the reverse of startup order. This diffe
       ? [...this.orderedComponents]
       : [...this.registeredComponents];
 
+    this.started = false;
+
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
-    this.started = false;
-    this.stopped = true;
   }
 ```
 

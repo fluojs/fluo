@@ -728,22 +728,55 @@ export interface PlatformShell {
 }
 ```
 
-구현체는 `path:packages/runtime/src/platform-shell.ts:137-465`의 `RuntimePlatformShell`입니다. 이 클래스는 component registration을 정규화하고, dependency identity를 검증하고, dependency order로 정렬하고, 그 순서대로 시작하고, 역순으로 정지하며, readiness와 health report를 집계합니다.
+구현체는 `path:packages/runtime/src/platform-shell.ts`의 `RuntimePlatformShell`입니다. 이 클래스의 public method는 re-entrant component 작업을 노출하지 않습니다. 대신 private `startComponents()` 또는 `stopComponents()`에 위임하기 전에 하나의 lifecycle transition을 claim합니다.
 
-startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 component를 순서대로 시작합니다. start 실패 시에는 이미 시작한 component를 rollback하려고 시도합니다.
-
-`path:packages/runtime/src/platform-shell.ts:160-207`
+`path:packages/runtime/src/platform-shell.ts:56-83`
 ```typescript
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runLifecycleTransition('start', () => this.startComponents());
+  }
+
+  stop(): Promise<void> {
+    return this.runLifecycleTransition('stop', () => this.stopComponents());
+  }
+
+  private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
+    const activeTransition = this.activeLifecycleTransition;
+    if (activeTransition) {
+      return Promise.reject(new PlatformLifecycleConflictError(activeTransition.operation, operation));
+    }
+
+    const transition: PlatformLifecycleTransition = { operation };
+    this.activeLifecycleTransition = transition;
+    const promise = Promise.resolve(run());
+
+    const clearActiveTransition = (): void => {
+      if (this.activeLifecycleTransition === transition) {
+        this.activeLifecycleTransition = undefined;
+      }
+    };
+    void promise.then(clearActiveTransition, clearActiveTransition);
+
+    return promise;
+  }
+```
+
+Transition owner는 component 작업이 시작되기 전에 publish됩니다. 겹치는 `start()` 또는 `stop()`은 즉시 `PlatformLifecycleConflictError`가 담긴 rejected promise를 반환합니다. Shell은 lifecycle 작업을 share, queue, coalesce하지 않으며, gate를 claim한 transition만 settlement 뒤에 이를 해제할 수 있습니다.
+
+`startComponents()`와 `stopComponents()`는 private으로 유지되므로 startup rollback이 public gate에 다시 진입하지 않습니다. Startup은 먼저 pending private rollback을 재시도한 뒤 component를 dependency order로 validate하고 시작합니다.
+
+`path:packages/runtime/src/platform-shell.ts:85-132`
+```typescript
+  private async startComponents(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
     }
 
     if (this.rollbackPendingComponents.length > 0) {
-      await this.stop();
+      await this.stopComponents();
     }
 
-    this.validateIdentityAndDependencies();
+    assertValidPlatformComponentGraph(this.registeredComponents);
 
     const validationFailures = await this.validateComponents();
     if (validationFailures.length > 0) {
@@ -751,52 +784,35 @@ startup branch는 dependency validation과 ordering을 먼저 고정한 뒤 comp
         `Platform shell validation failed: ${validationFailures.map((issue) => `${issue.componentId}:${issue.code}`).join(', ')}`,
       );
     }
+
+    this.orderedComponents = orderPlatformComponents(this.registeredComponents);
+    const startedComponents: RegisteredPlatformComponent[] = [];
 ```
 
-이 발췌는 platform shell start가 validation과 dependency ordering을 통과한 뒤에만 진행된다는 점을 보여 줍니다. 이어지는 branch는 실제 ordered start loop와 rollback 처리를 좁혀 보여 줍니다.
+Component start가 실패하면 private rollback이 이미 시작한 component를 정지합니다. Stop 실패는 나중의 명시적인 순차 transition을 위해 pending component만 기록합니다. 현재 transition이 active인 동안 callback이 lifecycle ownership을 가져갈 수는 없습니다.
 
-`path:packages/runtime/src/platform-shell.ts:178-207`
+`path:packages/runtime/src/platform-shell.ts:136-160`
 ```typescript
-    this.orderedComponents = this.orderByDependency();
-    const startedComponents: RegisteredPlatformComponent[] = [];
-
-    for (const component of this.orderedComponents) {
-      try {
-        await component.component.start();
-        startedComponents.push(component);
-      } catch (error) {
-        this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start', error));
-        const startFailure = new InvariantError(
-          `Platform component "${component.component.id}" failed to start: ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
-
         try {
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.rollbackPendingComponents = [...startedComponents];
-          this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
+          this.diagnostics.append([
+            createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
+          ]);
         }
 
         throw startFailure;
-      }
-    }
-
-    this.started = true;
-    this.stopped = false;
-    this.rollbackPendingComponents = [];
-  }
 ```
 
-stop branch는 시작 순서의 반대로 component를 정리합니다. 이 부분이 HTTP adapter close와 다른 이유는 platform shell이 request adapter 하나가 아니라 여러 host component의 dependency order를 관리하기 때문입니다.
+Private stop branch는 startup 순서의 반대로 component를 정리하고, 성공적인 stop 뒤에만 pending rollback을 지웁니다. 이 부분이 HTTP adapter close와 다른 이유는 platform shell이 request adapter 하나가 아니라 여러 host component의 dependency order를 관리하기 때문입니다.
 
-`path:packages/runtime/src/platform-shell.ts:209-226`
+`path:packages/runtime/src/platform-shell.ts:167-186`
 ```typescript
-  async stop(): Promise<void> {
+  private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
-    if ((!this.started && !hasRollbackPending) || this.stopped) {
+    if (!this.started && !hasRollbackPending) {
       return;
     }
 
@@ -806,10 +822,10 @@ stop branch는 시작 순서의 반대로 component를 정리합니다. 이 부�
       ? [...this.orderedComponents]
       : [...this.registeredComponents];
 
+    this.started = false;
+
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
-    this.started = false;
-    this.stopped = true;
   }
 ```
 
