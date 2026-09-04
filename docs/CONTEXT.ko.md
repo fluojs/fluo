@@ -19,6 +19,8 @@
 | `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
 ## Runtime cleanup settlement
@@ -351,6 +353,10 @@ Migration transform contract는 `packages/cli/README.ko.md`와
 `tests`의 허용되는 alias로만 유지됩니다. 성공한 `--json` report는 `transforms`와 파일별
 `appliedTransforms`에서 안정적인 transform token인 `injectable`과 `testing`을 보존하므로 CLI
 input alias가 이 report contract를 바꾸지 않습니다.
+
+## Studio Static-Graph Limits
+
+Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)로 나뉩니다. successful bootstrap 뒤 file-first inspection은 보고된 platform component, 그 dependencies, `routes`가 담긴 `PlatformShellSnapshot`을 내보내며, Node live Studio가 런타임에 만드는 compiled module/provider graph는 만들지 않습니다. Non-Node fallback workflow는 inspect/static artifact를 생성하고 열며 live sidecar event를 약속하지 않습니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 유지합니다.
 
 ## File Structure
 

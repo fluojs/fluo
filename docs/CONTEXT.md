@@ -19,6 +19,8 @@
 | `category-switches` | `cronJobs`, `intervals`, and `timeouts` category switches are unsupported. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
+<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->
+
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
 ## Runtime Cleanup Settlement
@@ -351,6 +353,10 @@ The migration transform contract is discoverable in `packages/cli/README.md` and
 as aliases for `inject-params` and `tests`. Successful `--json` reports preserve their stable
 transform tokens (`injectable` and `testing`) in `transforms` and per-file
 `appliedTransforms`; CLI input aliases do not change that report contract.
+
+## Studio Static-Graph Limits
+
+Studio static-graph limit discoverability is split across `packages/studio/README.md`, [`book/advanced/ch15-studio.md`](../book/advanced/ch15-studio.md), and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): after a successful bootstrap, file-first inspection emits a `PlatformShellSnapshot` with reported platform components, their dependencies, and `routes`; it does not produce the compiled module/provider graph that Node live Studio derives at runtime. Non-Node fallback workflows generate and open inspect/static artifacts; they do not promise live sidecar events. Workflows that require the compiled DI graph stay on the supported Node live path with `fluo dev --studio`.
 
 ## File Structure
 
