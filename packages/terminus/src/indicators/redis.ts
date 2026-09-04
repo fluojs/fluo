@@ -26,6 +26,8 @@ export interface RedisHealthIndicatorOptions {
   key?: string;
   /** Custom ping callback for manual probes or tests. Lifecycle state is only mapped when `client.status` is available. */
   ping?: () => Promise<unknown> | unknown;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
   /** Maximum time to wait for the ping operation. Defaults to `2_000` ms. */
   timeoutMs?: number;
 }
@@ -129,9 +131,11 @@ export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndi
 /** Health indicator that maps Redis lifecycle status and checks reachability with a ping-like operation. */
 export class RedisHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
+  readonly readiness: boolean | undefined;
 
   constructor(private readonly options: RedisHealthIndicatorOptions = {}) {
     this.key = options.key;
+    this.readiness = options.readiness;
   }
 
   async check(key: string): Promise<HealthIndicatorResult> {

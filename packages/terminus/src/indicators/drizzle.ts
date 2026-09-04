@@ -34,6 +34,8 @@ export interface DrizzleHealthIndicatorOptions {
   key?: string;
   ping?: () => Promise<unknown> | unknown;
   query?: unknown;
+  /** Whether this indicator participates in `/ready`. Defaults to `true`. */
+  readiness?: boolean;
   timeoutMs?: number;
 }
 
@@ -136,9 +138,11 @@ export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealth
 /** Health indicator that maps Drizzle lifecycle state and probes connectivity with an execute-capable handle. */
 export class DrizzleHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
+  readonly readiness: boolean | undefined;
 
   constructor(private readonly options: DrizzleHealthIndicatorOptions = {}) {
     this.key = options.key;
+    this.readiness = options.readiness;
   }
 
   async check(key: string): Promise<HealthIndicatorResult> {

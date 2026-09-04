@@ -408,4 +408,17 @@ export class TerminusHealthService {
   async isHealthy(): Promise<boolean> {
     return (await this.check()).status === 'ok';
   }
+
+  /**
+   * Return whether every indicator participating in readiness currently reports `up`.
+   *
+   * @returns `true` when all indicators whose `readiness` setting is not `false` report `up`.
+   */
+  async isReady(): Promise<boolean> {
+    const readinessIndicators = this.indicators.filter((indicator) => indicator.readiness !== false);
+
+    return (
+      await executeHealthCheck(readinessIndicators, this.executionOptions, this.runningIndicatorChecks)
+    ).status === 'ok';
+  }
 }
