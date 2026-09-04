@@ -3,14 +3,17 @@ import { type Provider, validateProviderInputs } from '@fluojs/di/internal';
 import type { MiddlewareLike } from '@fluojs/http';
 
 import {
+  ModuleGraphError,
+  ModuleInjectionMetadataError,
+  ModuleVisibilityError,
+} from './errors.js';
+import {
+  getOwnRuntimeClassDiMetadata,
   getRuntimeClassDiMetadata,
   getRuntimeClassDiMetadataVersion,
-  getOwnRuntimeClassDiMetadata,
   getRuntimeModuleMetadata,
   getRuntimeModuleMetadataVersion,
 } from './internal/core-metadata.js';
-
-import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import type {
   BootstrapModuleOptions,
   CompiledModule,
@@ -45,7 +48,7 @@ type ClassDiMetadataView = {
 const objectTokenIds = new WeakMap<Function, number>();
 const symbolTokenIds = new Map<symbol, number>();
 let nextTokenId = 0;
-const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 1;
+const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 2;
 const moduleGraphCompileCache = new Map<string, readonly CompiledModule[]>();
 const EMPTY_MODULE_REPLACEMENTS: ModuleReplacementMap = new Map<ModuleType, ModuleType>();
 
@@ -711,12 +714,17 @@ function validateProviderVisibility(
   compiledModule: CompiledModule,
   scope: string,
   accessibleTokens: Set<Token>,
+  registeredTokens: ReadonlySet<Token>,
 ): void {
   for (const provider of compiledModule.definition.providers ?? []) {
     validateProviderInjectionMetadata(provider, scope);
 
     for (const rawToken of providerDependencies(provider)) {
       const token = resolveInjectionToken(rawToken);
+
+      if (isOptionalToken(rawToken) && !accessibleTokens.has(token) && !registeredTokens.has(token)) {
+        continue;
+      }
 
       if (!accessibleTokens.has(token)) {
         throw new ModuleVisibilityError(
@@ -739,12 +747,17 @@ function validateControllerVisibility(
   compiledModule: CompiledModule,
   scope: string,
   accessibleTokens: Set<Token>,
+  registeredTokens: ReadonlySet<Token>,
 ): void {
   for (const controller of compiledModule.definition.controllers ?? []) {
     validateControllerInjectionMetadata(controller, scope);
 
     for (const rawToken of controllerDependencies(controller)) {
       const token = resolveInjectionToken(rawToken);
+
+      if (isOptionalToken(rawToken) && !accessibleTokens.has(token) && !registeredTokens.has(token)) {
+        continue;
+      }
 
       if (!accessibleTokens.has(token)) {
         throw new ModuleVisibilityError(
@@ -797,12 +810,17 @@ function validateCompiledModules(
 ): void {
   const compiledByType = new Map(modules.map((compiledModule) => [compiledModule.type, compiledModule]));
   const globalExportedTokens = new Set<Token>();
+  const registeredTokens = new Set<Token>(runtimeProviderTokens);
 
   for (const provider of runtimeProviders) {
     validateProviderInjectionMetadata(provider, 'bootstrap runtime');
   }
 
   for (const compiledModule of modules) {
+    for (const token of compiledModule.providerTokens) {
+      registeredTokens.add(token);
+    }
+
     if (!compiledModule.definition.global) {
       continue;
     }
@@ -821,8 +839,8 @@ function validateCompiledModules(
       globalExportedTokens,
     );
 
-    validateProviderVisibility(compiledModule, scope, compiledModule.accessibleTokens);
-    validateControllerVisibility(compiledModule, scope, compiledModule.accessibleTokens);
+    validateProviderVisibility(compiledModule, scope, compiledModule.accessibleTokens, registeredTokens);
+    validateControllerVisibility(compiledModule, scope, compiledModule.accessibleTokens, registeredTokens);
     compiledModule.exportedTokens = createExportedTokenSet(compiledModule, compiledModule.importedExportedTokens);
   }
 }
