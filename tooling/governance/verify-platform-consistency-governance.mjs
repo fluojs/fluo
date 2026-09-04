@@ -704,8 +704,10 @@ const studioReportBootstrapFailureContractPaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ];
-const studioReportBootstrapFailureContractSentinel =
-  '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+const studioReportBootstrapFailureContractBegin =
+  '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->';
+const studioReportBootstrapFailureContractEnd =
+  '<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
 
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
@@ -1715,37 +1717,41 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // cleanup docs are also covered by this companion path.
 }
 
-function studioReportBootstrapFailureContractSentinelLines(documentation) {
-  return documentation
-    .split('\n')
-    .flatMap((line) => {
-      const occurrences = line.split(studioReportBootstrapFailureContractSentinel).length - 1;
-      return Array.from({ length: occurrences }, () => line);
-    });
+function studioReportBootstrapFailureContractRegion(documentation) {
+  const beginCount = documentation.split(studioReportBootstrapFailureContractBegin).length - 1;
+  const endCount = documentation.split(studioReportBootstrapFailureContractEnd).length - 1;
+  assert(
+    beginCount === 1 && endCount === 1,
+    `Studio bootstrap-failure guidance must preserve exactly one ordered contract marker pair; observed begin=${beginCount}, end=${endCount}.`,
+  );
+  const begin = documentation.indexOf(studioReportBootstrapFailureContractBegin);
+  const end = documentation.indexOf(studioReportBootstrapFailureContractEnd);
+  assert(
+    begin < end,
+    'Studio bootstrap-failure guidance contract markers must be ordered begin then end.',
+  );
+  return documentation.slice(begin, end + studioReportBootstrapFailureContractEnd.length);
 }
 
 export function enforceStudioReportBootstrapFailureCompanions(changedFiles, documentSnapshots) {
   let contractChanged = false;
 
   for (const path of studioReportBootstrapFailureContractPaths) {
-    if (!hasChanged(changedFiles, path)) {
-      continue;
-    }
-
+    if (!hasChanged(changedFiles, path)) continue;
     const snapshot = documentSnapshots?.[path];
-    assert(
-      snapshot && typeof snapshot.base === 'string' && typeof snapshot.head === 'string',
-      `Studio bootstrap-failure guidance cannot verify ${path} without valid base and head snapshots.`,
-    );
-
-    const headSentinelLines = studioReportBootstrapFailureContractSentinelLines(snapshot.head);
-    assert(
-      headSentinelLines.length === 1,
-      `Studio bootstrap-failure guidance must preserve exactly one contract sentinel in ${path}; observed ${headSentinelLines.length}.`,
-    );
-
-    const baseSentinelLines = studioReportBootstrapFailureContractSentinelLines(snapshot.base);
-    contractChanged ||= baseSentinelLines.length !== 1 || baseSentinelLines[0] !== headSentinelLines[0];
+    assert(snapshot && typeof snapshot.base === 'string' && typeof snapshot.head === 'string',
+      `Studio bootstrap-failure guidance cannot verify ${path} without valid base and head snapshots.`);
+    const headRegion = studioReportBootstrapFailureContractRegion(snapshot.head);
+    const legacy = '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+    const baseBeginCount = snapshot.base.split(studioReportBootstrapFailureContractBegin).length - 1;
+    const baseEndCount = snapshot.base.split(studioReportBootstrapFailureContractEnd).length - 1;
+    const legacyCount = snapshot.base.split(legacy).length - 1;
+    const baseRegion = baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0
+      ? ''
+      : baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1
+        ? legacy
+        : studioReportBootstrapFailureContractRegion(snapshot.base);
+    contractChanged ||= baseRegion !== headRegion;
   }
 
   if (!contractChanged) {

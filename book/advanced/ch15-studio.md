@@ -168,7 +168,9 @@ After a successful bootstrap, the Node live path emits a snapshot with compiled 
 
 ## 15.6 Scenario: Reviewing a Successful-Bootstrap Inspect Artifact
 
-<!-- fluo-studio-report-bootstrap-failure-contract --> Studio reports are post-bootstrap artifacts. `fluo inspect` creates its artifact only after `FluoFactory.create(...)` has completed a successful bootstrap, then reads `PlatformShell.snapshot()` and the dispatcher `routes` to create a `PlatformShellSnapshot`. An application that hangs or fails during bootstrap cannot produce a static report or partial compiled DI graph for provider-deadlock diagnosis; investigate that startup failure through its runtime failure output instead.
+<!-- fluo-studio-report-bootstrap-failure-contract: begin -->
+Studio reports are post-bootstrap artifacts. `fluo inspect` creates its artifact only after `FluoFactory.create(...)` has completed a successful bootstrap, then reads `PlatformShell.snapshot()` and the dispatcher `routes` to create a `PlatformShellSnapshot`. An application that hangs or fails during bootstrap cannot produce a static report or partial compiled DI graph for provider-deadlock diagnosis; investigate that startup failure through its runtime failure output instead.
+<!-- fluo-studio-report-bootstrap-failure-contract: end -->
 
 ```bash
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json

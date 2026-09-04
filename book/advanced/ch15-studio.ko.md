@@ -168,7 +168,9 @@ successful bootstrap 뒤 Node live 경로는 compiled module, provider, controll
 
 ## 15.6 시나리오: Successful-Bootstrap Inspect Artifact 검토하기
 
-<!-- fluo-studio-report-bootstrap-failure-contract --> Studio report는 bootstrap 이후 artifact입니다. `fluo inspect`는 `FluoFactory.create(...)`가 successful bootstrap을 마친 뒤에만 artifact를 만들고, 그 뒤 `PlatformShell.snapshot()`과 dispatcher `routes`를 읽어 `PlatformShellSnapshot`을 만듭니다. 따라서 bootstrap 중 멈추거나 실패한 애플리케이션은 provider deadlock 진단용 static report나 partial compiled DI graph를 만들 수 없으며, 그 startup failure는 runtime failure output으로 조사해야 합니다.
+<!-- fluo-studio-report-bootstrap-failure-contract: begin -->
+Studio report는 bootstrap 이후 artifact입니다. `fluo inspect`는 `FluoFactory.create(...)`가 successful bootstrap을 마친 뒤에만 artifact를 만들고, 그 뒤 `PlatformShell.snapshot()`과 dispatcher `routes`를 읽어 `PlatformShellSnapshot`을 만듭니다. 따라서 bootstrap 중 멈추거나 실패한 애플리케이션은 provider deadlock 진단용 static report나 partial compiled DI graph를 만들 수 없으며, 그 startup failure는 runtime failure output으로 조사해야 합니다.
+<!-- fluo-studio-report-bootstrap-failure-contract: end -->
 
 ```bash
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json

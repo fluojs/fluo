@@ -2117,6 +2117,19 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
   });
 
+  it('requires companions for additive edits inside the bounded #3338 contract region', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const region = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\\ncontract section\\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+    const changedRegion = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\\ncontract section\\nadjacent addition\\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: { base: region, head: changedRegion },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
   it('ignores unrelated NestJS migration guide edits for #3338 companions', async () => {
     const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
     const migrationPaths = [
@@ -2127,8 +2140,8 @@ describe('enforceContractCompanionUpdates', () => {
       migrationPaths.map((path) => [
         path,
         {
-          base: '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
-          head: 'unrelated migration edit\n<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head: 'unrelated migration edit\n<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
         },
       ]),
     );
@@ -2151,8 +2164,8 @@ describe('enforceContractCompanionUpdates', () => {
       exactCompanions.slice(0, 4).map((path) => [
         path,
         {
-          base: path === 'book/advanced/ch15-studio.md' ? '' : '<!-- fluo-studio-report-bootstrap-failure-contract -->',
-          head: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          base: path === 'book/advanced/ch15-studio.md' ? '' : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
         },
       ]),
     );
@@ -2175,7 +2188,7 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() =>
       enforceStudioReportBootstrapFailureCompanions([path], {
         [path]: {
-          base: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
           head: '',
         },
       }),
@@ -2189,10 +2202,10 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() =>
       enforceStudioReportBootstrapFailureCompanions([path], {
         [path]: {
-          base: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
           head: [
-            '<!-- fluo-studio-report-bootstrap-failure-contract -->',
-            '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+            '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+            '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
           ].join('\n'),
         },
       }),
@@ -2207,7 +2220,7 @@ describe('enforceContractCompanionUpdates', () => {
       undefined,
       {
         [path]: {
-          base: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
           head: undefined,
         },
       },
@@ -2223,8 +2236,8 @@ describe('enforceContractCompanionUpdates', () => {
     [
       'duplicates',
       [
-        '<!-- fluo-studio-report-bootstrap-failure-contract -->',
-        '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+        '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+        '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
       ].join('\n'),
     ],
   ])('fails closed when a later changed #3338 contract path %s its sentinel', async (_action, invalidHead) => {
@@ -2240,13 +2253,13 @@ describe('enforceContractCompanionUpdates', () => {
       exactCompanions.slice(0, 4).map((path) => [
         path,
         {
-          base: '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
           head:
             path === 'book/advanced/ch15-studio.md'
-              ? '<!-- fluo-studio-report-bootstrap-failure-contract --> changed contract section'
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\nchanged contract section\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->'
               : path === 'book/advanced/ch15-studio.ko.md'
                 ? invalidHead
-                : '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+                : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
         },
       ]),
     );
@@ -2274,11 +2287,11 @@ describe('enforceContractCompanionUpdates', () => {
       exactCompanions.slice(0, 4).map((path) => [
         path,
         {
-          base: '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
           head:
             path === triggerPath
-              ? '<!-- fluo-studio-report-bootstrap-failure-contract --> changed contract section'
-              : '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\nchanged contract section\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->'
+              : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
         },
       ]),
     );
