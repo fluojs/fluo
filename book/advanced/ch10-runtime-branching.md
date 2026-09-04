@@ -21,30 +21,33 @@ This chapter explains how Fluo branches only at package surfaces and adapter sea
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 The first fact to notice in Chapter 10 is that Fluo's runtime portability is not implemented as one giant `if (isNode) ... else if (isEdge) ...` block. The branch points are much narrower and sit in more architectural locations.
 
-Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:920-1202` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
+Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1515-1640` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:920-938`
+`path:packages/runtime/src/bootstrap.ts:1515-1544`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createDefaultApplicationLogger();
+  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
+  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
+  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
-  const hasHttpAdapter = options.adapter !== undefined;
-  const adapter = options.adapter ?? {
+  let bootstrappedModules: CompiledModule[] = [];
+  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+  const adapter = effectiveOptions.adapter ?? {
     async close() {},
     async listen() {},
   };
-  const runtimeCleanup: Array<() => void> = [];
-  const platformShell = createRuntimePlatformShell(options.platform?.components);
-  const timingEnabled = options.diagnostics?.timing === true;
+  const runtimeCleanup: RuntimeCleanupCallback[] = [];
+  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
   const timingPhases: BootstrapTimingPhase[] = [];
 
   try {
     logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(options, logger);
+    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
 The root default is `createDefaultApplicationLogger()`, which keeps the shared bootstrap surface transport-neutral. Choose `createConsoleApplicationLogger()` only for an explicit Node-only setup imported from `@fluojs/runtime/node`.
@@ -98,16 +101,27 @@ shared bootstrap shell in root runtime
 This frame is the background for the whole chapter. Node, Web, and Edge are not three independent runtimes. They are three ways to attach different host I/O semantics to one transport-neutral Bootstrap core.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-The root public surface is defined in `path:packages/runtime/src/index.ts:1-30`. It exports the Bootstrap API, errors, diagnostics, health helpers, platform contracts, request transaction helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
+The root public surface is defined in `path:packages/runtime/src/index.ts:1-45`. It exports the Bootstrap API, errors, selected diagnostics types and builders, health helpers, platform contracts, request transaction helpers, and selected runtime Tokens. It does not export Node adapter helpers, Web request dispatch helpers, or diagnostics presentation helpers.
 
 The actual shape of the root barrel is small and selective. It exposes only `bootstrap`, health, error, platform types, request transaction, Tokens, and shared types.
 
-`path:packages/runtime/src/index.ts:1-30`
+`path:packages/runtime/src/index.ts:1-45`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
-export * from './health/diagnostics.js';
 export * from './errors.js';
+export type {
+  BootstrapTimingDiagnostics,
+  BootstrapTimingPhase,
+  RuntimeDiagnosticsGraph,
+  RuntimeDiagnosticsModule,
+  RuntimeDiagnosticsProvider,
+  RuntimeDiagnosticsRelationships,
+} from './health/diagnostics.js';
+export {
+  createBootstrapTimingDiagnostics,
+  createRuntimeDiagnosticsGraph,
+} from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
   MultipartOptions,
@@ -138,7 +152,7 @@ export * from './types.js';
 
 The shared `UploadedFile` contract keeps multipart payload bytes runtime-neutral as `Uint8Array`. Web adapters therefore do not need the Node.js `Buffer` global; Node-only application code that needs Buffer-specific APIs should convert explicitly with `Buffer.from(file.buffer)` at that boundary.
 
-This list contains no Node server helpers or Web dispatch helpers. A reader looking at the root API can already see that the shared Bootstrap contract and host-specific helpers have different boundaries.
+This list contains no Node server helpers or Web dispatch helpers. It also intentionally omits `renderRuntimeDiagnosticsMermaid(...)`: that internal renderer remains in `path:packages/runtime/src/health/diagnostics.ts:240-246` and is not a root-barrel contract. Consumers that need diagnostics graph viewing or Mermaid rendering should use the public Studio contract from `@fluojs/studio` or `@fluojs/studio/contracts`, rather than deep-importing runtime internals. A reader looking at the root API can already see that the shared Bootstrap contract and host-specific helpers have different boundaries.
 
 That omission is not accidental. `path:packages/runtime/src/exports.test.ts:13-29` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.
 
