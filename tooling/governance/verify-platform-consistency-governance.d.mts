@@ -110,4 +110,7 @@ export function enforceNotificationsQueueCancellationDocumentationContract(
 export function enforcePersistenceTransactionInterceptorCompatibility(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceStudioStaticGraphLimitsContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): Promise<void>;

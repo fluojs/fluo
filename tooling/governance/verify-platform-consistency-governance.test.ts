@@ -5,6 +5,7 @@ import {
   createSourceFile,
   forEachChild,
   isCallExpression,
+  isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
   ScriptKind,
@@ -36,6 +37,7 @@ import {
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
+  enforceStudioStaticGraphLimitsContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
   mandatoryProductionImporterPackageNamesForLockfileChange,
@@ -221,6 +223,7 @@ async function loadGovernanceInternals() {
     enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
+    enforceStudioStaticGraphLimitsContract: (readText?: (relativePath: string) => string) => void;
   };
 
   return {
@@ -4802,6 +4805,30 @@ describe('Studio public docs and migration expectations', () => {
   const koreanReadme = readFileSync(join(repoRoot, 'packages/studio/README.ko.md'), 'utf8');
   const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const staticLiveSentinel = '<!-- studio-static-live-contract: static=inspect-successful-bootstrap-no-compiled-di-graph; live=node-compiled-di-graph -->';
+  const swappedStaticLiveSentinel = '<!-- studio-static-live-contract: static=node-compiled-di-graph; live=inspect-successful-bootstrap-no-compiled-di-graph -->';
+  const staticLiveCompanionPairs = [
+    ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+    ['packages/studio/README.md', 'packages/studio/README.ko.md'],
+    ['book/advanced/ch15-studio.md', 'book/advanced/ch15-studio.ko.md'],
+    ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
+  ] as const;
+
+  function mainHasDirectStudioStaticGraphContractRegistration(source: ReturnType<typeof createSourceFile>): boolean {
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+
+      return statement.body.statements.some((bodyStatement) =>
+        isExpressionStatement(bodyStatement) &&
+        isCallExpression(bodyStatement.expression) &&
+        isIdentifier(bodyStatement.expression.expression) &&
+        bodyStatement.expression.expression.text === 'enforceStudioStaticGraphLimitsContract');
+    }
+
+    return false;
+  }
 
   it('keeps Studio sidecar, fallback, dependency, and exported type docs discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
@@ -4865,6 +4892,79 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioRuntimeBridgeDiscoverability(readText)).toThrow(
       /docs\/CONTEXT\.ko\.md must document the host-owned @fluojs\/runtime\/devtools bridge/u,
     );
+  });
+
+  it('keeps static graph limits synchronized across Studio entrypoints', async () => {
+    const { enforceStudioStaticGraphLimitsContract } = await loadGovernanceInternals();
+
+    expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
+  });
+
+  it.each(staticLiveCompanionPairs)(
+    'rejects missing English and swapped Korean static/live contract sentinels in %s and %s',
+    (englishPath, koreanPath) => {
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === englishPath ? content.replace(staticLiveSentinel, '') : content;
+      })).toThrowError(englishPath);
+
+      expect(() => enforceStudioStaticGraphLimitsContract((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === koreanPath
+          ? content.replace(staticLiveSentinel, swappedStaticLiveSentinel)
+          : content;
+      })).toThrowError(koreanPath);
+    },
+  );
+
+  it('keeps the Studio static graph contract registered from main', () => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    // When
+    const mainCallsStudioGuard = mainHasDirectStudioStaticGraphContractRegistration(source);
+
+    // Then
+    expect(mainCallsStudioGuard).toBe(true);
+  });
+
+  it.each([
+    [
+      'a comment',
+      '// enforceStudioStaticGraphLimitsContract();',
+    ],
+    [
+      'an uncalled nested closure',
+      'const registerStudioContract = () => {\n    enforceStudioStaticGraphLimitsContract();\n  };',
+    ],
+    [
+      'an unreachable branch',
+      'if (false) {\n    enforceStudioStaticGraphLimitsContract();\n  }',
+    ],
+    [
+      'an uncalled nested function',
+      'function registerStudioContract() {\n    enforceStudioStaticGraphLimitsContract();\n  }',
+    ],
+  ])('rejects %s as Studio static graph contract registration', (_description, replacement) => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8')
+        .replace('  enforceStudioStaticGraphLimitsContract();', `  ${replacement}`),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    // When
+    const mainCallsStudioGuard = mainHasDirectStudioStaticGraphContractRegistration(source);
+
+    // Then
+    expect(mainCallsStudioGuard).toBe(false);
   });
 });
 
