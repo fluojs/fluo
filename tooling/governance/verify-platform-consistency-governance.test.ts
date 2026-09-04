@@ -1910,6 +1910,44 @@ describe('enforceContractCompanionUpdates', () => {
   });
 
   it.each([
+    ['removes', ''],
+    [
+      'duplicates',
+      [
+        '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+        '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+      ].join('\n'),
+    ],
+  ])('fails closed when a later changed #3338 contract path %s its sentinel', async (_action, invalidHead) => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+          head:
+            path === 'book/advanced/ch15-studio.md'
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract --> changed contract section'
+              : path === 'book/advanced/ch15-studio.ko.md'
+                ? invalidHead
+                : '<!-- fluo-studio-report-bootstrap-failure-contract --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it.each([
     'book/advanced/ch15-studio.md',
     'book/advanced/ch15-studio.ko.md',
     'docs/getting-started/migrate-from-nestjs.md',

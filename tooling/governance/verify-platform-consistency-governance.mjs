@@ -1437,9 +1437,11 @@ function studioReportBootstrapFailureContractSentinelLines(documentation) {
 }
 
 export function enforceStudioReportBootstrapFailureCompanions(changedFiles, documentSnapshots) {
-  const contractChanged = studioReportBootstrapFailureContractPaths.some((path) => {
+  let contractChanged = false;
+
+  for (const path of studioReportBootstrapFailureContractPaths) {
     if (!hasChanged(changedFiles, path)) {
-      return false;
+      continue;
     }
 
     const snapshot = documentSnapshots?.[path];
@@ -1455,8 +1457,8 @@ export function enforceStudioReportBootstrapFailureCompanions(changedFiles, docu
     );
 
     const baseSentinelLines = studioReportBootstrapFailureContractSentinelLines(snapshot.base);
-    return baseSentinelLines.length !== 1 || baseSentinelLines[0] !== headSentinelLines[0];
-  });
+    contractChanged ||= baseSentinelLines.length !== 1 || baseSentinelLines[0] !== headSentinelLines[0];
+  }
 
   if (!contractChanged) {
     return;
