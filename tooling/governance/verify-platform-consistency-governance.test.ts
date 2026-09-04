@@ -157,7 +157,7 @@ async function loadGovernanceInternals() {
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
     enforceStudioReportBootstrapFailureCompanions: (
       changedFiles: string[],
-      documentSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
+      documentSnapshots?: Readonly<Record<string, { base: unknown; head: unknown }>>,
     ) => void;
   };
 }
@@ -1827,6 +1827,86 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() =>
       enforceStudioReportBootstrapFailureCompanions(migrationPaths, snapshots),
     ).not.toThrow();
+  });
+
+  it('requires exact #3338 companions when the sentinel is introduced', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: path === 'book/advanced/ch15-studio.md' ? '' : '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          head: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(
+        exactCompanions.filter((path) => path !== 'packages/cli/src/public-api.test.ts'),
+        snapshots,
+      ),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).not.toThrow();
+  });
+
+  it('fails closed when a changed #3338 contract path removes the sentinel', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          head: '',
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when a changed #3338 contract path has duplicate sentinel decoys', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          head: [
+            '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+            '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          ].join('\n'),
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when a changed #3338 contract path has unavailable or malformed snapshots', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    for (const snapshots of [
+      undefined,
+      {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract -->',
+          head: undefined,
+        },
+      },
+    ]) {
+      expect(() =>
+        enforceStudioReportBootstrapFailureCompanions([path], snapshots),
+      ).toThrowError(/Studio bootstrap-failure guidance/u);
+    }
   });
 
   it.each([

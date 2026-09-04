@@ -1427,10 +1427,13 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // cleanup docs are also covered by this companion path.
 }
 
-function studioReportBootstrapFailureContractLine(documentation) {
+function studioReportBootstrapFailureContractSentinelLines(documentation) {
   return documentation
     .split('\n')
-    .find((line) => line.includes(studioReportBootstrapFailureContractSentinel));
+    .flatMap((line) => {
+      const occurrences = line.split(studioReportBootstrapFailureContractSentinel).length - 1;
+      return Array.from({ length: occurrences }, () => line);
+    });
 }
 
 export function enforceStudioReportBootstrapFailureCompanions(changedFiles, documentSnapshots) {
@@ -1440,13 +1443,19 @@ export function enforceStudioReportBootstrapFailureCompanions(changedFiles, docu
     }
 
     const snapshot = documentSnapshots?.[path];
-    if (!snapshot || typeof snapshot.base !== 'string' || typeof snapshot.head !== 'string') {
-      return false;
-    }
+    assert(
+      snapshot && typeof snapshot.base === 'string' && typeof snapshot.head === 'string',
+      `Studio bootstrap-failure guidance cannot verify ${path} without valid base and head snapshots.`,
+    );
 
-    const baseLine = studioReportBootstrapFailureContractLine(snapshot.base);
-    const headLine = studioReportBootstrapFailureContractLine(snapshot.head);
-    return Boolean(baseLine && headLine && baseLine !== headLine);
+    const headSentinelLines = studioReportBootstrapFailureContractSentinelLines(snapshot.head);
+    assert(
+      headSentinelLines.length === 1,
+      `Studio bootstrap-failure guidance must preserve exactly one contract sentinel in ${path}; observed ${headSentinelLines.length}.`,
+    );
+
+    const baseSentinelLines = studioReportBootstrapFailureContractSentinelLines(snapshot.base);
+    return baseSentinelLines.length !== 1 || baseSentinelLines[0] !== headSentinelLines[0];
   });
 
   if (!contractChanged) {
