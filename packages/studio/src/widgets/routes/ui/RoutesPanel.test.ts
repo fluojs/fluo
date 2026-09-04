@@ -8,6 +8,67 @@ import { initialStudioState } from '../../../entities/studio/model.js';
 import { RoutesPanel } from './RoutesPanel.js';
 
 describe('RoutesPanel', () => {
+  it('renders custom route kinds distinctly while retaining built-in labels', async () => {
+    const state: StudioDashboardState = {
+      ...initialStudioState,
+      liveSnapshot: {
+        appId: 'app-test',
+        diagnostics: [],
+        generatedAt: '2026-09-04T00:00:00.000Z',
+        graph: { edges: [], nodes: [] },
+        requests: [],
+        routes: [
+          {
+            controller: 'CustomPageController',
+            handler: 'show',
+            id: 'GET /custom CustomPageController show',
+            kind: 'custom-page',
+            method: 'GET',
+            params: [],
+            path: '/custom',
+          },
+          {
+            controller: 'HttpController',
+            handler: 'handle',
+            id: 'GET /http HttpController handle',
+            kind: 'http',
+            method: 'GET',
+            params: [],
+            path: '/http',
+          },
+          {
+            controller: 'ReactPageController',
+            handler: 'show',
+            id: 'GET /react ReactPageController show',
+            kind: 'react-page',
+            method: 'GET',
+            params: [],
+            path: '/react',
+          },
+        ],
+        version: 1,
+      },
+      mode: 'live',
+      selectedRouteId: 'GET /custom CustomPageController show',
+    };
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    root.render(createElement(RoutesPanel, { dispatch: vi.fn(), state }));
+
+    try {
+      await vi.waitFor(() => {
+        expect(container.querySelectorAll('.route-row')).toHaveLength(3);
+      });
+
+      expect(container.querySelector('.route-list')?.textContent).toContain('custom-page');
+      expect(container.querySelector('.route-list')?.textContent).toContain('HTTP handler');
+      expect(container.querySelector('.route-list')?.textContent).toContain('React page');
+      expect(container.querySelector('.route-detail')?.textContent).toContain('kind: custom-page');
+    } finally {
+      root.unmount();
+    }
+  });
+
   it('selects graph route nodes by stable route id when labels collide', async () => {
     const dispatch = vi.fn();
     const state: StudioDashboardState = {
