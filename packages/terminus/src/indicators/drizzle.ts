@@ -1,7 +1,7 @@
 import { optional, type Provider } from '@fluojs/di';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, waitForIndicatorProbeSettlement, withIndicatorTimeout } from './utils.js';
 
 const DRIZZLE_DATABASE = Symbol.for('fluo.drizzle.database');
 const DRIZZLE_HANDLE_PROVIDER = Symbol.for('fluo.drizzle.handle-provider');
@@ -48,7 +48,7 @@ async function runDrizzlePing(options: DrizzleHealthIndicatorOptions): Promise<v
     return;
   }
 
-  const database = options.database ?? resolveCurrentDatabase(options.handleProvider);
+  const database = resolveCurrentDatabase(options.handleProvider) ?? options.database;
 
   if (!database || typeof database.execute !== 'function') {
     throw new Error(
@@ -139,6 +139,7 @@ export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealth
 export class DrizzleHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
+  private pendingProbeSettlement: Promise<void> | undefined;
 
   constructor(private readonly options: DrizzleHealthIndicatorOptions = {}) {
     this.key = options.key;
@@ -159,7 +160,9 @@ export class DrizzleHealthIndicator implements HealthIndicator {
         throwHealthCheckError('Drizzle health check failed.', lifecycleDownResult);
       }
 
-      await withIndicatorTimeout(runDrizzlePing(this.options), timeoutMs, indicatorKey);
+      const probe = runDrizzlePing(this.options);
+      this.pendingProbeSettlement = waitForIndicatorProbeSettlement(probe);
+      await withIndicatorTimeout(probe, timeoutMs, indicatorKey);
       return createUpResult(indicatorKey, snapshot
         ? {
             details: snapshot.details,
@@ -177,5 +180,9 @@ export class DrizzleHealthIndicator implements HealthIndicator {
         error instanceof Error ? error.message : 'Drizzle health check failed.',
       ));
     }
+  }
+
+  getPendingHealthCheckSettlement(): Promise<void> | undefined {
+    return this.pendingProbeSettlement;
   }
 }
