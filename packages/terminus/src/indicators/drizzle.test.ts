@@ -110,7 +110,10 @@ describe('DrizzleHealthIndicator', () => {
   });
 
   it('provider factory prefers lifecycle-aware Drizzle handles over raw pings', async () => {
-    const execute = vi.fn(async (_query: unknown) => undefined);
+    const wrapperExecute = vi.fn(async (_query: unknown) => undefined);
+    const rawExecute = vi.fn(async (_query: unknown) => {
+      throw new Error('The raw Drizzle handle must not win over the lifecycle wrapper.');
+    });
     const provider = createDrizzleHealthIndicatorProvider();
 
     if (typeof provider === 'function' || !('useFactory' in provider)) {
@@ -120,11 +123,11 @@ describe('DrizzleHealthIndicator', () => {
     const indicator = provider.useFactory({
       createPlatformStatusSnapshot: () => ({
         details: { lifecycleState: 'stopped' },
-        health: { reason: 'Drizzle integration has been disposed.', status: 'unhealthy' },
-        readiness: { reason: 'Drizzle integration is stopped.', status: 'not-ready' },
+      health: { reason: 'Drizzle integration has been disposed.', status: 'unhealthy' },
+      readiness: { reason: 'Drizzle integration is stopped.', status: 'not-ready' },
       }),
-      current: () => ({ execute }),
-    }, { execute }) as DrizzleHealthIndicator;
+      current: () => ({ execute: wrapperExecute }),
+    }, { execute: rawExecute }) as DrizzleHealthIndicator;
 
     await expect(indicator.check('drizzle')).rejects.toMatchObject({
       causes: {
@@ -137,7 +140,38 @@ describe('DrizzleHealthIndicator', () => {
       },
       name: 'HealthCheckError',
     } satisfies Partial<HealthCheckError>);
-    expect(execute).not.toHaveBeenCalled();
+    expect(wrapperExecute).not.toHaveBeenCalled();
+    expect(rawExecute).not.toHaveBeenCalled();
+  });
+
+  it('probes the lifecycle-aware Drizzle handle before the raw fallback', async () => {
+    const wrapperExecute = vi.fn(async (_query: unknown) => undefined);
+    const rawExecute = vi.fn(async (_query: unknown) => {
+      throw new Error('The raw Drizzle handle must not win over the lifecycle wrapper.');
+    });
+    const provider = createDrizzleHealthIndicatorProvider();
+
+    if (typeof provider === 'function' || !('useFactory' in provider)) {
+      throw new Error('Expected Drizzle health indicator provider factory.');
+    }
+
+    const indicator = provider.useFactory({
+      createPlatformStatusSnapshot: () => ({
+        health: { status: 'healthy' },
+        readiness: { status: 'ready' },
+      }),
+      current: () => ({ execute: wrapperExecute }),
+    }, { execute: rawExecute }) as DrizzleHealthIndicator;
+
+    await expect(indicator.check('drizzle')).resolves.toEqual({
+      drizzle: {
+        healthStatus: 'healthy',
+        readinessStatus: 'ready',
+        status: 'up',
+      },
+    });
+    expect(wrapperExecute).toHaveBeenCalledWith('select 1');
+    expect(rawExecute).not.toHaveBeenCalled();
   });
 
   it('provider factory falls back to the raw Drizzle database token when no lifecycle wrapper is registered', async () => {

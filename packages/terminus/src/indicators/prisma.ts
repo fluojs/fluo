@@ -1,8 +1,8 @@
 import type { Token } from '@fluojs/core';
 import { optional, type Provider } from '@fluojs/di';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, waitForIndicatorProbeSettlement, withIndicatorTimeout } from './utils.js';
 
 const PRISMA_CLIENT = Symbol.for('fluo.prisma.client');
 const PRISMA_SERVICE = Symbol.for('fluo.prisma.service');
@@ -237,6 +237,7 @@ export function createPrismaHealthIndicatorProvider(
 export class PrismaHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
+  private pendingProbeSettlement: Promise<void> | undefined;
 
   constructor(private readonly options: PrismaHealthIndicatorOptions = {}) {
     this.key = options.key;
@@ -257,7 +258,9 @@ export class PrismaHealthIndicator implements HealthIndicator {
         throwHealthCheckError('Prisma health check failed.', lifecycleDownResult);
       }
 
-      await withIndicatorTimeout(runPrismaPing(this.options), timeoutMs, indicatorKey);
+      const probe = runPrismaPing(this.options);
+      this.pendingProbeSettlement = waitForIndicatorProbeSettlement(probe);
+      await withIndicatorTimeout(probe, timeoutMs, indicatorKey);
       return createUpResult(indicatorKey, createPrismaLifecycleUpDetails(snapshot));
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'HealthCheckError') {
@@ -269,5 +272,9 @@ export class PrismaHealthIndicator implements HealthIndicator {
         error instanceof Error ? error.message : 'Prisma health check failed.',
       ));
     }
+  }
+
+  getPendingHealthCheckSettlement(): Promise<void> | undefined {
+    return this.pendingProbeSettlement;
   }
 }

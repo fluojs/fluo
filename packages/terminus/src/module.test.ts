@@ -5,6 +5,7 @@ import { defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { createTestApp, createTestingModule } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
+import { HealthCheckError } from './errors.js';
 import { TerminusHealthService } from './health-check.js';
 import { createDiskHealthIndicatorProvider } from './indicators/disk.js';
 import { createHttpHealthIndicatorProvider } from './indicators/http.js';
@@ -178,6 +179,63 @@ describe('TerminusModule.forRoot', () => {
           readiness: {
             critical: false,
             status: 'ready',
+          },
+        },
+        status: 'error',
+      });
+
+      const readyResponse = await app.request('GET', '/ready').send();
+
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns 503 on /health and /ready when HealthCheckError causes are all up', async () => {
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async () => {
+          throw new HealthCheckError('database failed', {
+            database: {
+              latencyMs: 1_500,
+              status: 'up',
+            },
+            replica: {
+              status: 'up',
+            },
+          });
+        },
+      },
+    ];
+    const terminusModule = TerminusModule.forRoot({ indicators });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['database', 'replica'],
+          up: [],
+        },
+        error: {
+          database: {
+            latencyMs: 1_500,
+            status: 'down',
+          },
+          replica: {
+            status: 'down',
           },
         },
         status: 'error',
