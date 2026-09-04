@@ -35,7 +35,31 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## 빠른 시작
 
-`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. 현재 `@fluojs/graphql`는 동기 모듈 엔트리포인트만 제공하며 `GraphqlModule.forRootAsync(...)` 계약은 없습니다.
+`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. GraphQL 등록 전에 명시적인 application graph 의존성에서 module option을 해석해야 한다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요.
+
+`forRootAsync(...)`는 GraphQL lifecycle이 시작되기 전에 application context마다 factory를 한 번 해석합니다. 명시적인 `inject` token과 `useFactory`만 지원하며 NestJS 스타일의 `imports`, `useClass`, `useExisting`, 암시적 discovery는 거부합니다.
+
+```typescript
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: async (settings) => ({
+        graphiql: settings.graphiql,
+        resolvers: [HelloResolver],
+      }),
+    }),
+  ],
+  providers: [GraphqlSettings, HelloResolver],
+})
+export class AppModule {}
+```
+
+Async registration 전용 example application은 추가하지 않습니다. 이 Quick Start와 [Chapter 18](../../book/intermediate/ch18-graphql.ko.md)이 유지 관리되는 example surface입니다.
 
 Code-first resolver discovery 대신 schema-first 통합을 원하면 executable `GraphQLSchema`를 `schema`로 전달할 수도 있습니다.
 
@@ -73,6 +97,8 @@ await app.listen(3000);
 //   -H "Content-Type: application/json" \
 //   -d '{"query": "{ hello(name: \"fluo\") }"}'
 ```
+
+NestJS에서 이전하나요? Resolver authorization, schema nullability, scope, subscription을 옮기기 전에 [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계)을 읽으세요.
 
 ## 핵심 기능
 
@@ -197,11 +223,17 @@ class UserResolver {
 ```
 
 ## Resolver Lifecycle 계약
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 - Singleton resolver가 기본값이며, 각 operation에서 애플리케이션 컨테이너를 통해 resolve됩니다.
 - Request-scoped provider를 주입하는 resolver는 resolver 자체에도 `@Scope('request')`를 지정해야 합니다. 이렇게 해야 DI lifetime 규칙이 명시적으로 유지되고 singleton-to-request dependency mismatch를 피할 수 있습니다.
 - `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
-- Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, middleware 또는 guard가 설정한 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
+- GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요.
+- WebSocket `connectionParams`는 client가 제공하는 신뢰할 수 없는 `Record<string, unknown>`입니다. Application-owned subscription setup에서 이를 parse 및 authorize한 뒤 application stream을 만드세요.
+- HTTP endpoint는 `/graphql`로 고정되며 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
+- Resolver decorator에는 public instance target이 필요합니다. Root 및 field decorator는 private/static method를 거부하고, `@Arg()`는 private/static input field를 거부합니다.
+- 새 output field는 `nullable: false`일 때만 non-null입니다. Option을 생략하거나 `nullable: true`면 nullable이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만들고 DTO validation도 이를 SDL의 non-null로 바꾸지 않습니다.
+- Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, 앞서 설정된 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Object field resolver는 root resolver와 같은 provider scope 및 operation container를 사용합니다. `@Parent()`와 `@Context()`는 positional method argument만 제어합니다.
 - GraphQL operation 범위 DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
 - 애플리케이션 shutdown은 WebSocket transport를 등록 해제하고, 살아 있는 WebSocket client를 닫으며, 아직 활성 상태인 WebSocket operation container를 정상 operation 완료 때와 같은 request-scoped provider teardown 경로로 dispose합니다.
@@ -295,6 +327,8 @@ GraphqlModule.forRoot({
 ## 공개 API
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
+- `GraphqlModule.forRootAsync(options)`: Endpoint wiring 전에 명시적인 application-graph 의존성으로 GraphQL option을 비동기 해석합니다.
+- `GraphqlAsyncModuleOptions<TDependencies>`: 주입된 의존성 tuple에 맞춰 순서대로 `useFactory` parameter를 typing하는 공개 비동기 등록 계약입니다.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver 및 root operation 데코레이터.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution과 명시적 DTO input, parent, context parameter-index binding.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
@@ -302,7 +336,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
 - `GraphQLContext` 및 export되는 option/metadata type: `subscriptions.websocket.limits`에 사용하는 `GraphqlWebSocketLimitsOptions`를 포함한 GraphQL 실행과 module 설정을 위한 타입 정의.
 
-지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다.
+동기 `GraphqlModule.forRoot(...)` option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다. `GraphqlModule.forRootAsync({ inject, useFactory })`는 별도의 비동기 등록 API이며, 명시적인 `inject` token과 `useFactory`만 받습니다.
 
 ## 관련 패키지
 

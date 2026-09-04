@@ -26,6 +26,13 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
+## GraphQL 비동기 등록 마이그레이션
+
+NestJS application에서 GraphQL option을 비동기로 해석했다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Injected token은 기존 fluo application graph에서 해석되고, factory는 endpoint wiring 전에 application context마다 한 번 해석됩니다.
+`GraphqlModule.forRoot(...)`는 동기 option 경로로 유지되지만, 지원되는 유일한 GraphQL 등록 경로는 아닙니다.
+
+이는 NestJS dynamic-module 호환성이 아닙니다. `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 거부합니다. 필요한 provider를 application graph에 등록하고 token을 `inject`에 명시적으로 나열하세요. 별도 migration example은 추가하지 않습니다. 유지 관리되는 실행형 예제는 `@fluojs/graphql` README와 [Book Chapter 18](../../book/intermediate/ch18-graphql.ko.md)입니다.
+
 ## 응답 쿠키 마이그레이션
 
 `res.cookie()`와 `res.clearCookie()`를 `@fluojs/http`의 `setCookie(response, name, value, options?)`, `clearCookie(response, name, options?)`로 바꾸세요. 이 free function은 `FrameworkResponse`를 통해 작동하므로 controller가 Express나 Fastify에 결합되지 않습니다.
@@ -108,7 +115,7 @@ await import('./bootstrap.js');
 | `@ValidateNested()`와 class-transformer `@Type(() => ChildDto)` 조합 | `@fluojs/validation`의 `@ValidateNested(() => ChildDto)` | 중첩 DTO target을 decorator argument로 명시합니다. `@Type(...)`과 class-transformer import를 제거하세요. fluo는 class-transformer metadata나 reflected design type을 소비하지 않습니다. |
 | `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolver, request-scoped `I18nContext`, localized validation filter | `@fluojs/i18n`의 `I18nModule.forRoot(...)`; `@fluojs/i18n/http`의 `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, `getHttpLocale(...)`; `@fluojs/i18n/validation`의 `localizeDtoValidationError(...)` | 아래에서 설명하는 동기 root registration 전에 비동기 catalog와 configuration input을 resolve한다. 그런 다음 application-owned request boundary에서 각 locale을 resolve 및 저장하고 translation과 validation localization에 명시적으로 전달한다. fluo는 NestJS resolver class를 discovery하거나 implicit request-locale global을 노출하지 않는다. |
 | `SwaggerModule.createDocument(...)`와 `SwaggerModule.setup(...)` | `@fluojs/openapi`의 `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` | OpenAPI 도입은 명시적이다. 문서화할 모든 controller를 `sources`에 나열하거나, 미리 만든 HTTP handler mapping을 `descriptors`에 전달하거나, 둘 다 사용한다. fluo는 application module graph에서 controller를 scan하지 않는다. `documentPath`와 `uiPath`의 기본값은 `/openapi.json`과 `/docs`이며, 여러 문서를 제공할 때는 module instance마다 서로 다른 값을 지정한다. Swagger UI는 `ui: true`일 때만 제공되고 `swaggerUiAssets`로 기본 CSS와 JavaScript URL을 교체할 수 있다. 정규화된 runtime route가 충돌하면 bootstrap이 `RouteConflictError`로 실패한다. |
-| `@nestjs/graphql` resolver discovery, reflected return type, parameter decorator, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, module provider/controller, `@Resolver`, root operation decorator, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. Object field는 `@Resolver('TypeName')`으로 named code-first output type에 연결한다. TC39 표준 데코레이터는 parameter decorator를 지원하지 않으므로 field resolver method에 서로 다른 index의 `@Args(index?)`, `@Parent(index?)`, `@Context(index?)`를 배치한다. Code-first field argument DTO binding은 `@FieldResolver({ input: InputDto })`, 선택적 `argTypes`, `@Args(index?)`로 지원하며 `input`과 `@Args()`는 서로 필요하고 root operation에서는 유효하지 않다. `forRootAsync(...)`, schema-first field-resolver attachment, `@Subscription({ topics })` 계약은 없다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
+| `@nestjs/graphql` resolver discovery, reflected return type, parameter decorator, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, `GraphqlModule.forRootAsync({ inject, useFactory })`, module provider/controller, `@Resolver`, root operation decorator, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. Object field는 `@Resolver('TypeName')`으로 named code-first output type에 연결한다. TC39 표준 데코레이터는 parameter decorator를 지원하지 않으므로 field resolver method에 서로 다른 index의 `@Args(index?)`, `@Parent(index?)`, `@Context(index?)`를 배치한다. Code-first field argument DTO binding은 `@FieldResolver({ input: InputDto })`, 선택적 `argTypes`, `@Args(index?)`로 지원하며 `input`과 `@Args()`는 서로 필요하고 root operation에서는 유효하지 않다. Async registration은 명시적인 `inject` token과 `useFactory`만 지원합니다. NestJS 스타일 `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 계속 지원하지 않으며 schema-first field-resolver attachment와 `@Subscription({ topics })`도 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
 | `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 같은 controller parameter decorator와 `Pipe` / `ValidationPipe` transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)`; 고급 request/response 접근을 위한 `RequestContext` handler parameter | fluo는 NestJS-style controller parameter decorator나 public parameter Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. 고급 접근에는 `RequestContext`의 이식 가능한 request/response facade를 우선 사용하세요. `@fluojs/platform-fastify`에서는 `request.raw`가 Node.js `IncomingMessage`이고 `response.raw`가 `FastifyReply`입니다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `@fluojs/testing`의 `createTestingModule({ rootModule }).overrideModule(...)` | fluo testing은 명시적 `rootModule`과 replacement compile seam을 사용하므로 전역 module metadata를 mutate하지 않고 authored module identity를 보존한다. |
@@ -238,6 +245,68 @@ Field argument DTO binding에 대한 이전 migration 제한은 code-first objec
 ### Field Resolver DTO 제한
 
 Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding은 지원합니다. 남아 있는 제한은 schema-first field-resolver attachment뿐입니다.
+
+## GraphQL 마이그레이션 경계
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+
+### 인가, Context, Endpoint
+
+NestJS resolver guard와 `GqlExecutionContext`는 `@fluojs/graphql`로 이전되지 않습니다. GraphQL이 request를 소비하기 전에 등록된 bootstrap/application middleware만 `requestContext.principal`을 설정할 수 있습니다. `GraphqlModule` 뒤에 등록된 HTTP route guard는 실행되지 않습니다. 각 operation의 resolver에서 `context.principal`로 authorization을 수행하세요. WebSocket subscription의 `GraphQLContext.connectionParams`는 client가 제공하는 신뢰할 수 없는 `Record<string, unknown>`입니다. Application-owned subscription setup에서 이를 parse 및 authorize한 뒤 application stream을 만들거나 사용해야 하며, token처럼 보이는 `connectionParams` 값을 인증된 principal로 취급하면 안 됩니다.
+
+`GraphqlModule`은 GraphQL HTTP endpoint를 고정된 `/graphql` path에 mount합니다. NestJS `GraphQLModule.forRoot({ path })` 설정을 fluo option처럼 이전하지 마세요.
+
+Root operation은 materialize된 input(선언하지 않은 경우 `undefined`)을 첫 번째 method argument로, `GraphQLContext`를 두 번째 argument로 받습니다. NestJS root `@Args()`, `@Context()`, `GqlExecutionContext` parameter 가정은 적용되지 않습니다.
+
+```ts
+@Resolver()
+class AccountResolver {
+  @Query({ input: AccountInput, outputType: AccountType })
+  account(input: AccountInput, context: GraphQLContext) {
+    return this.accounts.findAuthorized(input.id, context.principal);
+  }
+}
+```
+
+`@Args()`, `@Parent()`, `@Context()`는 code-first object field resolver에서만 사용합니다. 모든 resolver decorator는 public instance member를 대상으로 합니다. `@Query()`, `@Mutation()`, `@Subscription()`, `@FieldResolver()`, `@Args()`, `@Parent()`, `@Context()`는 private 또는 static method를 거부하고, `@Arg()`는 private 또는 static field를 거부합니다.
+
+### Schema와 Lifetime 점검
+
+Cutover 전에 TypeScript type에 의존하지 말고 생성된 fluo SDL을 NestJS schema와 비교하세요.
+
+- Root `outputType`은 추론되지 않습니다. 생략하면 GraphQL `String`이 되므로 object와 list shape는 명시적 output type 및 `listOf(...)`로 보존하세요.
+- Required output field는 명시적으로 보존하세요. 새 code-first object field는 `nullable: false`일 때만 non-null이며, option을 생략하거나 `nullable: true`로 두면 nullable입니다. 선언한 GraphQL output type의 기존 non-null wrapper도 보존하세요.
+- `@Arg(...)` field는 nullable scalar 또는 list GraphQL argument를 만듭니다. Validation은 실행 시 누락 값을 거부할 수 있지만 schema argument를 non-null로 만들지는 않습니다. NestJS에서 required였던 GraphQL argument는 생성 SDL이 required contract와 일치할 때까지 compatibility gap으로 취급하고, 넓어진 nullable argument를 조용히 허용하지 마세요.
+
+Request-scoped provider를 주입하는 resolver에는 반드시 `@Scope('request')`를 붙여야 합니다. fluo는 HTTP request와 WebSocket operation마다 하나의 operation DI container를 만들고, 그 operation의 root 및 field resolver가 공유하게 한 다음 HTTP completion, operation completion, disconnect 때 dispose합니다. 이 DI disposal이 외부 event subscription까지 소유하지는 않습니다. Application은 typed `AsyncIterable`을 반환하고 GraphQL이 소비를 멈출 때 application resource를 닫아야 합니다.
+
+```ts
+type Notification = { id: string; message: string };
+
+async function* ownedNotifications(
+  source: AsyncIterable<Notification>,
+  close: () => Promise<void>,
+): AsyncIterable<Notification> {
+  try {
+    yield* source;
+  } finally {
+    await close();
+  }
+}
+
+@Resolver()
+class NotificationResolver {
+  @Subscription({ outputType: NotificationType })
+  notifications(_input: undefined, context: GraphQLContext): AsyncIterable<Notification> {
+    const principal = requireAuthorizedPrincipal(context.principal);
+    return ownedNotifications(
+      this.events.subscribe(principal.id),
+      () => this.events.unsubscribe(principal.id),
+    );
+  }
+}
+```
+
+Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합니다. NestJS `Observable`이나 iterator cleanup이 없는 application resource 반환은 호환되는 migration이 아닙니다.
 
 ## Breaking Differences
 
