@@ -64,11 +64,11 @@ context branch는 같은 spine을 지나지만 반환 객체가 다릅니다. di
       );
 ```
 
-microservice branch는 또 다른 독립 bootstrap이 아닙니다. 먼저 context를 만든 뒤, 그 context에서 transport runtime token을 resolve하고 wrapper를 얹습니다.
+microservice branch는 또 다른 독립 bootstrap이 아닙니다. 먼저 context를 만든 뒤, 그 context에서 transport runtime token을 resolve하고 wrapper를 얹습니다. Public `CreateMicroserviceOptions`는 `logger`를 명시적으로 제외하는 `CreateApplicationContextOptions`를 확장합니다. 따라서 caller는 `microserviceToken`을 고를 수 있지만, 이 high-level microservice option으로 application logger를 구성할 수는 없습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1168-1180`
+`path:packages/runtime/src/bootstrap.ts:1873-1895`
 ```typescript
-    const logger = options.logger ?? createConsoleApplicationLogger();
+    const logger = createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
     const context = await FluoFactory.createApplicationContext(rootModule, options);
 
@@ -79,8 +79,10 @@ microservice branch는 또 다른 독립 bootstrap이 아닙니다. 먼저 conte
         throw new InvariantError('Resolved microservice token does not implement listen().');
       }
 
-      return new FluoMicroserviceApplication(context, logger, runtime);
+      return new FluoMicroserviceApplication(context, logger, runtime, true);
 ```
+
+따라서 microservice path는 transport-neutral default logger와 internal Studio-aware context wiring을 사용하며 Node logger override를 받지 않습니다. Node application에서 `createConsoleApplicationLogger()` 같은 logger factory가 필요하면 `createMicroservice()`가 `logger`를 받는다고 암시하지 말고, 지원되는 Node boundary인 `@fluojs/runtime/node`에서 import하세요.
 
 이 세 발췌를 함께 보면 layered composition이 더 선명합니다. application은 dispatcher와 HTTP adapter를 가진 shell이고, context는 adapterless DI/lifecycle shell이며, microservice는 context 위에 transport runtime을 붙인 shell입니다.
 
