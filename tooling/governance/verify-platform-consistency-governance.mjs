@@ -697,6 +697,8 @@ const studioReportBootstrapFailureCompanionPaths = [
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'packages/cli/src/public-api.test.ts',
+  'book/advanced/toc.md',
+  'book/advanced/toc.ko.md',
 ];
 const studioReportBootstrapFailureContractPaths = [
   'book/advanced/ch15-studio.md',
@@ -1720,9 +1722,11 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
 function studioReportBootstrapFailureContractRegion(documentation) {
   const beginCount = documentation.split(studioReportBootstrapFailureContractBegin).length - 1;
   const endCount = documentation.split(studioReportBootstrapFailureContractEnd).length - 1;
+  const legacy = '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+  const legacyCount = documentation.split(legacy).length - 1;
   assert(
-    beginCount === 1 && endCount === 1,
-    `Studio bootstrap-failure guidance must preserve exactly one ordered contract marker pair; observed begin=${beginCount}, end=${endCount}.`,
+    beginCount === 1 && endCount === 1 && legacyCount === 0,
+    `Studio bootstrap-failure guidance must preserve exactly one ordered canonical marker pair and no legacy markers; observed begin=${beginCount}, end=${endCount}, legacy=${legacyCount}.`,
   );
   const begin = documentation.indexOf(studioReportBootstrapFailureContractBegin);
   const end = documentation.indexOf(studioReportBootstrapFailureContractEnd);
@@ -1746,6 +1750,12 @@ export function enforceStudioReportBootstrapFailureCompanions(changedFiles, docu
     const baseBeginCount = snapshot.base.split(studioReportBootstrapFailureContractBegin).length - 1;
     const baseEndCount = snapshot.base.split(studioReportBootstrapFailureContractEnd).length - 1;
     const legacyCount = snapshot.base.split(legacy).length - 1;
+    assert(
+      (baseBeginCount === 1 && baseEndCount === 1 && legacyCount === 0) ||
+        (baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0) ||
+        (baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1),
+      `Studio bootstrap-failure guidance BASE markers must be canonical, one legacy marker, or empty; observed begin=${baseBeginCount}, end=${baseEndCount}, legacy=${legacyCount}.`,
+    );
     const baseRegion = baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0
       ? ''
       : baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1

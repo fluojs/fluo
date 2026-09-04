@@ -197,7 +197,7 @@
   - [15.3 Generating Inspect Artifacts with `fluo inspect`](ch15-studio.md#153-generating-inspect-artifacts-with-fluo-inspect)
   - [15.4 Understanding the Snapshot and Report Shapes](ch15-studio.md#154-understanding-the-snapshot-and-report-shapes)
   - [15.5 Using the Studio Viewer](ch15-studio.md#155-using-the-studio-viewer)
-  - [15.6 Scenario: Diagnosing a Provider Deadlock](ch15-studio.md#156-scenario-diagnosing-a-provider-deadlock)
+  - [15.6 Scenario: Reviewing a Successful-Bootstrap Inspect Artifact](ch15-studio.md#156-scenario-reviewing-a-successful-bootstrap-inspect-artifact)
   - [15.7 Consuming Inspect Artifacts Programmatically](ch15-studio.md#157-consuming-inspect-artifacts-programmatically)
   - [15.8 Mermaid Export for Documentation](ch15-studio.md#158-mermaid-export-for-documentation)
   - [15.9 Why Heading Parity Matters](ch15-studio.md#159-why-heading-parity-matters)

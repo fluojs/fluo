@@ -2159,6 +2159,8 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
       'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
     ];
     const snapshots = Object.fromEntries(
       exactCompanions.slice(0, 4).map((path) => [
@@ -2190,6 +2192,36 @@ describe('enforceContractCompanionUpdates', () => {
         [path]: {
           base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
           head: '',
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when HEAD mixes a canonical pair with a legacy sentinel', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const canonicalPair = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: canonicalPair,
+          head: `${canonicalPair}\n<!-- fluo-studio-report-bootstrap-failure-contract -->`,
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when BASE mixes a canonical pair with legacy sentinels', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const canonicalPair = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: `${canonicalPair}\n<!-- fluo-studio-report-bootstrap-failure-contract -->\n<!-- fluo-studio-report-bootstrap-failure-contract -->`,
+          head: canonicalPair,
         },
       }),
     ).toThrowError(/Studio bootstrap-failure guidance/u);
@@ -2248,6 +2280,8 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
       'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
     ];
     const snapshots = Object.fromEntries(
       exactCompanions.slice(0, 4).map((path) => [
@@ -2282,6 +2316,8 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
       'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
     ];
     const snapshots = Object.fromEntries(
       exactCompanions.slice(0, 4).map((path) => [

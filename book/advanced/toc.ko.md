@@ -197,7 +197,7 @@
   - [15.3 `fluo inspect`로 inspect artifact 생성하기](ch15-studio.ko.md#153-fluo-inspect로-inspect-artifact-생성하기)
   - [15.4 Snapshot과 리포트 shape 이해하기](ch15-studio.ko.md#154-snapshot과-리포트-shape-이해하기)
   - [15.5 Studio Viewer 사용하기](ch15-studio.ko.md#155-studio-viewer-사용하기)
-  - [15.6 시나리오: Provider deadlock 진단하기](ch15-studio.ko.md#156-시나리오-provider-deadlock-진단하기)
+  - [15.6 시나리오: Successful-Bootstrap Inspect Artifact 검토하기](ch15-studio.ko.md#156-시나리오-successful-bootstrap-inspect-artifact-검토하기)
   - [15.7 Inspect artifact를 프로그래밍 방식으로 소비하기](ch15-studio.ko.md#157-inspect-artifact를-프로그래밍-방식으로-소비하기)
   - [15.8 문서화를 위한 Mermaid export](ch15-studio.ko.md#158-문서화를-위한-mermaid-export)
   - [15.9 제목 동기화가 중요한 이유](ch15-studio.ko.md#159-제목-동기화가-중요한-이유)
