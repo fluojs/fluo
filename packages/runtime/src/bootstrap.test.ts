@@ -1,4 +1,5 @@
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
+import { optional } from '@fluojs/di';
 import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, Produces, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -356,6 +357,198 @@ describe('bootstrapModule', () => {
     });
 
     expect(() => bootstrapModule(AppModule)).not.toThrow();
+  });
+
+  it('injects undefined into a provider when an optional token is absent from the bootstrap graph', async () => {
+    const OPTIONAL_TOKEN = Symbol('optional-provider-absent');
+
+    @Inject(optional(OPTIONAL_TOKEN))
+    class OptionalProviderConsumer {
+      constructor(readonly dependency: unknown) {}
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [OptionalProviderConsumer],
+    });
+
+    const result = bootstrapModule(AppModule);
+    const consumer = await result.container.resolve(OptionalProviderConsumer);
+
+    expect(consumer.dependency).toBeUndefined();
+  });
+
+  it('injects undefined into a controller when an optional token is absent from the bootstrap graph', async () => {
+    const OPTIONAL_TOKEN = Symbol('optional-controller-absent');
+
+    @Controller('/optional-absent')
+    @Inject(optional(OPTIONAL_TOKEN))
+    class OptionalControllerConsumer {
+      constructor(readonly dependency: unknown) {}
+
+      @Get('/')
+      getDependency() {
+        return { dependency: this.dependency };
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      controllers: [OptionalControllerConsumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/optional-absent'), response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({ dependency: undefined });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('resolves an accessible optional token for a provider consumer', async () => {
+    class OptionalDependency {}
+
+    @Inject(optional(OptionalDependency))
+    class OptionalProviderConsumer {
+      constructor(readonly dependency: OptionalDependency | undefined) {}
+    }
+
+    class DependencyModule {}
+    defineRuntimeModuleMetadata(DependencyModule, {
+      exports: [OptionalDependency],
+      providers: [OptionalDependency],
+    });
+
+    class ConsumerModule {}
+    defineRuntimeModuleMetadata(ConsumerModule, {
+      imports: [DependencyModule],
+      providers: [OptionalProviderConsumer],
+    });
+
+    const result = bootstrapModule(ConsumerModule);
+    const consumer = await result.container.resolve(OptionalProviderConsumer);
+
+    expect(consumer.dependency).toBeInstanceOf(OptionalDependency);
+  });
+
+  it('resolves an accessible optional token for a controller consumer during dispatch', async () => {
+    class OptionalDependency {}
+
+    @Controller('/optional-accessible')
+    @Inject(optional(OptionalDependency))
+    class OptionalControllerConsumer {
+      constructor(readonly dependency: OptionalDependency | undefined) {}
+
+      @Get('/')
+      getDependency() {
+        return { dependencyResolved: this.dependency instanceof OptionalDependency };
+      }
+    }
+
+    class DependencyModule {}
+    defineRuntimeModuleMetadata(DependencyModule, {
+      exports: [OptionalDependency],
+      providers: [OptionalDependency],
+    });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      controllers: [OptionalControllerConsumer],
+      imports: [DependencyModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/optional-accessible'), response);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({ dependencyResolved: true });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects a provider optional token that exists in an inaccessible sibling module', () => {
+    class OptionalDependency {}
+
+    @Inject(optional(OptionalDependency))
+    class OptionalProviderConsumer {
+      constructor(readonly dependency: OptionalDependency | undefined) {}
+    }
+
+    class DependencyModule {}
+    defineRuntimeModuleMetadata(DependencyModule, {
+      providers: [OptionalDependency],
+    });
+
+    class ConsumerModule {}
+    defineRuntimeModuleMetadata(ConsumerModule, {
+      providers: [OptionalProviderConsumer],
+    });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [DependencyModule, ConsumerModule],
+    });
+
+    expect(() => bootstrapModule(AppModule)).toThrow(
+      expect.objectContaining({
+        code: 'MODULE_VISIBILITY_ERROR',
+        meta: expect.objectContaining({
+          module: 'ConsumerModule',
+          phase: 'provider visibility validation',
+          token: OptionalDependency.name,
+        }),
+      }),
+    );
+  });
+
+  it('rejects a controller optional token that exists in an inaccessible sibling module', () => {
+    class OptionalDependency {}
+
+    @Controller('/optional-inaccessible')
+    @Inject(optional(OptionalDependency))
+    class OptionalControllerConsumer {
+      constructor(readonly dependency: OptionalDependency | undefined) {}
+
+      @Get('/')
+      getDependency() {
+        return { dependency: this.dependency };
+      }
+    }
+
+    class DependencyModule {}
+    defineRuntimeModuleMetadata(DependencyModule, {
+      providers: [OptionalDependency],
+    });
+
+    class ConsumerModule {}
+    defineRuntimeModuleMetadata(ConsumerModule, {
+      controllers: [OptionalControllerConsumer],
+    });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [DependencyModule, ConsumerModule],
+    });
+
+    expect(() => bootstrapModule(AppModule)).toThrow(
+      expect.objectContaining({
+        code: 'MODULE_VISIBILITY_ERROR',
+        meta: expect.objectContaining({
+          module: 'ConsumerModule',
+          phase: 'controller visibility validation',
+          token: OptionalDependency.name,
+        }),
+      }),
+    );
   });
 
   it('applies global middleware to controllers declared by other global modules', async () => {

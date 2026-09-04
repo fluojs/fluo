@@ -308,9 +308,10 @@ export class TerminusModule {
    *
    * DI-backed indicator providers resolve inside the Terminus module scope. A named Redis token
    * is required, so its owner module must be listed in `imports`; otherwise bootstrap fails with
-   * `MODULE_VISIBILITY_ERROR`. Prisma and Drizzle owner tokens are optional: omitting their
-   * modules still lets the application bootstrap, but their indicators report `down` on health
-   * checks until the owner modules are imported.
+   * `MODULE_VISIBILITY_ERROR`. Prisma and Drizzle owner tokens are optional only when absent from
+   * the bootstrap graph: omitting their modules then lets the application bootstrap and their
+   * indicators report `down` on health checks. Existing sibling owner tokens still require
+   * `imports`; optional injection never bypasses module visibility.
    *
    * @example
    * ```ts

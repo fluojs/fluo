@@ -208,6 +208,36 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     expect((thrownError as { code?: string }).code).toBe('MODULE_VISIBILITY_ERROR');
   });
 
+  it('rejects an optional Prisma token that exists in an inaccessible sibling module', async () => {
+    const prismaModule = PrismaModule.forRoot({
+      client: createPrismaClientStub(async (_statement: string) => undefined),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        prismaModule,
+        TerminusModule.forRoot({
+          indicatorProviders: [createPrismaHealthIndicatorProvider({ key: 'prisma' })],
+        }),
+      ],
+    });
+
+    let thrownError: unknown;
+
+    try {
+      await createTestApp({ rootModule: AppModule });
+    } catch (error: unknown) {
+      thrownError = error;
+    }
+
+    expect(thrownError).toBeInstanceOf(Error);
+    expect((thrownError as Error).message).toContain('fluo.prisma.service');
+    expect((thrownError as Error).message).toContain('TerminusRuntimeModule');
+    expect((thrownError as { code?: string }).code).toBe('MODULE_VISIBILITY_ERROR');
+  });
+
   it('boots without an optional Prisma owner module and reports Prisma down at health-check time', async () => {
     class AppModule {}
 

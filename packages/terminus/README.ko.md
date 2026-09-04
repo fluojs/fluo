@@ -149,7 +149,7 @@ TerminusModule.forRoot({
 });
 ```
 
-named Redis indicator 의존성은 필수입니다. import된 module이나 global module 어디에서도 해당 token을 공급하지 않으면 bootstrap 중 module graph 검증이 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. Prisma와 Drizzle indicator 의존성은 선택 사항이므로, owner module을 생략해도 애플리케이션은 bootstrap되지만 해당 indicator는 요청 시점의 `/health`에서 `down`을 보고합니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
+named Redis indicator 의존성은 필수입니다. import된 module이나 global module 어디에서도 해당 token을 공급하지 않으면 bootstrap 중 module graph 검증이 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. Prisma와 Drizzle indicator 의존성은 해당 token이 bootstrap graph 전체에 없을 때만 선택 사항입니다. 이 경우 owner module을 생략해도 애플리케이션은 bootstrap되지만 해당 indicator는 요청 시점의 `/health`에서 `down`을 보고합니다. Prisma 또는 Drizzle owner module이 애플리케이션의 다른 위치에 존재하지만 Terminus `imports`에서 생략된 경우에는 bootstrap이 `MODULE_VISIBILITY_ERROR`로 실패합니다. optional injection은 module visibility를 우회하지 않습니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
 
 ### Readiness 참여
 
@@ -220,7 +220,7 @@ Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js m
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - 인디케이터 및 provider 등록을 위한 메인 엔트리 포인트입니다.
-  - Option에는 `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, `path`가 포함됩니다.
+  - Option에는 `imports`, `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, `path`가 포함됩니다.
 
 ### `TerminusHealthService`
 

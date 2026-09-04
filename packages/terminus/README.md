@@ -149,7 +149,7 @@ TerminusModule.forRoot({
 });
 ```
 
-A named Redis indicator dependency is required. If no imported or global module supplies its token, module-graph validation fails during bootstrap with a `MODULE_VISIBILITY_ERROR` naming the missing token. Prisma and Drizzle indicator dependencies are optional: omitting their owner modules still allows the application to bootstrap, while the corresponding indicator reports `down` in `/health` at request time. Dependencies published by a global module — for example `RedisModule.forRoot(...)` without a `name`, which is global by default — remain visible without an explicit `imports` entry.
+A named Redis indicator dependency is required. If no imported or global module supplies its token, module-graph validation fails during bootstrap with a `MODULE_VISIBILITY_ERROR` naming the missing token. Prisma and Drizzle indicator dependencies are optional only when their tokens are absent from the bootstrap graph: omitting their owner modules then allows the application to bootstrap and the corresponding indicator reports `down` in `/health` at request time. If a Prisma or Drizzle owner module exists elsewhere in the application but is omitted from Terminus `imports`, bootstrap instead fails with `MODULE_VISIBILITY_ERROR`; optional injection never bypasses module visibility. Dependencies published by a global module — for example `RedisModule.forRoot(...)` without a `name`, which is global by default — remain visible without an explicit `imports` entry.
 
 ### Readiness Participation
 
@@ -220,7 +220,7 @@ Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` fo
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - Main entry point for registering indicators and providers.
-  - Options include `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
+  - Options include `imports`, `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
 
 ### `TerminusHealthService`
 
