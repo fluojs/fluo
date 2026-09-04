@@ -28,7 +28,7 @@ Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하�
 `path:packages/runtime/src/bootstrap.ts:920-938`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = options.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
   const hasHttpAdapter = options.adapter !== undefined;
@@ -46,6 +46,8 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logger.log('Starting fluo application...', 'FluoFactory');
     const runtimeProviders = createRuntimeProviders(options, logger);
 ```
+
+root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하는 `createDefaultApplicationLogger()`입니다. `createConsoleApplicationLogger()`는 `@fluojs/runtime/node`에서 import하는 명시적인 Node 전용 구성에서만 선택하세요.
 
 이 발췌가 보여 주는 분기는 host 종류가 아니라 adapter 존재 여부입니다. 그래서 공통 bootstrap shell은 Node 서버 생성이나 Web Request 정규화 없이도 먼저 성립하고, 실제 host 차이는 adapter가 들어오는 가장자리로 밀려납니다.
 

@@ -68,7 +68,7 @@ microservice branch는 또 다른 독립 bootstrap이 아닙니다. 먼저 conte
 
 `path:packages/runtime/src/bootstrap.ts:1168-1180`
 ```typescript
-    const logger = options.logger ?? createConsoleApplicationLogger();
+    const logger = options.logger ?? createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
     const context = await FluoFactory.createApplicationContext(rootModule, options);
 
