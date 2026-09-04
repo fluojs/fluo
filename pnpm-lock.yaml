@@ -995,9 +995,6 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@fluojs/config':
-        specifier: workspace:^
-        version: link:../config
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
