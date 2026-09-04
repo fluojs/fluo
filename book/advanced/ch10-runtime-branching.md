@@ -25,7 +25,7 @@ Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1515
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:1515-1544`
+`path:packages/runtime/src/bootstrap.ts:1578-1595`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
@@ -40,6 +40,10 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     async listen() {},
   };
   const runtimeCleanup: RuntimeCleanupCallback[] = [];
+  if (studioDevtools) {
+    runtimeCleanup.push(() => studioDevtools.close());
+  }
+  const bootstrapReadySignal = createBootstrapReadySignal();
   const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
   const timingEnabled = effectiveOptions.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
@@ -62,7 +66,7 @@ This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:12-79`.
 
 The root boundary starts with a deny list. The root barrel must not directly contain dispatch helpers, Web factories, Node shutdown helpers, or adapter Bootstrap helpers.
 
-`path:packages/runtime/src/exports.test.ts:13-30`
+`path:packages/runtime/src/exports.test.ts:19-46`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -72,9 +76,18 @@ it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
 });
 
+it('keeps root bootstrap defaults detached from Node-only logger modules', () => {
+  const bootstrapSource = readFileSync(new URL('./bootstrap.ts', import.meta.url), 'utf8');
+
+  expect(bootstrapSource).not.toContain('./logging/logger.js');
+  expect(bootstrapSource).not.toContain('./logging/json-logger.js');
+  expect(bootstrapSource).toContain('./logging/default-logger.js');
+});
+
 it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
+  expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
-  expect(runtime.createHealthModule).toBeTypeOf('function');
+  expect(runtime).toHaveProperty('createHealthModule');
   expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
@@ -82,6 +95,17 @@ it('keeps only bootstrap-scoped operational helpers on the runtime root barrel',
   expect(runtime).toHaveProperty('PLATFORM_SHELL');
   expect(runtime).not.toHaveProperty('MetricsModule');
   expect(runtime).not.toHaveProperty('TerminusModule');
+});
+```
+
+The supported `./devtools` bridge is asserted separately so the root boundary remains selective without hiding the approved host integration.
+
+`path:packages/runtime/src/exports.test.ts:79-83`
+```typescript
+it('keeps the devtools subpath to the supported host bridge contract', () => {
+  expect(Object.keys(runtimeDevtools).sort()).toEqual([
+    'StudioDevtoolsRuntime',
+  ]);
 });
 ```
 
@@ -105,7 +129,7 @@ The root public surface is defined in `path:packages/runtime/src/index.ts:1-45`.
 
 The actual shape of the root barrel is small and selective. It exposes only `bootstrap`, health, error, platform types, request transaction, Tokens, and shared types.
 
-`path:packages/runtime/src/index.ts:1-45`
+`path:packages/runtime/src/index.ts:1-46`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -124,11 +148,15 @@ export {
 } from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
+  MultipartFieldPart,
+  MultipartFilePart,
   MultipartOptions,
+  MultipartPart,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { MultipartBodyConsumedError } from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,
@@ -146,6 +174,7 @@ export type {
   PlatformValidationResult,
 } from './platform-contract.js';
 export * from './request-transaction.js';
+export * from './route-inspection.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
@@ -162,12 +191,13 @@ The package export map in `path:packages/runtime/package.json:27-56` enforces th
 
 The JSON export map repeats the same boundaries. The root entrypoint, Node, Web, and internal seams are each declared as independent package subpaths.
 
-`path:packages/runtime/package.json:27-56`
+`path:packages/runtime/package.json:25-64`
 ```json
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    "import": "./dist/index.js",
+    "default": "./dist/index.js"
   },
   "./node": {
     "types": "./dist/node.d.ts",
@@ -176,6 +206,10 @@ The JSON export map repeats the same boundaries. The root entrypoint, Node, Web,
   "./web": {
     "types": "./dist/web.d.ts",
     "import": "./dist/web.js"
+  },
+  "./devtools": {
+    "types": "./dist/devtools/index.d.ts",
+    "import": "./dist/devtools/index.js"
   },
   "./internal": {
     "types": "./dist/internal.d.ts",
@@ -206,7 +240,7 @@ This matters because an export map is stronger than documentation. It prevents a
 
 The test reads package.json and confirms that its declarations include the narrowed subpaths. In particular, `internal-node` is separately pinned in `typesVersions` too.
 
-`path:packages/runtime/src/exports.test.ts:61-78`
+`path:packages/runtime/src/exports.test.ts:100-124`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -218,6 +252,12 @@ it('declares the narrowed package export map', () => {
 
   expect(packageJson.exports).toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
+  expect(packageJson.exports).toMatchObject({
+    './devtools': {
+      import: './dist/devtools/index.js',
+      types: './dist/devtools/index.d.ts',
+    },
+  });
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
@@ -248,10 +288,17 @@ The public Node entrypoint is `path:packages/runtime/src/node.ts:1-18`. This fil
 
 The Node public subpath does not open the whole internal file directly. As shown below, it exposes loggers and selected Node application helpers only.
 
-`path:packages/runtime/src/node.ts:1-18`
+`path:packages/runtime/src/node.ts:1-25`
 ```typescript
 export * from './logging/json-logger.js';
 export * from './logging/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+} from './node/node-static-assets.js';
+export type {
+  NodeFileSystemAssetPrecompression,
+  NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 export {
   bootstrapNodeApplication,
   createNodeHttpAdapter,
@@ -278,10 +325,11 @@ The real implementation lives in `path:packages/runtime/src/node/internal-node.t
 
 The constructor creates the request-response factory, creates an HTTP or HTTPS server depending on `httpsOptions`, and tracks connections so lingering sockets can be force-closed later.
 
-`path:packages/runtime/src/node/internal-node.ts:108-129`
+`path:packages/runtime/src/node/internal-node.ts:133-183`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
+  private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
@@ -295,27 +343,39 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
-    private readonly compression = false,
+    compression = false,
     private readonly httpsOptions: HttpsServerOptions | undefined,
-    private readonly multipartOptions?: MultipartOptions,
-    private readonly maxBodySize = 1 * 1024 * 1024,
-    private readonly preserveRawBody = false,
+    multipartOptions?: MultipartOptions,
+    maxBodySize = 1 * 1024 * 1024,
+    preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
 ```
 
 The following constructor body actually performs Node server creation and socket tracking. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, and connection set management all belong inside the Node branch.
 
-`path:packages/runtime/src/node/internal-node.ts:130-145`
+`path:packages/runtime/src/node/internal-node.ts:157-182`
 ```typescript
+    validateNodeLifecycleOptions({
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+      shutdownTimeoutMs: this.shutdownTimeoutMs,
+    });
     this.requestResponseFactory = createNodeRequestResponseFactory(
       compression,
       multipartOptions,
       maxBodySize,
       preserveRawBody,
     );
-    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+    this.server = createNodeServer(this.httpOptions, this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
+    });
+    this.listenLifecycle = new NodeListenLifecycle(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
     });
     this.server.on('connection', (socket) => {
       this.sockets.add(socket);
@@ -328,34 +388,142 @@ The following constructor body actually performs Node server creation and socket
 
 These two excerpts show why the Node branch needs its own subpath. `node:http`, `node:https`, socket sets, and server lifecycle are concrete capabilities that Web-standard hosts cannot share.
 
-Listening is handled by `listenNodeServerWithRetry()` in `path:packages/runtime/src/node/internal-node.ts:294-320`. This helper retries `EADDRINUSE` errors up to the configured limit. That behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
+The adapter delegates listen and close admission to the lifecycle component rather than owning an uncoordinated listener state.
 
-`path:packages/runtime/src/node/internal-node.ts:294-320`
+`path:packages/runtime/src/node/internal-node.ts:197-212`
 ```typescript
-function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening);
+  async listen(dispatcher: Dispatcher): Promise<void> {
+    await this.listenLifecycle.listen(() => {
+      this.dispatcher = dispatcher;
+    });
+  }
 
-        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
+  async close(): Promise<void> {
+    const server = this.server;
+    await this.listenLifecycle.close(async () => {
+      if (server.listening) {
+        await closeNodeServerWithDrain(server, this.sockets, this.shutdownTimeoutMs);
+      }
+    });
+
+    this.dispatcher = undefined;
+  }
+```
+
+Listening is handled by `listenNodeServerWithRetry()` in `path:packages/runtime/src/node/internal-node-listen.ts:94-194`. This helper retries `EADDRINUSE` errors up to the configured limit and accepts an `AbortSignal` so close can cancel a pending startup. That behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
+
+`path:packages/runtime/src/node/internal-node-listen.ts:94-194`
+```typescript
+function listenNodeServerWithRetry(
+  server: NodeServer,
+  options: NodeListenRetryOptions,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let activeErrorListener: ((error: NodeJS.ErrnoException) => void) | undefined;
+    let activeListeningListener: (() => void) | undefined;
+    let attemptInFlight = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+
+    const finish = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+      if (activeErrorListener) {
+        server.off('error', activeErrorListener);
+      }
+      if (activeListeningListener) {
+        server.off('listening', activeListeningListener);
+      }
+      signal.removeEventListener('abort', onAbort);
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    };
+
+    const cancel = () => {
+      finish(new NodeListenCancelledError());
+    };
+
+    const onAbort = () => {
+      if (attemptInFlight) {
+        return;
+      }
+
+      cancel();
+    };
+
+    const tryListen = (attempt: number) => {
+      if (signal.aborted) {
+        cancel();
+        return;
+      }
+
+      attemptInFlight = true;
+      const onError = (error: NodeJS.ErrnoException) => {
+        attemptInFlight = false;
+        activeErrorListener = undefined;
+        server.off('listening', onListening);
+        activeListeningListener = undefined;
+
+        if (signal.aborted) {
+          cancel();
           return;
         }
 
-        reject(error);
+        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
+          server.close(() => {
+            if (settled) {
+              return;
+            }
+            if (signal.aborted) {
+              cancel();
+              return;
+            }
+
+            retryTimeout = setTimeout(() => {
+              retryTimeout = undefined;
+              tryListen(attempt + 1);
+            }, options.retryDelayMs);
+          });
+          return;
+        }
+
+        finish(error);
       };
 
       const onListening = () => {
+        attemptInFlight = false;
+        activeListeningListener = undefined;
         server.off('error', onError);
-        resolve();
+        activeErrorListener = undefined;
+
+        if (signal.aborted) {
+          server.close(cancel);
+          return;
+        }
+
+        finish();
       };
 
+      activeErrorListener = onError;
+      activeListeningListener = onListening;
       server.once('error', onError);
       server.once('listening', onListening);
       server.listen({ host: options.host, port: options.port });
     };
 
+    signal.addEventListener('abort', onAbort, { once: true });
     tryListen(0);
   });
 }
@@ -367,7 +535,7 @@ Shutdown is handled by `closeNodeServerWithDrain()` in `path:packages/runtime/sr
 
 `createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:240-253` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:255-264` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:266-277` adds shutdown-signal registration on top.
 
-`path:packages/runtime/src/node/internal-node.ts:240-264`
+`path:packages/runtime/src/node/internal-node.ts:283-317`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -378,9 +546,10 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 
@@ -388,10 +557,13 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    logger,
   );
 }
 ```

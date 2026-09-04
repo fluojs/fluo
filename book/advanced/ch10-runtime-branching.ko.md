@@ -25,7 +25,7 @@ Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하�
 
 그 중심부는 host 이름을 판별하는 대신 이미 준비된 adapter와 platform shell을 받아 조립합니다. 아래 발췌에서 runtime은 module graph, provider, token, lifecycle 순서를 다루고, Node나 Web이라는 이름을 조건으로 삼지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1515-1544`
+`path:packages/runtime/src/bootstrap.ts:1578-1595`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
@@ -40,6 +40,10 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     async listen() {},
   };
   const runtimeCleanup: RuntimeCleanupCallback[] = [];
+  if (studioDevtools) {
+    runtimeCleanup.push(() => studioDevtools.close());
+  }
+  const bootstrapReadySignal = createBootstrapReadySignal();
   const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
   const timingEnabled = effectiveOptions.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
@@ -62,7 +66,7 @@ root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하�
 
 root boundary부터 보면 금지 목록이 먼저 나옵니다. root barrel은 dispatch helper, Web factory, Node shutdown helper, adapter bootstrap helper를 직접 담지 않아야 합니다.
 
-`path:packages/runtime/src/exports.test.ts:13-30`
+`path:packages/runtime/src/exports.test.ts:19-46`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -72,9 +76,18 @@ it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
 });
 
+it('keeps root bootstrap defaults detached from Node-only logger modules', () => {
+  const bootstrapSource = readFileSync(new URL('./bootstrap.ts', import.meta.url), 'utf8');
+
+  expect(bootstrapSource).not.toContain('./logging/logger.js');
+  expect(bootstrapSource).not.toContain('./logging/json-logger.js');
+  expect(bootstrapSource).toContain('./logging/default-logger.js');
+});
+
 it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
+  expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
-  expect(runtime.createHealthModule).toBeTypeOf('function');
+  expect(runtime).toHaveProperty('createHealthModule');
   expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
@@ -82,6 +95,17 @@ it('keeps only bootstrap-scoped operational helpers on the runtime root barrel',
   expect(runtime).toHaveProperty('PLATFORM_SHELL');
   expect(runtime).not.toHaveProperty('MetricsModule');
   expect(runtime).not.toHaveProperty('TerminusModule');
+});
+```
+
+지원되는 `./devtools` bridge도 별도로 고정되어 root boundary가 선택적인 상태를 유지하면서 승인된 host integration을 숨기지 않도록 합니다.
+
+`path:packages/runtime/src/exports.test.ts:79-83`
+```typescript
+it('keeps the devtools subpath to the supported host bridge contract', () => {
+  expect(Object.keys(runtimeDevtools).sort()).toEqual([
+    'StudioDevtoolsRuntime',
+  ]);
 });
 ```
 
@@ -105,7 +129,7 @@ root public surface는 `path:packages/runtime/src/index.ts:1-45`에 정의되어
 
 root barrel의 실제 모양은 작고 선별적입니다. `bootstrap`, health, error, platform type, request transaction, token, shared type만 바깥으로 보냅니다.
 
-`path:packages/runtime/src/index.ts:1-45`
+`path:packages/runtime/src/index.ts:1-46`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -124,11 +148,15 @@ export {
 } from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
+  MultipartFieldPart,
+  MultipartFilePart,
   MultipartOptions,
+  MultipartPart,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { MultipartBodyConsumedError } from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,
@@ -146,6 +174,7 @@ export type {
   PlatformValidationResult,
 } from './platform-contract.js';
 export * from './request-transaction.js';
+export * from './route-inspection.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
@@ -162,12 +191,13 @@ export * from './types.js';
 
 JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, Web, internal seam이 각각 독립된 package subpath로 선언됩니다.
 
-`path:packages/runtime/package.json:27-56`
+`path:packages/runtime/package.json:25-64`
 ```json
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    "import": "./dist/index.js",
+    "default": "./dist/index.js"
   },
   "./node": {
     "types": "./dist/node.d.ts",
@@ -176,6 +206,10 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
   "./web": {
     "types": "./dist/web.d.ts",
     "import": "./dist/web.js"
+  },
+  "./devtools": {
+    "types": "./dist/devtools/index.d.ts",
+    "import": "./dist/devtools/index.js"
   },
   "./internal": {
     "types": "./dist/internal.d.ts",
@@ -206,7 +240,7 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
 
 테스트는 package.json의 선언이 실제로 좁혀진 subpath를 포함하는지 읽어서 확인합니다. 특히 `internal-node`는 `typesVersions`에도 별도로 고정됩니다.
 
-`path:packages/runtime/src/exports.test.ts:61-78`
+`path:packages/runtime/src/exports.test.ts:100-124`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -218,6 +252,12 @@ it('declares the narrowed package export map', () => {
 
   expect(packageJson.exports).toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
+  expect(packageJson.exports).toMatchObject({
+    './devtools': {
+      import: './dist/devtools/index.js',
+      types: './dist/devtools/index.d.ts',
+    },
+  });
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
@@ -248,10 +288,17 @@ public Node entrypoint는 `path:packages/runtime/src/node.ts:1-18`입니다. 이
 
 Node public subpath는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger와 선택된 Node application helper만 공개합니다.
 
-`path:packages/runtime/src/node.ts:1-18`
+`path:packages/runtime/src/node.ts:1-25`
 ```typescript
 export * from './logging/json-logger.js';
 export * from './logging/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+} from './node/node-static-assets.js';
+export type {
+  NodeFileSystemAssetPrecompression,
+  NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 export {
   bootstrapNodeApplication,
   createNodeHttpAdapter,
@@ -278,10 +325,11 @@ export type {
 
 constructor는 request-response factory를 만들고, `httpsOptions` 여부에 따라 HTTP 또는 HTTPS server를 만들며, 나중에 lingering socket을 강제 종료할 수 있도록 connection을 추적합니다.
 
-`path:packages/runtime/src/node/internal-node.ts:108-129`
+`path:packages/runtime/src/node/internal-node.ts:133-183`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
+  private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
@@ -295,27 +343,39 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
-    private readonly compression = false,
+    compression = false,
     private readonly httpsOptions: HttpsServerOptions | undefined,
-    private readonly multipartOptions?: MultipartOptions,
-    private readonly maxBodySize = 1 * 1024 * 1024,
-    private readonly preserveRawBody = false,
+    multipartOptions?: MultipartOptions,
+    maxBodySize = 1 * 1024 * 1024,
+    preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
 ```
 
 이어지는 constructor 본문은 Node server 생성과 socket 추적을 실제로 수행합니다. 이 두 번째 발췌가 request/response factory, HTTP/HTTPS server 선택, connection set 관리가 모두 Node branch 안에 있음을 보여 줍니다.
 
-`path:packages/runtime/src/node/internal-node.ts:130-145`
+`path:packages/runtime/src/node/internal-node.ts:157-182`
 ```typescript
+    validateNodeLifecycleOptions({
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+      shutdownTimeoutMs: this.shutdownTimeoutMs,
+    });
     this.requestResponseFactory = createNodeRequestResponseFactory(
       compression,
       multipartOptions,
       maxBodySize,
       preserveRawBody,
     );
-    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+    this.server = createNodeServer(this.httpOptions, this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
+    });
+    this.listenLifecycle = new NodeListenLifecycle(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
     });
     this.server.on('connection', (socket) => {
       this.sockets.add(socket);
@@ -328,34 +388,142 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 이 두 발췌는 Node branch가 왜 별도 subpath에 있어야 하는지 보여 줍니다. `node:http`, `node:https`, socket set, server lifecycle은 Web-standard host가 공유할 수 없는 구체 capability입니다.
 
-listen은 `path:packages/runtime/src/node/internal-node.ts:294-320`의 `listenNodeServerWithRetry()`가 처리합니다. 이 helper는 `EADDRINUSE` 에러를 설정된 한도까지 재시도합니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
+adapter는 조율되지 않은 listener state를 직접 소유하는 대신 lifecycle component에 listen과 close admission을 위임합니다.
 
-`path:packages/runtime/src/node/internal-node.ts:294-320`
+`path:packages/runtime/src/node/internal-node.ts:197-212`
 ```typescript
-function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening);
+  async listen(dispatcher: Dispatcher): Promise<void> {
+    await this.listenLifecycle.listen(() => {
+      this.dispatcher = dispatcher;
+    });
+  }
 
-        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
+  async close(): Promise<void> {
+    const server = this.server;
+    await this.listenLifecycle.close(async () => {
+      if (server.listening) {
+        await closeNodeServerWithDrain(server, this.sockets, this.shutdownTimeoutMs);
+      }
+    });
+
+    this.dispatcher = undefined;
+  }
+```
+
+listen은 `path:packages/runtime/src/node/internal-node-listen.ts:94-194`의 `listenNodeServerWithRetry()`가 처리합니다. 이 helper는 `EADDRINUSE` 에러를 설정된 한도까지 재시도하고, close가 pending startup을 취소할 수 있도록 `AbortSignal`을 받습니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
+
+`path:packages/runtime/src/node/internal-node-listen.ts:94-194`
+```typescript
+function listenNodeServerWithRetry(
+  server: NodeServer,
+  options: NodeListenRetryOptions,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let activeErrorListener: ((error: NodeJS.ErrnoException) => void) | undefined;
+    let activeListeningListener: (() => void) | undefined;
+    let attemptInFlight = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+
+    const finish = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+      if (activeErrorListener) {
+        server.off('error', activeErrorListener);
+      }
+      if (activeListeningListener) {
+        server.off('listening', activeListeningListener);
+      }
+      signal.removeEventListener('abort', onAbort);
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    };
+
+    const cancel = () => {
+      finish(new NodeListenCancelledError());
+    };
+
+    const onAbort = () => {
+      if (attemptInFlight) {
+        return;
+      }
+
+      cancel();
+    };
+
+    const tryListen = (attempt: number) => {
+      if (signal.aborted) {
+        cancel();
+        return;
+      }
+
+      attemptInFlight = true;
+      const onError = (error: NodeJS.ErrnoException) => {
+        attemptInFlight = false;
+        activeErrorListener = undefined;
+        server.off('listening', onListening);
+        activeListeningListener = undefined;
+
+        if (signal.aborted) {
+          cancel();
           return;
         }
 
-        reject(error);
+        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
+          server.close(() => {
+            if (settled) {
+              return;
+            }
+            if (signal.aborted) {
+              cancel();
+              return;
+            }
+
+            retryTimeout = setTimeout(() => {
+              retryTimeout = undefined;
+              tryListen(attempt + 1);
+            }, options.retryDelayMs);
+          });
+          return;
+        }
+
+        finish(error);
       };
 
       const onListening = () => {
+        attemptInFlight = false;
+        activeListeningListener = undefined;
         server.off('error', onError);
-        resolve();
+        activeErrorListener = undefined;
+
+        if (signal.aborted) {
+          server.close(cancel);
+          return;
+        }
+
+        finish();
       };
 
+      activeErrorListener = onError;
+      activeListeningListener = onListening;
       server.once('error', onError);
       server.once('listening', onListening);
       server.listen({ host: options.host, port: options.port });
     };
 
+    signal.addEventListener('abort', onAbort, { once: true });
     tryListen(0);
   });
 }
@@ -367,7 +535,7 @@ shutdown은 `path:packages/runtime/src/node/internal-node.ts:335-368`의 `closeN
 
 `path:packages/runtime/src/node/internal-node.ts:240-253`의 `createNodeHttpAdapter()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/runtime/src/node/internal-node.ts:255-264`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `path:packages/runtime/src/node/internal-node.ts:266-277`의 `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
 
-`path:packages/runtime/src/node/internal-node.ts:240-264`
+`path:packages/runtime/src/node/internal-node.ts:283-317`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -378,9 +546,10 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 
@@ -388,10 +557,13 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    logger,
   );
 }
 ```
