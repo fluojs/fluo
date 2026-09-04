@@ -8,6 +8,8 @@ import {
   isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
+  isReturnStatement,
+  isThrowStatement,
   ScriptKind,
   ScriptTarget,
 } from 'typescript';
@@ -223,6 +225,10 @@ async function loadGovernanceInternals() {
     enforceNotificationsStatusDocumentationContract: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
     enforceStudioRuntimeBridgeDiscoverability: (readText?: (relativePath: string) => string) => void;
+    enforceStudioReportBootstrapFailureCompanions: (
+      changedFiles: string[],
+      documentSnapshots?: Readonly<Record<string, { base: unknown; head: unknown }>>,
+    ) => void;
     enforceStudioStaticGraphLimitsContract: (readText?: (relativePath: string) => string) => void;
   };
 
@@ -239,6 +245,30 @@ async function loadGovernanceInternals() {
       );
     },
   };
+}
+
+function hasDirectMainCall(sourceText: string, calleeName: string): boolean {
+  const source = createSourceFile(
+    'verify-platform-consistency-governance.mjs',
+    sourceText,
+    ScriptTarget.Latest,
+    true,
+    ScriptKind.JS,
+  );
+
+  return source.statements.some((statement) =>
+    isFunctionDeclaration(statement) &&
+    statement.name?.text === 'main' &&
+    statement.body?.statements.some((mainStatement, index, mainStatements) =>
+      !mainStatements.slice(0, index).some(
+        (previousStatement) => isReturnStatement(previousStatement) || isThrowStatement(previousStatement),
+      ) &&
+      isExpressionStatement(mainStatement) &&
+      isCallExpression(mainStatement.expression) &&
+      isIdentifier(mainStatement.expression.expression) &&
+      mainStatement.expression.expression.text === calleeName,
+    ),
+  );
 }
 
 describe('isGovernedPackageSourcePath', () => {
@@ -2085,6 +2115,266 @@ describe('enforceContractCompanionUpdates', () => {
     ];
 
     expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
+  });
+
+  it('requires companions for additive edits inside the bounded #3338 contract region', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const region = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\\ncontract section\\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+    const changedRegion = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\\ncontract section\\nadjacent addition\\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: { base: region, head: changedRegion },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('ignores unrelated NestJS migration guide edits for #3338 companions', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const migrationPaths = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      migrationPaths.map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head: 'unrelated migration edit\n<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(migrationPaths, snapshots),
+    ).not.toThrow();
+  });
+
+  it('requires exact #3338 companions when the sentinel is introduced', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: path === 'book/advanced/ch15-studio.md' ? '' : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(
+        exactCompanions.filter((path) => path !== 'packages/cli/src/public-api.test.ts'),
+        snapshots,
+      ),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).not.toThrow();
+  });
+
+  it('fails closed when a changed #3338 contract path removes the sentinel', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: '',
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when HEAD mixes a canonical pair with a legacy sentinel', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const canonicalPair = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: canonicalPair,
+          head: `${canonicalPair}\n<!-- fluo-studio-report-bootstrap-failure-contract -->`,
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when BASE mixes a canonical pair with legacy sentinels', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+    const canonicalPair = '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: `${canonicalPair}\n<!-- fluo-studio-report-bootstrap-failure-contract -->\n<!-- fluo-studio-report-bootstrap-failure-contract -->`,
+          head: canonicalPair,
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when a changed #3338 contract path has duplicate sentinel decoys', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([path], {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: [
+            '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+            '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          ].join('\n'),
+        },
+      }),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it('fails closed when a changed #3338 contract path has unavailable or malformed snapshots', async () => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const path = 'book/advanced/ch15-studio.md';
+
+    for (const snapshots of [
+      undefined,
+      {
+        [path]: {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+          head: undefined,
+        },
+      },
+    ]) {
+      expect(() =>
+        enforceStudioReportBootstrapFailureCompanions([path], snapshots),
+      ).toThrowError(/Studio bootstrap-failure guidance/u);
+    }
+  });
+
+  it.each([
+    ['removes', ''],
+    [
+      'duplicates',
+      [
+        '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+        '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->',
+      ].join('\n'),
+    ],
+  ])('fails closed when a later changed #3338 contract path %s its sentinel', async (_action, invalidHead) => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head:
+            path === 'book/advanced/ch15-studio.md'
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\nchanged contract section\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->'
+              : path === 'book/advanced/ch15-studio.ko.md'
+                ? invalidHead
+                : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).toThrowError(/Studio bootstrap-failure guidance/u);
+  });
+
+  it.each([
+    'book/advanced/ch15-studio.md',
+    'book/advanced/ch15-studio.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('requires exact #3338 companions for a contract edit in %s', async (triggerPath) => {
+    const { enforceStudioReportBootstrapFailureCompanions } = await loadGovernanceInternals();
+    const exactCompanions = [
+      'book/advanced/ch15-studio.md',
+      'book/advanced/ch15-studio.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'packages/cli/src/public-api.test.ts',
+      'book/advanced/toc.md',
+      'book/advanced/toc.ko.md',
+    ];
+    const snapshots = Object.fromEntries(
+      exactCompanions.slice(0, 4).map((path) => [
+        path,
+        {
+          base: '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+          head:
+            path === triggerPath
+              ? '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\nchanged contract section\n<!-- fluo-studio-report-bootstrap-failure-contract: end -->'
+              : '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->\n<!-- fluo-studio-report-bootstrap-failure-contract: end --> contract section',
+        },
+      ]),
+    );
+
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions([triggerPath], snapshots),
+    ).toThrowError(/Studio bootstrap-failure guidance/);
+    for (const missingCompanion of exactCompanions) {
+      if (missingCompanion === triggerPath) {
+        continue;
+      }
+
+      expect(() =>
+        enforceStudioReportBootstrapFailureCompanions(
+          exactCompanions.filter((companion) => companion !== missingCompanion),
+          snapshots,
+        ),
+      ).toThrowError(/Studio bootstrap-failure guidance/);
+    }
+    expect(() =>
+      enforceStudioReportBootstrapFailureCompanions(exactCompanions, snapshots),
+    ).not.toThrow();
+  });
+
+  it('registers the #3338 companion gate in the central governance path', () => {
+    const source = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(true);
+  });
+
+  it.each([
+    'export function main() { /* enforceStudioReportBootstrapFailureCompanions([]); */ }',
+    'export function main() { if (false) { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { const deferred = () => enforceStudioReportBootstrapFailureCompanions([]); }',
+    'export function main() { function deferred() { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { switch (kind) { default: enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { for (;;) { enforceStudioReportBootstrapFailureCompanions([]); break; } }',
+    'export function main() { while (true) { enforceStudioReportBootstrapFailureCompanions([]); break; } }',
+    'export function main() { try { enforceStudioReportBootstrapFailureCompanions([]); } catch {} }',
+    'export function main() { try {} finally { enforceStudioReportBootstrapFailureCompanions([]); } }',
+    'export function main() { return; enforceStudioReportBootstrapFailureCompanions([]); }',
+    'export function main() { throw new Error(); enforceStudioReportBootstrapFailureCompanions([]); }',
+  ])('rejects a nested or unreachable #3338 companion-call decoy', (source) => {
+    expect(hasDirectMainCall(source, 'enforceStudioReportBootstrapFailureCompanions')).toBe(false);
   });
 
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {

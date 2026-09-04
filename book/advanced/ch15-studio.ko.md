@@ -58,7 +58,7 @@ CI와 support workflow에서는 shell redirection보다 명시적인 artifact �
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 ```
 
-`--output <path>`는 선택된 payload를 파일에 쓰고 필요한 parent directory를 만듭니다. 실패한 bootstrap check 이후 CI 시스템이 `artifacts/`를 업로드할 때 유용합니다. 이 옵션은 애플리케이션을 쓰기 가능하게 만들지 않으며, 정상적인 bootstrap 및 close cycle 외에 module graph state를 바꾸지 않습니다.
+`--output <path>`는 선택된 payload를 파일에 쓰고 필요한 parent directory를 만듭니다. 완료된 bootstrap check가 만든 `artifacts/`를 CI 시스템이 업로드할 때 유용합니다. 이 옵션은 애플리케이션을 쓰기 가능하게 만들지 않으며, 정상적인 bootstrap 및 close cycle 외에 module graph state를 바꾸지 않습니다.
 
 snapshot 옆에 bootstrap timing이 필요하면 `--timing`을 사용합니다.
 
@@ -168,7 +168,9 @@ successful bootstrap 뒤 Node live 경로는 compiled module, provider, controll
 
 ## 15.6 시나리오: Successful-Bootstrap Inspect Artifact 검토하기
 
-`fluo inspect`는 `FluoFactory.create(...)`가 successful bootstrap을 마친 뒤에만 artifact를 만듭니다. 그 뒤 `PlatformShell.snapshot()`과 dispatcher `routes`를 읽어 `PlatformShellSnapshot`을 만듭니다. 따라서 bootstrap 중 멈추거나 실패한 애플리케이션은 provider deadlock 진단용 static report를 만들 수 없으며, 그 startup failure는 runtime failure output으로 조사해야 합니다.
+<!-- fluo-studio-report-bootstrap-failure-contract: begin -->
+Studio report는 bootstrap 이후 artifact입니다. `fluo inspect`는 `FluoFactory.create(...)`가 successful bootstrap을 마친 뒤에만 artifact를 만들고, 그 뒤 `PlatformShell.snapshot()`과 dispatcher `routes`를 읽어 `PlatformShellSnapshot`을 만듭니다. 따라서 bootstrap 중 멈추거나 실패한 애플리케이션은 provider deadlock 진단용 static report나 partial compiled DI graph를 만들 수 없으며, 그 startup failure는 runtime failure output으로 조사해야 합니다.
+<!-- fluo-studio-report-bootstrap-failure-contract: end -->
 
 ```bash
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
@@ -176,7 +178,7 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 
 successful inspection에서는 다음 artifact trail을 따릅니다.
 
-1. **Check the summary**: `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, `summary.timingTotalMs`를 읽어 failure shape를 파악합니다.
+1. **Check the summary**: `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, `summary.timingTotalMs`를 읽어 완료된 run의 diagnostics, readiness state, bootstrap duration을 파악합니다.
 2. **Open the snapshot in Studio**: Viewer로 보고된 platform component, 그 dependencies, routes, diagnostics를 검사합니다. 이는 compiled DI graph가 아닙니다.
 3. **Render a diagram if needed**: Architecture review가 PR이나 decision record 안의 text diagram을 필요로 하면 `fluo inspect --mermaid --output artifacts/platform-components.mmd`를 사용합니다.
 4. **Keep the artifact**: 다른 개발자가 같은 inspection view를 재현할 수 있도록 report를 CI log나 support ticket에 첨부합니다.

@@ -694,6 +694,26 @@ const contractGateTriggers = new Set([
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
 
+const studioReportBootstrapFailureCompanionPaths = [
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'packages/cli/src/public-api.test.ts',
+  'book/advanced/toc.md',
+  'book/advanced/toc.ko.md',
+];
+const studioReportBootstrapFailureContractPaths = [
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+];
+const studioReportBootstrapFailureContractBegin =
+  '<!-- fluo-studio-report-bootstrap-failure-contract: begin -->';
+const studioReportBootstrapFailureContractEnd =
+  '<!-- fluo-studio-report-bootstrap-failure-contract: end -->';
+
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
   'createCqrsModule',
@@ -1376,7 +1396,7 @@ function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
   });
 }
 
-export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
   const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
   const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
   if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
@@ -1385,11 +1405,7 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
 
   const mergeBase = mergeBaseResult.stdout.trim();
   const snapshots = {};
-  for (const path of [
-    ...nestMigrationGuidePaths,
-    ...emailMigrationDocumentPaths,
-    emailMigrationEnforcementTool,
-  ]) {
+  for (const path of paths) {
     const baseResult = runCommand('git', ['show', `${mergeBase}:${path}`], { allowFailure: true });
     if (baseResult.status !== 0) {
       return undefined;
@@ -1402,6 +1418,18 @@ export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.e
   }
 
   return snapshots;
+}
+
+export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
+  return documentSnapshotsFromGit(
+    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool],
+    runCommand,
+    env,
+  );
+}
+
+export function studioReportBootstrapFailureSnapshotsFromGit(runCommand = run, env = process.env) {
+  return documentSnapshotsFromGit(studioReportBootstrapFailureContractPaths, runCommand, env);
 }
 
 /**
@@ -1667,6 +1695,8 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // and Notifications publisher wiring versus active lifecycle-publication
   // status so configured-but-disabled publishers do not appear as active
   // event-backed dependencies or external owners.
+  // and Studio report emission requiring completed bootstrap with no artifact
+  // emitted for failed or hanging bootstrap attempts.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
@@ -1690,6 +1720,61 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // payload clone, byte-safe TCP UTF-8 framing, TCP 1 MiB frames, port:0 routing,
   // shutdown send guards, concurrent close-promise sharing, and gRPC abort-listener
   // cleanup docs are also covered by this companion path.
+}
+
+function studioReportBootstrapFailureContractRegion(documentation) {
+  const beginCount = documentation.split(studioReportBootstrapFailureContractBegin).length - 1;
+  const endCount = documentation.split(studioReportBootstrapFailureContractEnd).length - 1;
+  const legacy = '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+  const legacyCount = documentation.split(legacy).length - 1;
+  assert(
+    beginCount === 1 && endCount === 1 && legacyCount === 0,
+    `Studio bootstrap-failure guidance must preserve exactly one ordered canonical marker pair and no legacy markers; observed begin=${beginCount}, end=${endCount}, legacy=${legacyCount}.`,
+  );
+  const begin = documentation.indexOf(studioReportBootstrapFailureContractBegin);
+  const end = documentation.indexOf(studioReportBootstrapFailureContractEnd);
+  assert(
+    begin < end,
+    'Studio bootstrap-failure guidance contract markers must be ordered begin then end.',
+  );
+  return documentation.slice(begin, end + studioReportBootstrapFailureContractEnd.length);
+}
+
+export function enforceStudioReportBootstrapFailureCompanions(changedFiles, documentSnapshots) {
+  let contractChanged = false;
+
+  for (const path of studioReportBootstrapFailureContractPaths) {
+    if (!hasChanged(changedFiles, path)) continue;
+    const snapshot = documentSnapshots?.[path];
+    assert(snapshot && typeof snapshot.base === 'string' && typeof snapshot.head === 'string',
+      `Studio bootstrap-failure guidance cannot verify ${path} without valid base and head snapshots.`);
+    const headRegion = studioReportBootstrapFailureContractRegion(snapshot.head);
+    const legacy = '<!-- fluo-studio-report-bootstrap-failure-contract -->';
+    const baseBeginCount = snapshot.base.split(studioReportBootstrapFailureContractBegin).length - 1;
+    const baseEndCount = snapshot.base.split(studioReportBootstrapFailureContractEnd).length - 1;
+    const legacyCount = snapshot.base.split(legacy).length - 1;
+    assert(
+      (baseBeginCount === 1 && baseEndCount === 1 && legacyCount === 0) ||
+        (baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0) ||
+        (baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1),
+      `Studio bootstrap-failure guidance BASE markers must be canonical, one legacy marker, or empty; observed begin=${baseBeginCount}, end=${baseEndCount}, legacy=${legacyCount}.`,
+    );
+    const baseRegion = baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 0
+      ? ''
+      : baseBeginCount === 0 && baseEndCount === 0 && legacyCount === 1
+        ? legacy
+        : studioReportBootstrapFailureContractRegion(snapshot.base);
+    contractChanged ||= baseRegion !== headRegion;
+  }
+
+  if (!contractChanged) {
+    return;
+  }
+
+  assert(
+    studioReportBootstrapFailureCompanionPaths.every((path) => hasChanged(changedFiles, path)),
+    'Studio bootstrap-failure guidance must update the Chapter 15 EN/KO pair, NestJS migration EN/KO pair, and packages/cli/src/public-api.test.ts regression.',
+  );
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
@@ -4140,6 +4225,7 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
 export async function main() {
   const changedFiles = changedFilesFromGit();
   const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
+  const studioReportBootstrapFailureSnapshots = studioReportBootstrapFailureSnapshotsFromGit();
 
   enforceSsotMirrorStructure();
   enforcePackageDirectoriesHaveManifests();
@@ -4215,6 +4301,7 @@ export async function main() {
   enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
+  enforceStudioReportBootstrapFailureCompanions(changedFiles, studioReportBootstrapFailureSnapshots);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');
