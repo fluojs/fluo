@@ -146,6 +146,20 @@ describe('GraphQL NestJS migration boundaries', () => {
     expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithNegatedClaim)).toThrow(englishMigrationPath);
   });
 
+  it.each([
+    [englishMigrationPath, englishAuthenticationClaim, 'The following statement is false:'],
+    [koreanMigrationPath, koreanAuthenticationClaim, '다음 주장은 사실이 아닙니다:'],
+  ])('rejects a prefix-negated authentication claim in %s', (driftedPath, claim, negation) => {
+    // Given: a prefix explicitly negates the canonical authentication sentence that follows.
+    const readWithPrefixNegation = (relativePath: string): string =>
+      relativePath === driftedPath
+        ? read(relativePath).replace(claim, `${negation} ${claim}`)
+        : read(relativePath);
+
+    // When/Then: a sentence-boundary prefix cannot turn negated prose into an affirmative claim.
+    expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithPrefixNegation)).toThrow(driftedPath);
+  });
+
   it('rejects two canonical links on one line', () => {
     // Given: one discoverability line repeats the complete canonical link twice.
     const [driftedPath, link] = discoverabilityRequirements[0];

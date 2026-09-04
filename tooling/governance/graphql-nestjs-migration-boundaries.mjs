@@ -151,6 +151,15 @@ function hasAffirmativeClaim(section, claim) {
     return false;
   }
 
+  const prefix = section.slice(0, match.index + match[0].length - claim.length);
+  if (
+    /(?:The following|This|That) (?:statement|claim) is (?:false|not true)\s*:\s*$|(?:다음|이|그|위)\s*(?:설명|문장|주장)(?:은|는|이|가)\s*(?:사실이\s+아닙니다|거짓입니다|맞지\s+않습니다)\s*:\s*$/iu.test(
+      prefix,
+    )
+  ) {
+    return false;
+  }
+
   const suffix = section.slice(match.index + match[0].length);
   return !/^\s*(?:(?:This|That) statement|The (?:preceding|previous) (?:statement|claim))\s+is\s+(?:false|not true)\b|^\s*(?:이|그|위)\s*(?:설명|문장|주장)(?:은|는|이|가)\s*(?:사실이\s+아닙니다|거짓입니다|맞지\s+않습니다)/iu.test(
     suffix,
