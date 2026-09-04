@@ -21,8 +21,9 @@
 | `category-switches` | `cronJobs`, `intervals`, `timeouts` category switch는 지원되지 않습니다. |
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->
+<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
-이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다. Terminus는 작성한 module에서 `TerminusModule.forRoot(...)`로 indicator를 구성하세요. `/health`는 집계 진단을 반환하고 `/ready`는 HTTP `200` 또는 `503`의 binary status이며, 기본 liveness route는 없고 runtime-owned route는 controller `@UseGuards()` metadata를 거부하므로 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary를 사용하세요.
+이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다. Terminus는 작성한 module에서 `TerminusModule.forRoot(...)`로 indicator를 구성하세요. `/health`는 집계 진단을 반환하고, `/ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결정을 내리면서 body에는 `ready`, `starting`, `unavailable` 중 하나를 보고합니다. Indicator는 기본적으로 readiness를 차단하며, `/health`에는 보이되 트래픽을 차단하지 않아야 하면 해당 indicator에 `readiness: false`를 설정하세요. `readinessChecks`는 application-owned readiness 조건을 추가하며 indicator를 제외하지 않습니다. 기본 liveness route는 없고 runtime-owned route는 controller `@UseGuards()` metadata를 거부하므로 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary를 사용하세요.
 
 ## 응답 쿠키 마이그레이션
 

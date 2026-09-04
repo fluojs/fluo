@@ -1,4 +1,5 @@
 # @fluojs/terminus
+<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
@@ -145,14 +146,14 @@ TerminusModule.forRoot({
 });
 ```
 
-`path`로 health endpoint를 custom path 아래에 mount할 수 있고, `readinessChecks`로 애플리케이션별 readiness logic을 Terminus indicator 및 platform readiness check와 합성할 수 있습니다.
+`path`로 health endpoint를 custom path 아래에 mount할 수 있습니다. Indicator는 기본적으로 `/ready`를 차단하며, `/health` 진단은 유지하면서 트래픽을 차단하지 않아야 하면 해당 indicator에 `readiness: false`를 설정하세요. `readinessChecks`는 애플리케이션별 추가 조건을 indicator 및 platform readiness check와 합성하며 indicator를 제외하지 않습니다.
 
 ### 실패 시맨틱
 
 인디케이터가 `down` 결과를 반환하거나 `HealthCheckError`를 던지면, `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
 - `/health`는 집계된 `HealthCheckReport` 진단을 반환하며 그 report가 healthy일 때만 HTTP `200`을 반환하고, indicator 하나라도 실패하면 HTTP `503`을 반환합니다.
-- `readiness`를 생략했거나 `true`인 indicator가 실패하거나, custom readiness check가 `false`를 반환하거나, runtime shutdown이 시작되었거나, platform readiness가 `ready`가 아닌 경우 `/ready`는 HTTP `503`을 반환합니다. `readiness: false`인 indicator는 `/health`에는 계속 기여하지만 `/ready`를 차단하지 않습니다. Platform `critical` metadata는 diagnostics에 보존되지만 HTTP readiness endpoint 자체는 binary ready/unavailable gate이며 warning severity bucket을 노출하지 않습니다.
+- `/ready`는 binary traffic-admission 결정을 내립니다. HTTP `200`은 트래픽을 수용하고 HTTP `503`은 인스턴스를 rotation에서 제외합니다. JSON body는 `{ status: 'ready' }`, `{ status: 'starting' }`, `{ status: 'unavailable' }` 중 하나를 보고합니다. `readiness`를 생략했거나 `true`인 indicator는 gate를 차단할 수 있고, `readiness: false`는 `/health` 진단을 유지하면서 `/ready`를 차단하지 않습니다. Custom `readinessChecks`는 조건만 추가합니다. Platform `critical` metadata는 readiness severity bucket이 아니라 `/health` diagnostics에 남습니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 - 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
