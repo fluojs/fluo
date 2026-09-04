@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
@@ -9,7 +9,22 @@ import {
 
 import { AppModule, LiveUpdates } from './app';
 
-async function readSubscriptionPayload(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
+function parseSubscriptionFrame(frame: string): unknown {
+  const dataLines = frame
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice('data:'.length).trim());
+
+  if (dataLines.length !== 1) {
+    throw new Error('Expected exactly one data field in the GraphQL subscription frame.');
+  }
+
+  return JSON.parse(dataLines[0]);
+}
+
+async function readSubscriptionPayload(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<unknown> {
   const timeout = AbortSignal.timeout(1_000);
   const timedOut = new Promise<never>((_, reject) => {
     timeout.addEventListener(
@@ -44,12 +59,42 @@ async function readSubscriptionPayload(reader: ReadableStreamDefaultReader<Uint8
     buffer = buffer.slice(boundary + 2);
 
     if (frame.split('\n').some((line) => line.startsWith('data:'))) {
-      return frame;
+      return parseSubscriptionFrame(frame);
     }
   }
 }
 
 describe('GraphQL example application', () => {
+  it('rejects a malformed SSE data payload', () => {
+    // Given: an SSE frame whose data field is not JSON.
+    const frame = 'data: GraphQL in Practice';
+
+    // When/Then: parsing the frame rejects the malformed boundary payload.
+    expect(() => parseSubscriptionFrame(frame)).toThrow(SyntaxError);
+  });
+
+  it('rejects when no subscriber becomes ready before the deadline', async () => {
+    // Given: a live update service with no subscription.
+    vi.useFakeTimers();
+    const updates = new LiveUpdates();
+    let rejection: unknown;
+
+    try {
+      // When: the subscriber readiness deadline elapses.
+      void updates.waitForSubscriber().catch((error: unknown) => {
+        rejection = error;
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      // Then: the wait rejects instead of remaining pending indefinitely.
+      expect(rejection).toEqual(
+        new Error('Timed out waiting for the GraphQL subscription subscriber.'),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('serves a DataLoader-backed query and an SSE subscription after startup', async () => {
     // Given: the official GraphQL module registration and an OS-assigned listener.
     const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
@@ -94,6 +139,10 @@ describe('GraphQL example application', () => {
           signal: abortController.signal,
         },
       );
+      expect(subscriptionResponse.status).toBe(200);
+      expect(subscriptionResponse.headers.get('content-type')).toMatch(
+        /^text\/event-stream(?:;|$)/,
+      );
       reader = subscriptionResponse.body?.getReader();
 
       if (!reader) {
@@ -129,7 +178,11 @@ describe('GraphQL example application', () => {
         },
       });
 
-      await expect(readSubscriptionPayload(reader)).resolves.toContain('GraphQL in Practice');
+      await expect(readSubscriptionPayload(reader)).resolves.toEqual({
+        data: {
+          bookPublished: 'GraphQL in Practice',
+        },
+      });
     } finally {
       try {
         await reader?.cancel();

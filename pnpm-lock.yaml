@@ -136,6 +136,9 @@ importers:
       '@fluojs/graphql':
         specifier: workspace:*
         version: link:../../packages/graphql
+      '@fluojs/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

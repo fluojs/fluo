@@ -88,7 +88,20 @@ export class LiveUpdates {
   }
 
   async waitForSubscriber(): Promise<void> {
-    await this.subscriberReady;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error('Timed out waiting for the GraphQL subscription subscriber.'));
+      }, 1_000);
+    });
+
+    try {
+      await Promise.race([this.subscriberReady, timedOut]);
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    }
   }
 }
 
