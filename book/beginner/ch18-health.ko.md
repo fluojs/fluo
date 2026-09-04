@@ -90,7 +90,31 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 export class AppModule {}
 ```
 
-### 18.3.1 The Response Format
+### 18.3.1 경로 범위 엔드포인트 미들웨어
+헬스와 준비성 probe에는 모든 애플리케이션 route에 동일한 정책을 추가하지 않고도 배포별 접근 정책이 필요한 경우가 많습니다. Class 기반 미들웨어를 `endpointMiddleware`로 전달하면 Terminus가 DI를 통해 해석하고 생성한 두 probe route에 선언 순서대로 적용합니다.
+
+```typescript
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class HealthProbeAuthMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-health-token'] !== 'secret-token') {
+      throw new ForbiddenException('Health endpoints require x-health-token.');
+    }
+
+    await next();
+  }
+}
+
+TerminusModule.forRoot({
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+  path: '/internal/',
+});
+```
+
+이 설정은 정규화된 `/internal/health`와 `/internal/ready`만 보호합니다. `endpointMiddleware`를 생략하면 기본 엔드포인트 동작은 변경되지 않습니다.
+
+### 18.3.2 The Response Format
 `/health` 엔드포인트에 요청을 보내면 Terminus는 표준화된 JSON 응답을 반환합니다. 모든 인디케이터가 통과하면 `200 OK` 상태를 반환합니다. 만약 하나라도 실패하면(예: 데이터베이스 연결 불가) `503 Service Unavailable` 상태와 함께 무엇이 잘못되었는지에 대한 상세 보고서를 반환합니다. 이 형식은 사람뿐만 아니라 Prometheus, Grafana, Datadog과 같은 자동화된 모니터링 도구도 쉽게 해석할 수 있습니다. 애플리케이션이 나머지 프로덕션 인프라와 같은 상태 언어로 소통하게 되는 셈입니다.
 
 NestJS Terminus에서 마이그레이션한다면 `@HealthCheck()`로 장식한 controller method가 `HealthCheckService.check([...])`를 호출하는 구조를 먼저 재현하지 마세요. Fluo의 기본 API는 위에서 본 module registration입니다. Indicator, indicator provider, readiness check, execution guardrail은 `TerminusModule.forRoot(...)`에 두어 runtime-owned `GET /health`와 `GET /ready` route가 platform diagnostics와 정렬되게 해야 합니다. `TerminusHealthService.check()`는 test나 custom application flow에서 여전히 유용하지만, 기본 route authoring pattern은 아닙니다.

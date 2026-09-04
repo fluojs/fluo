@@ -12,6 +12,7 @@ Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top
 - [Common Patterns](#common-patterns)
   - [Built-in Indicators](#built-in-indicators)
   - [DI-Backed Indicators](#di-backed-indicators)
+  - [Endpoint Middleware](#endpoint-middleware)
   - [Execution Guardrails](#execution-guardrails)
   - [Failure Semantics](#failure-semantics)
 - [NestJS Migration Boundaries](#nestjs-migration-boundaries)
@@ -150,6 +151,31 @@ TerminusModule.forRoot({
 ```
 
 A named Redis indicator dependency is required. If no imported or global module supplies its token, module-graph validation fails during bootstrap with a `MODULE_VISIBILITY_ERROR` naming the missing token. Prisma and Drizzle indicator dependencies are optional only when their tokens are absent from the bootstrap graph: omitting their owner modules then allows the application to bootstrap and the corresponding indicator reports `down` in `/health` at request time. If a Prisma or Drizzle owner module exists elsewhere in the application but is omitted from Terminus `imports`, bootstrap instead fails with `MODULE_VISIBILITY_ERROR`; optional injection never bypasses module visibility. Dependencies published by a global module — for example `RedisModule.forRoot(...)` without a `name`, which is global by default — remain visible without an explicit `imports` entry.
+
+### Endpoint Middleware
+
+Use class-based `endpointMiddleware` to protect only Terminus-generated endpoints. Classes resolve through DI and run in declaration order for both `/health` and `/ready`; omitting the option preserves the default unprotected behavior. Custom `path` values are normalized before the middleware route match.
+
+```typescript
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class HealthProbeAuthMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-health-token'] !== 'secret-token') {
+      throw new ForbiddenException('Health endpoints require x-health-token.');
+    }
+
+    await next();
+  }
+}
+
+TerminusModule.forRoot({
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+  path: '/internal/',
+});
+```
+
+The middleware above runs for normalized `/internal/health` and `/internal/ready` routes, not for unrelated application routes.
 
 ### Readiness Participation
 

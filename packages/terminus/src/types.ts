@@ -1,4 +1,6 @@
+import type { Constructor } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
+import type { Middleware } from '@fluojs/http';
 import type { ModuleType, PlatformHealthReport, PlatformReadinessReport, ReadinessCheck } from '@fluojs/runtime';
 
 /** Status values returned by one health indicator execution. */
@@ -53,6 +55,8 @@ export interface HealthCheckExecutionOptions {
  */
 export interface TerminusModuleOptions {
   execution?: HealthCheckExecutionOptions;
+  /** Class-based middleware applied only to the generated `/health` and `/ready` endpoints. */
+  endpointMiddleware?: readonly Constructor<Middleware>[];
   /**
    * Modules whose exported tokens must be visible to `indicatorProviders`.
    *

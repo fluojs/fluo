@@ -236,6 +236,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
   const readinessChecks = [...(options.readinessChecks ?? [])];
   const terminusImports = [...(options.imports ?? [])];
   const healthModule = HealthModule.forRoot({
+    endpointMiddleware: options.endpointMiddleware,
     healthCheck: async (ctx: RequestContext) => {
       const healthService = await ctx.container.resolve<TerminusHealthService>(TerminusHealthService);
       const platformShell = await ctx.container.resolve<PlatformShell>(PLATFORM_SHELL);
@@ -268,6 +269,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
     providers: [
       ...createTerminusProviders({
         execution: options.execution,
+        endpointMiddleware: options.endpointMiddleware,
         imports: terminusImports,
         indicatorProviders: options.indicatorProviders,
         indicators: options.indicators,

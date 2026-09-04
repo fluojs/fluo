@@ -73,6 +73,19 @@ await app.listen();
 
 ## Common Patterns
 
+### Health endpoint middleware
+
+`HealthModule.forRoot()` accepts class-based `endpointMiddleware` for its generated health and readiness routes. Middleware resolves through DI, runs in declaration order, and applies to both normalized endpoints under an optional custom `path`; omitting it preserves the default behavior.
+
+```typescript
+HealthModule.forRoot({
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+  path: '/internal/',
+});
+```
+
+This configuration applies `HealthProbeAuthMiddleware` to `/internal/health` and `/internal/ready`, not to unrelated application routes.
+
 ### Streaming multipart consumption
 
 Use `parseMultipartStream(...)` from `@fluojs/runtime/web` for a standalone raw `Request` or
