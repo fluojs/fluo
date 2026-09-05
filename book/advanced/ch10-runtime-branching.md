@@ -21,11 +21,11 @@ This chapter explains how Fluo branches only at package surfaces and adapter sea
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 The first fact to notice in Chapter 10 is that Fluo's runtime portability is not implemented as one giant `if (isNode) ... else if (isEdge) ...` block. The branch points are much narrower and sit in more architectural locations.
 
-Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1578-1605` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
+Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1578-1602` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1605`
+`path:packages/runtime/src/bootstrap.ts:1578-1602`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
@@ -312,16 +312,17 @@ export type {
 
 This façade answers a different question than the root boundary. The root exports what every host can share. `./node` exports only the helpers that code choosing a Node host may use.
 
-The real implementation lives in `path:packages/runtime/src/node/internal-node.ts:1-421`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen retry behavior, compression wiring, and process-signal shutdown helpers all live in this file.
+The real implementation lives in `path:packages/runtime/src/node/internal-node.ts` and `path:packages/runtime/src/node/internal-node-listen.ts`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen lifecycle behavior, compression wiring, and process-signal shutdown helpers all live in this Node-only implementation.
 
-`NodeHttpApplicationAdapter` in `path:packages/runtime/src/node/internal-node.ts:108-194` is the core Node transport object. This adapter owns the native server, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
+`NodeHttpApplicationAdapter` in `path:packages/runtime/src/node/internal-node.ts:133-226` is the core Node transport object. This adapter owns the native server, its `NodeListenLifecycle`, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
 
-The constructor creates the request-response factory, creates an HTTP or HTTPS server depending on `httpsOptions`, and tracks connections so lingering sockets can be force-closed later.
+The constructor validates lifecycle options, creates the request-response factory, creates an HTTP or HTTPS server from `httpOptions` and `httpsOptions`, creates the `NodeListenLifecycle`, and tracks connections so lingering sockets can be force-closed later.
 
-`path:packages/runtime/src/node/internal-node.ts:108-129`
+`path:packages/runtime/src/node/internal-node.ts:133-156`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
+  private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
@@ -335,27 +336,39 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
-    private readonly compression = false,
+    compression = false,
     private readonly httpsOptions: HttpsServerOptions | undefined,
-    private readonly multipartOptions?: MultipartOptions,
-    private readonly maxBodySize = 1 * 1024 * 1024,
-    private readonly preserveRawBody = false,
+    multipartOptions?: MultipartOptions,
+    maxBodySize = 1 * 1024 * 1024,
+    preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
 ```
 
-The following constructor body actually performs Node server creation and socket tracking. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, and connection set management all belong inside the Node branch.
+The following constructor body actually validates lifecycle policy, performs Node server creation, initializes the listener lifecycle, and tracks sockets. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, listener admission, and connection set management all belong inside the Node branch.
 
-`path:packages/runtime/src/node/internal-node.ts:130-145`
+`path:packages/runtime/src/node/internal-node.ts:157-183`
 ```typescript
+    validateNodeLifecycleOptions({
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+      shutdownTimeoutMs: this.shutdownTimeoutMs,
+    });
     this.requestResponseFactory = createNodeRequestResponseFactory(
       compression,
       multipartOptions,
       maxBodySize,
       preserveRawBody,
     );
-    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+    this.server = createNodeServer(this.httpOptions, this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
+    });
+    this.listenLifecycle = new NodeListenLifecycle(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
     });
     this.server.on('connection', (socket) => {
       this.sockets.add(socket);
@@ -368,46 +381,100 @@ The following constructor body actually performs Node server creation and socket
 
 These two excerpts show why the Node branch needs its own subpath. `node:http`, `node:https`, socket sets, and server lifecycle are concrete capabilities that Web-standard hosts cannot share.
 
-Listening is handled by `listenNodeServerWithRetry()` in `path:packages/runtime/src/node/internal-node.ts:294-320`. This helper retries `EADDRINUSE` errors up to the configured limit. That behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
+Listening is coordinated by `NodeListenLifecycle` in `path:packages/runtime/src/node/internal-node-listen.ts:21-101`. It owns listener admission, retry cancellation, and close state for one Node server while delegating retry mechanics to its private helper. This behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
 
-`path:packages/runtime/src/node/internal-node.ts:294-320`
+`path:packages/runtime/src/node/internal-node-listen.ts:21-101`
 ```typescript
-function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening);
+/** Owns one Node server's listen, retry cancellation, and close admission state. */
+export class NodeListenLifecycle {
+  private closeInFlight?: Promise<void>;
+  private closing = false;
+  private listenAbortController?: AbortController;
+  private listenInFlight?: Promise<void>;
 
-        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
-          return;
-        }
+  constructor(
+    private readonly server: NodeServer,
+    private readonly options: NodeListenRetryOptions,
+  ) {}
 
-        reject(error);
-      };
+  close(closeServer: () => Promise<void>): Promise<void> {
+    if (this.closeInFlight) {
+      return this.closeInFlight;
+    }
 
-      const onListening = () => {
-        server.off('error', onError);
-        resolve();
-      };
+    this.closing = true;
+    const closeInFlight = (async () => {
+      await this.cancel();
+      await closeServer();
+    })().finally(() => {
+      if (this.closeInFlight === closeInFlight) {
+        this.closeInFlight = undefined;
+        this.closing = false;
+      }
+    });
+    this.closeInFlight = closeInFlight;
 
-      server.once('error', onError);
-      server.once('listening', onListening);
-      server.listen({ host: options.host, port: options.port });
-    };
+    return closeInFlight;
+  }
 
-    tryListen(0);
-  });
+  listen(onAdmitted: () => void): Promise<void> {
+    if (this.closing) {
+      return Promise.reject(new NodeListenCancelledError());
+    }
+
+    if (this.listenInFlight) {
+      return this.listenInFlight;
+    }
+
+    onAdmitted();
+    const abortController = new AbortController();
+    this.listenAbortController = abortController;
+    const listenInFlight = listenNodeServerWithRetry(
+      this.server,
+      this.options,
+      abortController.signal,
+    ).finally(() => {
+      if (this.listenInFlight === listenInFlight) {
+        this.listenInFlight = undefined;
+      }
+
+      if (this.listenAbortController === abortController) {
+        this.listenAbortController = undefined;
+      }
+    });
+    this.listenInFlight = listenInFlight;
+
+    return listenInFlight;
+  }
+
+  async cancel(): Promise<void> {
+    const listenInFlight = this.listenInFlight;
+    if (!listenInFlight) {
+      return;
+    }
+
+    this.listenAbortController?.abort();
+
+    try {
+      await listenInFlight;
+    } catch (error: unknown) {
+      if (error instanceof NodeListenCancelledError) {
+        return;
+      }
+
+      throw error;
+    }
+  }
 }
 ```
 
-The branch condition here is not a whole-runtime host choice. It is a Node server bind failure. Operational Node-only decisions stay inside `./node`, and the shared Bootstrap path does not need to know the retry policy.
+The branch condition here is not a whole-runtime host choice. It is listener admission and shutdown coordination for a Node server. Operational Node-only decisions stay inside `./node`, and the shared Bootstrap path does not need to know the retry policy or cancellation state.
 
-Shutdown is handled by `closeNodeServerWithDrain()` in `path:packages/runtime/src/node/internal-node.ts:335-368`. That function closes the server, closes idle connections, and force-closes sockets if the drain timeout is exceeded. This is another piece of host-specific operational logic separated from the root runtime.
+Shutdown is delegated through `NodeListenLifecycle.close()` before `closeNodeServerWithDrain()` closes the server, closes idle connections, and force-closes sockets if the drain timeout is exceeded. This is another piece of host-specific operational logic separated from the root runtime.
 
-`createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:240-253` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:255-264` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:266-277` adds shutdown-signal registration on top.
+`createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:283-297` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:306-318` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` adds shutdown-signal registration on top.
 
-`path:packages/runtime/src/node/internal-node.ts:240-264`
+`path:packages/runtime/src/node/internal-node.ts:283-318`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -418,9 +485,10 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 
@@ -428,10 +496,13 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    logger,
   );
 }
 ```

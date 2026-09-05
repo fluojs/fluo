@@ -176,6 +176,11 @@ describe('advanced runtime branching source excerpts', () => {
   ] as const;
   const excerpts: readonly RuntimeSourceExcerpt[] = [
     {
+      sourcePath: 'packages/runtime/src/bootstrap.ts',
+      startLine: 1578,
+      endLine: 1602,
+    },
+    {
       sourcePath: 'packages/runtime/src/exports.test.ts',
       startLine: 19,
       endLine: 46,
@@ -203,6 +208,31 @@ describe('advanced runtime branching source excerpts', () => {
       startLine: 1,
       endLine: 25,
     },
+    {
+      sourcePath: 'packages/runtime/src/node/internal-node.ts',
+      startLine: 133,
+      endLine: 156,
+    },
+    {
+      sourcePath: 'packages/runtime/src/node/internal-node.ts',
+      startLine: 157,
+      endLine: 183,
+    },
+    {
+      sourcePath: 'packages/runtime/src/node/internal-node-listen.ts',
+      startLine: 21,
+      endLine: 101,
+    },
+    {
+      sourcePath: 'packages/runtime/src/node/internal-node.ts',
+      startLine: 283,
+      endLine: 318,
+    },
+    {
+      sourcePath: 'packages/runtime/src/node/node.test.ts',
+      startLine: 14,
+      endLine: 30,
+    },
   ] as const;
 
   function sourceReference({ sourcePath, startLine, endLine }: RuntimeSourceExcerpt): string {
@@ -211,32 +241,80 @@ describe('advanced runtime branching source excerpts', () => {
 
   function extractCodeBlock(markdown: string, reference: string): string {
     const marker = `\`path:${reference}\``;
-    const markerIndex = markdown.indexOf(marker);
-    expect(markerIndex, `missing source marker ${marker}`).toBeGreaterThanOrEqual(0);
+    const blockMarker = `${marker}\n\`\`\`typescript\n`;
+    const markerIndex = markdown.indexOf(blockMarker);
+    expect(markerIndex, `missing source block marker ${marker}`).toBeGreaterThanOrEqual(0);
+    expect(markdown.indexOf(blockMarker, markerIndex + blockMarker.length), `duplicate source block marker ${marker}`).toBe(-1);
 
-    const openingFenceIndex = markdown.indexOf('```', markerIndex);
-    const codeStart = markdown.indexOf('\n', openingFenceIndex) + 1;
+    const codeStart = markerIndex + blockMarker.length;
     const closingFenceIndex = markdown.indexOf('\n```', codeStart);
     expect(closingFenceIndex, `missing code block for ${marker}`).toBeGreaterThan(codeStart);
 
     return markdown.slice(codeStart, closingFenceIndex);
   }
 
+  function sourceBlockReferences(markdown: string): string[] {
+    return [...markdown.matchAll(/`path:([^`]+:\d+-\d+)`\n```typescript\n/gu)].map((match) => match[1]);
+  }
+
+  function assertExcerptCompleteness(markdown: string, documentationPath: string): void {
+    expect(sourceBlockReferences(markdown), `${documentationPath} source blocks must match the complete excerpt list`).toEqual(
+      excerpts.map(sourceReference),
+    );
+  }
+
+  function assertExcerptMatchesSource(
+    excerpt: RuntimeSourceExcerpt,
+    markdown: string,
+    sourceText: string,
+  ): void {
+    const source = sourceText
+      .split('\n')
+      .slice(excerpt.startLine - 1, excerpt.endLine)
+      .map((line) => line.slice(excerpt.dedent ?? 0))
+      .join('\n');
+
+    expect(extractCodeBlock(markdown, sourceReference(excerpt))).toBe(source);
+  }
+
   it('keeps the canonical EN and KO excerpts identical to their cited runtime source ranges', () => {
     for (const excerpt of excerpts) {
-      const reference = sourceReference(excerpt);
-      const source = readFileSync(join(repoRoot, excerpt.sourcePath), 'utf8')
-        .split('\n')
-        .slice(excerpt.startLine - 1, excerpt.endLine)
-        .map((line) => line.slice(excerpt.dedent ?? 0))
-        .join('\n');
-      const codeBlocks = documentationPaths.map((documentationPath) =>
-        extractCodeBlock(readFileSync(join(repoRoot, documentationPath), 'utf8'), reference),
-      );
+      const source = readFileSync(join(repoRoot, excerpt.sourcePath), 'utf8');
+      const documents = documentationPaths.map((documentationPath) => ({
+        documentationPath,
+        markdown: readFileSync(join(repoRoot, documentationPath), 'utf8'),
+      }));
 
-      expect(codeBlocks[0]).toBe(source);
-      expect(codeBlocks[1]).toBe(codeBlocks[0]);
+      for (const document of documents) {
+        assertExcerptCompleteness(document.markdown, document.documentationPath);
+        assertExcerptMatchesSource(excerpt, document.markdown, source);
+      }
+
+      expect(extractCodeBlock(documents[1].markdown, sourceReference(excerpt))).toBe(
+        extractCodeBlock(documents[0].markdown, sourceReference(excerpt)),
+      );
     }
+  });
+
+  it('rejects a deleted or mutated advanced runtime source excerpt', () => {
+    const bootstrapExcerpt = excerpts[0];
+    const bootstrapReference = sourceReference(bootstrapExcerpt);
+    const bootstrapSource = readFileSync(join(repoRoot, bootstrapExcerpt.sourcePath), 'utf8');
+    const markdown = readFileSync(join(repoRoot, documentationPaths[0]), 'utf8');
+
+    expect(() =>
+      assertExcerptCompleteness(
+        markdown.replace(`\`path:${bootstrapReference}\`\n\`\`\`typescript\n`, ''),
+        documentationPaths[0],
+      ),
+    ).toThrow(/source blocks must match the complete excerpt list/u);
+    expect(() =>
+      assertExcerptMatchesSource(
+        bootstrapExcerpt,
+        markdown.replace('const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();', 'const logger = undefined;'),
+        bootstrapSource,
+      ),
+    ).toThrow();
   });
 });
 

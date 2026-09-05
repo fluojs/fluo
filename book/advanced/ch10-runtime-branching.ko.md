@@ -21,11 +21,11 @@
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 좁고, 더 아키텍처적인 위치에 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1605`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
+`path:packages/runtime/src/bootstrap.ts:1578-1602`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
 
 그 중심부는 host 이름을 판별하는 대신 이미 준비된 adapter와 platform shell을 받아 조립합니다. 아래 발췌에서 runtime은 module graph, provider, token, lifecycle 순서를 다루고, Node나 Web이라는 이름을 조건으로 삼지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1605`
+`path:packages/runtime/src/bootstrap.ts:1578-1602`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
@@ -312,16 +312,17 @@ export type {
 
 이 façade는 root boundary와 다른 질문에 답합니다. root는 모든 host가 공유할 수 있는 것을 내보내고, `./node`는 Node host를 선택한 코드가 쓸 수 있는 helper만 내보냅니다.
 
-실제 구현은 `path:packages/runtime/src/node/internal-node.ts:1-421`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen retry behavior, compression wiring, process-signal shutdown helper가 모두 이 파일에 있습니다.
+실제 구현은 `path:packages/runtime/src/node/internal-node.ts`와 `path:packages/runtime/src/node/internal-node-listen.ts`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen lifecycle behavior, compression wiring, process-signal shutdown helper가 모두 이 Node 전용 구현에 있습니다.
 
-`path:packages/runtime/src/node/internal-node.ts:108-194`의 `NodeHttpApplicationAdapter`가 핵심 Node transport object입니다. 이 adapter는 native server, request/response factory, drain-aware shutdown을 위한 socket set을 소유합니다. 이런 것은 root runtime의 abstract adapter contract가 알 수 없는 영역입니다.
+`path:packages/runtime/src/node/internal-node.ts:133-226`의 `NodeHttpApplicationAdapter`가 핵심 Node transport object입니다. 이 adapter는 native server, `NodeListenLifecycle`, request/response factory, drain-aware shutdown을 위한 socket set을 소유합니다. 이런 것은 root runtime의 abstract adapter contract가 알 수 없는 영역입니다.
 
-constructor는 request-response factory를 만들고, `httpsOptions` 여부에 따라 HTTP 또는 HTTPS server를 만들며, 나중에 lingering socket을 강제 종료할 수 있도록 connection을 추적합니다.
+constructor는 lifecycle option을 validate하고, request-response factory를 만들고, `httpOptions`와 `httpsOptions`에서 HTTP 또는 HTTPS server를 만들고, `NodeListenLifecycle`을 만들며, 나중에 lingering socket을 강제 종료할 수 있도록 connection을 추적합니다.
 
-`path:packages/runtime/src/node/internal-node.ts:108-129`
+`path:packages/runtime/src/node/internal-node.ts:133-156`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
+  private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
@@ -335,27 +336,39 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
-    private readonly compression = false,
+    compression = false,
     private readonly httpsOptions: HttpsServerOptions | undefined,
-    private readonly multipartOptions?: MultipartOptions,
-    private readonly maxBodySize = 1 * 1024 * 1024,
-    private readonly preserveRawBody = false,
+    multipartOptions?: MultipartOptions,
+    maxBodySize = 1 * 1024 * 1024,
+    preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
 ```
 
-이어지는 constructor 본문은 Node server 생성과 socket 추적을 실제로 수행합니다. 이 두 번째 발췌가 request/response factory, HTTP/HTTPS server 선택, connection set 관리가 모두 Node branch 안에 있음을 보여 줍니다.
+이어지는 constructor 본문은 lifecycle policy를 validate하고 실제 Node server 생성, listener lifecycle 초기화, socket tracking을 수행합니다. 이 두 번째 발췌가 request/response factory, HTTP/HTTPS server 선택, listener admission, connection set 관리가 모두 Node branch 안에 있음을 보여 줍니다.
 
-`path:packages/runtime/src/node/internal-node.ts:130-145`
+`path:packages/runtime/src/node/internal-node.ts:157-183`
 ```typescript
+    validateNodeLifecycleOptions({
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+      shutdownTimeoutMs: this.shutdownTimeoutMs,
+    });
     this.requestResponseFactory = createNodeRequestResponseFactory(
       compression,
       multipartOptions,
       maxBodySize,
       preserveRawBody,
     );
-    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+    this.server = createNodeServer(this.httpOptions, this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
+    });
+    this.listenLifecycle = new NodeListenLifecycle(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
     });
     this.server.on('connection', (socket) => {
       this.sockets.add(socket);
@@ -368,46 +381,100 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 이 두 발췌는 Node branch가 왜 별도 subpath에 있어야 하는지 보여 줍니다. `node:http`, `node:https`, socket set, server lifecycle은 Web-standard host가 공유할 수 없는 구체 capability입니다.
 
-listen은 `path:packages/runtime/src/node/internal-node.ts:294-320`의 `listenNodeServerWithRetry()`가 처리합니다. 이 helper는 `EADDRINUSE` 에러를 설정된 한도까지 재시도합니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
+listen은 `path:packages/runtime/src/node/internal-node-listen.ts:21-101`의 `NodeListenLifecycle`이 조정합니다. 이 class는 private helper에 retry mechanics를 위임하면서 하나의 Node server에 대한 listener admission, retry cancellation, close state를 소유합니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
 
-`path:packages/runtime/src/node/internal-node.ts:294-320`
+`path:packages/runtime/src/node/internal-node-listen.ts:21-101`
 ```typescript
-function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening);
+/** Owns one Node server's listen, retry cancellation, and close admission state. */
+export class NodeListenLifecycle {
+  private closeInFlight?: Promise<void>;
+  private closing = false;
+  private listenAbortController?: AbortController;
+  private listenInFlight?: Promise<void>;
 
-        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
-          return;
-        }
+  constructor(
+    private readonly server: NodeServer,
+    private readonly options: NodeListenRetryOptions,
+  ) {}
 
-        reject(error);
-      };
+  close(closeServer: () => Promise<void>): Promise<void> {
+    if (this.closeInFlight) {
+      return this.closeInFlight;
+    }
 
-      const onListening = () => {
-        server.off('error', onError);
-        resolve();
-      };
+    this.closing = true;
+    const closeInFlight = (async () => {
+      await this.cancel();
+      await closeServer();
+    })().finally(() => {
+      if (this.closeInFlight === closeInFlight) {
+        this.closeInFlight = undefined;
+        this.closing = false;
+      }
+    });
+    this.closeInFlight = closeInFlight;
 
-      server.once('error', onError);
-      server.once('listening', onListening);
-      server.listen({ host: options.host, port: options.port });
-    };
+    return closeInFlight;
+  }
 
-    tryListen(0);
-  });
+  listen(onAdmitted: () => void): Promise<void> {
+    if (this.closing) {
+      return Promise.reject(new NodeListenCancelledError());
+    }
+
+    if (this.listenInFlight) {
+      return this.listenInFlight;
+    }
+
+    onAdmitted();
+    const abortController = new AbortController();
+    this.listenAbortController = abortController;
+    const listenInFlight = listenNodeServerWithRetry(
+      this.server,
+      this.options,
+      abortController.signal,
+    ).finally(() => {
+      if (this.listenInFlight === listenInFlight) {
+        this.listenInFlight = undefined;
+      }
+
+      if (this.listenAbortController === abortController) {
+        this.listenAbortController = undefined;
+      }
+    });
+    this.listenInFlight = listenInFlight;
+
+    return listenInFlight;
+  }
+
+  async cancel(): Promise<void> {
+    const listenInFlight = this.listenInFlight;
+    if (!listenInFlight) {
+      return;
+    }
+
+    this.listenAbortController?.abort();
+
+    try {
+      await listenInFlight;
+    } catch (error: unknown) {
+      if (error instanceof NodeListenCancelledError) {
+        return;
+      }
+
+      throw error;
+    }
+  }
 }
 ```
 
-여기서 분기 조건은 runtime 전체의 host 선택이 아니라 Node server bind 실패입니다. 이처럼 운영상의 Node 전용 판단은 `./node` 내부에 머물고, shared bootstrap은 retry 정책을 알 필요가 없습니다.
+여기서 분기 조건은 runtime 전체의 host 선택이 아니라 Node server의 listener admission과 shutdown coordination입니다. 이처럼 운영상의 Node 전용 판단은 `./node` 내부에 머물고, shared bootstrap은 retry 정책이나 cancellation state를 알 필요가 없습니다.
 
-shutdown은 `path:packages/runtime/src/node/internal-node.ts:335-368`의 `closeNodeServerWithDrain()`이 처리합니다. 이 함수는 server를 닫고, idle connection을 닫고, drain timeout을 넘기면 socket을 강제로 닫습니다. 역시 root runtime과 분리된 host-specific operational logic입니다.
+shutdown은 `NodeListenLifecycle.close()`를 거친 뒤 `closeNodeServerWithDrain()`이 server를 닫고, idle connection을 닫고, drain timeout을 넘기면 socket을 강제로 닫도록 위임합니다. 역시 root runtime과 분리된 host-specific operational logic입니다.
 
-`path:packages/runtime/src/node/internal-node.ts:240-253`의 `createNodeHttpAdapter()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/runtime/src/node/internal-node.ts:255-264`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `path:packages/runtime/src/node/internal-node.ts:266-277`의 `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
+`path:packages/runtime/src/node/internal-node.ts:283-297`의 `createNodeHttpAdapter()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/runtime/src/node/internal-node.ts:306-318`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
 
-`path:packages/runtime/src/node/internal-node.ts:240-264`
+`path:packages/runtime/src/node/internal-node.ts:283-318`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -418,9 +485,10 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 
@@ -428,10 +496,13 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    logger,
   );
 }
 ```
