@@ -44,6 +44,8 @@ describe('fluoBabelDecoratorsPlugin', () => {
     mockedTransformAsync.mockClear();
     const plugin = createFluoBabelDecoratorsPlugin((filePath) => `${filePath}.config.cjs`);
 
+    expect(plugin.enforce).toBe('pre');
+
     await expect(plugin.transform('@Module({}) class AppModule {}', '/workspace/src/app.ts?import')).resolves.toEqual({
       code: 'transformed();',
       map: { mappings: '' },

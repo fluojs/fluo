@@ -362,7 +362,7 @@ describe('@fluojs/testing surface', () => {
       import: './dist/vitest/tooling.js',
     });
     expect(packageJson.peerDependencies['@babel/core']).toBe('>=7.0.0');
-    expect(packageJson.peerDependencies.vitest).toBe('^3.0.8');
+    expect(packageJson.peerDependencies.vitest).toBe('^4.1.11');
     expect(packageJson.peerDependenciesMeta?.['@babel/core']).toBeUndefined();
     expect(readFileSync(resolve(packageRootPath, 'README.md'), 'utf8')).toContain('pnpm add -D @babel/core');
     expect(readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8')).toContain('pnpm add -D @babel/core');

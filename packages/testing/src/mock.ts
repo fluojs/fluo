@@ -55,7 +55,7 @@ export function createMock<T extends object>(
  * @returns The as mock result.
  */
 export function asMock<T extends (...args: never[]) => unknown>(fn: T): Mock<T> {
-  return vi.mocked(fn);
+  return fn as Mock<T>;
 }
 
 /**

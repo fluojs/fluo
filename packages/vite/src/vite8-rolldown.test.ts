@@ -1,6 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { build as buildWorkspaceVite, version as workspaceViteVersion } from 'vite';
-import { build as buildVite8, type Plugin, type PluginOption, version as vite8Version } from 'vite8';
+import { build, type Plugin, type PluginOption, version as viteVersion } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 import { fluoDecoratorsPlugin } from './index.js';
@@ -20,19 +19,10 @@ const decoratorBoundaryProbe: Plugin = {
     return null;
   },
 };
-const vitePipelines = [
-  {
-    build: buildWorkspaceVite as unknown as typeof buildVite8,
-    name: `workspace Vite ${workspaceViteVersion}`,
-  },
-  {
-    build: buildVite8,
-    name: `Vite ${vite8Version} Rolldown`,
-  },
-];
+const vitePipeline = { build, name: `workspace Vite ${viteVersion} Rolldown` };
 
 describe('fluoDecoratorsPlugin Vite build integration', () => {
-  it.each(vitePipelines)('$name preserves field decorator metadata through its real build pipeline', async ({ build, name }) => {
+  it.each([vitePipeline])('$name preserves field decorator metadata through its real build pipeline', async ({ build, name }) => {
     const plugin = fluoDecoratorsPlugin() as unknown as PluginOption;
     const result = await build({
       configFile: false,

@@ -69,6 +69,7 @@ export function createFluoBabelDecoratorsPlugin(
 ){
   return {
     name: 'fluo-babel-decorators',
+    enforce: 'pre' as const,
     async transform(code: string, id: string) {
       const filePath = normalizeTransformId(id);
 

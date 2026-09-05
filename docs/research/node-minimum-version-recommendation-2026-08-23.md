@@ -42,7 +42,7 @@ No current direct runtime dependency or development tool creates a floor at Node
 | `bullmq@5.81.1` | Bundled runtime dependency of `@fluojs/queue` | `>=12.22.0` | No constraint on the candidate choice |
 | `ioredis@5.10.0` / `5.11.1` | Peer/runtime integration | `>=12.22.0` | No constraint on the candidate choice |
 | `typescript@6.0.2` | Maintainer toolchain | `>=14.17` | No consumer runtime constraint |
-| `vite@6.4.3` / `vitest@3.2.7` | Maintainer and generated-project tooling | `^18.0.0 || ^20.0.0 || >=22.0.0` | No 22.14 or 24 constraint |
+| `vite@8.2.2` / `vitest@4.1.11` | Maintainer tooling | Vite: `^20.19.0 || >=22.12.0`; Vitest: `^20.0.0 || ^22.0.0 || >=24.0.0` | Establishes the private workspace 22.12 floor, not 22.14 or Node 24 |
 | `tsx@4.23.1` | CLI/development tool | `>=18.0.0` | No constraint on the candidate choice |
 
 Repository evidence is recorded in `pnpm-lock.yaml` and the package manifests. The source-by-source dependency table is in [node-floor-dependency-research.md](../reference/node-floor-dependency-research.md).

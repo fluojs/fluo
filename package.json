@@ -1,6 +1,7 @@
 {
   "name": "fluo",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.4.1",
   "engines": {
     "node": ">=24.0.0 <27"
@@ -16,9 +17,8 @@
     "@types/babel__core": "^7.20.5",
     "@types/node": "^22.13.10",
     "typescript": "^6.0.2",
-    "vite": "^6.4.3",
-    "vite8": "npm:vite@8.0.8",
-    "vitest": "^3.2.7"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "build": "pnpm -r --filter './packages/*' --if-present run build",
@@ -73,7 +73,7 @@
       "sharp": "0.35.0",
       "socket.io-parser": "4.2.7",
       "valibot": "1.4.2",
-      "vite": "6.4.3",
+      "vite": "8.2.2",
       "ws": "8.21.1"
     }
   }

@@ -10,8 +10,8 @@ Date: 2026-08-23
 | `drizzle-orm@0.45.2` (minimum peer and resolved verification version) | Optional consumer peer | The resolved package snapshot declares no Node engine. | No 22.14/24 floor from the peer itself; the Fluo wrapper remains Node-bound. | https://github.com/drizzle-team/drizzle-orm |
 | `bullmq@5.81.1` | Runtime dependency of `@fluojs/queue` | `node >=12.22.0`. | No constraint on the candidate choice. | https://registry.npmjs.org/bullmq/5.81.1 |
 | `ioredis@5.10.0` / `5.11.1` | Runtime peer integration | `node >=12.22.0`. | No constraint on the candidate choice. | https://github.com/redis/ioredis/blob/v5.11.1/package.json |
-| `vite@6.4.3` | Dev and generated-project tooling | `node ^18.0.0 || ^20.0.0 || >=22.0.0`. | No published library runtime impact and no 22.14/24 floor. | https://github.com/vitejs/vite/blob/v6.4.3/packages/vite/package.json |
-| `vitest@3.2.7` | Dev-only | `node ^18.0.0 || ^20.0.0 || >=22.0.0`. | No published-consumer impact and no 22.14/24 floor. | https://github.com/vitest-dev/vitest/blob/v3.2.7/packages/vitest/package.json |
+| `vite@8.2.2` | Maintainer dev tooling | `node ^20.19.0 || >=22.12.0`. | Raises the private workspace Node 22 floor to 22.12; no published library runtime impact or Node 24 requirement. | https://github.com/vitejs/vite/blob/v8.2.2/packages/vite/package.json |
+| `vitest@4.1.11` | Dev-only | `node ^20.0.0 || ^22.0.0 || >=24.0.0`. | No published-consumer impact and no 22.14/24 floor. | https://github.com/vitest-dev/vitest/blob/v4.1.11/packages/vitest/package.json |
 | `typescript@6.0.2` | Maintainer toolchain | `node >=14.17`. | No published library runtime impact. | https://github.com/microsoft/TypeScript/blob/v6.0.2/package.json |
 | `@babel/core@7.29.7`, `@babel/cli@^7.26.4` | Dev-only | The package line declares `node >=6.9.0`. | No published-consumer impact. | https://github.com/babel/babel/tree/main/packages |
 | `@changesets/cli@2.31.0` | Dev/release-only | Its package manifest does not create a Node 22.14/24 floor. | No runtime impact; release automation only. | https://github.com/changesets/changesets/tree/main/packages/cli |
@@ -21,7 +21,7 @@ Date: 2026-08-23
 ## Conclusion
 
 - No current dependency creates a meaningful floor specifically at **Node 22.14**.
-- No current dependency requires a later **Node 22 patch** than 22.14. Prisma's current requirement accepts 22.12, while Fluo's Vite 6 and Vitest 3 toolchain accepts Node 22 from 22.0.0.
+- No current dependency requires a later **Node 22 patch** than 22.14. Prisma and the private Vite 8 toolchain require Node 22.12, while Vitest 4 accepts Node 22 from 22.0.0.
 - **Node 24 is not dependency-required** by the committed graph.
 - The strongest runtime evidence is Mongoose 9's **Node 20.19.0+** requirement. Therefore, if retaining Node 20, Fluo's existing **20.19.3** minimum is a sound floor. A Node 22.14-only policy is defensible operationally, but is not forced by this dependency graph; Node 24 would be a deliberate policy choice.
 

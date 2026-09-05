@@ -130,10 +130,13 @@ export interface TestingMockFunction<Args extends unknown[] = unknown[], Return 
   mockRestore(): void;
   mockImplementation(fn: (...args: Args) => Return): this;
   mockImplementationOnce(fn: (...args: Args) => Return): this;
-  withImplementation<T>(fn: (...args: Args) => Return, callback: () => T): T extends Promise<unknown> ? Promise<this> : this;
+  withImplementation(fn: (...args: Args) => Return, callback: () => Promise<unknown>): Promise<this>;
+  withImplementation(fn: (...args: Args) => Return, callback: () => unknown): this;
   mockReturnThis(): this;
   mockReturnValue(value: Return): this;
   mockReturnValueOnce(value: Return): this;
+  mockThrow(value: unknown): this;
+  mockThrowOnce(value: unknown): this;
   mockResolvedValue(value: Awaited<Return>): this;
   mockResolvedValueOnce(value: Awaited<Return>): this;
   mockRejectedValue(error: unknown): this;

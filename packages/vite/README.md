@@ -38,7 +38,7 @@ The package root is safe to import before Babel is installed or resolved: import
 
 ## Supported Vite Matrix
 
-The published peer range remains `vite >=6.2.0`. The package suite runs under the workspace-pinned Vite 6.4.3 toolchain, and a dedicated integration gate builds and executes decorated TypeScript under Vite 8.0.8 with its Rolldown/Oxc-only pipeline. That gate verifies the plugin runs before normal-stage transforms and preserves field-decorator binding metadata. Regressing `enforce: 'pre'` makes the gate fail. When selecting Vite 8, consumers must also satisfy Vite's own Node.js engine range.
+The published peer range remains `vite >=6.2.0`. The package suite runs under the workspace-pinned Vite 8.2.2 Rolldown/Oxc pipeline. Its integration gate verifies the plugin runs before normal-stage transforms and preserves field-decorator binding metadata; regressing `enforce: 'pre'` makes the gate fail. Consumers selecting Vite 8 must also satisfy Vite's own Node.js engine range.
 
 ## Quick Start
 

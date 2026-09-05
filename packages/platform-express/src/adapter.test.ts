@@ -41,6 +41,7 @@ import {
   FluoFactory,
   fluoFactory,
 } from '@fluojs/runtime';
+import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type {
@@ -671,19 +672,18 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [NativeMiddlewareController] });
 
-    const port = await findAvailablePort();
     const adapter = createExpressAdapter({
       nativeMiddleware: [nativeMiddleware],
-      port,
+      port: 0,
     });
     const app = await fluoFactory.create(AppModule, {
       adapter,
       middleware: [fluoMiddleware],
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((adapter as ExpressHttpApplicationAdapter).getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native-middleware/ordering',
@@ -708,11 +708,10 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const port = await findAvailablePort();
     const app = await fluoFactory.create(AppModule, {
       adapter: createExpressAdapter({
         nativeMiddleware: [nativeMiddleware],
-        port,
+        port: 0,
       }),
       errorRepresentation: {
         html: {
@@ -723,9 +722,9 @@ describe('@fluojs/platform-express', () => {
       },
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const response = await requestHttp({
         headers: { accept: 'text/html' },
         method: 'GET',
@@ -747,15 +746,14 @@ describe('@fluojs/platform-express', () => {
       response.status(202).json({ owner: 'express' });
       next();
     };
-    const port = await findAvailablePort();
     const adapter = createExpressAdapter({
       nativeMiddleware: [nativeMiddleware],
-      port,
+      port: 0,
     }) as ExpressHttpApplicationAdapter;
 
-    await adapter.listen({ dispatch });
-
     try {
+      await adapter.listen({ dispatch });
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native-response',
@@ -791,15 +789,14 @@ describe('@fluojs/platform-express', () => {
     });
     const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
     const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
-    const port = await findAvailablePort();
     const adapter = createExpressAdapter({
       nativeMiddleware: [nativeMiddleware],
-      port,
+      port: 0,
     }) as ExpressHttpApplicationAdapter;
 
-    await adapter.listen(dispatcher);
-
     try {
+      await adapter.listen(dispatcher);
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native-response/route',
@@ -826,15 +823,14 @@ describe('@fluojs/platform-express', () => {
         owner: 'express',
       });
     };
-    const port = await findAvailablePort();
     const adapter = createExpressAdapter({
       nativeMiddleware: [nativeFailure, nativeErrorHandler],
-      port,
+      port: 0,
     }) as ExpressHttpApplicationAdapter;
 
-    await adapter.listen({ dispatch });
-
     try {
+      await adapter.listen({ dispatch });
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native-error',
@@ -913,14 +909,13 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [ResponsesController] });
 
-    const port = await findAvailablePort();
     const app = await fluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port }),
+      adapter: createExpressAdapter({ port: 0 }),
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const objectResponse = await requestHttp({ path: '/responses/object', port });
       const arrayResponse = await requestHttp({ path: '/responses/array', port });
       const stringResponse = await requestHttp({ path: '/responses/string', port });
@@ -989,14 +984,13 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const port = await findAvailablePort();
     const app = await fluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port }),
+      adapter: createExpressAdapter({ port: 0 }),
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const queryResponse = await requestHttp({
         method: 'GET',
         path: '/query-one?tag=one&tag=two&encoded=hello+world',
@@ -1045,8 +1039,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [QueryFallbackController] });
 
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
     const router = (adapter as unknown as {
       router: {
         use: (handler: (request: ExpressRequest, response: ExpressResponse, next: () => void) => void) => void;
@@ -1067,9 +1060,9 @@ describe('@fluojs/platform-express', () => {
 
     const app = await FluoFactory.create(AppModule, { adapter });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort(adapter.getServer());
       const undefinedResponse = await requestHttp({
         method: 'GET',
         path: '/query-fallback/undefined?flag',
@@ -1104,8 +1097,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [SerializerController] });
 
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port });
+    const adapter = createExpressAdapter({ port: 0 });
     const expressApp = Reflect.get(adapter, 'app') as ExpressJsonSettingsHost;
     let replacerCalls = 0;
 
@@ -1116,9 +1108,9 @@ describe('@fluojs/platform-express', () => {
 
     const app = await FluoFactory.create(AppModule, { adapter });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((adapter as ExpressHttpApplicationAdapter).getServer());
       const response = await requestHttp({ path: '/serializer/object', port });
 
       expect(response.statusCode).toBe(200);
@@ -1221,15 +1213,14 @@ describe('@fluojs/platform-express', () => {
       controllers: [EventsController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
         headers: { accept: 'text/event-stream' },
       });
@@ -1393,18 +1384,18 @@ describe('@fluojs/platform-express', () => {
       controllers: [UploadController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
       maxBodySize: 8,
       multipart: {
         maxFileSize: 1024,
       },
-      port,
+      port: 0,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const form = new FormData();
       form.set('name', 'Ada');
@@ -1440,16 +1431,15 @@ describe('@fluojs/platform-express', () => {
       controllers: [BodyLimitController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
       maxBodySize: 8,
-      port,
+      port: 0,
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const boundaryResponse = await fetch(`http://127.0.0.1:${String(port)}/body-limit`, {
         body: '12345678',
         headers: { 'content-type': 'text/plain' },
@@ -1489,16 +1479,15 @@ describe('@fluojs/platform-express', () => {
       controllers: [ZeroBodyLimitController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
       maxBodySize: 0,
-      port,
+      port: 0,
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const emptyResponse = await fetch(`http://127.0.0.1:${String(port)}/zero-body-limit`, {
         body: '',
         headers: { 'content-type': 'text/plain' },
@@ -1719,14 +1708,14 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: 'https://my-frontend.com',
-      port,
+      port: 0,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
         headers: { origin: 'https://my-frontend.com' },
@@ -1760,12 +1749,12 @@ describe('@fluojs/platform-express', () => {
     });
 
     try {
-      const port = await findAvailablePort();
       app = await runExpressApplication(AppModule, {
         cors: false,
         host: '127.0.0.1',
-        port,
+        port: 0,
       });
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
 
@@ -1804,10 +1793,9 @@ describe('@fluojs/platform-express', () => {
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
-    const port = await findAvailablePort();
     const app = await runExpressApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownSignals: [signal],
     });
 
@@ -1846,16 +1834,16 @@ describe('@fluojs/platform-express', () => {
       controllers: [AppController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       observers: [new PathObserver()],
-      port,
+      port: 0,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/api/app/info`);
 
@@ -1884,15 +1872,15 @@ describe('@fluojs/platform-express', () => {
       imports: [HealthModule],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      port,
+      port: 0,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const [prefixedApp, prefixedHealth, health] = await Promise.all([
         fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
@@ -2019,8 +2007,7 @@ describe('@fluojs/platform-express', () => {
       controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
     const app = await fluoFactory.create(AppModule, {
       adapter,
       middleware: [appMiddleware],
@@ -2031,9 +2018,9 @@ describe('@fluojs/platform-express', () => {
       },
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort(adapter.getServer());
       const router = Reflect.get(adapter, 'router');
       const nativeRoutes = (Reflect.get(router, '__fluoNativeRoutes') as Array<{ methods: string[]; path: string }>)
         .flatMap((route) => route.methods.map((method) => `${method}:${route.path}`));
@@ -2285,12 +2272,11 @@ describe('@fluojs/platform-express', () => {
       rootContainer: root,
     });
     const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
-
-    await adapter.listen(dispatcher);
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
+      await adapter.listen(dispatcher);
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native/123',
@@ -2323,12 +2309,11 @@ describe('@fluojs/platform-express', () => {
         await response.send({ dispatcher: 'second' });
       },
     };
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
-
-    await adapter.listen(firstDispatcher);
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
+      await adapter.listen(firstDispatcher);
+      const port = getBoundPort(adapter.getServer());
       await adapter.listen(secondDispatcher);
 
       const response = await requestHttp({
@@ -2479,12 +2464,11 @@ describe('@fluojs/platform-express', () => {
       rootContainer: root,
     });
     const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
-
-    await adapter.listen(dispatcher);
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
+      await adapter.listen(dispatcher);
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/normalization///123/',
@@ -2523,12 +2507,11 @@ describe('@fluojs/platform-express', () => {
     const nativeDispatch = vi.fn(async () => false);
     dispatcher.dispatchNativeRoute = nativeDispatch;
     const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
-
-    await adapter.listen(dispatcher);
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
+      await adapter.listen(dispatcher);
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native-fallback/abc',
@@ -2581,15 +2564,14 @@ describe('@fluojs/platform-express', () => {
       controllers: [RewriteSourceController, RewriteTargetController],
     });
 
-    const port = await findAvailablePort();
     const app = await fluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port }),
+      adapter: createExpressAdapter({ port: 0 }),
       middleware: [rewriteMiddleware],
     });
 
-    await app.listen();
-
     try {
+      await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/rewrite-source/42',
@@ -2655,14 +2637,14 @@ describe('@fluojs/platform-express', () => {
       controllers: [RewriteMethodSourceController, RewriteMethodTargetController],
     });
 
-    const port = await findAvailablePort();
     const app = await fluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port }),
+      adapter: createExpressAdapter({ port: 0 }),
       middleware: [rewriteMiddleware],
     });
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const response = await requestHttp({
         method: 'GET',
@@ -2708,12 +2690,11 @@ describe('@fluojs/platform-express', () => {
     });
     dispatcher.dispatchNativeRoute = undefined;
     const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
-    const port = await findAvailablePort();
-    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
-
-    await adapter.listen(dispatcher);
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
+      await adapter.listen(dispatcher);
+      const port = getBoundPort(adapter.getServer());
       const response = await requestHttp({
         method: 'GET',
         path: '/native-legacy/xyz',
@@ -2746,7 +2727,6 @@ describe('@fluojs/platform-express', () => {
     });
 
     try {
-      const port = await findAvailablePort();
       app = await runExpressApplication(AppModule, {
         cors: false,
         host: '127.0.0.1',
@@ -2754,8 +2734,9 @@ describe('@fluojs/platform-express', () => {
           cert: TEST_TLS_CERTIFICATE,
           key: TEST_TLS_PRIVATE_KEY,
         },
-        port,
+        port: 0,
       });
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
 
@@ -3323,11 +3304,10 @@ describe('@fluojs/platform-express', () => {
     let originalClose: (() => Promise<void>) | undefined;
 
     try {
-      const port = await findAvailablePort();
       app = await runExpressApplication(AppModule, {
         cors: false,
         forceExitTimeoutMs: 25,
-        port,
+        port: 0,
         shutdownSignals: ['SIGTERM'],
       });
 
@@ -3369,14 +3349,14 @@ describe('@fluojs/platform-express', () => {
       controllers: [CookieController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
         headers: {
@@ -3429,16 +3409,16 @@ describe('@fluojs/platform-express', () => {
       controllers: [AbortController],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     let request: ReturnType<typeof httpRequest> | undefined;
 
     try {
       await app.listen();
+      const port = getBoundPort((await app.get(HTTP_APPLICATION_ADAPTER) as ExpressHttpApplicationAdapter).getServer());
 
       request = httpRequest({
         host: '127.0.0.1',
