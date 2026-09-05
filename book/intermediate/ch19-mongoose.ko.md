@@ -21,7 +21,7 @@
 
 ## 19.1 Why Mongoose in fluo?
 
-Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. Root `@fluojs/mongoose` 통합은 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 Node.js 20 이상을 지원합니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
+Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. Root `@fluojs/mongoose` 통합은 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 Node.js `>=24.0.0 <27`을 지원합니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
 - **수명 주기 관리**: 제공된 연결을 애플리케이션 라이프사이클에 등록하고, `dispose(connection)`을 제공한 경우 종료 중 시작된 request callback과 요청 단위 트랜잭션이 drain된 뒤에만 정리를 실행합니다.
 - **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적합니다.

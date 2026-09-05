@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           package-manager-cache: false
 
       - name: Verify changeset release lane
@@ -71,7 +71,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -119,7 +119,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -166,7 +166,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -295,7 +295,7 @@ jobs:
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Setup Deno
@@ -343,7 +343,7 @@ jobs:
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -379,7 +379,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -409,7 +409,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -452,7 +452,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Setup Bun
@@ -469,15 +469,18 @@ jobs:
       - name: Run Bun native routing and lifecycle conformance
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
-  vite-toolchain-node-floor:
-    name: Vite toolchain Node floor (${{ matrix.node-version }})
+  node-support:
+    name: Node support (${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    env:
+      CI: '1'
     strategy:
       fail-fast: false
       matrix:
         node-version:
-          - "20.19.3"
-          - "22.12.0"
+          - "24.0.0"
+          - "24.x"
+          - "26.x"
 
     steps:
       - name: Checkout
@@ -497,8 +500,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify the complete workspace at the private root floor
+      - name: Full verification on supported Node versions
         run: pnpm verify
+
+      - name: Verify docs on latest Node 24
+        if: matrix.node-version == '24.x'
+        run: pnpm verify:docs
+
+      - name: Install generated starter browser
+        run: pnpm --dir examples/react-vite-ssr exec playwright install --with-deps chrome
+
+      - name: Verify generated starters
+        env:
+          FLUO_CLI_SANDBOX_ROOT: ${{ runner.temp }}/fluo-node-${{ matrix.node-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: pnpm --dir packages/cli sandbox:matrix < /dev/null
 
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
@@ -516,7 +531,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24.x"
           cache: pnpm
 
       - name: Install dependencies
@@ -538,7 +553,7 @@ jobs:
       - official-web-runtime-adapter-portability
       - native-response-cookie-conformance
       - bun-native-routing-and-lifecycle-conformance
-      - vite-toolchain-node-floor
+      - node-support
       - verify-platform-consistency-governance
       - resolve-pr-verification-scope
     runs-on: ubuntu-latest

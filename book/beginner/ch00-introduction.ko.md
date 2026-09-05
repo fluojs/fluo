@@ -52,7 +52,7 @@ Express나 NestJS에서 익힌 패턴이 있다면 fluo의 명시성이 처음�
 이 책을 따라가려면 다음이 필요합니다.
 
 - **기초적인 JavaScript/TypeScript 지식**: 클래스, `async/await`, 기본적인 타입 선언에 익숙해야 합니다.
-- **Node.js 설치**: fluo는 많은 런타임을 지원하지만, 우리는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`과 `pnpm`을 기본 개발 환경으로 사용합니다. 입문 Node.js 경로는 RFC `QUERY`가 listener에 도달하도록 이 정확한 `engines.node` 범위를 선언한 Fastify adapter package를 사용합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다.
+- **Node.js 설치**: fluo는 많은 런타임을 지원하지만, 우리는 Node.js `>=24.0.0 <27`과 `pnpm`을 기본 개발 환경으로 사용합니다. 입문 Node.js 경로는 RFC `QUERY`가 listener에 도달하도록 이 정확한 `engines.node` 범위를 선언한 Fastify adapter package를 사용합니다. Node 24 미만과 Node 27 이상은 제외됩니다.
 - **터미널과 코드 에디터**: TypeScript 확장이 설치된 VS Code를 권장합니다.
 
 NestJS, Express 또는 다른 백엔드 프레임워크에 대한 사전 경험은 **필요하지 않습니다**. 다른 프레임워크를 경험했다면 fluo의 명시성이 더 뚜렷하게 보일 수 있습니다. 이 책은 웹이 어떻게 동작하는지에 대한 기초 지식 외에는 별도 백엔드 경험이 없다고 보고 개념을 설명합니다.
@@ -178,7 +178,7 @@ fluo는 다른 길을 선택합니다. **명시적인 것이 암시적인 것보
 ### Preparing Your Workspace
 다음 챕터로 넘어가기 전에 터미널이 준비되었는지 확인합니다.
 1. 아직 설치하지 않았다면 `pnpm`을 설치하세요: `npm install -g pnpm`
-2. Node.js 20 버전 이상인지 확인하세요.
+2. Node.js `>=24.0.0 <27` 범위인지 확인하세요.
 3. FluoBlog 프로젝트를 위한 전용 폴더를 만드세요.
 
 이제 백엔드 아키텍처를 다른 기준으로 바라보는 과정을 시작합니다. fluo는 단순한 라이브러리 이상이며, 명확성과 성능에 대한 설계 철학을 담고 있습니다.

@@ -52,7 +52,7 @@ Each chapter adds one concrete feature to FluoBlog. This approach is close to a 
 To follow this book, you will need the following.
 
 - **Basic JavaScript/TypeScript knowledge**: You should be comfortable with classes, `async/await`, and basic type declarations.
-- **Node.js installed**: fluo supports many runtimes, but we will use Node.js `>=20.19.3 <21 || >=22.2.0 <27` and `pnpm` as the default development environment. The beginner Node.js path uses the Fastify adapter, whose package declares that exact `engines.node` range so RFC `QUERY` reaches its listener. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded.
+- **Node.js installed**: fluo supports many runtimes, but we will use Node.js `>=24.0.0 <27` and `pnpm` as the default development environment. The beginner Node.js path uses the Fastify adapter, whose package declares that exact `engines.node` range so RFC `QUERY` reaches its listener. Node versions below 24 and Node 27+ are excluded.
 - **A terminal and code editor**: We recommend VS Code with the TypeScript extension installed.
 
 Prior experience with NestJS, Express, or another backend framework is **not required**. If you have used another framework, fluo's explicitness may stand out more clearly. This book explains concepts assuming no backend experience beyond basic knowledge of how the web works.
@@ -157,7 +157,7 @@ Before turning the page, check that your development environment is ready. It is
 node --version
 ```
 
-If it shows Node.js 20 or newer, you are ready. Let's begin.
+If it shows Node.js `>=24.0.0 <27`, you are ready. Let's begin.
 
 ## Let's Begin
 
@@ -178,7 +178,7 @@ fluo chooses a different path. It follows the principle that **explicit is bette
 ### Preparing Your Workspace
 Before moving to the next chapter, make sure your terminal is ready.
 1. Install `pnpm` if you have not installed it yet: `npm install -g pnpm`
-2. Confirm that you are using Node.js 20 or newer.
+2. Confirm that you are using Node.js `>=24.0.0 <27`.
 3. Create a dedicated folder for the FluoBlog project.
 
 Now we begin the process of looking at backend architecture by a different standard. fluo is more than a simple library. It carries a design philosophy about clarity and performance.

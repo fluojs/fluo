@@ -56,7 +56,7 @@ Docker를 사용하면 FluoBlog를 모든 의존성과 함께 하나의 휴대 �
 
 ```dockerfile
 # Stage 1: Build
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
@@ -64,7 +64,7 @@ COPY . .
 RUN pnpm build && pnpm prune --prod
 
 # Stage 2: Production
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 # Only copy the built files and production dependencies
 COPY --from=builder /app/dist ./dist
@@ -79,7 +79,7 @@ USER node
 CMD ["node", "dist/main.js"]
 ```
 
-Base image는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`로 유지하세요. 기본 Fastify adapter 경로는 이 정확한 `engines.node` 범위를 선언한 `@fluojs/platform-fastify`를 사용합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 선택하지 마세요.
+Base image는 Node.js `>=24.0.0 <27`로 유지하세요. 기본 Fastify adapter 경로는 이 정확한 `engines.node` 범위를 선언한 `@fluojs/platform-fastify`를 사용합니다. Node 24 미만과 Node 27 이상을 선택하지 마세요.
 
 ### Docker Compose
 로컬 프로덕션 시뮬레이션이나 소규모 배포를 위해:

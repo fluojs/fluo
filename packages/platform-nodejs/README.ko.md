@@ -23,7 +23,7 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-nodejs
 ```
 
-이 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 대상으로 합니다. Node 20.19.3 미만, Node 21, Node 22.2.0 미만은 listener-level RFC `QUERY` 요청을 request event로 일관되게 노출하지 못하고 검증되지 않은 Node 27 이상은 광고하지 않으므로, 게시된 package manifest는 이 정확한 `engines.node` 범위를 선언합니다. 이 패키지는 raw Node, Express, Fastify host가 사용하는 Node listener, filesystem, logger, compression, process-signal 구현을 소유합니다.
+이 패키지는 Node.js `>=24.0.0 <27`을 대상으로 하며 package manifest는 같은 `engines.node` 범위를 선언합니다. Node 24 LTS floor는 지원 정책 결정이며 RFC `QUERY` listener 동작은 이 지원 범위에서 계속 검증합니다. 이 패키지는 raw Node, Express, Fastify host가 사용하는 Node listener, filesystem, logger, compression, process-signal 구현을 소유합니다.
 
 ## Runtime Node import 마이그레이션
 

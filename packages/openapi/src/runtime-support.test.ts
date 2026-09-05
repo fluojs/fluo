@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const nodeEngineFloorPattern = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=(\d+)\.(\d+)\.(\d+)(?=\s|")/u;
-const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+const nodeListenerEngine = '>=24.0.0 <27';
 const mandatoryFluoDependencyManifests = [
   '../../core/package.json',
   '../../http/package.json',

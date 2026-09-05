@@ -35,7 +35,7 @@ const transport = createSlackWebhookTransport({
 });
 ```
 
-표준 `fetch` API에 의존하므로 이 트랜스포트는 저장소의 Node.js 20+ baseline, Bun, Deno, Cloudflare Workers에서 별도 어댑터 없이 동작합니다.
+표준 `fetch` API에 의존하므로 이 트랜스포트는 저장소의 Node.js `>=24.0.0 <27` baseline, Bun, Deno, Cloudflare Workers에서 별도 어댑터 없이 동작합니다.
 
 ## 17.2 Registering the Chat Modules
 

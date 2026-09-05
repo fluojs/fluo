@@ -11,7 +11,7 @@ export default defineConfig({
       },
     },
     ssr: 'src/main.ts',
-    target: 'node20',
+    target: 'node24',
   },
   plugins: [fluoDecoratorsPlugin()],
 });

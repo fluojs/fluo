@@ -35,7 +35,7 @@ const transport = createSlackWebhookTransport({
 });
 ```
 
-Because it depends on the standard `fetch` API, this transport works in the repository's Node.js 20+ baseline, Bun, Deno, and Cloudflare Workers without a separate adapter.
+Because it depends on the standard `fetch` API, this transport works in the repository's Node.js `>=24.0.0 <27` baseline, Bun, Deno, and Cloudflare Workers without a separate adapter.
 
 ## 17.2 Registering the Chat Modules
 

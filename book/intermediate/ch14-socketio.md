@@ -18,7 +18,7 @@ This chapter explains how to add a Socket.IO layer on top of raw WebSocket and c
 - Complete Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10, Chapter 11, Chapter 12, and Chapter 13.
 - A basic understanding of the WebSocket gateway lifecycle and realtime message routing.
 - A basic sense of multiple user chat requirements such as authentication, room separation, and broadcast.
-- Node.js `>=20.19.3 <21 || >=22.2.0 <27` when running the Node-backed Socket.IO adapter path; Bun support uses the official Bun engine path described below.
+- Node.js `>=24.0.0 <27` when running the Node-backed Socket.IO adapter path; Bun support uses the official Bun engine path described below.
 
 ## 14.1 Why Socket.IO for FluoShop?
 
@@ -167,7 +167,7 @@ handleTicketStatus(
 
 fluo supports Bun's high performance WebSocket implementation through the selected HTTP adapter contract. Socket.IO usually uses the `ws` package on Node.js, but on Bun it can use `@socket.io/bun-engine` when the active platform adapter exposes the fetch-style realtime binding that the Socket.IO adapter requires. FluoShop should therefore choose a Bun-compatible platform adapter explicitly instead of relying on runtime auto-switching. This keeps the realtime boundary auditable while still allowing many concurrent support chats with lower memory overhead than a standard Node.js process.
 
-The Socket.IO package still has explicit runtime gates. Node-backed deployments require Node.js `>=20.19.3 <21 || >=22.2.0 <27` and use the shared application listener. Bun requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime. Existing configurations must remove that option and use the shared application listener; if a dedicated listener is required, migrate to `@fluojs/websockets/node` or own a separate Socket.IO server outside `SocketIoModule`. Deno and Workers are not supported by `@fluojs/socket.io`; use the runtime-specific `@fluojs/websockets/*` subpaths for raw WebSocket gateway authoring on those runtimes.
+The Socket.IO package still has explicit runtime gates. Node-backed deployments require Node.js `>=24.0.0 <27` and use the shared application listener. Bun requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime. Existing configurations must remove that option and use the shared application listener; if a dedicated listener is required, migrate to `@fluojs/websockets/node` or own a separate Socket.IO server outside `SocketIoModule`. Deno and Workers are not supported by `@fluojs/socket.io`; use the runtime-specific `@fluojs/websockets/*` subpaths for raw WebSocket gateway authoring on those runtimes.
 
 ## 14.7 Broadcasting across many rooms
 

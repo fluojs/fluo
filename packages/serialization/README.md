@@ -2,6 +2,8 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Node.js support is `>=24.0.0 <27`. See [Node.js support and migration](../../docs/reference/node-support.md) before upgrading.
+
 Class-based response serialization and output shaping for fluo with decorator-aware recursive object walking.
 
 ## Table of Contents

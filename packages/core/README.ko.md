@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.
+
 모든 fluo 패키지가 공통으로 사용하는 표준 데코레이터, 공유 계약, 메타데이터 프리미티브를 제공하는 기반 패키지입니다.
 
 ## 목차

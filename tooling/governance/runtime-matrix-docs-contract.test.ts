@@ -116,31 +116,31 @@ describe('runtime matrix docs contract', () => {
   it('keeps metrics runtime surface discoverable from package surface and context docs', () => {
     expectAll(read('docs/reference/package-surface.md'), [
       '@fluojs/metrics',
-      'Node.js 20+',
+      'Node.js `>=24.0.0 <27`',
       'endpoint-scoped `endpointMiddleware`',
       'distinct module-level `middleware`',
-      'engines.node >=20.0.0',
+      'engines.node >=24.0.0 <27',
     ]);
     expectAll(read('docs/CONTEXT.md'), [
-      'Node.js 20+ `@fluojs/metrics` boundary',
+      'Node.js `>=24.0.0 <27` `@fluojs/metrics` boundary',
       'opt-in HTTP request collectors',
       'endpoint-scoped `endpointMiddleware`',
       'distinct module-level `middleware`',
-      'engines.node >=20.0.0',
+      'engines.node >=24.0.0 <27',
     ]);
     expectAll(read('docs/reference/package-surface.ko.md'), [
       '@fluojs/metrics',
-      'Node.js 20+',
+      'Node.js `>=24.0.0 <27`',
       'endpoint-scoped `endpointMiddleware`',
       'module-level `middleware`',
-      'engines.node >=20.0.0',
+      'engines.node >=24.0.0 <27',
     ]);
     expectAll(read('docs/CONTEXT.ko.md'), [
-      'Node.js 20+ `@fluojs/metrics` 경계',
+      'Node.js `>=24.0.0 <27` `@fluojs/metrics` 경계',
       'opt-in HTTP request collector',
       'endpoint-scoped `endpointMiddleware`',
       'module-level `middleware`',
-      'engines.node >=20.0.0',
+      'engines.node >=24.0.0 <27',
     ]);
   });
 
@@ -216,7 +216,7 @@ describe('runtime matrix docs contract', () => {
   });
 
   it('keeps the cache-manager runtime boundary aligned to its mandatory runtime dependency range', () => {
-    const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+    const nodeListenerEngine = '>=24.0.0 <27';
 
     expect(JSON.parse(read('packages/cache-manager/package.json'))).toMatchObject({
       engines: { node: nodeListenerEngine },
@@ -254,7 +254,7 @@ describe('runtime matrix docs contract', () => {
       .split('\n')
       .map((line) =>
         line.includes('@fluojs/drizzle') && line.includes(nodePlatformEngine)
-          ? line.replace(nodePlatformEngine, staleRuntimeNodeEngine)
+          ? line.replaceAll(nodePlatformEngine, staleRuntimeNodeEngine)
           : line,
       )
       .join('\n');
@@ -264,7 +264,7 @@ describe('runtime matrix docs contract', () => {
   });
 
   it('keeps the openapi runtime boundary aligned to its mandatory runtime dependency range', () => {
-    const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+    const nodeListenerEngine = '>=24.0.0 <27';
 
     for (const manifestPath of [
       'packages/openapi/package.json',
@@ -292,7 +292,7 @@ describe('runtime matrix docs contract', () => {
   });
 
   it('keeps book setup prerequisites aligned to the Node.js listener baseline', () => {
-    const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+    const nodeListenerEngine = '>=24.0.0 <27';
 
     for (const path of [
       'book/README.md',

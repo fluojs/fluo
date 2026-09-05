@@ -20,7 +20,7 @@ describe('@fluojs/vite compatibility contract', () => {
       readManifest(new URL('../../packages/vite/package.json', import.meta.url)),
     ]);
 
-    expect(rootManifest.engines?.node).toBe('>=20.19.3 <21 || >=22.12.0 <27');
+    expect(rootManifest.engines?.node).toBe('>=24.0.0 <27');
     expect(rootManifest.devDependencies?.vite).toBe('^8.2.2');
     expect(rootManifest.devDependencies?.vite8).toBeUndefined();
     expect(rootManifest.devDependencies?.vitest).toBe('^4.1.11');

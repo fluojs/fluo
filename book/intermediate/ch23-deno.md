@@ -141,7 +141,7 @@ When building microservices on Deno, follow the principle of least privilege. Sp
 - **`--allow-read=./config,./static`**: Restricts file access to specific directories that contain configuration files or static assets.
 - **`--allow-env=PORT,DATABASE_URL`**: Restricts access to only the environment variable keys that application code actually reads; the Deno adapter itself does not require this permission.
 
-For `@fluojs/config`, keep Deno environment reads at the application entrypoint: call `Deno.env.get(...)` only after granting the required `--allow-env` keys, then pass the resulting explicit map through `processEnv` or `runtimeOverrides` to `ConfigModule.forRoot(...)`. The package's env-file, default `.env`, and watch paths remain governed by the Node.js 20.16.0+ contract, so the Deno deployment command documents only the host values your entrypoint is allowed to map into in-memory config input.
+For `@fluojs/config`, keep Deno environment reads at the application entrypoint: call `Deno.env.get(...)` only after granting the required `--allow-env` keys, then pass the resulting explicit map through `processEnv` or `runtimeOverrides` to `ConfigModule.forRoot(...)`. The package's env-file, default `.env`, and watch paths remain governed by the Node.js `>=24.0.0 <27` contract, so the Deno deployment command documents only the host values your entrypoint is allowed to map into in-memory config input.
 
 ## 23.6 Porting Checklist for Deno
 
@@ -213,7 +213,7 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno's built-in test runner can be used without separate Jest or Vitest dependencies. The published `@fluojs/testing` package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, so do not import it into the Deno test path. Instead, combine `Deno.test`, Deno's standard assertion library, and the public Deno fetch handler to exercise the real Web `Request` to `Response` boundary without starting a server.
+Deno's built-in test runner can be used without separate Jest or Vitest dependencies. The published `@fluojs/testing` package declares `engines.node >=24.0.0 <27`, so do not import it into the Deno test path. Instead, combine `Deno.test`, Deno's standard assertion library, and the public Deno fetch handler to exercise the real Web `Request` to `Response` boundary without starting a server.
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";

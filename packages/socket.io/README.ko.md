@@ -21,13 +21,13 @@ fluo 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
 npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io@^4.8.3
 ```
 
-`@fluojs/socket.io`는 패키지 자체의 지원 계약으로 Node-backed adapter에서 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원합니다. Socket.IO gateway authoring은 `@fluojs/websockets`의 `@WebSocketGateway`, `@OnMessage`, lifecycle decorator를 재사용하므로 companion 패키지도 함께 설치하세요.
+`@fluojs/socket.io`는 패키지 자체의 지원 계약으로 Node-backed adapter에서 Node.js `>=24.0.0 <27`을 지원합니다. Socket.IO gateway authoring은 `@fluojs/websockets`의 `@WebSocketGateway`, `@OnMessage`, lifecycle decorator를 재사용하므로 companion 패키지도 함께 설치하세요.
 
 `@fluojs/socket.io`는 Socket.IO `^4.8.3`을 요구합니다. 더 오래된 Socket.IO v4 release를 사용하던 consumer는 이 major `@fluojs/socket.io` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. 갱신된 Engine.IO chain은 패치된 WebSocket runtime을 resolve해야 합니다. fluo adapter API는 그대로입니다.
 
 ## 사용 시점
 
-Socket.IO가 제공하는 room, namespace, broadcast, 자동 재연결 같은 고수준 실시간 기능이 필요할 때 사용합니다. 이 패키지는 raw websocket 대신 Socket.IO v4 서버를 fluo의 `@WebSocketGateway` 기반 모델에 연결합니다. 대상 런타임은 Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed adapter와 공식 Bun engine path이며, 이 Socket.IO adapter는 Deno와 Workers를 지원하지 않습니다.
+Socket.IO가 제공하는 room, namespace, broadcast, 자동 재연결 같은 고수준 실시간 기능이 필요할 때 사용합니다. 이 패키지는 raw websocket 대신 Socket.IO v4 서버를 fluo의 `@WebSocketGateway` 기반 모델에 연결합니다. 대상 런타임은 Node.js `>=24.0.0 <27` server-backed adapter와 공식 Bun engine path이며, 이 Socket.IO adapter는 Deno와 Workers를 지원하지 않습니다.
 
 ## 빠른 시작
 
@@ -171,13 +171,13 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
 - 타입: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions`는 `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. `global`의 기본값은 `true`이므로 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`가 앱 전체에서 보입니다. module-local provider visibility가 필요하면 `false`로 설정하세요. 지원되는 Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed runtime adapter 또는 공식 Bun engine host가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다. Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부하고 Bun은 추가로 static CORS shape를 요구합니다.
+`SocketIoModuleOptions`는 `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. `global`의 기본값은 `true`이므로 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`가 앱 전체에서 보입니다. module-local provider visibility가 필요하면 `false`로 설정하세요. 지원되는 Node.js `>=24.0.0 <27` server-backed runtime adapter 또는 공식 Bun engine host가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다. Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부하고 Bun은 추가로 static CORS shape를 요구합니다.
 
 ## 지원 플랫폼
 
 | 플랫폼 | 지원 여부 | 비고 |
 | --- | --- | --- |
-| Node.js (Raw/Express/Fastify) | ✅ 전체 지원 | Node.js `>=20.19.3 <21 || >=22.2.0 <27`; shared application listener |
+| Node.js (Raw/Express/Fastify) | ✅ 전체 지원 | Node.js `>=24.0.0 <27`; shared application listener |
 | Bun | ✅ 전체 지원 | `@socket.io/bun-engine` 기반; static CORS만 지원, `serverBacked` gateway 미지원 |
 | Deno | ❌ 미지원 | 현재 지원하지 않음 |
 | Workers | ❌ 미지원 | 현재 지원하지 않음 |

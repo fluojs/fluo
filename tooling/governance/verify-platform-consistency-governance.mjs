@@ -114,8 +114,7 @@ const repoRoot = resolve(scriptDirectory, '..', '..');
 const directProcessEnvPattern = /\bprocess\s*(?:\?\.|\.)\s*env\b/g;
 const nodeGlobalBufferPattern = /\bBuffer\b/g;
 const nodeListenerEngineWindows = [
-  { maximumMajorExclusive: 21, minimumMajor: 20, minimumMinor: 19, minimumPatch: 3 },
-  { maximumMajorExclusive: 27, minimumMajor: 22, minimumMinor: 2, minimumPatch: 0 },
+  { maximumMajorExclusive: 27, minimumMajor: 24, minimumMinor: 0, minimumPatch: 0 },
 ];
 const nodeListenerEngineRange = nodeListenerEngineWindows
   .map(({ maximumMajorExclusive, minimumMajor, minimumMinor, minimumPatch }) =>
@@ -2601,7 +2600,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       runtimeAdaptersGuide.includes('### Fastify HTTPS/TLS') &&
       runtimeAdaptersGuide.includes('Node.js `https.ServerOptions`') &&
       runtimeAdaptersGuide.includes('plain HTTP behind that infrastructure boundary'),
-    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, book metadata, and website guidance must keep the Node.js 24 runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     fastifyReadmeKo.includes(nodeListenerEngineMarker) &&
@@ -2623,7 +2622,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       runtimeAdaptersGuideKo.includes('### Fastify HTTPS/TLS') &&
       runtimeAdaptersGuideKo.includes('Node.js `https.ServerOptions`') &&
       runtimeAdaptersGuideKo.includes('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행'),
-    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 24 runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     fastifyReadme.includes('`shutdownTimeoutMs: 0` starts Fastify close immediately') &&
@@ -2911,7 +2910,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContext.includes('packages/socket.io/README.md') &&
       docsContext.includes('SocketIoHandshakeRequest') &&
       docsContext.includes('guard acceptance for `true` / `undefined` / no return') &&
-      docsContext.includes('Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed') &&
+      docsContext.includes('Node.js `>=24.0.0 <27` server-backed') &&
       docsContext.includes('all-runtime no-`serverBacked` gateway caveats') &&
       docsContext.includes('explicit ACK callback handling') &&
       docsContext.includes('bounded accepted-work drain plus force-disconnect/retry semantics'),
@@ -2923,7 +2922,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('packages/socket.io/README.ko.md') &&
       docsContextKo.includes('SocketIoHandshakeRequest') &&
       docsContextKo.includes('return 없음은 허용') &&
-      docsContextKo.includes('Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed') &&
+      docsContextKo.includes('Node.js `>=24.0.0 <27` server-backed') &&
       docsContextKo.includes('모든 runtime의 no-`serverBacked` gateway caveat') &&
       docsContextKo.includes('명시적 ACK callback') &&
       docsContextKo.includes('bounded accepted-work drain과 force-disconnect/retry semantic'),
@@ -3074,14 +3073,14 @@ function enforceViteToolingDiscoverability() {
   }
 
   assert(
-    vitePackageJson.engines?.node === '>=20.0.0',
-    'packages/vite/package.json must keep the documented Node.js >=20.0.0 engine floor.',
+    vitePackageJson.engines?.node === '>=24.0.0 <27',
+    'packages/vite/package.json must keep the documented Node.js >=24.0.0 <27 engine floor.',
   );
 
   for (const markdown of [englishContext, englishPackageSurface, englishToolchainMatrix, englishViteReadme]) {
     assert(
-      markdown.includes('Node.js') && markdown.includes('>=20.0.0'),
-      'English Vite tooling docs must keep the @fluojs/vite Node.js >=20.0.0 engine floor discoverable.',
+      markdown.includes('Node.js') && markdown.includes('>=24.0.0 <27'),
+      'English Vite tooling docs must keep the @fluojs/vite Node.js >=24.0.0 <27 engine floor discoverable.',
     );
     assert(
       markdown.includes('Vite `>=6.2.0`'),
@@ -3095,8 +3094,8 @@ function enforceViteToolingDiscoverability() {
 
   for (const markdown of [koreanContext, koreanPackageSurface, koreanToolchainMatrix, koreanViteReadme]) {
     assert(
-      markdown.includes('Node.js') && markdown.includes('>=20.0.0'),
-      'Korean Vite tooling docs must keep the @fluojs/vite Node.js >=20.0.0 engine floor discoverable.',
+      markdown.includes('Node.js') && markdown.includes('>=24.0.0 <27'),
+      'Korean Vite tooling docs must keep the @fluojs/vite Node.js >=24.0.0 <27 engine floor discoverable.',
     );
     assert(
       markdown.includes('Vite `>=6.2.0`'),

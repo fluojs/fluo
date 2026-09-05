@@ -35,7 +35,7 @@
 - Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10, Chapter 11 완료.
 - Redis coordination과 time-based job 실행 개념에 대한 기초 이해.
 - multi-instance deployment와 graceful shutdown 운영 감각.
-- Node.js `>=20.19.3 <21 || >=22.2.0 <27`; `@fluojs/cron` 3은 패키지 자체의 지원 계약으로 이 범위를 요구합니다.
+- Node.js `>=24.0.0 <27`; `@fluojs/cron` 3은 패키지 자체의 지원 계약으로 이 범위를 요구합니다.
 
 ## 12.1 Why FluoShop needs scheduling
 

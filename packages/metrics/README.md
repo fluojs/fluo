@@ -22,7 +22,7 @@ pnpm add @fluojs/metrics
 
 ## Requirements
 
-`@fluojs/metrics` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` as its package-owned support contract.
+`@fluojs/metrics` requires Node.js `>=24.0.0 <27` as its package-owned support contract.
 
 ## When to Use
 

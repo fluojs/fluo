@@ -309,7 +309,7 @@ describe('event-bus lifecycle contract documentation', () => {
 
     for (const path of documents) {
       assertMarkers(path, 'event-bus lifecycle contract', readDocument(path), [
-        '>=20.19.3 <21 || >=22.2.0 <27',
+        '>=24.0.0 <27',
         'effective',
       ]);
     }

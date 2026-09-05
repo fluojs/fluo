@@ -141,7 +141,7 @@ Deno에서 마이크로서비스를 구축할 때는 최소 권한의 원칙을 
 - **`--allow-read=./config,./static`**: 설정 파일이나 정적 자산이 포함된 특정 디렉터리로 파일 접근을 제한합니다.
 - **`--allow-env=PORT,DATABASE_URL`**: 애플리케이션 코드가 실제로 읽는 environment variable key로만 접근을 제한합니다. Deno adapter 자체에는 이 권한이 필요하지 않습니다.
 
-`@fluojs/config`를 사용할 때는 Deno 환경 읽기를 애플리케이션 entrypoint에 두세요. 필요한 `--allow-env` key를 허용한 뒤에만 `Deno.env.get(...)`을 호출하고, 그 결과를 `processEnv` 또는 `runtimeOverrides`를 통해 명시적인 map으로 `ConfigModule.forRoot(...)`에 전달합니다. 이 패키지의 env-file, 기본 `.env`, watch 경로는 Node.js 20.16.0+ 계약을 따르므로, Deno 배포 명령은 entrypoint가 in-memory config input으로 매핑할 수 있는 host 값만 문서화합니다.
+`@fluojs/config`를 사용할 때는 Deno 환경 읽기를 애플리케이션 entrypoint에 두세요. 필요한 `--allow-env` key를 허용한 뒤에만 `Deno.env.get(...)`을 호출하고, 그 결과를 `processEnv` 또는 `runtimeOverrides`를 통해 명시적인 map으로 `ConfigModule.forRoot(...)`에 전달합니다. 이 패키지의 env-file, 기본 `.env`, watch 경로는 Node.js `>=24.0.0 <27` 계약을 따르므로, Deno 배포 명령은 entrypoint가 in-memory config input으로 매핑할 수 있는 host 값만 문서화합니다.
 
 ## 23.6 Porting Checklist for Deno
 
@@ -213,7 +213,7 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
+Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=24.0.0 <27`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";

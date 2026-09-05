@@ -32,7 +32,7 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 
 ## 런타임 및 peer 계약
 
-`@fluojs/vite`는 `engines.node` 하한을 `>=20.0.0`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이 Node 기준선과 Vite `>=6.2.0`, 그리고 위에 나열한 Babel peer를 함께 사용합니다.
+`@fluojs/vite`는 `engines.node` 하한을 `>=24.0.0 <27`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이 Node 기준선과 Vite `>=6.2.0`, 그리고 위에 나열한 Babel peer를 함께 사용합니다.
 
 패키지 root는 Babel이 설치되거나 해석되기 전에 import해도 안전합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성해도 `@babel/core`를 로드하지 않습니다. Babel은 eligible 애플리케이션 `.ts` 파일에 대한 Vite `transform` hook에서만 lazy load되며, 누락된 Babel peer도 plugin 생성 시점이 아니라 이 transform 경계에서 보고됩니다.
 
@@ -50,7 +50,7 @@ export default defineConfig({
   plugins: [fluoDecoratorsPlugin()],
   build: {
     ssr: 'src/main.ts',
-    target: 'node20',
+    target: 'node24',
   },
 });
 ```

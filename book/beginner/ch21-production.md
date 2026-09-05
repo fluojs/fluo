@@ -56,7 +56,7 @@ Create a `Dockerfile` in the root directory with a multi-stage build. This keeps
 
 ```dockerfile
 # Stage 1: Build
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
@@ -64,7 +64,7 @@ COPY . .
 RUN pnpm build && pnpm prune --prod
 
 # Stage 2: Production
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 # Only copy the built files and production dependencies
 COPY --from=builder /app/dist ./dist
@@ -79,7 +79,7 @@ USER node
 CMD ["node", "dist/main.js"]
 ```
 
-Keep the base image on Node.js `>=20.19.3 <21 || >=22.2.0 <27`. The default Fastify adapter path uses `@fluojs/platform-fastify`, whose package manifest declares that exact `engines.node` range. Do not select Node 21, Node 22 before 22.2.0, or unverified Node 27+.
+Keep the base image on Node.js `>=24.0.0 <27`. The default Fastify adapter path uses `@fluojs/platform-fastify`, whose package manifest declares that exact `engines.node` range. Do not select Node versions below 24 or Node 27+.
 
 ### Docker Compose
 For local production simulation or a small deployment:

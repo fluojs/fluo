@@ -46,7 +46,14 @@ function sharedTerminusContractFragments(patch, prefix) {
       return [];
     }
 
-    const content = line.slice(1);
+    // Node support policy is checked by manifest/release gates, not health semantics.
+    const content = line.slice(1).replace(
+      /\bNode\.js (?:\d+\+|`>=\d+\.\d+\.\d+ <\d+`)/gu,
+      'Node.js <engine-policy>',
+    ).replace(
+      /\bengines\.node >=\d+\.\d+\.\d+(?: <\d+)?/gu,
+      'engines.node <engine-policy>',
+    );
     // Prose has no safe distance cutoff: govern the complete marked line.
     return sharedContractMarkerPattern.test(content) ? [content] : [];
   });

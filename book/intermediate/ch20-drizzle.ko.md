@@ -28,7 +28,7 @@ Drizzle은 SQL에 가까운 작성 감각과 TypeScript 타입 추론을 결합�
 - **통합된 트랜잭션 모델**: `@fluojs/prisma`나 `@fluojs/mongoose`와 마찬가지로, Drizzle 통합 모듈은 작업이 활성 트랜잭션에 자동으로 참여하도록 보장합니다.
 - **Node 범위 fluo wrapper와 driver 이식성**: Drizzle은 Node-Postgres, Bun SQL, Cloudflare D1 등을 폭넓게 지원하지만, 현재 `@fluojs/drizzle` wrapper는 Node의 `node:async_hooks` transaction context를 사용합니다. 비 Node context adapter가 문서화되기 전까지 이 장의 package integration은 Node 런타임 기준으로 이해하세요.
 
-나중에 FluoShop의 SQL 계층을 Bun SQL, Cloudflare D1 또는 다른 비 Node Drizzle driver로 옮긴다면 `@fluojs/drizzle`을 import하지 말고, Chapter 22와 Chapter 24의 `DATABASE` token 예시처럼 raw Drizzle handle을 일반 fluo provider 뒤에 두세요. Repository token과 schema type은 안정적으로 유지할 수 있지만, 이 패키지의 ALS 기반 `@Transaction()` 데코레이터와 request transaction helper는 비 Node context adapter가 생기기 전까지 Node.js 20+ 전용입니다.
+나중에 FluoShop의 SQL 계층을 Bun SQL, Cloudflare D1 또는 다른 비 Node Drizzle driver로 옮긴다면 `@fluojs/drizzle`을 import하지 말고, Chapter 22와 Chapter 24의 `DATABASE` token 예시처럼 raw Drizzle handle을 일반 fluo provider 뒤에 두세요. Repository token과 schema type은 안정적으로 유지할 수 있지만, 이 패키지의 ALS 기반 `@Transaction()` 데코레이터와 request transaction helper는 비 Node context adapter가 생기기 전까지 Node.js `>=24.0.0 <27` 전용입니다.
 
 ## 20.2 Installation and Setup
 

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { IncomingMessage, request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders, InformationEvent } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -1479,6 +1480,9 @@ describe('@fluojs/platform-fastify', () => {
         requestHttp({ method: 'QUERY', path: '/custom-fallback/query', target }),
         requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', target }),
       ]);
+      expect(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))).toMatchObject({
+        engines: { node: '>=24.0.0 <27' },
+      });
       expect(queryResponse.statusCode).toBe(200);
       expect(purgeResponse.statusCode).toBe(200);
       expect(JSON.parse(queryResponse.body)).toEqual({ method: 'QUERY', route: 'query' });
@@ -1666,7 +1670,7 @@ describe('@fluojs/platform-fastify', () => {
         method: 'POST',
       });
 
-      expect(response.status).toBe(201);
+      expect(response.status, `${response.url}: ${await response.clone().text()}`).toBe(201);
       await expect(response.json()).resolves.toEqual({
         body: { name: 'Ada' },
         fileCount: 1,

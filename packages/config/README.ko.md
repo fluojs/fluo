@@ -20,7 +20,7 @@ fluo 애플리케이션을 위한 설정 로드, 병합, 검증, 타입 안전�
 npm install @fluojs/config
 ```
 
-패키지는 의도적으로 package-wide `engines.node`를 선언하지 않습니다. `ConfigService`, merge/validation/clone 동작, `loadConfig({ defaults, processEnv, runtimeOverrides })`는 portable하며 `process.cwd()`, 기본 `.env` path, Node filesystem/path/crypto builtin을 해석하지 않습니다. Env-file loading, 기본 `.env` loading, watch mode는 Node 전용 기능입니다. 이 경로는 Node.js 20.16.0 이상에서 제공되는 `process.getBuiltinModule(...)`을 통해 builtin을 lazy하게 해석하며 host가 해당 경계를 제공하지 않으면 in-memory option을 사용하거나 Node.js에서 실행하라는 guidance와 함께 `CONFIG_RUNTIME_UNAVAILABLE`을 던집니다.
+패키지는 의도적으로 package-wide `engines.node`를 선언하지 않습니다. `ConfigService`, merge/validation/clone 동작, `loadConfig({ defaults, processEnv, runtimeOverrides })`는 portable하며 `process.cwd()`, 기본 `.env` path, Node filesystem/path/crypto builtin을 해석하지 않습니다. Env-file loading, 기본 `.env` loading, watch mode는 Node 전용 기능입니다. 이 경로는 지원 범위 Node.js `>=24.0.0 <27`의 `process.getBuiltinModule(...)`을 통해 builtin을 lazy하게 해석하며 host가 해당 경계를 제공하지 않으면 in-memory option을 사용하거나 Node.js에서 실행하라는 guidance와 함께 `CONFIG_RUNTIME_UNAVAILABLE`을 던집니다. 이 guard는 feature capability를 확인하며 Node version 비교나 portable root import 차단을 추가하지 않습니다.
 
 ## 사용 시점
 

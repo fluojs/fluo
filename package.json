@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.4.1",
   "engines": {
-    "node": ">=20.19.3 <21 || >=22.12.0 <27"
+    "node": ">=24.0.0 <27"
   },
   "devDependencies": {
     "@babel/cli": "^7.26.4",
@@ -26,6 +26,7 @@
     "pretest": "pnpm --filter '@fluojs/react...' build",
     "test": "vitest run",
     "test:verify": "vitest run --no-file-parallelism",
+    "test:node-floor": "vitest run tooling/governance/node-support-classification.test.ts packages/cli/src/new packages/config/src packages/runtime/src/portable-runtime-boundary.test.ts packages/platform-nodejs/src packages/platform-fastify/src/adapter.test.ts packages/testing/src/portability packages/vite/src/vite8-rolldown.test.ts tooling/governance/vite-compatibility-contract.test.ts --maxWorkers=1",
     "test:watch": "vitest",
     "docs:dev": "pnpm --filter @fluo/docs dev",
     "docs:dev:clean": "pnpm docs:clean && pnpm docs:dev",
