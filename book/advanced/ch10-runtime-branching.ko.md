@@ -62,11 +62,11 @@ root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하�
 
 그래서 장 제목이 "runtime fork"가 아니라 "runtime branching"입니다. Fluo는 host마다 runtime 전체를 복제하지 않습니다. 공통 runtime shell은 중앙에 두고, 명시적인 surface boundary에서만 분기합니다.
 
-이 철학은 `path:packages/runtime/src/exports.test.ts:12-79`에 코드로 박혀 있습니다. 테스트는 root runtime barrel이 transport-neutral해야 하고, Node-only helper는 `./node`에 있어야 하며, Web helper는 `./web`에 있어야 하고, lower-level adapter seam은 `./internal/...` subpath에 있어야 한다고 강제합니다.
+이 철학은 `path:packages/runtime/src/exports.test.ts:19-46`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `./node`에 있어야 하고, Web helper는 `./web`에 있어야 하며, lower-level adapter seam은 `./internal/...` subpath에 있어야 합니다.
 
 root boundary부터 보면 금지 목록이 먼저 나옵니다. root barrel은 dispatch helper, Web factory, Node shutdown helper, adapter bootstrap helper를 직접 담지 않아야 합니다.
 
-`path:packages/runtime/src/exports.test.ts:13-30`
+`path:packages/runtime/src/exports.test.ts:19-46`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -76,9 +76,18 @@ it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
 });
 
+it('keeps root bootstrap defaults detached from Node-only logger modules', () => {
+  const bootstrapSource = readFileSync(new URL('./bootstrap.ts', import.meta.url), 'utf8');
+
+  expect(bootstrapSource).not.toContain('./logging/logger.js');
+  expect(bootstrapSource).not.toContain('./logging/json-logger.js');
+  expect(bootstrapSource).toContain('./logging/default-logger.js');
+});
+
 it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
+  expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
-  expect(runtime.createHealthModule).toBeTypeOf('function');
+  expect(runtime).toHaveProperty('createHealthModule');
   expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
@@ -105,11 +114,11 @@ shared bootstrap shell in root runtime
 이 프레임이 이 장 전체의 배경입니다. Node, Web, Edge는 서로 독립된 세 runtime이 아니라, 하나의 transport-neutral bootstrap core에 서로 다른 host I/O semantics를 붙이는 세 방식입니다.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-root public surface는 `path:packages/runtime/src/index.ts:1-46`에 정의되어 있습니다. 여기서는 bootstrap API, error, 선별된 diagnostics type/helper, health helper, multipart type와 consumed-body error, platform contract, request-transaction/route-inspection helper, 선별된 runtime token만 export합니다. Node adapter helper나 Web request-dispatch helper는 export하지 않습니다.
+root public surface는 `path:packages/runtime/src/index.ts:1-47`에 정의되어 있습니다. 여기서는 bootstrap API, error, 선별된 diagnostics type/helper, health helper, `ModuleGraphCompileCache`, multipart type와 consumed-body error, platform contract, request-transaction/route-inspection helper, 선별된 runtime token만 export합니다. Node adapter helper나 Web request-dispatch helper는 export하지 않습니다.
 
 root barrel의 실제 모양은 작고 선별적입니다. `bootstrap`, health, error, 선별된 diagnostics/multipart export, platform type, request transaction, route inspection, token, shared type만 바깥으로 보냅니다.
 
-`path:packages/runtime/src/index.ts:1-46`
+`path:packages/runtime/src/index.ts:1-47`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -127,6 +136,7 @@ export {
   createRuntimeDiagnosticsGraph,
 } from './health/diagnostics.js';
 export * from './health/health.js';
+export { ModuleGraphCompileCache } from './module-graph.js';
 export type {
   MultipartFieldPart,
   MultipartFilePart,
@@ -165,20 +175,21 @@ root barrel은 의도적으로 `renderRuntimeDiagnosticsMermaid()`를 생략합�
 
 이 목록에는 Node server helper나 Web dispatch helper가 없습니다. root API를 보는 독자는 여기서부터 공통 bootstrap 계약과 host-specific helper의 경계가 다르다는 사실을 확인할 수 있습니다.
 
-이 omission은 우연이 아닙니다. `path:packages/runtime/src/exports.test.ts:13-29`가 직접 검증합니다. root barrel에는 `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, `bootstrapHttpAdapterApplication`이 있으면 안 됩니다.
+이 omission은 우연이 아닙니다. `path:packages/runtime/src/exports.test.ts:19-25`가 직접 검증합니다. root barrel에는 `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, `bootstrapHttpAdapterApplication`이 있으면 안 됩니다.
 
 즉 root runtime API는 portable bootstrap concern만 중심에 두고 큐레이션됩니다. 모든 host가 공유할 수 있는 것만 노출합니다. `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, `PLATFORM_SHELL` 같은 runtime token, 그리고 공유 runtime type system이 여기에 속합니다.
 
-`path:packages/runtime/package.json:27-56`의 package export map은 이 큐레이션을 package-resolution 단계에서 강제합니다. 명시적인 subpath는 다음과 같습니다. `.`, `./node`, `./web`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, `./internal-node`입니다.
+`path:packages/runtime/package.json:27-61`의 package export map은 이 큐레이션을 package-resolution 단계에서 강제합니다. 명시적인 subpath는 다음과 같습니다. `.`, `./node`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, `./internal-node`입니다.
 
-JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, Web, internal seam이 각각 독립된 package subpath로 선언됩니다.
+JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, Web, devtools host bridge, internal seam이 각각 독립된 package subpath로 선언됩니다.
 
-`path:packages/runtime/package.json:27-56`
+`path:packages/runtime/package.json:27-61`
 ```json
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    "import": "./dist/index.js",
+    "default": "./dist/index.js"
   },
   "./node": {
     "types": "./dist/node.d.ts",
@@ -187,6 +198,10 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
   "./web": {
     "types": "./dist/web.d.ts",
     "import": "./dist/web.js"
+  },
+  "./devtools": {
+    "types": "./dist/devtools/index.d.ts",
+    "import": "./dist/devtools/index.js"
   },
   "./internal": {
     "types": "./dist/internal.d.ts",
@@ -204,7 +219,7 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
     "types": "./dist/internal-node.d.ts",
     "import": "./dist/internal-node.js"
   }
-}
+},
 ```
 
 이 발췌는 package manager와 TypeScript resolver가 같은 surface boundary를 보게 만든다는 점을 보여 줍니다. root, Node, Web, internal seam이 모두 하나의 barrel에 섞이지 않고, import path에서 비용과 의도를 드러냅니다.
@@ -213,11 +228,11 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
 
 `path:packages/runtime/src/node/node.test.ts:7-55`도 consumer 관점에서 같은 규칙을 강화합니다. 이 테스트는 root runtime API에 `bootstrapNodeApplication`, `createNodeHttpAdapter`, `runNodeApplication`이 없어야 한다고 단언합니다. 이 helper들은 Node subpath에서만 합법입니다.
 
-`path:packages/runtime/src/exports.test.ts:61-78`은 package export map과 `typesVersions`가 이 narrowed entrypoint를 선언하는지도 검사합니다. 바로 여기서 runtime branching은 구현 세부를 넘어 안정적인 published contract가 됩니다.
+`path:packages/runtime/src/exports.test.ts:100-123`은 package export map과 `typesVersions`가 `./devtools` host bridge를 포함한 이 narrowed entrypoint를 선언하는지도 검사합니다. 바로 여기서 runtime branching은 구현 세부를 넘어 안정적인 published contract가 됩니다.
 
 테스트는 package.json의 선언이 실제로 좁혀진 subpath를 포함하는지 읽어서 확인합니다. 특히 `internal-node`는 `typesVersions`에도 별도로 고정됩니다.
 
-`path:packages/runtime/src/exports.test.ts:61-78`
+`path:packages/runtime/src/exports.test.ts:100-123`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -229,6 +244,12 @@ it('declares the narrowed package export map', () => {
 
   expect(packageJson.exports).toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
+  expect(packageJson.exports).toMatchObject({
+    './devtools': {
+      import: './dist/devtools/index.js',
+      types: './dist/devtools/index.d.ts',
+    },
+  });
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
@@ -236,6 +257,7 @@ it('declares the narrowed package export map', () => {
   expect(packageJson.typesVersions?.['*']).toMatchObject({
     'internal-node': ['./dist/internal-node.d.ts'],
   });
+});
 ```
 
 따라서 export map은 단순 배포 설정이 아닙니다. root, public Node/Web subpath, lower-level internal seam을 분리하는 검증 대상입니다.
@@ -255,14 +277,21 @@ subpaths:
 이 설계는 portability mistake를 눈에 띄게 만듭니다. application code가 Node helper를 import한다면, 그 import path 자체가 이미 portability cost를 선언하고 있는 셈입니다.
 
 ## 10.3 The Node branch packages server lifecycle, retries, compression, and shutdown behind the ./node subpath
-public Node entrypoint는 `path:packages/runtime/src/node.ts:1-18`입니다. 이 파일은 logger factory와 `./node/internal-node.js`의 일부 API만 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
+public Node entrypoint는 `path:packages/runtime/src/node.ts:1-25`입니다. 이 파일은 logger factory, Node file-system asset source와 그 type, `./node/internal-node.js`의 선별된 API를 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
 
-Node public subpath는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger와 선택된 Node application helper만 공개합니다.
+Node public subpath는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger, file-system asset helper, 선택된 Node application helper만 공개합니다.
 
-`path:packages/runtime/src/node.ts:1-18`
+`path:packages/runtime/src/node.ts:1-25`
 ```typescript
 export * from './logging/json-logger.js';
 export * from './logging/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+} from './node/node-static-assets.js';
+export type {
+  NodeFileSystemAssetPrecompression,
+  NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 export {
   bootstrapNodeApplication,
   createNodeHttpAdapter,

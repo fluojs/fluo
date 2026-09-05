@@ -162,6 +162,84 @@ describe('NestJS shutdown migration contract companions', () => {
   });
 });
 
+describe('advanced runtime branching source excerpts', () => {
+  type RuntimeSourceExcerpt = {
+    sourcePath: string;
+    startLine: number;
+    endLine: number;
+    dedent?: number;
+  };
+
+  const documentationPaths = [
+    'book/advanced/ch10-runtime-branching.md',
+    'book/advanced/ch10-runtime-branching.ko.md',
+  ] as const;
+  const excerpts: readonly RuntimeSourceExcerpt[] = [
+    {
+      sourcePath: 'packages/runtime/src/exports.test.ts',
+      startLine: 19,
+      endLine: 46,
+      dedent: 2,
+    },
+    {
+      sourcePath: 'packages/runtime/src/index.ts',
+      startLine: 1,
+      endLine: 47,
+    },
+    {
+      sourcePath: 'packages/runtime/package.json',
+      startLine: 27,
+      endLine: 61,
+      dedent: 2,
+    },
+    {
+      sourcePath: 'packages/runtime/src/exports.test.ts',
+      startLine: 100,
+      endLine: 123,
+      dedent: 2,
+    },
+    {
+      sourcePath: 'packages/runtime/src/node.ts',
+      startLine: 1,
+      endLine: 25,
+    },
+  ] as const;
+
+  function sourceReference({ sourcePath, startLine, endLine }: RuntimeSourceExcerpt): string {
+    return `${sourcePath}:${startLine}-${endLine}`;
+  }
+
+  function extractCodeBlock(markdown: string, reference: string): string {
+    const marker = `\`path:${reference}\``;
+    const markerIndex = markdown.indexOf(marker);
+    expect(markerIndex, `missing source marker ${marker}`).toBeGreaterThanOrEqual(0);
+
+    const openingFenceIndex = markdown.indexOf('```', markerIndex);
+    const codeStart = markdown.indexOf('\n', openingFenceIndex) + 1;
+    const closingFenceIndex = markdown.indexOf('\n```', codeStart);
+    expect(closingFenceIndex, `missing code block for ${marker}`).toBeGreaterThan(codeStart);
+
+    return markdown.slice(codeStart, closingFenceIndex);
+  }
+
+  it('keeps the canonical EN and KO excerpts identical to their cited runtime source ranges', () => {
+    for (const excerpt of excerpts) {
+      const reference = sourceReference(excerpt);
+      const source = readFileSync(join(repoRoot, excerpt.sourcePath), 'utf8')
+        .split('\n')
+        .slice(excerpt.startLine - 1, excerpt.endLine)
+        .map((line) => line.slice(excerpt.dedent ?? 0))
+        .join('\n');
+      const codeBlocks = documentationPaths.map((documentationPath) =>
+        extractCodeBlock(readFileSync(join(repoRoot, documentationPath), 'utf8'), reference),
+      );
+
+      expect(codeBlocks[0]).toBe(source);
+      expect(codeBlocks[1]).toBe(codeBlocks[0]);
+    }
+  });
+});
+
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
   'createCqrsModule',

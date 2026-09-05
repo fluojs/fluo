@@ -62,11 +62,11 @@ Actual branching happens only at seams that need host-specific capabilities. Tho
 
 That is why the chapter title says "runtime branching," not "runtime fork." Fluo does not duplicate the whole runtime per host. It keeps the shared runtime shell in the center and branches only at explicit surface boundaries.
 
-This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:12-79`. The test enforces that the root runtime barrel must be transport-neutral, Node-only helpers must live under `./node`, Web helpers must live under `./web`, and lower-level adapter seams must live under `./internal/...` subpaths.
+This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:19-46`. The contiguous root-boundary tests enforce that the root runtime barrel must be transport-neutral, keep Bootstrap defaults detached from Node-only logger modules, and expose only Bootstrap-scoped operational helpers. Node-only helpers must live under `./node`, Web helpers must live under `./web`, and lower-level adapter seams must live under `./internal/...` subpaths.
 
 The root boundary starts with a deny list. The root barrel must not directly contain dispatch helpers, Web factories, Node shutdown helpers, or adapter Bootstrap helpers.
 
-`path:packages/runtime/src/exports.test.ts:13-30`
+`path:packages/runtime/src/exports.test.ts:19-46`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -76,9 +76,18 @@ it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
 });
 
+it('keeps root bootstrap defaults detached from Node-only logger modules', () => {
+  const bootstrapSource = readFileSync(new URL('./bootstrap.ts', import.meta.url), 'utf8');
+
+  expect(bootstrapSource).not.toContain('./logging/logger.js');
+  expect(bootstrapSource).not.toContain('./logging/json-logger.js');
+  expect(bootstrapSource).toContain('./logging/default-logger.js');
+});
+
 it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
+  expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
-  expect(runtime.createHealthModule).toBeTypeOf('function');
+  expect(runtime).toHaveProperty('createHealthModule');
   expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
@@ -105,11 +114,11 @@ shared bootstrap shell in root runtime
 This frame is the background for the whole chapter. Node, Web, and Edge are not three independent runtimes. They are three ways to attach different host I/O semantics to one transport-neutral Bootstrap core.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-The root public surface is defined in `path:packages/runtime/src/index.ts:1-46`. It exports the Bootstrap API, errors, selected diagnostics types and helpers, health helpers, multipart types and its consumed-body error, platform contracts, request transaction and route-inspection helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
+The root public surface is defined in `path:packages/runtime/src/index.ts:1-47`. It exports the Bootstrap API, errors, selected diagnostics types and helpers, health helpers, `ModuleGraphCompileCache`, multipart types and its consumed-body error, platform contracts, request transaction and route-inspection helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
 
 The actual shape of the root barrel is small and selective. It exposes `bootstrap`, health, errors, selected diagnostics and multipart exports, platform types, request transaction, route inspection, Tokens, and shared types.
 
-`path:packages/runtime/src/index.ts:1-46`
+`path:packages/runtime/src/index.ts:1-47`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -127,6 +136,7 @@ export {
   createRuntimeDiagnosticsGraph,
 } from './health/diagnostics.js';
 export * from './health/health.js';
+export { ModuleGraphCompileCache } from './module-graph.js';
 export type {
   MultipartFieldPart,
   MultipartFilePart,
@@ -165,20 +175,21 @@ The shared `UploadedFile` contract keeps multipart payload bytes runtime-neutral
 
 This list contains no Node server helpers or Web dispatch helpers. A reader looking at the root API can already see that the shared Bootstrap contract and host-specific helpers have different boundaries.
 
-That omission is not accidental. `path:packages/runtime/src/exports.test.ts:13-29` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.
+That omission is not accidental. `path:packages/runtime/src/exports.test.ts:19-25` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.
 
 So the root runtime API is curated around portable Bootstrap concerns. It exposes only what every host can share. Runtime Tokens such as `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, and `PLATFORM_SHELL`, along with the shared runtime type system, belong here.
 
-The package export map in `path:packages/runtime/package.json:27-56` enforces this curation at the package resolution stage. The explicit subpaths are `.`, `./node`, `./web`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, and `./internal-node`.
+The package export map in `path:packages/runtime/package.json:27-61` enforces this curation at the package resolution stage. The explicit subpaths are `.`, `./node`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, and `./internal-node`.
 
-The JSON export map repeats the same boundaries. The root entrypoint, Node, Web, and internal seams are each declared as independent package subpaths.
+The JSON export map repeats the same boundaries. The root entrypoint, Node, Web, devtools host bridge, and internal seams are each declared as independent package subpaths.
 
-`path:packages/runtime/package.json:27-56`
+`path:packages/runtime/package.json:27-61`
 ```json
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    "import": "./dist/index.js",
+    "default": "./dist/index.js"
   },
   "./node": {
     "types": "./dist/node.d.ts",
@@ -187,6 +198,10 @@ The JSON export map repeats the same boundaries. The root entrypoint, Node, Web,
   "./web": {
     "types": "./dist/web.d.ts",
     "import": "./dist/web.js"
+  },
+  "./devtools": {
+    "types": "./dist/devtools/index.d.ts",
+    "import": "./dist/devtools/index.js"
   },
   "./internal": {
     "types": "./dist/internal.d.ts",
@@ -204,7 +219,7 @@ The JSON export map repeats the same boundaries. The root entrypoint, Node, Web,
     "types": "./dist/internal-node.d.ts",
     "import": "./dist/internal-node.js"
   }
-}
+},
 ```
 
 This excerpt shows that the package manager and TypeScript resolver see the same surface boundaries. The root, Node, Web, and internal seams do not get mixed into one barrel. The import path exposes cost and intent.
@@ -213,11 +228,11 @@ This matters because an export map is stronger than documentation. It prevents a
 
 `path:packages/runtime/src/node/node.test.ts:7-55` strengthens the same rule from the consumer's perspective. The test asserts that the root runtime API must not contain `bootstrapNodeApplication`, `createNodeHttpAdapter`, or `runNodeApplication`. Those helpers are legal only from the Node subpath.
 
-`path:packages/runtime/src/exports.test.ts:61-78` also checks whether the package export map and `typesVersions` declare this narrowed entrypoint. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
+`path:packages/runtime/src/exports.test.ts:100-123` also checks whether the package export map and `typesVersions` declare these narrowed entrypoints, including the `./devtools` host bridge. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
 
 The test reads package.json and confirms that its declarations include the narrowed subpaths. In particular, `internal-node` is separately pinned in `typesVersions` too.
 
-`path:packages/runtime/src/exports.test.ts:61-78`
+`path:packages/runtime/src/exports.test.ts:100-123`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -229,6 +244,12 @@ it('declares the narrowed package export map', () => {
 
   expect(packageJson.exports).toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
+  expect(packageJson.exports).toMatchObject({
+    './devtools': {
+      import: './dist/devtools/index.js',
+      types: './dist/devtools/index.d.ts',
+    },
+  });
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
@@ -236,6 +257,7 @@ it('declares the narrowed package export map', () => {
   expect(packageJson.typesVersions?.['*']).toMatchObject({
     'internal-node': ['./dist/internal-node.d.ts'],
   });
+});
 ```
 
 So the export map is not just distribution configuration. It is a verified boundary that separates the root, public Node/Web subpaths, and lower-level internal seams.
@@ -255,14 +277,21 @@ subpaths:
 This design makes portability mistakes visible. If application code imports a Node helper, the import path itself already declares the portability cost.
 
 ## 10.3 The Node branch packages server lifecycle, retries, compression, and shutdown behind the ./node subpath
-The public Node entrypoint is `path:packages/runtime/src/node.ts:1-18`. This file re-exports only logger factories and part of the API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
+The public Node entrypoint is `path:packages/runtime/src/node.ts:1-25`. This file re-exports logger factories, the Node file-system asset source and its types, and selected API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
 
-The Node public subpath does not open the whole internal file directly. As shown below, it exposes loggers and selected Node application helpers only.
+The Node public subpath does not open the whole internal file directly. As shown below, it exposes loggers, file-system asset helpers, and selected Node application helpers only.
 
-`path:packages/runtime/src/node.ts:1-18`
+`path:packages/runtime/src/node.ts:1-25`
 ```typescript
 export * from './logging/json-logger.js';
 export * from './logging/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+} from './node/node-static-assets.js';
+export type {
+  NodeFileSystemAssetPrecompression,
+  NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 export {
   bootstrapNodeApplication,
   createNodeHttpAdapter,
