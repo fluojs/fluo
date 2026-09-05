@@ -469,6 +469,35 @@ jobs:
       - name: Run Bun native routing and lifecycle conformance
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
+  vite-toolchain-node-floor:
+    name: Vite toolchain Node floor (${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - "20.19.3"
+          - "22.12.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Vite 8 compatibility at the private root floor
+        run: pnpm vitest run packages/vite/src/vite8-rolldown.test.ts tooling/governance/vite-compatibility-contract.test.ts
+
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
     runs-on: ubuntu-latest
@@ -507,6 +536,7 @@ jobs:
       - official-web-runtime-adapter-portability
       - native-response-cookie-conformance
       - bun-native-routing-and-lifecycle-conformance
+      - vite-toolchain-node-floor
       - verify-platform-consistency-governance
       - resolve-pr-verification-scope
     runs-on: ubuntu-latest
