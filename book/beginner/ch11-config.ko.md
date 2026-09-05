@@ -387,7 +387,7 @@ fluo의 명시적 설정 시스템은 기능 토글 구현을 간단하게 만�
 ### Managing Configuration for Serverless
 AWS Lambda나 Cloudflare Workers와 같은 서버리스 환경에서 실행될 때 설정 관리는 독특한 제약 사항을 가집니다. 콜드 스타트 시간이 중요하고, 각 host는 자기만의 경계에서 설정을 노출합니다. 이때 이식 가능한 fluo 패턴은 애플리케이션 entrypoint에서 host가 제공한 값을 읽은 뒤, `processEnv` 또는 `runtimeOverrides`를 통해 명시적인 in-memory map으로 `ConfigModule.forRoot(...)`에 전달하는 것입니다.
 
-`@fluojs/config`의 env-file loading, 기본 `.env` loading, 또는 `watch: true`를 이식 가능한 serverless 지원으로 간주하지 마세요. 해당 경로는 package README의 Node.js 20.16.0+ 계약을 따릅니다. 서버리스 값이 `processEnv` 또는 `runtimeOverrides`로 명시적으로 매핑된 뒤에는, ambient host environment lookup에 의존하지 않고 그 in-memory input에 fluo의 우선순위 규칙이 적용됩니다.
+`@fluojs/config`의 env-file loading, 기본 `.env` loading, 또는 `watch: true`를 이식 가능한 serverless 지원으로 간주하지 마세요. 해당 경로는 package README의 Node.js `>=24.0.0 <27` 계약을 따릅니다. 서버리스 값이 `processEnv` 또는 `runtimeOverrides`로 명시적으로 매핑된 뒤에는, ambient host environment lookup에 의존하지 않고 그 in-memory input에 fluo의 우선순위 규칙이 적용됩니다.
 
 ### Final Thoughts on Configuration
 능숙한 설정 관리는 깨지기 쉬운 스크립트와 탄탄한 백엔드 시스템을 가르는 차이입니다. fluo의 명시적이고, 검증 가능하며, 계층적인 접근 방식을 받아들이면 첫 프로토타입부터 전 세계 규모의 프로덕션 배포에 이르기까지 애플리케이션을 지탱할 기반을 구축하게 됩니다.

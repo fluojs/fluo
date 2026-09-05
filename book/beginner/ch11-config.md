@@ -387,7 +387,7 @@ fluo's explicit configuration system makes feature toggles simple to implement. 
 ### Managing Configuration for Serverless
 Configuration management has unique constraints when running in serverless environments such as AWS Lambda or Cloudflare Workers. Cold start time matters, and each host exposes configuration through its own boundary. The portable fluo pattern is to read those host-provided values at the application entrypoint and pass an explicit in-memory map to `ConfigModule.forRoot(...)` through `processEnv` or `runtimeOverrides`.
 
-Do not treat env-file loading, default `.env` loading, or `watch: true` as portable serverless support from `@fluojs/config`. Those paths are governed by the package README's Node.js 20.16.0+ contract. Once serverless values are explicitly mapped into `processEnv` or `runtimeOverrides`, fluo's precedence rules apply to that in-memory input without relying on ambient host environment lookup.
+Do not treat env-file loading, default `.env` loading, or `watch: true` as portable serverless support from `@fluojs/config`. Those paths are governed by the package README's Node.js `>=24.0.0 <27` contract. Once serverless values are explicitly mapped into `processEnv` or `runtimeOverrides`, fluo's precedence rules apply to that in-memory input without relying on ambient host environment lookup.
 
 ### Final Thoughts on Configuration
 Skilled configuration management is the difference between fragile scripts and solid backend systems. By adopting fluo's explicit, verifiable, and layered approach, you build a foundation that can support your application from the first prototype to global production deployment.

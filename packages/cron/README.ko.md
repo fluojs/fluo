@@ -49,11 +49,11 @@ npm install @fluojs/cron
 
 ## Node.js 호환성
 
-`@fluojs/cron` 3은 `@fluojs/runtime` 3에 의존하므로 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 지원하지 않습니다.
+`@fluojs/cron`은 패키지 자체의 지원 정책으로 Node.js `>=24.0.0 <27`을 요구합니다. Node.js 24 미만과 Node.js 27+는 지원하지 않습니다. Portable `@fluojs/runtime`의 engine omission은 별도 계약입니다.
 
 ### 3으로 마이그레이션
 
-`@fluojs/cron` 2에서 업그레이드하기 전에 배포 host를 Node.js `>=20.19.3 <21 || >=22.2.0 <27`로 옮기세요. `@fluojs/cron` 3을 설치하기 전에 제거된 Node.js version을 사용하는 runtime image, CI matrix, local development environment를 업데이트해야 합니다.
+`@fluojs/cron` 2에서 업그레이드하기 전에 배포 host를 Node.js `>=24.0.0 <27`로 옮기세요. `@fluojs/cron` 3을 설치하기 전에 제거된 Node.js version을 사용하는 runtime image, CI matrix, local development environment를 업데이트해야 합니다.
 
 ## 사용 시점
 

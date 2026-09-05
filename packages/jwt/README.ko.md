@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.
+
 HTTP에 독립적인 JWT 토큰 코어로, 액세스 토큰의 서명 및 검증을 담당하며 검증된 결과를 정규화된 `JwtPrincipal` 객체로 변환합니다.
 
 ## 목차

@@ -20,7 +20,7 @@ Configuration loading, merging, validation, and typed runtime access for fluo ap
 npm install @fluojs/config
 ```
 
-The package intentionally declares no package-wide `engines.node`. `ConfigService`, merge/validation/clone behavior, and `loadConfig({ defaults, processEnv, runtimeOverrides })` are portable and never resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Env-file loading, default `.env` loading, and watch mode are Node-only features: they lazily resolve builtins through `process.getBuiltinModule(...)` (available in Node.js 20.16.0 or newer) and throw `CONFIG_RUNTIME_UNAVAILABLE` with guidance to use in-memory options or run that feature on Node.js when the host cannot provide the boundary.
+The package intentionally declares no package-wide `engines.node`. `ConfigService`, merge/validation/clone behavior, and `loadConfig({ defaults, processEnv, runtimeOverrides })` are portable and never resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Env-file loading, default `.env` loading, and watch mode are Node-only features: they lazily resolve builtins through `process.getBuiltinModule(...)` (supported on Node.js `>=24.0.0 <27`) and throw `CONFIG_RUNTIME_UNAVAILABLE` with guidance to use in-memory options or run that feature on Node.js when the host cannot provide the boundary. This guard checks feature capabilities; it does not compare Node versions or reject portable root imports.
 
 ## When to Use
 

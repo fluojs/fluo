@@ -102,14 +102,14 @@ describe('@fluojs/config root runtime boundary', () => {
     expect(cwd).not.toHaveBeenCalled();
   });
 
-  it('loads env files through the Node 20.16 getBuiltinModule fallback when direct filesystem builtin lookup is unavailable', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-node20-16-fallback-'));
+  it('loads env files through the getBuiltinModule fallback when direct filesystem builtin lookup is unavailable', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-node-fallback-'));
     const envFilePath = join(cwd, '.env');
     const getBuiltinModule = processWithGetBuiltinModule.getBuiltinModule;
 
     writeFileSync(envFilePath, 'PORT=4010\n');
     vi.stubGlobal('require', () => {
-      throw new Error('Node 20.16 ESM fallback must not depend on global require.');
+      throw new Error('Node ESM fallback must not depend on global require.');
     });
     spyOnGetBuiltinModule(((id: string) => (id === 'node:module' ? getBuiltinModule?.('node:module') : undefined)) as typeof process.getBuiltinModule);
 
@@ -138,9 +138,11 @@ describe('@fluojs/config root runtime boundary', () => {
         code: 'CONFIG_RUNTIME_UNAVAILABLE',
         message: 'Node.js configuration loading is unavailable in this runtime.',
       });
-      expect(getErrorCause(error)).toEqual(expect.objectContaining({
-        message: expect.stringMatching(/Node\.js 20\.16\.0 or newer is required.*Use in-memory config options or run env-file loading on Node\.js\./u),
-      }));
+      expect(getErrorCause(error)).toBeInstanceOf(Error);
+      expect(getErrorCause(error)).toMatchObject({
+        message: expect.stringContaining('node:module'),
+      });
+      expect(loadConfig({ defaults: { PORT: '4010' }, processEnv: {} })).toEqual({ PORT: '4010' });
       return;
     }
 

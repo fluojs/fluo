@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo 애플리케이션을 위한 Node.js 20+ Prisma lifecycle 및 ALS 기반 transaction context입니다. `PrismaClient`를 모듈 시스템에 연결하고 자동 연결 관리와 요청 범위 트랜잭션을 제공합니다.
+fluo 애플리케이션을 위한 Node.js `>=24.0.0 <27` Prisma lifecycle 및 ALS 기반 transaction context입니다. `PrismaClient`를 모듈 시스템에 연결하고 자동 연결 관리와 요청 범위 트랜잭션을 제공합니다.
 
 ## 목차
 
@@ -31,7 +31,7 @@ pnpm add @prisma/client
 
 ## 사용 시점
 
-- Node.js 20+에서 Prisma를 ORM으로 사용하면서 fluo의 의존성 주입 및 라이프사이클 훅과 통합하고 싶을 때.
+- Node.js `>=24.0.0 <27`에서 Prisma를 ORM으로 사용하면서 fluo의 의존성 주입 및 라이프사이클 훅과 통합하고 싶을 때.
 - 여러 서비스와 리포지토리 사이에서 `tx` 객체를 일일이 전달하지 않고도 트랜잭션 컨텍스트를 안정적으로 공유하고 싶을 때.
 - 애플리케이션 시작 시 자동 `$connect`, 종료 시 자동 `$disconnect`가 필요할 때.
 
@@ -210,7 +210,7 @@ await this.prisma.transaction(async () => {
 - `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다. `details.transactionContext: 'unavailable'`은 호스트 런타임이 사용 가능한 `AsyncLocalStorage`를 노출하지 않았음을 나타내며, 이 경우 `transaction()`과 `requestTransaction()`은 Prisma 트랜잭션을 열기 전에 예외를 던집니다.
 - `ownership.externallyManaged: false`와 `ownership.ownsResources: true`는 패키지가 fluo 애플리케이션 라이프사이클 안에서 등록된 클라이언트의 `$connect()` / `$disconnect()` lifecycle hook을 소유한다는 의미입니다.
 
-`details.transactionContext`가 `unavailable`이면 패키지는 동기 stack 기반 컨텍스트로 fallback하지 않습니다. async boundary 사이에서 `current()`를 잃기 때문입니다. fallback boundary는 애플리케이션이 소유합니다. 트랜잭션 컨텍스트 없이도 데이터베이스 접근이 필요한 호출자는 (예: `PRISMA_CLIENT` 토큰을 통해) 원시 `PrismaClient`를 직접 호출하고 자체 일관성 semantics를 관리하거나, `AsyncLocalStorage`를 제공하는 호스트 런타임(Node.js 20+가 문서화된 경로)에서 실행해야 합니다. `unavailable` readiness 상태는 운영적으로 실행 가능한 신호로 취급하세요. health check에 노출하고, 호스트가 ALS를 제공하거나 애플리케이션이 비트랜잭션 접근 경로로 전환할 때까지 트랜잭션 의존 handler로 트래픽을 라우팅하지 마세요.
+`details.transactionContext`가 `unavailable`이면 패키지는 동기 stack 기반 컨텍스트로 fallback하지 않습니다. async boundary 사이에서 `current()`를 잃기 때문입니다. fallback boundary는 애플리케이션이 소유합니다. 트랜잭션 컨텍스트 없이도 데이터베이스 접근이 필요한 호출자는 (예: `PRISMA_CLIENT` 토큰을 통해) 원시 `PrismaClient`를 직접 호출하고 자체 일관성 semantics를 관리하거나, `AsyncLocalStorage`를 제공하는 호스트 런타임(Node.js `>=24.0.0 <27`가 문서화된 경로)에서 실행해야 합니다. `unavailable` readiness 상태는 운영적으로 실행 가능한 신호로 취급하세요. health check에 노출하고, 호스트가 ALS를 제공하거나 애플리케이션이 비트랜잭션 접근 경로로 전환할 때까지 트랜잭션 의존 handler로 트래픽을 라우팅하지 마세요.
 
 ### 비동기 설정과 격리
 
@@ -231,7 +231,7 @@ PrismaModule.forRootAsync({
 
 하나의 컴파일된 애플리케이션 안에서는 하위 provider가 동일하게 resolve된 `PrismaService`, ALS 트랜잭션 컨텍스트, 라이프사이클 관리 대상 클라이언트를 공유합니다. 서로 다른 애플리케이션 컨테이너는 독립된 factory 결과를 받으므로 `$connect` / `$disconnect` 소유권과 요청 트랜잭션 상태가 격리됩니다.
 
-트랜잭션 경계에는 호스트가 제공하는 `AsyncLocalStorage` 지원이 필요합니다. 패키지 manifest는 `engines.node >=20.0.0`을 선언하며, root wrapper는 문서화된 Node.js 20+ Prisma 통합 경로입니다. `@fluojs/prisma`는 런타임이 노출하는 `globalThis.AsyncLocalStorage` 또는 Node.js의 `process.getBuiltinModule('node:async_hooks')` 호스트 경계를 통해 ALS를 resolve합니다. 두 경로 모두 사용할 수 없거나 host builtin lookup이 실패하면 동기 stack fallback으로 async boundary 사이의 `current()`를 잃는 대신, Prisma 트랜잭션을 열기 전에 `transaction()`과 `requestTransaction()`이 예외를 던집니다. 이 상태는 `createPlatformStatusSnapshot().details.transactionContext`에 `unavailable`로 보고됩니다.
+트랜잭션 경계에는 호스트가 제공하는 `AsyncLocalStorage` 지원이 필요합니다. 패키지 manifest는 `engines.node >=24.0.0 <27`을 선언하며, root wrapper는 문서화된 Node.js `>=24.0.0 <27` Prisma 통합 경로입니다. `@fluojs/prisma`는 런타임이 노출하는 `globalThis.AsyncLocalStorage` 또는 Node.js의 `process.getBuiltinModule('node:async_hooks')` 호스트 경계를 통해 ALS를 resolve합니다. 두 경로 모두 사용할 수 없거나 host builtin lookup이 실패하면 동기 stack fallback으로 async boundary 사이의 `current()`를 잃는 대신, Prisma 트랜잭션을 열기 전에 `transaction()`과 `requestTransaction()`이 예외를 던집니다. 이 상태는 `createPlatformStatusSnapshot().details.transactionContext`에 `unavailable`로 보고됩니다.
 
 ### 수동 모듈 조합
 

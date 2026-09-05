@@ -57,6 +57,8 @@ export class UsersModule {}
 
 ## 빠른 시작
 
+Node.js 경로와 CLI는 `>=24.0.0 <27`을 지원합니다. 기존 Node 20/22 프로젝트는 [Node.js 마이그레이션](./docs/reference/node-support.ko.md)을 먼저 적용하세요. Bun, Deno, Cloudflare Workers의 runtime-native 계약은 별도입니다.
+
 CLI를 사용하는 것이 fluo를 경험하는 가장 빠른 방법입니다.
 
 ```bash

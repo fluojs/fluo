@@ -20,7 +20,7 @@ Descriptor-driven OpenAPI 3.1.0 document generation for fluo, with standard deco
 pnpm add @fluojs/openapi
 ```
 
-`@fluojs/openapi` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. That package-owned support contract excludes Node 21, Node 22 before 22.2.0, and unverified Node 27+; portable `@fluojs/runtime` has no package-wide Node engine. Earlier 1.x releases advertised `engines.node >=20.0.0`.
+`@fluojs/openapi` supports Node.js `>=24.0.0 <27` and declares that exact range through `engines.node`. That package-owned support contract excludes Node versions below 24 and Node 27+; portable `@fluojs/runtime` has no package-wide Node engine. Earlier 1.x releases advertised `engines.node >=20.0.0`.
 
 ## When to Use
 

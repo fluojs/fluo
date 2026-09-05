@@ -21,7 +21,7 @@ fluo를 위한 Redis 기반 분산 작업 처리 패키지입니다. 데코레�
 npm install @fluojs/queue @fluojs/redis
 ```
 
-`@fluojs/queue`는 필수 Node.js 범위 `>=20.19.3 <21 || >=22.2.0 <27`을 패키지 자체의 지원 계약으로 선언합니다. 이 major version을 적용하기 전에 Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, 또는 Node.js 27+를 사용하는 Queue consumer는 지원되는 release로 업그레이드하세요.
+`@fluojs/queue`는 필수 Node.js 범위 `>=24.0.0 <27`을 패키지 자체의 지원 계약으로 선언합니다. 이 major version을 적용하기 전에 Node.js 24 미만 또는 Node.js 27+를 사용하는 Queue consumer는 지원되는 release로 업그레이드하세요.
 
 `@fluojs/queue`는 BullMQ `^5.81.1`을 포함합니다. 업그레이드할 때 application lockfile을 갱신해 BullMQ의 패치된 dependency graph가 설치되도록 하세요. Queue registration, worker discovery, persisted-job contract는 그대로입니다.
 

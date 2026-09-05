@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Node.js `>=20.19.3 <21 || >=22.2.0 <27` request-level testing helpers, testing module construction, and provider overrides for fluo applications.
+Node.js `>=24.0.0 <27` request-level testing helpers, testing module construction, and provider overrides for fluo applications.
 
 ## Table of Contents
 
@@ -253,7 +253,7 @@ React test runtime would reduce coverage rather than remove necessary setup.
 - **Harness subpaths**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsConditionalRequests()`, `assertSupportsCustomHttpRouteMethods()`, `assertSupportsSingleByteRanges()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertSupportsPortableResponseCookies()`, `createConditionalRequestBootstrapOptions`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
-The package manifest declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, matching the verified Node listener windows used by its public body-bearing RFC `QUERY` portability assertion. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that exact Node.js engine range.
+The package manifest declares `engines.node >=24.0.0 <27`, matching the verified Node listener windows used by its public body-bearing RFC `QUERY` portability assertion. Node versions below 24 and Node 27+ are excluded. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that exact Node.js engine range.
 
 `@fluojs/testing/vitest/tooling` maps workspace aliases only for each package's declared public `exports`. Private source files, internal helpers, and unexported source entrypoints are intentionally excluded so tests exercise the same import boundaries that consumers receive from published packages.
 

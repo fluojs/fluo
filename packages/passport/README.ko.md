@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.
+
 fluo를 위한 인증 실행 계층으로, 어떤 `AuthStrategy`든 공통 `AuthGuard`를 통해 요청 컨텍스트(`requestContext.principal`)에 연결합니다.
 
 ## 목차

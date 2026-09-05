@@ -21,13 +21,13 @@ Socket.IO v4 gateway adapter for the fluo runtime.
 npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io@^4.8.3
 ```
 
-`@fluojs/socket.io` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` for Node-backed adapters as its package-owned support contract. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
+`@fluojs/socket.io` supports Node.js `>=24.0.0 <27` for Node-backed adapters as its package-owned support contract. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
 
 `@fluojs/socket.io` requires Socket.IO `^4.8.3`. Consumers using an older Socket.IO v4 release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/socket.io` release. The refreshed Engine.IO chain must resolve its patched WebSocket runtime; the fluo adapter API is unchanged.
 
 ## When to Use
 
-Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets. It targets Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed adapters and the official Bun engine path; Deno and Workers are not supported by this Socket.IO adapter.
+Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets. It targets Node.js `>=24.0.0 <27` server-backed adapters and the official Bun engine path; Deno and Workers are not supported by this Socket.IO adapter.
 
 ## Quick Start
 
@@ -173,13 +173,13 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
 - Types: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap. Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime, and Bun additionally requires static CORS shapes.
+`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js `>=24.0.0 <27` server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap. Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime, and Bun additionally requires static CORS shapes.
 
 ## Supported Platforms
 
 | Platform | Support | Note |
 | --- | --- | --- |
-| Node.js (Raw/Express/Fastify) | ✅ Full | Node.js `>=20.19.3 <21 || >=22.2.0 <27`; shared application listener |
+| Node.js (Raw/Express/Fastify) | ✅ Full | Node.js `>=24.0.0 <27`; shared application listener |
 | Bun | ✅ Full | Via `@socket.io/bun-engine`; static CORS only, no `serverBacked` gateways |
 | Deno | ❌ None | Not currently supported |
 | Workers | ❌ None | Not currently supported |

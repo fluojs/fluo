@@ -33,7 +33,7 @@ npm install pg
 
 ## Runtime Support
 
-The root `@fluojs/drizzle` package requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`. It imports Node's `node:async_hooks` module to maintain the ambient transaction context and its package manifest declares that package-owned support contract. Upgrade Node 20 hosts to `>=20.19.3` or Node 22 hosts to `>=22.2.0`; Node 21 and Node 27+ are unsupported.
+The root `@fluojs/drizzle` package requires Node.js `>=24.0.0 <27`. It imports Node's `node:async_hooks` module to maintain the ambient transaction context and its package manifest declares that package-owned support contract. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported.
 
 Drizzle ORM itself can target drivers such as Bun SQL or Cloudflare D1, but those driver runtimes are outside this fluo wrapper until a non-Node transaction-context adapter is documented.
 
@@ -41,7 +41,7 @@ Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare 
 
 ## When to Use
 
-- when an application running Node.js `>=20.19.3 <21 || >=22.2.0 <27` needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
+- when an application running Node.js `>=24.0.0 <27` needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
 - when repositories need a single `current()` seam that switches between the root handle and the active transaction handle
 - when application shutdown should also run an explicit cleanup hook for the underlying driver resources
 

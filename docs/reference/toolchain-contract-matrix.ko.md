@@ -9,9 +9,9 @@
 | **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext`, 생성 config는 deprecated `baseUrl` aliasing을 피함 |
 | **Babel** | `v7.26+` | 루트 워크스페이스는 `@babel/core` `^7.26.10`, `{ version: '2023-11' }` 구성을 쓰는 `@babel/plugin-proposal-decorators` `^7.28.0`, `@babel/preset-typescript` `^7.27.0`을 고정합니다. |
 | **Vite** | `v6.2+` | 루트 워크스페이스는 기본 dev/test toolchain에 Vite 6.4.3을 고정합니다. `@fluojs/vite`에는 Rolldown/Oxc 전용 build pipeline을 실행하는 전용 Vite 8.0.8 integration gate도 있습니다. |
-| **@fluojs/vite** | `v1.0+`; Node.js `>=20.0.0` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, Vite `>=6.2.0`을 요구하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지하고, 실행 가능한 Vite 6.4.3 및 Vite 8.0.8 coverage로 field-decorator metadata를 검증합니다. |
+| **@fluojs/vite** | `v1.0+`; Node.js `>=24.0.0 <27` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, Vite `>=6.2.0`을 요구하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지하고, 실행 가능한 Vite 6.4.3 및 Vite 8.0.8 coverage로 field-decorator metadata를 검증합니다. |
 | **Vitest** | `v3.0+` | 루트 워크스페이스는 `vitest` `^3.0.8`을 고정하며, 패키지 로컬 설정은 주로 `^3.2.4`를 사용합니다. |
-| **Node.js** | Private root workspace: `>=20.19.3 <21 || >=22.12.0 <27` | Private development workspace는 Node 20.19.3 floor를 유지하고, unconditional Vite 8.0.8 gate가 `^20.19.0 || >=22.12.0`을 요구하므로 Node 22 line에서는 Node 22.12.0 이상을 요구합니다. 이 root-only toolchain floor는 public package 계약을 변경하지 않습니다. Node HTTP listener package와 생성된 Node HTTP/mixed starter는 `>=20.19.3 <21 || >=22.2.0 <27`을 유지하고, 다른 package와 starter도 각각 독립적으로 문서화된 runtime floor를 유지합니다. |
+| **Node.js** | Root workspace와 Node-bound public package: `>=24.0.0 <27` | Exact `24.0.0`, 최신 `24.x`, 최신 `26.x`는 frozen install, 전체 `pnpm verify`, 생성 starter 검증을 실행합니다. 최신 `24.x`는 `pnpm verify:docs`와 release automation도 실행하며, 최신 `26.x`는 forward compatibility만 검증합니다. Node 22는 새 major 지원 matrix에서 제외됩니다. 8개 portable package의 engine omission과 Bun/Deno/Workers runtime lane은 독립적으로 유지합니다. [지원 및 마이그레이션](./node-support.ko.md)을 참조하세요. |
 
 ## CLI 및 스캐폴딩 계약
 

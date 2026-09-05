@@ -49,11 +49,11 @@ npm install @fluojs/cron
 
 ## Node.js Compatibility
 
-`@fluojs/cron` 3 requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` because it depends on `@fluojs/runtime` 3. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ are not supported.
+`@fluojs/cron` requires Node.js `>=24.0.0 <27` as its package-owned support policy. Node.js versions below 24 and Node.js 27+ are not supported. The portable `@fluojs/runtime` engine omission is a separate contract.
 
 ### Migration to 3
 
-Before upgrading from `@fluojs/cron` 2, move deployment hosts to Node.js `>=20.19.3 <21 || >=22.2.0 <27`. Update any runtime image, CI matrix, or local development environment that still uses a removed Node.js version before installing `@fluojs/cron` 3.
+Before upgrading from `@fluojs/cron` 2, move deployment hosts to Node.js `>=24.0.0 <27`. Update any runtime image, CI matrix, or local development environment that still uses a removed Node.js version before installing `@fluojs/cron` 3.
 
 ## When to Use
 

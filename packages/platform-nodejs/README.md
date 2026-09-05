@@ -23,7 +23,7 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 npm install @fluojs/platform-nodejs
 ```
 
-This package targets Node.js `>=20.19.3 <21 || >=22.2.0 <27`. The published package manifest declares that exact `engines.node` range because Node 20 before 20.19.3, Node 21, and Node 22 before 22.2.0 do not consistently expose listener-level RFC `QUERY` through the request event; unverified Node 27+ is not advertised. The package owns the Node listener, filesystem, logger, compression, and process-signal implementations used by raw Node, Express, and Fastify hosts.
+This package targets Node.js `>=24.0.0 <27` and declares that exact `engines.node` range. The Node 24 LTS floor is a support-policy decision; listener-level RFC `QUERY` remains verified on the supported runtimes. The package owns the Node listener, filesystem, logger, compression, and process-signal implementations used by raw Node, Express, and Fastify hosts.
 
 ## Runtime Node Import Migration
 

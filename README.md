@@ -57,6 +57,8 @@ export class UsersModule {}
 
 ## Quick Start
 
+The Node.js path and CLI support `>=24.0.0 <27`. Existing Node 20/22 projects should follow the [Node.js migration](./docs/reference/node-support.md) first. Bun, Deno, and Cloudflare Workers retain their runtime-native contracts.
+
 The fastest way to experience fluo is through the official CLI.
 
 ```bash

@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.
+
 라우트 메타데이터를 DTO 바인딩, 검증, 가드, 인터셉터, 응답 작성으로 이어지는 요청 파이프라인으로 바꾸는 HTTP 실행 레이어입니다.
 
 ## 목차

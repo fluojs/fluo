@@ -34,7 +34,7 @@ pnpm add mongoose
 - 요청 단위 트랜잭션에 명시적 `requestTransaction(...)` 경계가 필요할 때.
 - 애플리케이션이 이미 concrete Mongoose connection을 생성·구성하고 있고, fluo가 그 ownership을 대체하지 않고 관측하기를 원할 때.
 
-Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 패키지 자체의 지원 계약으로 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
+Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 패키지 자체의 지원 계약으로 Node.js `>=24.0.0 <27`을 요구합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
 
 ## 빠른 시작
 

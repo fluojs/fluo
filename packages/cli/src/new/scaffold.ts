@@ -41,7 +41,7 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   'react-dom': '^19.2.6',
 } as const;
 
-const NODE_HTTP_LISTENER_ENGINE = '>=20.19.3 <21 || >=22.2.0 <27';
+const NODE_HTTP_LISTENER_ENGINE = '>=24.0.0 <27';
 
 const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/config': '^1.0.0',
@@ -275,7 +275,7 @@ function createProjectEngines(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
     case 'mixed-node-fastify-tcp':
       return { node: NODE_HTTP_LISTENER_ENGINE };
     default:
-      return { node: '>=20.0.0' };
+      return { node: NODE_HTTP_LISTENER_ENGINE };
   }
 }
 
@@ -298,7 +298,7 @@ function createPublishedDevDependencies(bootstrapPlan: ResolvedBootstrapPlan): R
     };
   }
 
-  return { ...PUBLISHED_DEV_DEPENDENCIES };
+  return { ...PUBLISHED_DEV_DEPENDENCIES, '@types/node': '^24.0.0' };
 }
 
 function createProjectPackageJson(
@@ -403,7 +403,7 @@ function createBabelConfig(): string {
 `;
 }
 
-function createViteConfig(): string {
+function createViteConfig(bootstrapPlan: ResolvedBootstrapPlan): string {
   return `import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vite';
 
@@ -418,7 +418,7 @@ export default defineConfig({
       },
     },
     ssr: 'src/main.ts',
-    target: 'node20',
+    target: '${bootstrapPlan.schema.runtime === 'node' ? 'node24' : 'node20'}',
   },
   server: {
     port: 5173,
@@ -2329,7 +2329,13 @@ function emitSharedScaffoldFiles(
 
   const sharedFiles: ScaffoldFile[] = [
     { content: createProjectPackageJson(options, bootstrapPlan, releaseVersion, packageSpecs), path: 'package.json' },
-    { content: createProjectReadme(options, bootstrapPlan), path: 'README.md' },
+    {
+      content: createProjectReadme(options, bootstrapPlan)
+        + (bootstrapPlan.schema.runtime === 'node'
+          ? '\n## Node.js support\n\nRequires Node.js `>=24.0.0 <27`. Use Node 24 LTS for local development, CI, and container images. Node builds target `node24` and use `@types/node@^24.0.0`.\n'
+          : ''),
+      path: 'README.md',
+    },
     { content: createGitignore(), path: '.gitignore' },
   ];
 
@@ -2338,7 +2344,7 @@ function emitSharedScaffoldFiles(
       { content: createProjectTsconfig(bootstrapPlan), path: 'tsconfig.json' },
       { content: createProjectTsconfigBuild(), path: 'tsconfig.build.json' },
       { content: createBabelConfig(), path: 'babel.config.cjs' },
-      { content: createViteConfig(), path: 'vite.config.ts' },
+      { content: createViteConfig(bootstrapPlan), path: 'vite.config.ts' },
       { content: createVitestConfig(), path: 'vitest.config.ts' },
     );
   }

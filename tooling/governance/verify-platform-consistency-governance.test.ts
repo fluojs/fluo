@@ -50,7 +50,7 @@ type GitResult = { status: number; stdout: string };
 type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const nodeListenerEngineRange = '>=20.19.3 <21 || >=22.2.0 <27';
+const nodeListenerEngineRange = '>=24.0.0 <27';
 const staticAssetContractCompanions = [
   'docs/architecture/http-runtime.md',
   'docs/architecture/http-runtime.ko.md',
@@ -1480,7 +1480,7 @@ describe('enforcePlatformFastifyEngineDocumentation', () => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
       return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
-        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        ? content.replace('>=24.0.0 <27', '>=24.0.0 <28')
         : content;
     };
     const governanceSource = readFileSync(
@@ -1519,7 +1519,7 @@ describe('enforcePlatformFastifyEngineDocumentation', () => {
         return relativePath === targetPath
           ? content.replace(
             '## Fastify',
-            '## Fastify\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Fastify',
+            '## Fastify\n\n`>=24.0.0 <27`\n\n## Fastify',
           )
           : content;
       })).toThrowError(/exactly one ## Fastify heading; found 2/u);
@@ -1532,7 +1532,7 @@ describe('enforcePlatformFastifyEngineDocumentation', () => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
       return relativePath === 'packages/platform-fastify/package.json'
-        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        ? content.replace('>=24.0.0 <27', '>=24.0.0 <28')
         : content;
     };
 
@@ -1555,8 +1555,8 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
 
       return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
         ? content.replace(
-          /(## Raw Node\.js[\s\S]*?)>=20\.19\.3 <21 \|\| >=22\.2\.0 <27/u,
-          '$1>=20.19.3 <21 || >=22.2.0 <28',
+          /(## Raw Node\.js[\s\S]*?)>=24\.0\.0 <27/u,
+          '$1>=24.0.0 <28',
         )
         : content;
     };
@@ -1576,12 +1576,12 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
       return relativePath === 'packages/platform-nodejs/package.json'
-        ? content.replace(nodeListenerEngineRange, '>=20.19.3 <21 || >=22.2.0 <28')
+        ? content.replace(nodeListenerEngineRange, '>=24.0.0 <28')
         : content;
     };
 
     expect(() => enforcePlatformNodejsEngineDocumentation(readText))
-      .toThrow(/runtime-adapters\.mdx Raw Node\.js section must state @fluojs\/platform-nodejs engines\.node >=20\.19\.3 <21 \|\| >=22\.2\.0 <28\./u);
+      .toThrow(/runtime-adapters\.mdx Raw Node\.js section must state @fluojs\/platform-nodejs engines\.node >=24\.0\.0 <28\./u);
     expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
   });
 
@@ -1614,7 +1614,7 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
       return relativePath === targetPath
         ? content.replace(
           '## Raw Node.js',
-          '## Raw Node.js\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Raw Node.js',
+          '## Raw Node.js\n\n`>=24.0.0 <27`\n\n## Raw Node.js',
         )
         : content;
     };
@@ -1630,12 +1630,12 @@ describe('enforceHttpCustomMethodContract', () => {
     expect(() => enforceHttpCustomMethodContract()).not.toThrow();
   });
 
-  it('admits only the verified even-major Node listener ranges', () => {
-    for (const version of ['20.19.3', '20.20.0', '22.2.0', '22.21.0', '23.0.0', '24.0.0', '25.0.0', '26.0.0']) {
+  it('admits the Node listener support window from the exact floor through Node 26', () => {
+    for (const version of ['24.0.0', '24.20.0', '25.0.0', '26.0.0', '26.8.1']) {
       expect(isSupportedNodeListenerVersion(version)).toBe(true);
     }
 
-    for (const version of ['20.19.2', '21.7.3', '22.0.0', '22.1.0', '27.0.0']) {
+    for (const version of ['20.19.2', '20.19.3', '20.20.0', '21.7.3', '22.0.0', '22.1.0', '22.2.0', '22.21.0', '23.0.0', '27.0.0']) {
       expect(isSupportedNodeListenerVersion(version)).toBe(false);
     }
   });
@@ -3687,12 +3687,12 @@ describe('repository governance contracts', () => {
     const drizzleReadmeKo = readFileSync(resolve(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
 
     for (const source of [docsContext, packageSurface, packageChooser, drizzleReadme]) {
-      expect(source).toContain('>=20.19.3 <21 || >=22.2.0 <27');
+      expect(source).toContain('>=24.0.0 <27');
       expect(source).toContain('node:async_hooks');
     }
 
     for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, drizzleReadmeKo]) {
-      expect(source).toContain('>=20.19.3 <21 || >=22.2.0 <27');
+      expect(source).toContain('>=24.0.0 <27');
       expect(source).toContain('node:async_hooks');
     }
 
@@ -5540,15 +5540,20 @@ describe('Auth & JWT contract gate triggers', () => {
 
 describe('mandatory first-party dependency Node engine alignment', () => {
   it('rejects a public package that advertises Node versions its required dependency excludes', () => {
-    // Given: Prisma's Node 20+ package contract and a required Node platform dependency with a higher floor.
+    // Given: Prisma's Node 24 contract and a required Node platform fixture with a higher floor.
     const readText = (relativePath: string): string => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath === 'packages/platform-nodejs/package.json') {
+        return JSON.stringify({ ...JSON.parse(content), engines: { node: '>=26.0.0 <27' } });
+      }
 
       if (relativePath === 'packages/prisma/package.json') {
         const manifest = JSON.parse(content);
 
         return JSON.stringify({
           ...manifest,
+          engines: { node: '>=24.0.0 <27' },
           dependencies: {
             ...manifest.dependencies,
             '@fluojs/platform-nodejs': 'workspace:^',
@@ -5560,9 +5565,9 @@ describe('mandatory first-party dependency Node engine alignment', () => {
     };
 
     // When: release governance evaluates the mandatory first-party graph.
-    // Then: it rejects the false Node 20+ compatibility claim before release.
+    // Then: it rejects the false Node 24 compatibility claim before release.
     expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/prisma']))).toThrow(
-      /@fluojs\/prisma engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@fluojs\/platform-nodejs/u,
+      /@fluojs\/prisma engines\.node >=24\.0\.0 <27 permits Node 24\.0\.0.*@fluojs\/platform-nodejs/u,
     );
   });
 
@@ -5588,10 +5593,10 @@ describe('mandatory first-party dependency Node engine alignment', () => {
       )).not.toThrow();
   });
 
-  it('accepts the CLI Node 20 contract when runtime remains an optional peer', () => {
+  it('accepts the CLI Node contract when runtime remains an optional peer', () => {
     // Given: CLI resolves runtime only for inspect and does not require it for other commands.
     // When: a runtime change selects its public reverse-dependent closure.
-    // Then: CLI's independent Node 20 contract remains valid.
+    // Then: CLI's independently declared Node contract remains valid.
     expect(() =>
       enforceMandatoryFirstPartyDependencyEngineAlignment(
         (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
@@ -5642,14 +5647,14 @@ describe('mandatory first-party dependency Node engine alignment', () => {
       const manifest = JSON.parse(content);
       return JSON.stringify({
         ...manifest,
-        engines: { ...manifest.engines, node: '>=22.0.0' },
+        engines: { ...manifest.engines, node: '>=26.0.0 <27' },
       });
     };
 
     // When: release governance evaluates the changed package's public reverse dependencies.
-    // Then: an unchanged public dependent's Node 20+ advertisement is rejected.
+    // Then: an unchanged public dependent's Node 24 advertisement is rejected.
     expect(() =>
       enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/core'])))
-      .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 20\.19\.3.*@fluojs\/core/u);
+      .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 24\.0\.0.*@fluojs\/core/u);
   });
 });

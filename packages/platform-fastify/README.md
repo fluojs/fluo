@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## Runtime Requirements
 
-`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. Run local development, CI, containers, and production hosts on a version in that exact range when this package owns the HTTP server so listener-level RFC `QUERY` requests reach Fastify wildcard fallback and fluo dispatch. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
+`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=24.0.0 <27`. Run local development, CI, containers, and production hosts on a version in that exact range when this package owns the HTTP server so listener-level RFC `QUERY` requests reach Fastify wildcard fallback and fluo dispatch. Node versions below 24 and Node 27+ are excluded. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
 
 The adapter owns a Fastify-backed Node `http` or `https` listener. Keep process-specific values such as ports, certificate material, and hostnames at the application boundary, then pass the final options into the adapter explicitly.
 
@@ -244,7 +244,7 @@ The same file also covers Fastify-specific native route registration with wildca
 - **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. `runFastifyApplication` and `bootstrapFastifyApplication` select the framework console logger by default and accept `logger` for hosts or tests that need an injected `ApplicationLogger`.
 - **Global Prefix**: Use `globalPrefixExclude` to prevent the prefix from being applied to internal routes or health check endpoints.
 - **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
-- **HTTPS startup**: Use Node.js `>=20.19.3 <21 || >=22.2.0 <27` and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
+- **HTTPS startup**: Use Node.js `>=24.0.0 <27` and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
 - **Startup and shutdown failures**: When startup and Fastify `onClose` both fail, callers receive the original startup rejection with the close failure in `cause` only when `cause` can be read, written, and read back. Otherwise, callers receive a startup-first `AggregateError` whose `errors[0]` is the startup rejection and whose `errors[1]` is the close failure.
 
 ## Multipart streaming

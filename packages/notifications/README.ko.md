@@ -2,6 +2,8 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.
+
 fluo를 위한 채널 중립(notification channel-agnostic) 알림 오케스트레이션 패키지입니다. 알림 채널의 공통 계약을 고정하고, 친숙한 dynamic-module 사용감을 가진 명시적 모듈 등록 API를 제공하며, 선택적인 큐 기반 전달 심(seam)과 라이프사이클 이벤트 발행 심을 노출합니다.
 
 ## 목차

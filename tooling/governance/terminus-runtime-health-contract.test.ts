@@ -148,6 +148,30 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
     ).toThrow('Terminus runtime health contract updates must include');
   });
 
+  it('leaves Node-only support policy changes to the engine and release gates', () => {
+    const unchangedHealthContract = `${'x'.repeat(300)} @fluojs/terminus /health status=503`;
+    const patch = [
+      `- Node.js 20+ @fluojs/metrics ${unchangedHealthContract} engines.node >=20.0.0`,
+      `+ Node.js \`>=24.0.0 <27\` @fluojs/metrics ${unchangedHealthContract} engines.node >=24.0.0 <27`,
+    ].join('\n');
+
+    expect(() =>
+      enforceTerminusRuntimeHealthContractCompanions(['docs/CONTEXT.md'], () => patch),
+    ).not.toThrow();
+  });
+
+  it('still requires companions when a Node policy update accompanies distant health drift', () => {
+    const unchangedPrefix = `${'x'.repeat(300)} @fluojs/terminus /health`;
+    const patch = [
+      `- Node.js 20+ @fluojs/metrics ${unchangedPrefix} status=503 engines.node >=20.0.0`,
+      `+ Node.js \`>=24.0.0 <27\` @fluojs/metrics ${unchangedPrefix} status=200 engines.node >=24.0.0 <27`,
+    ].join('\n');
+
+    expect(() =>
+      enforceTerminusRuntimeHealthContractCompanions(['docs/CONTEXT.md'], () => patch),
+    ).toThrow('Terminus runtime health contract updates must include');
+  });
+
   it('requires missing companions when a readiness assertion changes far beyond its marker', () => {
     const unchangedPrefix = `@fluojs/terminus ${'x'.repeat(300)}`;
 

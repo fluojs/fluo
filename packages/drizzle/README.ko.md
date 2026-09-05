@@ -33,7 +33,7 @@ npm install pg
 
 ## 런타임 지원
 
-루트 `@fluojs/drizzle` 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. ambient transaction context를 유지하기 위해 Node의 `node:async_hooks` 모듈을 import하며 패키지 자체의 지원 범위를 package manifest에 선언합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다.
+루트 `@fluojs/drizzle` 패키지는 Node.js `>=24.0.0 <27`을 요구합니다. ambient transaction context를 유지하기 위해 Node의 `node:async_hooks` 모듈을 import하며 패키지 자체의 지원 범위를 package manifest에 선언합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다.
 
 Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 할 수 있지만, 비 Node transaction-context adapter가 문서화되기 전까지 해당 driver runtime은 이 fluo wrapper 범위 밖입니다.
 
@@ -41,7 +41,7 @@ Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 
 
 ## 사용 시점
 
-- Node.js `>=20.19.3 <21 || >=22.2.0 <27` 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
+- Node.js `>=24.0.0 <27` 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
 - repository 코드가 root handle과 현재 트랜잭션 handle 사이를 `current()` 하나로 다루고 싶을 때
 - 애플리케이션 종료 시 underlying driver 정리 로직도 함께 실행해야 할 때
 

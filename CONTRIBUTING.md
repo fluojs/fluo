@@ -12,7 +12,7 @@ fluo is built on standard TypeScript decorators and explicit contract discipline
 
 fluo uses a monorepo structure managed by `pnpm`.
 
-1. **Prerequisites**: Node.js `>=20.19.3 <21 || >=22.12.0 <27` and `pnpm` for the private development workspace.
+1. **Prerequisites**: Node.js `>=24.0.0 <27` and `pnpm` for the private development workspace.
 2. **Install dependencies**:
    ```sh
    pnpm install

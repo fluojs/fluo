@@ -78,7 +78,7 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
 ```
 
-Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 CLI Studio/viewer 명령을 실행하는 Node.js `>=20.0.0` 프로젝트에 Studio를 개발 전용 의존성으로 설치합니다. Studio는 이 artifact의 runtime-neutral consumer-side declaration을 소유하므로, Studio 설치가 `@fluojs/runtime`의 더 좁은 Node engine range를 상속하지 않습니다.
+Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 CLI Studio/viewer 명령을 실행하는 Node.js `>=24.0.0 <27` 프로젝트에 Studio를 개발 전용 의존성으로 설치합니다. Studio는 이 artifact의 runtime-neutral consumer-side declaration을 소유하므로, Studio 설치가 `@fluojs/runtime`의 더 좁은 Node engine range를 상속하지 않습니다.
 
 ```bash
 pnpm add -D @fluojs/studio

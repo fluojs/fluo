@@ -23,7 +23,7 @@ This document defines the current package manifest contract for public `@fluojs/
 | `scripts` | MUST include package-local `build`, `typecheck`, and `test` commands. | Current public package manifests define those commands, with `prebuild` cleanup as the common pattern. |
 
 - `bin` is required only for CLI-style packages that publish an executable. `@fluojs/cli` exposes `fluo` through `./bin/fluo.mjs`.
-- `engines.node` is used by many Node-bound packages, but it is not universal across every current public package manifest.
+- The root workspace and Node-bound public packages MUST declare `engines.node: ">=24.0.0 <27"`. `@fluojs/config`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, and `@fluojs/runtime` intentionally omit it. A Node-only subpath or feature MUST NOT turn a portable root into a package-wide Node claim. Follow [Node.js Support](../reference/node-support.md) for verification and migration.
 
 ## exports Map Rules
 

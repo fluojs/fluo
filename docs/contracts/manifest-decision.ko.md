@@ -23,7 +23,7 @@
 | `scripts` | 패키지 로컬 `build`, `typecheck`, `test` 명령을 MUST로 포함해야 합니다. | 현재 공개 패키지 매니페스트는 공통적으로 `prebuild` 정리와 함께 이 명령들을 정의합니다. |
 
 - `bin`은 실행 파일을 배포하는 CLI 성격 패키지에서만 필요합니다. `@fluojs/cli`는 `./bin/fluo.mjs`를 통해 `fluo`를 노출합니다.
-- `engines.node`는 많은 Node 기반 패키지에서 사용되지만, 현재 공개 패키지 매니페스트 전체에 공통인 필드는 아닙니다.
+- Root workspace와 Node-bound public package는 `engines.node: ">=24.0.0 <27"`을 선언해야 합니다. `@fluojs/config`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, `@fluojs/runtime`은 의도적으로 생략합니다. Subpath나 feature의 Node 제약을 portable root 전체의 engine으로 확대하지 마세요. 검증과 업그레이드는 [Node.js Support](../reference/node-support.ko.md)를 따릅니다.
 
 ## exports Map Rules
 

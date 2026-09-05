@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const supportedNodeRange = '>=20.19.3 <21 || >=22.2.0 <27';
+const supportedNodeRange = '>=24.0.0 <27';
 
 function readPackageManifest(packageName: 'cqrs' | 'platform-nodejs') {
   return JSON.parse(readFileSync(fileURLToPath(new URL(

@@ -22,7 +22,7 @@ pnpm add @fluojs/metrics
 
 ## 요구 사항
 
-`@fluojs/metrics`는 패키지 자체의 지원 계약인 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다.
+`@fluojs/metrics`는 패키지 자체의 지원 계약인 Node.js `>=24.0.0 <27`을 요구합니다.
 
 ## 사용 시점
 
