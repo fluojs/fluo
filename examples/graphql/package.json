@@ -1,7 +1,7 @@
 {
   "name": "@fluojs/example-graphql",
   "description": "Runnable Fluo GraphQL application with resolver discovery, DataLoader, and SSE subscriptions.",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "engines": {
