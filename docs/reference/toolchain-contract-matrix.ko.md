@@ -8,8 +8,8 @@
 | --- | --- | --- |
 | **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext`, 생성 config는 deprecated `baseUrl` aliasing을 피함 |
 | **Babel** | `v7.26+` | 루트 워크스페이스는 `@babel/core` `^7.26.10`, `{ version: '2023-11' }` 구성을 쓰는 `@babel/plugin-proposal-decorators` `^7.28.0`, `@babel/preset-typescript` `^7.27.0`을 고정합니다. |
-| **Vite** | `v6.2+` | 루트 워크스페이스는 개발 번들링 및 빌드 오케스트레이션용 `vite` `^6.2.1`을 고정합니다. |
-| **@fluojs/vite** | `v1.0+`; Node.js `>=20.0.0` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, Vite `>=6.2.0`을 요구하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지합니다. |
+| **Vite** | `v6.2+` | 루트 워크스페이스는 기본 dev/test toolchain에 Vite 6.4.3을 고정합니다. `@fluojs/vite`에는 Rolldown/Oxc 전용 build pipeline을 실행하는 전용 Vite 8.0.8 integration gate도 있습니다. |
+| **@fluojs/vite** | `v1.0+`; Node.js `>=20.0.0` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, Vite `>=6.2.0`을 요구하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지하고, 실행 가능한 Vite 6.4.3 및 Vite 8.0.8 coverage로 field-decorator metadata를 검증합니다. |
 | **Vitest** | `v3.0+` | 루트 워크스페이스는 `vitest` `^3.0.8`을 고정하며, 패키지 로컬 설정은 주로 `^3.2.4`를 사용합니다. |
 | **Node.js** | 루트 워크스페이스 및 Node HTTP listener는 `>=20.19.3 <21 || >=22.2.0 <27` | RFC `QUERY`가 fluo dispatch에 도달하는 데 필요한 검증된 listener window입니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 생성된 Node HTTP 및 mixed starter도 같은 범위를 사용하며, Node microservice-only starter와 CLI process는 독립적으로 문서화된 tooling floor를 유지합니다. Bun, Deno, Cloudflare Workers 어댑터는 패키지 메타데이터가 비-Node 런타임 계약과 일치하도록 `engines.node`를 의도적으로 생략합니다. |
 
@@ -97,7 +97,7 @@ dependency graph를 평가합니다.
 | 단계 | 도구 | 계약 |
 | --- | --- | --- |
 | **변환** | Babel | `@babel/plugin-proposal-decorators`와 `{ version: '2023-11' }` 구성으로 Stage 3 데코레이터 변환을 적용합니다. |
-| **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. 따라서 React SSR + Vite starter는 데코레이터 선언을 `src/app.ts`에 두고 JSX는 `.tsx` 모듈에 유지합니다. `@fluojs/vite`를 import하거나 plugin을 생성해도 `@babel/core`를 로드하지 않습니다. |
+| **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. 따라서 React SSR + Vite starter는 데코레이터 선언을 `src/app.ts`에 두고 JSX는 `.tsx` 모듈에 유지합니다. `@fluojs/vite`를 import하거나 plugin을 생성해도 `@babel/core`를 로드하지 않습니다. Vite 8.0.8/Rolldown integration gate는 pre-stage 순서를 검증하고 bundle된 field-decorator metadata 결과를 실행합니다. |
 | **번들링** | Vite | 선택한 런타임 대상에 맞게 생성된 애플리케이션을 번들링합니다. |
 | **검증** | `@fluojs/testing/vitest` + Vitest | 생성된 `vitest.config.ts`는 `*.test.ts`와 `*.spec.ts` 파일을 Vite 애플리케이션 transform 대신 testing-specific Babel decorator transform 경로에 둡니다. |
 | **제약** | 대체 도구 | direct `esbuild` decorator handling 같은 대체 체인은 문서화된 지원 계약 밖에 있습니다. |
