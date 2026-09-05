@@ -10,7 +10,7 @@ describe('@fluojs/metrics runtime support metadata', () => {
   it('keeps its explicitly Node-bound package engine', () => {
     const metricsManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
-    expect(JSON.parse(metricsManifest).engines.node).toBe('>=20.0.0');
+    expect(JSON.parse(metricsManifest).engines.node).toBe('>=20.19.3 <21 || >=22.2.0 <27');
   });
 
   it('pins the prom-client private collector metadata seam to the installed contract', () => {
