@@ -21,7 +21,7 @@ Redis-backed distributed job processing for fluo. It features decorator-based wo
 npm install @fluojs/queue @fluojs/redis
 ```
 
-`@fluojs/queue` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`, matching its mandatory `@fluojs/runtime` dependency. Upgrade Queue consumers from Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, or Node.js 27+ to a supported release before adopting this major version.
+`@fluojs/queue` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` as its package-owned support contract. Upgrade Queue consumers from Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, or Node.js 27+ to a supported release before adopting this major version.
 
 `@fluojs/queue` includes BullMQ `^5.81.1`. Refresh the application lockfile when upgrading so BullMQ's patched dependency graph is installed. Queue registration, worker discovery, and persisted-job contracts are unchanged.
 

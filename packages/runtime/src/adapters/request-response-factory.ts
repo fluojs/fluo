@@ -1,4 +1,4 @@
-import type { Dispatcher, FrameworkRequest, FrameworkResponse } from '@fluojs/http';
+import type { Dispatcher, FrameworkRequest, FrameworkResponse } from '@fluojs/http/portable';
 
 /** Request/response factory seam used by shared HTTP adapter dispatch helpers. */
 export interface RequestResponseFactory<

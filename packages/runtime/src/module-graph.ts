@@ -1,6 +1,6 @@
 import type { Token } from '@fluojs/core';
 import { type Provider, validateProviderInputs } from '@fluojs/di/internal';
-import type { MiddlewareLike } from '@fluojs/http';
+import type { MiddlewareLike } from '@fluojs/http/portable';
 
 import {
   ModuleGraphError,

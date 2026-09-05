@@ -1,6 +1,6 @@
 import type { Token } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
-import type { HttpApplicationAdapter } from '@fluojs/http';
+import type { HttpApplicationAdapter } from '@fluojs/http/portable';
 
 import type { PlatformShell } from './platform-contract.js';
 import type { ApplicationLogger, CompiledModule, RuntimeCleanupRegistration } from './types.js';

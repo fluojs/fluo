@@ -1,7 +1,18 @@
+import { execFile } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+const execFileAsync = promisify(execFile);
+const buildClosureScriptPath = fileURLToPath(
+  new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url),
+);
+const rejectNodeBuiltinsLoaderPath = fileURLToPath(
+  new URL('./reject-node-builtins-loader.test-fixture.mjs', import.meta.url),
+);
 
 function collectProductionTypeScript(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -18,6 +29,28 @@ function collectProductionTypeScript(directory: string): string[] {
 }
 
 describe('@fluojs/runtime portable package boundary', () => {
+  beforeAll(async () => {
+    await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/runtime'], {
+      cwd: fileURLToPath(new URL('../../..', import.meta.url)),
+    });
+  }, 120_000);
+
+  it('imports the published root under Bun conditions without resolving Node builtins', async () => {
+    const result = await execFileAsync(
+      process.execPath,
+      [
+        '--conditions=bun',
+        `--experimental-loader=${rejectNodeBuiltinsLoaderPath}`,
+        '--input-type=module',
+        '--eval',
+        "import('@fluojs/runtime')",
+      ],
+      { cwd: fileURLToPath(new URL('..', import.meta.url)) },
+    );
+
+    expect(result.stdout).toBe('');
+  });
+
   it('publishes no Node engine or Node-only entrypoint', () => {
     const manifest = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),

@@ -3,11 +3,23 @@
 "@fluojs/config": major
 "@fluojs/cli": patch
 "@fluojs/http": patch
+"@fluojs/cache-manager": patch
+"@fluojs/cqrs": patch
+"@fluojs/discord": patch
+"@fluojs/drizzle": patch
+"@fluojs/event-bus": patch
+"@fluojs/graphql": patch
+"@fluojs/metrics": patch
+"@fluojs/microservices": patch
+"@fluojs/mongoose": patch
+"@fluojs/openapi": patch
 "@fluojs/platform-nodejs": major
 "@fluojs/platform-express": patch
 "@fluojs/platform-fastify": patch
-"@fluojs/graphql": patch
-"@fluojs/openapi": patch
+"@fluojs/queue": patch
+"@fluojs/slack": patch
+"@fluojs/socket.io": patch
+"@fluojs/throttler": patch
 "@fluojs/websockets": patch
 ---
 

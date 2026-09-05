@@ -30,7 +30,7 @@ Migration boundary: the module API is intentionally Nest-like but not a NestJS d
 npm install @fluojs/discord @fluojs/notifications
 ```
 
-This package requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` through its mandatory `@fluojs/runtime` dependency. Upgrade Node 20 hosts to `>=20.19.3` or Node 22 hosts to `>=22.2.0`; Node 21 and Node 27+ are unsupported, so move the process to a supported line. Its delivery contract remains transport-agnostic at runtime through explicit fetch-compatible boundaries.
+This package requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` as its package-owned support contract. Upgrade Node 20 hosts to `>=20.19.3` or Node 22 hosts to `>=22.2.0`; Node 21 and Node 27+ are unsupported, so move the process to a supported line. Its delivery contract remains transport-agnostic at runtime through explicit fetch-compatible boundaries.
 
 ## When to Use
 

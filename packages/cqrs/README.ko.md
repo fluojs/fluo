@@ -26,7 +26,7 @@ npm install @fluojs/cqrs
 
 ### Node.js 지원
 
-`@fluojs/cqrs`는 필수 `@fluojs/runtime` dependency와 일치하는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원합니다. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 지원하지 않습니다.
+`@fluojs/cqrs`는 패키지 자체의 지원 계약으로 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원합니다. Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, Node.js 27+는 지원하지 않습니다.
 
 ## 사용 시점
 

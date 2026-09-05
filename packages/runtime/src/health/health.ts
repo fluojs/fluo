@@ -1,5 +1,5 @@
 import type { Constructor } from '@fluojs/core';
-import { Controller, forRoutes, Get, type Middleware } from '@fluojs/http';
+import { Controller, forRoutes, Get, type Middleware } from '@fluojs/http/portable';
 
 import { defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
@@ -32,7 +32,7 @@ export interface ReadinessStatus {
 export interface HealthModuleOptions {
   /** Class-based middleware applied only to the generated `/health` and `/ready` endpoints. */
   endpointMiddleware?: readonly Constructor<Middleware>[];
-  healthCheck?: (ctx: import('@fluojs/http').RequestContext) =>
+  healthCheck?: (ctx: import('@fluojs/http/portable').RequestContext) =>
     | HealthStatus
     | HealthCheckResponse
     | Promise<HealthStatus | HealthCheckResponse>;
@@ -42,7 +42,7 @@ export interface HealthModuleOptions {
 /**
  * Defines the readiness check type.
  */
-export type ReadinessCheck = (ctx: import('@fluojs/http').RequestContext) => boolean | Promise<boolean>;
+export type ReadinessCheck = (ctx: import('@fluojs/http/portable').RequestContext) => boolean | Promise<boolean>;
 
 /** Runtime-owned health module class returned by `HealthModule.forRoot(...)`. */
 export interface RuntimeHealthModule extends ModuleType {
@@ -61,7 +61,7 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHe
   let ready = false;
 
   const resolveHealthResponse = async (
-    ctx: import('@fluojs/http').RequestContext,
+    ctx: import('@fluojs/http/portable').RequestContext,
   ): Promise<HealthStatus | HealthCheckResponse> => {
     if (!options.healthCheck) {
       return { status: 'ok' };
@@ -76,7 +76,7 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHe
   @Controller(basePath)
   class HealthController {
     @Get('/health')
-    async health(_input: undefined, ctx: import('@fluojs/http').RequestContext): Promise<unknown> {
+    async health(_input: undefined, ctx: import('@fluojs/http/portable').RequestContext): Promise<unknown> {
       const result = await resolveHealthResponse(ctx);
 
       if (isHealthCheckResponse(result)) {
@@ -91,7 +91,7 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHe
     }
 
     @Get('/ready')
-    async ready(_input: undefined, ctx: import('@fluojs/http').RequestContext): Promise<ReadinessStatus> {
+    async ready(_input: undefined, ctx: import('@fluojs/http/portable').RequestContext): Promise<ReadinessStatus> {
       if (!ready) {
         ctx.response.setStatus(503);
         return { status: 'starting' };
