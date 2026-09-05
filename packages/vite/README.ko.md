@@ -9,6 +9,7 @@ fluo 프로젝트를 위한 Vite 플러그인과 빌드 유틸리티입니다.
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [런타임 및 peer 계약](#런타임-및-peer-계약)
+- [지원 Vite 매트릭스](#지원-vite-매트릭스)
 - [빠른 시작](#빠른-시작)
 - [데코레이터 변환 경계](#데코레이터-변환-경계)
 - [공개 API](#공개-api)
@@ -34,6 +35,10 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 `@fluojs/vite`는 `engines.node` 하한을 `>=20.0.0`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이 Node 기준선과 Vite `>=6.2.0`, 그리고 위에 나열한 Babel peer를 함께 사용합니다.
 
 패키지 root는 Babel이 설치되거나 해석되기 전에 import해도 안전합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성해도 `@babel/core`를 로드하지 않습니다. Babel은 eligible 애플리케이션 `.ts` 파일에 대한 Vite `transform` hook에서만 lazy load되며, 누락된 Babel peer도 plugin 생성 시점이 아니라 이 transform 경계에서 보고됩니다.
+
+## 지원 Vite 매트릭스
+
+배포된 peer 범위는 `vite >=6.2.0`을 유지합니다. 패키지 suite는 워크스페이스에 고정된 Vite 6.4.3 toolchain에서 실행되며, 전용 integration gate는 Rolldown/Oxc 전용 pipeline을 사용하는 Vite 8.0.8에서 decorator가 있는 TypeScript를 빌드하고 실행합니다. 이 gate는 plugin이 normal-stage transform보다 먼저 실행되고 field-decorator binding metadata를 보존하는지 검증합니다. `enforce: 'pre'`를 회귀시키면 gate가 실패합니다. Vite 8을 선택하는 consumer는 Vite 자체 Node.js engine 범위도 충족해야 합니다.
 
 ## 빠른 시작
 

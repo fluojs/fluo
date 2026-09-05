@@ -266,7 +266,7 @@ function formatNodeEngineVersion({ major, minor, patch }) {
   return `${major}.${minor}.${patch}`;
 }
 
-function lockfileImporterDependencyVersions(lockfileText, importerPath) {
+function lockfileImporterDependencyVersions(lockfileText, importerPath, sectionName = 'dependencies') {
   const importerStart = lockfileText.indexOf(`  ${importerPath}:\n`);
   assert(importerStart >= 0, `pnpm-lock.yaml must include the ${importerPath} importer.`);
 
@@ -279,7 +279,7 @@ function lockfileImporterDependencyVersions(lockfileText, importerPath) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (line === '    dependencies:') {
+    if (line === `    ${sectionName}:`) {
       dependencySection = true;
       continue;
     }
@@ -314,21 +314,33 @@ function lockfileImporterDependencyVersions(lockfileText, importerPath) {
   return versions;
 }
 
-function lockedDependencyNodeEngineRange(lockfileText, importerPath, dependencyName) {
-  const version = lockfileImporterDependencyVersions(lockfileText, importerPath).get(dependencyName);
+function lockedDependencyNodeEngineRange(
+  lockfileText,
+  importerPath,
+  dependencyName,
+  sectionName = 'dependencies',
+  resolvedPackageName = dependencyName,
+) {
+  let version = lockfileImporterDependencyVersions(lockfileText, importerPath, sectionName).get(dependencyName);
   if (version === undefined || version.startsWith('link:')) {
     return undefined;
+  }
+
+  if (resolvedPackageName !== dependencyName) {
+    const aliasedVersionPrefix = `${resolvedPackageName}@`;
+    assert(version.startsWith(aliasedVersionPrefix), `${dependencyName} must resolve to ${resolvedPackageName}.`);
+    version = version.slice(aliasedVersionPrefix.length);
   }
 
   const packagesStart = lockfileText.indexOf('\npackages:\n');
   const snapshotsStart = lockfileText.indexOf('\nsnapshots:\n', packagesStart);
   assert(packagesStart >= 0 && snapshotsStart > packagesStart, 'pnpm-lock.yaml must include packages and snapshots sections.');
 
-  const packageKey = `${dependencyName}@${version}`.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const packageKey = `${resolvedPackageName}@${version}`.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const packageMatch = new RegExp(`^  ['"]?${packageKey}['"]?:$`, 'mu')
     .exec(lockfileText.slice(packagesStart, snapshotsStart));
   const packageStart = packageMatch === null ? -1 : packagesStart + packageMatch.index;
-  assert(packageStart >= 0, `pnpm-lock.yaml must resolve ${dependencyName}@${version}.`);
+  assert(packageStart >= 0, `pnpm-lock.yaml must resolve ${resolvedPackageName}@${version}.`);
 
   const packageEndMatch = /\n {2}\S/u.exec(lockfileText.slice(packageStart + packageMatch[0].length));
   const packageEnd = packageEndMatch === null ? -1 : packageStart + packageMatch[0].length + packageEndMatch.index;
@@ -511,6 +523,38 @@ export function enforceMandatoryProductionDependencyEngineAlignment(
 export const enforceMandatoryFirstPartyDependencyEngineAlignment =
   enforceMandatoryProductionDependencyEngineAlignment;
 
+export function enforcePrivateRootToolchainNodeEngineAlignment(readText = read) {
+  const rootManifest = JSON.parse(readText('package.json'));
+  const rootRange = rootManifest.engines?.node;
+  const vite8Range = lockedDependencyNodeEngineRange(
+    readText('pnpm-lock.yaml'),
+    '.',
+    'vite8',
+    'devDependencies',
+    'vite',
+  );
+
+  assert(rootManifest.private === true, 'The root workspace must remain private.');
+  assert(
+    typeof rootRange === 'string' && rootRange.length > 0,
+    'The private root workspace must declare engines.node.',
+  );
+  assert(
+    typeof vite8Range === 'string' && vite8Range.length > 0,
+    'The private root workspace must lock vite8 with engines.node metadata.',
+  );
+
+  const incompatibleVersion = nodeEngineCandidates(rootRange, vite8Range).find((version) =>
+    nodeEngineRangeIncludes(rootRange, version) && !nodeEngineRangeIncludes(vite8Range, version));
+
+  if (incompatibleVersion !== undefined) {
+    throw new Error(
+      `private root workspace engines.node ${rootRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
+        `but mandatory vite8 locked engines.node is ${vite8Range}.`,
+    );
+  }
+}
+
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
   const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
   const canonicalNodeRange = runtimeManifest.engines?.node;
@@ -521,7 +565,6 @@ export function enforceSocketIoNodeEngineAlignment(readText = read) {
   );
 
   for (const [manifestPath, packageName] of [
-    ['package.json', 'root workspace'],
     ['packages/platform-nodejs/package.json', '@fluojs/platform-nodejs'],
     ['packages/socket.io/package.json', '@fluojs/socket.io'],
   ]) {
@@ -3460,7 +3503,6 @@ export function enforceHttpCatchAllRouteGrammarDecision() {
 export function enforceHttpCustomMethodContract() {
   const expectedNodeListenerEngine = nodeListenerEngineRange;
   const nodeListenerManifestPaths = [
-    'package.json',
     'packages/graphql/package.json',
     'packages/platform-express/package.json',
     'packages/platform-fastify/package.json',
@@ -4249,6 +4291,7 @@ export async function main() {
     }
   }
   enforceMandatoryProductionDependencyEngineAlignment(read, engineGovernancePackageNames);
+  enforcePrivateRootToolchainNodeEngineAlignment();
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();

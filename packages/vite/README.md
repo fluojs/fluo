@@ -9,6 +9,7 @@ Vite plugin and build utilities for fluo projects.
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
+- [Supported Vite Matrix](#supported-vite-matrix)
 - [Quick Start](#quick-start)
 - [Decorator Transform Boundary](#decorator-transform-boundary)
 - [Public API](#public-api)
@@ -34,6 +35,10 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 `@fluojs/vite` is a Node.js package with an `engines.node` floor of `>=20.0.0`. Generated non-Deno starters pair that Node baseline with Vite `>=6.2.0` and the Babel peers listed above.
 
 The package root is safe to import before Babel is installed or resolved: importing `@fluojs/vite` and creating `fluoDecoratorsPlugin()` do not load `@babel/core`. Babel is loaded lazily only from Vite's `transform` hook for eligible application `.ts` files, and missing Babel peers are reported from that transform boundary instead of plugin creation.
+
+## Supported Vite Matrix
+
+The published peer range remains `vite >=6.2.0`. The package suite runs under the workspace-pinned Vite 6.4.3 toolchain, and a dedicated integration gate builds and executes decorated TypeScript under Vite 8.0.8 with its Rolldown/Oxc-only pipeline. That gate verifies the plugin runs before normal-stage transforms and preserves field-decorator binding metadata. Regressing `enforce: 'pre'` makes the gate fail. When selecting Vite 8, consumers must also satisfy Vite's own Node.js engine range.
 
 ## Quick Start
 
