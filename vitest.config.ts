@@ -28,6 +28,7 @@ export default mergeConfig(
           extends: true,
           test: {
             name: 'packages',
+            globalSetup: fileURLToPath(new URL('./tooling/vitest/src/packages-global-setup.ts', import.meta.url)),
             exclude: [...configDefaults.exclude, 'packages/**/deno/**', 'packages/cli/.sandbox/**'],
             include: ['packages/**/*.test.ts'],
           },
