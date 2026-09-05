@@ -7,6 +7,7 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 ## 목차
 
 - [설치](#설치)
+- [Runtime Node import 마이그레이션](#runtime-node-import-마이그레이션)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
@@ -22,7 +23,18 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-nodejs
 ```
 
-이 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 대상으로 합니다. Node 20.19.3 미만, Node 21, Node 22.2.0 미만은 listener-level RFC `QUERY` 요청을 request event로 일관되게 노출하지 못하고 검증되지 않은 Node 27 이상은 광고하지 않으므로, 게시된 package manifest는 이 정확한 `engines.node` 범위를 선언합니다. Raw 어댑터는 비 Node fetch-style host가 아니라 Node.js `http`/`https` server primitive에 의존합니다.
+이 패키지는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 대상으로 합니다. Node 20.19.3 미만, Node 21, Node 22.2.0 미만은 listener-level RFC `QUERY` 요청을 request event로 일관되게 노출하지 못하고 검증되지 않은 Node 27 이상은 광고하지 않으므로, 게시된 package manifest는 이 정확한 `engines.node` 범위를 선언합니다. 이 패키지는 raw Node, Express, Fastify host가 사용하는 Node listener, filesystem, logger, compression, process-signal 구현을 소유합니다.
+
+## Runtime Node import 마이그레이션
+
+이전 mixed-runtime entrypoint에는 compatibility shim이 없습니다. Import를 직접 바꾸면 이동한 symbol 이름은 유지됩니다.
+
+| 제거된 import | 대체 import |
+| :--- | :--- |
+| `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
+| `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
+
+Root replacement는 `createNodeHttpAdapter`, `NodeHttpApplicationAdapter`, `bootstrapNodeApplication`, `runNodeApplication`, Node logger factory, shutdown registration helper, `createNodeFileSystemAssetSource`를 포함합니다. 기존 `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication` alias도 유지됩니다.
 
 ## 사용 시점
 
@@ -101,7 +113,7 @@ await app.listen();
 - Raw Node adapter는 대소문자가 섞인 JSON 및 multipart `content-type` 값을 normalize하고, request body가 `maxBodySize`를 넘으면 `413`을 반환하며, `x-request-id`와 `x-correlation-id` fallback을 request context와 error response에 전파하고, `getServer()` / `getRealtimeCapability()`를 통해 server-backed realtime capability를 노출합니다.
 - `bootstrapNodejsApplication(module, options)`는 raw Node 어댑터가 포함된 애플리케이션을 만들지만 리스닝은 시작하지 않으므로 이후 `app.listen()`과 `app.close()` 생명주기는 호출자가 소유합니다.
 - `runNodejsApplication(module, options)`는 부트스트랩, 리스닝 시작, graceful shutdown 배선을 함께 수행합니다. Listen retry는 `retryLimit`/`retryDelayMs`를 따르고, shutdown은 bounded drain 전에 idle keep-alive connection을 닫으며, 시그널 기반 종료가 타임아웃되거나 실패하면 해당 상태를 로그와 `process.exitCode`로 보고합니다. 최종 프로세스 종료는 호스트 프로세스가 계속 소유합니다.
-- 고급 압축 및 shutdown 유틸리티 함수는 이 기본 platform startup surface가 아니라 `@fluojs/runtime/node` 또는 runtime 내부 seam에 남아 있습니다.
+- 지원되는 Node logger, shutdown, filesystem, raw adapter helper는 package root에 있고 저수준 request/response/compression plumbing은 `@fluojs/platform-nodejs/internal`에 있습니다.
 
 ## Conformance 커버리지
 
@@ -119,8 +131,10 @@ await app.listen();
 - `BootstrapNodejsApplicationOptions`: bootstrap-only Node.js 애플리케이션 생성 옵션입니다.
 - `NodejsAdapterOptions`: `port`, `host`, 상호 배타적인 `http` 또는 `https` 생성 option, `maxBodySize`, retry 설정, raw body 보존, shutdown timeout을 포함하는 `createNodejsAdapter(...)`의 transport-level 옵션입니다.
 - `NodejsApplicationSignal`: `runNodejsApplication(...)` shutdown 등록이 지원하는 시그널 이름입니다.
-- `NodejsHttpApplicationAdapter`: `createNodejsAdapter(...)`가 반환하는 어댑터 인스턴스를 설명하는 타입 전용 별칭이며, `@fluojs/runtime/node`가 공개하는 어댑터 surface를 그대로 보존합니다.
+- `NodejsHttpApplicationAdapter`: `createNodejsAdapter(...)`가 반환하는 어댑터 인스턴스를 설명하는 타입 전용 별칭이며, `@fluojs/platform-nodejs`가 공개하는 어댑터 surface를 그대로 보존합니다.
 - `RunNodejsApplicationOptions`: 부트스트랩, 리스닝 시작, graceful shutdown 배선을 한 번에 수행하기 위한 옵션입니다.
+- 이전 `@fluojs/runtime/node` export는 이 package root에서 이름을 유지합니다. `createNodeHttpAdapter`, `NodeHttpApplicationAdapter`, `bootstrapNodeApplication`, `runNodeApplication`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `createNodeShutdownSignalRegistration`, `defaultNodeShutdownSignals`, `registerShutdownSignals`, `createNodeFileSystemAssetSource` 및 public option type이 포함됩니다.
+- `@fluojs/platform-nodejs/internal`: `@fluojs/runtime/internal-node`를 대체하는 first-party Node adapter integration seam이며 저수준 compression 및 request/response helper를 포함합니다.
 
 ## Multipart 스트리밍
 

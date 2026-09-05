@@ -12,7 +12,7 @@ import {
   NotFoundException,
   normalizeRoutePattern,
   type SecurityHeadersOptions,
-} from '@fluojs/http';
+} from '@fluojs/http/portable';
 
 import { bootstrapApplication } from './bootstrap.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';

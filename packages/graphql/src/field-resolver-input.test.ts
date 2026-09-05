@@ -1,6 +1,6 @@
 import { Inject, Scope } from '@fluojs/core';
 import { type Application, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
-import { NodeHttpApplicationAdapter } from '@fluojs/runtime/node';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLString } from 'graphql';
 import { describe, expect, it } from 'vitest';

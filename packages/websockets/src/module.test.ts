@@ -16,7 +16,7 @@ import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 

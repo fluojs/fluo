@@ -61,12 +61,12 @@ import {
   resolveRequestIdFromHeaders,
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
-} from '@fluojs/runtime/internal-node';
+} from '@fluojs/platform-nodejs/internal';
 import {
   createConsoleApplicationLogger,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
-} from '@fluojs/runtime/node';
+} from '@fluojs/platform-nodejs';
 import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import express, {
   type ErrorRequestHandler,

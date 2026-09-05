@@ -142,6 +142,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@fluojs/platform-nodejs':
+        specifier: workspace:*
+        version: link:../../packages/platform-nodejs
       '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -589,6 +592,9 @@ importers:
         specifier: 8.21.1
         version: 8.21.1
     devDependencies:
+      '@fluojs/platform-nodejs':
+        specifier: workspace:^
+        version: link:../platform-nodejs
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -759,6 +765,9 @@ importers:
         specifier: workspace:^
         version: link:../runtime
     devDependencies:
+      '@fluojs/platform-nodejs':
+        specifier: workspace:^
+        version: link:../platform-nodejs
       '@fluojs/validation':
         specifier: workspace:^
         version: link:../validation
@@ -841,6 +850,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/platform-nodejs':
+        specifier: workspace:^
+        version: link:../platform-nodejs
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -866,6 +878,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/platform-nodejs':
+        specifier: workspace:^
+        version: link:../platform-nodejs
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -1300,6 +1315,9 @@ importers:
       '@fluojs/platform-fastify':
         specifier: workspace:^
         version: link:../platform-fastify
+      '@fluojs/platform-nodejs':
+        specifier: workspace:^
+        version: link:../platform-nodejs
       '@fluojs/testing':
         specifier: workspace:^
         version: link:../testing

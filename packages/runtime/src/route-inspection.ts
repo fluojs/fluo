@@ -1,4 +1,4 @@
-import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
+import type { HandlerDescriptor, HttpMethod } from '@fluojs/http/portable';
 
 import { getRuntimeRouteInspectionMetadata } from './internal/route-inspection-metadata.js';
 import type { PlatformShellSnapshot } from './platform-contract.js';

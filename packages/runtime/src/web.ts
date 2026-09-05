@@ -7,7 +7,7 @@ import {
   HttpException,
   InternalServerErrorException,
   PayloadTooLargeException,
-} from '@fluojs/http';
+} from '@fluojs/http/portable';
 
 import {
   startDispatchWithRequestResponseFactory,

@@ -13,9 +13,13 @@ import {
   type FastifyHttpApplicationAdapter,
   runFastifyApplication,
 } from '@fluojs/platform-fastify';
-import { bootstrapNodejsApplication, runNodejsApplication } from '@fluojs/platform-nodejs';
+import {
+  bootstrapNodeApplication,
+  bootstrapNodejsApplication,
+  runNodeApplication,
+  runNodejsApplication,
+} from '@fluojs/platform-nodejs';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
-import { bootstrapNodeApplication, runNodeApplication } from '@fluojs/runtime/node';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createHttpAdapterPortabilityHarness } from './http-adapter-portability.js';

@@ -1,5 +1,5 @@
 import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { describe, expect, it } from 'vitest';
 
 import { Arg, Args, FieldResolver, Query, Resolver } from './decorators.js';

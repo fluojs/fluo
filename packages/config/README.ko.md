@@ -20,7 +20,7 @@ fluo 애플리케이션을 위한 설정 로드, 병합, 검증, 타입 안전�
 npm install @fluojs/config
 ```
 
-패키지는 Node.js 20.16.0 이상을 지원합니다. Env-file loading, 기본 `.env` loading, watch mode는 Node filesystem, path, crypto builtin을 host runtime boundary를 통해 lazy하게 해석하며 `process.getBuiltinModule(...)`을 요구합니다. 이 API가 존재하지만 filesystem/path/crypto direct lookup이 불가능할 때는 published ESM과 호환되는 `node:module` fallback을 사용합니다. `ConfigService`와 `loadConfig({ defaults, processEnv, runtimeOverrides })`의 in-memory 사용은 env-file access를 요구하지 않지만, 배포 계약은 package-level Node.js 20.16.0 engine을 따릅니다.
+패키지는 의도적으로 package-wide `engines.node`를 선언하지 않습니다. `ConfigService`, merge/validation/clone 동작, `loadConfig({ defaults, processEnv, runtimeOverrides })`는 portable하며 `process.cwd()`, 기본 `.env` path, Node filesystem/path/crypto builtin을 해석하지 않습니다. Env-file loading, 기본 `.env` loading, watch mode는 Node 전용 기능입니다. 이 경로는 Node.js 20.16.0 이상에서 제공되는 `process.getBuiltinModule(...)`을 통해 builtin을 lazy하게 해석하며 host가 해당 경계를 제공하지 않으면 in-memory option을 사용하거나 Node.js에서 실행하라는 guidance와 함께 `CONFIG_RUNTIME_UNAVAILABLE`을 던집니다.
 
 ## 사용 시점
 
@@ -123,7 +123,7 @@ contract는 다음과 같습니다.
 
 패키지는 `NODE_ENV`에서 env file 이름을 유도하지 않습니다. 환경별 계층화가 필요하다면 bootstrap boundary에서 목록을 직접 구성하세요.
 
-Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`, option type, 또는 명시적 in-memory 입력을 쓰는 `loadConfig(...)` consumer는 root import를 안전하게 사용할 수 있고, Node builtin은 env-file load 또는 watch mode가 실제로 실행될 때 lazy하게 해석됩니다. `loadConfig({ defaults, processEnv, runtimeOverrides })`는 `process.cwd()`, 기본 `.env` path, Node filesystem/path/crypto builtin을 해석하지 않습니다. Published package engine이 Node.js 20.16.0 이상이므로 Node.js 20.0.0부터 20.15.x까지와 Node.js 밖의 runtime은 env-file, 기본 `.env`, watch execution path의 지원 package contract에 포함되지 않습니다.
+Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`, option type, 또는 명시적 in-memory 입력을 쓰는 `loadConfig(...)` consumer는 non-Node runtime에서도 지원됩니다. Env-file, 기본 `.env`, watch 실행은 Node 전용이며 `process.getBuiltinModule(...)`을 제공하는 host가 필요합니다. 지원하지 않는 host에서는 eager import failure 대신 문서화된 `CONFIG_RUNTIME_UNAVAILABLE` error가 발생합니다.
 
 ### 객체 단위 딥 머지
 

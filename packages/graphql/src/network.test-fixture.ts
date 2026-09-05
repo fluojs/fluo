@@ -3,7 +3,7 @@ import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import {
   bootstrapNodeApplication as bootstrapRuntimeNodeApplication,
   NodeHttpApplicationAdapter,
-} from '@fluojs/runtime/node';
+} from '@fluojs/platform-nodejs';
 import { afterEach } from 'vitest';
 
 type GraphqlTestApplication = Awaited<ReturnType<typeof bootstrapRuntimeNodeApplication>>;

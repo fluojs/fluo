@@ -2,7 +2,7 @@ import { Server } from 'node:http';
 
 import { Inject, Scope } from '@fluojs/core';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
-import { createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Resolver, Subscription } from './decorators.js';

@@ -68,11 +68,11 @@ const httpByteRangeRegressionEvidence = [
 ];
 const staticAssetRuntimeSourcePaths = new Set([
   'packages/http/src/static-assets.ts',
-  'packages/runtime/src/node/node-static-assets.ts',
+  'packages/platform-nodejs/src/node/node-static-assets.ts',
 ]);
 const staticAssetRegressionEvidence = [
   'packages/http/src/static-assets.test.ts',
-  'packages/runtime/src/node/node-static-assets.test.ts',
+  'packages/platform-nodejs/src/node/node-static-assets.test.ts',
   'packages/testing/src/static-assets-portability.test.ts',
 ];
 
@@ -556,22 +556,21 @@ export function enforcePrivateRootToolchainNodeEngineAlignment(readText = read) 
 }
 
 export function enforceSocketIoNodeEngineAlignment(readText = read) {
-  const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
-  const canonicalNodeRange = runtimeManifest.engines?.node;
+  const nodePlatformManifest = JSON.parse(readText('packages/platform-nodejs/package.json'));
+  const canonicalNodeRange = nodePlatformManifest.engines?.node;
 
   assert(
     typeof canonicalNodeRange === 'string' && canonicalNodeRange.length > 0,
-    '@fluojs/runtime must declare the canonical engines.node range.',
+    '@fluojs/platform-nodejs must declare the canonical Node listener engines.node range.',
   );
 
   for (const [manifestPath, packageName] of [
-    ['packages/platform-nodejs/package.json', '@fluojs/platform-nodejs'],
     ['packages/socket.io/package.json', '@fluojs/socket.io'],
   ]) {
     const manifest = JSON.parse(readText(manifestPath));
     assert(
       manifest.engines?.node === canonicalNodeRange,
-      `${packageName} engines.node must equal the canonical @fluojs/runtime range ${canonicalNodeRange}.`,
+      `${packageName} engines.node must equal the canonical @fluojs/platform-nodejs range ${canonicalNodeRange}.`,
     );
   }
 }
@@ -3507,7 +3506,6 @@ export function enforceHttpCustomMethodContract() {
     'packages/platform-express/package.json',
     'packages/platform-fastify/package.json',
     'packages/platform-nodejs/package.json',
-    'packages/runtime/package.json',
     'packages/testing/package.json',
   ];
   const portableAdapterManifestPaths = [
@@ -3796,8 +3794,8 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
     'packages/runtime/package.json must not reintroduce an unused @fluojs/config runtime dependency edge into the GraphQL dependency graph.',
   );
   assert(
-    configPackageJson.engines?.node === '>=20.16.0',
-    'packages/config/package.json must keep its direct process.getBuiltinModule Node.js >=20.16.0 floor documented independently.',
+    runtimePackageJson.engines?.node === undefined && configPackageJson.engines?.node === undefined,
+    'Portable @fluojs/runtime and @fluojs/config packages must not declare package-wide engines.node.',
   );
 
   const contractPaths = [

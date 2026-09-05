@@ -380,7 +380,7 @@ The generated `dev` script delegates to `fluo dev`. In generated Node applicatio
 
 When the fluo restart runner owns the process boundary, `fluo dev` shows the same kind of terminal output as `fluo start`: application stdout and stderr only. fluo lifecycle UI is opt-in with `fluo dev --reporter pretty`, and raw runtime or watcher output is opt-in with `fluo dev --verbose`, `fluo dev --reporter stream`, or `FLUO_VERBOSE=1`. Runtime-native Bun, Deno, and Workers watch loops may show their runtime or tooling output because those tools own the dev loop.
 
-That CLI reporter is different from application/runtime logging. To tune logs emitted by your app after bootstrap, configure `ApplicationLogger` in code, for example with `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/runtime/node`.
+That CLI reporter is different from application/runtime logging. To tune logs emitted by your app after bootstrap, configure `ApplicationLogger` in code, for example with `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/platform-nodejs`.
 
 On the first run, the default CLI reporter forwards application stdout and stderr only; it does not add a separate fluo lifecycle UI unless you opt in with `--reporter pretty`. You can still expect runtime startup logs similar to the following.
 

@@ -31,7 +31,7 @@ gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요�
 
 ## 요구 사항
 
-`@fluojs/microservices`는 필수 `@fluojs/runtime` 의존성과 동일한 Node.js `>=20.19.3 <21 || >=22.2.0 <27`를 요구합니다. Node 21, 22.2.0 미만의 Node 22, 검증되지 않은 Node 27 이상은 지원하지 않습니다.
+`@fluojs/microservices`는 패키지 자체의 지원 계약인 Node.js `>=20.19.3 <21 || >=22.2.0 <27`를 요구합니다. Node 21, 22.2.0 미만의 Node 22, 검증되지 않은 Node 27 이상은 지원하지 않습니다.
 
 ## 사용 시점
 

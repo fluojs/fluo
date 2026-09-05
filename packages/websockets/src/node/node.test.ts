@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 

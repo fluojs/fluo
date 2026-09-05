@@ -54,7 +54,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
-The root default is `createDefaultApplicationLogger()`, which keeps the shared bootstrap surface transport-neutral. Choose `createConsoleApplicationLogger()` only for an explicit Node-only setup imported from `@fluojs/runtime/node`.
+The root default is `createDefaultApplicationLogger()`, which keeps the shared bootstrap surface transport-neutral. Choose `createConsoleApplicationLogger()` only for an explicit Node-only setup imported from `@fluojs/platform-nodejs`.
 
 The branch shown by this excerpt is about adapter presence, not host kind. Because of that, the shared Bootstrap shell can exist before any Node server creation or Web Request normalization happens. The real host differences are pushed out to the edge where the adapter enters.
 
@@ -62,11 +62,11 @@ Actual branching happens only at seams that need host-specific capabilities. Tho
 
 That is why the chapter title says "runtime branching," not "runtime fork." Fluo does not duplicate the whole runtime per host. It keeps the shared runtime shell in the center and branches only at explicit surface boundaries.
 
-This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:19-46`. The contiguous root-boundary tests enforce that the root runtime barrel must be transport-neutral, keep Bootstrap defaults detached from Node-only logger modules, and expose only Bootstrap-scoped operational helpers. Node-only helpers must live under `./node`, Web helpers must live under `./web`, and lower-level adapter seams must live under `./internal/...` subpaths.
+This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:18-45`. The contiguous root-boundary tests enforce that the root runtime barrel must be transport-neutral, keep Bootstrap defaults detached from Node-only logger modules, and expose only Bootstrap-scoped operational helpers. Node-only helpers live in `@fluojs/platform-nodejs`, Web helpers live under `@fluojs/runtime/web`, and lower-level portable adapter seams remain under `@fluojs/runtime/internal/...`.
 
 The root boundary starts with a deny list. The root barrel must not directly contain dispatch helpers, Web factories, Node shutdown helpers, or adapter Bootstrap helpers.
 
-`path:packages/runtime/src/exports.test.ts:19-46`
+`path:packages/runtime/src/exports.test.ts:18-45`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -179,21 +179,18 @@ That omission is not accidental. `path:packages/runtime/src/exports.test.ts:19-2
 
 So the root runtime API is curated around portable Bootstrap concerns. It exposes only what every host can share. Runtime Tokens such as `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, and `PLATFORM_SHELL`, along with the shared runtime type system, belong here.
 
-The package export map in `path:packages/runtime/package.json:27-61` enforces this curation at the package resolution stage. The explicit subpaths are `.`, `./node`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, and `./internal-node`.
+The package export map in `path:packages/runtime/package.json:23-50` enforces this curation at the package resolution stage. The explicit runtime subpaths are `.`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, and `./internal/request-response-factory`; Node-owned entrypoints are intentionally absent.
 
-The JSON export map repeats the same boundaries. The root entrypoint, Node, Web, devtools host bridge, and internal seams are each declared as independent package subpaths.
+The JSON export map repeats the same boundaries. Runtime's root, Web helpers, devtools host bridge, and portable internal seams are independent package subpaths, while Node capabilities resolve from the separate platform package.
 
-`path:packages/runtime/package.json:27-61`
+`path:packages/runtime/package.json:23-50`
 ```json
+"type": "module",
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
     "import": "./dist/index.js",
     "default": "./dist/index.js"
-  },
-  "./node": {
-    "types": "./dist/node.d.ts",
-    "import": "./dist/node.js"
   },
   "./web": {
     "types": "./dist/web.d.ts",
@@ -214,35 +211,30 @@ The JSON export map repeats the same boundaries. The root entrypoint, Node, Web,
   "./internal/request-response-factory": {
     "types": "./dist/internal-request-response-factory.d.ts",
     "import": "./dist/internal-request-response-factory.js"
-  },
-  "./internal-node": {
-    "types": "./dist/internal-node.d.ts",
-    "import": "./dist/internal-node.js"
   }
 },
 ```
 
-This excerpt shows that the package manager and TypeScript resolver see the same surface boundaries. The root, Node, Web, and internal seams do not get mixed into one barrel. The import path exposes cost and intent.
+This excerpt shows that the package manager and TypeScript resolver see the same surface boundaries. Portable runtime code and Node platform code do not get mixed into one package. The import path exposes cost and intent.
 
 This matters because an export map is stronger than documentation. It prevents arbitrary deep imports from pulling in internal files or host-specific files. The runtime branching policy is encoded in the package boundary itself.
 
-`path:packages/runtime/src/node/node.test.ts:7-55` strengthens the same rule from the consumer's perspective. The test asserts that the root runtime API must not contain `bootstrapNodeApplication`, `createNodeHttpAdapter`, or `runNodeApplication`. Those helpers are legal only from the Node subpath.
+`path:packages/platform-nodejs/src/node/node.test.ts:8-55` strengthens the same rule from the consumer's perspective. The test asserts that the root runtime API must not contain `bootstrapNodeApplication`, `createNodeHttpAdapter`, or `runNodeApplication`. Those helpers are legal only from `@fluojs/platform-nodejs`.
 
-`path:packages/runtime/src/exports.test.ts:100-123` also checks whether the package export map and `typesVersions` declare these narrowed entrypoints, including the `./devtools` host bridge. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
+`path:packages/runtime/src/exports.test.ts:87-106` also checks that the package export map retains the portable entrypoints, including the `./devtools` host bridge, while omitting `./node` and `./internal-node`. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
 
-The test reads package.json and confirms that its declarations include the narrowed subpaths. In particular, `internal-node` is separately pinned in `typesVersions` too.
+The test reads package.json and confirms that Node-owned entrypoints cannot resolve through the runtime package.
 
-`path:packages/runtime/src/exports.test.ts:100-123`
+`path:packages/runtime/src/exports.test.ts:87-106`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
     readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
   ) as {
     exports: Record<string, unknown>;
-    typesVersions?: Record<string, Record<string, string[]>>;
   };
 
-  expect(packageJson.exports).toHaveProperty('./node');
+  expect(packageJson.exports).not.toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
   expect(packageJson.exports).toMatchObject({
     './devtools': {
@@ -253,14 +245,11 @@ it('declares the narrowed package export map', () => {
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
-  expect(packageJson.exports).toHaveProperty('./internal-node');
-  expect(packageJson.typesVersions?.['*']).toMatchObject({
-    'internal-node': ['./dist/internal-node.d.ts'],
-  });
+  expect(packageJson.exports).not.toHaveProperty('./internal-node');
 });
 ```
 
-So the export map is not just distribution configuration. It is a verified boundary that separates the root, public Node/Web subpaths, and lower-level internal seams.
+So the export map is not just distribution configuration. It is a verified boundary that separates portable runtime entrypoints from the Node platform package.
 
 In short, the root runtime barrel answers this question: "What can every Runtime share?" Anything host-specific is deliberately pushed outside that surface.
 
@@ -270,55 +259,54 @@ The resulting branch model looks like this.
 root runtime surface:
   portable bootstrap and contracts only
 
-subpaths:
-  host-specific or lower-level transport helpers only
+runtime subpaths:
+  portable Web or lower-level runtime integration helpers
+
+Node platform package:
+  listener, filesystem, logger, compression, and process-signal helpers
 ```
 
 This design makes portability mistakes visible. If application code imports a Node helper, the import path itself already declares the portability cost.
 
-## 10.3 The Node branch packages server lifecycle, retries, compression, and shutdown behind the ./node subpath
-The public Node entrypoint is `path:packages/runtime/src/node.ts:1-25`. This file re-exports logger factories, the Node file-system asset source and its types, and selected API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
+## 10.3 The Node platform package owns server lifecycle, retries, compression, and shutdown
+The public Node package entrypoint is `path:packages/platform-nodejs/src/index.ts:12-32`. This file re-exports logger factories, the Node file-system asset source and its types, and selected API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
 
-The Node public subpath does not open the whole internal file directly. As shown below, it exposes loggers, file-system asset helpers, and selected Node application helpers only.
+The Node package root does not open the whole internal file directly. As shown below, it exposes loggers, file-system asset helpers, and selected Node application helpers only.
 
-`path:packages/runtime/src/node.ts:1-25`
+`path:packages/platform-nodejs/src/index.ts:12-32`
 ```typescript
-export * from './logging/json-logger.js';
-export * from './logging/logger.js';
 export {
-  createNodeFileSystemAssetSource,
-} from './node/node-static-assets.js';
-export type {
-  NodeFileSystemAssetPrecompression,
-  NodeFileSystemAssetSourceOptions,
-} from './node/node-static-assets.js';
-export {
+  type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
+  type CorsInput,
   createNodeHttpAdapter,
-  NodeHttpApplicationAdapter,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
+  type NodeApplicationSignal,
+  type NodeHttpAdapterOptions,
+  NodeHttpApplicationAdapter,
+  type RunNodeApplicationOptions,
   registerShutdownSignals,
   runNodeApplication,
 } from './node/internal-node.js';
-export type {
-  BootstrapNodeApplicationOptions,
-  CorsInput,
-  NodeApplicationSignal,
-  NodeHttpAdapterOptions,
-  RunNodeApplicationOptions,
-} from './node/internal-node.js';
+export * from './node/json-logger.js';
+export * from './node/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 ```
 
-This façade answers a different question than the root boundary. The root exports what every host can share. `./node` exports only the helpers that code choosing a Node host may use.
+This façade answers a different question than the root boundary. The root exports what every host can share. `@fluojs/platform-nodejs` exports only the helpers that code choosing a Node host may use.
 
-The real implementation lives in `path:packages/runtime/src/node/internal-node.ts` and `path:packages/runtime/src/node/internal-node-listen.ts`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen lifecycle behavior, compression wiring, and process-signal shutdown helpers all live in this Node-only implementation.
+The real implementation lives in `path:packages/platform-nodejs/src/node/internal-node.ts` and `path:packages/platform-nodejs/src/node/internal-node-listen.ts`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen lifecycle behavior, compression wiring, and process-signal shutdown helpers all live in this Node-only implementation.
 
-`NodeHttpApplicationAdapter` in `path:packages/runtime/src/node/internal-node.ts:133-226` is the core Node transport object. This adapter owns the native server, its `NodeListenLifecycle`, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
+`NodeHttpApplicationAdapter` in `path:packages/platform-nodejs/src/node/internal-node.ts:138-231` is the core Node transport object. This adapter owns the native server, its `NodeListenLifecycle`, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
 
 The constructor validates lifecycle options, creates the request-response factory, creates an HTTP or HTTPS server from `httpOptions` and `httpsOptions`, creates the `NodeListenLifecycle`, and tracks connections so lingering sockets can be force-closed later.
 
-`path:packages/runtime/src/node/internal-node.ts:133-156`
+`path:packages/platform-nodejs/src/node/internal-node.ts:138-161`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
@@ -348,7 +336,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 The following constructor body actually validates lifecycle policy, performs Node server creation, initializes the listener lifecycle, and tracks sockets. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, listener admission, and connection set management all belong inside the Node branch.
 
-`path:packages/runtime/src/node/internal-node.ts:157-183`
+`path:packages/platform-nodejs/src/node/internal-node.ts:162-188`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -381,9 +369,9 @@ The following constructor body actually validates lifecycle policy, performs Nod
 
 These two excerpts show why the Node branch needs its own subpath. `node:http`, `node:https`, socket sets, and server lifecycle are concrete capabilities that Web-standard hosts cannot share.
 
-Listening is coordinated by `NodeListenLifecycle` in `path:packages/runtime/src/node/internal-node-listen.ts:21-101`. It owns listener admission, retry cancellation, and close state for one Node server while delegating retry mechanics to its private helper. This behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
+Listening is coordinated by `NodeListenLifecycle` in `path:packages/platform-nodejs/src/node/internal-node-listen.ts:21-101`. It owns listener admission, retry cancellation, and close state for one Node server while delegating retry mechanics to its private helper. This behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
 
-`path:packages/runtime/src/node/internal-node-listen.ts:21-101`
+`path:packages/platform-nodejs/src/node/internal-node-listen.ts:21-101`
 ```typescript
 /** Owns one Node server's listen, retry cancellation, and close admission state. */
 export class NodeListenLifecycle {
@@ -472,10 +460,18 @@ The branch condition here is not a whole-runtime host choice. It is listener adm
 
 Shutdown is delegated through `NodeListenLifecycle.close()` before `closeNodeServerWithDrain()` closes the server, closes idle connections, and force-closes sockets if the drain timeout is exceeded. This is another piece of host-specific operational logic separated from the root runtime.
 
-`createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:283-297` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:306-318` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` adds shutdown-signal registration on top.
+`createNodeHttpAdapter()` in `path:packages/platform-nodejs/src/node/internal-node.ts:288-302` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/platform-nodejs/src/node/internal-node.ts:311-323` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` adds shutdown-signal registration on top.
 
-`path:packages/runtime/src/node/internal-node.ts:283-318`
+`path:packages/platform-nodejs/src/node/internal-node.ts:280-323`
 ```typescript
+/**
+ * Create node http adapter.
+ *
+ * @param options The options.
+ * @param compression The compression.
+ * @param multipartOptions The multipart options.
+ * @returns The create node http adapter result.
+ */
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
     resolveNodePort(options.port),
@@ -516,11 +512,10 @@ export async function bootstrapNodeApplication(
 
 This excerpt narrows a 38-line source flow to adapter creation and Bootstrap handoff. The shutdown signal wiring in `runNodeApplication()` remains traceable through the citation later in the same nearby range. For this discussion, it is enough to see the boundary where Node concerns pass into the shared HTTP Bootstrap path.
 
-The tests explain the intended public contract. `path:packages/runtime/src/node/node.test.ts:14-48` shows that the adapter's default port is `3000`, not `process.env.PORT`. This is also an explicitness choice. It prevents Node-specific convenience from silently pulling in ambient process configuration.
+The tests explain the intended public contract. `path:packages/platform-nodejs/src/node/node.test.ts:14-48` shows that the adapter's default port is `3000`, not `process.env.PORT`. This is also an explicitness choice. It prevents Node-specific convenience from silently pulling in ambient process configuration.
 
-`path:packages/runtime/src/node/node.test.ts:14-30`
+`path:packages/platform-nodejs/src/node/node.test.ts:15-31`
 ```typescript
-
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
     process.env.PORT = '4321';
@@ -537,11 +532,12 @@ The tests explain the intended public contract. `path:packages/runtime/src/node/
         process.env.PORT = previousPort;
       }
     }
+  });
 ```
 
 This test fixes two facts at once: the Node branch can see Node environment variables, and yet its default value is not tied to ambient process state. Portability cost is visible in the import path, but runtime defaults do not implicitly lean on host globals.
 
-`path:packages/runtime/src/node/node.test.ts:50-54` in the same file verifies that Node compression internals are not exposed from the public Node subpath. Even inside the Node branch, Fluo separates supported public helpers from low-level implementation details. This short assertion reaches the same conclusion as the `node.ts` façade excerpt from another angle, so it remains citation-only instead of being repeated as another code block.
+`path:packages/platform-nodejs/src/node/node.test.ts:51-55` in the same file verifies that Node compression internals are not exposed from the public Node subpath. Even inside the Node branch, Fluo separates supported public helpers from low-level implementation details. This short assertion reaches the same conclusion as the `node.ts` façade excerpt from another angle, so it remains citation-only instead of being repeated as another code block.
 
 The Node branch can be drawn like this.
 
@@ -601,7 +597,7 @@ Above that interface, `dispatchWithRequestResponseFactory()` handles the rest. I
 
 This helper is the real anti-duplication seam for runtime branching. The Node branch and Web branch do not each implement dispatcher invocation, empty-response fallback, and error serialization flow. They only provide different factories.
 
-The symmetry is visible in the source. Node's `createNodeRequestResponseFactory()` lives in `path:packages/runtime/src/node/internal-node.ts:196-238`, and Web's `createWebRequestResponseFactory()` lives in `path:packages/runtime/src/web.ts:246-274`. Both return the same interface, and both are then consumed by `dispatchWithRequestResponseFactory()`.
+The symmetry is visible in the source. Node's `createNodeRequestResponseFactory()` lives in `path:packages/platform-nodejs/src/node/internal-node.ts:233-278`, and Web's `createWebRequestResponseFactory()` lives in `path:packages/runtime/src/web.ts:246-274`. Both return the same interface, and both are then consumed by `dispatchWithRequestResponseFactory()`.
 
 So host-specific divergence is narrow and explicit. Higher-level runtime behavior remains identical above it.
 

@@ -7,7 +7,7 @@
 
 ## Learning Objectives
 - root runtime surface가 왜 transport-neutral하게 유지되는지 설명합니다.
-- Node 전용 기능이 `./node` 서브패스로 분리되는 이유를 이해합니다.
+- Node 전용 기능이 `@fluojs/platform-nodejs` package로 분리되는 이유를 이해합니다.
 - Web 표준 `Request`와 `Response` seam이 Edge 호스트까지 포괄하는 구조를 분석합니다.
 - request/response factory가 호스트별 차이를 좁은 브리지로 제한하는 방식을 정리합니다.
 - export map과 서브패스 설계가 이식성 계약을 어떻게 강제하는지 살펴봅니다.
@@ -54,7 +54,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
-root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하는 `createDefaultApplicationLogger()`입니다. `createConsoleApplicationLogger()`는 `@fluojs/runtime/node`에서 import하는 명시적인 Node 전용 구성에서만 선택하세요.
+root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하는 `createDefaultApplicationLogger()`입니다. `createConsoleApplicationLogger()`는 `@fluojs/platform-nodejs`에서 import하는 명시적인 Node 전용 구성에서만 선택하세요.
 
 이 발췌가 보여 주는 분기는 host 종류가 아니라 adapter 존재 여부입니다. 그래서 공통 bootstrap shell은 Node 서버 생성이나 Web Request 정규화 없이도 먼저 성립하고, 실제 host 차이는 adapter가 들어오는 가장자리로 밀려납니다.
 
@@ -62,11 +62,11 @@ root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하�
 
 그래서 장 제목이 "runtime fork"가 아니라 "runtime branching"입니다. Fluo는 host마다 runtime 전체를 복제하지 않습니다. 공통 runtime shell은 중앙에 두고, 명시적인 surface boundary에서만 분기합니다.
 
-이 철학은 `path:packages/runtime/src/exports.test.ts:19-46`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `./node`에 있어야 하고, Web helper는 `./web`에 있어야 하며, lower-level adapter seam은 `./internal/...` subpath에 있어야 합니다.
+이 철학은 `path:packages/runtime/src/exports.test.ts:18-45`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `@fluojs/platform-nodejs`에 있고, Web helper는 `@fluojs/runtime/web`에 있으며, lower-level portable adapter seam은 `@fluojs/runtime/internal/...`에 남습니다.
 
 root boundary부터 보면 금지 목록이 먼저 나옵니다. root barrel은 dispatch helper, Web factory, Node shutdown helper, adapter bootstrap helper를 직접 담지 않아야 합니다.
 
-`path:packages/runtime/src/exports.test.ts:19-46`
+`path:packages/runtime/src/exports.test.ts:18-45`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -179,21 +179,18 @@ root barrel은 의도적으로 `renderRuntimeDiagnosticsMermaid()`를 생략합�
 
 즉 root runtime API는 portable bootstrap concern만 중심에 두고 큐레이션됩니다. 모든 host가 공유할 수 있는 것만 노출합니다. `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, `PLATFORM_SHELL` 같은 runtime token, 그리고 공유 runtime type system이 여기에 속합니다.
 
-`path:packages/runtime/package.json:27-61`의 package export map은 이 큐레이션을 package-resolution 단계에서 강제합니다. 명시적인 subpath는 다음과 같습니다. `.`, `./node`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, `./internal-node`입니다.
+`path:packages/runtime/package.json:23-50`의 package export map은 이 큐레이션을 package-resolution 단계에서 강제합니다. 명시적인 runtime subpath는 `.`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`이며 Node-owned entrypoint는 의도적으로 없습니다.
 
 JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, Web, devtools host bridge, internal seam이 각각 독립된 package subpath로 선언됩니다.
 
-`path:packages/runtime/package.json:27-61`
+`path:packages/runtime/package.json:23-50`
 ```json
+"type": "module",
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
     "import": "./dist/index.js",
     "default": "./dist/index.js"
-  },
-  "./node": {
-    "types": "./dist/node.d.ts",
-    "import": "./dist/node.js"
   },
   "./web": {
     "types": "./dist/web.d.ts",
@@ -214,10 +211,6 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
   "./internal/request-response-factory": {
     "types": "./dist/internal-request-response-factory.d.ts",
     "import": "./dist/internal-request-response-factory.js"
-  },
-  "./internal-node": {
-    "types": "./dist/internal-node.d.ts",
-    "import": "./dist/internal-node.js"
   }
 },
 ```
@@ -226,23 +219,22 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
 
 이 점이 중요한 이유는 export map이 documentation보다 강하기 때문입니다. 임의의 deep import로 internal file이나 host-specific file을 끌어다 쓰는 것을 막아 줍니다. 즉 runtime branching policy는 package boundary 자체에 encoded되어 있습니다.
 
-`path:packages/runtime/src/node/node.test.ts:7-55`도 consumer 관점에서 같은 규칙을 강화합니다. 이 테스트는 root runtime API에 `bootstrapNodeApplication`, `createNodeHttpAdapter`, `runNodeApplication`이 없어야 한다고 단언합니다. 이 helper들은 Node subpath에서만 합법입니다.
+`path:packages/platform-nodejs/src/node/node.test.ts:8-55`도 consumer 관점에서 같은 규칙을 강화합니다. 이 테스트는 root runtime API에 `bootstrapNodeApplication`, `createNodeHttpAdapter`, `runNodeApplication`이 없어야 한다고 단언합니다. 이 helper들은 `@fluojs/platform-nodejs`에서만 합법입니다.
 
-`path:packages/runtime/src/exports.test.ts:100-123`은 package export map과 `typesVersions`가 `./devtools` host bridge를 포함한 이 narrowed entrypoint를 선언하는지도 검사합니다. 바로 여기서 runtime branching은 구현 세부를 넘어 안정적인 published contract가 됩니다.
+`path:packages/runtime/src/exports.test.ts:87-106`은 package export map이 `./devtools` host bridge를 포함한 portable entrypoint를 유지하면서 `./node`와 `./internal-node`를 생략하는지도 검사합니다. 바로 여기서 runtime branching은 구현 세부를 넘어 안정적인 published contract가 됩니다.
 
-테스트는 package.json의 선언이 실제로 좁혀진 subpath를 포함하는지 읽어서 확인합니다. 특히 `internal-node`는 `typesVersions`에도 별도로 고정됩니다.
+테스트는 Node-owned entrypoint가 runtime package를 통해 해석되지 않는지 package.json에서 확인합니다.
 
-`path:packages/runtime/src/exports.test.ts:100-123`
+`path:packages/runtime/src/exports.test.ts:87-106`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
     readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
   ) as {
     exports: Record<string, unknown>;
-    typesVersions?: Record<string, Record<string, string[]>>;
   };
 
-  expect(packageJson.exports).toHaveProperty('./node');
+  expect(packageJson.exports).not.toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
   expect(packageJson.exports).toMatchObject({
     './devtools': {
@@ -253,10 +245,7 @@ it('declares the narrowed package export map', () => {
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
-  expect(packageJson.exports).toHaveProperty('./internal-node');
-  expect(packageJson.typesVersions?.['*']).toMatchObject({
-    'internal-node': ['./dist/internal-node.d.ts'],
-  });
+  expect(packageJson.exports).not.toHaveProperty('./internal-node');
 });
 ```
 
@@ -276,49 +265,45 @@ subpaths:
 
 이 설계는 portability mistake를 눈에 띄게 만듭니다. application code가 Node helper를 import한다면, 그 import path 자체가 이미 portability cost를 선언하고 있는 셈입니다.
 
-## 10.3 The Node branch packages server lifecycle, retries, compression, and shutdown behind the ./node subpath
-public Node entrypoint는 `path:packages/runtime/src/node.ts:1-25`입니다. 이 파일은 logger factory, Node file-system asset source와 그 type, `./node/internal-node.js`의 선별된 API를 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
+## 10.3 Node platform package가 server lifecycle, retry, compression, shutdown을 소유합니다
+public Node package entrypoint는 `path:packages/platform-nodejs/src/index.ts:12-32`입니다. 이 파일은 logger factory, Node file-system asset source와 그 type, `./node/internal-node.js`의 선별된 API를 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
 
-Node public subpath는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger, file-system asset helper, 선택된 Node application helper만 공개합니다.
+Node package root는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger, file-system asset helper, 선택된 Node application helper만 공개합니다.
 
-`path:packages/runtime/src/node.ts:1-25`
+`path:packages/platform-nodejs/src/index.ts:12-32`
 ```typescript
-export * from './logging/json-logger.js';
-export * from './logging/logger.js';
 export {
-  createNodeFileSystemAssetSource,
-} from './node/node-static-assets.js';
-export type {
-  NodeFileSystemAssetPrecompression,
-  NodeFileSystemAssetSourceOptions,
-} from './node/node-static-assets.js';
-export {
+  type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
+  type CorsInput,
   createNodeHttpAdapter,
-  NodeHttpApplicationAdapter,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
+  type NodeApplicationSignal,
+  type NodeHttpAdapterOptions,
+  NodeHttpApplicationAdapter,
+  type RunNodeApplicationOptions,
   registerShutdownSignals,
   runNodeApplication,
 } from './node/internal-node.js';
-export type {
-  BootstrapNodeApplicationOptions,
-  CorsInput,
-  NodeApplicationSignal,
-  NodeHttpAdapterOptions,
-  RunNodeApplicationOptions,
-} from './node/internal-node.js';
+export * from './node/json-logger.js';
+export * from './node/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 ```
 
-이 façade는 root boundary와 다른 질문에 답합니다. root는 모든 host가 공유할 수 있는 것을 내보내고, `./node`는 Node host를 선택한 코드가 쓸 수 있는 helper만 내보냅니다.
+이 façade는 root boundary와 다른 질문에 답합니다. root는 모든 host가 공유할 수 있는 것을 내보내고, `@fluojs/platform-nodejs`는 Node host를 선택한 코드가 쓸 수 있는 helper만 내보냅니다.
 
-실제 구현은 `path:packages/runtime/src/node/internal-node.ts`와 `path:packages/runtime/src/node/internal-node-listen.ts`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen lifecycle behavior, compression wiring, process-signal shutdown helper가 모두 이 Node 전용 구현에 있습니다.
+실제 구현은 `path:packages/platform-nodejs/src/node/internal-node.ts`와 `path:packages/platform-nodejs/src/node/internal-node-listen.ts`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen lifecycle behavior, compression wiring, process-signal shutdown helper가 모두 이 Node 전용 구현에 있습니다.
 
-`path:packages/runtime/src/node/internal-node.ts:133-226`의 `NodeHttpApplicationAdapter`가 핵심 Node transport object입니다. 이 adapter는 native server, `NodeListenLifecycle`, request/response factory, drain-aware shutdown을 위한 socket set을 소유합니다. 이런 것은 root runtime의 abstract adapter contract가 알 수 없는 영역입니다.
+`path:packages/platform-nodejs/src/node/internal-node.ts:138-231`의 `NodeHttpApplicationAdapter`가 핵심 Node transport object입니다. 이 adapter는 native server, `NodeListenLifecycle`, request/response factory, drain-aware shutdown을 위한 socket set을 소유합니다. 이런 것은 root runtime의 abstract adapter contract가 알 수 없는 영역입니다.
 
 constructor는 lifecycle option을 validate하고, request-response factory를 만들고, `httpOptions`와 `httpsOptions`에서 HTTP 또는 HTTPS server를 만들고, `NodeListenLifecycle`을 만들며, 나중에 lingering socket을 강제 종료할 수 있도록 connection을 추적합니다.
 
-`path:packages/runtime/src/node/internal-node.ts:133-156`
+`path:packages/platform-nodejs/src/node/internal-node.ts:138-161`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
@@ -348,7 +333,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 이어지는 constructor 본문은 lifecycle policy를 validate하고 실제 Node server 생성, listener lifecycle 초기화, socket tracking을 수행합니다. 이 두 번째 발췌가 request/response factory, HTTP/HTTPS server 선택, listener admission, connection set 관리가 모두 Node branch 안에 있음을 보여 줍니다.
 
-`path:packages/runtime/src/node/internal-node.ts:157-183`
+`path:packages/platform-nodejs/src/node/internal-node.ts:162-188`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -381,9 +366,9 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 이 두 발췌는 Node branch가 왜 별도 subpath에 있어야 하는지 보여 줍니다. `node:http`, `node:https`, socket set, server lifecycle은 Web-standard host가 공유할 수 없는 구체 capability입니다.
 
-listen은 `path:packages/runtime/src/node/internal-node-listen.ts:21-101`의 `NodeListenLifecycle`이 조정합니다. 이 class는 private helper에 retry mechanics를 위임하면서 하나의 Node server에 대한 listener admission, retry cancellation, close state를 소유합니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
+listen은 `path:packages/platform-nodejs/src/node/internal-node-listen.ts:21-101`의 `NodeListenLifecycle`이 조정합니다. 이 class는 private helper에 retry mechanics를 위임하면서 하나의 Node server에 대한 listener admission, retry cancellation, close state를 소유합니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
 
-`path:packages/runtime/src/node/internal-node-listen.ts:21-101`
+`path:packages/platform-nodejs/src/node/internal-node-listen.ts:21-101`
 ```typescript
 /** Owns one Node server's listen, retry cancellation, and close admission state. */
 export class NodeListenLifecycle {
@@ -472,10 +457,18 @@ export class NodeListenLifecycle {
 
 shutdown은 `NodeListenLifecycle.close()`를 거친 뒤 `closeNodeServerWithDrain()`이 server를 닫고, idle connection을 닫고, drain timeout을 넘기면 socket을 강제로 닫도록 위임합니다. 역시 root runtime과 분리된 host-specific operational logic입니다.
 
-`path:packages/runtime/src/node/internal-node.ts:283-297`의 `createNodeHttpAdapter()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/runtime/src/node/internal-node.ts:306-318`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
+`path:packages/platform-nodejs/src/node/internal-node.ts:288-302`의 `createNodeHttpAdapter()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/platform-nodejs/src/node/internal-node.ts:311-323`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
 
-`path:packages/runtime/src/node/internal-node.ts:283-318`
+`path:packages/platform-nodejs/src/node/internal-node.ts:280-323`
 ```typescript
+/**
+ * Create node http adapter.
+ *
+ * @param options The options.
+ * @param compression The compression.
+ * @param multipartOptions The multipart options.
+ * @returns The create node http adapter result.
+ */
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
     resolveNodePort(options.port),
@@ -516,11 +509,10 @@ export async function bootstrapNodeApplication(
 
 발췌는 38줄 원본 흐름 중 adapter 생성과 bootstrap handoff만 좁혀 보여 줍니다. `runNodeApplication()`의 shutdown signal 결합은 같은 인접 범위의 후반부에 남겨 둔 citation으로 추적하고, 여기서는 Node concern이 shared HTTP bootstrap으로 넘어가는 경계만 읽으면 충분합니다.
 
-테스트는 의도된 public contract를 설명합니다. `path:packages/runtime/src/node/node.test.ts:14-48`은 adapter 기본 포트가 `process.env.PORT`가 아니라 `3000`임을 보여 줍니다. 이것도 explicitness choice입니다. Node-specific convenience가 ambient process configuration을 묵시적으로 끌고 들어오지 못하게 합니다.
+테스트는 의도된 public contract를 설명합니다. `path:packages/platform-nodejs/src/node/node.test.ts:14-48`은 adapter 기본 포트가 `process.env.PORT`가 아니라 `3000`임을 보여 줍니다. 이것도 explicitness choice입니다. Node-specific convenience가 ambient process configuration을 묵시적으로 끌고 들어오지 못하게 합니다.
 
-`path:packages/runtime/src/node/node.test.ts:14-30`
+`path:packages/platform-nodejs/src/node/node.test.ts:15-31`
 ```typescript
-
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
     process.env.PORT = '4321';
@@ -537,11 +529,12 @@ export async function bootstrapNodeApplication(
         process.env.PORT = previousPort;
       }
     }
+  });
 ```
 
 이 테스트는 Node branch가 Node 환경 변수를 볼 수 있다는 사실과, 그럼에도 기본값을 ambient process state에 묶지 않는다는 사실을 함께 고정합니다. portability cost는 import path에서 드러나지만, runtime default까지 암묵적으로 host global에 기대지는 않습니다.
 
-같은 파일의 `path:packages/runtime/src/node/node.test.ts:50-54`는 Node compression internal이 public Node subpath에 노출되지 않음을 검증합니다. 즉 Node branch 내부에서도 supported public helper와 low-level implementation detail을 구분합니다. 이 짧은 assertion은 위 `node.ts` façade 발췌와 같은 결론을 다른 각도에서 확인하므로 별도 코드 블록으로 반복하지 않고 citation-only로 남깁니다.
+같은 파일의 `path:packages/platform-nodejs/src/node/node.test.ts:51-55`는 Node compression internal이 public Node package root에 노출되지 않음을 검증합니다. 즉 Node branch 내부에서도 supported public helper와 low-level implementation detail을 구분합니다. 이 짧은 assertion은 위 `node.ts` façade 발췌와 같은 결론을 다른 각도에서 확인하므로 별도 코드 블록으로 반복하지 않고 citation-only로 남깁니다.
 
 Node branch는 다음처럼 그릴 수 있습니다.
 
@@ -601,7 +594,7 @@ Edge host:
 
 이 helper가 runtime branching의 실제 anti-duplication seam입니다. Node branch와 Web branch는 각각 dispatcher invocation, empty-response fallback, error-serialization flow를 따로 구현하지 않습니다. 서로 다른 factory만 공급합니다.
 
-대칭 구조는 source에서 바로 보입니다. Node의 `createNodeRequestResponseFactory()`는 `path:packages/runtime/src/node/internal-node.ts:196-238`에 있고, Web의 `createWebRequestResponseFactory()`는 `path:packages/runtime/src/web.ts:246-274`에 있습니다. 둘 다 같은 interface를 반환하고, 둘 다 이후에는 `dispatchWithRequestResponseFactory()`에 의해 소비됩니다.
+대칭 구조는 source에서 바로 보입니다. Node의 `createNodeRequestResponseFactory()`는 `path:packages/platform-nodejs/src/node/internal-node.ts:233-278`에 있고, Web의 `createWebRequestResponseFactory()`는 `path:packages/runtime/src/web.ts:246-274`에 있습니다. 둘 다 같은 interface를 반환하고, 둘 다 이후에는 `dispatchWithRequestResponseFactory()`에 의해 소비됩니다.
 
 즉 host-specific divergence는 좁고 명시적입니다. 그 위의 higher-level runtime behavior는 동일하게 유지됩니다.
 

@@ -1,4 +1,4 @@
-import type { HandlerDescriptor, RequestObserver } from '@fluojs/http';
+import type { HandlerDescriptor, RequestObserver } from '@fluojs/http/portable';
 
 import type { BootstrapTimingDiagnostics } from '../health/diagnostics.js';
 import type { BootstrapApplicationOptions, CompiledModule, CreateApplicationContextOptions, ModuleType } from '../types.js';

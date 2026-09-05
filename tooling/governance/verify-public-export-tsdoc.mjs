@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -357,7 +357,17 @@ export function changedPublicExportSourcePathsFromGit(
   readSourceAtRef = readAtGitRef,
 ) {
   return relativePaths.filter((relativePath) => {
-    const currentSource = readSource(relativePath);
+    let currentSource;
+    try {
+      currentSource = readSource(relativePath);
+    } catch (error) {
+      if (error && typeof error === 'object' && error.code === 'ENOENT') {
+        return false;
+      }
+
+      throw error;
+    }
+
     const previousSource = readSourceAtRef(gitRef, relativePath);
     return hasChangedPublicExportDeclarations(relativePath, currentSource, previousSource);
   });

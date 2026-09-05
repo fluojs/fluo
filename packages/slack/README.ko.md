@@ -28,7 +28,7 @@ fluo를 위한 webhook-first, transport-agnostic Slack 전달 코어 패키지�
 npm install @fluojs/slack @fluojs/notifications
 ```
 
-이 패키지는 mandatory `@fluojs/runtime` dependency 때문에 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않으므로 process를 지원되는 line으로 옮겨야 합니다. 런타임 전달 계약 자체는 명시적인 fetch-compatible 경계를 통해 계속 transport-agnostic하게 유지됩니다.
+이 패키지는 패키지 자체의 지원 계약에 따라 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않으므로 process를 지원되는 line으로 옮겨야 합니다. 런타임 전달 계약 자체는 명시적인 fetch-compatible 경계를 통해 계속 transport-agnostic하게 유지됩니다.
 
 ## 사용 시점
 

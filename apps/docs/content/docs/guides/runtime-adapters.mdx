@@ -25,7 +25,7 @@ The exported Cloudflare Worker `fetch` handler has no host-invoked shutdown call
 
 Static asset policy is portable only when the application supplies a `StaticAssetSource` to `createStaticAssetsMiddleware(...)`. This preserves the same traversal protection, validators, `HEAD`, `Range`, `If-Range`, and stream-cancellation behavior on every adapter without claiming that every host has a filesystem.
 
-On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)` from `@fluojs/runtime/node` for a root-confined filesystem source. It rejects invalid roots during configuration, rejects lexical and symlink escapes, and can select `.br` or `.gz` siblings when precompression is enabled. Bun, Deno, and Cloudflare Workers must provide an application-owned source; fluo does not emulate Node filesystem access on those targets.
+On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)` from `@fluojs/platform-nodejs` for a root-confined filesystem source. It rejects invalid roots during configuration, rejects lexical and symlink escapes, and can select `.br` or `.gz` siblings when precompression is enabled. Bun, Deno, and Cloudflare Workers must provide an application-owned source; fluo does not emulate Node filesystem access on those targets.
 
 ## Adapter families
 

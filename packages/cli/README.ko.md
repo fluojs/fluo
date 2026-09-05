@@ -277,7 +277,7 @@ FLUO_VERBOSE=1 fluo dev
 fluo build --reporter silent
 ```
 
-런타임 애플리케이션 로그는 `ApplicationLogger`로 별도 설정합니다. 예를 들어 `@fluojs/runtime/node`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용하세요.
+런타임 애플리케이션 로그는 `ApplicationLogger`로 별도 설정합니다. 예를 들어 `@fluojs/platform-nodejs`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용하세요.
 
 first-party package 설치 shortcut에는 `fluo add <package>`를 사용하고, CLI/latest-version 및 migration 안내는 `fluo upgrade`로 확인합니다:
 

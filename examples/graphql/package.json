@@ -15,6 +15,7 @@
     "@fluojs/core": "workspace:*",
     "@fluojs/graphql": "workspace:*",
     "@fluojs/http": "workspace:*",
+    "@fluojs/platform-nodejs": "workspace:*",
     "@fluojs/runtime": "workspace:*",
     "graphql": "^16.13.1"
   },

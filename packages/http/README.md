@@ -35,7 +35,7 @@ The middleware decodes each URL segment once and rejects traversal, encoded sepa
 
 ```ts
 import { createStaticAssetsMiddleware } from '@fluojs/http';
-import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+import { createNodeFileSystemAssetSource } from '@fluojs/platform-nodejs';
 
 const assets = createStaticAssetsMiddleware({
   cacheControl: 'public, max-age=3600',
@@ -548,7 +548,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Structured access logging**: `createAccessLogObserver`, `CreateAccessLogObserverOptions`, `AccessLogSink`, `AccessLogEvent`, `AccessLogStartEvent`, `AccessLogErrorEvent`, `AccessLogFinishEvent`, `AccessLogOutcome`, `AccessLogHeaderOptions`, `AccessLogRequestFields`
 - **Conditional request types**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **Byte-range responses**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
-- **Static assets**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. This package owns middleware and source-selection contracts; `@fluojs/runtime/node` owns the optional Node filesystem source.
+- **Static assets**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. This package owns middleware and source-selection contracts; `@fluojs/platform-nodejs` owns the optional Node filesystem source.
 - **Response transport controls**: `FrameworkResponseSendOptions`, `FrameworkResponseStream` (`onError` reports every transport failure occurrence, including `undefined`, and returns an optional remover that callers invoke after their stream settles)
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`

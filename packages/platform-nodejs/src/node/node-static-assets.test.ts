@@ -1,4 +1,5 @@
 import {
+  type FileHandle,
   mkdir,
   mkdtemp,
   rename,
@@ -7,14 +8,13 @@ import {
   symlink,
   utimes,
   writeFile,
-  type FileHandle,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createNodeFileSystemAssetSource } from '../node.js';
+import { createNodeFileSystemAssetSource } from '../index.js';
 
 const containmentTestState = vi.hoisted(() => ({
   closedPaths: [] as string[],

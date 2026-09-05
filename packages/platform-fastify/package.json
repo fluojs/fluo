@@ -44,6 +44,7 @@
   "dependencies": {
     "@fastify/multipart": "^9.2.1",
     "@fluojs/http": "workspace:^",
+    "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/runtime": "workspace:^",
     "fastify": "^5.8.5",
     "fastify-raw-body": "^5.0.0"

@@ -20,7 +20,7 @@ Descriptor-driven OpenAPI 3.1.0 document generation for fluo, with standard deco
 pnpm add @fluojs/openapi
 ```
 
-`@fluojs/openapi` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. Its mandatory `@fluojs/runtime` dependency owns that Node listener boundary, so Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Earlier 1.x releases advertised `engines.node >=20.0.0`, which never matched the effective dependency floor.
+`@fluojs/openapi` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. That package-owned support contract excludes Node 21, Node 22 before 22.2.0, and unverified Node 27+; portable `@fluojs/runtime` has no package-wide Node engine. Earlier 1.x releases advertised `engines.node >=20.0.0`.
 
 ## When to Use
 
@@ -37,7 +37,7 @@ Register the `OpenApiModule` and pass `sources`, prebuilt `descriptors`, or both
 ```typescript
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')

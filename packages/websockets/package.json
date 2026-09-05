@@ -93,6 +93,7 @@
     "@fluojs/platform-cloudflare-workers": "workspace:^",
     "@fluojs/platform-express": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
+    "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/testing": "workspace:^",
     "@types/ws": "^8.18.1",
     "vitest": "^3.2.4"

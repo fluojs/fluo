@@ -1,6 +1,6 @@
 import type { Token } from '@fluojs/core';
 import type { Provider, Scope } from '@fluojs/di';
-import type { HandlerDescriptor } from '@fluojs/http';
+import type { HandlerDescriptor } from '@fluojs/http/portable';
 
 import { type BootstrapTimingDiagnostics, createRuntimeDiagnosticsGraph } from '../health/diagnostics.js';
 import { getRuntimeClassDiMetadata, type RuntimeInjectionToken } from '../internal/core-metadata.js';

@@ -14,7 +14,7 @@ import { createExpressAdapter } from '@fluojs/platform-express';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
 import { type Application, type ApplicationLogger, bootstrapApplication, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import {
   OnConnect,
   OnDisconnect,

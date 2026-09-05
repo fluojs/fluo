@@ -1,6 +1,6 @@
 import { getCurrentRequestContext } from '@fluojs/http';
 
-import type { ApplicationLogger } from '../types.js';
+import type { ApplicationLogger } from '@fluojs/runtime';
 
 type LogLevel = 'debug' | 'error' | 'log' | 'warn';
 
@@ -45,16 +45,16 @@ function buildEntry(level: LogLevel, message: string, context?: string, error?: 
 export function createJsonApplicationLogger(): ApplicationLogger {
   return {
     debug(message, context) {
-      process.stdout.write(JSON.stringify(buildEntry('debug', message, context)) + '\n');
+      process.stdout.write(`${JSON.stringify(buildEntry('debug', message, context))}\n`);
     },
     error(message, error, context) {
-      process.stderr.write(JSON.stringify(buildEntry('error', message, context, error)) + '\n');
+      process.stderr.write(`${JSON.stringify(buildEntry('error', message, context, error))}\n`);
     },
     log(message, context) {
-      process.stdout.write(JSON.stringify(buildEntry('log', message, context)) + '\n');
+      process.stdout.write(`${JSON.stringify(buildEntry('log', message, context))}\n`);
     },
     warn(message, context) {
-      process.stderr.write(JSON.stringify(buildEntry('warn', message, context)) + '\n');
+      process.stderr.write(`${JSON.stringify(buildEntry('warn', message, context))}\n`);
     },
   };
 }

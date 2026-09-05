@@ -103,7 +103,7 @@ microservice branch는 또 다른 독립 bootstrap이 아닙니다. 먼저 conte
       return new FluoMicroserviceApplication(context, logger, runtime, true);
 ```
 
-`CreateApplicationContextOptions`는 `logger`를 명시적으로 제외하고, `CreateMicroserviceOptions`는 그 option shape을 확장합니다. 따라서 high-level microservice path에는 caller-supplied logger option이 없습니다. Studio wiring은 context bootstrap 내부에 두고 transport-neutral `createDefaultApplicationLogger()`를 사용합니다. Node-specific logger helper는 계속 `@fluojs/runtime/node`에 있습니다.
+`CreateApplicationContextOptions`는 `logger`를 명시적으로 제외하고, `CreateMicroserviceOptions`는 그 option shape을 확장합니다. 따라서 high-level microservice path에는 caller-supplied logger option이 없습니다. Studio wiring은 context bootstrap 내부에 두고 transport-neutral `createDefaultApplicationLogger()`를 사용합니다. Node-specific logger helper는 계속 `@fluojs/platform-nodejs`에 있습니다.
 
 이 세 발췌를 함께 보면 layered composition이 더 선명합니다. application은 dispatcher와 HTTP adapter를 가진 shell이고, context는 adapterless DI/lifecycle shell이며, microservice는 context 위에 transport runtime을 붙인 shell입니다.
 

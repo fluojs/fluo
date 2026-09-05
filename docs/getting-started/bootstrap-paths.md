@@ -19,7 +19,7 @@
 | --- | --- |
 | `examples/minimal/src/main.ts` | Canonical application entry file for the default HTTP bootstrap shape. It creates the application with `FluoFactory.create(...)` and then calls `app.listen()`. |
 | `packages/runtime/src/bootstrap.ts` | Source of `bootstrapApplication(...)`, `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, and `FluoFactory.createMicroservice(...)`. |
-| `packages/runtime/src/node.ts` | Public Node specific subpath for raw Node bootstrap helpers and shutdown signal registration helpers. |
+| `packages/platform-nodejs/src/index.ts` | Platform-owned raw Node adapter, bootstrap, logging, filesystem, and shutdown signal helpers. |
 | `packages/platform-fastify/src/adapter.ts` | Exposes `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, and `runFastifyApplication(...)` for the Fastify path. |
 | `packages/platform-cloudflare-workers/src/adapter.ts` | Exposes `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, and `createCloudflareWorkerEntrypoint(...)` for the Worker fetch path. |
 

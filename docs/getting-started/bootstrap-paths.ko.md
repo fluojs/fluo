@@ -19,7 +19,7 @@
 | --- | --- |
 | `examples/minimal/src/main.ts` | 기본 HTTP 부트스트랩 형태를 보여 주는 대표 애플리케이션 진입 파일입니다. `FluoFactory.create(...)`로 애플리케이션을 만들고 `app.listen()`을 호출합니다. |
 | `packages/runtime/src/bootstrap.ts` | `bootstrapApplication(...)`, `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, `FluoFactory.createMicroservice(...)`의 구현 소스입니다. |
-| `packages/runtime/src/node.ts` | raw Node 부트스트랩 helper와 shutdown signal registration helper를 공개하는 Node 전용 subpath입니다. |
+| `packages/platform-nodejs/src/index.ts` | 플랫폼이 소유하는 raw Node adapter, bootstrap, logging, filesystem, shutdown signal helper의 구현 소스입니다. |
 | `packages/platform-fastify/src/adapter.ts` | Fastify 경로의 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, `runFastifyApplication(...)`를 노출합니다. |
 | `packages/platform-cloudflare-workers/src/adapter.ts` | Worker fetch 경로의 `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, `createCloudflareWorkerEntrypoint(...)`를 노출합니다. |
 

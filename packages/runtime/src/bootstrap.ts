@@ -10,7 +10,7 @@ import {
   type HandlerDescriptor,
   type HandlerSource,
   type HttpApplicationAdapter,
-} from '@fluojs/http';
+} from '@fluojs/http/portable';
 import {
   applyStudioDevtoolsApplicationOptions,
   applyStudioDevtoolsContextOptions,
