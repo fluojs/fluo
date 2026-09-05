@@ -45,6 +45,9 @@ jobs:
       - name: Verify Bun native routing and lifecycle
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
+      - name: Verify release readiness
+        run: pnpm verify:release-readiness
+
       - name: Verify changeset release lane
         run: pnpm verify:changeset-release-lane -- --lane=stable --base-ref=${{ github.event.before }}
 
