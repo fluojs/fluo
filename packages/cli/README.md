@@ -277,7 +277,7 @@ FLUO_VERBOSE=1 fluo dev
 fluo build --reporter silent
 ```
 
-Runtime application logs are configured separately through `ApplicationLogger`, for example `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/runtime/node`.
+Runtime application logs are configured separately through `ApplicationLogger`, for example `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/platform-nodejs`.
 
 Use `fluo add <package>` for first-party package installation shortcuts and `fluo upgrade` for CLI/latest-version and migration guidance:
 

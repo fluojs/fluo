@@ -8,7 +8,6 @@ const mandatoryFluoDependencyManifests = [
   '../../core/package.json',
   '../../di/package.json',
   '../../http/package.json',
-  '../../runtime/package.json',
 ] as const;
 
 function extractNodeEngineFloor(manifest: string): readonly [number, number, number] {

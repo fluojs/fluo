@@ -465,7 +465,7 @@ describe('@fluojs/platform-bun', () => {
   it('keeps the Bun adapter runtime import path free of the Node runtime subpath', () => {
     const source = readFileSync(new URL('./adapter.ts', import.meta.url), 'utf8');
 
-    expect(source).not.toContain("from '@fluojs/runtime/node'");
+    expect(source).not.toContain("from '@fluojs/platform-nodejs'");
   });
 
   it('uses the transport-neutral application logger by default for terminal Bun startup helpers', async () => {

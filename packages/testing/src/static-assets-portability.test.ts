@@ -9,7 +9,7 @@ import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
 import { bootstrapNodejsApplication } from '@fluojs/platform-nodejs';
 import { defineModule, type Application, type ModuleType } from '@fluojs/runtime';
-import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+import { createNodeFileSystemAssetSource } from '@fluojs/platform-nodejs';
 import { describe, expect, it } from 'vitest';
 
 type BootstrapStaticAssetsApplication = (

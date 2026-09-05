@@ -5,7 +5,7 @@ import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import {
   bootstrapNodeApplication,
   NodeHttpApplicationAdapter,
-} from '@fluojs/runtime/node';
+} from '@fluojs/platform-nodejs';
 
 import { AppModule, AuthorBatchRecorder, LiveUpdates } from './app';
 import {

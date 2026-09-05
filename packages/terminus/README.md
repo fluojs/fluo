@@ -5,6 +5,8 @@
 
 Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top of runtime health/readiness endpoints to provide dependency-aware status reporting.
 
+Node listener helpers now belong to `@fluojs/platform-nodejs`, not `@fluojs/runtime/node`. This package boundary change does not alter Terminus registration or readiness: `TerminusModule.forRoot(...)` remains application-owned, `/health` aggregates diagnostics, and `/ready` admits traffic only when readiness succeeds.
+
 ## Table of Contents
 
 - [Installation](#installation)

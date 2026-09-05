@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import type { Dispatcher } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
-import * as publicNodeApi from '../node.js';
+import * as publicNodeApi from '../index.js';
 import * as internalNodeApi from './internal-node.js';
 
 function createTextDispatcher(body: string): Dispatcher {

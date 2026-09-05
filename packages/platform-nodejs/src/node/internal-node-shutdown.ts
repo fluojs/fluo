@@ -1,5 +1,5 @@
-import type { Application, ApplicationLogger } from '../types.js';
-import type { HttpAdapterShutdownRegistration } from '../http-adapter-shared.js';
+import type { Application, ApplicationLogger } from '@fluojs/runtime';
+import type { HttpAdapterShutdownRegistration } from '@fluojs/runtime/internal/http-adapter';
 
 type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';
 

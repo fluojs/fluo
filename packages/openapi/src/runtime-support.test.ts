@@ -7,7 +7,6 @@ const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 const mandatoryFluoDependencyManifests = [
   '../../core/package.json',
   '../../http/package.json',
-  '../../runtime/package.json',
   '../../validation/package.json',
 ] as const;
 
@@ -42,7 +41,7 @@ describe('@fluojs/openapi runtime support metadata', () => {
   it('declares the Node.js range required by the published package contract', () => {
     // Given: the published @fluojs/openapi manifest.
     // When: its declared Node.js engine range is read.
-    // Then: it matches the Node listener range owned by @fluojs/runtime.
+    // Then: it keeps its explicitly documented Node support window.
     const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
     expect(JSON.parse(manifest)).toMatchObject({ engines: { node: nodeListenerEngine } });

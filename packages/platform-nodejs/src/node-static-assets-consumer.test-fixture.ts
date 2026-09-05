@@ -2,7 +2,7 @@ import {
   createNodeFileSystemAssetSource,
   type NodeFileSystemAssetPrecompression,
   type NodeFileSystemAssetSourceOptions,
-} from '@fluojs/runtime/node';
+} from '@fluojs/platform-nodejs';
 
 const precompressed: NodeFileSystemAssetPrecompression = {
   brotli: true,

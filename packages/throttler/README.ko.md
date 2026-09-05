@@ -19,7 +19,7 @@
 
 ## 설치
 
-`@fluojs/throttler`는 mandatory `@fluojs/runtime`에 맞춰 배포 package manifest에서 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다.
+`@fluojs/throttler`는 패키지 자체의 지원 계약으로 배포 package manifest에서 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 20 host는 `>=20.19.3`으로, Node 22 host는 `>=22.2.0`으로 올리세요. Node 21과 Node 27 이상은 지원하지 않습니다.
 
 ```bash
 npm install @fluojs/throttler

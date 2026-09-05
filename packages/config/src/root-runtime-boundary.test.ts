@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -49,6 +49,14 @@ describe('@fluojs/config root runtime boundary', () => {
     } else {
       Reflect.deleteProperty(processWithGetBuiltinModule, 'getBuiltinModule');
     }
+  });
+
+  it('publishes the portable root without a package-wide Node engine', () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { engines?: { node?: string } };
+
+    expect(manifest.engines?.node).toBeUndefined();
   });
 
   it('does not statically resolve Node builtins from the root public API path', async () => {
@@ -131,7 +139,7 @@ describe('@fluojs/config root runtime boundary', () => {
         message: 'Node.js configuration loading is unavailable in this runtime.',
       });
       expect(getErrorCause(error)).toEqual(expect.objectContaining({
-        message: expect.stringContaining('Node.js 20.16.0 or newer is required'),
+        message: expect.stringMatching(/Node\.js 20\.16\.0 or newer is required.*Use in-memory config options or run env-file loading on Node\.js\./u),
       }));
       return;
     }

@@ -1,4 +1,4 @@
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 
 import { AppModule } from './app';
 

@@ -7,60 +7,47 @@ import {
   type NodeHttpApplicationAdapter,
   type RunNodeApplicationOptions,
   runNodeApplication,
-} from '@fluojs/runtime/node';
+} from './node/internal-node.js';
 
-/**
- * Options accepted by `bootstrapNodejsApplication(...)` before the listener starts.
- *
- * @remarks
- * This type mirrors the supported Node application bootstrap options from `@fluojs/runtime/node`
- * while keeping the `@fluojs/platform-nodejs` public surface documented at its package boundary.
- */
+export {
+  type BootstrapNodeApplicationOptions,
+  bootstrapNodeApplication,
+  type CorsInput,
+  createNodeHttpAdapter,
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+  type NodeApplicationSignal,
+  type NodeHttpAdapterOptions,
+  NodeHttpApplicationAdapter,
+  type RunNodeApplicationOptions,
+  registerShutdownSignals,
+  runNodeApplication,
+} from './node/internal-node.js';
+export * from './node/json-logger.js';
+export * from './node/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+  type NodeFileSystemAssetPrecompression,
+  type NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
+
+/** Options accepted by `bootstrapNodejsApplication(...)` before the listener starts. */
 export type BootstrapNodejsApplicationOptions = BootstrapNodeApplicationOptions;
 
-/**
- * POSIX signals that `runNodejsApplication(...)` can subscribe to for graceful shutdown.
- *
- * @remarks
- * Pass `false` to `RunNodejsApplicationOptions.shutdownSignals` when the host process owns signal
- * registration and should call `app.close()` itself.
- */
+/** POSIX signals that `runNodejsApplication(...)` can subscribe to for graceful shutdown. */
 export type NodejsApplicationSignal = NodeApplicationSignal;
 
-/**
- * Transport-level settings for the raw Node.js adapter factory.
- *
- * @remarks
- * `maxBodySize` is enforced while request bytes stream in and also seeds the multipart total-size
- * limit unless `bootstrapNodejsApplication(...)` or `runNodejsApplication(...)` provides an
- * explicit `multipart.maxTotalSize` value.
- */
+/** Transport-level settings for the raw Node.js adapter factory. */
 export type NodejsAdapterOptions = NodeHttpAdapterOptions;
 
-/**
- * Adapter instance returned by `createNodejsAdapter(...)`.
- *
- * @remarks
- * The alias preserves the public `@fluojs/runtime/node` adapter contract, including access to the
- * underlying Node server via `getServer()` for server-backed realtime integrations.
- */
+/** Adapter instance returned by `createNodejsAdapter(...)`. */
 export type NodejsHttpApplicationAdapter = NodeHttpApplicationAdapter;
 
-/**
- * Options accepted by `runNodejsApplication(...)` for one-call bootstrap, listen, and shutdown wiring.
- *
- * @remarks
- * Signal-driven shutdown logs timeout or failure conditions and sets `process.exitCode`, but final
- * process termination remains owned by the surrounding host runtime.
- */
+/** Options accepted by `runNodejsApplication(...)` for one-call bootstrap, listen, and shutdown wiring. */
 export type RunNodejsApplicationOptions = RunNodeApplicationOptions;
 
 /**
  * Bootstrap a fluo module with the raw Node.js adapter without starting the listener.
- *
- * @remarks
- * This alias keeps the package-level Node.js naming convention while delegating to the supported
- * `@fluojs/runtime/node` implementation.
  *
  * @param rootModule Root fluo module to bootstrap.
  * @param options Node.js bootstrap options applied before the listener starts.
@@ -71,17 +58,8 @@ export const bootstrapNodejsApplication: typeof bootstrapNodeApplication = boots
 /**
  * Create the raw Node.js HTTP adapter exposed by `@fluojs/platform-nodejs`.
  *
- * @remarks
- * Use this factory for adapter-first startup through `fluoFactory.create(...)` when the application
- * should run directly on Node's built-in `http` or `https` server primitives.
- *
  * @param options Transport-level Node.js settings such as port, retries, body-size limits, and HTTPS options.
  * @returns The Node.js HTTP adapter instance used by the Fluo runtime.
- *
- * @example
- * ```ts
- * const adapter = createNodejsAdapter({ port: 3000 });
- * ```
  */
 export function createNodejsAdapter(
   options: NodejsAdapterOptions = {},
@@ -91,11 +69,6 @@ export function createNodejsAdapter(
 
 /**
  * Bootstrap and start a fluo module on the raw Node.js adapter with lifecycle shutdown wiring.
- *
- * @remarks
- * This alias is the zero-boilerplate package entrypoint for Node.js hosts. It preserves the runtime
- * helper behavior: graceful shutdown is bounded and reported, while final process exit remains under
- * host ownership.
  *
  * @param rootModule Root fluo module to bootstrap and start.
  * @param options Node.js run options, including optional shutdown signal ownership.

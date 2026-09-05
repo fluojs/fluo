@@ -15,13 +15,13 @@ const buildClosureScriptPath = fileURLToPath(
 );
 const consumerFixturePath = resolve(packageRootPath, 'src/node-static-assets-consumer.test-fixture.ts');
 
-describe('@fluojs/runtime published Node static asset declarations', () => {
+describe('@fluojs/platform-nodejs published Node static asset declarations', () => {
   beforeAll(async () => {
-    if (existsSync(resolve(packageRootPath, 'dist/node.d.ts'))) {
+    if (existsSync(resolve(packageRootPath, 'dist/index.d.ts'))) {
       return;
     }
 
-    await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/runtime'], {
+    await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/platform-nodejs'], {
       cwd: repoRootPath,
       env: process.env,
     });
@@ -35,7 +35,7 @@ describe('@fluojs/runtime published Node static asset declarations', () => {
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
       noEmit: true,
       paths: {
-        '@fluojs/runtime/node': ['dist/node.d.ts'],
+        '@fluojs/platform-nodejs': ['dist/index.d.ts'],
       },
       strict: true,
       target: ts.ScriptTarget.ESNext,

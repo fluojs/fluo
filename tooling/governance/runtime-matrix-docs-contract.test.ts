@@ -24,10 +24,10 @@ function expectAll(document: string, snippets: string[]) {
   }
 }
 
-function expectDrizzleRuntimeClaim(document: string, runtimeNodeEngine: string) {
+function expectDrizzleRuntimeClaim(document: string, nodePlatformEngine: string) {
   const drizzleLinesDeclaringTheRange = document
     .split('\n')
-    .filter((line) => line.includes('@fluojs/drizzle') && line.includes(runtimeNodeEngine));
+    .filter((line) => line.includes('@fluojs/drizzle') && line.includes(nodePlatformEngine));
 
   expect(drizzleLinesDeclaringTheRange).not.toHaveLength(0);
 }
@@ -235,32 +235,32 @@ describe('runtime matrix docs contract', () => {
   });
 
   it('keeps Drizzle runtime support aligned to its mandatory runtime dependency range', () => {
-    const runtimeNodeEngine = JSON.parse(read('packages/runtime/package.json')).engines.node;
+    const nodePlatformEngine = JSON.parse(read('packages/platform-nodejs/package.json')).engines.node;
 
     expect(JSON.parse(read('packages/drizzle/package.json'))).toMatchObject({
-      engines: { node: runtimeNodeEngine },
+      engines: { node: nodePlatformEngine },
     });
 
     for (const path of drizzleRuntimeDocumentationPaths) {
-      expectDrizzleRuntimeClaim(read(path), runtimeNodeEngine);
+      expectDrizzleRuntimeClaim(read(path), nodePlatformEngine);
     }
   });
 
   it.each(drizzleRuntimeDocumentationPaths)('rejects a stale Drizzle runtime claim in %s', (path) => {
-    const runtimeNodeEngine = JSON.parse(read('packages/runtime/package.json')).engines.node;
+    const nodePlatformEngine = JSON.parse(read('packages/platform-nodejs/package.json')).engines.node;
     const staleRuntimeNodeEngine = '>=0.0.0 <1';
     const document = read(path);
     const documentWithStaleDrizzleClaim = document
       .split('\n')
       .map((line) =>
-        line.includes('@fluojs/drizzle') && line.includes(runtimeNodeEngine)
-          ? line.replace(runtimeNodeEngine, staleRuntimeNodeEngine)
+        line.includes('@fluojs/drizzle') && line.includes(nodePlatformEngine)
+          ? line.replace(nodePlatformEngine, staleRuntimeNodeEngine)
           : line,
       )
       .join('\n');
 
     expect(documentWithStaleDrizzleClaim).not.toBe(document);
-    expect(() => expectDrizzleRuntimeClaim(documentWithStaleDrizzleClaim, runtimeNodeEngine)).toThrow();
+    expect(() => expectDrizzleRuntimeClaim(documentWithStaleDrizzleClaim, nodePlatformEngine)).toThrow();
   });
 
   it('keeps the openapi runtime boundary aligned to its mandatory runtime dependency range', () => {

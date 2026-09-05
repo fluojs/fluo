@@ -1,4 +1,4 @@
-import type { RequestObservationContext, RequestObserver } from '@fluojs/http';
+import type { RequestObservationContext, RequestObserver } from '@fluojs/http/portable';
 
 import type { StudioRequestTrace } from './contracts.js';
 import { handlerToStudioRouteDescriptor } from './snapshot.js';

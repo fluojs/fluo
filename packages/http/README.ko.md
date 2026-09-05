@@ -35,7 +35,7 @@ npm install @fluojs/http
 
 ```ts
 import { createStaticAssetsMiddleware } from '@fluojs/http';
-import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+import { createNodeFileSystemAssetSource } from '@fluojs/platform-nodejs';
 
 const assets = createStaticAssetsMiddleware({
   cacheControl: 'public, max-age=3600',
@@ -537,7 +537,7 @@ export class UploadController {
 - **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Conditional request 타입**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
 - **바이트 범위 응답**: `createByteRangeResponse`, `ByteRangeResponseSource`, `ByteRangeResponseOptions`
-- **정적 에셋**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. 이 패키지는 middleware와 source-selection contract를 소유하며 선택적인 Node filesystem source는 `@fluojs/runtime/node`가 소유합니다.
+- **정적 에셋**: `createStaticAssetsMiddleware`, `StaticAssetSource`, `StaticAsset`, `StaticAssetAcceptedEncoding`, `StaticAssetContentEncoding`, `StaticAssetNotAcceptable`, `StaticAssetResolveContext`, `StaticAssetResolution`, `StaticAssetsMiddleware`, `StaticAssetsMiddlewareOptions`. 이 패키지는 middleware와 source-selection contract를 소유하며 선택적인 Node filesystem source는 `@fluojs/platform-nodejs`가 소유합니다.
 - **응답 transport 제어**: `FrameworkResponseSendOptions`, `FrameworkResponseStream` (`onError`는 `undefined`를 포함한 모든 transport failure 발생을 보고하고, stream이 settle된 뒤 caller가 호출할 optional remover를 반환함)
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **신뢰된 연결 API**: `resolveHttpConnection`, `HttpConnection`, `ResolveHttpConnectionOptions`, `TrustProxyPolicy`, `TrustProxyPredicate`, `FrameworkRequestConnection`

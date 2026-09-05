@@ -21,7 +21,7 @@ Socket.IO v4 gateway adapter for the fluo runtime.
 npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io@^4.8.3
 ```
 
-`@fluojs/socket.io` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` for Node-backed adapters, matching its mandatory `@fluojs/runtime` dependency. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
+`@fluojs/socket.io` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` for Node-backed adapters as its package-owned support contract. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
 
 `@fluojs/socket.io` requires Socket.IO `^4.8.3`. Consumers using an older Socket.IO v4 release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/socket.io` release. The refreshed Engine.IO chain must resolve its patched WebSocket runtime; the fluo adapter API is unchanged.
 

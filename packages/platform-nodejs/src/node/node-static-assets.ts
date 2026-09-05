@@ -1,13 +1,11 @@
-import { constants, realpathSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { open, realpath, stat, type FileHandle } from 'node:fs/promises';
+import { constants, realpathSync, statSync } from 'node:fs';
+import { type FileHandle, open, realpath, stat } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve } from 'node:path';
 
 import type {
-  StaticAsset,
   StaticAssetAcceptedEncoding,
   StaticAssetContentEncoding,
-  StaticAssetResolveContext,
   StaticAssetResolution,
   StaticAssetSource,
 } from '@fluojs/http';

@@ -15,17 +15,21 @@ import {
   type MiddlewareLike,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
-import {
-  dispatchWithRequestResponseFactory,
-  type RequestResponseFactory,
-} from '../adapters/request-response-factory.js';
+import type {
+  Application,
+  ApplicationLogger,
+  CreateApplicationOptions,
+  ModuleType,
+  MultipartOptions,
+} from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
-} from '../http-adapter-shared.js';
-import { createConsoleApplicationLogger } from '../logging/logger.js';
-import type { MultipartOptions } from '../multipart.js';
-import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from '../types.js';
+} from '@fluojs/runtime/internal/http-adapter';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from '@fluojs/runtime/internal/request-response-factory';
 import {
   compressNodeResponse,
   createNodeResponseCompression,
@@ -60,6 +64,7 @@ import {
   defaultNodeShutdownSignals,
   registerShutdownSignals,
 } from './internal-node-shutdown.js';
+import { createConsoleApplicationLogger } from './logger.js';
 
 /**
  * Describes the node http adapter options contract.

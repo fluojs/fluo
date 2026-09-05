@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@fluojs/http": "workspace:^",
+    "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/runtime": "workspace:^",
     "express": "^5.1.0"
   },

@@ -7,6 +7,7 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 ## Table of Contents
 
 - [Installation](#installation)
+- [Runtime Node Import Migration](#runtime-node-import-migration)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
@@ -22,7 +23,18 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 npm install @fluojs/platform-nodejs
 ```
 
-This package targets Node.js `>=20.19.3 <21 || >=22.2.0 <27`. The published package manifest declares that exact `engines.node` range because Node 20 before 20.19.3, Node 21, and Node 22 before 22.2.0 do not consistently expose listener-level RFC `QUERY` through the request event; unverified Node 27+ is not advertised. The raw adapter relies on the Node.js `http`/`https` server primitives rather than a non-Node fetch-style host.
+This package targets Node.js `>=20.19.3 <21 || >=22.2.0 <27`. The published package manifest declares that exact `engines.node` range because Node 20 before 20.19.3, Node 21, and Node 22 before 22.2.0 do not consistently expose listener-level RFC `QUERY` through the request event; unverified Node 27+ is not advertised. The package owns the Node listener, filesystem, logger, compression, and process-signal implementations used by raw Node, Express, and Fastify hosts.
+
+## Runtime Node Import Migration
+
+The former mixed-runtime entrypoints have no compatibility shim. Update imports directly; moved symbols retain their names:
+
+| Removed import | Replacement |
+| :--- | :--- |
+| `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
+| `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
+
+The root replacement includes `createNodeHttpAdapter`, `NodeHttpApplicationAdapter`, `bootstrapNodeApplication`, `runNodeApplication`, Node logger factories, shutdown registration helpers, and `createNodeFileSystemAssetSource`. Existing `createNodejsAdapter`, `bootstrapNodejsApplication`, and `runNodejsApplication` aliases remain available.
 
 ## When to Use
 
@@ -101,7 +113,7 @@ await app.listen();
 - The raw Node adapter normalizes mixed-case JSON and multipart `content-type` values, returns `413` when request bodies exceed `maxBodySize`, propagates `x-request-id` with `x-correlation-id` fallback into the request context and error responses, and exposes a server-backed realtime capability through `getServer()` / `getRealtimeCapability()`.
 - `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
 - `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. Listen retries honor `retryLimit`/`retryDelayMs`, shutdown closes idle keep-alive connections before bounded drain, and when signal-driven shutdown times out or fails it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
-- Advanced compression and shutdown utility functions remain on `@fluojs/runtime/node` or internal runtime seams rather than this primary platform startup surface.
+- Supported Node logger, shutdown, filesystem, and raw adapter helpers live on the package root; lower-level request/response/compression plumbing lives on `@fluojs/platform-nodejs/internal`.
 
 ## Conformance Coverage
 
@@ -119,8 +131,10 @@ The same regression targets also cover the package-specific public surface, type
 - `BootstrapNodejsApplicationOptions`: Options for bootstrap-only Node.js application creation.
 - `NodejsAdapterOptions`: Transport-level options for `createNodejsAdapter(...)`, including `port`, `host`, mutually exclusive `http` or `https` construction options, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
 - `NodejsApplicationSignal`: Supported signal names for `runNodejsApplication(...)` shutdown registration.
-- `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/runtime/node`.
+- `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/platform-nodejs`.
 - `RunNodejsApplicationOptions`: Options for one-call bootstrap, listen, and graceful shutdown wiring.
+- Former `@fluojs/runtime/node` exports keep their names on this package root: `createNodeHttpAdapter`, `NodeHttpApplicationAdapter`, `bootstrapNodeApplication`, `runNodeApplication`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `createNodeShutdownSignalRegistration`, `defaultNodeShutdownSignals`, `registerShutdownSignals`, and `createNodeFileSystemAssetSource` plus their public option types.
+- `@fluojs/platform-nodejs/internal`: First-party Node adapter integration seam replacing `@fluojs/runtime/internal-node`; it includes lower-level compression and request/response helpers.
 
 ## Multipart streaming
 

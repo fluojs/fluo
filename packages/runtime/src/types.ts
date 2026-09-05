@@ -13,7 +13,7 @@ import type {
   MiddlewareLike,
   RequestObserverLike,
   VersioningOptions,
-} from '@fluojs/http';
+} from '@fluojs/http/portable';
 
 import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';

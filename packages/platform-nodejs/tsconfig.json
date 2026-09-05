@@ -4,5 +4,6 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test-types/**/*.d.ts"]
+  "include": ["src/**/*.ts", "test-types/**/*.d.ts"],
+  "exclude": ["src/**/*.test-fixture.ts"]
 }

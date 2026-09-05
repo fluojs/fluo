@@ -1,4 +1,4 @@
-import { Agent, get, request, Server, type InformationEvent } from 'node:http';
+import { Agent, get, type InformationEvent, request, Server } from 'node:http';
 import type { Socket } from 'node:net';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';

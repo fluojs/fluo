@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   changedPublicExportSourcePathsFromGit,
   collectPublicExportTSDocViolations,
-  enforcePublicExportTSDocBaselineForMode,
   enforcePublicExportTSDocBaseline,
+  enforcePublicExportTSDocBaselineForMode,
   governedPublicExportSourcePathsFromWorkspace,
   isGovernedPublicExportSourcePath,
   publicExportTSDocTargetPaths,
@@ -200,6 +200,19 @@ describe('changedPublicExportSourcePathsFromGit', () => {
         () => currentSource,
         'test-base',
         () => previousSource,
+      ),
+    ).toEqual([]);
+  });
+
+  it('ignores deleted public-export source paths after ownership moves to another package', () => {
+    expect(
+      changedPublicExportSourcePathsFromGit(
+        ['packages/runtime/src/node.ts'],
+        () => {
+          throw Object.assign(new Error('deleted'), { code: 'ENOENT' });
+        },
+        'test-base',
+        () => 'export const moved = true;',
       ),
     ).toEqual([]);
   });

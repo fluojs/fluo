@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApplication, defineModule, FluoFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
-import { bootstrapNodeApplication, createNodeHttpAdapter, NodeHttpApplicationAdapter, runNodeApplication } from './node/node.js';
+import { bootstrapNodeApplication, createNodeHttpAdapter, NodeHttpApplicationAdapter, runNodeApplication } from '@fluojs/platform-nodejs';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
 

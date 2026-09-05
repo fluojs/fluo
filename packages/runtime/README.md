@@ -22,13 +22,11 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 npm install @fluojs/runtime
 ```
 
-The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
-
-`@fluojs/cli`, a mandatory runtime consumer, declares the same Node range. Upgrade CLI hosts from Node 20 to `>=20.19.3` or from Node 22 to `>=22.2.0`; Node 21 and Node 27+ hosts must move to a supported Node 20 or Node 22 line.
+The published package intentionally declares no package-wide `engines.node`: its root, `./web`, and runtime-neutral internal seams contain no eager Node builtin imports and are shared by Node, Bun, Deno, Cloudflare Workers, and other Web-standard hosts. Node listener, filesystem, logger, compression, and process-signal responsibilities live in `@fluojs/platform-nodejs`, which declares the verified Node engine range.
 
 ## Node Static Asset Source
 
-`@fluojs/http` owns portable static middleware and representation-selection contracts. `@fluojs/runtime/node` exports `createNodeFileSystemAssetSource(...)`, its Node filesystem `StaticAssetSource` implementation: it validates the root directory during configuration, keeps lexical and realpath resolution inside that root (including symlink checks), and can select `.br` or `.gz` siblings. For each selected regular-file representation, it opens the verified file, eagerly copies the entire file into an immutable byte snapshot, and closes its `FileHandle` before response writing. Its returned `source()` replays only that snapshot and never reopens or lazily streams the pathname; application owners therefore bound memory by the selected whole-file size, and `size` plus the strong `ETag` describe those exact bytes. Raw Node, Express, and Fastify adapters share this portable middleware/source seam and preserve the selected representation boundary rather than applying adapter-specific re-encoding. This Node-only helper is intentionally absent from `@fluojs/runtime/web`; Web and edge deployments must provide an application-owned source.
+`@fluojs/http` owns portable static middleware and representation-selection contracts. `@fluojs/platform-nodejs` exports `createNodeFileSystemAssetSource(...)`, its Node filesystem `StaticAssetSource` implementation: it validates the root directory during configuration, keeps lexical and realpath resolution inside that root (including symlink checks), and can select `.br` or `.gz` siblings. For each selected regular-file representation, it opens the verified file, eagerly copies the entire file into an immutable byte snapshot, and closes its `FileHandle` before response writing. Its returned `source()` replays only that snapshot and never reopens or lazily streams the pathname; application owners therefore bound memory by the selected whole-file size, and `size` plus the strong `ETag` describe those exact bytes. Raw Node, Express, and Fastify adapters share this portable middleware/source seam and preserve the selected representation boundary rather than applying adapter-specific re-encoding. This Node-only helper is intentionally absent from `@fluojs/runtime/web`; Web and edge deployments must provide an application-owned source.
 
 ## When to Use
 
@@ -193,7 +191,7 @@ The public runtime lifecycle contract has four hooks: startup runs `onModuleInit
 
 Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
 
-NestJS `app.enableShutdownHooks()` is not an implicit result of every fluo bootstrap path. For the default Node `SIGINT` / `SIGTERM` wiring, use `runNodeApplication(...)` from `@fluojs/runtime/node`; it installs the default Node shutdown registration. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, and adapter-first Node bootstrap leave signal ownership explicit, so use `createNodeShutdownSignalRegistration(...)` or `registerShutdownSignals(...)` at that Node application boundary when signal handling is required. Fetch-style hosts such as Bun, Deno, and Cloudflare Workers own their own shutdown boundary: do not install Node process signals there, and have the host call `app.close(signal?)` when it receives its shutdown event.
+NestJS `app.enableShutdownHooks()` is not an implicit result of every fluo bootstrap path. For the default Node `SIGINT` / `SIGTERM` wiring, use `runNodeApplication(...)` from `@fluojs/platform-nodejs`; it installs the default Node shutdown registration. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, and adapter-first Node bootstrap leave signal ownership explicit, so use `createNodeShutdownSignalRegistration(...)` or `registerShutdownSignals(...)` at that Node application boundary when signal handling is required. Fetch-style hosts such as Bun, Deno, and Cloudflare Workers own their own shutdown boundary: do not install Node process signals there, and have the host call `app.close(signal?)` when it receives its shutdown event.
 
 Lifecycle hooks are not the listener-close or connection-drain phase. During `app.close(signal?)`, fluo runs the shutdown hooks before `adapter.close(signal?)`; migrated cleanup that requires a closed listener or completed adapter drain belongs at the adapter or host shutdown boundary after close, not in a same-named lifecycle hook.
 
@@ -340,7 +338,7 @@ class UsersModule {}
 - Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. Every eligible singleton `multi: true` contribution participates as its own instance in contribution order. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests. Oversized Web bodies settle as HTTP 413 without waiting for stream cancellation, and cancellation failures do not mask that response, including on the default cloned-body path where the original request remains unread.
 - `preferNativeJsonBodyReader` remains accepted by `@fluojs/runtime/web` as a deprecated adapter compatibility option, but it no longer changes parsing. Web JSON bodies always use the bounded streaming reader so native whole-body reads cannot bypass `maxBodySize`.
-- On `@fluojs/runtime/node`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
+- On `@fluojs/platform-nodejs`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
 - Node-backed and Web-standard request wrappers snapshot cheap request metadata before body parsing, then materialize `body`/`rawBody` once at the dispatch boundary so userland continues to observe synchronous parsed values.
 - Node-backed cookies/query values and Web-standard headers are snapshotted when the request wrapper is created, then lazily normalized and memoized per request; later upstream object mutations do not change the `FrameworkRequest` view.
 - Node-backed request context IDs prefer `x-request-id` and fall back to `x-correlation-id` when `x-request-id` is absent, so error responses and request-aware integrations keep the upstream correlation identifier.
@@ -351,7 +349,7 @@ class UsersModule {}
 - If application or context bootstrap fails after runtime resources or lifecycle instances have been created, fluo resets readiness, runs registered runtime cleanup callbacks, invokes shutdown hooks for instances resolved so far with `bootstrap-failed`, disposes the container, logs cleanup failures, and rethrows the original bootstrap error.
 - `Application.listen()` and microservice `listen()` are serialized with shutdown: overlapping startup calls share the same in-flight startup, shutdown waits for in-flight startup to settle, and a startup that races with shutdown cannot transition the shell back to `ready` after close begins. The public `Application.state` contract remains `bootstrapped` or `ready` while teardown is pending and changes to `closed` only after teardown completes successfully. Independently, starting application or context close synchronously closes a terminal operation gate: `Application.get()`, `ApplicationContext.get()`, `connectMicroservice()`, `startAllMicroservices()`, and application `listen()` reject while teardown is pending and stay rejected after a failed close attempt. Provider lookups admitted immediately before close recheck that gate after asynchronous resolution and cannot return a stale value after shutdown starts. A later `close()` skips completed runtime teardown phases and re-enters incomplete adapter or lifecycle-hook stages according to their own retry contracts. Container-managed `onDestroy()` hooks are terminal best-effort cleanup: every materialized hook is attempted on the first container disposal, failed hooks are retried by a later explicit application or context `close()`, and hooks that completed successfully are never run again. Once microservice close starts, a terminal ingress gate rejects new `send()` and `emit()` calls before runtime or transport handoff, including while `listen()` is still pending and after a failed close attempt.
 - `Application.dispatch()` uses that same synchronous terminal admission gate. A direct dispatch started after `Application.close()` begins rejects before entering the HTTP dispatcher, including while teardown is pending, after a failed close, and after successful close. A dispatch admitted before the gate closes remains dispatcher-owned and is not retroactively cancelled by close.
-- `@fluojs/runtime/node` owns each pending raw Node listen operation and its `EADDRINUSE` retry timer. Calling adapter `close()` while startup is retrying cancels the retry, waits for the pending listen to settle, and prevents the listener from binding after shutdown reports completion.
+- `@fluojs/platform-nodejs` owns each pending raw Node listen operation and its `EADDRINUSE` retry timer. Calling adapter `close()` while startup is retrying cancels the retry, waits for the pending listen to settle, and prevents the listener from binding after shutdown reports completion.
 - Shutdown signal registration failures are user-observable: `runNodeApplication(...)`, `bootstrapNodeApplication(...)`, and adapter-owned runtime helpers close the already-started application with `bootstrap-failed`, log any close failure separately, and reject with the original registration error.
 - Shutdown signal unregistration failures do not skip application close: `app.close()` always continues through adapter shutdown, lifecycle hooks, runtime cleanup callbacks, and container disposal; if close otherwise succeeds it rejects with the unregistration error, and if close also fails it rejects with an aggregate containing both failures.
 - Connected microservices are owned children of their parent `Application`: `startAllMicroservices()` starts them sequentially and rolls back already-started children with `bootstrap-failed` if a later child fails, while `Application.close(signal)` closes connected children before parent lifecycle hooks, adapter shutdown, and container disposal.
@@ -404,22 +402,31 @@ class UsersModule {}
 - `UploadedFile`: Runtime-neutral multipart file descriptor whose in-memory `buffer` payload is a Web-standard `Uint8Array`.
 - `MultipartFieldPart`, `MultipartFilePart`, `MultipartPart`, and `MultipartBodyConsumedError`: Typed streaming multipart contracts. `MultipartFilePart.stream` is single-consumer and must settle before iteration requests the following part.
 
-## Platform-Specific Subpaths
+## Runtime-Specific Entry Points
 
-Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runtime helpers. The published `internal*` subpaths are reserved package-integration seams for first-party adapters and runtime-aware packages; they are documented here so package authors can identify the boundary without treating those seams as application-level helper contracts.
+Use `@fluojs/platform-nodejs` for Node-host responsibilities and `@fluojs/runtime/web` for portable Web-standard helpers. Runtime's published `internal*` subpaths remain runtime-neutral package-integration seams for first-party adapters and runtime-aware packages.
+
+Migration is direct and intentionally has no compatibility shim:
+
+| Removed import | Replacement |
+| :--- | :--- |
+| `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
+| `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
+
+Every moved symbol keeps its existing name at the replacement entrypoint; `@fluojs/platform-nodejs` also retains its established `Nodejs*` aliases.
 
 | Subpath | Purpose |
 | :--- | :--- |
-| `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
+| `@fluojs/platform-nodejs` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, and streaming `parseMultipartStream`. |
 | `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens, runtime-owned metadata and route-inspection helpers, plus `defineModule(...)` and `createRuntimeRouteInspection(...)` for first-party runtime-neutral integrations that must align with compiled runtime descriptors. |
-| `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
+| `@fluojs/platform-nodejs/internal` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/platform-nodejs` in application code. |
 | `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |
 | `@fluojs/runtime/internal/request-response-factory` | Internal request/response factory seam for platform packages. |
 
-### Node-Specific Subpath (`@fluojs/runtime/node`)
+### Node-Specific Package (`@fluojs/platform-nodejs`)
 
-Logger factories, `createNodeFileSystemAssetSource({ root, precompressed })` for eager immutable Node/Express/Fastify static asset snapshots, and other supported Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
+Logger factories, `createNodeFileSystemAssetSource({ root, precompressed })` for eager immutable Node/Express/Fastify static asset snapshots, and other supported Node-only helpers are **not** on the portable runtime root. Import them from the Node platform package:
 
 ```typescript
 import {
@@ -431,7 +438,7 @@ import {
   runNodeApplication,
   type NodeFileSystemAssetPrecompression,
   type NodeFileSystemAssetSourceOptions,
-} from '@fluojs/runtime/node';
+} from '@fluojs/platform-nodejs';
 ```
 
 ```typescript
@@ -453,7 +460,7 @@ For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`
 Runtime app logging is separate from CLI lifecycle reporting. Configure `ApplicationLogger` when you want to change logs emitted by the application/runtime itself:
 
 ```typescript
-import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/runtime/node';
+import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/platform-nodejs';
 
 const minimalLogger = createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' });
 const jsonLogger = createJsonApplicationLogger();
@@ -474,7 +481,7 @@ Consumers that relied on a fulfilled `send()` or a stale adapter-assigned `text/
 `application/octet-stream` header must handle the rejection or fallback explicitly and set any
 required application-owned header themselves.
 
-Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
+Lower-level Node compression internals stay behind the `@fluojs/platform-nodejs/internal` seam rather than the public `@fluojs/platform-nodejs` contract.
 
 ### Runtime Cleanup Callbacks
 

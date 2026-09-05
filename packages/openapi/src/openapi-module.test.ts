@@ -11,7 +11,7 @@ import { Controller, Get, Post, Produces, Version, createHandlerMapping, type Fr
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { bootstrapHttpAdapterApplication } from '@fluojs/runtime/internal/http-adapter';
-import { createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
 
 import {
   ApiBearerAuth,

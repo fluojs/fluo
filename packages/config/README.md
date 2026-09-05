@@ -20,7 +20,7 @@ Configuration loading, merging, validation, and typed runtime access for fluo ap
 npm install @fluojs/config
 ```
 
-The package supports Node.js 20.16.0 or newer. Env-file loading, default `.env` loading, and watch mode resolve Node filesystem, path, and crypto builtins lazily through the host runtime boundary, requiring `process.getBuiltinModule(...)`; when that API is present but direct filesystem/path/crypto lookup is unavailable, a published-ESM-compatible `node:module` fallback is used. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access, but it is still distributed under the package-level Node.js 20.16.0 engine contract.
+The package intentionally declares no package-wide `engines.node`. `ConfigService`, merge/validation/clone behavior, and `loadConfig({ defaults, processEnv, runtimeOverrides })` are portable and never resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Env-file loading, default `.env` loading, and watch mode are Node-only features: they lazily resolve builtins through `process.getBuiltinModule(...)` (available in Node.js 20.16.0 or newer) and throw `CONFIG_RUNTIME_UNAVAILABLE` with guidance to use in-memory options or run that feature on Node.js when the host cannot provide the boundary.
 
 ## When to Use
 
@@ -129,7 +129,7 @@ Contract:
 
 The package does not derive env-file names from `NODE_ENV`. Build the list at the bootstrap boundary when a deployment needs environment-specific layering.
 
-Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `loadConfig(...)` with explicit in-memory inputs: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. `loadConfig({ defaults, processEnv, runtimeOverrides })` does not resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Because the published package engine is Node.js 20.16.0 or newer, Node.js 20.0.0 through 20.15.x and non-Node runtimes are outside the supported package contract for env-file, default `.env`, and watch execution paths.
+Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `loadConfig(...)` with explicit in-memory inputs. Non-Node runtimes are supported for those portable paths. Env-file, default `.env`, and watch execution remain Node-only and require a host with `process.getBuiltinModule(...)`; unsupported hosts receive the documented `CONFIG_RUNTIME_UNAVAILABLE` error instead of an eager import failure.
 
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.

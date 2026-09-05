@@ -31,8 +31,8 @@ import {
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePassportJsBridgeNestjsMigration,
-  enforcePlatformShellLifecycleContract,
   enforcePersistenceTransactionInterceptorCompatibility,
+  enforcePlatformShellLifecycleContract,
   enforceQueueWorkerOwnershipContract,
   enforceQueueWorkerOwnershipContractFromSources,
   enforceReactClientSubpathContract,
@@ -60,8 +60,8 @@ const staticAssetContractCompanions = [
   'tooling/governance/verify-platform-consistency-governance.test.ts',
   'packages/http/src/static-assets.ts',
   'packages/http/src/static-assets.test.ts',
-  'packages/runtime/src/node/node-static-assets.ts',
-  'packages/runtime/src/node/node-static-assets.test.ts',
+  'packages/platform-nodejs/src/node/node-static-assets.ts',
+  'packages/platform-nodejs/src/node/node-static-assets.test.ts',
 ];
 const nestjsShutdownMigrationCompanions = [
   'docs/getting-started/migrate-from-nestjs.md',
@@ -186,8 +186,8 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/runtime/src/exports.test.ts',
-      startLine: 19,
-      endLine: 46,
+      startLine: 18,
+      endLine: 45,
       fenceLanguage: 'typescript',
       dedent: 2,
     },
@@ -199,52 +199,52 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/runtime/package.json',
-      startLine: 27,
-      endLine: 61,
+      startLine: 23,
+      endLine: 50,
       fenceLanguage: 'json',
       dedent: 2,
     },
     {
       sourcePath: 'packages/runtime/src/exports.test.ts',
-      startLine: 100,
-      endLine: 123,
+      startLine: 87,
+      endLine: 106,
       fenceLanguage: 'typescript',
       dedent: 2,
     },
     {
-      sourcePath: 'packages/runtime/src/node.ts',
-      startLine: 1,
-      endLine: 25,
+      sourcePath: 'packages/platform-nodejs/src/index.ts',
+      startLine: 12,
+      endLine: 32,
       fenceLanguage: 'typescript',
     },
     {
-      sourcePath: 'packages/runtime/src/node/internal-node.ts',
-      startLine: 133,
-      endLine: 156,
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
+      startLine: 138,
+      endLine: 161,
       fenceLanguage: 'typescript',
     },
     {
-      sourcePath: 'packages/runtime/src/node/internal-node.ts',
-      startLine: 157,
-      endLine: 183,
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
+      startLine: 162,
+      endLine: 188,
       fenceLanguage: 'typescript',
     },
     {
-      sourcePath: 'packages/runtime/src/node/internal-node-listen.ts',
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node-listen.ts',
       startLine: 21,
       endLine: 101,
       fenceLanguage: 'typescript',
     },
     {
-      sourcePath: 'packages/runtime/src/node/internal-node.ts',
-      startLine: 283,
-      endLine: 318,
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
+      startLine: 280,
+      endLine: 323,
       fenceLanguage: 'typescript',
     },
     {
-      sourcePath: 'packages/runtime/src/node/node.test.ts',
-      startLine: 14,
-      endLine: 30,
+      sourcePath: 'packages/platform-nodejs/src/node/node.test.ts',
+      startLine: 15,
+      endLine: 31,
       fenceLanguage: 'typescript',
     },
   ] as const;
@@ -4307,7 +4307,7 @@ describe('runtime subpath surface discoverability', () => {
     const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
 
     for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
-      expect(markdown).toContain('@fluojs/runtime/node');
+      expect(markdown).toContain('@fluojs/platform-nodejs');
       expect(markdown).toContain('@fluojs/runtime/web');
       expect(markdown).toContain('@fluojs/runtime/internal*');
       expect(markdown).toContain('package-integration seam');
@@ -5540,7 +5540,7 @@ describe('Auth & JWT contract gate triggers', () => {
 
 describe('mandatory first-party dependency Node engine alignment', () => {
   it('rejects a public package that advertises Node versions its required dependency excludes', () => {
-    // Given: Prisma's Node 20+ package contract and a required runtime dependency with a higher floor.
+    // Given: Prisma's Node 20+ package contract and a required Node platform dependency with a higher floor.
     const readText = (relativePath: string): string => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
@@ -5551,7 +5551,7 @@ describe('mandatory first-party dependency Node engine alignment', () => {
           ...manifest,
           dependencies: {
             ...manifest.dependencies,
-            '@fluojs/runtime': 'workspace:^',
+            '@fluojs/platform-nodejs': 'workspace:^',
           },
         });
       }
@@ -5562,7 +5562,7 @@ describe('mandatory first-party dependency Node engine alignment', () => {
     // When: release governance evaluates the mandatory first-party graph.
     // Then: it rejects the false Node 20+ compatibility claim before release.
     expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/prisma']))).toThrow(
-      /@fluojs\/prisma engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@fluojs\/runtime/u,
+      /@fluojs\/prisma engines\.node >=20\.0\.0 permits Node 20\.0\.0.*@fluojs\/platform-nodejs/u,
     );
   });
 

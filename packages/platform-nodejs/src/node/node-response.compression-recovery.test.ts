@@ -6,12 +6,11 @@ import {
 } from 'node:http';
 
 import type { FrameworkRequest } from '@fluojs/http';
-import { describe, expect, it } from 'vitest';
-
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
-} from '../adapters/request-response-factory.js';
+} from '@fluojs/runtime/internal/request-response-factory';
+import { describe, expect, it } from 'vitest';
 import {
   createFrameworkResponse,
   type MutableFrameworkResponse,

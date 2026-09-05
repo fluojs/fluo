@@ -5120,7 +5120,7 @@ exit 7
     expect(readmeContent).toContain('Starter contract: `src/main.ts` boots the selected first-class application starter: Node.js runtime + Fastify HTTP via `runFastifyApplication(...)`');
     expect(readmeContent).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readmeContent).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
-    expect(readmeContent).not.toContain('@fluojs/runtime/node');
+    expect(readmeContent).not.toContain('@fluojs/platform-nodejs');
     expect(readmeContent).not.toContain('@fluojs/platform-nodejs');
     expect(readmeContent).toContain('runFastifyApplication');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');

@@ -1,4 +1,4 @@
-import type { ApplicationLogger } from '../types.js';
+import type { ApplicationLogger } from '@fluojs/runtime';
 
 /** Severity threshold accepted by `createConsoleApplicationLogger(...)`. */
 export type ConsoleApplicationLoggerLevel = 'debug' | 'error' | 'log' | 'warn';

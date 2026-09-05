@@ -1,5 +1,5 @@
 import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { GraphQLObjectType, GraphQLString } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
