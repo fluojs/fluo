@@ -66,7 +66,7 @@ The context branch passes through the same spine, but returns a different object
 
 The microservice branch is not another independent bootstrap. It first creates a context, then resolves a transport runtime Token from that context and puts a wrapper on top.
 
-`path:packages/runtime/src/bootstrap.ts:1168-1180`
+`path:packages/runtime/src/bootstrap.ts:1884-1903`
 ```typescript
     const logger = createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
@@ -79,8 +79,10 @@ The microservice branch is not another independent bootstrap. It first creates a
         throw new InvariantError('Resolved microservice token does not implement listen().');
       }
 
-      return new FluoMicroserviceApplication(context, logger, runtime);
+      return new FluoMicroserviceApplication(context, logger, runtime, true);
 ```
+
+`CreateApplicationContextOptions` explicitly omits `logger`, and `CreateMicroserviceOptions` extends that option shape. The high-level microservice path therefore has no caller-supplied logger option: it uses the transport-neutral `createDefaultApplicationLogger()` while Studio wiring remains internal to context bootstrap. Node-specific logger helpers remain on `@fluojs/runtime/node`.
 
 Taken together, these three excerpts make the layered composition clearer. An application is a shell with a dispatcher and HTTP adapter. A context is an adapterless DI and lifecycle shell. A microservice is a shell that attaches a transport runtime on top of a context.
 

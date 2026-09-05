@@ -21,30 +21,37 @@
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 좁고, 더 아키텍처적인 위치에 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:920-1202`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
+`path:packages/runtime/src/bootstrap.ts:1578-1605`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
 
 그 중심부는 host 이름을 판별하는 대신 이미 준비된 adapter와 platform shell을 받아 조립합니다. 아래 발췌에서 runtime은 module graph, provider, token, lifecycle 순서를 다루고, Node나 Web이라는 이름을 조건으로 삼지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:920-938`
+`path:packages/runtime/src/bootstrap.ts:1578-1605`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createDefaultApplicationLogger();
+  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
+  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
+  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
-  const hasHttpAdapter = options.adapter !== undefined;
-  const adapter = options.adapter ?? {
+  let bootstrappedModules: CompiledModule[] = [];
+  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+  const adapter = effectiveOptions.adapter ?? {
     async close() {},
     async listen() {},
   };
-  const runtimeCleanup: Array<() => void> = [];
-  const platformShell = createRuntimePlatformShell(options.platform?.components);
-  const timingEnabled = options.diagnostics?.timing === true;
+  const runtimeCleanup: RuntimeCleanupCallback[] = [];
+  if (studioDevtools) {
+    runtimeCleanup.push(() => studioDevtools.close());
+  }
+  const bootstrapReadySignal = createBootstrapReadySignal();
+  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
   const timingPhases: BootstrapTimingPhase[] = [];
 
   try {
     logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(options, logger);
+    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
 root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하는 `createDefaultApplicationLogger()`입니다. `createConsoleApplicationLogger()`는 `@fluojs/runtime/node`에서 import하는 명시적인 Node 전용 구성에서만 선택하세요.
@@ -102,12 +109,23 @@ root public surface는 `path:packages/runtime/src/index.ts:1-30`에 정의되어
 
 root barrel의 실제 모양은 작고 선별적입니다. `bootstrap`, health, error, platform type, request transaction, token, shared type만 바깥으로 보냅니다.
 
-`path:packages/runtime/src/index.ts:1-30`
+`path:packages/runtime/src/index.ts:1-20`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
-export * from './health/diagnostics.js';
 export * from './errors.js';
+export type {
+  BootstrapTimingDiagnostics,
+  BootstrapTimingPhase,
+  RuntimeDiagnosticsGraph,
+  RuntimeDiagnosticsModule,
+  RuntimeDiagnosticsProvider,
+  RuntimeDiagnosticsRelationships,
+} from './health/diagnostics.js';
+export {
+  createBootstrapTimingDiagnostics,
+  createRuntimeDiagnosticsGraph,
+} from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
   MultipartOptions,
@@ -135,6 +153,8 @@ export * from './request-transaction.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
+
+root barrel은 의도적으로 `renderRuntimeDiagnosticsMermaid()`를 생략합니다. 이는 `path:packages/runtime/src/health/diagnostics.ts`에 남아 있는 internal implementation detail입니다. Mermaid graph rendering이 필요한 consumer는 root runtime import 대신 public [`@fluojs/studio` diagnostics contract](../../packages/studio/README.ko.md)를 사용해야 합니다.
 
 공유 `UploadedFile` 계약은 멀티파트 payload byte를 runtime-neutral `Uint8Array`로 유지합니다. 따라서 Web adapter는 Node.js `Buffer` global이 필요하지 않으며, Buffer 전용 API가 필요한 Node 애플리케이션 코드는 해당 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환해야 합니다.
 
