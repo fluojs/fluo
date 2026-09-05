@@ -1,4 +1,5 @@
 # @fluojs/terminus
+<!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
@@ -73,6 +74,8 @@ class AppModule {}
 - `HttpHealthIndicator`
 - `MemoryHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
 - `DiskHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
+
+`@nestjs/terminus`에서 마이그레이션할 때는 소유권 경계를 명시적으로 유지하세요. Custom fluo `HealthIndicator` instance는 `indicators`에 등록하고, indicator가 DI를 통해 dependency를 resolve해야 할 때만 해당 `create*HealthIndicatorProvider()`를 `indicatorProviders`에 사용합니다. Node memory/disk helper는 `@fluojs/terminus/node`에서, Redis helper는 `@fluojs/terminus/redis`에서 import하세요. Prisma, Drizzle, HTTP indicator는 root export입니다. 전용 Redis subpath는 optional peer를 root import 경계 밖에 유지하며, Node helper가 root에서도 export되는 것은 호환성을 위한 것입니다.
 
 ### DI 기반 인디케이터
 
@@ -213,14 +216,14 @@ TerminusModule.forRoot({
 });
 ```
 
-`path`로 health endpoint를 custom path 아래에 mount할 수 있고, `readinessChecks`로 애플리케이션별 readiness logic을 Terminus indicator 및 platform readiness check와 합성할 수 있습니다.
+`path`로 health endpoint를 custom path 아래에 mount할 수 있습니다. Indicator는 기본적으로 `/ready`를 차단하며, `/health` 진단은 유지하면서 트래픽을 차단하지 않아야 하면 해당 indicator에 `readiness: false`를 설정하세요. `readinessChecks`는 애플리케이션별 추가 조건을 indicator 및 platform readiness check와 합성하며 indicator를 제외하지 않습니다.
 
 ### 실패 시맨틱
 
 인디케이터가 `down` 결과를 반환하거나 `HealthCheckError`를 던지면, `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
-- 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
-- `readiness`를 생략했거나 `true`인 indicator가 실패하거나, custom readiness check가 `false`를 반환하거나, runtime shutdown이 시작되었거나, platform readiness가 `ready`가 아닌 경우 `/ready`는 HTTP `503`을 반환합니다. `readiness: false`인 indicator는 `/health`에는 계속 기여하지만 `/ready`를 차단하지 않습니다. Platform `critical` metadata는 diagnostics에 보존되지만 HTTP readiness endpoint 자체는 binary ready/unavailable gate이며 warning severity bucket을 노출하지 않습니다.
+- `/health`는 집계된 `HealthCheckReport` 진단을 반환하며 그 report가 healthy일 때만 HTTP `200`을 반환하고, indicator 하나라도 실패하면 HTTP `503`을 반환합니다.
+- `/ready`는 binary traffic-admission 결정을 내립니다. HTTP `200`은 트래픽을 수용하고 HTTP `503`은 인스턴스를 rotation에서 제외합니다. JSON body는 `{ status: 'ready' }`, `{ status: 'starting' }`, `{ status: 'unavailable' }` 중 하나를 보고합니다. `readiness`를 생략했거나 `true`인 indicator는 gate를 차단할 수 있고, `readiness: false`는 `/health` 진단을 유지하면서 `/ready`를 차단하지 않습니다. Custom `readinessChecks`는 조건만 추가합니다. Platform `critical` metadata는 readiness severity bucket이 아니라 `/health` diagnostics에 남습니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 - 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
@@ -236,7 +239,7 @@ TerminusModule.forRoot({
 
 `@nestjs/terminus`에서 마이그레이션할 때는 `TerminusModule.forRoot(...)`를 fluo의 기본 API로 취급하세요. fluo는 `HealthCheckService.check([...])`를 호출하는 controller-level `@HealthCheck()` 메서드를 주요 애플리케이션 계약으로 모델링하지 않습니다. 테스트나 커스텀 애플리케이션 코드에서 `TerminusHealthService.check()`를 직접 호출할 수는 있지만, 프로덕션 엔드포인트 등록은 indicator와 readiness hook을 module option에 두어 runtime `/health`와 `/ready` 경로가 platform diagnostics를 일관되게 포함하도록 해야 합니다.
 
-Terminus는 별도의 process-only liveness route도 기본으로 만들지 않습니다. 기본 route model은 집계 헬스를 위한 `GET /health`, readiness를 위한 `GET /ready`입니다. 배포 환경에서 좁은 의미의 process liveness probe가 필요하다면, Terminus가 NestJS-style 추가 route를 만들어 준다고 가정하지 말고 애플리케이션 또는 배포 계층에서 해당 probe를 정의하세요.
+Terminus는 별도의 process-only liveness route도 기본으로 만들지 않습니다. 기본 route model은 집계 진단을 위한 `GET /health`, HTTP `200` 또는 `503`의 binary readiness를 위한 `GET /ready`입니다. 배포 환경에서 좁은 의미의 process liveness probe가 필요하다면, Terminus가 NestJS-style 추가 route를 만들어 준다고 가정하지 말고 애플리케이션 또는 배포 계층에서 해당 probe를 정의하세요. 이 runtime-owned route는 NestJS controller의 `@HealthCheck()` 또는 `@UseGuards()` metadata를 명시적으로 거부하므로, path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary에서 보호해야 합니다.
 
 Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js memory 및 disk check에는 `@fluojs/terminus/node`를 사용하고, Redis check에는 `@fluojs/terminus/redis`를 사용하세요. Prisma와 Drizzle provider helper는 token-only DI seam을 해석하므로 해당 선택적 peer가 없어도 root package import는 안전하게 유지되며, Node disk filesystem access도 lazy하게 유지되어 애플리케이션이 runtime-specific probe에 명시적으로 opt in합니다.
 

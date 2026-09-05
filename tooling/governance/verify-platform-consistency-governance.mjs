@@ -35,6 +35,10 @@ import { enforceReactPageCatalogContract } from './react-page-catalog-contract.m
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
+import {
+  enforceTerminusRuntimeHealthContract,
+  enforceTerminusRuntimeHealthContractCompanions,
+} from './terminus-runtime-health-contract.mjs';
 
 const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
 const httpLifecycleContractDocs = new Set([
@@ -100,6 +104,10 @@ export {
 } from './react-rsc-graduation-policy.mjs';
 export { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 export { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
+export {
+  enforceTerminusRuntimeHealthContract,
+  enforceTerminusRuntimeHealthContractCompanions,
+} from './terminus-runtime-health-contract.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -4269,6 +4277,7 @@ export async function main() {
   enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
+  enforceTerminusRuntimeHealthContract();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
@@ -4302,6 +4311,7 @@ export async function main() {
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
   enforceStudioReportBootstrapFailureCompanions(changedFiles, studioReportBootstrapFailureSnapshots);
+  enforceTerminusRuntimeHealthContractCompanions(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');

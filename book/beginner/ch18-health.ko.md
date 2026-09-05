@@ -1,5 +1,5 @@
 <!-- packages: @fluojs/terminus, @fluojs/metrics -->
-<!-- project-state: FluoBlog v1.15 -->
+<!-- project-state: FluoBlog v1.15; fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 # Chapter 18. Health Checks and Reliability
 
@@ -30,7 +30,7 @@ Kubernetes나 AWS ECS와 같은 현대적인 인프라는 두 가지 유형의 �
 - **Liveness (활성)**: "프로세스가 실행 중인가?" 이에 실패하면 컨테이너가 재시작됩니다. 이는 앱이 데드락 상태에 빠져 재부팅 없이는 복구될 수 없는 상황을 감지하기 위한 것입니다.
 - **Readiness (준비성)**: "애플리케이션이 트래픽을 처리할 준비가 되었는가?" 이에 실패하면 해당 인스턴스는 로드 밸런서에서 일시적으로 제외되지만, 반드시 재시작되지는 않습니다. 이는 시작 단계나 의존성이 일시적으로 과부하된 상황에서 사용됩니다.
 
-이 두 가지 상태를 이해하면, 불필요한 다운타임을 피하면서도 건강한 인스턴스만 사용자에게 서비스를 제공하도록 보장하는 정교한 신뢰성 전략을 구현할 수 있습니다. 현재 Fluo 계약에서 기본 경로는 `GET /health`와 `GET /ready`입니다. `@fluojs/terminus`는 이 경로 위에 집계된 헬스와 준비성 판단을 올려 주지만, 별도 프로세스 전용 활성 경로를 기본으로 제공하지는 않습니다.
+이 두 가지 상태를 이해하면, 불필요한 다운타임을 피하면서도 건강한 인스턴스만 사용자에게 서비스를 제공하도록 보장하는 정교한 신뢰성 전략을 구현할 수 있습니다. 현재 Fluo 계약에서 `GET /health`는 집계된 진단을 반환합니다. `GET /ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결정을 내리면서 body에는 `ready`, `starting`, `unavailable` 중 하나를 보고합니다. `@fluojs/terminus`는 별도 process-only liveness route를 기본으로 제공하지는 않습니다.
 
 ### 18.1.1 The Startup Sequence
 새로운 Fluo 인스턴스가 시작될 때, 데이터베이스 마이그레이션을 수행하거나 캐시를 예열하고 원격 메시지 브로커와의 연결을 수립해야 할 수 있습니다. 이 시간 동안 프로세스는 "살아있지만"(Liveness 통과) 아직 "준비되지 않은"(Readiness 실패) 상태입니다. 적절한 준비성 프로브를 사용하면 사용자가 아직 준비 중인 인스턴스에 도달하는 것을 방지하여 배포 직후에 흔히 발생하는 "Service Unavailable" 에러를 막을 수 있습니다. 이러한 "조율된 시작(Coordinated Startup)"은 고가용성 아키텍처의 특징입니다.
@@ -51,7 +51,7 @@ Kubernetes나 AWS ECS와 같은 현대적인 인프라는 두 가지 유형의 �
 Terminus는 확장 가능하도록 설계되었습니다. 가장 일반적인 의존성들에 대해 내장 인디케이터를 제공하면서, 커스텀 로직을 위한 애플리케이션 전용 인디케이터도 작성할 수 있게 해 줍니다. 또한 `/health`와 `/ready` 경로에서 런타임 준비 상태와 인디케이터 결과를 함께 집계하고, 종료 중인 인스턴스를 rotation에서 제외하기 위한 readiness signal을 제공합니다. 종료 신호 등록, 강제 종료 시간 설정, 정리 순서의 소유권은 Terminus가 아니라 호스트, 어댑터, 런타임 close 경로에 있습니다.
 
 ### 18.2.1 The Standardized Health Response
-Terminus는 단순히 "OK"라는 문자열만 반환하지 않습니다. 업계 표준을 따라 모든 서브 체크의 상태를 포함하는 상세한 JSON 객체를 제공합니다. 이를 통해 모니터링 도구는 무언가 잘못되었다는 사실뿐만 아니라 *정확히 무엇이* 잘못되었는지 알 수 있습니다. 예를 들어 응답은 데이터베이스는 건강하지만 캐시는 다운되었다는 것을 명확히 보여줄 수 있습니다. 이 정도의 세부 정보는 SRE 팀이 압박 속에서 복잡한 프로덕션 문제를 진단할 때 매우 귀중한 자산이 됩니다.
+`GET /health`는 단순히 "OK"라는 문자열만 반환하지 않습니다. 업계 표준을 따라 등록된 모든 서브 체크 상태를 포함하는 집계 진단 JSON 객체를 제공합니다. 이를 통해 모니터링 도구는 무언가 잘못되었다는 사실뿐만 아니라 *정확히 무엇이* 잘못되었는지 알 수 있습니다. `GET /ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결과를 유지하며, body에는 진단 severity group 대신 더 구체적인 runtime 상태 `ready`, `starting`, `unavailable`을 보존합니다. 예를 들어 health 응답은 데이터베이스는 건강하지만 캐시는 다운되었다는 것을 명확히 보여줄 수 있습니다. 이 정도의 세부 정보는 SRE 팀이 압박 속에서 복잡한 프로덕션 문제를 진단할 때 매우 귀중한 자산이 됩니다.
 
 ### 18.2.2 Decoupling from Domain Logic
 `@fluojs/terminus`의 핵심 설계 목표 중 하나는 헬스 체크 로직을 메인 비즈니스 로직과 분리하는 것입니다. 서비스 코드 곳곳에 "데이터베이스가 정상인가?"와 같은 체크 로직을 흩뿌려 놓을 필요가 없습니다. 대신 헬스 인디케이터는 독립적으로 실행되며, 최적화된 경로를 통해 인프라의 상태를 조회합니다. 이는 애플리케이션을 모니터링하는 행위가 사용자가 실제로 관심을 갖는 기능에 불필요한 오버헤드나 복잡성을 추가하지 않도록 보장합니다.
@@ -120,7 +120,7 @@ TerminusModule.forRoot({
 NestJS Terminus에서 마이그레이션한다면 `@HealthCheck()`로 장식한 controller method가 `HealthCheckService.check([...])`를 호출하는 구조를 먼저 재현하지 마세요. Fluo의 기본 API는 위에서 본 module registration입니다. Indicator, indicator provider, readiness check, execution guardrail은 `TerminusModule.forRoot(...)`에 두어 runtime-owned `GET /health`와 `GET /ready` route가 platform diagnostics와 정렬되게 해야 합니다. `TerminusHealthService.check()`는 test나 custom application flow에서 여전히 유용하지만, 기본 route authoring pattern은 아닙니다.
 
 ### 18.3.2 Securing the Health Endpoint
-헬스 체크는 운영에 필수적이지만, 아키텍처의 내부 세부 정보를 공용 인터넷에 노출하고 싶지 않을 수 있습니다. `/health` 엔드포인트에 대한 액세스를 내부 IP 주소로 제한하거나 특정 비밀 헤더를 요구하는 것이 일반적인 베스트 프랙티스입니다. Fluo의 가드 시스템을 사용하면 이러한 보안 계층을 추가할 수 있으며, 서비스의 생체 신호가 이를 볼 필요가 있는 시스템과 사람들에게만 보이도록 제한할 수 있습니다.
+헬스 체크는 운영에 필수적이지만, 아키텍처의 내부 세부 정보를 공용 인터넷에 노출하고 싶지 않을 수 있습니다. Controller `@UseGuards()` metadata를 붙여 runtime-owned `/health` 또는 `/ready` route를 보호할 수 있다고 기대하지 마세요. 이 route는 controller metadata를 읽지 않습니다. 접근 제한은 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary에 두어 필요한 시스템과 사람만 접근하게 하세요.
 
 ### 18.3.3 Advanced Terminus Configuration: Customizing the Root
 기본적으로 `TerminusHealthService`는 등록된 인디케이터 결과를 모아 표준화된 구조를 반환합니다. 따라서 루트 응답을 직접 조립하기보다, 어떤 인디케이터를 등록할지와 각 인디케이터가 어떤 상태를 보고할지를 명확히 유지하는 편이 더 Fluo답습니다.
@@ -137,15 +137,17 @@ FluoBlog와 같은 실제 애플리케이션은 단순한 데이터베이스 그
 
 ```typescript
 const report = await this.health.check();
-await this.databaseIndicator.check('database');
-await this.cacheIndicator.check('cache');
-await this.externalApiIndicator.check('external-api');
-await this.memoryIndicator.check('memory_heap');
-return report;
+
+return {
+  database: report.details.database,
+  cache: report.details.cache,
+  externalApi: report.details['external-api'],
+  memoryHeap: report.details.memory_heap,
+};
 ```
 
 ### 18.4.1 Strategic Monitoring
-모든 의존성을 헬스 체크에 포함하지 않도록 주의하십시오. 만약 이메일 발송과 같은 부가적인 외부 서비스가 중단되더라도, 애플리케이션은 대부분의 사용자에게 정상적인 서비스를 제공할 수 있습니다. 이러한 서비스를 준비성(Readiness) 체크에 포함하면 앱 전체가 불필요하게 "오프라인" 상태가 될 수 있습니다. 애플리케이션이 제 기능을 하기 위해 엄격하게 요구되는 핵심 의존성에 집중하십시오. 이를 "차등 모니터링"이라고 하며 "치명적(Fatal)" 조건과 "경고(Warning)" 조건을 구분하는 것입니다.
+등록한 indicator 중 어떤 것이 트래픽을 차단할지 명시적으로 선택하세요. Indicator는 기본적으로 `/ready`에 참여하고, `readiness: false`는 비임계 dependency를 `/health`에만 보존하며, `readinessChecks`는 application condition을 추가할 수 있지만 indicator를 제외할 수는 없습니다.
 
 Terminus는 indicator의 `readiness` 설정으로 이 구분을 명시적으로 지원합니다. 기본적으로 모든 indicator는 계속 `/health`에 참여하고, `readiness: false`를 설정하면 비임계 의존성을 binary `/ready` gate에서 제외할 수 있습니다.
 
@@ -170,9 +172,9 @@ TerminusModule.forRoot({
 ### 18.4.3 Dependency Priority and Cascading Failures
 고도로 연결된 마이크로서비스 아키텍처에서는 작은 서비스 하나가 실패했을 때 전체 시스템이 중단되는 "연쇄 실패(Cascading Failure)"가 발생할 수 있습니다. 차등 모니터링을 사용하면 각 의존성에 **우선순위 레벨(Priority Level)**을 지정할 수 있습니다.
 - **Critical Dependencies (임계 의존성)**: 기본 데이터베이스와 같이 실패 시 준비성 체크가 즉시 실패해야 하는 핵심 요소입니다.
-- **Non-Critical Dependencies (비임계 의존성)**: 필수적이지 않은 검색 인덱서와 같이 실패하더라도 대부분의 사용자 요청을 처리할 수 있다면 binary `/ready` gate 대신 health detail, metrics, alert로 보고하는 편이 적합한 요소입니다.
+- **Non-Critical Dependencies (비임계 의존성)**: 필수적이지 않은 검색 인덱서와 같이 실패하더라도 대부분의 사용자 요청을 처리할 수 있다면 `readiness: false`로 `/health` 진단은 보존하되 트래픽은 차단하지 않는 요소입니다.
 
-애플리케이션의 헬스에 치명적인 의존성이 무엇인지 전략적으로 결정함으로써, 완전히 실패하기보다는 우아하게 기능이 저하되는 더욱 강력한 시스템을 구축할 수 있습니다. Fluo의 Terminus 구성은 indicator 결과, custom readiness check, runtime platform readiness를 조합해 binary `/ready` 결정을 만듭니다. 따라서 non-critical degraded 결과를 포함해 platform readiness가 `ready`가 아니면 인스턴스는 rotation에서 빠지고, severity context는 diagnostic payload에 보존됩니다.
+애플리케이션의 헬스에 치명적인 의존성이 무엇인지 전략적으로 결정함으로써, 완전히 실패하기보다는 우아하게 기능이 저하되는 더욱 강력한 시스템을 구축할 수 있습니다. 트래픽 수용에 필수인 indicator는 기본 readiness 동작을 유지하고, non-gating 진단에는 `readiness: false`를 사용하며, `readinessChecks`는 application-owned condition 추가에만 사용하세요.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 파일 업로드를 처리하거나 집중적인 로깅을 수행하는 애플리케이션에서 **디스크 공간**은 매우 중요한 리소스입니다. 디스크가 가득 차면 메모리 누수와 마찬가지로 애플리케이션이 충돌하거나 응답하지 않게 될 수 있습니다. Terminus는 최소 free bytes 또는 최소 free ratio 같은 여유 공간 임계값을 점검하는 Node disk indicator를 제공합니다. 이 신호를 사용하면 프로덕션 비상 사태가 발생하기 전에 임시 파일 정리나 스토리지 확장과 같은 조치를 취할 수 있습니다. I/O latency나 throughput 모니터링도 필요하다면, 이를 Terminus disk indicator 출력으로 간주하지 말고 metrics 또는 host observability stack에서 수집하세요.
@@ -211,7 +213,7 @@ export class WorkerHealthIndicator implements HealthIndicator {
 커스텀 인디케이터는 복잡한 내부 상태를 모니터링할 수 있는 힘을 줍니다. 파일 시스템에 쓰기가 가능한지, 특정 설정 파일이 존재하는지, 혹은 라이선스 키가 여전히 유효한지 등을 확인할 수 있습니다. 이러한 로직을 `TerminusModule.forRoot({ indicators })`를 통해 등록하면 별도의 controller-owned route를 만들지 않고도 Fluo의 runtime-owned `/health`와 `/ready` aggregation에 합류시킬 수 있습니다. 이를 통해 커스텀 비즈니스 레벨의 헬스 상태가 데이터베이스나 네트워크 헬스와 동일한 자동화된 복구 및 알림 워크플로우를 트리거할 수 있게 됩니다.
 
 ### 18.5.2 Aggregating Health Data
-복잡한 시스템에서는 수십 개의 서브 인디케이터가 있을 수 있습니다. Fluo는 이러한 인디케이터들을 "서브 헬스 체크"로 그룹화하거나 하나의 점수로 합산할 수 있게 해줍니다. 이는 서로 다른 팀이 시스템의 서로 다른 부분에 책임을 지는 대규모 엔터프라이즈 애플리케이션에서 특히 유용합니다. 각 팀은 `TerminusModule.forRoot({ indicators })`를 통해 자체 헬스 인디케이터를 제공할 수 있고, Fluo의 runtime-owned `/health`와 `/ready` aggregation이 이를 모두 취합하여 전체 플랫폼 상태에 대한 종합적인 뷰를 제공할 수 있습니다.
+복잡한 시스템에서는 수십 개의 서브 인디케이터가 있을 수 있습니다. Terminus는 built-in sub-health grouping이나 scoring을 제공하지 않습니다. `TerminusModule.forRoot({ indicators })`로 startup 시점에 flat indicator set을 구성하세요. Team별 grouped dashboard나 score가 필요하면 Terminus runtime behavior로 취급하지 말고 집계 `/health` 진단에서 application-owned observability tooling으로 도출하세요.
 
 ### 18.5.3 Health Indicators for Security and Compliance
 커스텀 헬스 인디케이터는 **보안 모니터링(Security Monitoring)**에도 사용될 수 있습니다. 최신 보안 패치가 적용되었는지, 민감한 설정 파일이 노출되었는지, 혹은 실패한 로그인 시도가 비정상적으로 급증했는지 등을 확인하는 인디케이터를 만들 수 있습니다. 이러한 보안 체크를 헬스 엔드포인트에 포함함으로써, 보안을 성능 및 신뢰성과 동일한 운영 가시성 프레임워크 안으로 가져올 수 있습니다.
@@ -229,9 +231,9 @@ export class WorkerHealthIndicator implements HealthIndicator {
 이러한 "공유된 신뢰성(Shared Reliability)" 접근 방식은 모든 팀이 핵심 내부 인프라를 모니터링하기 위한 동일한 베스트 프랙티스를 따르도록 보장합니다. 공통 의존성에 대한 모니터링 로직을 중앙 집중화함으로써 중복 코드를 줄이고, 조직 내의 모든 애플리케이션이 가장 최신의 견고한 헬스 체크 로직으로부터 혜택을 받도록 할 수 있습니다.
 
 ### 18.5.6 Dynamic Indicator Registration
-일부 고급 시나리오에서는 애플리케이션의 설정이나 런타임 상태에 따라 헬스 인디케이터를 동적으로 등록하고 싶을 수 있습니다. 예를 들어 "플러그인 기반" 애플리케이션은 현재 활성화된 플러그인의 상태만 모니터링하고 싶을 것입니다. Fluo의 Terminus 구성은 `check()`에 참여할 인디케이터 집합을 프로그래밍 방식으로 조합할 수 있게 해줍니다.
+일부 고급 시나리오에서는 배포 설정에 따라 다른 indicator set을 선택할 수 있습니다. Startup 전에 flat set을 구성해 최종 값을 `TerminusModule.forRoot(...)`에 전달하세요. Terminus는 실행 중인 health graph를 변경하는 runtime-active plugin registration을 지원하지 않습니다.
 
-이러한 동적인 특성은 헬스 체크가 애플리케이션이 실행 중인 특정 컨텍스트에 적응할 수 있게 해줍니다. 최소한의 개발 모드이든 모든 기능을 갖춘 프로덕션 환경이든, 생체 신호는 사용자에게 서비스를 제공 중인 실제 활성 구성 요소들을 반영해야 합니다. 이러한 수준의 적응성은 Fluo의 메타데이터가 없는 명시적인 의존성 관리의 핵심 장점입니다.
+최소한의 개발 모드든 모든 기능을 갖춘 프로덕션 환경이든 startup composition을 명시적으로 만들고 topology가 바뀌면 host를 통해 재시작하세요. 이렇게 하면 노출되는 health contract가 배포된 애플리케이션이 실제로 소유하는 구성 요소에 연결됩니다.
 
 ## 18.6 Graceful Shutdowns
 헬스는 단순히 살아있는 것뿐만 아니라, 우아하게 내려가는 것에 대한 것이기도 합니다. FluoBlog의 새 버전을 배포할 때 이전 버전은 종료되어야 합니다. 현재 계약에서 종료 신호 등록은 주변 호스트나 어댑터 헬퍼가 맡고, 실제 정리 순서는 런타임 close 경로가 관리합니다. Terminus는 헬스와 readiness를 집계하고 런타임의 shutdown-readiness signal을 노출해 종료 직전 인스턴스가 더 이상 새 트래픽을 받지 않도록 할 뿐, 종료를 시작하거나 소유하지 않습니다.
@@ -243,7 +245,7 @@ export class WorkerHealthIndicator implements HealthIndicator {
 1. 준비성 프로브가 "실패"로 설정되어 로드 밸런서가 새로운 트래픽 전송을 중단합니다.
 2. 호스트와 어댑터가 정한 종료 경계 안에서 애플리케이션은 기존 요청들이 완료될 시간을 얻습니다.
 3. 런타임 close 경로가 데이터베이스, 메시지 큐 등 장기 실행 리소스에 대한 종료 훅을 순서대로 호출합니다.
-4. 프로세스가 최종적으로 종료 코드 0으로 종료됩니다.
+4. Host가 소유하는 exit status로 프로세스를 종료합니다. Terminus는 process exit code를 선택하거나 발행하지 않습니다.
 
 ### 18.6.2 Handling Hung Requests
 가끔 종료 중에 요청이 멈추거나 완료되는 데 너무 오랜 시간이 걸릴 수 있습니다. 이때 강제 종료 시간은 Terminus 단독 기능이라기보다 호스트의 신호 처리와 어댑터의 drain timeout 설정이 경계를 정합니다. 이는 교체되어야 할 프로세스가 무한정 남아 리소스를 소모하는 "좀비" 프로세스가 되는 것을 방지합니다. 작업을 마무리하는 것과 신속하게 종료하는 것 사이의 균형을 맞추는 것이 프로덕션 신뢰성 설정을 미세 조정하는 핵심 요소입니다.
@@ -267,7 +269,7 @@ Fluo는 런타임 종료 경로에서 표준화된 라이프사이클 훅(`onApp
 - **무한 루프**: 종료 신호를 확인하지 않는 코드입니다.
 - **남아있는 타이머**: 이벤트 루프를 활성 상태로 유지하는 `setInterval`이나 `setTimeout` 호출입니다.
 
-Fluo의 디버거는 종료 단계에서 이러한 "누수(Leakage)" 문제를 감지하기 위한 도구들을 포함하고 있습니다. 스테이징 환경에서 정기적으로 "종료 감사(Shutdown Audits)"를 수행함으로써, 프로덕션에서 문제가 발생하기 전에 이러한 버그들을 식별하고 수정할 수 있습니다. 깨끗하고 빠른 종료는 고가용성을 유지하는 데 있어 빠른 시작만큼이나 중요합니다.
+Host-owned runtime diagnostics와 사용 중인 platform의 debugger 또는 profiler로 종료 단계의 이러한 "누수(Leakage)" 문제를 감지하세요. 스테이징 환경에서 정기적으로 "종료 감사(Shutdown Audits)"를 수행함으로써, 프로덕션에서 문제가 발생하기 전에 이러한 버그들을 식별하고 수정할 수 있습니다. 깨끗하고 빠른 종료는 고가용성을 유지하는 데 있어 빠른 시작만큼이나 중요합니다.
 
 ### 18.6.6 Real-World Scenario: Deploying FluoBlog
 수천 명의 사용자가 활발히 활동 중인 상태에서 FluoBlog의 대규모 업데이트를 배포한다고 가정해 봅시다. Terminus가 전환 과정에서 어떤 신호를 제공하는지 살펴보겠습니다.
@@ -283,9 +285,9 @@ Fluo의 디버거는 종료 단계에서 이러한 "누수(Leakage)" 문제를 �
 이 시퀀스는 현대적인 백엔드 운영의 표준입니다. 이 장의 도구들을 프로젝트에 맞게 적용하면 Fluo로 구축하는 서비스에서도 이 수준의 신뢰성을 목표로 삼을 수 있습니다.
 
 ### 18.6.7 Graceful Shutdown and Global State
-전 세계적으로 분산된 시스템에서 우아한 종료 프로세스는 **글로벌 상태(Global State)**도 고려해야 합니다. 만약 사용자를 가장 가까운 건강한 리전으로 안내하는 글로벌 트래픽 매니저를 사용하고 있다면, 개별 인스턴스를 종료하기 전에 해당 리전이 "드레이닝(draining, 트래픽 유입 차단)" 상태로 표시되도록 보장해야 합니다. Terminus는 이러한 글로벌 컨트롤 플레인(Control Planes)과 통합될 수 있어, 로컬 정리 시퀀스를 시작하기 전에 글로벌 레벨에서 종료 의사를 알릴 수 있습니다.
+전 세계적으로 분산된 시스템에서는 우아한 종료에 **글로벌 컨트롤 플레인(Global Control Plane)**이 필요할 수 있습니다. 트래픽 매니저가 사용자를 가장 가까운 정상 리전으로 보낸다면, 개별 인스턴스를 종료하기 전에 배포 시스템이 해당 리전을 draining 상태로 표시해야 합니다. Terminus는 글로벌 컨트롤 플레인을 운영하거나, 여기에 종료 의사를 알리거나, 이를 조율하지 않습니다. 각 애플리케이션의 로컬 health와 readiness 상태만 노출합니다.
 
-이러한 리전 간의 조율된 종료는 사용자가 점검 중인 데이터 센터로 안내되어 "오래된 리전(Stale Region)" 에러를 경험하는 것을 방지합니다. 우아한 종료의 개념을 전체 글로벌 인프라로 확장하면 리전 전환 중에도 신뢰성과 사용자 경험을 더 안정적으로 유지할 수 있습니다.
+리전 간 draining, 트래픽 매니저 갱신, rollout 순서는 배포 플랫폼에서 소유하세요. 이 분리는 Terminus가 글로벌 종료 조율을 소유한다고 주장하지 않으면서 점검 중인 데이터 센터로 사용자가 라우팅되는 문제를 방지합니다.
 
 ### 18.6.8 Automated Post-Mortem and Feedback Loops
 계획된 배포가 아닌 실패로 인해 애플리케이션이 종료될 때, **자동화된 사후 분석(Automated Post-Mortem)**은 보통 애플리케이션 레벨 또는 플랫폼 레벨 workflow입니다. Terminus는 현재 health report와 readiness signal을 제공할 수 있지만, post-mortem hook이나 webhook automation surface를 제공하지는 않습니다. 이러한 workflow가 필요하다면 자체 shutdown/error handling code에서 health report를 캡처하고, 생성한 snapshot을 중수 편에서 다룰 Slack 또는 Discord 모듈을 통해 전송하세요.
