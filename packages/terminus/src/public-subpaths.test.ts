@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -11,10 +11,30 @@ type ExportTarget = {
 
 describe('@fluojs/terminus subpath exports', () => {
   const packageRoot = fileURLToPath(new URL('../', import.meta.url));
+  const requiredEmittedArtifacts = [
+    '../../core/dist/index.d.ts',
+    '../../core/dist/index.js',
+    '../../di/dist/index.d.ts',
+    '../../di/dist/index.js',
+    '../../http/dist/index.d.ts',
+    '../../http/dist/index.js',
+    '../../runtime/dist/index.d.ts',
+    '../../runtime/dist/index.js',
+    '../dist/node.d.ts',
+    '../dist/node.js',
+    '../dist/redis.d.ts',
+    '../dist/redis.js',
+  ].map((artifact) => new URL(artifact, import.meta.url));
 
   beforeAll(() => {
+    if (requiredEmittedArtifacts.every((artifact) => existsSync(artifact))) {
+      return;
+    }
+
     execFileSync('pnpm', ['--filter', '@fluojs/terminus...', 'run', 'build'], {
       cwd: packageRoot,
+      killSignal: 'SIGTERM',
+      timeout: 60_000,
     });
   }, 60_000);
 
