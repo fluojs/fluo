@@ -492,6 +492,13 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
   );
 }
 
+/**
+ * Bootstrap node application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The bootstrap node application result.
+ */
 export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
@@ -513,23 +520,23 @@ export async function bootstrapNodeApplication(
 
 `path:packages/runtime/src/node/node.test.ts:14-30`
 ```typescript
-it('uses the runtime default port instead of process.env.PORT', async () => {
-  const previousPort = process.env.PORT;
-  process.env.PORT = '4321';
 
-  try {
-    const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+  it('uses the runtime default port instead of process.env.PORT', async () => {
+    const previousPort = process.env.PORT;
+    process.env.PORT = '4321';
 
-    expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
-    await adapter.close();
-  } finally {
-    if (previousPort === undefined) {
-      delete process.env.PORT;
-    } else {
-      process.env.PORT = previousPort;
+    try {
+      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+
+      expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
+      await adapter.close();
+    } finally {
+      if (previousPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = previousPort;
+      }
     }
-  }
-});
 ```
 
 이 테스트는 Node branch가 Node 환경 변수를 볼 수 있다는 사실과, 그럼에도 기본값을 ambient process state에 묶지 않는다는 사실을 함께 고정합니다. portability cost는 import path에서 드러나지만, runtime default까지 암묵적으로 host global에 기대지는 않습니다.

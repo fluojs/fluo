@@ -163,10 +163,13 @@ describe('NestJS shutdown migration contract companions', () => {
 });
 
 describe('advanced runtime branching source excerpts', () => {
+  type RuntimeSourceFenceLanguage = 'typescript' | 'json';
+
   type RuntimeSourceExcerpt = {
     sourcePath: string;
     startLine: number;
     endLine: number;
+    fenceLanguage: RuntimeSourceFenceLanguage;
     dedent?: number;
   };
 
@@ -179,59 +182,70 @@ describe('advanced runtime branching source excerpts', () => {
       sourcePath: 'packages/runtime/src/bootstrap.ts',
       startLine: 1578,
       endLine: 1602,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/src/exports.test.ts',
       startLine: 19,
       endLine: 46,
+      fenceLanguage: 'typescript',
       dedent: 2,
     },
     {
       sourcePath: 'packages/runtime/src/index.ts',
       startLine: 1,
       endLine: 47,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/package.json',
       startLine: 27,
       endLine: 61,
+      fenceLanguage: 'json',
       dedent: 2,
     },
     {
       sourcePath: 'packages/runtime/src/exports.test.ts',
       startLine: 100,
       endLine: 123,
+      fenceLanguage: 'typescript',
       dedent: 2,
     },
     {
       sourcePath: 'packages/runtime/src/node.ts',
       startLine: 1,
       endLine: 25,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/src/node/internal-node.ts',
       startLine: 133,
       endLine: 156,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/src/node/internal-node.ts',
       startLine: 157,
       endLine: 183,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/src/node/internal-node-listen.ts',
       startLine: 21,
       endLine: 101,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/src/node/internal-node.ts',
       startLine: 283,
       endLine: 318,
+      fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/runtime/src/node/node.test.ts',
       startLine: 14,
       endLine: 30,
+      fenceLanguage: 'typescript',
     },
   ] as const;
 
@@ -239,9 +253,10 @@ describe('advanced runtime branching source excerpts', () => {
     return `${sourcePath}:${startLine}-${endLine}`;
   }
 
-  function extractCodeBlock(markdown: string, reference: string): string {
+  function extractCodeBlock(markdown: string, excerpt: RuntimeSourceExcerpt): string {
+    const reference = sourceReference(excerpt);
     const marker = `\`path:${reference}\``;
-    const blockMarker = `${marker}\n\`\`\`typescript\n`;
+    const blockMarker = `${marker}\n\`\`\`${excerpt.fenceLanguage}\n`;
     const markerIndex = markdown.indexOf(blockMarker);
     expect(markerIndex, `missing source block marker ${marker}`).toBeGreaterThanOrEqual(0);
     expect(markdown.indexOf(blockMarker, markerIndex + blockMarker.length), `duplicate source block marker ${marker}`).toBe(-1);
@@ -253,13 +268,21 @@ describe('advanced runtime branching source excerpts', () => {
     return markdown.slice(codeStart, closingFenceIndex);
   }
 
-  function sourceBlockReferences(markdown: string): string[] {
-    return [...markdown.matchAll(/`path:([^`]+:\d+-\d+)`\n```typescript\n/gu)].map((match) => match[1]);
+  function sourceBlockReferences(
+    markdown: string,
+  ): Array<{ reference: string; fenceLanguage: RuntimeSourceFenceLanguage }> {
+    return [...markdown.matchAll(/`path:([^`]+:\d+-\d+)`\n```(typescript|json)\n/gu)].map((match) => ({
+      reference: match[1],
+      fenceLanguage: match[2] as RuntimeSourceFenceLanguage,
+    }));
   }
 
   function assertExcerptCompleteness(markdown: string, documentationPath: string): void {
     expect(sourceBlockReferences(markdown), `${documentationPath} source blocks must match the complete excerpt list`).toEqual(
-      excerpts.map(sourceReference),
+      excerpts.map((excerpt) => ({
+        reference: sourceReference(excerpt),
+        fenceLanguage: excerpt.fenceLanguage,
+      })),
     );
   }
 
@@ -274,7 +297,7 @@ describe('advanced runtime branching source excerpts', () => {
       .map((line) => line.slice(excerpt.dedent ?? 0))
       .join('\n');
 
-    expect(extractCodeBlock(markdown, sourceReference(excerpt))).toBe(source);
+    expect(extractCodeBlock(markdown, excerpt)).toBe(source);
   }
 
   it('keeps the canonical EN and KO excerpts identical to their cited runtime source ranges', () => {
@@ -290,8 +313,8 @@ describe('advanced runtime branching source excerpts', () => {
         assertExcerptMatchesSource(excerpt, document.markdown, source);
       }
 
-      expect(extractCodeBlock(documents[1].markdown, sourceReference(excerpt))).toBe(
-        extractCodeBlock(documents[0].markdown, sourceReference(excerpt)),
+      expect(extractCodeBlock(documents[1].markdown, excerpt)).toBe(
+        extractCodeBlock(documents[0].markdown, excerpt),
       );
     }
   });
@@ -304,7 +327,7 @@ describe('advanced runtime branching source excerpts', () => {
 
     expect(() =>
       assertExcerptCompleteness(
-        markdown.replace(`\`path:${bootstrapReference}\`\n\`\`\`typescript\n`, ''),
+        markdown.replace(`\`path:${bootstrapReference}\`\n\`\`\`${bootstrapExcerpt.fenceLanguage}\n`, ''),
         documentationPaths[0],
       ),
     ).toThrow(/source blocks must match the complete excerpt list/u);
@@ -313,6 +336,34 @@ describe('advanced runtime branching source excerpts', () => {
         bootstrapExcerpt,
         markdown.replace('const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();', 'const logger = undefined;'),
         bootstrapSource,
+      ),
+    ).toThrow();
+  });
+
+  it('rejects a missing or changed JSON fence for the runtime package excerpt', () => {
+    const packageExcerpt = excerpts[3];
+    const packageReference = sourceReference(packageExcerpt);
+    const packageSource = readFileSync(join(repoRoot, packageExcerpt.sourcePath), 'utf8');
+    const markdown = readFileSync(join(repoRoot, documentationPaths[0]), 'utf8');
+    const jsonBlockMarker = `\`path:${packageReference}\`\n\`\`\`json\n`;
+
+    expect(() =>
+      assertExcerptCompleteness(
+        markdown.replace(jsonBlockMarker, `\`path:${packageReference}\`\n`),
+        documentationPaths[0],
+      ),
+    ).toThrow(/source blocks must match the complete excerpt list/u);
+    expect(() =>
+      assertExcerptCompleteness(
+        markdown.replace(jsonBlockMarker, `\`path:${packageReference}\`\n\`\`\`typescript\n`),
+        documentationPaths[0],
+      ),
+    ).toThrow(/source blocks must match the complete excerpt list/u);
+    expect(() =>
+      assertExcerptMatchesSource(
+        packageExcerpt,
+        markdown.replace(jsonBlockMarker, `\`path:${packageReference}\`\n\`\`\`typescript\n`),
+        packageSource,
       ),
     ).toThrow();
   });

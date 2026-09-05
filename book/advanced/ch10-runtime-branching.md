@@ -492,6 +492,13 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
   );
 }
 
+/**
+ * Bootstrap node application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The bootstrap node application result.
+ */
 export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
@@ -513,23 +520,23 @@ The tests explain the intended public contract. `path:packages/runtime/src/node/
 
 `path:packages/runtime/src/node/node.test.ts:14-30`
 ```typescript
-it('uses the runtime default port instead of process.env.PORT', async () => {
-  const previousPort = process.env.PORT;
-  process.env.PORT = '4321';
 
-  try {
-    const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+  it('uses the runtime default port instead of process.env.PORT', async () => {
+    const previousPort = process.env.PORT;
+    process.env.PORT = '4321';
 
-    expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
-    await adapter.close();
-  } finally {
-    if (previousPort === undefined) {
-      delete process.env.PORT;
-    } else {
-      process.env.PORT = previousPort;
+    try {
+      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+
+      expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
+      await adapter.close();
+    } finally {
+      if (previousPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = previousPort;
+      }
     }
-  }
-});
 ```
 
 This test fixes two facts at once: the Node branch can see Node environment variables, and yet its default value is not tied to ambient process state. Portability cost is visible in the import path, but runtime defaults do not implicitly lean on host globals.
