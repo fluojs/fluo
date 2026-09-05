@@ -100,7 +100,7 @@ function createDependencies() {
       },
     ]),
     mkdirSync: vi.fn(),
-    readFileSync: vi.fn(() => changelog),
+    readFileSync: vi.fn<(targetPath: string) => string>(() => changelog),
     writeFileSync: vi.fn(),
   };
 }

@@ -22,9 +22,9 @@ Node.js `>=20.19.3 <21 || >=22.2.0 <27` request-level testing helpers, testing m
 pnpm add -D @fluojs/testing vitest
 ```
 
-`vitest` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint. `@babel/core` is declared as a peer because the Vitest decorators plugin loads Babel from the consuming workspace; package managers may surface that peer even when you only use the non-Vitest harness subpaths.
+Vitest `^4.1.11` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint. `@babel/core` is declared as a peer because the Vitest decorators plugin loads Babel from the consuming workspace; package managers may surface that peer even when you only use the non-Vitest harness subpaths.
 
-If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime. The Vitest plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` source ids after removing Vite query/hash suffixes, skips `node_modules`, and resolves the nearest root Babel config named `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json`:
+If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime. The Vitest plugin runs with `enforce: 'pre'` so decorator-bearing TypeScript reaches Babel before Vite 8 normal-stage Rolldown/Oxc transforms. It transforms `.ts`, `.tsx`, `.mts`, and `.cts` source ids after removing Vite query/hash suffixes, skips `node_modules`, and resolves the nearest root Babel config named `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json`:
 
 ```bash
 pnpm add -D @babel/core

@@ -24,9 +24,9 @@ Node.js `>=20.19.3 <21 || >=22.2.0 <27` fluo 애플리케이션을 위한 기본
 pnpm add -D @fluojs/testing vitest
 ```
 
-`vitest`는 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트가 요구하는 peer dependency입니다. `@babel/core`는 Vitest decorators plugin이 사용하는 워크스페이스의 Babel을 로드하기 때문에 peer로 선언되어 있습니다. 따라서 non-Vitest harness subpath만 사용하더라도 패키지 매니저가 해당 peer 경고를 표시할 수 있습니다.
+Vitest `^4.1.11`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트가 요구하는 peer dependency입니다. `@babel/core`는 Vitest decorators plugin이 사용하는 워크스페이스의 Babel을 로드하기 때문에 peer로 선언되어 있습니다. 따라서 non-Vitest harness subpath만 사용하더라도 패키지 매니저가 해당 peer 경고를 표시할 수 있습니다.
 
-`@fluojs/testing/vitest`를 사용할 때는 `fluoBabelDecoratorsPlugin()`이 런타임에 Babel을 호출하므로, 사용하는 워크스페이스에 `@babel/core`도 함께 설치해야 합니다. Vitest 플러그인은 Vite query/hash suffix를 제거한 뒤 `.ts`, `.tsx`, `.mts`, `.cts` 소스 id를 변환하고, `node_modules`는 건너뛰며, 가장 가까운 root Babel config인 `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, `babel.config.json`을 해석합니다.
+`@fluojs/testing/vitest`를 사용할 때는 `fluoBabelDecoratorsPlugin()`이 런타임에 Babel을 호출하므로, 사용하는 워크스페이스에 `@babel/core`도 함께 설치해야 합니다. Vitest 플러그인은 `enforce: 'pre'`로 실행되어 decorator가 있는 TypeScript가 Vite 8 normal-stage Rolldown/Oxc transform보다 먼저 Babel에 도달하게 합니다. Vite query/hash suffix를 제거한 뒤 `.ts`, `.tsx`, `.mts`, `.cts` 소스 id를 변환하고, `node_modules`는 건너뛰며, 가장 가까운 root Babel config인 `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, `babel.config.json`을 해석합니다.
 
 ```bash
 pnpm add -D @babel/core

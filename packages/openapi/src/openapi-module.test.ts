@@ -1849,26 +1849,24 @@ describe('OpenApiModule', () => {
 
   it('avoids component schema key collisions for DTOs with identical constructor names', async () => {
     const makeNamedRequestDto = (name: string) => {
-      const generated = {
-        [name]: class {
-          @FromBody('value')
-          @IsString()
-          value = '';
-        },
-      };
+      class GeneratedRequestDto {
+        @FromBody('value')
+        @IsString()
+        value = '';
+      }
+      Object.defineProperty(GeneratedRequestDto, 'name', { value: name });
 
-      return generated[name] as unknown as new () => { value: string };
+      return GeneratedRequestDto;
     };
 
     const makeNamedResponseDto = (name: string) => {
-      const generated = {
-        [name]: class {
-          @IsString()
-          id = '';
-        },
-      };
+      class GeneratedResponseDto {
+        @IsString()
+        id = '';
+      }
+      Object.defineProperty(GeneratedResponseDto, 'name', { value: name });
 
-      return generated[name] as unknown as new () => { id: string };
+      return GeneratedResponseDto;
     };
 
     const SharedRequestDto = makeNamedRequestDto('SharedDto');
@@ -1929,15 +1927,14 @@ describe('OpenApiModule', () => {
 
   it('keeps default ErrorResponse schema reserved when a DTO shares the same name', async () => {
     const makeNamedRequestDto = (name: string) => {
-      const generated = {
-        [name]: class {
-          @FromBody('message')
-          @IsString()
-          message = '';
-        },
-      };
+      class GeneratedRequestDto {
+        @FromBody('message')
+        @IsString()
+        message = '';
+      }
+      Object.defineProperty(GeneratedRequestDto, 'name', { value: name });
 
-      return generated[name] as unknown as new () => { message: string };
+      return GeneratedRequestDto;
     };
 
     const ErrorResponseRequestDto = makeNamedRequestDto('ErrorResponse');

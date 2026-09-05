@@ -526,10 +526,10 @@ export const enforceMandatoryFirstPartyDependencyEngineAlignment =
 export function enforcePrivateRootToolchainNodeEngineAlignment(readText = read) {
   const rootManifest = JSON.parse(readText('package.json'));
   const rootRange = rootManifest.engines?.node;
-  const vite8Range = lockedDependencyNodeEngineRange(
+  const viteRange = lockedDependencyNodeEngineRange(
     readText('pnpm-lock.yaml'),
     '.',
-    'vite8',
+    'vite',
     'devDependencies',
     'vite',
   );
@@ -540,17 +540,17 @@ export function enforcePrivateRootToolchainNodeEngineAlignment(readText = read) 
     'The private root workspace must declare engines.node.',
   );
   assert(
-    typeof vite8Range === 'string' && vite8Range.length > 0,
-    'The private root workspace must lock vite8 with engines.node metadata.',
+    typeof viteRange === 'string' && viteRange.length > 0,
+    'The private root workspace must lock vite with engines.node metadata.',
   );
 
-  const incompatibleVersion = nodeEngineCandidates(rootRange, vite8Range).find((version) =>
-    nodeEngineRangeIncludes(rootRange, version) && !nodeEngineRangeIncludes(vite8Range, version));
+  const incompatibleVersion = nodeEngineCandidates(rootRange, viteRange).find((version) =>
+    nodeEngineRangeIncludes(rootRange, version) && !nodeEngineRangeIncludes(viteRange, version));
 
   if (incompatibleVersion !== undefined) {
     throw new Error(
       `private root workspace engines.node ${rootRange} permits Node ${formatNodeEngineVersion(incompatibleVersion)} ` +
-        `but mandatory vite8 locked engines.node is ${vite8Range}.`,
+        `but mandatory vite locked engines.node is ${viteRange}.`,
     );
   }
 }

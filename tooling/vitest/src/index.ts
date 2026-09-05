@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, mergeConfig } from 'vitest/config';
 
-import { fluoBabelDecoratorsPlugin } from '../../vite/src';
+import { fluoBabelDecoratorsPlugin } from '../../vite/src/index.ts';
 import {
   createFluoVitestShutdownDebugReporter,
   isFluoVitestShutdownDebugEnabled,

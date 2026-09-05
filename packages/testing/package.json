@@ -99,7 +99,7 @@
   },
   "peerDependencies": {
     "@babel/core": ">=7.0.0",
-    "vitest": "^3.0.8"
+    "vitest": "^4.1.11"
   },
   "devDependencies": {
     "@fluojs/platform-bun": "workspace:^",
@@ -108,6 +108,6 @@
     "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/platform-express": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   }
 }
