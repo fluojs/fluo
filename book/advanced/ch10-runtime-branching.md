@@ -105,11 +105,11 @@ shared bootstrap shell in root runtime
 This frame is the background for the whole chapter. Node, Web, and Edge are not three independent runtimes. They are three ways to attach different host I/O semantics to one transport-neutral Bootstrap core.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-The root public surface is defined in `path:packages/runtime/src/index.ts:1-30`. It exports the Bootstrap API, errors, diagnostics, health helpers, platform contracts, request transaction helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
+The root public surface is defined in `path:packages/runtime/src/index.ts:1-46`. It exports the Bootstrap API, errors, selected diagnostics types and helpers, health helpers, multipart types and its consumed-body error, platform contracts, request transaction and route-inspection helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
 
-The actual shape of the root barrel is small and selective. It exposes only `bootstrap`, health, error, platform types, request transaction, Tokens, and shared types.
+The actual shape of the root barrel is small and selective. It exposes `bootstrap`, health, errors, selected diagnostics and multipart exports, platform types, request transaction, route inspection, Tokens, and shared types.
 
-`path:packages/runtime/src/index.ts:1-20`
+`path:packages/runtime/src/index.ts:1-46`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -128,11 +128,15 @@ export {
 } from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
+  MultipartFieldPart,
+  MultipartFilePart,
   MultipartOptions,
+  MultipartPart,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { MultipartBodyConsumedError } from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,
@@ -150,6 +154,7 @@ export type {
   PlatformValidationResult,
 } from './platform-contract.js';
 export * from './request-transaction.js';
+export * from './route-inspection.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```

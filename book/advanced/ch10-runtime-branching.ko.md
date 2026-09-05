@@ -105,11 +105,11 @@ shared bootstrap shell in root runtime
 이 프레임이 이 장 전체의 배경입니다. Node, Web, Edge는 서로 독립된 세 runtime이 아니라, 하나의 transport-neutral bootstrap core에 서로 다른 host I/O semantics를 붙이는 세 방식입니다.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-root public surface는 `path:packages/runtime/src/index.ts:1-30`에 정의되어 있습니다. 여기서는 bootstrap API, error, diagnostics, health helper, platform contract, request-transaction helper, 선별된 runtime token만 export합니다. Node adapter helper나 Web request-dispatch helper는 export하지 않습니다.
+root public surface는 `path:packages/runtime/src/index.ts:1-46`에 정의되어 있습니다. 여기서는 bootstrap API, error, 선별된 diagnostics type/helper, health helper, multipart type와 consumed-body error, platform contract, request-transaction/route-inspection helper, 선별된 runtime token만 export합니다. Node adapter helper나 Web request-dispatch helper는 export하지 않습니다.
 
-root barrel의 실제 모양은 작고 선별적입니다. `bootstrap`, health, error, platform type, request transaction, token, shared type만 바깥으로 보냅니다.
+root barrel의 실제 모양은 작고 선별적입니다. `bootstrap`, health, error, 선별된 diagnostics/multipart export, platform type, request transaction, route inspection, token, shared type만 바깥으로 보냅니다.
 
-`path:packages/runtime/src/index.ts:1-20`
+`path:packages/runtime/src/index.ts:1-46`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -128,11 +128,15 @@ export {
 } from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
+  MultipartFieldPart,
+  MultipartFilePart,
   MultipartOptions,
+  MultipartPart,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { MultipartBodyConsumedError } from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,
@@ -150,6 +154,7 @@ export type {
   PlatformValidationResult,
 } from './platform-contract.js';
 export * from './request-transaction.js';
+export * from './route-inspection.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
