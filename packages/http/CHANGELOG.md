@@ -2,6 +2,123 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3696](https://github.com/fluojs/fluo/pull/3696) [`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3) Thanks [@ayden94](https://github.com/ayden94)! - Prepare the coordinated Node.js 24 release with explicit major intent for every current stable public package and minor intent for @fluojs/react. React remains on 0.x; this is not a 1.0 graduation. Pending feature and fix Changesets contribute their notes to the same next release per package, not a second Vite or CLI release. No package versions or changelogs are generated in this preparation change.
+
+  Node-bound packages and generated Node starters adopt the package-owned support range `>=24.0.0 <27`. Config's env-file, default `.env`, and watch features use that Node-only policy while its in-memory root stays portable. Preserve the eight package-wide engine omissions: config, email, i18n, platform-bun, platform-cloudflare-workers, platform-deno, react, and runtime.
+
+  Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before upgrading Fluo packages, then replace @fluojs/runtime/node imports with @fluojs/platform-nodejs and @fluojs/runtime/internal-node with @fluojs/platform-nodejs/internal. There is no compatibility shim. Reinstall dependencies and native addons, refresh the lockfile, and verify application startup and shutdown.
+
+  Existing generated projects are not rewritten by a CLI upgrade. Adopt Vite ^8.2.2, Vitest and @vitest/coverage-v8 ^4.1.11 together, migrate build.rollupOptions to build.rolldownOptions, retain the separate Babel application/testing plugins, and remove the Babel ignore rule for src/\*_/_.test.ts. Node starters use node24 and @types/node ^24.0.0. The @fluojs/vite peer contract remains vite >=6.2.0; @fluojs/testing requires vitest ^4.1.11.
+
+  Follow the [English migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md) or [Korean migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md). Exact Node 24.0.0 and latest Node 26.x remain separate verification claims; latest Node 24.x owns release automation and Node 26 is never a publish runtime. Actual release and migration-document publication belong to the maintainer through the canonical Changesets workflow on main. This change does not claim publication; [#3169](https://github.com/fluojs/fluo/issues/3169) remains the release umbrella.
+
+### Minor Changes
+
+- [#3562](https://github.com/fluojs/fluo/pull/3562) [`06c5c62`](https://github.com/fluojs/fluo/commit/06c5c620ae821fb4181ea019cb16d3756d1fa81a) Thanks [@ayden94](https://github.com/ayden94)! - Add `createAccessLogObserver(...)` for safe, structured HTTP access logging with awaited application-owned sinks, trusted client identity, header allowlisting and redaction, monotonic durations, lifecycle outcomes, and native adapter fallback parity.
+
+- [#3319](https://github.com/fluojs/fluo/pull/3319) [`903a56e`](https://github.com/fluojs/fluo/commit/903a56e1c081b5f939331cb1390aa1b7db7be192) Thanks [@ayden94](https://github.com/ayden94)! - Add an optional request-scoped Early Hints capability with deterministic write, error, and disconnect behavior.
+
+  Emit observable HTTP `103` responses from Node.js, Express, and Fastify without mutating or committing the independently configured final response. Keep Fetch-style Web, Bun, Deno, and Cloudflare Workers responses detectably unsupported through capability absence instead of a silent no-op.
+
+- [#3560](https://github.com/fluojs/fluo/pull/3560) [`23ca767`](https://github.com/fluojs/fluo/commit/23ca7678677b9dc492add364873b210e8d0a6317) Thanks [@ayden94](https://github.com/ayden94)! - Add portable RFC single-byte-range responses with conditional `If-Range` integration, identity-byte partial delivery, and cross-adapter conformance coverage.
+
+- [#3402](https://github.com/fluojs/fluo/pull/3402) [`6c927c1`](https://github.com/fluojs/fluo/commit/6c927c16e8e728f91583dc398444dfbab86befa3) Thanks [@ayden94](https://github.com/ayden94)! - Add typed internal HTTP response writer and result-finalizer integration seams, plus a portable HTTP authoring entrypoint that avoids Node async-context bootstrap.
+
+  Keep the `@fluojs/react` root free of eager Node built-ins by consuming the portable HTTP and runtime-internal authoring seams while preserving stable SSR, direct page finalization, and experimental Flight response behavior.
+
+- [#3552](https://github.com/fluojs/fluo/pull/3552) [`3509d7c`](https://github.com/fluojs/fluo/commit/3509d7cc9307635580b377b77ca7151b8603a5d9) Thanks [@ayden94](https://github.com/ayden94)! - Add RFC 9110 conditional request handling with explicit representation existence, validated entity-tag and HTTP-date parsing, middleware/guard-safe evaluation, and Node.js/Express/Fastify listener plus Bun/Deno/Cloudflare fetch-adapter conformance coverage.
+
+- [#3549](https://github.com/fluojs/fluo/pull/3549) [`deca575`](https://github.com/fluojs/fluo/commit/deca575cad1405fa7a45034fa4880ee7d1a808ea) Thanks [@ayden94](https://github.com/ayden94)! - Add `@FromFiles(fieldname?)` for binding portable multipart file arrays into request DTOs.
+
+- [#2898](https://github.com/fluojs/fluo/pull/2898) [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d) Thanks [@ayden94](https://github.com/ayden94)! - Add an HTTP-owned, content-negotiated error representation seam that preserves canonical JSON by default, optionally renders application-owned HTML for classified errors and route misses, and keeps status, headers, `HEAD`, abort, commit, and one-shot fallback behavior in the dispatcher.
+
+  Expose runtime bootstrap wiring, a buffered React error-document provider adapter, and typed network/fetch-style portability assertions for the new representation contract.
+
+  Preserve existing Express response `Vary` values when HTTP error representation negotiation adds `Accept`.
+
+- [#3554](https://github.com/fluojs/fluo/pull/3554) [`af7485d`](https://github.com/fluojs/fluo/commit/af7485d4c02cd262a99a89d7b130897a04c516a7) Thanks [@ayden94](https://github.com/ayden94)! - Expose runtime bootstrap content negotiation, deterministic formatter selection, and canonical successful `Vary: Accept` responses.
+
+- [#3548](https://github.com/fluojs/fluo/pull/3548) [`8354f8c`](https://github.com/fluojs/fluo/commit/8354f8cb3b038ff85948296e18bb97880a291389) Thanks [@ayden94](https://github.com/ayden94)! - Add portable response-header lookup helpers and safe `Content-Disposition` filename formatting
+  with escaped ASCII fallback and deterministic UTF-8 `filename*` parameters.
+
+- [#3534](https://github.com/fluojs/fluo/pull/3534) [`2aef2a7`](https://github.com/fluojs/fluo/commit/2aef2a7cabe819e32b6bcc07ebc3ecbad34cc049) Thanks [@ayden94](https://github.com/ayden94)! - Add portable `setCookie` and `clearCookie` response helpers with ordered, non-folded `Set-Cookie` fields and whole-second lifetime semantics across adapters. Add response-cookie portability assertions for Node, Express, Fastify, Web, Bun, Deno, and Workers.
+
+- [#3564](https://github.com/fluojs/fluo/pull/3564) [`af24ce9`](https://github.com/fluojs/fluo/commit/af24ce9c5410ea16550f9dca280d005817674c6a) Thanks [@ayden94](https://github.com/ayden94)! - Add portable static asset middleware backed by explicit application-owned sources. Node applications can use `createNodeFileSystemAssetSource` for root-confined files, representation-specific cache validators, byte ranges, and precompressed variants; Web and edge applications provide their own source.
+
+- [#3300](https://github.com/fluojs/fluo/pull/3300) [`78b0a8f`](https://github.com/fluojs/fluo/commit/78b0a8fb59e69a4526f247211f0eb244f4a3abd2) Thanks [@ayden94](https://github.com/ayden94)! - Add an optional, independently versioned fetch-style realtime binding installation extension while preserving the public capability version 1 contract, and expose the shared internal gateway discovery seam for protocol adapters.
+
+  Make Socket.IO attach connection lifecycle buffering before asynchronous gateway resolution, drain accepted gateway work before clearing managed state, share one bounded attempt across runtime shutdown hooks with explicit `retryShutdown()` recovery, clean pre-listen Bun bindings after bootstrap failure, reject unsupported `serverBacked` gateways consistently, dispatch through canonical handler indexes, and align runtime manifests, migration, and bilingual option documentation.
+
+  Existing Socket.IO gateways configured with `@WebSocketGateway({ serverBacked })` must remove that option and use the shared application listener. Consumers that require a dedicated listener must migrate that gateway to `@fluojs/websockets/node` or own a separate Socket.IO server outside this adapter.
+
+- [#3317](https://github.com/fluojs/fluo/pull/3317) [`1817f04`](https://github.com/fluojs/fluo/commit/1817f04a2629f05147faea76cd3615cf1cca28ac) Thanks [@ayden94](https://github.com/ayden94)! - Add portable `getRequestHeader(request, name)` and `appendVaryHeader(response, ...fields)` helpers to
+  `@fluojs/http`, then route DTO header binding, request-id extraction, version header reads, CORS,
+  and negotiated error responses through the shared contract.
+
+- [#3078](https://github.com/fluojs/fluo/pull/3078) [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317) Thanks [@ayden94](https://github.com/ayden94)! - Add validated uppercase custom HTTP route authoring with `Route(method, path)` and first-class RFC `Query(path)` support while preserving exact-method precedence, versioning, DTO validation, and default response semantics.
+
+  Widen the internal route metadata method declaration so HTTP integrations can carry custom tokens, keep custom methods on Bun fetch fallback, and let Fastify wildcard fallback receive registered custom method names without creating native fluo route handoffs.
+
+  Expose shared network and fetch-style portability assertions for body-bearing `QUERY` and extension-method routes across supported adapters.
+
+  Require Node.js `>=24.0.0 <27` for published Node listener paths and generated Node HTTP starters so RFC `QUERY` reaches framework dispatch. This final coordinated-release policy supersedes the earlier listener-only Node floor. Bun and Deno fetch-style adapter contracts are unchanged. Cloudflare Workers' documented fetch-style contract includes body-bearing `QUERY` and extension-method dispatch through its Worker fetch handler.
+
+  Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release. Regenerated Node HTTP projects use the same Node support range. Custom-method and portability additions remain part of this one upcoming release per package.
+
+- [#3559](https://github.com/fluojs/fluo/pull/3559) [`b245fba`](https://github.com/fluojs/fluo/commit/b245fba06dcb7f9762c2ff15b674a6fac8d39758) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable, trust-aware HTTP connection resolution with explicit hop, CIDR, and predicate proxy policies. Node-backed adapters now snapshot portable transport metadata, and rate-limit consumers can migrate from `trustProxyHeaders` to `trustProxy`.
+
+### Patch Changes
+
+- [#2848](https://github.com/fluojs/fluo/pull/2848) [`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6) Thanks [@ayden94](https://github.com/ayden94)! - Add the request-local HTTP response-finalization seam used by React page rendering. Allow `@Path(...)` handlers to return one `ReactElement` through the configured application page renderer, and add stable SSR diagnostic codes and phases for HTTP pipeline failures, pre-commit shell failures, request aborts, and post-shell recoverable errors.
+
+- [#2985](https://github.com/fluojs/fluo/pull/2985) [`eb0ee7f`](https://github.com/fluojs/fluo/commit/eb0ee7fc97bb174607fa87f2deeb93ebd46d6340) Thanks [@ayden94](https://github.com/ayden94)! - Cancel managed SSE backpressure waits on request abort or stream close so an unsettled adapter drain cannot delay iterator cleanup or request-scope disposal.
+
+- [#2885](https://github.com/fluojs/fluo/pull/2885) [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e) Thanks [@ayden94](https://github.com/ayden94)! - Correct the public TSDoc classification for the fast-path observability symbols.
+
+- [#3316](https://github.com/fluojs/fluo/pull/3316) [`81e4fb5`](https://github.com/fluojs/fluo/commit/81e4fb5743d83e286fc3d3dac6999ce281c2a9a3) Thanks [@ayden94](https://github.com/ayden94)! - Defer request success observers until application and module middleware have fully settled, so middleware failures after `next()` emit only the request error observation.
+
+- [#3567](https://github.com/fluojs/fluo/pull/3567) [`9380550`](https://github.com/fluojs/fluo/commit/9380550c6986dd8af05896899c2b1c5814c7db79) Thanks [@ayden94](https://github.com/ayden94)! - Correct the README Quick Start DTO example so the documented snippet compiles with the Babel decorator configuration Fluo ships. Decorated DTO fields are now initialized instead of using a definite assignment assertion, and both READMEs state that constraint.
+
+- [#3550](https://github.com/fluojs/fluo/pull/3550) [`0d130d5`](https://github.com/fluojs/fluo/commit/0d130d5210ee3b4a02811aedd4f86bcc06818a7d) Thanks [@ayden94](https://github.com/ayden94)! - Freeze HandlerMapping descriptors so route inspection remains synchronized with matching.
+
+- [#3556](https://github.com/fluojs/fluo/pull/3556) [`790bef1`](https://github.com/fluojs/fluo/commit/790bef16538c17e081f7f1f1677b093e61ff695a) Thanks [@ayden94](https://github.com/ayden94)! - Keep manual SSE dispatch active through stream close or abort. Late client aborts no longer
+  emit request-success observation, custom Web response factories remain compatible without
+  `responseReady`, and Cloudflare Worker ownership now waits for both response-body termination
+  and dispatcher completion.
+
+- [#3025](https://github.com/fluojs/fluo/pull/3025) [`1ecaea2`](https://github.com/fluojs/fluo/commit/1ecaea2bfe3f9fa5c229fe5707e2b6c94378136b) Thanks [@ayden94](https://github.com/ayden94)! - Assign deterministic compiler-owned route identities and prevent distinct compiled handlers with matching display names or source from sharing rate-limit buckets.
+
+- [#3053](https://github.com/fluojs/fluo/pull/3053) [`b6343ea`](https://github.com/fluojs/fluo/commit/b6343ea89db7d7131aded2d3b829425046e70a1b) Thanks [@ayden94](https://github.com/ayden94)! - Isolate fast-path eligibility per dispatcher so shared handler mappings cannot select the wrong request pipeline, and freeze the exposed eligibility diagnostics.
+
+- [#2974](https://github.com/fluojs/fluo/pull/2974) [`44125db`](https://github.com/fluojs/fluo/commit/44125db098f68fc751bc5300c5abe7036a403736) Thanks [@ayden94](https://github.com/ayden94)! - Preserve transient controller and dependency identity by resolving fast-path controllers through the active DI container for every dispatch.
+
+- [#3553](https://github.com/fluojs/fluo/pull/3553) [`50a22dd`](https://github.com/fluojs/fluo/commit/50a22dd22774eedfa4847e81d22f6cb592d2a30e) Thanks [@ayden94](https://github.com/ayden94)! - Preserve registered DTO converter resolution failures while retaining direct construction only for explicitly unregistered converter classes. Request-scoped converters now keep their container-owned lifecycle and disposal behavior during HTTP binding.
+
+- [#2826](https://github.com/fluojs/fluo/pull/2826) [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9) Thanks [@ayden94](https://github.com/ayden94)! - Treat either request abort surface as authoritative and preserve request context through promise-returning callbacks without patching global promise continuations.
+
+- [#3545](https://github.com/fluojs/fluo/pull/3545) [`605a0fc`](https://github.com/fluojs/fluo/commit/605a0fcd1194332d51694f7e59323c897fe5c566) Thanks [@ayden94](https://github.com/ayden94)! - Reuse the portable HTTP cookie serializer for Passport authentication cookies while preserving established defaults, attribute ordering, and append behavior. Values such as `token with spaces` now emit as `token%20with%20spaces`, and invalid cookie names or attributes fail the portable serializer's validation instead of producing malformed headers.
+
+- [#3461](https://github.com/fluojs/fluo/pull/3461) [`2dc5ee8`](https://github.com/fluojs/fluo/commit/2dc5ee8771e4b6dfb24a740e44bae0000bee1409) Thanks [@ayden94](https://github.com/ayden94)! - Route HTTP and GraphQL DTO metadata reads through `@fluojs/core/request-pipeline` so first-party request processing remains on the documented integration seam.
+
+- [#3074](https://github.com/fluojs/fluo/pull/3074) [`19a1abe`](https://github.com/fluojs/fluo/commit/19a1abe728bda9dae7c2eb90b4174ca4e2b15cf8) Thanks [@ayden94](https://github.com/ayden94)! - Suppress framework-managed response bodies for `HEAD` requests while preserving selected status and headers across successful, canonical JSON error, negotiated error, and `406` outcomes.
+
+  Extend the shared HTTP adapter portability assertion to cover successful and canonical JSON `HEAD` responses across supported network and fetch-style adapters.
+
+  Preserve Express response metadata by committing framework-suppressed `HEAD` bodies without reserializing them as empty text.
+
+- [#3695](https://github.com/fluojs/fluo/pull/3695) [`cc3ea1c`](https://github.com/fluojs/fluo/commit/cc3ea1cc01292e7d91606cd11c1ae9937b431367) Thanks [@ayden94](https://github.com/ayden94)! - Make the runtime and config package boundaries truthful for edge consumers. `@fluojs/runtime` and `@fluojs/config` no longer publish package-wide Node engine requirements, while config's env-file, default `.env`, and watch features retain the executable `CONFIG_RUNTIME_UNAVAILABLE` guard on unsupported hosts.
+
+  Migration: replace every `@fluojs/runtime/node` import with `@fluojs/platform-nodejs`, and replace every `@fluojs/runtime/internal-node` import with `@fluojs/platform-nodejs/internal`. Moved symbols retain their existing names; no compatibility shim remains on `@fluojs/runtime`. Express and Fastify now consume the Node integration seam from its platform-owned package.
+
+- Updated dependencies [[`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3), [`8b63f78`](https://github.com/fluojs/fluo/commit/8b63f78b87f4cd28c040d4a5bf50bb26501b5b7d), [`71b72d2`](https://github.com/fluojs/fluo/commit/71b72d2138e255740216d3a4a76c9a60e054ccbd), [`d5f38c2`](https://github.com/fluojs/fluo/commit/d5f38c2137a93f2f7bd5d268cadb629efc024c8d), [`6dbb83a`](https://github.com/fluojs/fluo/commit/6dbb83abe63ac413256778d31c803c21440a0e67), [`857ff80`](https://github.com/fluojs/fluo/commit/857ff80a7cd62f475a64853de9be17b8d1fe8604), [`deca575`](https://github.com/fluojs/fluo/commit/deca575cad1405fa7a45034fa4880ee7d1a808ea), [`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4), [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406), [`e161518`](https://github.com/fluojs/fluo/commit/e161518bba08151ba4f801409e6343e22f7c5dab), [`758fa42`](https://github.com/fluojs/fluo/commit/758fa42f64317751123d5a9ff8e03c414fc20fb2), [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf), [`2cce586`](https://github.com/fluojs/fluo/commit/2cce58646b5b10e6fb39c4b54c1d74734e7308c5), [`5e59219`](https://github.com/fluojs/fluo/commit/5e59219c5346d9fa3d70719f7204fcf5e9f602f6), [`344d9bc`](https://github.com/fluojs/fluo/commit/344d9bc15c59ac45572eb63aa3d3c06858d19549), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4), [`5dec76e`](https://github.com/fluojs/fluo/commit/5dec76e05a229b4ef52d112fd593bc167e650a3c), [`08ea346`](https://github.com/fluojs/fluo/commit/08ea346cdfb087da050f961cdb4d5841dc922e51), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7), [`f8af8e3`](https://github.com/fluojs/fluo/commit/f8af8e36731378121835396025e3b847c66c10bb), [`29f2766`](https://github.com/fluojs/fluo/commit/29f2766eba394f50291b3413b85fd637286165c7), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317), [`fc36262`](https://github.com/fluojs/fluo/commit/fc362629bac81234dc52fe1c50d3b717bbb9fbd9)]:
+  - @fluojs/core@2.0.0
+  - @fluojs/di@3.0.0
+  - @fluojs/validation@2.0.0
+
 ## 2.0.1
 
 ### Patch Changes

@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#3696](https://github.com/fluojs/fluo/pull/3696) [`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3) Thanks [@ayden94](https://github.com/ayden94)! - Prepare the coordinated Node.js 24 release with explicit major intent for every current stable public package and minor intent for @fluojs/react. React remains on 0.x; this is not a 1.0 graduation. Pending feature and fix Changesets contribute their notes to the same next release per package, not a second Vite or CLI release. No package versions or changelogs are generated in this preparation change.
+
+  Node-bound packages and generated Node starters adopt the package-owned support range `>=24.0.0 <27`. Config's env-file, default `.env`, and watch features use that Node-only policy while its in-memory root stays portable. Preserve the eight package-wide engine omissions: config, email, i18n, platform-bun, platform-cloudflare-workers, platform-deno, react, and runtime.
+
+  Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before upgrading Fluo packages, then replace @fluojs/runtime/node imports with @fluojs/platform-nodejs and @fluojs/runtime/internal-node with @fluojs/platform-nodejs/internal. There is no compatibility shim. Reinstall dependencies and native addons, refresh the lockfile, and verify application startup and shutdown.
+
+  Existing generated projects are not rewritten by a CLI upgrade. Adopt Vite ^8.2.2, Vitest and @vitest/coverage-v8 ^4.1.11 together, migrate build.rollupOptions to build.rolldownOptions, retain the separate Babel application/testing plugins, and remove the Babel ignore rule for src/\*_/_.test.ts. Node starters use node24 and @types/node ^24.0.0. The @fluojs/vite peer contract remains vite >=6.2.0; @fluojs/testing requires vitest ^4.1.11.
+
+  Follow the [English migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md) or [Korean migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md). Exact Node 24.0.0 and latest Node 26.x remain separate verification claims; latest Node 24.x owns release automation and Node 26 is never a publish runtime. Actual release and migration-document publication belong to the maintainer through the canonical Changesets workflow on main. This change does not claim publication; [#3169](https://github.com/fluojs/fluo/issues/3169) remains the release umbrella.
+
+- [#3695](https://github.com/fluojs/fluo/pull/3695) [`cc3ea1c`](https://github.com/fluojs/fluo/commit/cc3ea1cc01292e7d91606cd11c1ae9937b431367) Thanks [@ayden94](https://github.com/ayden94)! - Make the runtime and config package boundaries truthful for edge consumers. `@fluojs/runtime` and `@fluojs/config` no longer publish package-wide Node engine requirements, while config's env-file, default `.env`, and watch features retain the executable `CONFIG_RUNTIME_UNAVAILABLE` guard on unsupported hosts.
+
+  Migration: replace every `@fluojs/runtime/node` import with `@fluojs/platform-nodejs`, and replace every `@fluojs/runtime/internal-node` import with `@fluojs/platform-nodejs/internal`. Moved symbols retain their existing names; no compatibility shim remains on `@fluojs/runtime`. Express and Fastify now consume the Node integration seam from its platform-owned package.
+
+### Minor Changes
+
+- [#3464](https://github.com/fluojs/fluo/pull/3464) [`8d6c163`](https://github.com/fluojs/fluo/commit/8d6c163579c45dd49ca202c5926958c9ecb2a6d4) Thanks [@ayden94](https://github.com/ayden94)! - Add an explicit ordered multi-file env loading option to `ConfigModuleOptions` and `ConfigLoadOptions`.
+
+  `envFilePaths` accepts one ordered list of env files merged from lowest to highest precedence into the existing env-file tier, so it stays above `defaults` and below `processEnv` and `runtimeOverrides`. Relative entries resolve against `cwd`, missing files are skipped instead of failing the load, and an empty list explicitly opts out of env-file loading including the default `<cwd>/.env` fallback. Combining `envFilePaths` with `envFile` or `envFilePath`, repeating a resolved path, or passing a blank entry fails with `INVALID_CONFIG`.
+
+  In watch mode every distinct parent directory is watched once, any listed-file change recomputes the full list, deleting a higher-precedence file falls back to the remaining files, and validation failures keep the last valid snapshot. Automatic profile discovery stays outside the package, and existing single-file `envFile` / `envFilePath` behavior is unchanged.
+
+### Patch Changes
+
+- [#3444](https://github.com/fluojs/fluo/pull/3444) [`199f2f9`](https://github.com/fluojs/fluo/commit/199f2f91d68ad3db12e0db965a8f6e25a10122a0) Thanks [@ayden94](https://github.com/ayden94)! - Align built-in env-file parsing with the documented dotenv inline comment grammar. Strip an unquoted `#` comment even when no whitespace precedes it, so `VALUE=value#comment` loads as `value` instead of including the comment text, while quoted hashes such as `"value#kept"` remain part of the value across both initial loads and reloads.
+
+- [#3014](https://github.com/fluojs/fluo/pull/3014) [`fa3a990`](https://github.com/fluojs/fluo/commit/fa3a9904f53c543ddc9fbf6f0fdf635731d07ffa) Thanks [@ayden94](https://github.com/ayden94)! - Coalesce rapid env-file watch events before reloading so change-then-revert bursts preserve the committed config snapshot and do not notify reload listeners.
+
+- [#3687](https://github.com/fluojs/fluo/pull/3687) [`8fef9fa`](https://github.com/fluojs/fluo/commit/8fef9fa22b82f6ca878c19eaae7b06c31cfb0573) Thanks [@ayden94](https://github.com/ayden94)! - Drop the unused `@fluojs/config` production dependency from `@fluojs/runtime` and correct the `@fluojs/config` README guidance. Runtime source never imported the config package: configuration still enters through explicit bootstrap options and injected providers, so no import path or public export changes.
+
+  Installing `@fluojs/runtime` no longer pulls `@fluojs/config` transitively. Applications that call `ConfigModule.forRoot(...)` or inject `ConfigService` must declare `@fluojs/config` as their own direct dependency; consumers that already list it explicitly are unaffected.
+
+- [#3451](https://github.com/fluojs/fluo/pull/3451) [`31f9c02`](https://github.com/fluojs/fluo/commit/31f9c02d3983e321cd7a1fb752df43269681ada7) Thanks [@ayden94](https://github.com/ayden94)! - Make `ConfigReloadManager` shutdown terminal so a retained manager cannot reactivate disposed reload resources.
+
+  After `close()` or `onModuleDestroy()`, the manager no longer creates a replacement reloader or env-file watcher: `reload()`, `subscribe()`, and `subscribeError()` throw an `InvariantError`, `onApplicationBootstrap()` becomes a no-op, and `current()` keeps returning the last committed `ConfigService` snapshot. This restores the documented watcher-cleanup guarantee, which was previously reversible through the public manager surface.
+
+- [#3438](https://github.com/fluojs/fluo/pull/3438) [`344d9bc`](https://github.com/fluojs/fluo/commit/344d9bc15c59ac45572eb63aa3d3c06858d19549) Thanks [@ayden94](https://github.com/ayden94)! - Align module metadata collection types with the frozen read-only snapshots returned at runtime and keep the config
+  module's provider assembly immutable.
+
+  Code that intentionally derives a mutable collection from `getModuleMetadata()` must now copy the snapshot first,
+  for example with `[...metadata.imports]`, instead of mutating the frozen metadata collection directly.
+
+- [#3449](https://github.com/fluojs/fluo/pull/3449) [`f4e2f04`](https://github.com/fluojs/fluo/commit/f4e2f045bb68c8410c2e3435948a45e42b86d301) Thanks [@ayden94](https://github.com/ayden94)! - Make the published `@fluojs/config` declarations self-contained for consumers without Node ambient types.
+
+  `ConfigModuleOptions.processEnv` is now typed as the package-owned `ConfigProcessEnv` (`Record<string, string | undefined>`) instead of the ambient `NodeJS.ProcessEnv` namespace, which the package never declared through `@types/node`. Strict TypeScript consumers compiling without Node types no longer fail to resolve the package root declaration. Accepted values and runtime behavior are unchanged, and `process.env` stays assignable because the structural type matches.
+
+- Updated dependencies [[`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3), [`857ff80`](https://github.com/fluojs/fluo/commit/857ff80a7cd62f475a64853de9be17b8d1fe8604), [`deca575`](https://github.com/fluojs/fluo/commit/deca575cad1405fa7a45034fa4880ee7d1a808ea), [`344d9bc`](https://github.com/fluojs/fluo/commit/344d9bc15c59ac45572eb63aa3d3c06858d19549), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/core@2.0.0
+
 ## 1.0.4
 
 ### Patch Changes

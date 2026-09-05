@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3696](https://github.com/fluojs/fluo/pull/3696) [`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3) Thanks [@ayden94](https://github.com/ayden94)! - Prepare the coordinated Node.js 24 release with explicit major intent for every current stable public package and minor intent for @fluojs/react. React remains on 0.x; this is not a 1.0 graduation. Pending feature and fix Changesets contribute their notes to the same next release per package, not a second Vite or CLI release. No package versions or changelogs are generated in this preparation change.
+
+  Node-bound packages and generated Node starters adopt the package-owned support range `>=24.0.0 <27`. Config's env-file, default `.env`, and watch features use that Node-only policy while its in-memory root stays portable. Preserve the eight package-wide engine omissions: config, email, i18n, platform-bun, platform-cloudflare-workers, platform-deno, react, and runtime.
+
+  Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before upgrading Fluo packages, then replace @fluojs/runtime/node imports with @fluojs/platform-nodejs and @fluojs/runtime/internal-node with @fluojs/platform-nodejs/internal. There is no compatibility shim. Reinstall dependencies and native addons, refresh the lockfile, and verify application startup and shutdown.
+
+  Existing generated projects are not rewritten by a CLI upgrade. Adopt Vite ^8.2.2, Vitest and @vitest/coverage-v8 ^4.1.11 together, migrate build.rollupOptions to build.rolldownOptions, retain the separate Babel application/testing plugins, and remove the Babel ignore rule for src/\*_/_.test.ts. Node starters use node24 and @types/node ^24.0.0. The @fluojs/vite peer contract remains vite >=6.2.0; @fluojs/testing requires vitest ^4.1.11.
+
+  Follow the [English migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md) or [Korean migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md). Exact Node 24.0.0 and latest Node 26.x remain separate verification claims; latest Node 24.x owns release automation and Node 26 is never a publish runtime. Actual release and migration-document publication belong to the maintainer through the canonical Changesets workflow on main. This change does not claim publication; [#3169](https://github.com/fluojs/fluo/issues/3169) remains the release umbrella.
+
+- [#3094](https://github.com/fluojs/fluo/pull/3094) [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7) Thanks [@ayden94](https://github.com/ayden94)! - Change container-managed shutdown from one-shot failed cleanup to retryable failed-hook disposal. In 2.x, a failed `onDestroy()` hook was attempted once. After upgrading to 3.x, a later explicit `Container.dispose()` call or application/application-context `close()` retries only failed hooks, while hooks that completed successfully remain exactly-once. Consumers must make failing cleanup hooks safe to attempt again.
+
+  Direct child disposal now detaches the child from its parent after the attempt settles, including failed attempts. A caller that retains the child reference may retry its failed hooks. Parent- or root-started failures remain owned by the parent hierarchy until cleanup succeeds or a later direct child attempt settles.
+
+- [#3517](https://github.com/fluojs/fluo/pull/3517) [`f8af8e3`](https://github.com/fluojs/fluo/commit/f8af8e36731378121835396025e3b847c66c10bb) Thanks [@ayden94](https://github.com/ayden94)! - Extend retryable failed-hook disposal to stale instances retired by `override(...)`. A failed stale `onDestroy()` hook is now retained by the container that scheduled its cleanup instead of being discarded once its error is consumed, so a later explicit `Container.dispose()` invokes that hook again. Error delivery stays separate from retry ownership: a replacement resolution still surfaces the failure exactly once and can continue, only the scheduling container retries the hook so an observing ancestor does not repeat a descendant hook in the same shutdown, and stale hooks that already completed successfully are never repeated.
+
+  Consumers whose override-retired cleanup can fail must make those `onDestroy()` hooks safe to attempt again. A shutdown that previously resolved after a failed stale cleanup now rejects with the repeated failure until that hook succeeds.
+
+- [#3475](https://github.com/fluojs/fluo/pull/3475) [`29f2766`](https://github.com/fluojs/fluo/commit/29f2766eba394f50291b3413b85fd637286165c7) Thanks [@ayden94](https://github.com/ayden94)! - Seal `Container` child-scope construction behind `createRequestScope()`. `new Container()` continues to create a root container, but direct constructor arguments now fail at runtime and are no longer accepted by the emitted declaration. Replace direct child construction with `parent.createRequestScope()`.
+
+### Minor Changes
+
+- [#3598](https://github.com/fluojs/fluo/pull/3598) [`e161518`](https://github.com/fluojs/fluo/commit/e161518bba08151ba4f801409e6343e22f7c5dab) Thanks [@ayden94](https://github.com/ayden94)! - Add the internal contribution-resolution seam used by framework packages while keeping index-based contribution resolution off the root `Container` API. Run lifecycle hooks for every eligible singleton `multi: true` provider contribution in provider order, with reverse contribution order during shutdown and bootstrap rollback. Make testing-module lifecycle compilation report the canonical DI scope and circular-dependency errors.
+
+- [#3457](https://github.com/fluojs/fluo/pull/3457) [`fc36262`](https://github.com/fluojs/fluo/commit/fc362629bac81234dc52fe1c50d3b717bbb9fbd9) Thanks [@ayden94](https://github.com/ayden94)! - Validate singleton dependency scopes across multi-provider registrations.
+
+  A singleton that injects a multi token whose contributions include a request-scoped provider now fails with `ScopeMismatchError` before any provider factory or constructor runs, instead of materializing part of the contribution set and then failing with `RequestScopeResolutionError`. The same traversal now covers alias (`useExisting`) chains that target a multi token.
+
+### Patch Changes
+
+- [#3456](https://github.com/fluojs/fluo/pull/3456) [`71b72d2`](https://github.com/fluojs/fluo/commit/71b72d2138e255740216d3a4a76c9a60e054ccbd) Thanks [@ayden94](https://github.com/ayden94)! - Validate the whole `Container.override(...)` batch before mutating the graph so a rejected call leaves every earlier provider, cached instance, and disposal ownership unchanged.
+
+- [#3510](https://github.com/fluojs/fluo/pull/3510) [`d5f38c2`](https://github.com/fluojs/fluo/commit/d5f38c2137a93f2f7bd5d268cadb629efc024c8d) Thanks [@ayden94](https://github.com/ayden94)! - Correct `CircularDependencyError` guidance to explain that `forwardRef()` cannot resolve true constructor cycles.
+
+- [#3520](https://github.com/fluojs/fluo/pull/3520) [`6dbb83a`](https://github.com/fluojs/fluo/commit/6dbb83abe63ac413256778d31c803c21440a0e67) Thanks [@ayden94](https://github.com/ayden94)! - Document NestJS scoped and optional dependency migration guidance in the package README.
+
+- [#3011](https://github.com/fluojs/fluo/pull/3011) [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406) Thanks [@ayden94](https://github.com/ayden94)! - Keep nested request-scope overrides owned and cached by their nearest request scope instead of leaking request-local instances into root singleton caches.
+
+- [#2977](https://github.com/fluojs/fluo/pull/2977) [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf) Thanks [@ayden94](https://github.com/ayden94)! - Dispose cached single and multi-provider instances together in reverse materialization order so dependents shut down before their dependencies.
+
+- [#2823](https://github.com/fluojs/fluo/pull/2823) [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9) Thanks [@ayden94](https://github.com/ayden94)! - Reject cycles across pending singleton and request-scoped resolutions, and prevent request-scope overrides from introducing new singleton providers.
+
+- [#2980](https://github.com/fluojs/fluo/pull/2980) [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4) Thanks [@ayden94](https://github.com/ayden94)! - Reject malformed `provide` and `useExisting` provider tokens during registration with `InvalidProviderError`.
+
+- [#2882](https://github.com/fluojs/fluo/pull/2882) [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d) Thanks [@ayden94](https://github.com/ayden94)! - Reject value providers that declare `inject` metadata instead of silently discarding the invalid dependency declaration.
+
+- Updated dependencies [[`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3), [`857ff80`](https://github.com/fluojs/fluo/commit/857ff80a7cd62f475a64853de9be17b8d1fe8604), [`deca575`](https://github.com/fluojs/fluo/commit/deca575cad1405fa7a45034fa4880ee7d1a808ea), [`344d9bc`](https://github.com/fluojs/fluo/commit/344d9bc15c59ac45572eb63aa3d3c06858d19549), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/core@2.0.0
+
 ## 2.0.0
 
 ### Major Changes

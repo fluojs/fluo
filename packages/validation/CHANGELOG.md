@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#3696](https://github.com/fluojs/fluo/pull/3696) [`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3) Thanks [@ayden94](https://github.com/ayden94)! - Prepare the coordinated Node.js 24 release with explicit major intent for every current stable public package and minor intent for @fluojs/react. React remains on 0.x; this is not a 1.0 graduation. Pending feature and fix Changesets contribute their notes to the same next release per package, not a second Vite or CLI release. No package versions or changelogs are generated in this preparation change.
+
+  Node-bound packages and generated Node starters adopt the package-owned support range `>=24.0.0 <27`. Config's env-file, default `.env`, and watch features use that Node-only policy while its in-memory root stays portable. Preserve the eight package-wide engine omissions: config, email, i18n, platform-bun, platform-cloudflare-workers, platform-deno, react, and runtime.
+
+  Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before upgrading Fluo packages, then replace @fluojs/runtime/node imports with @fluojs/platform-nodejs and @fluojs/runtime/internal-node with @fluojs/platform-nodejs/internal. There is no compatibility shim. Reinstall dependencies and native addons, refresh the lockfile, and verify application startup and shutdown.
+
+  Existing generated projects are not rewritten by a CLI upgrade. Adopt Vite ^8.2.2, Vitest and @vitest/coverage-v8 ^4.1.11 together, migrate build.rollupOptions to build.rolldownOptions, retain the separate Babel application/testing plugins, and remove the Babel ignore rule for src/\*_/_.test.ts. Node starters use node24 and @types/node ^24.0.0. The @fluojs/vite peer contract remains vite >=6.2.0; @fluojs/testing requires vitest ^4.1.11.
+
+  Follow the [English migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md) or [Korean migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md). Exact Node 24.0.0 and latest Node 26.x remain separate verification claims; latest Node 24.x owns release automation and Node 26 is never a publish runtime. Actual release and migration-document publication belong to the maintainer through the canonical Changesets workflow on main. This change does not claim publication; [#3169](https://github.com/fluojs/fluo/issues/3169) remains the release umbrella.
+
+### Minor Changes
+
+- [#3526](https://github.com/fluojs/fluo/pull/3526) [`08ea346`](https://github.com/fluojs/fluo/commit/08ea346cdfb087da050f961cdb4d5841dc922e51) Thanks [@ayden94](https://github.com/ayden94)! - Add an opt-in `materialize()` policy that rejects undeclared properties recursively while preserving the default extra-property behavior.
+
+### Patch Changes
+
+- [#3527](https://github.com/fluojs/fluo/pull/3527) [`8b63f78`](https://github.com/fluojs/fluo/commit/8b63f78b87f4cd28c040d4a5bf50bb26501b5b7d) Thanks [@ayden94](https://github.com/ayden94)! - Correct the documented `Validate` callback signature and clarify that `IsObject` accepts plain objects only.
+
+- [#2820](https://github.com/fluojs/fluo/pull/2820) [`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4) Thanks [@ayden94](https://github.com/ayden94)! - Hydrate plain nested DTO fields and collection members when materializing existing DTO instances while preserving root and nested DTO identities.
+
+- [#3496](https://github.com/fluojs/fluo/pull/3496) [`758fa42`](https://github.com/fluojs/fluo/commit/758fa42f64317751123d5a9ff8e03c414fc20fb2) Thanks [@ayden94](https://github.com/ayden94)! - Restore missing-value short-circuiting so `@IsNotEmpty()` skips `null` and `undefined` unless `@IsDefined()` owns requiredness, and `@IsOptional()` bypasses `@ValidateIf()` predicates for missing fields.
+
+- [#3492](https://github.com/fluojs/fluo/pull/3492) [`2cce586`](https://github.com/fluojs/fluo/commit/2cce58646b5b10e6fb39c4b54c1d74734e7308c5) Thanks [@ayden94](https://github.com/ayden94)! - Preserve and validate colliding nested rules copied by `IntersectionType`.
+
+- [#3064](https://github.com/fluojs/fluo/pull/3064) [`5e59219`](https://github.com/fluojs/fluo/commit/5e59219c5346d9fa3d70719f7204fcf5e9f602f6) Thanks [@ayden94](https://github.com/ayden94)! - Preserve cycle guards across DTO materialization and nested validation without rejecting shared raw references.
+
+- [#3495](https://github.com/fluojs/fluo/pull/3495) [`5dec76e`](https://github.com/fluojs/fluo/commit/5dec76e05a229b4ef52d112fd593bc167e650a3c) Thanks [@ayden94](https://github.com/ayden94)! - Reject generated reverse-map member names when validating numeric TypeScript enums with `IsEnum`.
+
+- Updated dependencies [[`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3), [`857ff80`](https://github.com/fluojs/fluo/commit/857ff80a7cd62f475a64853de9be17b8d1fe8604), [`deca575`](https://github.com/fluojs/fluo/commit/deca575cad1405fa7a45034fa4880ee7d1a808ea), [`344d9bc`](https://github.com/fluojs/fluo/commit/344d9bc15c59ac45572eb63aa3d3c06858d19549), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/core@2.0.0
+
 ## 1.0.6
 
 ### Patch Changes
