@@ -482,6 +482,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -495,8 +497,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify Vite 8 compatibility at the private root floor
-        run: pnpm vitest run packages/vite/src/vite8-rolldown.test.ts tooling/governance/vite-compatibility-contract.test.ts
+      - name: Verify the complete workspace at the private root floor
+        run: pnpm verify
 
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
