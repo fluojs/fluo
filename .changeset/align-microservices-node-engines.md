@@ -2,6 +2,6 @@
 "@fluojs/microservices": major
 ---
 
-Align `@fluojs/microservices` with the Node.js range required by its mandatory `@fluojs/runtime` dependency.
+Declare the package-owned Node.js support range `>=24.0.0 <27` for `@fluojs/microservices` in the upcoming coordinated release. The portable `@fluojs/runtime` package no longer supplies a transitive Node engine requirement.
 
-Migration: Node.js 21 support is removed. Node.js 20 before 20.19.3, Node.js 22 before 22.2.0, and Node.js 27+ are also unsupported. Upgrade to Node.js >=20.19.3 <21 or Node.js >=22.2.0 <27.
+Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release.

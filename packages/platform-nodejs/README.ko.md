@@ -4,6 +4,8 @@
 
 fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 
+Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요.
+
 ## 목차
 
 - [설치](#설치)

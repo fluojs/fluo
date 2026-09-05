@@ -2,6 +2,6 @@
 "@fluojs/drizzle": major
 ---
 
-**Breaking change:** `@fluojs/drizzle` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` to match its mandatory `@fluojs/runtime` dependency. Node 21 and Node 27+ are unsupported.
+Declare the package-owned Node.js support range `>=24.0.0 <27` for `@fluojs/drizzle` in the upcoming coordinated release. The portable `@fluojs/runtime` package no longer supplies a transitive Node engine requirement.
 
-Migration: Node.js 20.0.0 support is removed. Node.js 21 and Node.js 27+ remain unsupported. Move to Node.js >=20.19.3 <21 or Node.js >=22.2.0 <27 before updating. Run the application's driver-specific Drizzle query and migration tests after the runtime upgrade.
+Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release. Run the application's driver-specific Drizzle query and migration tests after the runtime upgrade.

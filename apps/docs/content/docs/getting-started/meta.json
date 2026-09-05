@@ -1,4 +1,4 @@
 {
   "title": "Getting Started",
-  "pages": ["quick-start"]
+  "pages": ["quick-start", "migrate-node24"]
 }

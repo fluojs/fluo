@@ -21,6 +21,8 @@ In Chapter 1, you saw the ideas behind fluo. Now it is time to turn that philoso
 - Completion of Chapter 1.
 - A terminal session you can keep open throughout the exercises.
 
+For an existing project moving to the upcoming coordinated release, start with the [Node 24 migration](../../docs/getting-started/migrate-node24.md). Upgrade Node in every environment, then packages and imports, before adopting Vite 8.2.2/Vitest 4.1.11 and Rolldown configs. A CLI upgrade does not rewrite existing projects; actual release and document publication belong to the maintainer.
+
 ## 2.1 Installing @fluojs/cli
 
 The first step looks simple, but it matters. The CLI prepares the working environment expected by the examples that follow.

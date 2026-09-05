@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-The private root workspace and 34 Node-bound public packages declare `engines.node: ">=24.0.0 <27"`. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are no longer supported by this major release.
+The private root workspace and 34 Node-bound public packages declare `engines.node: ">=24.0.0 <27"`. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
@@ -31,4 +31,4 @@ Generated Node HTTP (Fastify, Express, raw Node), mixed, all seven microservice 
 4. Run the application's install, build, typecheck, and tests on Node 24. Check its HTTP listener and microservice startup/shutdown, or the first React page and hydration when applicable. Keep exact `24.0.0` and latest `26.x` checks if the application advertises this complete range.
 5. For non-Node deployments, retain native engine metadata and deployment commands. Upgrade only Node-hosted developer tooling. Pass explicit in-memory config maps on portable hosts instead of assuming Node env-file/watch support.
 
-This change includes major Changesets for narrowed public Node support, including config's Node-only feature support. #3679 reconciles the coordinated release; package versions are not changed here and publishing remains exclusive to the canonical GitHub Actions Changesets workflow.
+For the complete upcoming coordinated-release order (Node, packages, imports, then config/toolchain), follow the [consumer migration guide](../getting-started/migrate-node24.md). Every stable public package has explicit major intent, including config's Node-only feature support; React remains a 0.x minor. Only Changesets generates package versions and changelogs, and the maintainer owns actual release and document publication. #3169 remains the umbrella until the user-run release.

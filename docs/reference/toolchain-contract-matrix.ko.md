@@ -2,6 +2,8 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./toolchain-contract-matrix.md"><kbd>English</kbd></a></p>
 
+기존 프로젝트의 다음 릴리스 준비는 [coordinated Node 24 migration](../getting-started/migrate-node24.ko.md)을 따르세요. Vite 8.2.2/Vitest 4.1.11 peer, Rolldown config, test-file Babel ignore 제거를 함께 다루며 CLI 업그레이드가 기존 config를 재작성한다고 가정하지 않습니다.
+
 ## 생성 앱 기준선
 
 | 항목 | 계약 | 버전 / 비고 |

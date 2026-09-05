@@ -8,9 +8,11 @@
 "@fluojs/di": major
 "@fluojs/discord": major
 "@fluojs/drizzle": major
+"@fluojs/email": major
 "@fluojs/event-bus": major
 "@fluojs/graphql": major
 "@fluojs/http": major
+"@fluojs/i18n": major
 "@fluojs/jwt": major
 "@fluojs/metrics": major
 "@fluojs/microservices": major
@@ -18,12 +20,17 @@
 "@fluojs/notifications": major
 "@fluojs/openapi": major
 "@fluojs/passport": major
+"@fluojs/platform-bun": major
+"@fluojs/platform-cloudflare-workers": major
+"@fluojs/platform-deno": major
 "@fluojs/platform-express": major
 "@fluojs/platform-fastify": major
 "@fluojs/platform-nodejs": major
 "@fluojs/prisma": major
 "@fluojs/queue": major
+"@fluojs/react": minor
 "@fluojs/redis": major
+"@fluojs/runtime": major
 "@fluojs/serialization": major
 "@fluojs/slack": major
 "@fluojs/socket.io": major
@@ -36,8 +43,12 @@
 "@fluojs/websockets": major
 ---
 
-Adopt Node.js 24 LTS as the supported floor for Node-bound packages and all generated Node starters, with `engines.node: ">=24.0.0 <27"`. Config's Node-only env-file and watch features adopt the same support policy while its portable root keeps no package-wide Node engine. The other seven portable engine omissions remain intact.
+Prepare the coordinated Node.js 24 release with explicit major intent for every current stable public package and minor intent for @fluojs/react. React remains on 0.x; this is not a 1.0 graduation. Pending feature and fix Changesets contribute their notes to the same next release per package, not a second Vite or CLI release. No package versions or changelogs are generated in this preparation change.
 
-Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI runners, and deployment hosts to latest Node.js 24 LTS in `>=24.0.0 <27` before installing this major release. Replace both build and runtime container images with Node 24 images such as `node:24-slim`, reinstall dependencies and native addons, and rerun build, typecheck, tests, and application startup. Existing generated Node projects must update their own engines, Vite server target to `node24`, and Node typings to `@types/node@^24.0.0`, then refresh their lockfile. Keep Bun/Deno/Workers deployment metadata native and upgrade only Node-hosted tooling; portable config callers should continue passing explicit in-memory maps.
+Node-bound packages and generated Node starters adopt the package-owned support range `>=24.0.0 <27`. Config's env-file, default `.env`, and watch features use that Node-only policy while its in-memory root stays portable. Preserve the eight package-wide engine omissions: config, email, i18n, platform-bun, platform-cloudflare-workers, platform-deno, react, and runtime.
 
-Exact Node 24.0.0 and latest Node 26.x are separate verification claims; latest Node 24.x owns canonical verification and release automation. Node 26 is verification-only, never a publish runtime. See `docs/reference/node-support.md` and its Korean companion for the full migration. #3679 reconciles coordinated release metadata; this change does not alter package versions or publish.
+Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before upgrading Fluo packages, then replace @fluojs/runtime/node imports with @fluojs/platform-nodejs and @fluojs/runtime/internal-node with @fluojs/platform-nodejs/internal. There is no compatibility shim. Reinstall dependencies and native addons, refresh the lockfile, and verify application startup and shutdown.
+
+Existing generated projects are not rewritten by a CLI upgrade. Adopt Vite ^8.2.2, Vitest and @vitest/coverage-v8 ^4.1.11 together, migrate build.rollupOptions to build.rolldownOptions, retain the separate Babel application/testing plugins, and remove the Babel ignore rule for src/**/*.test.ts. Node starters use node24 and @types/node ^24.0.0. The @fluojs/vite peer contract remains vite >=6.2.0; @fluojs/testing requires vitest ^4.1.11.
+
+Follow the [English migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md) or [Korean migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md). Exact Node 24.0.0 and latest Node 26.x remain separate verification claims; latest Node 24.x owns release automation and Node 26 is never a publish runtime. Actual release and migration-document publication belong to the maintainer through the canonical Changesets workflow on main. This change does not claim publication; #3169 remains the release umbrella.

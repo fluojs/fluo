@@ -2,6 +2,6 @@
 "@fluojs/cache-manager": major
 ---
 
-Align `@fluojs/cache-manager` with the Node.js range its mandatory `@fluojs/runtime` dependency already required. The manifest now declares `engines.node >=20.19.3 <21 || >=22.2.0 <27` instead of the previously advertised `>=20.0.0`, which never matched the effective dependency floor.
+Declare the package-owned Node.js support range `>=24.0.0 <27` for `@fluojs/cache-manager` in the upcoming coordinated release. The portable `@fluojs/runtime` package no longer supplies a transitive Node engine requirement. The package API and runtime behavior are unchanged by this engine metadata alignment.
 
-Migration: Node.js 21 support is removed. Consumers on Node.js 20.0.0-20.19.2, Node 21, Node 22 before 22.2.0, or Node 27+ fall outside the declared support range; those runtimes were already unsupported through `@fluojs/runtime`, so installing on them may surface an incompatibility diagnostic or be rejected outright depending on the package-manager client and its engine-checking configuration. Upgrade to Node.js >=20.19.3 <21 or Node.js >=22.2.0 <27 before installing this version. The cache-manager API surface and runtime behavior are unchanged.
+Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release.

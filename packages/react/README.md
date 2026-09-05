@@ -4,6 +4,8 @@
 
 Runtime-neutral React integration for fluo applications.
 
+Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
+
 ## Table of Contents
 
 - [Installation](#installation)

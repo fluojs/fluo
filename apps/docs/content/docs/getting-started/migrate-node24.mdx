@@ -1,0 +1,94 @@
+---
+title: Upcoming Node 24 Migration
+description: Prepare for the coordinated Fluo release without implying publication.
+---
+
+This is **release preparation**, not a release announcement. The maintainer owns
+the actual package release and migration-document publication. Follow the
+[complete consumer guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md)
+when the upcoming release becomes available.
+
+## 1. Upgrade Node everywhere first
+
+Before upgrading Fluo, move local development, CI, container build/runtime stages,
+and production to Node.js `>=24.0.0 <27`, normally latest Node 24 LTS.
+Node 20/22, all versions below 24, and Node 27+ are unsupported. Update version
+pins and application engines, replace both container stages with Node 24 images,
+and reinstall native addons under the new runtime. Verify `node --version` in
+each environment; do not use `--ignore-engines` as a migration.
+
+Exact `24.0.0`, latest `24.x`, and latest `26.x` are separate verification targets.
+Latest Node 24 owns Fluo release automation; Node 26 is never a publish runtime.
+Bun, Deno, and Workers retain native runtime metadata and deployment commands;
+upgrade their Node-hosted developer tooling separately.
+
+## 2. Upgrade Fluo packages together
+
+The current 42 public packages participate with explicit intent: 41 stable
+packages receive a major bump, while `@fluojs/react@0.1.0` receives a minor bump
+to `0.2.0`. React stays on `0.x`, not `1.0`. Inventory installed dependencies with
+`pnpm list --depth 0`, then use each package's Changesets-generated coordinated
+version after publication, including adapters, integrations, and dev tooling.
+Versions differ by package; dependency propagation is not a migration plan.
+
+Retained listener, Vite compatibility, Vitest peer, generated-starter, and unrelated
+feature/fix notes aggregate into one next release per package. Read those
+package-specific migrations too; no second Vite or CLI release is scheduled.
+
+## 3. Replace moved Node imports
+
+Add `@fluojs/platform-nodejs` as a direct dependency wherever you import its helpers.
+
+| Removed import | Replacement |
+| --- | --- |
+| `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
+| `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
+
+Symbol names remain the same, but there is no compatibility shim at the old paths.
+Portable bootstrap stays on `@fluojs/runtime`; fetch helpers stay on
+`@fluojs/runtime/web`. Custom-method and body-bearing `QUERY` listeners use the
+final Node 24 support range.
+
+## 4. Keep config portable
+
+Config's in-memory options remain portable. Pass explicit maps and
+`envFilePaths: []` to opt out of env files. Empty `loadConfig({})` or
+`ConfigModule.forRoot()` still loads default `.env`; env-file/default `.env`
+loading and watch are Node-only features on `>=24.0.0 <27`.
+The existing capability guard raises `CONFIG_RUNTIME_UNAVAILABLE` when Node
+builtins are unavailable; it does not compare Node versions or reject portable imports.
+
+Keep all eight package-wide Node engine omissions: `@fluojs/config`,
+`@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`,
+`@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`,
+and `@fluojs/runtime`.
+
+## 5. Update existing toolchains manually
+
+CLI upgrades do not rewrite existing generated projects. The new non-Deno
+generated baseline uses Vite `^8.2.2`, Vitest and `@vitest/coverage-v8` `^4.1.11`.
+The workspace verifies Vite `8.2.2` and Vitest `4.1.11`; `@fluojs/vite` keeps its
+`vite >=6.2.0` peer, while `@fluojs/testing` now requires `vitest ^4.1.11`.
+
+- Migrate ESM `build.rollupOptions` to `build.rolldownOptions` and review the
+  application's bundler options. Node starters target `node24`, declare
+  `>=24.0.0 <27`, and use `@types/node ^24.0.0`.
+- Keep `fluoDecoratorsPlugin()` for application `.ts` files and the separate
+  `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest` for tests, with Babel
+  peers installed. Direct Oxc/esbuild decorator processing is unsupported.
+- Remove the Babel `ignore` entry for `src/**/*.test.ts` so decorators declared
+  inside tests are transformed. Retain `version: '2023-11'`, not legacy decorator
+  compiler flags. React SSR keeps decorated declarations in `.ts` and JSX in `.tsx`.
+- Preserve native Bun/Deno/Workers build/start commands; Deno keeps its native toolchain.
+
+## 6. Verify before rollout
+
+Refresh the lockfile and run application install, build, typecheck, and tests.
+Exercise real listeners and startup/shutdown, configured microservice transports,
+and React production assets/hydration where applicable. Resolve peer and engine
+diagnostics. No new boundary or Node-floor backports are part of this program.
+
+The [full guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md)
+includes exact package examples and maintainer verification commands. Local checks
+do not prove npm publication or document deployment; #3169 remains the umbrella
+until the maintainer-run release through the canonical Changesets workflow on `main`.

@@ -7,4 +7,4 @@ Require Vitest 4.1.11 or newer within the Vitest 4 release line for the public m
 
 Update the Vite plugin documentation to describe the workspace Vite 8.2.2/Rolldown verification gate while preserving the published `vite >=6.2.0` peer contract.
 
-Migration: Node.js 21 support is removed. Node.js 20 before 20.19.3, Node.js 22 before 22.2.0, and Node.js 27+ are also unsupported. Upgrade to Node.js >=20.19.3 <21 or Node.js >=22.2.0 <27. Upgrade `vitest` from version 3 to `^4.1.11` in workspaces that consume `@fluojs/testing` mock or Vitest tooling surfaces.
+Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release. Upgrade `vitest` from version 3 to `^4.1.11` in workspaces that consume `@fluojs/testing` mock or Vitest tooling surfaces.

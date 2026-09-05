@@ -2,6 +2,6 @@
 "@fluojs/cron": major
 ---
 
-Align `@fluojs/cron` with its mandatory `@fluojs/runtime` 3 dependency and the supported Node.js range.
+Declare the package-owned Node.js support range `>=24.0.0 <27` for `@fluojs/cron` in the upcoming coordinated release. The portable `@fluojs/runtime` package no longer supplies a transitive Node engine requirement. Cron 3 retains its mandatory runtime 3 dependency.
 
-Migration: Node.js `20.0.0`–`20.19.2`, Node.js 21, Node.js `22.0.0`–`22.1.x`, and Node.js 27+ support is removed. Upgrade deployment hosts to Node.js `>=20.19.3 <21 || >=22.2.0 <27` before installing `@fluojs/cron` 3.
+Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release.

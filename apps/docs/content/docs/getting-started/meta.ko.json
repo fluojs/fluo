@@ -1,4 +1,4 @@
 {
   "title": "시작하기",
-  "pages": ["quick-start"]
+  "pages": ["quick-start", "migrate-node24"]
 }

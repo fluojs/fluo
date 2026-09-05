@@ -2,6 +2,8 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./toolchain-contract-matrix.ko.md"><kbd>한국어</kbd></a></p>
 
+For existing projects preparing for the upcoming release, follow the [coordinated Node 24 migration](../getting-started/migrate-node24.md). It covers Vite 8.2.2/Vitest 4.1.11 peers, Rolldown configs, and removal of the test-file Babel ignore without assuming a CLI upgrade rewrites existing configs.
+
 ## generated app baseline
 
 | surface | contract | version / notes |

@@ -4,6 +4,8 @@
 
 The assembly layer that compiles a module graph and wires DI and HTTP into a runnable application shell.
 
+Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages.
+
 ## Table of Contents
 
 - [Installation](#installation)

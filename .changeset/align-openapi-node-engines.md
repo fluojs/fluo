@@ -2,6 +2,6 @@
 "@fluojs/openapi": major
 ---
 
-Align `@fluojs/openapi` with the Node.js range its mandatory `@fluojs/runtime` dependency already required. The manifest now declares `engines.node >=20.19.3 <21 || >=22.2.0 <27` instead of the previously advertised `>=20.0.0`, which never matched the effective dependency floor because the root entrypoint imports `defineModule` from `@fluojs/runtime`.
+Declare the package-owned Node.js support range `>=24.0.0 <27` for `@fluojs/openapi` in the upcoming coordinated release. The portable `@fluojs/runtime` package no longer supplies a transitive Node engine requirement. The package API and runtime behavior are unchanged by this engine metadata alignment.
 
-Migration: Node.js 21 support is removed, as is Node.js 20 below 20.19.3, Node.js 22 below 22.2.0, and Node.js 27 or newer. Upgrade to Node.js >=20.19.3 <21 or Node.js >=22.2.0 <27 before installing this version. Those runtimes were already outside the effective support boundary through `@fluojs/runtime` and now fall outside the declared range as well, so installing on them may surface an incompatibility diagnostic or be rejected outright depending on the package-manager client and its engine-checking configuration. The OpenAPI API surface, generated document output, and runtime behavior are unchanged.
+Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release.

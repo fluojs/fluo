@@ -57,6 +57,8 @@ export class UsersModule {}
 
 ## 빠른 시작
 
+다음 coordinated release는 준비 단계입니다. 출시 후 업그레이드할 때 [Node 24 마이그레이션 가이드](./docs/getting-started/migrate-node24.ko.md)의 Node → 패키지 → import 순서를 따르세요.
+
 Node.js 경로와 CLI는 `>=24.0.0 <27`을 지원합니다. 기존 Node 20/22 프로젝트는 [Node.js 마이그레이션](./docs/reference/node-support.ko.md)을 먼저 적용하세요. Bun, Deno, Cloudflare Workers의 runtime-native 계약은 별도입니다.
 
 CLI를 사용하는 것이 fluo를 경험하는 가장 빠른 방법입니다.
