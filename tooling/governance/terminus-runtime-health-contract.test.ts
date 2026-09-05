@@ -163,4 +163,22 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
     ])).toThrow('Terminus runtime health contract updates must include');
     expect(() => enforceTerminusRuntimeHealthContractCompanions(completeCompanions)).not.toThrow();
   });
+
+  it('does not read shared-document patches after an authoritative path triggers companion enforcement', () => {
+    const completeCompanions = [
+      ...governedSurfaces,
+      'tooling/governance/terminus-runtime-health-contract.mjs',
+      'tooling/governance/terminus-runtime-health-source-contract.mjs',
+      'tooling/governance/terminus-runtime-health-contract.test.ts',
+    ];
+
+    expect(() =>
+      enforceTerminusRuntimeHealthContractCompanions(
+        completeCompanions,
+        () => {
+          throw new Error('shared-document patches are unavailable in this checkout');
+        },
+      ),
+    ).not.toThrow();
+  });
 });

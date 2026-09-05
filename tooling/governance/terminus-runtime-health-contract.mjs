@@ -98,7 +98,7 @@ export function enforceTerminusRuntimeHealthContractCompanions(
   readChangedPatch = changedFilePatchFromGit,
 ) {
   const touchedAuthoritativePath = changedFiles.some((path) => authoritativePaths.has(path));
-  const touchedSharedContractSection = changedFiles.some((path) =>
+  const touchedSharedContractSection = !touchedAuthoritativePath && changedFiles.some((path) =>
     sharedPaths.has(path) && changedPatchPattern.test(readChangedPatch(path)));
 
   if (!touchedAuthoritativePath && !touchedSharedContractSection) {
