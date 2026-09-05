@@ -21,11 +21,11 @@
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 좁고, 더 아키텍처적인 위치에 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1515-1640`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
+`path:packages/runtime/src/bootstrap.ts:1578-1723`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
 
 그 중심부는 host 이름을 판별하는 대신 이미 준비된 adapter와 platform shell을 받아 조립합니다. 아래 발췌에서 runtime은 module graph, provider, token, lifecycle 순서를 다루고, Node나 Web이라는 이름을 조건으로 삼지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1595`
+`path:packages/runtime/src/bootstrap.ts:1578-1602`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
@@ -125,11 +125,11 @@ shared bootstrap shell in root runtime
 이 프레임이 이 장 전체의 배경입니다. Node, Web, Edge는 서로 독립된 세 runtime이 아니라, 하나의 transport-neutral bootstrap core에 서로 다른 host I/O semantics를 붙이는 세 방식입니다.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-root public surface는 `path:packages/runtime/src/index.ts:1-45`에 정의되어 있습니다. 여기서는 bootstrap API, error, 선별된 diagnostics type과 builder, health helper, platform contract, request-transaction helper, 선별된 runtime token만 export합니다. Node adapter helper, Web request-dispatch helper, diagnostics presentation helper는 export하지 않습니다.
+root public surface는 `path:packages/runtime/src/index.ts:1-47`에 정의되어 있습니다. 여기서는 bootstrap API, error, 선별된 diagnostics type과 builder, health helper, `ModuleGraphCompileCache`, platform contract, request-transaction helper, 선별된 runtime token만 export합니다. Node adapter helper, Web request-dispatch helper, diagnostics presentation helper는 export하지 않습니다.
 
 root barrel의 실제 모양은 작고 선별적입니다. `bootstrap`, health, error, platform type, request transaction, token, shared type만 바깥으로 보냅니다.
 
-`path:packages/runtime/src/index.ts:1-46`
+`path:packages/runtime/src/index.ts:1-47`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -147,6 +147,7 @@ export {
   createRuntimeDiagnosticsGraph,
 } from './health/diagnostics.js';
 export * from './health/health.js';
+export { ModuleGraphCompileCache } from './module-graph.js';
 export type {
   MultipartFieldPart,
   MultipartFilePart,
@@ -240,7 +241,7 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
 
 테스트는 package.json의 선언이 실제로 좁혀진 subpath를 포함하는지 읽어서 확인합니다. 특히 `internal-node`는 `typesVersions`에도 별도로 고정됩니다.
 
-`path:packages/runtime/src/exports.test.ts:100-124`
+`path:packages/runtime/src/exports.test.ts:100-122`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -355,7 +356,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 이어지는 constructor 본문은 Node server 생성과 socket 추적을 실제로 수행합니다. 이 두 번째 발췌가 request/response factory, HTTP/HTTPS server 선택, connection set 관리가 모두 Node branch 안에 있음을 보여 줍니다.
 
-`path:packages/runtime/src/node/internal-node.ts:157-182`
+`path:packages/runtime/src/node/internal-node.ts:157-183`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -410,9 +411,9 @@ adapter는 조율되지 않은 listener state를 직접 소유하는 대신 life
   }
 ```
 
-listen은 `path:packages/runtime/src/node/internal-node-listen.ts:94-194`의 `listenNodeServerWithRetry()`가 처리합니다. 이 helper는 `EADDRINUSE` 에러를 설정된 한도까지 재시도하고, close가 pending startup을 취소할 수 있도록 `AbortSignal`을 받습니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
+listen은 `path:packages/runtime/src/node/internal-node-listen.ts:103-215`의 `listenNodeServerWithRetry()`가 처리합니다. 이 helper는 `EADDRINUSE` 에러를 설정된 한도까지 재시도하고, close가 pending startup을 취소할 수 있도록 `AbortSignal`을 받습니다. 이 동작은 명백히 Node-host logic입니다. portable bootstrap core가 아니라 Node branch에 있어야 할 책임입니다.
 
-`path:packages/runtime/src/node/internal-node-listen.ts:94-194`
+`path:packages/runtime/src/node/internal-node-listen.ts:103-215`
 ```typescript
 function listenNodeServerWithRetry(
   server: NodeServer,
@@ -535,7 +536,7 @@ shutdown은 `path:packages/runtime/src/node/internal-node.ts:335-368`의 `closeN
 
 `path:packages/runtime/src/node/internal-node.ts:240-253`의 `createNodeHttpAdapter()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/runtime/src/node/internal-node.ts:255-264`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `path:packages/runtime/src/node/internal-node.ts:266-277`의 `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
 
-`path:packages/runtime/src/node/internal-node.ts:283-317`
+`path:packages/runtime/src/node/internal-node.ts:283-318`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -572,7 +573,7 @@ export async function bootstrapNodeApplication(
 
 테스트는 의도된 public contract를 설명합니다. `path:packages/runtime/src/node/node.test.ts:14-48`은 adapter 기본 포트가 `process.env.PORT`가 아니라 `3000`임을 보여 줍니다. 이것도 explicitness choice입니다. Node-specific convenience가 ambient process configuration을 묵시적으로 끌고 들어오지 못하게 합니다.
 
-`path:packages/runtime/src/node/node.test.ts:14-30`
+`path:packages/runtime/src/node/node.test.ts:15-31`
 ```typescript
 it('uses the runtime default port instead of process.env.PORT', async () => {
   const previousPort = process.env.PORT;

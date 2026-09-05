@@ -21,11 +21,11 @@ This chapter explains how Fluo branches only at package surfaces and adapter sea
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 The first fact to notice in Chapter 10 is that Fluo's runtime portability is not implemented as one giant `if (isNode) ... else if (isEdge) ...` block. The branch points are much narrower and sit in more architectural locations.
 
-Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1515-1640` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
+Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1578-1723` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1595`
+`path:packages/runtime/src/bootstrap.ts:1578-1602`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
@@ -125,11 +125,11 @@ shared bootstrap shell in root runtime
 This frame is the background for the whole chapter. Node, Web, and Edge are not three independent runtimes. They are three ways to attach different host I/O semantics to one transport-neutral Bootstrap core.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-The root public surface is defined in `path:packages/runtime/src/index.ts:1-45`. It exports the Bootstrap API, errors, selected diagnostics types and builders, health helpers, platform contracts, request transaction helpers, and selected runtime Tokens. It does not export Node adapter helpers, Web request dispatch helpers, or diagnostics presentation helpers.
+The root public surface is defined in `path:packages/runtime/src/index.ts:1-47`. It exports the Bootstrap API, errors, selected diagnostics types and builders, health helpers, `ModuleGraphCompileCache`, platform contracts, request transaction helpers, and selected runtime Tokens. It does not export Node adapter helpers, Web request dispatch helpers, or diagnostics presentation helpers.
 
 The actual shape of the root barrel is small and selective. It exposes only `bootstrap`, health, error, platform types, request transaction, Tokens, and shared types.
 
-`path:packages/runtime/src/index.ts:1-46`
+`path:packages/runtime/src/index.ts:1-47`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
@@ -147,6 +147,7 @@ export {
   createRuntimeDiagnosticsGraph,
 } from './health/diagnostics.js';
 export * from './health/health.js';
+export { ModuleGraphCompileCache } from './module-graph.js';
 export type {
   MultipartFieldPart,
   MultipartFilePart,
@@ -240,7 +241,7 @@ This matters because an export map is stronger than documentation. It prevents a
 
 The test reads package.json and confirms that its declarations include the narrowed subpaths. In particular, `internal-node` is separately pinned in `typesVersions` too.
 
-`path:packages/runtime/src/exports.test.ts:100-124`
+`path:packages/runtime/src/exports.test.ts:100-122`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -355,7 +356,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 The following constructor body actually performs Node server creation and socket tracking. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, and connection set management all belong inside the Node branch.
 
-`path:packages/runtime/src/node/internal-node.ts:157-182`
+`path:packages/runtime/src/node/internal-node.ts:157-183`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -410,9 +411,9 @@ The adapter delegates listen and close admission to the lifecycle component rath
   }
 ```
 
-Listening is handled by `listenNodeServerWithRetry()` in `path:packages/runtime/src/node/internal-node-listen.ts:94-194`. This helper retries `EADDRINUSE` errors up to the configured limit and accepts an `AbortSignal` so close can cancel a pending startup. That behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
+Listening is handled by `listenNodeServerWithRetry()` in `path:packages/runtime/src/node/internal-node-listen.ts:103-215`. This helper retries `EADDRINUSE` errors up to the configured limit and accepts an `AbortSignal` so close can cancel a pending startup. That behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
 
-`path:packages/runtime/src/node/internal-node-listen.ts:94-194`
+`path:packages/runtime/src/node/internal-node-listen.ts:103-215`
 ```typescript
 function listenNodeServerWithRetry(
   server: NodeServer,
@@ -535,7 +536,7 @@ Shutdown is handled by `closeNodeServerWithDrain()` in `path:packages/runtime/sr
 
 `createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:240-253` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:255-264` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:266-277` adds shutdown-signal registration on top.
 
-`path:packages/runtime/src/node/internal-node.ts:283-317`
+`path:packages/runtime/src/node/internal-node.ts:283-318`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -572,7 +573,7 @@ This excerpt narrows a 38-line source flow to adapter creation and Bootstrap han
 
 The tests explain the intended public contract. `path:packages/runtime/src/node/node.test.ts:14-48` shows that the adapter's default port is `3000`, not `process.env.PORT`. This is also an explicitness choice. It prevents Node-specific convenience from silently pulling in ambient process configuration.
 
-`path:packages/runtime/src/node/node.test.ts:14-30`
+`path:packages/runtime/src/node/node.test.ts:15-31`
 ```typescript
 it('uses the runtime default port instead of process.env.PORT', async () => {
   const previousPort = process.env.PORT;

@@ -27,7 +27,7 @@ Fluo runtime internals를 오해하는 가장 쉬운 방법은 `Application`, `A
 
 이것은 우연한 API 대칭이 아닙니다. 구현 순서의 반영입니다. Fluo는 먼저 transport-neutral한 DI/lifecycle baseline을 만든 뒤, 각 shell type이 약속한 capability만 래핑해 노출합니다.
 
-source에서도 분기 지점이 직접 보입니다. `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`은 `new FluoApplication(...)`을 반환합니다. `path:packages/runtime/src/bootstrap.ts:1059-1153`의 `FluoFactory.createApplicationContext()`는 `new FluoApplicationContext(...)`를 반환합니다. `path:packages/runtime/src/bootstrap.ts:1164-1189`의 `FluoFactory.createMicroservice()`는 먼저 application context를 만든 다음, resolve된 runtime token을 `FluoMicroserviceApplication`으로 감쌉니다.
+source에서도 분기 지점이 직접 보입니다. `path:packages/runtime/src/bootstrap.ts:1578-1723`의 `bootstrapApplication()`은 `new FluoApplication(...)`을 반환합니다. `path:packages/runtime/src/bootstrap.ts:1752-1873`의 `FluoFactory.createApplicationContext()`는 `new FluoApplicationContext(...)`를 반환합니다. `path:packages/runtime/src/bootstrap.ts:1884-1917`의 `FluoFactory.createMicroservice()`는 먼저 application context를 만든 다음, resolve된 runtime token을 `FluoMicroserviceApplication`으로 감쌉니다.
 
 full application branch의 대표 지점은 반환부입니다. 앞선 module bootstrap과 lifecycle 실행은 공유하지만, 이 branch만 dispatcher, adapter, adapter 보유 여부, platform shell reference를 함께 넣어 `FluoApplication`을 만듭니다.
 
@@ -63,7 +63,7 @@ full application branch의 대표 지점은 반환부입니다. 앞선 module bo
 
 context branch는 같은 spine을 지나지만 반환 객체가 다릅니다. dispatcher와 HTTP adapter를 만들지 않고, DI와 lifecycle 제어에 필요한 값만 `FluoApplicationContext`로 감쌉니다.
 
-`path:packages/runtime/src/bootstrap.ts:1838-1855`
+`path:packages/runtime/src/bootstrap.ts:1836-1853`
 ```typescript
       return new FluoApplicationContext(
         bootstrapped.container,
@@ -87,7 +87,7 @@ context branch는 같은 spine을 지나지만 반환 객체가 다릅니다. di
 
 microservice branch는 또 다른 독립 bootstrap이 아닙니다. 먼저 context를 만든 뒤, 그 context에서 transport runtime token을 resolve하고 wrapper를 얹습니다. Public `CreateMicroserviceOptions`는 `logger`를 명시적으로 제외하는 `CreateApplicationContextOptions`를 확장합니다. 따라서 caller는 `microserviceToken`을 고를 수 있지만, 이 high-level microservice option으로 application logger를 구성할 수는 없습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1873-1895`
+`path:packages/runtime/src/bootstrap.ts:1888-1899`
 ```typescript
     const logger = createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
@@ -123,7 +123,7 @@ bootstrap graph + container + lifecycle baseline
 이 공유 bootstrap spine이 이 장의 기반입니다. runtime contract의 나머지 부분을 이해하려면, 먼저 context, application, microservice shell이 하나의 compiled module/container baseline 위에서 만들어지는 형제라는 사실을 봐야 합니다.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:856-928`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback, 그리고 `get()`이 사용하는 좁은 context-resolution cache를 저장합니다.
+`FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:860-932`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback, 그리고 `get()`이 사용하는 좁은 context-resolution cache를 저장합니다.
 
 context shell 자체도 그 의도를 그대로 드러냅니다. 저장하는 값은 compiled module baseline과 lifecycle cleanup에 필요한 값이고, public 동작은 DI lookup과 close입니다.
 
@@ -178,7 +178,7 @@ public method도 `get()`과 `close()`뿐입니다. 이 미니멀한 표면이 �
 
 애플리케이션이 작성한 provider의 cache eligibility는 effective runtime provider와 root module에 직접 선언된 provider로 제한됩니다. Bare class와 class/factory provider도 singleton이어야 하며, alias, value, `multi: true` provider는 제외됩니다. Internal runtime token은 명시적으로 seed됩니다. Imported module provider는 여전히 container 자체의 singleton cache를 사용하지만 `ApplicationContext.get()`은 별도 context-cache entry를 추가하지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1074-1113`
+`path:packages/runtime/src/bootstrap.ts:1178-1217`
 ```typescript
 function createContextCacheableTokenSet(
   effectiveProviders: BootstrapEffectiveProviders,
@@ -187,15 +187,19 @@ function createContextCacheableTokenSet(
   const cacheableTokens = new Set<Token>(runtimeTokens);
 
   for (const provider of effectiveProviders.runtimeProviders) {
-    if (isDirectSingletonContextProvider(provider)) {
-      cacheableTokens.add(providerToken(provider));
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
     }
+
+    cacheableTokens.add(providerToken(provider));
   }
 
   for (const provider of effectiveProviders.rootModuleProviders) {
-    if (isDirectSingletonContextProvider(provider)) {
-      cacheableTokens.add(providerToken(provider));
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
     }
+
+    cacheableTokens.add(providerToken(provider));
   }
 
   return cacheableTokens;
@@ -220,7 +224,7 @@ function isDirectSingletonContextProvider(provider: Provider, includeMulti = fal
 
 Resolution helper는 적격 token에 대해서만 in-flight promise를 memoize하고 실패한 resolution은 제거합니다. 그 밖의 lookup은 모두 DI에 직접 위임되므로 alias target scope, request-scope error, transient 재생성, 새로운 multi-provider contribution array가 유지됩니다. `container.override()`는 기존 entry를 지우고 override된 각 token의 eligibility를 다시 계산합니다. `close()` 이후에는 `get()`이 context cache를 의도적으로 우회해 disposed container에 도달하므로, 이전에 cache된 singleton이 필수 post-close failure를 숨기지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1129-1178`
+`path:packages/runtime/src/bootstrap.ts:1233-1282`
 ```typescript
 function installContextCacheInvalidation(
   container: Container,
@@ -276,19 +280,19 @@ async function resolveContextToken<T>(
 
 Regression coverage가 이 경계를 실행 가능한 형태로 고정합니다. `path:packages/runtime/src/bootstrap.test.ts:687-885`는 direct singleton memoization, duplicate winner eligibility, transient override, multi-provider 위임을 다룹니다. `path:packages/runtime/src/application.test.ts:2783-2886`은 transient/request-scoped alias, singleton override invalidation, 그리고 `ApplicationContext.get()`과 `Application.get()` 양쪽의 post-close failure를 다룹니다.
 
-실제 bootstrap path는 `path:packages/runtime/src/bootstrap.ts:1619-1740`의 `FluoFactory.createApplicationContext()`입니다. 이 함수를 `bootstrapApplication()`과 비교하면, 대부분의 순서가 동일합니다. 여전히 logger, platform shell, runtime provider list, compiled module, runtime context token, lifecycle instance, timing diagnostics를 만듭니다.
+실제 bootstrap path는 `path:packages/runtime/src/bootstrap.ts:1752-1873`의 `FluoFactory.createApplicationContext()`입니다. 이 함수를 `bootstrapApplication()`과 비교하면, 대부분의 순서가 동일합니다. 여전히 logger, platform shell, runtime provider list, compiled module, runtime context token, lifecycle instance, timing diagnostics를 만듭니다.
 
 핵심 차이는 token registration입니다. Full application에서는 `registerRuntimeBootstrapTokens()`가 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 모두 추가합니다. Context는 같은 platform, cleanup-registration, bootstrap-ready, container, compiled-module baseline을 등록하지만 `HTTP_APPLICATION_ADAPTER`는 생략합니다.
 
 토큰 등록 함수는 이 차이를 가장 작게 보여 줍니다. Application branch는 공유 lifecycle token과 함께 HTTP adapter token을 추가합니다. Context branch는 lifecycle token을 유지하되 adapter를 생략하고, 두 branch 모두 공통 context token 등록 helper로 내려갑니다.
 
-`path:packages/runtime/src/bootstrap.ts:1280-1300`
+`path:packages/runtime/src/bootstrap.ts:1404-1424`
 ```typescript
 function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -309,7 +313,7 @@ function registerRuntimeBootstrapTokens(
 
 이 첫 발췌는 full application branch가 HTTP adapter token을 추가한다는 점만 좁혀 보여 줍니다. 이어지는 공통 helper를 보면 context branch가 같은 baseline token을 공유하면서 adapter token만 제외한다는 차이가 닫힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:1302-1332`
+`path:packages/runtime/src/bootstrap.ts:1426-1456`
 ```typescript
 function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...providers: Provider[]): void {
   bootstrapped.container.register(
@@ -328,7 +332,7 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
 function registerRuntimeApplicationContextTokens(
   bootstrapped: BootstrapResult,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -354,7 +358,7 @@ lifecycle 동작도 완전합니다. 같은 테스트 파일의 `path:packages/r
 
 context와 application이 lifecycle을 공유한다는 점은 공통 helper에서 확인할 수 있습니다. bootstrap은 singleton lifecycle instance를 resolve하고, hook을 실행한 뒤 platform shell을 시작하고 readiness state를 표시합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1334-1358`
+`path:packages/runtime/src/bootstrap.ts:1458-1476`
 ```typescript
 async function resolveBootstrapLifecycleInstances(
   bootstrapped: BootstrapResult,
@@ -379,7 +383,7 @@ async function runBootstrapLifecycle(
 
 이 발췌는 lifecycle 대상 목록을 runtime provider와 compiled module provider에서 함께 만든다는 점을 보여 줍니다. 다음 발췌는 그 목록을 실제 bootstrap phase에서 어떻게 실행하는지로 초점을 좁힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:1346-1358`
+`path:packages/runtime/src/bootstrap.ts:1470-1483`
 ```typescript
 async function runBootstrapLifecycle(
   modules: CompiledModule[],
@@ -417,7 +421,7 @@ createApplicationContext(rootModule)
 그래서 context API는 고급 툴링에서 특히 유용합니다. 같은 validated module graph, 같은 singleton state, 같은 shutdown semantics를 얻으면서도, DI에 접근하려고 HTTP adapter를 억지로 만들 필요가 없습니다.
 
 ## 9.3 Full applications add dispatcher state, readiness checks, and adapter-driven listen semantics
-`FluoApplication`은 `path:packages/runtime/src/bootstrap.ts:403-529`에 정의되어 있습니다. context가 가지는 모든 것을 저장하면서, 추가로 `dispatcher`, adapter 존재 여부 상태, platform shell reference, connected microservice list, `ApplicationState`를 보관합니다.
+`FluoApplication`은 `path:packages/runtime/src/bootstrap.ts:600-858`에 정의되어 있습니다. context가 가지는 모든 것을 저장하면서, 추가로 `dispatcher`, adapter 존재 여부 상태, platform shell reference, connected microservice list, `ApplicationState`를 보관합니다.
 
 application shell의 constructor는 context baseline 위에 무엇이 추가되는지 직접 보여 줍니다. 같은 `container`, `modules`, `rootModule`을 받지만, dispatcher와 adapter 상태가 함께 들어옵니다.
 
@@ -464,11 +468,11 @@ bootstrap-failure cleanup은 lifecycle hook, adapter, container disposal로 넘�
 aggregate하여 완료되지 않은 phase를 명시적으로 retry하게 하고, bootstrap은 원래 error를 보존하며
 cleanup failure를 `ApplicationLogger`로 보고합니다.
 
-가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:437-443`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
+가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:654-660`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 
 `ready()`는 transport bind가 아니라 platform readiness gate입니다. adapter로 요청을 받기 전에 critical component 상태를 확인하는 단계로 분리되어 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:437-443`
+`path:packages/runtime/src/bootstrap.ts:654-660`
 ```typescript
   async ready(): Promise<void> {
     if (this.applicationState === 'closed') {
@@ -481,11 +485,11 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 즉 Fluo에서 readiness는 "server socket이 bind되었다"의 동의어가 아닙니다. platform shell에 기반한 pre-listen gate입니다. critical platform component가 ready라고 보고해야만 transport startup이 허용됩니다.
 
-`path:packages/runtime/src/bootstrap.ts:738-786`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
+`path:packages/runtime/src/bootstrap.ts:741-789`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
 
 그 다음 `listen()`이 adapter 정책을 적용합니다. adapter 없는 application bootstrap은 허용되지만, adapter 없이 listen하는 것은 이 guard에서 막힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:738-786`
+`path:packages/runtime/src/bootstrap.ts:741-789`
 ```typescript
   async listen(): Promise<void> {
     if (this.closeStarted) {
@@ -544,11 +548,11 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 이 guard를 통과한 뒤에야 `listen()`은 `await this.ready()`를 호출하고, 그 다음 `await this.adapter.listen(this.dispatcher)`를 실행합니다. 성공하면 state를 `'ready'`로 바꾸고 startup log를 남깁니다. 즉 transport adapter가 application state transition을 단독으로 소유하지 않습니다. 더 큰 runtime shell policy의 일부로 참여합니다.
 
-dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:890-910`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
+dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:1548-1568`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
 
 dispatcher 생성은 full application branch에만 필요한 request-facing 단계입니다. compiled module baseline에서 handler source를 만들고, HTTP pipeline 옵션을 묶은 뒤 dispatcher를 반환합니다.
 
-`path:packages/runtime/src/bootstrap.ts:890-910`
+`path:packages/runtime/src/bootstrap.ts:1548-1568`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,
@@ -640,14 +644,14 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 
 Failure-path cleanup은 `runBootstrapFailureCleanup()`이 소유합니다. Bootstrap이 lifecycle instance나 runtime resource를 만든 뒤 실패하더라도, runtime은 readiness를 reset하고 모든 cleanup phase를 시도하면서 원래 bootstrap error를 보존합니다.
 
-`path:packages/runtime/src/bootstrap.ts:223-243`
+`path:packages/runtime/src/bootstrap.ts:237-257`
 ```typescript
 async function runBootstrapFailureCleanup(options: {
   container?: Container;
   lifecycleInstances: readonly unknown[];
   logger: ApplicationLogger;
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   scope: 'application' | 'application context';
 }): Promise<void> {
   const errors: unknown[] = [];
@@ -667,7 +671,7 @@ async function runBootstrapFailureCleanup(options: {
 
 이 첫 failure-cleanup 발췌는 bootstrap 실패 후에도 lifecycle shutdown hook을 호출하려고 시도한다는 점을 보여 줍니다. 이어지는 발췌는 container disposal과 cleanup failure logging을 분리해서 보여 줍니다.
 
-`path:packages/runtime/src/bootstrap.ts:245-260`
+`path:packages/runtime/src/bootstrap.ts:259-274`
 ```typescript
   if (options.container) {
     try {
@@ -695,7 +699,7 @@ async function runBootstrapFailureCleanup(options: {
 
 close idempotency도 의도적인 설계입니다. `FluoApplication.close()`와 `FluoApplicationContext.close()`는 모두 `closingPromise`를 memoize합니다. close가 이미 진행 중이면, 뒤늦은 호출자는 같은 promise를 기다립니다. close가 성공하면 이후 호출은 즉시 return합니다. close가 실패하면 promise를 비워 재시도를 허용합니다.
 
-lifecycle hook ordering은 `path:packages/runtime/src/bootstrap.ts:1267-1279`의 `runShutdownHooks()`가 담당합니다. instance를 역순으로 순회하고, 먼저 `onModuleDestroy()`를 모두 실행한 뒤, 그 다음 `onApplicationShutdown(signal)`을 실행합니다. 가능한 한 startup dependency 방향을 거꾸로 되돌리는 ordering이라고 볼 수 있습니다.
+lifecycle hook ordering은 `path:packages/runtime/src/bootstrap.ts:1304-1330`의 `runShutdownHooks()`가 담당합니다. instance를 역순으로 순회하고, 먼저 `onModuleDestroy()`를 모두 실행한 뒤, 그 다음 `onApplicationShutdown(signal)`을 실행합니다. 가능한 한 startup dependency 방향을 거꾸로 되돌리는 ordering이라고 볼 수 있습니다.
 
 NestJS `beforeApplicationShutdown`은 지원하지 않으며 이 flow에 중간 phase를 만들지 않습니다. Application-wide signal cleanup보다 먼저 수행해야 하는 준비 작업은 `onModuleDestroy()`로 옮기고, signal에 의존하는 cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. Application context는 compatibility shim, alias, fallback 또는 추가 runtime hook을 설치하지 않습니다.
 
@@ -891,7 +895,7 @@ Private stop branch는 startup 순서의 반대로 component를 정리하고, �
 
 readiness branch는 application `ready()`가 호출하는 대상입니다. component report를 모아 aggregate readiness로 반환하고, critical not-ready 상태는 `assertCriticalReadiness()`에서 invariant error가 됩니다.
 
-`path:packages/runtime/src/platform-shell.ts:160-181`
+`path:packages/runtime/src/platform-shell.ts:156-176`
 ```typescript
   ready(): Promise<PlatformReadinessReport> {
     return this.probes.ready();

@@ -27,7 +27,7 @@ The public types in `path:packages/runtime/src/types.ts:163-199` make the simila
 
 This is not accidental API symmetry. It reflects the implementation order. Fluo first builds a transport-neutral DI and lifecycle baseline, then each shell type wraps and exposes only the capabilities it promises.
 
-The branch points are visible directly in the source. `bootstrapApplication()` in `path:packages/runtime/src/bootstrap.ts:920-1029` returns `new FluoApplication(...)`. `FluoFactory.createApplicationContext()` in `path:packages/runtime/src/bootstrap.ts:1059-1153` returns `new FluoApplicationContext(...)`. `FluoFactory.createMicroservice()` in `path:packages/runtime/src/bootstrap.ts:1164-1189` first creates an application context, then wraps the resolved runtime Token in `FluoMicroserviceApplication`.
+The branch points are visible directly in the source. `bootstrapApplication()` in `path:packages/runtime/src/bootstrap.ts:1578-1723` returns `new FluoApplication(...)`. `FluoFactory.createApplicationContext()` in `path:packages/runtime/src/bootstrap.ts:1752-1873` returns `new FluoApplicationContext(...)`. `FluoFactory.createMicroservice()` in `path:packages/runtime/src/bootstrap.ts:1884-1917` first creates an application context, then wraps the resolved runtime Token in `FluoMicroserviceApplication`.
 
 The representative point in the full application branch is the return statement. The earlier module bootstrap and lifecycle execution are shared, but only this branch passes the dispatcher, adapter, adapter availability flag, and platform shell reference into `FluoApplication`.
 
@@ -63,7 +63,7 @@ The fact that `dispatcher` and `adapter` enter together marks the application sh
 
 The context branch passes through the same spine, but returns a different object. It does not create a dispatcher or HTTP adapter. It only wraps the values needed for DI and lifecycle control in `FluoApplicationContext`.
 
-`path:packages/runtime/src/bootstrap.ts:1838-1855`
+`path:packages/runtime/src/bootstrap.ts:1836-1853`
 ```typescript
       return new FluoApplicationContext(
         bootstrapped.container,
@@ -87,7 +87,7 @@ The context branch passes through the same spine, but returns a different object
 
 The microservice branch is not another independent bootstrap. It first creates a context, then resolves a transport runtime Token from that context and puts a wrapper on top. Its public `CreateMicroserviceOptions` extends `CreateApplicationContextOptions`, which explicitly omits `logger`; callers may choose a `microserviceToken`, but cannot configure an application logger through this high-level microservice option.
 
-`path:packages/runtime/src/bootstrap.ts:1873-1895`
+`path:packages/runtime/src/bootstrap.ts:1888-1899`
 ```typescript
     const logger = createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
@@ -123,7 +123,7 @@ The tests reinforce this shared ancestry. `path:packages/runtime/src/bootstrap.t
 This shared bootstrap spine is the foundation of this chapter. To understand the rest of the runtime contract, first see that the context, application, and microservice shells are siblings built from one compiled module and container baseline.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:856-928`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, and the narrow context-resolution cache used by `get()`.
+`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:860-932`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, and the narrow context-resolution cache used by `get()`.
 
 The context shell itself shows that intent. The stored values are the ones needed for the compiled Module baseline and lifecycle cleanup, and the public behavior is DI lookup and close.
 
@@ -178,7 +178,7 @@ The only public methods are `get()` and `close()`. That minimal surface is the p
 
 For application-authored Providers, cache eligibility is limited to effective runtime Providers and Providers declared directly on the root Module. Bare classes and class/factory Providers must also be singleton, while aliases, values, and `multi: true` Providers are excluded. Internal runtime Tokens are seeded explicitly. Imported-Module Providers still use the container's own singleton cache, but `ApplicationContext.get()` does not add a second context-cache entry for them.
 
-`path:packages/runtime/src/bootstrap.ts:1074-1113`
+`path:packages/runtime/src/bootstrap.ts:1178-1217`
 ```typescript
 function createContextCacheableTokenSet(
   effectiveProviders: BootstrapEffectiveProviders,
@@ -187,15 +187,19 @@ function createContextCacheableTokenSet(
   const cacheableTokens = new Set<Token>(runtimeTokens);
 
   for (const provider of effectiveProviders.runtimeProviders) {
-    if (isDirectSingletonContextProvider(provider)) {
-      cacheableTokens.add(providerToken(provider));
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
     }
+
+    cacheableTokens.add(providerToken(provider));
   }
 
   for (const provider of effectiveProviders.rootModuleProviders) {
-    if (isDirectSingletonContextProvider(provider)) {
-      cacheableTokens.add(providerToken(provider));
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
     }
+
+    cacheableTokens.add(providerToken(provider));
   }
 
   return cacheableTokens;
@@ -220,7 +224,7 @@ function isDirectSingletonContextProvider(provider: Provider, includeMulti = fal
 
 The resolution helper memoizes the in-flight Promise only for those eligible Tokens and removes failed resolutions. Every other lookup delegates directly to DI, preserving alias target scope, request-scope errors, transient recreation, and fresh multi-provider contribution arrays. `container.override()` clears existing entries and recomputes eligibility for each overridden Token. After `close()`, `get()` deliberately bypasses the context cache and reaches the disposed container, so a previously cached singleton cannot hide the required post-close failure.
 
-`path:packages/runtime/src/bootstrap.ts:1129-1178`
+`path:packages/runtime/src/bootstrap.ts:1233-1282`
 ```typescript
 function installContextCacheInvalidation(
   container: Container,
@@ -276,19 +280,19 @@ async function resolveContextToken<T>(
 
 The regression coverage makes the boundary executable. `path:packages/runtime/src/bootstrap.test.ts:687-885` covers direct singleton memoization, duplicate-winner eligibility, transient overrides, and multi-provider delegation. `path:packages/runtime/src/application.test.ts:2783-2886` covers transient and request-scoped aliases, singleton override invalidation, and post-close failures for both `ApplicationContext.get()` and `Application.get()`.
 
-The actual bootstrap path is `FluoFactory.createApplicationContext()` in `path:packages/runtime/src/bootstrap.ts:1619-1740`. Compared with `bootstrapApplication()`, most of the order is the same. It still creates the logger, platform shell, runtime Provider list, compiled Module, runtime context Tokens, lifecycle instances, and timing diagnostics.
+The actual bootstrap path is `FluoFactory.createApplicationContext()` in `path:packages/runtime/src/bootstrap.ts:1752-1873`. Compared with `bootstrapApplication()`, most of the order is the same. It still creates the logger, platform shell, runtime Provider list, compiled Module, runtime context Tokens, lifecycle instances, and timing diagnostics.
 
 The key difference is Token registration. In a full application, `registerRuntimeBootstrapTokens()` adds both `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL`. A context registers the same platform, cleanup-registration, bootstrap-ready, container, and compiled-module baseline, but it omits `HTTP_APPLICATION_ADAPTER`.
 
 The Token registration functions show this difference in the smallest form. The application branch adds the HTTP adapter Token alongside the shared lifecycle Tokens. The context branch keeps those lifecycle Tokens but omits the adapter, then both branches fall through to the shared context Token registration helper.
 
-`path:packages/runtime/src/bootstrap.ts:1280-1300`
+`path:packages/runtime/src/bootstrap.ts:1404-1424`
 ```typescript
 function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -309,7 +313,7 @@ function registerRuntimeBootstrapTokens(
 
 This first excerpt narrows the full application branch to the fact that it adds the HTTP adapter Token. The shared helper below closes the comparison by showing that the context branch shares the same baseline Tokens while excluding only the adapter Token.
 
-`path:packages/runtime/src/bootstrap.ts:1302-1332`
+`path:packages/runtime/src/bootstrap.ts:1426-1456`
 ```typescript
 function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...providers: Provider[]): void {
   bootstrapped.container.register(
@@ -328,7 +332,7 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
 function registerRuntimeApplicationContextTokens(
   bootstrapped: BootstrapResult,
   platformShell: RuntimePlatformShell,
-  runtimeCleanup: Array<() => void>,
+  runtimeCleanup: RuntimeCleanupCallback[],
   bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
@@ -354,7 +358,7 @@ Lifecycle behavior is also complete. `path:packages/runtime/src/bootstrap.test.t
 
 The fact that context and application share lifecycle behavior is visible in the shared helpers. Bootstrap resolves singleton lifecycle instances, runs hooks, starts the platform shell, and marks readiness state.
 
-`path:packages/runtime/src/bootstrap.ts:1334-1358`
+`path:packages/runtime/src/bootstrap.ts:1458-1476`
 ```typescript
 async function resolveBootstrapLifecycleInstances(
   bootstrapped: BootstrapResult,
@@ -379,7 +383,7 @@ async function runBootstrapLifecycle(
 
 This excerpt shows that the lifecycle target list is built from both runtime Providers and compiled Module Providers. The next excerpt narrows the focus to how that list runs in the actual bootstrap phase.
 
-`path:packages/runtime/src/bootstrap.ts:1346-1358`
+`path:packages/runtime/src/bootstrap.ts:1470-1483`
 ```typescript
 async function runBootstrapLifecycle(
   modules: CompiledModule[],
@@ -417,7 +421,7 @@ createApplicationContext(rootModule)
 That is why the context API is especially useful for advanced tooling. You get the same validated Module Graph, the same singleton state, and the same shutdown semantics without forcing an HTTP adapter into existence just to access DI.
 
 ## 9.3 Full applications add dispatcher state, readiness checks, and adapter-driven listen semantics
-`FluoApplication` is defined in `path:packages/runtime/src/bootstrap.ts:403-529`. It stores everything the context stores, and also keeps the `dispatcher`, adapter availability state, platform shell reference, connected microservice list, and `ApplicationState`.
+`FluoApplication` is defined in `path:packages/runtime/src/bootstrap.ts:600-858`. It stores everything the context stores, and also keeps the `dispatcher`, adapter availability state, platform shell reference, connected microservice list, and `ApplicationState`.
 
 The application shell constructor shows directly what is added on top of the context baseline. It receives the same `container`, `modules`, and `rootModule`, but dispatcher and adapter state come with them.
 
@@ -464,11 +468,11 @@ disposal. A callback failure does not skip later registrations; close aggregates
 retry of that incomplete phase, while bootstrap preserves its original error and reports cleanup
 failures through `ApplicationLogger`.
 
-The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:437-443`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
+The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:654-660`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
 
 `ready()` is not a transport bind. It is a platform readiness gate, separated as the step that checks critical component state before the adapter starts receiving requests.
 
-`path:packages/runtime/src/bootstrap.ts:437-443`
+`path:packages/runtime/src/bootstrap.ts:654-660`
 ```typescript
   async ready(): Promise<void> {
     if (this.applicationState === 'closed') {
@@ -481,11 +485,11 @@ The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstr
 
 So in Fluo, readiness is not synonymous with "the server socket has been bound." It is a pre-listen gate based on the platform shell. Transport startup is allowed only if critical platform components report that they are ready.
 
-`listen()` in `path:packages/runtime/src/bootstrap.ts:738-786` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
+`listen()` in `path:packages/runtime/src/bootstrap.ts:741-789` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
 
 Then `listen()` applies the adapter policy. Adapterless application bootstrap is allowed, but listening without an adapter is blocked by this guard.
 
-`path:packages/runtime/src/bootstrap.ts:738-786`
+`path:packages/runtime/src/bootstrap.ts:741-789`
 ```typescript
   async listen(): Promise<void> {
     if (this.closeStarted) {
@@ -544,11 +548,11 @@ That exact error string is verified in `path:packages/runtime/src/application.te
 
 Only after this guard passes does `listen()` call `await this.ready()`, then `await this.adapter.listen(this.dispatcher)`. On success, it changes state to `'ready'` and writes the startup log. The transport adapter does not own the application state transition by itself. It participates as part of the larger runtime shell policy.
 
-Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:890-910`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
+Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:1548-1568`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
 
 Dispatcher creation is the request-facing step needed only by the full application branch. It creates handler sources from the compiled Module baseline, groups HTTP pipeline options, and returns the dispatcher.
 
-`path:packages/runtime/src/bootstrap.ts:890-910`
+`path:packages/runtime/src/bootstrap.ts:1548-1568`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,
@@ -640,14 +644,14 @@ The executable evidence is intentionally split by shell and race:
 
 Failure-path cleanup is owned by `runBootstrapFailureCleanup()`. Even after bootstrap creates lifecycle instances or runtime resources, the runtime resets readiness and attempts every cleanup phase while preserving the original bootstrap error.
 
-`path:packages/runtime/src/bootstrap.ts:223-243`
+`path:packages/runtime/src/bootstrap.ts:237-257`
 ```typescript
 async function runBootstrapFailureCleanup(options: {
   container?: Container;
   lifecycleInstances: readonly unknown[];
   logger: ApplicationLogger;
   modules: CompiledModule[];
-  runtimeCleanup: readonly (() => void)[];
+  runtimeCleanup: readonly RuntimeCleanupCallback[];
   scope: 'application' | 'application context';
 }): Promise<void> {
   const errors: unknown[] = [];
@@ -667,7 +671,7 @@ async function runBootstrapFailureCleanup(options: {
 
 This first failure-cleanup excerpt shows that the runtime tries to call lifecycle shutdown hooks even after bootstrap failure. The following excerpt separates container disposal from cleanup failure logging.
 
-`path:packages/runtime/src/bootstrap.ts:245-260`
+`path:packages/runtime/src/bootstrap.ts:259-274`
 ```typescript
   if (options.container) {
     try {
@@ -695,7 +699,7 @@ Tests make this guarantee concrete. `path:packages/runtime/src/application.test.
 
 Close idempotency is also intentional. Both `FluoApplication.close()` and `FluoApplicationContext.close()` memoize `closingPromise`. If close is already in progress, a later caller waits for the same promise. If close succeeds, later calls return immediately. If close fails, the promise is cleared so a retry is allowed.
 
-Lifecycle hook ordering is handled by `runShutdownHooks()` in `path:packages/runtime/src/bootstrap.ts:1267-1279`. It walks instances in reverse order, first running every `onModuleDestroy()`, then running every `onApplicationShutdown(signal)`. You can read this as an ordering that unwinds the startup dependency direction as much as possible.
+Lifecycle hook ordering is handled by `runShutdownHooks()` in `path:packages/runtime/src/bootstrap.ts:1304-1330`. It walks instances in reverse order, first running every `onModuleDestroy()`, then running every `onApplicationShutdown(signal)`. You can read this as an ordering that unwinds the startup dependency direction as much as possible.
 
 NestJS `beforeApplicationShutdown` is unsupported and does not create an intermediate phase in this flow. Move preparation that must happen before application-wide signal cleanup into `onModuleDestroy()`, or use `onApplicationShutdown(signal?)` when cleanup depends on the signal. The application context does not install a compatibility shim, alias, fallback, or extra runtime hook.
 
@@ -891,7 +895,7 @@ The private stop branch cleans up components in reverse startup order and clears
 
 The readiness branch is what application `ready()` calls. It gathers component reports, returns aggregate readiness, and `assertCriticalReadiness()` turns a critical not-ready state into an invariant error.
 
-`path:packages/runtime/src/platform-shell.ts:160-181`
+`path:packages/runtime/src/platform-shell.ts:156-176`
 ```typescript
   ready(): Promise<PlatformReadinessReport> {
     return this.probes.ready();
