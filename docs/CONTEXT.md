@@ -128,7 +128,7 @@ For the full contributor workflow, read [`CONTRIBUTING.md`](../CONTRIBUTING.md) 
 
 ## Release Governance Discoverability
 
-For Changesets consumption, generated package version deltas, Official Node.js support changes, and consumer runtime migration guidance, start with [`docs/contracts/release-governance.md`](./contracts/release-governance.md). The stable lane gate is `tooling/release/verify-changeset-release-lane.mjs`; it accepts generated version output after Changesets has consumed pending metadata, and requires either `Migration:` guidance or a structured upgrade guide when an Official package removes Node.js support.
+For Changesets consumption, generated package version deltas, Official Node.js support changes, and consumer runtime migration guidance, start with [`docs/contracts/release-governance.md`](./contracts/release-governance.md). The release workflow runs `pnpm verify:release-readiness` on the checked-out `main` commit before the stable lane gate and Changesets action. The stable lane gate is `tooling/release/verify-changeset-release-lane.mjs`; it accepts generated version output after Changesets has consumed pending metadata, and requires either `Migration:` guidance or a structured upgrade guide when an Official package removes Node.js support.
 
 ## Package Families
 

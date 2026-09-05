@@ -129,7 +129,7 @@ NestJS Prisma migration map에서는 migrated flow에 rollback 원자성이 필�
 
 ## 릴리스 거버넌스 탐색
 
-Changesets 소비, 생성된 패키지 version delta, Official Node.js 지원 변경, 소비자 runtime migration guidance는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)에서 시작한다. Stable lane gate는 `tooling/release/verify-changeset-release-lane.mjs`이며, Changesets가 pending metadata를 소비한 뒤의 생성 결과를 허용하고 Official 패키지가 Node.js 지원을 제거하면 `Migration:` guidance 또는 구조화된 upgrade guide를 요구한다.
+Changesets 소비, 생성된 패키지 version delta, Official Node.js 지원 변경, 소비자 runtime migration guidance는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)에서 시작한다. Release workflow는 stable lane gate와 Changesets action 전에 checkout된 `main` commit에서 `pnpm verify:release-readiness`를 실행한다. Stable lane gate는 `tooling/release/verify-changeset-release-lane.mjs`이며, Changesets가 pending metadata를 소비한 뒤의 생성 결과를 허용하고 Official 패키지가 Node.js 지원을 제거하면 `Migration:` guidance 또는 구조화된 upgrade guide를 요구한다.
 
 ## Package Families
 
