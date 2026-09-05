@@ -2,7 +2,7 @@ import { Inject, Scope } from '@fluojs/core';
 import type { Application } from '@fluojs/runtime';
 import { defineModule } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 

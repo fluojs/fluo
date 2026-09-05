@@ -7,17 +7,13 @@ import { URL } from 'node:url';
 
 import {
   BadRequestException,
-  PayloadTooLargeException,
-  type FrameworkRequestConnection,
   type FrameworkRequest,
+  type FrameworkRequestConnection,
+  PayloadTooLargeException,
 } from '@fluojs/http';
 
-import {
-  parseMultipart,
-  parseMultipartStream,
-  type MultipartOptions,
-  type UploadedFile,
-} from '../multipart.js';
+import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 
 type NodeFrameworkRequest = FrameworkRequest & {
   files?: UploadedFile[];

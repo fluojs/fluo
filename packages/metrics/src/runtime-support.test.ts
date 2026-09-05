@@ -7,17 +7,10 @@ const require = createRequire(import.meta.url);
 const PROM_CLIENT_PRIVATE_SEAM_VERSION = '15.1.3';
 
 describe('@fluojs/metrics runtime support metadata', () => {
-  it('matches the Node.js range required by its mandatory runtime dependency', () => {
-    // Given: the published metrics manifest and its mandatory runtime dependency manifest.
+  it('keeps its explicitly Node-bound package engine', () => {
     const metricsManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
-    const runtimeManifest = readFileSync(new URL('../../runtime/package.json', import.meta.url), 'utf8');
 
-    // When: their declared Node.js engine ranges are read.
-    const metricsNodeEngine = JSON.parse(metricsManifest).engines.node;
-    const runtimeNodeEngine = JSON.parse(runtimeManifest).engines.node;
-
-    // Then: metrics does not advertise support outside the runtime requirement.
-    expect(metricsNodeEngine).toBe(runtimeNodeEngine);
+    expect(JSON.parse(metricsManifest).engines.node).toBe('>=20.0.0');
   });
 
   it('pins the prom-client private collector metadata seam to the installed contract', () => {

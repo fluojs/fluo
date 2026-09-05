@@ -7,7 +7,6 @@ const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 const mandatoryFluoDependencyManifests = [
   '../../core/package.json',
   '../../di/package.json',
-  '../../runtime/package.json',
 ] as const;
 
 function extractNodeEngineFloor(manifest: string): readonly [number, number, number] {
@@ -47,14 +46,11 @@ describe('@fluojs/microservices runtime support metadata', () => {
     expect(JSON.parse(manifest)).toMatchObject({ engines: { node: nodeListenerEngine } });
   });
 
-  it('matches the Node.js range declared by its mandatory runtime dependency', () => {
-    // Given: the microservices manifest and the runtime manifest it depends on.
-    // When: both declared Node.js engine ranges are read.
-    // Then: microservices advertises exactly the runtime requirement.
+  it('matches the canonical Node platform support range', () => {
     const microservicesManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
-    const runtimeManifest = readFileSync(new URL('../../runtime/package.json', import.meta.url), 'utf8');
+    const nodePlatformManifest = readFileSync(new URL('../../platform-nodejs/package.json', import.meta.url), 'utf8');
 
-    expect(JSON.parse(microservicesManifest).engines.node).toBe(JSON.parse(runtimeManifest).engines.node);
+    expect(JSON.parse(microservicesManifest).engines.node).toBe(JSON.parse(nodePlatformManifest).engines.node);
   });
 
   it('covers the highest Node.js floor in the mandatory fluo dependency graph', () => {

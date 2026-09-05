@@ -65,7 +65,7 @@ Code-first resolver discovery 대신 schema-first 통합을 원하면 executable
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
 class HelloInput {

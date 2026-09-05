@@ -103,7 +103,7 @@ The microservice branch is not another independent bootstrap. It first creates a
       return new FluoMicroserviceApplication(context, logger, runtime, true);
 ```
 
-`CreateApplicationContextOptions` explicitly omits `logger`, and `CreateMicroserviceOptions` extends that option shape. The high-level microservice path therefore has no caller-supplied logger option: it uses the transport-neutral `createDefaultApplicationLogger()` while Studio wiring remains internal to context bootstrap. Node-specific logger helpers remain on `@fluojs/runtime/node`.
+`CreateApplicationContextOptions` explicitly omits `logger`, and `CreateMicroserviceOptions` extends that option shape. The high-level microservice path therefore has no caller-supplied logger option: it uses the transport-neutral `createDefaultApplicationLogger()` while Studio wiring remains internal to context bootstrap. Node-specific logger helpers remain on `@fluojs/platform-nodejs`.
 
 Taken together, these three excerpts make the layered composition clearer. An application is a shell with a dispatcher and HTTP adapter. A context is an adapterless DI and lifecycle shell. A microservice is a shell that attaches a transport runtime on top of a context.
 

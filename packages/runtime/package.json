@@ -17,9 +17,6 @@
     "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/runtime"
   },
-  "engines": {
-    "node": ">=20.19.3 <21 || >=22.2.0 <27"
-  },
   "publishConfig": {
     "access": "public"
   },
@@ -29,10 +26,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./node": {
-      "types": "./dist/node.d.ts",
-      "import": "./dist/node.js"
     },
     "./web": {
       "types": "./dist/web.d.ts",
@@ -53,21 +46,10 @@
     "./internal/request-response-factory": {
       "types": "./dist/internal-request-response-factory.d.ts",
       "import": "./dist/internal-request-response-factory.js"
-    },
-    "./internal-node": {
-      "types": "./dist/internal-node.d.ts",
-      "import": "./dist/internal-node.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "typesVersions": {
-    "*": {
-      "internal-node": [
-        "./dist/internal-node.d.ts"
-      ]
-    }
-  },
   "files": [
     "dist"
   ],
@@ -85,6 +67,7 @@
     "@fluojs/studio": "workspace:^"
   },
   "devDependencies": {
+    "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/serialization": "workspace:^",
     "vitest": "^3.2.4"
   }

@@ -37,7 +37,7 @@ Register the `OpenApiModule` and pass `sources`, prebuilt `descriptors`, or both
 ```typescript
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')

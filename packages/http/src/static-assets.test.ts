@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -82,6 +84,13 @@ async function invokeStaticMiddleware(
 }
 
 describe('static asset middleware', () => {
+  it('keeps the portable middleware independent from the Node filesystem source package', () => {
+    const source = readFileSync(new URL('./static-assets.ts', import.meta.url), 'utf8');
+
+    expect(source).not.toContain('@fluojs/platform-nodejs');
+    expect(source).not.toMatch(/from\s+['"]node:/u);
+  });
+
   it.each([
     '/assets/../secret.txt',
     '/assets/%2e%2e/secret.txt',

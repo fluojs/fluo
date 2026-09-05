@@ -133,6 +133,21 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
     ).not.toThrow();
   });
 
+  it('ignores a long shared-document line when only a distant package boundary changes', () => {
+    const unchangedTerminusFragment =
+      '`@fluojs/terminus` keeps `/health`, `/ready`, and TerminusModule behavior unchanged.';
+
+    expect(() =>
+      enforceTerminusRuntimeHealthContractCompanions(
+        ['docs/CONTEXT.md'],
+        () => [
+          `- runtime uses @fluojs/runtime/node ${'x'.repeat(300)} ${unchangedTerminusFragment}`,
+          `+ runtime uses @fluojs/platform-nodejs ${'x'.repeat(300)} ${unchangedTerminusFragment}`,
+        ].join('\n'),
+      ),
+    ).not.toThrow();
+  });
+
   it('requires companions when a shared document changes the Terminus sentinel', () => {
     expect(() =>
       enforceTerminusRuntimeHealthContractCompanions(

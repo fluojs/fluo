@@ -1,6 +1,7 @@
-import { type AddressInfo, createServer } from 'node:net';
-import { request as requestHttp, type IncomingHttpHeaders, type ServerOptions as HttpServerOptions } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { type ServerOptions as HttpServerOptions, type IncomingHttpHeaders, request as requestHttp } from 'node:http';
 import type { ServerOptions as HttpsServerOptions } from 'node:https';
+import { type AddressInfo, createServer } from 'node:net';
 import { gunzipSync } from 'node:zlib';
 import {
   Controller,
@@ -13,26 +14,24 @@ import {
   RequestDto,
 } from '@fluojs/http';
 import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtime';
-import {
-  type BootstrapNodeApplicationOptions,
-  bootstrapNodeApplication,
-  type NodeApplicationSignal,
-  type NodeHttpAdapterOptions,
-  NodeHttpApplicationAdapter,
-  type RunNodeApplicationOptions,
-  runNodeApplication,
-} from '@fluojs/runtime/node';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import * as platformNodejsApi from './index.js';
 import {
+  type BootstrapNodeApplicationOptions,
   type BootstrapNodejsApplicationOptions,
+  bootstrapNodeApplication,
   bootstrapNodejsApplication,
   createNodejsAdapter,
+  type NodeApplicationSignal,
+  type NodeHttpAdapterOptions,
+  NodeHttpApplicationAdapter,
   type NodejsAdapterOptions,
   type NodejsApplicationSignal,
   type NodejsHttpApplicationAdapter,
+  type RunNodeApplicationOptions,
   type RunNodejsApplicationOptions,
+  runNodeApplication,
   runNodejsApplication,
 } from './index.js';
 
@@ -159,6 +158,19 @@ const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
 });
 
 describe('@fluojs/platform-nodejs', () => {
+  it('owns the former runtime Node entrypoints and internal integration seam', () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { exports: Record<string, unknown> };
+
+    expect(platformNodejsApi).toHaveProperty('createNodeHttpAdapter');
+    expect(platformNodejsApi).toHaveProperty('createNodeFileSystemAssetSource');
+    expect(platformNodejsApi).toHaveProperty('createNodeShutdownSignalRegistration');
+    expect(platformNodejsApi).toHaveProperty('createConsoleApplicationLogger');
+    expect(platformNodejsApi).toHaveProperty('NodeHttpApplicationAdapter');
+    expect(manifest.exports).toHaveProperty('./internal');
+  });
+
   it('captures connection metadata through a real public Node listener', async () => {
     const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
     let connection: RequestContext['request']['connection'];
@@ -258,10 +270,20 @@ describe('@fluojs/platform-nodejs', () => {
     expect(runNodejsApplication).toBe(runNodeApplication);
   });
 
-  it('keeps the documented runtime value surface focused on Node.js startup helpers', () => {
+  it('publishes the complete former runtime Node value surface with platform aliases', () => {
     expect(Object.keys(platformNodejsApi).sort()).toEqual([
+      'NodeHttpApplicationAdapter',
+      'bootstrapNodeApplication',
       'bootstrapNodejsApplication',
+      'createConsoleApplicationLogger',
+      'createJsonApplicationLogger',
+      'createNodeFileSystemAssetSource',
+      'createNodeHttpAdapter',
+      'createNodeShutdownSignalRegistration',
       'createNodejsAdapter',
+      'defaultNodeShutdownSignals',
+      'registerShutdownSignals',
+      'runNodeApplication',
       'runNodejsApplication',
     ]);
   });
@@ -379,11 +401,9 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
-  it('keeps advanced process and compression utilities off the primary platform startup surface', () => {
+  it('keeps low-level compression utilities on the internal platform seam', () => {
     expect(platformNodejsApi).not.toHaveProperty('compressNodeResponse');
     expect(platformNodejsApi).not.toHaveProperty('createNodeResponseCompression');
-    expect(platformNodejsApi).not.toHaveProperty('createNodeShutdownSignalRegistration');
-    expect(platformNodejsApi).not.toHaveProperty('registerShutdownSignals');
   });
 
   it('writes gzip bytes for full responses and identity bytes for ranges over raw Node HTTP', async () => {

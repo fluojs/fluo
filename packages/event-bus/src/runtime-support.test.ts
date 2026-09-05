@@ -14,10 +14,10 @@ function readManifest(path: string): PackageManifest {
 }
 
 describe('@fluojs/event-bus runtime support', () => {
-  it('matches the Node.js support range required by @fluojs/runtime', () => {
+  it('matches the canonical Node platform support range', () => {
     const eventBusManifest = readManifest(resolve(import.meta.dirname, '../package.json'));
-    const runtimeManifest = readManifest(resolve(import.meta.dirname, '../../runtime/package.json'));
+    const nodePlatformManifest = readManifest(resolve(import.meta.dirname, '../../platform-nodejs/package.json'));
 
-    expect(eventBusManifest.engines.node).toBe(runtimeManifest.engines.node);
+    expect(eventBusManifest.engines.node).toBe(nodePlatformManifest.engines.node);
   });
 });

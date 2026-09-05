@@ -37,8 +37,27 @@ const sharedPaths = new Set([
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
-const changedPatchPattern =
-  /^[+-].*(?:fluo-terminus-contract:|@fluojs\/terminus|NestJS Terminus|TerminusModule|`?\/health`?|`?\/ready`?)/mu;
+const sharedContractMarkerPattern =
+  /(?:fluo-terminus-contract:|@fluojs\/terminus|NestJS Terminus|TerminusModule|`?\/health`?|`?\/ready`?)/gu;
+
+function sharedTerminusContractFragments(patch, prefix) {
+  return patch.split('\n').flatMap((line) => {
+    if (!line.startsWith(prefix) || line.startsWith(`${prefix}${prefix}${prefix}`)) {
+      return [];
+    }
+
+    const content = line.slice(1);
+    return [...content.matchAll(sharedContractMarkerPattern)].map((match) => {
+      const index = match.index ?? 0;
+      return content.slice(Math.max(0, index - 120), index + match[0].length + 120);
+    });
+  });
+}
+
+function sharedTerminusContractChanged(patch) {
+  return JSON.stringify(sharedTerminusContractFragments(patch, '-')) !==
+    JSON.stringify(sharedTerminusContractFragments(patch, '+'));
+}
 
 function assertContract(condition, message) {
   if (!condition) {
@@ -99,7 +118,7 @@ export function enforceTerminusRuntimeHealthContractCompanions(
 ) {
   const touchedAuthoritativePath = changedFiles.some((path) => authoritativePaths.has(path));
   const touchedSharedContractSection = !touchedAuthoritativePath && changedFiles.some((path) =>
-    sharedPaths.has(path) && changedPatchPattern.test(readChangedPatch(path)));
+    sharedPaths.has(path) && sharedTerminusContractChanged(readChangedPatch(path)));
 
   if (!touchedAuthoritativePath && !touchedSharedContractSection) {
     return;

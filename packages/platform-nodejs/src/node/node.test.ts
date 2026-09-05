@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import * as rootRuntimeApi from '@fluojs/runtime';
 
-import { defineModule } from '../bootstrap.js';
-import * as rootRuntimeApi from '../index.js';
-import * as publicNodeApi from '../node.js';
-import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '../node.js';
+import { defineModule } from '@fluojs/runtime';
+import { describe, expect, it } from 'vitest';
+import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '../index.js';
+import * as publicNodeApi from '../index.js';
 
 describe('createNodeHttpAdapter', () => {
   it('keeps Node lifecycle helpers out of the runtime root barrel', () => {

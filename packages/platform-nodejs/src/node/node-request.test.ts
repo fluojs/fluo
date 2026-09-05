@@ -1,15 +1,14 @@
-import type { IncomingMessage } from 'node:http';
 import { EventEmitter } from 'node:events';
+import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
-
+import { NodeRequestPayloadTooLargeException } from './internal-node-request.js';
 import {
   createDeferredFrameworkRequest,
   createFrameworkRequest,
   materializeFrameworkRequestBody,
 } from './node-request.js';
-import { NodeRequestPayloadTooLargeException } from './internal-node-request.js';
 
 function createIncomingMessage(options: {
   body?: string | Uint8Array;

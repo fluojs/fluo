@@ -21,8 +21,8 @@
       "@fluojs/runtime": ["../../../packages/runtime/src/index.ts"],
       "@fluojs/runtime/internal/http-adapter": ["../../../packages/runtime/src/internal-http-adapter.ts"],
       "@fluojs/runtime/internal/request-response-factory": ["../../../packages/runtime/src/internal-request-response-factory.ts"],
-      "@fluojs/runtime/internal-node": ["../../../packages/runtime/src/internal-node.ts"],
-      "@fluojs/runtime/node": ["../../../packages/runtime/src/node.ts"],
+      "@fluojs/platform-nodejs/internal": ["../../../packages/runtime/src/internal-node.ts"],
+      "@fluojs/platform-nodejs": ["../../../packages/runtime/src/node.ts"],
       "@fluojs/runtime/web": ["../../../packages/runtime/src/web.ts"],
       "@fluojs/validation": ["../../../packages/validation/src/index.ts"]
     }

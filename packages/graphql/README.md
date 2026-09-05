@@ -70,7 +70,7 @@ You can also pass an executable `GraphQLSchema` via `schema` when you want schem
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
 class HelloInput {

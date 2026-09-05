@@ -272,15 +272,12 @@ describe('published Node engine manifest enforcement', () => {
     expect(result.checkedStableNodeEngineRangeNarrowings).toEqual([]);
   });
 
-  it('keeps CQRS within its mandatory Event Bus and Runtime Node support window', () => {
-    // Given: CQRS packages two mandatory dependencies that own its runtime execution path.
+  it('keeps CQRS within the Event Bus and canonical Node platform support window', () => {
     const cqrsManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/cqrs/package.json'), 'utf8'));
     const eventBusManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/event-bus/package.json'), 'utf8'));
-    const runtimeManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/runtime/package.json'), 'utf8'));
+    const nodePlatformManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/platform-nodejs/package.json'), 'utf8'));
 
-    // When: package-manager engines metadata admits a consumer Node.js version.
-    // Then: CQRS does not claim broader support than either mandatory dependency.
     expect(cqrsManifest.engines.node).toBe(eventBusManifest.engines.node);
-    expect(cqrsManifest.engines.node).toBe(runtimeManifest.engines.node);
+    expect(cqrsManifest.engines.node).toBe(nodePlatformManifest.engines.node);
   });
 });

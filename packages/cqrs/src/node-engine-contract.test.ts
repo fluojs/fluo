@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 const supportedNodeRange = '>=20.19.3 <21 || >=22.2.0 <27';
 
-function readPackageManifest(packageName: 'cqrs' | 'runtime') {
-  return JSON.parse(readFileSync(fileURLToPath(new URL(`../${packageName === 'cqrs' ? '' : `../${packageName}/`}package.json`, import.meta.url)), 'utf8'));
+function readPackageManifest(packageName: 'cqrs' | 'platform-nodejs') {
+  return JSON.parse(readFileSync(fileURLToPath(new URL(
+    packageName === 'cqrs' ? '../package.json' : '../../platform-nodejs/package.json',
+    import.meta.url,
+  )), 'utf8'));
 }
 
 const documentationScopes = [
@@ -29,15 +32,12 @@ function readDocumentationScope([documentPath, scopeStart, scopeEnd]: (typeof do
 }
 
 describe('@fluojs/cqrs Node engine contract', () => {
-  it('matches its mandatory runtime dependency support window', () => {
-    // Given: CQRS depends on the published Runtime package at install time.
+  it('matches the canonical Node platform support window', () => {
     const cqrsManifest = readPackageManifest('cqrs');
-    const runtimeManifest = readPackageManifest('runtime');
+    const nodePlatformManifest = readPackageManifest('platform-nodejs');
 
-    // When: package-manager engines metadata evaluates the dependency closure.
-    // Then: CQRS never admits a Node.js version Runtime excludes.
     expect(cqrsManifest.engines.node).toBe(supportedNodeRange);
-    expect(runtimeManifest.engines.node).toBe(supportedNodeRange);
+    expect(nodePlatformManifest.engines.node).toBe(supportedNodeRange);
   });
 
   it('keeps the manifest Node engine token in every scoped CQRS documentation surface', () => {

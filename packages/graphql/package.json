@@ -55,6 +55,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@fluojs/platform-nodejs": "workspace:^",
     "@types/ws": "^8.18.1",
     "vitest": "^3.2.4"
   }

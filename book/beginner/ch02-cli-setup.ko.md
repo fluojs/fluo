@@ -380,7 +380,7 @@ pnpm dev
 
 fluo restart runner가 process boundary를 소유할 때 `fluo dev`는 `fluo start`와 같은 형태의 터미널 출력, 즉 애플리케이션 stdout/stderr만 보여 줍니다. fluo lifecycle UI가 필요하면 `fluo dev --reporter pretty`로 opt-in하고, 런타임 또는 watcher 원본 출력까지 디버깅해야 한다면 `fluo dev --verbose`, `fluo dev --reporter stream`을 실행하거나 `FLUO_VERBOSE=1`을 설정하세요. runtime-native Bun, Deno, Workers watch loop는 해당 도구가 dev loop를 소유하므로 런타임 또는 도구 출력을 표시할 수 있습니다.
 
-이 CLI reporter는 애플리케이션/런타임 로깅과 별개입니다. 부트스트랩 이후 앱이 내보내는 로그를 조정하려면 코드에서 `ApplicationLogger`를 설정하세요. 예를 들어 `@fluojs/runtime/node`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용할 수 있습니다.
+이 CLI reporter는 애플리케이션/런타임 로깅과 별개입니다. 부트스트랩 이후 앱이 내보내는 로그를 조정하려면 코드에서 `ApplicationLogger`를 설정하세요. 예를 들어 `@fluojs/platform-nodejs`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용할 수 있습니다.
 
 처음 실행할 때 기본 CLI reporter는 애플리케이션 stdout/stderr만 전달합니다. `--reporter pretty`로 opt-in하지 않으면 별도의 fluo lifecycle UI를 추가하지 않습니다. 그래도 다음과 비슷한 런타임 시작 로그를 기대할 수 있습니다.
 
