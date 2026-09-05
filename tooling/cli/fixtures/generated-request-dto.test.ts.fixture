@@ -1,0 +1,20 @@
+import { getDtoBindingSchema } from '@fluojs/core/request-pipeline';
+import { FromQuery } from '@fluojs/http';
+import { expect, it } from 'vitest';
+
+import { verifyGeneratedDtoBinding } from './toolchain.dto';
+
+it('binds a decorated DTO field through the generated Vitest toolchain', async () => {
+  await verifyGeneratedDtoBinding();
+});
+
+it('preserves field decorators declared inside generated test files', () => {
+  class TestRequest {
+    @FromQuery('display_name')
+    name = '';
+  }
+
+  expect(getDtoBindingSchema(TestRequest)).toStrictEqual([
+    { metadata: { key: 'display_name', optional: undefined, source: 'query' }, propertyKey: 'name' },
+  ]);
+});

@@ -17,7 +17,7 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
     }
   });
 
-  const response = await page.goto('/products/sku-42?preview=true', { waitUntil: 'networkidle' });
+  const response = await page.goto('/products/sku-42?preview=true', { waitUntil: 'load' });
   if (response === null) {
     throw new TypeError('The production page did not return a navigation response.');
   }

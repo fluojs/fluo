@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+
+import { Module } from '@fluojs/core';
+import { getDtoBindingSchema } from '@fluojs/core/request-pipeline';
+import { Controller, FromQuery, Get, RequestDto } from '@fluojs/http';
+import { createTestApp } from '@fluojs/testing';
+
+class GreetingRequest {
+  @FromQuery('display_name')
+  name = '';
+}
+
+@Controller('/toolchain')
+class ToolchainController {
+  @Get('/')
+  @RequestDto(GreetingRequest)
+  greet(input: GreetingRequest) {
+    return { name: input.name };
+  }
+}
+
+@Module({ controllers: [ToolchainController] })
+class ToolchainModule {}
+
+export async function verifyGeneratedDtoBinding(): Promise<void> {
+  assert.deepEqual(getDtoBindingSchema(GreetingRequest), [
+    { metadata: { key: 'display_name', optional: undefined, source: 'query' }, propertyKey: 'name' },
+  ]);
+
+  const app = await createTestApp({ rootModule: ToolchainModule });
+  try {
+    const response = await app.request('GET', '/toolchain/').query('display_name', 'Ada').send();
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { name: 'Ada' });
+  } finally {
+    await app.close();
+  }
+}

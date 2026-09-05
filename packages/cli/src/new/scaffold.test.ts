@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { transformAsync } from '@babel/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 import { scaffoldBootstrapApp } from './scaffold.js';
@@ -266,6 +267,47 @@ function assertGeneratedBrokerStarterIsImportAndInspectSafe(projectDirectory: st
 }
 
 describe('scaffoldBootstrapApp', () => {
+  it('transforms decorated test files through the generated Babel config', async () => {
+    const targetDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-scaffold-test-decorators-')));
+    temporaryDirectories.push(targetDirectory);
+    await scaffoldBootstrapApp({
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      packageManager: 'pnpm',
+      projectName: 'starter-app',
+      skipInstall: true,
+      targetDirectory,
+    });
+    symlinkSync(
+      fileURLToPath(new URL('../../../../node_modules', import.meta.url)),
+      join(targetDirectory, 'node_modules'),
+      'dir',
+    );
+
+    const transformed = await transformAsync(`
+      const bindings: string[] = [];
+      function Field(_value: undefined, context: ClassFieldDecoratorContext) {
+        bindings.push(String(context.name));
+      }
+      class TestDto {
+        @Field
+        name = '';
+      }
+      export default bindings;
+    `, {
+      babelrc: false,
+      configFile: join(targetDirectory, 'babel.config.cjs'),
+      cwd: targetDirectory,
+      filename: join(targetDirectory, 'src', 'dto.test.ts'),
+    });
+
+    expect(transformed).not.toBeNull();
+    if (!transformed?.code) {
+      throw new TypeError('Expected generated Babel config to transform the decorated test file.');
+    }
+    const module = await import(`data:text/javascript;base64,${Buffer.from(transformed.code).toString('base64')}`);
+    expect(module.default).toEqual(['name']);
+  });
+
   it('generates TS6 starter configs without deprecated baseUrl aliases', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-'));
     temporaryDirectories.push(targetDirectory);
@@ -310,7 +352,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/cli': `^${cliManifest.version}`,
       '@fluojs/testing': '^1.0.0',
       '@fluojs/vite': '^1.0.0',
-      '@vitest/coverage-v8': '^3.0.8',
+      '@vitest/coverage-v8': '^4.1.11',
+      vite: '^8.2.2',
+      vitest: '^4.1.11',
     });
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
@@ -333,6 +377,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(greetingModuleFile).toContain('export class GreetingModule');
     expect(viteConfig).toContain("import { fluoDecoratorsPlugin } from '@fluojs/vite';");
     expect(viteConfig).toContain("import { defineConfig } from 'vite';");
+    expect(viteConfig).toContain('rolldownOptions:');
+    expect(viteConfig).not.toMatch(/\b(?:rollupOptions|oxc|esbuild)\s*:/u);
     expect(viteConfig).not.toContain("import { transformAsync } from '@babel/core';");
     expect(viteConfig).not.toContain('function fluoDecoratorsPlugin');
     expect(viteConfig).not.toContain('baseUrl');

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -414,9 +414,28 @@ function verifySandboxProject(projectName) {
   }
 
   log('Running generated project checks');
+  if (hasHttpStarter) {
+    const fixtureDirectory = join(repoRoot, 'tooling', 'cli', 'fixtures');
+    cpSync(join(fixtureDirectory, 'generated-request-dto.ts.fixture'), join(projectDirectory, 'src', 'toolchain.dto.ts'));
+    cpSync(join(fixtureDirectory, 'generated-request-dto.test.ts.fixture'), join(projectDirectory, 'src', 'toolchain.dto.test.ts'));
+  }
   run('pnpm', ['typecheck'], projectDirectory);
   run('pnpm', ['build'], projectDirectory);
   run('pnpm', ['test'], projectDirectory);
+  if (hasHttpStarter) {
+    log('Building and executing decorated DTO field bindings through the generated Vite config');
+    run('pnpm', [
+      'exec', 'vite', 'build',
+      '--config', hasReactViteSsrStarter ? 'vite.server.config.ts' : 'vite.config.ts',
+      '--ssr', 'src/toolchain.dto.ts',
+      '--outDir', '.fluo/toolchain',
+    ], projectDirectory);
+    run('node', [
+      '--input-type=module',
+      '-e',
+      "const { verifyGeneratedDtoBinding } = await import('./.fluo/toolchain/main.js'); await verifyGeneratedDtoBinding(); console.log('Generated Vite DTO field binding passed');",
+    ], projectDirectory);
+  }
   if (starterContract === 'react-vite-ssr') {
     run('pnpm', ['test:browser'], projectDirectory);
   }

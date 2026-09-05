@@ -91,7 +91,10 @@ describe('React SSR + Vite scaffold', () => {
         '@playwright/test': '^1.51.1',
         '@types/react': '^19.2.14',
         '@types/react-dom': '^19.2.3',
+        '@vitest/coverage-v8': '^4.1.11',
         'happy-dom': '^20.9.0',
+        vite: '^8.2.2',
+        vitest: '^4.1.11',
       }),
       scripts: expect.objectContaining({
         build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
@@ -148,6 +151,13 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['tests/production-hydration.spec.ts']).toContain('expect(browserDiagnostics).toEqual([])');
     expect(snapshot['vite.client.config.ts']).toContain("manifest: true");
     expect(snapshot['vite.server.config.ts']).toContain("ssr: 'src/main.ts'");
+    expect(snapshot['vite.client.config.ts']).toContain('rolldownOptions:');
+    expect(snapshot['vite.server.config.ts']).toContain('rolldownOptions:');
+    expect(snapshot['vite.server.config.ts']).toContain('plugins: [fluoDecoratorsPlugin()]');
+    expect(snapshot['vitest.config.ts']).toContain('plugins: [fluoBabelDecoratorsPlugin()]');
+    for (const config of ['vite.client.config.ts', 'vite.server.config.ts', 'vitest.config.ts']) {
+      expect(snapshot[config]).not.toMatch(/\b(?:rollupOptions|oxc|esbuild)\s*:/u);
+    }
     expect(snapshot).not.toHaveProperty('src/routes.generated.ts');
     expect(snapshot).not.toHaveProperty('src/app.tsx');
     expect(snapshot).not.toHaveProperty('src/hydration.ts');

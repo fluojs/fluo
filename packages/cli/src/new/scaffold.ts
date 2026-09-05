@@ -17,11 +17,11 @@ const PUBLISHED_DEV_DEPENDENCIES = {
   '@babel/preset-typescript': '^7.27.1',
   '@types/babel__core': '^7.20.5',
   '@types/node': '^22.13.10',
-  '@vitest/coverage-v8': '^3.0.8',
+  '@vitest/coverage-v8': '^4.1.11',
   tsx: '^4.23.1',
   typescript: '^6.0.2',
-  vite: '^6.2.1',
-  vitest: '^3.0.8',
+  vite: '^8.2.2',
+  vitest: '^4.1.11',
 } as const;
 
 const PUBLISHED_RUNTIME_DEPENDENCIES = {
@@ -396,7 +396,6 @@ function createProjectTsconfigBuild(): string {
 
 function createBabelConfig(): string {
   return `module.exports = {
-  ignore: ['src/**/*.test.ts'],
   presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
   plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
 };
@@ -412,7 +411,7 @@ export default defineConfig({
   build: {
     emptyOutDir: true,
     outDir: 'dist',
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         entryFileNames: 'main.js',
       },
