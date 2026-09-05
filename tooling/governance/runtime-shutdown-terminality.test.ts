@@ -120,7 +120,7 @@ describe('runtime shutdown terminality documentation', () => {
     'book/advanced/ch09-app-context.ko.md',
   ])('keeps Chapter 9 context get and application listen examples aligned with shutdown admission in %s', (relativePath) => {
     const content = read(relativePath);
-    const contextGet = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:856-896');
+    const contextGet = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:857-898');
     const applicationListen = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:738-786');
 
     expect(contextGet).toContain('private closeStarted = false;');
