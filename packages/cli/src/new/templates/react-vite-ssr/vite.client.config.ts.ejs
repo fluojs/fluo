@@ -8,7 +8,7 @@ export default defineConfig({
     emptyOutDir: true,
     manifest: true,
     outDir: 'dist/client',
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         'entry-client': fileURLToPath(new URL('./src/entry-client.tsx', import.meta.url)),
         'entry-server': fileURLToPath(new URL('./src/entry-server.tsx', import.meta.url)),

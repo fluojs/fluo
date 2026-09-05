@@ -12,6 +12,12 @@
 | **Mixed starter** | **Scaffolded** | Node.js + Fastify HTTP app + attached TCP microservice via `--shape mixed --transport tcp --runtime node --platform fastify` | This is the only published mixed starter variant. |
 | **Broader adapter/runtime ecosystem** | **Partially scaffolded, partially docs-only** | `@fluojs/platform-fastify`, `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, and `@fluojs/platform-cloudflare-workers` all have first-class application starter paths. Other runtime/package combinations remain broader ecosystem docs rather than starter presets. | Use the runtime/package docs below to adopt the remaining docs-only adapters after scaffolding or in hand-authored setups. |
 
+## generated toolchain
+
+All non-Deno starters declare Vite `^8.2.2`, Vitest `^4.1.11`, and `@vitest/coverage-v8` `^4.1.11`. Generated ESM Vite configs use `build.rolldownOptions`. Standard starters retain `fluoDecoratorsPlugin()` in `vite.config.ts`; React SSR keeps it in `vite.server.config.ts`, with decorator-bearing declarations in `.ts` files and JSX in `.tsx` files. `vitest.config.ts` retains the separate `@fluojs/testing/vitest` transform. Direct Oxc/esbuild decorator processing is unsupported.
+
+The representative sandbox matrix installs, builds, typechecks, and tests React SSR, Node HTTP, TCP microservice, and mixed projects. HTTP-capable scenarios also run an aliased decorated DTO field through generated Vitest and build the same fixture with the generated Vite config, then execute the bundle to assert metadata and request binding. React additionally runs development and production browser hydration checks. Node.js `>=24.0.0 <27` and Bun/Deno/Workers runtime-native metadata remain unchanged; Deno keeps its native build/test commands. See the [toolchain contract matrix](./toolchain-contract-matrix.md) for transform ownership.
+
 ## interpretation rules
 
 | rule | meaning |

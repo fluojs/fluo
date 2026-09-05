@@ -8,9 +8,9 @@
 | --- | --- | --- |
 | **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext`, generated configs avoid deprecated `baseUrl` aliasing |
 | **Babel** | `v7.26+` | Root workspace pins `@babel/core` `^7.26.10`, `@babel/plugin-proposal-decorators` `^7.28.0` with `{ version: '2023-11' }`, and `@babel/preset-typescript` `^7.27.0`. |
-| **Vite** | `v8.2+` | Root workspace declares Vite `^8.2.2` and overrides it to exactly 8.2.2, so the primary dev/test toolchain executes the Rolldown/Oxc pipeline. |
+| **Vite** | `v8.2+` | Root workspace declares Vite `^8.2.2` and overrides it to exactly 8.2.2. Generated non-Deno projects also declare `^8.2.2`; their ESM configs use `build.rolldownOptions`. `fluoDecoratorsPlugin()` transforms application decorators with Babel before Rolldown/Oxc; direct Oxc/esbuild decorator processing is unsupported. |
 | **@fluojs/vite** | `v1.0+`; Node.js `>=24.0.0 <27` | Generated non-Deno Vite config files import `fluoDecoratorsPlugin()` from `@fluojs/vite`; the React SSR starter applies it at the server-build boundary. The plugin owns Vite application-file decorator transforms, retains its published Vite `>=6.2.0` peer range, keeps Babel peer loading lazy until an eligible transform runs, and verifies field-decorator metadata with executable workspace Vite 8.2.2 coverage. |
-| **Vitest** | `v4.1+` | Root and package-local workspace toolchains declare `vitest` `^4.1.11`. |
+| **Vitest** | `v4.1+` | Root, package-local workspace, and generated non-Deno toolchains declare `vitest` `^4.1.11`. Generated projects pair it with `@vitest/coverage-v8` `^4.1.11` and retain `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest`. |
 | **Node.js** | Root workspace and Node-bound public packages: `>=24.0.0 <27` | Exact `24.0.0`, latest `24.x`, and latest `26.x` run a frozen install, full `pnpm verify`, and generated starter checks. Latest `24.x` also runs `pnpm verify:docs` and release automation; latest `26.x` verifies forward compatibility only. Node 22 is absent from the new-major matrix. The eight portable engine omissions and Bun/Deno/Workers runtime lanes remain independent. See [support and migration](./node-support.md). |
 
 ## CLI & scaffolding contracts

@@ -1843,7 +1843,7 @@ void bootstrap();
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
   });
 
-  it('keeps Babel test-file ignore rules in babel.config.cjs instead of shell-quoted build args', async () => {
+  it('keeps generated test decorators enabled without shell-quoted build args', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
 
@@ -1862,7 +1862,9 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(packageJson.scripts.build).not.toContain('--ignore');
-    expect(babelConfig).toContain("ignore: ['src/**/*.test.ts']");
+    expect(packageJson.scripts.build).toBe('fluo build');
+    expect(babelConfig).not.toContain('ignore:');
+    expect(babelConfig).toContain("['@babel/plugin-proposal-decorators', { version: '2023-11' }]");
   });
 
   it('keeps explicit --target-directory when it appears before positional project name', async () => {
