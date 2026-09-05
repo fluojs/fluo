@@ -90,6 +90,16 @@ function updateLastActivity(activity: WorkerActivity) {
   getWorkerDebugState().lastActivity = activity;
 }
 
+function updateSuiteActivity(phase: 'beforeAll' | 'afterAll', _context: object, suite: SuiteLike) {
+  updateLastActivity({
+    at: new Date().toISOString(),
+    file: resolveWorkerActivityFilePath(suite),
+    phase,
+    suite: resolveWorkerActivitySuiteName(suite),
+    test: null,
+  });
+}
+
 function writeWorkerSignalSnapshot(trigger: 'SIGINT' | 'SIGTERM') {
   const workerState = getWorkerDebugState();
   const filePath = writeVitestShutdownDebugSnapshot(process.cwd(), `worker-${String(process.pid)}-${trigger.toLowerCase()}`, {
@@ -128,43 +138,27 @@ function installProcessListeners() {
 if (isFluoVitestShutdownDebugEnabled()) {
   installProcessListeners();
 
-  beforeAll((suite) => {
-    updateLastActivity({
-      at: new Date().toISOString(),
-      file: resolveWorkerActivityFilePath(suite),
-      phase: 'beforeAll',
-      suite: resolveWorkerActivitySuiteName(suite),
-      test: null,
-    });
-  });
+  beforeAll(updateSuiteActivity.bind(undefined, 'beforeAll'));
 
-  beforeEach((context, suite) => {
+  beforeEach(({ task }) => {
     updateLastActivity({
       at: new Date().toISOString(),
-      file: resolveWorkerActivityFilePath(context),
+      file: resolveWorkerActivityFilePath({ task }),
       phase: 'beforeEach',
-      suite: resolveWorkerActivitySuiteName(suite),
-      test: resolveWorkerActivityTestName(context),
+      suite: resolveWorkerActivitySuiteName(task.suite ?? task.file),
+      test: resolveWorkerActivityTestName({ task }),
     });
   });
 
-  afterEach((context, suite) => {
+  afterEach(({ task }) => {
     updateLastActivity({
       at: new Date().toISOString(),
-      file: resolveWorkerActivityFilePath(context),
+      file: resolveWorkerActivityFilePath({ task }),
       phase: 'afterEach',
-      suite: resolveWorkerActivitySuiteName(suite),
-      test: resolveWorkerActivityTestName(context),
+      suite: resolveWorkerActivitySuiteName(task.suite ?? task.file),
+      test: resolveWorkerActivityTestName({ task }),
     });
   });
 
-  afterAll((suite) => {
-    updateLastActivity({
-      at: new Date().toISOString(),
-      file: resolveWorkerActivityFilePath(suite),
-      phase: 'afterAll',
-      suite: resolveWorkerActivitySuiteName(suite),
-      test: null,
-    });
-  });
+  afterAll(updateSuiteActivity.bind(undefined, 'afterAll'));
 }

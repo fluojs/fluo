@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { createFluoVitestWorkspaceConfig } from '../../tooling/vitest/src';
+import { createFluoVitestWorkspaceConfig } from '../../tooling/vitest/src/index.ts';
 
 export default createFluoVitestWorkspaceConfig(new URL('../../', import.meta.url), {
   test: {

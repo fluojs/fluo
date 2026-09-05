@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 
 import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
 
-import { createFluoVitestWorkspaceConfig } from './tooling/vitest/src';
+import { createFluoVitestWorkspaceConfig } from './tooling/vitest/src/index.ts';
 
 export default mergeConfig(
   createFluoVitestWorkspaceConfig(new URL('.', import.meta.url)),

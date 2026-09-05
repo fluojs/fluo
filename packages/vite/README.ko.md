@@ -38,7 +38,7 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 
 ## 지원 Vite 매트릭스
 
-배포된 peer 범위는 `vite >=6.2.0`을 유지합니다. 패키지 suite는 워크스페이스에 고정된 Vite 6.4.3 toolchain에서 실행되며, 전용 integration gate는 Rolldown/Oxc 전용 pipeline을 사용하는 Vite 8.0.8에서 decorator가 있는 TypeScript를 빌드하고 실행합니다. 이 gate는 plugin이 normal-stage transform보다 먼저 실행되고 field-decorator binding metadata를 보존하는지 검증합니다. `enforce: 'pre'`를 회귀시키면 gate가 실패합니다. Vite 8을 선택하는 consumer는 Vite 자체 Node.js engine 범위도 충족해야 합니다.
+배포된 peer 범위는 `vite >=6.2.0`을 유지합니다. 패키지 suite는 워크스페이스에 고정된 Vite 8.2.2 Rolldown/Oxc pipeline에서 실행됩니다. Integration gate는 plugin이 normal-stage transform보다 먼저 실행되고 field-decorator binding metadata를 보존하는지 검증하며, `enforce: 'pre'`를 회귀시키면 실패합니다. Vite 8을 선택하는 consumer는 Vite 자체 Node.js engine 범위도 충족해야 합니다.
 
 ## 빠른 시작
 

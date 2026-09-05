@@ -2078,7 +2078,7 @@ describe('createDeepMock', () => {
 
     mock.send('test@example.com');
     expect(vi.isMockFunction(mock.send)).toBe(true);
-    expect((mock.send as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    expect(mock.send.mock.calls).toHaveLength(1);
   });
 
   it('includes inherited methods from parent classes', () => {
