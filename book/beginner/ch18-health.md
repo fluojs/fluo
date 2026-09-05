@@ -5,6 +5,8 @@
 
 This chapter explains how to use health checks to verify that FluoBlog is ready to handle real traffic. Chapter 17 covered the cache layer that improves performance. This chapter sets the criteria for deciding when that service is healthy and when it should be isolated.
 
+Node listener helpers now belong to `@fluojs/platform-nodejs`, not `@fluojs/runtime/node`. This package boundary change does not alter Terminus registration or readiness: `TerminusModule.forRoot(...)` remains application-owned, `/health` aggregates diagnostics, and `/ready` admits traffic only when readiness succeeds.
+
 ## Learning Objectives
 - Understand why health checks matter in production environments.
 - Set up automated health monitoring with `@fluojs/terminus`.

@@ -38,7 +38,7 @@ const sharedPaths = new Set([
   'docs/getting-started/migrate-from-nestjs.ko.md',
 ]);
 const sharedContractMarkerPattern =
-  /(?:fluo-terminus-contract:|@fluojs\/terminus|NestJS Terminus|TerminusModule|`?\/health`?|`?\/ready`?)/gu;
+  /(?:fluo-terminus-contract:|@fluojs\/terminus|NestJS Terminus|TerminusModule|`?\/health`?|`?\/ready`?)/u;
 
 function sharedTerminusContractFragments(patch, prefix) {
   return patch.split('\n').flatMap((line) => {
@@ -47,10 +47,8 @@ function sharedTerminusContractFragments(patch, prefix) {
     }
 
     const content = line.slice(1);
-    return [...content.matchAll(sharedContractMarkerPattern)].map((match) => {
-      const index = match.index ?? 0;
-      return content.slice(Math.max(0, index - 120), index + match[0].length + 120);
-    });
+    // Prose has no safe distance cutoff: govern the complete marked line.
+    return sharedContractMarkerPattern.test(content) ? [content] : [];
   });
 }
 

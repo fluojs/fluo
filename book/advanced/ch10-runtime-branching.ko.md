@@ -62,7 +62,7 @@ root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하�
 
 그래서 장 제목이 "runtime fork"가 아니라 "runtime branching"입니다. Fluo는 host마다 runtime 전체를 복제하지 않습니다. 공통 runtime shell은 중앙에 두고, 명시적인 surface boundary에서만 분기합니다.
 
-이 철학은 `path:packages/runtime/src/exports.test.ts:18-45`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `./node`에 있어야 하고, Web helper는 `./web`에 있어야 하며, lower-level adapter seam은 `./internal/...` subpath에 있어야 합니다.
+이 철학은 `path:packages/runtime/src/exports.test.ts:18-45`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `@fluojs/platform-nodejs`에 있고, Web helper는 `@fluojs/runtime/web`에 있으며, lower-level portable adapter seam은 `@fluojs/runtime/internal/...`에 남습니다.
 
 root boundary부터 보면 금지 목록이 먼저 나옵니다. root barrel은 dispatch helper, Web factory, Node shutdown helper, adapter bootstrap helper를 직접 담지 않아야 합니다.
 
@@ -295,7 +295,7 @@ export {
 } from './node/node-static-assets.js';
 ```
 
-이 façade는 root boundary와 다른 질문에 답합니다. root는 모든 host가 공유할 수 있는 것을 내보내고, `./node`는 Node host를 선택한 코드가 쓸 수 있는 helper만 내보냅니다.
+이 façade는 root boundary와 다른 질문에 답합니다. root는 모든 host가 공유할 수 있는 것을 내보내고, `@fluojs/platform-nodejs`는 Node host를 선택한 코드가 쓸 수 있는 helper만 내보냅니다.
 
 실제 구현은 `path:packages/platform-nodejs/src/node/internal-node.ts`와 `path:packages/platform-nodejs/src/node/internal-node-listen.ts`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen lifecycle behavior, compression wiring, process-signal shutdown helper가 모두 이 Node 전용 구현에 있습니다.
 

@@ -5,6 +5,8 @@
 
 fluo 애플리케이션을 위한 헬스 인디케이터(Health Indicator) 툴킷입니다. `@fluojs/terminus`는 런타임의 기본 health/readiness 엔드포인트 위에 의존성 인식 상태 보고 기능을 추가합니다.
 
+Node listener helper는 이제 `@fluojs/runtime/node`가 아니라 `@fluojs/platform-nodejs`에 속합니다. 이 package boundary 변경은 Terminus 등록이나 readiness를 바꾸지 않습니다. `TerminusModule.forRoot(...)`는 계속 애플리케이션이 소유하고, `/health`는 진단을 집계하며, `/ready`는 readiness가 성공할 때만 트래픽을 수용합니다.
+
 ## 목차
 
 - [설치](#설치)

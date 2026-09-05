@@ -5,6 +5,8 @@
 
 이 장은 FluoBlog가 실제 트래픽을 처리할 준비가 되었는지 헬스 체크로 확인하는 방법을 설명합니다. Chapter 17이 성능을 높이는 캐시 계층을 다뤘다면, 이 장은 그 서비스가 언제 정상이고 언제 격리되어야 하는지 판단하는 기준을 세웁니다.
 
+Node listener helper는 이제 `@fluojs/runtime/node`가 아니라 `@fluojs/platform-nodejs`에 속합니다. 이 package boundary 변경은 Terminus 등록이나 readiness를 바꾸지 않습니다. `TerminusModule.forRoot(...)`는 계속 애플리케이션이 소유하고, `/health`는 진단을 집계하며, `/ready`는 readiness가 성공할 때만 트래픽을 수용합니다.
+
 ## Learning Objectives
 - 프로덕션 환경에서 헬스 체크(Health Checks)의 중요성을 이해합니다.
 - `@fluojs/terminus`로 자동화된 헬스 모니터링을 설정합니다.

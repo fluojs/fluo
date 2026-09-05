@@ -140,6 +140,8 @@ function hasLivenessRegistration(functionBody) {
   return found;
 }
 
+// Node listener ownership does not change these Terminus runtime guarantees.
+// Source checks complement, rather than replace, complete marked-line companion checks.
 export function enforceTerminusRuntimeSourceContract(runtimeSource, assertContract) {
   const sourceFile = createSourceFile(
     'packages/terminus/src/module.ts',

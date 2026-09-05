@@ -3155,6 +3155,8 @@ describe('@fluojs/cron', () => {
   });
 
   it('does not retry distributed lock release after a timed-out task settles past the shutdown deadline', async () => {
+    vi.useFakeTimers();
+
     const scheduled = createManualScheduler();
     const redis = new ReleaseErrorOnceRedisClient();
     const started = createDeferred<void>();
@@ -3196,21 +3198,30 @@ describe('@fluojs/cron', () => {
     const statusService = registry as CronLifecycleService;
 
     const tickPromise = scheduled.records[0]!.tick();
-    await started.promise;
-    await app.close();
-    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
 
-    release.resolve();
-    await tickPromise;
+    try {
+      await started.promise;
+      const closePromise = app.close();
+      await vi.advanceTimersByTimeAsync(2);
+      await closePromise;
+      expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
 
-    expect(redis.releaseAttempts).toBe(0);
-    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
-    expect(loggerEvents.some((event) => event.includes('Failed to release distributed cron lock for distributed-timeout-release-retry.'))).toBe(false);
+      release.resolve();
+      await tickPromise;
 
-    await app.close();
+      expect(redis.releaseAttempts).toBe(0);
+      expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+      expect(loggerEvents.some((event) => event.includes('Failed to release distributed cron lock for distributed-timeout-release-retry.'))).toBe(false);
 
-    expect(redis.releaseAttempts).toBe(0);
-    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+      await app.close();
+
+      expect(redis.releaseAttempts).toBe(0);
+      expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+    } finally {
+      release.resolve();
+      await tickPromise;
+      await app.close();
+    }
   });
 
   it('bounds shutdown distributed lock release I/O and preserves local ownership on timeout', async () => {

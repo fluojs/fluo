@@ -133,7 +133,7 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
     ).not.toThrow();
   });
 
-  it('ignores a long shared-document line when only a distant package boundary changes', () => {
+  it('requires companions for an ambiguous shared line even when a distant package boundary changes', () => {
     const unchangedTerminusFragment =
       '`@fluojs/terminus` keeps `/health`, `/ready`, and TerminusModule behavior unchanged.';
 
@@ -145,7 +145,23 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
           `+ runtime uses @fluojs/platform-nodejs ${'x'.repeat(300)} ${unchangedTerminusFragment}`,
         ].join('\n'),
       ),
-    ).not.toThrow();
+    ).toThrow('Terminus runtime health contract updates must include');
+  });
+
+  it('requires missing companions when a readiness assertion changes far beyond its marker', () => {
+    const unchangedPrefix = `@fluojs/terminus ${'x'.repeat(300)}`;
+
+    expect(() =>
+      enforceTerminusRuntimeHealthContractCompanions(
+        ['docs/CONTEXT.md'],
+        () => [
+          `- ${unchangedPrefix} readiness admission is binary.`,
+          `+ ${unchangedPrefix} readiness admission is optional.`,
+        ].join('\n'),
+      ),
+    ).toThrow(
+      'Terminus runtime health contract updates must include packages/terminus/README.md, packages/terminus/README.ko.md, docs/getting-started/migrate-from-nestjs.md, docs/getting-started/migrate-from-nestjs.ko.md, docs/CONTEXT.ko.md, book/beginner/ch18-health.md, book/beginner/ch18-health.ko.md, tooling/governance/terminus-runtime-health-contract.mjs, tooling/governance/terminus-runtime-health-source-contract.mjs, tooling/governance/terminus-runtime-health-contract.test.ts.',
+    );
   });
 
   it('requires companions when a shared document changes the Terminus sentinel', () => {
