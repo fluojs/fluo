@@ -123,17 +123,18 @@ bootstrap graph + container + lifecycle baseline
 이 공유 bootstrap spine이 이 장의 기반입니다. runtime contract의 나머지 부분을 이해하려면, 먼저 context, application, microservice shell이 하나의 compiled module/container baseline 위에서 만들어지는 형제라는 사실을 봐야 합니다.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:857-925`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback, cacheable Token eligibility, 그리고 `get()`이 사용하는 좁은 context-resolution cache를 저장합니다.
+`FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:860-932`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback, cacheable Token eligibility, retry 가능한 runtime shutdown state, 그리고 `get()`이 사용하는 좁은 context-resolution cache를 저장합니다.
 
 context shell 자체도 그 의도를 그대로 드러냅니다. 저장하는 값은 compiled module baseline과 lifecycle cleanup에 필요한 값이고, public 동작은 DI lookup과 close입니다.
 
-`path:packages/runtime/src/bootstrap.ts:857-898`
+`path:packages/runtime/src/bootstrap.ts:860-900`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
 
   constructor(
     readonly container: Container,
@@ -461,11 +462,11 @@ bootstrap-failure cleanup은 lifecycle hook, adapter, container disposal로 넘�
 aggregate하여 완료되지 않은 phase를 명시적으로 retry하게 하고, bootstrap은 원래 error를 보존하며
 cleanup failure를 `ApplicationLogger`로 보고합니다.
 
-가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:437-443`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
+가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:654-660`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 
 `ready()`는 transport bind가 아니라 platform readiness gate입니다. adapter로 요청을 받기 전에 critical component 상태를 확인하는 단계로 분리되어 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:437-443`
+`path:packages/runtime/src/bootstrap.ts:654-660`
 ```typescript
   async ready(): Promise<void> {
     if (this.applicationState === 'closed') {
@@ -478,11 +479,11 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 즉 Fluo에서 readiness는 "server socket이 bind되었다"의 동의어가 아닙니다. platform shell에 기반한 pre-listen gate입니다. critical platform component가 ready라고 보고해야만 transport startup이 허용됩니다.
 
-`path:packages/runtime/src/bootstrap.ts:738-786`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
+`path:packages/runtime/src/bootstrap.ts:741-789`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
 
 그 다음 `listen()`이 adapter 정책을 적용합니다. adapter 없는 application bootstrap은 허용되지만, adapter 없이 listen하는 것은 이 guard에서 막힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:738-786`
+`path:packages/runtime/src/bootstrap.ts:741-789`
 ```typescript
   async listen(): Promise<void> {
     if (this.closeStarted) {
@@ -541,11 +542,11 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 이 guard를 통과한 뒤에야 `listen()`은 `await this.ready()`를 호출하고, 그 다음 `await this.adapter.listen(this.dispatcher)`를 실행합니다. 성공하면 state를 `'ready'`로 바꾸고 startup log를 남깁니다. 즉 transport adapter가 application state transition을 단독으로 소유하지 않습니다. 더 큰 runtime shell policy의 일부로 참여합니다.
 
-dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:890-910`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
+dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:1548-1568`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
 
 dispatcher 생성은 full application branch에만 필요한 request-facing 단계입니다. compiled module baseline에서 handler source를 만들고, HTTP pipeline 옵션을 묶은 뒤 dispatcher를 반환합니다.
 
-`path:packages/runtime/src/bootstrap.ts:890-910`
+`path:packages/runtime/src/bootstrap.ts:1548-1568`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,

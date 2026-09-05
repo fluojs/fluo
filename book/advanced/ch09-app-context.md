@@ -123,17 +123,18 @@ The tests reinforce this shared ancestry. `path:packages/runtime/src/bootstrap.t
 This shared bootstrap spine is the foundation of this chapter. To understand the rest of the runtime contract, first see that the context, application, and microservice shells are siblings built from one compiled module and container baseline.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:857-925`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, cacheable Token eligibility, and the narrow context-resolution cache used by `get()`.
+`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:860-932`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, cacheable Token eligibility, retryable runtime shutdown state, and the narrow context-resolution cache used by `get()`.
 
 The context shell itself shows that intent. The stored values are the ones needed for the compiled Module baseline and lifecycle cleanup, and the public behavior is DI lookup and close.
 
-`path:packages/runtime/src/bootstrap.ts:857-898`
+`path:packages/runtime/src/bootstrap.ts:860-900`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
 
   constructor(
     readonly container: Container,
@@ -461,11 +462,11 @@ disposal. A callback failure does not skip later registrations; close aggregates
 retry of that incomplete phase, while bootstrap preserves its original error and reports cleanup
 failures through `ApplicationLogger`.
 
-The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:437-443`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
+The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:654-660`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
 
 `ready()` is not a transport bind. It is a platform readiness gate, separated as the step that checks critical component state before the adapter starts receiving requests.
 
-`path:packages/runtime/src/bootstrap.ts:437-443`
+`path:packages/runtime/src/bootstrap.ts:654-660`
 ```typescript
   async ready(): Promise<void> {
     if (this.applicationState === 'closed') {
@@ -478,11 +479,11 @@ The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstr
 
 So in Fluo, readiness is not synonymous with "the server socket has been bound." It is a pre-listen gate based on the platform shell. Transport startup is allowed only if critical platform components report that they are ready.
 
-`listen()` in `path:packages/runtime/src/bootstrap.ts:738-786` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
+`listen()` in `path:packages/runtime/src/bootstrap.ts:741-789` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
 
 Then `listen()` applies the adapter policy. Adapterless application bootstrap is allowed, but listening without an adapter is blocked by this guard.
 
-`path:packages/runtime/src/bootstrap.ts:738-786`
+`path:packages/runtime/src/bootstrap.ts:741-789`
 ```typescript
   async listen(): Promise<void> {
     if (this.closeStarted) {
@@ -541,11 +542,11 @@ That exact error string is verified in `path:packages/runtime/src/application.te
 
 Only after this guard passes does `listen()` call `await this.ready()`, then `await this.adapter.listen(this.dispatcher)`. On success, it changes state to `'ready'` and writes the startup log. The transport adapter does not own the application state transition by itself. It participates as part of the larger runtime shell policy.
 
-Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:890-910`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
+Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:1548-1568`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
 
 Dispatcher creation is the request-facing step needed only by the full application branch. It creates handler sources from the compiled Module baseline, groups HTTP pipeline options, and returns the dispatcher.
 
-`path:packages/runtime/src/bootstrap.ts:890-910`
+`path:packages/runtime/src/bootstrap.ts:1548-1568`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,
