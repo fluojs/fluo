@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 type ExportTarget = {
   import: string;
@@ -10,6 +10,14 @@ type ExportTarget = {
 };
 
 describe('@fluojs/terminus subpath exports', () => {
+  const packageRoot = fileURLToPath(new URL('../', import.meta.url));
+
+  beforeAll(() => {
+    execFileSync('pnpm', ['--filter', '@fluojs/terminus...', 'run', 'build'], {
+      cwd: packageRoot,
+    });
+  }, 60_000);
+
   it('keeps the node and redis subpaths aligned with emitted dist artifacts', () => {
     const packageJson = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
@@ -30,7 +38,6 @@ describe('@fluojs/terminus subpath exports', () => {
   });
 
   it('imports emitted node and redis subpaths with their declarations', () => {
-    const packageRoot = fileURLToPath(new URL('../', import.meta.url));
     const declarationFixture = fileURLToPath(new URL('../test-fixtures/public-subpaths-import.ts', import.meta.url));
 
     expect(() => {
