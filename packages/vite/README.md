@@ -4,6 +4,8 @@
 
 Vite plugin and build utilities for fluo projects.
 
+Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages.
+
 ## Table of Contents
 
 - [Installation](#installation)

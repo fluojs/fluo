@@ -1,0 +1,98 @@
+---
+title: 다음 Node 24 릴리스 마이그레이션
+description: 출시 완료를 주장하지 않고 coordinated Fluo release를 준비합니다.
+---
+
+이 문서는 **릴리스 준비**이며 출시 발표가 아닙니다. 실제 패키지 출시와
+마이그레이션 문서 공개는 maintainer가 수행합니다. 다음 릴리스가 공개되면
+[전체 소비자 가이드](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md)를
+따르세요.
+
+## 1. Upgrade Node everywhere first
+
+Fluo를 올리기 전에 로컬 개발, CI, container build/runtime stage, production을
+Node.js `>=24.0.0 <27`, 일반적으로 최신 Node 24 LTS로 옮기세요.
+Node 20/22, Node 24 미만, Node 27 이상은 지원하지 않습니다. Version pin과
+application engine을 수정하고 container 양쪽 stage를 Node 24 이미지로 교체한 뒤
+native addon을 새 runtime에서 재설치하세요. 각 환경에서 `node --version`을
+확인하고 `--ignore-engines`로 마이그레이션을 대신하지 마세요.
+
+Exact `24.0.0`, 최신 `24.x`, 최신 `26.x`는 별개 검증 대상입니다.
+Fluo release automation은 최신 Node 24를 사용하며 Node 26은 publish runtime이
+아닙니다. Bun, Deno, Workers의 native runtime metadata와 deployment 명령은
+유지하고 Node-hosted 개발 tooling만 별도로 올리세요.
+
+## 2. Upgrade Fluo packages together
+
+현재 public package 42개가 명시적 intent로 참여합니다. Stable 41개는 major
+bump, `@fluojs/react@0.1.0`은 `0.2.0`으로 minor bump합니다. React는 `1.0`이
+아니라 `0.x`를 유지합니다. `pnpm list --depth 0`으로 설치된 dependency를
+확인한 뒤 출시 후 Changesets가 생성한 각 패키지의 coordinated version을
+선택하세요. Adapter, integration, dev tooling도 포함합니다. 버전은 패키지마다
+다르며 dependency propagation은 마이그레이션 계획이 아닙니다.
+
+보존된 listener, Vite compatibility, Vitest peer, 생성 starter 및 다른
+feature/fix 노트는 패키지별 하나의 다음 릴리스로 합산됩니다. 패키지별
+마이그레이션도 읽으세요. 두 번째 Vite/CLI 릴리스를 예약하지 않습니다.
+
+## 3. Replace moved Node imports
+
+Node helper를 import하는 곳에 `@fluojs/platform-nodejs`를 direct dependency로
+추가하세요.
+
+| Removed import | Replacement |
+| --- | --- |
+| `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
+| `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
+
+Symbol 이름은 유지하지만 이전 경로에는 compatibility shim이 없습니다.
+Portable bootstrap은 `@fluojs/runtime`, fetch helper는
+`@fluojs/runtime/web`에 유지합니다. Custom-method와 body-bearing `QUERY`
+listener는 최종 Node 24 지원 범위를 사용합니다.
+
+## 4. Keep config portable
+
+Config의 in-memory option은 portable하게 유지됩니다. 명시적 map과
+`envFilePaths: []`로 env file을 끄세요. 빈 `loadConfig({})`나
+`ConfigModule.forRoot()`는 여전히 기본 `.env`를 로드하며 env-file/기본 `.env`
+loading과 watch는 `>=24.0.0 <27`의 Node 전용 기능입니다.
+기존 capability guard는 Node builtin이 없으면 `CONFIG_RUNTIME_UNAVAILABLE`을
+발생시킵니다. Node version을 비교하거나 portable import를 거부하지 않습니다.
+
+Package-wide Node engine omission 8개를 모두 유지하세요. `@fluojs/config`,
+`@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`,
+`@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`,
+`@fluojs/runtime`입니다.
+
+## 5. Update existing toolchains manually
+
+CLI 업그레이드는 기존 생성 프로젝트를 재작성하지 않습니다. 새 non-Deno
+generated baseline은 Vite `^8.2.2`, Vitest 및 `@vitest/coverage-v8` `^4.1.11`을
+사용합니다. Workspace는 Vite `8.2.2`와 Vitest `4.1.11`을 검증합니다.
+`@fluojs/vite`는 `vite >=6.2.0` peer를 유지하지만 `@fluojs/testing`은 이제
+`vitest ^4.1.11`을 요구합니다.
+
+- ESM `build.rollupOptions`를 `build.rolldownOptions`로 옮기고 애플리케이션의
+  bundler option을 검토하세요. Node starter는 `node24`를 target으로,
+  `>=24.0.0 <27`을 engine으로, `@types/node ^24.0.0`을 typings로 사용합니다.
+- Application `.ts` 파일의 `fluoDecoratorsPlugin()`과 별도 testing transform인
+  `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`을 Babel peer와 함께
+  유지하세요. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
+- Babel의 `src/**/*.test.ts` `ignore` entry를 제거해 테스트 안의 decorator도
+  변환하세요. Legacy decorator compiler flag 대신 `version: '2023-11'`을
+  유지합니다. React SSR은 decorator 선언을 `.ts`, JSX를 `.tsx`에 둡니다.
+- Bun/Deno/Workers의 native build/start 명령을 유지하세요. Deno는 native
+  toolchain을 유지합니다.
+
+## 6. Verify before rollout
+
+Lockfile을 갱신하고 애플리케이션 install, build, typecheck, test를 실행하세요.
+실제 listener, startup/shutdown, 구성한 microservice transport, 해당하는 경우
+React production asset/hydration을 확인하세요. Peer와 engine diagnostic을
+해결하세요. 이 program에는 새 경계나 Node floor의 backport가 없습니다.
+
+정확한 패키지 예제와 maintainer 검증 명령은
+[전체 가이드](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md)에
+있습니다. 로컬 검증은 npm publication이나 문서 deployment를 증명하지 않습니다.
+#3169는 maintainer가 `main`의 canonical Changesets workflow로 직접 릴리스할 때까지
+umbrella로 유지됩니다.

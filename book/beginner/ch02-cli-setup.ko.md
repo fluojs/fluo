@@ -21,6 +21,8 @@ Chapter 1에서 fluo가 어떤 생각으로 만들어졌는지 봤다면, 이제
 - Chapter 1 완료.
 - 실습 중 계속 열어 둘 수 있는 터미널 세션.
 
+기존 프로젝트를 다음 coordinated release로 옮긴다면 [Node 24 마이그레이션](../../docs/getting-started/migrate-node24.ko.md)을 먼저 읽으세요. Node를 모든 환경에서 올리고 패키지와 import를 변경한 뒤 Vite 8.2.2/Vitest 4.1.11 및 Rolldown config를 적용합니다. CLI 업그레이드는 기존 프로젝트를 재작성하지 않으며, 실제 출시와 문서 공개는 maintainer가 수행합니다.
+
 ## 2.1 Installing @fluojs/cli
 
 첫 단계는 단순해 보이지만 중요합니다. 앞으로 나오는 예제들이 기대하는 작업 환경을 CLI가 먼저 잡아 주기 때문입니다.

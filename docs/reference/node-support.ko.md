@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-Private root workspace와 34개 Node-bound public package는 `engines.node: ">=24.0.0 <27"`을 선언합니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 이 major release부터 Node 20과 Node 22는 지원하지 않습니다.
+Private root workspace와 34개 Node-bound public package는 `engines.node: ">=24.0.0 <27"`을 선언합니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
@@ -31,4 +31,4 @@ Package-wide Node metadata는 모든 conditional export나 runtime-native adapte
 4. Node 24에서 애플리케이션 install, build, typecheck, test를 실행하세요. HTTP listener와 microservice startup/shutdown, 해당하는 경우 첫 React page 및 hydration도 확인하세요. 애플리케이션이 이 전체 범위를 광고한다면 exact `24.0.0`과 최신 `26.x` 검증도 유지하세요.
 5. 비 Node 배포에서는 native engine metadata와 배포 명령을 유지하고 Node-hosted 개발 tooling만 업그레이드하세요. Portable host에서는 Node env-file/watch 지원을 가정하지 말고 명시적인 in-memory config map을 전달하세요.
 
-이 변경에는 config의 Node 전용 feature 지원을 포함해 public Node 지원 범위를 좁히는 major Changeset이 포함됩니다. #3679가 coordinated release를 조정하며, 여기서는 package version을 변경하지 않습니다. Publishing은 canonical GitHub Actions Changesets workflow만 수행합니다.
+다음 coordinated release의 전체 순서(Node → 패키지 → import → config/toolchain)는 [소비자 마이그레이션 가이드](../getting-started/migrate-node24.ko.md)를 따릅니다. Config의 Node 전용 feature 지원을 포함해 stable public package마다 explicit major intent를 선언하며 React는 0.x minor를 유지합니다. Package version과 changelog는 Changesets만 생성하고 실제 출시와 문서 공개는 maintainer가 수행합니다. #3169는 user-run release까지 umbrella로 유지됩니다.

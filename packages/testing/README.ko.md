@@ -6,6 +6,8 @@ Node.js `>=24.0.0 <27` fluo 애플리케이션을 위한 기본 request-level �
 
 `@fluojs/testing`은 fluo 애플리케이션 테스트를 위한 공식적인 기준(Baseline)을 제공합니다. 격리된 테스트 환경을 구축하고, 의존성을 가짜(Fake)나 목(Mock)으로 교체하며, 모듈 그래프에서 직접 컴포넌트를 resolve하거나 `createTestApp(...).request(...).send()`로 가상 HTTP 요청을 실행하여 e2e 스타일 테스트를 수행할 수 있게 합니다.
 
+Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요.
+
 ## 목차
 
 - [설치](#설치)

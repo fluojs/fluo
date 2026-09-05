@@ -4,6 +4,8 @@
 
 Configuration loading, merging, validation, and typed runtime access for fluo applications.
 
+Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages.
+
 ## Table of Contents
 
 - [Installation](#installation)

@@ -71,6 +71,8 @@ Static delivery is a portable `@fluojs/http` middleware contract, documented in 
 
 ## Node.js Support
 
+The [Node 24 migration guide](./getting-started/migrate-node24.md) owns upcoming coordinated-release preparation and the Node, packages, then imports order. Of the actual 42 public manifests, 41 stable packages have explicit major intent and `@fluojs/react` has 0.x minor intent. Publication is maintainer-owned; #3169 remains the umbrella until the user-run release.
+
 See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0 <27` classification, eight portable omissions, exact/latest CI evidence, and consumer migration. `tooling/governance/node-support-classification.test.ts` and `pnpm test:node-floor` verify these boundaries.
 
 `@fluojs/cqrs` requires Node.js `>=24.0.0 <27` as its package-owned support contract. This is the verified Node listener support window: Node.js versions below 24 and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
