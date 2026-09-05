@@ -45,6 +45,27 @@ function sourceExample(content: string, sourceMarker: string): string {
   return content.slice(codeStart, codeEnd);
 }
 
+function sourceRange(sourceMarker: string): [number, number] {
+  const match = /bootstrap\.ts:(\d+)-(\d+)/u.exec(sourceMarker);
+
+  if (!match) {
+    throw new Error(`Missing source range in ${sourceMarker}.`);
+  }
+
+  return [Number(match[1]), Number(match[2])];
+}
+
+function expectSourceExampleToMatchRuntime(
+  content: string,
+  runtimeSource: string,
+  sourceMarker: string,
+): void {
+  const [start, end] = sourceRange(sourceMarker);
+  const expected = runtimeSource.split('\n').slice(start - 1, end).join('\n');
+
+  expect(sourceExample(content, sourceMarker)).toBe(expected);
+}
+
 function expectLifecycleStateAndOperationGate(content: string): void {
   expect(content).toContain('bootstrapped');
   expect(content).toContain('ready');
@@ -118,12 +139,25 @@ describe('runtime shutdown terminality documentation', () => {
   it.each([
     'book/advanced/ch09-app-context.md',
     'book/advanced/ch09-app-context.ko.md',
-  ])('keeps Chapter 9 context get and application listen examples aligned with shutdown admission in %s', (relativePath) => {
+  ])('keeps Chapter 9 runtime source excerpts byte-aligned with bootstrap.ts in %s', (relativePath) => {
     const content = read(relativePath);
-    const contextGet = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:856-896');
-    const applicationListen = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:738-786');
+    const runtimeSource = read('packages/runtime/src/bootstrap.ts');
+    const contextMarker = 'path:packages/runtime/src/bootstrap.ts:860-900';
+    const listenMarker = 'path:packages/runtime/src/bootstrap.ts:741-789';
+    const readyMarker = 'path:packages/runtime/src/bootstrap.ts:654-660';
+    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1548-1568';
+    const contextGet = sourceExample(content, contextMarker);
+    const applicationListen = sourceExample(content, listenMarker);
+
+    expectSourceExampleToMatchRuntime(content, runtimeSource, contextMarker);
+    expectSourceExampleToMatchRuntime(content, runtimeSource, listenMarker);
+    expectSourceExampleToMatchRuntime(content, runtimeSource, readyMarker);
+    expectSourceExampleToMatchRuntime(content, runtimeSource, dispatcherMarker);
 
     expect(contextGet).toContain('private closeStarted = false;');
+    expect(contextGet).toContain(
+      'private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();',
+    );
     expect(contextGet.match(/this\.assertProviderResolutionAllowed\(\);/gu)).toHaveLength(2);
     expect(contextGet).not.toContain('return resolveContextToken(');
     expect(applicationListen).toContain('if (this.closeStarted)');

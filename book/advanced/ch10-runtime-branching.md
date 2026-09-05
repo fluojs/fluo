@@ -21,30 +21,37 @@ This chapter explains how Fluo branches only at package surfaces and adapter sea
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 The first fact to notice in Chapter 10 is that Fluo's runtime portability is not implemented as one giant `if (isNode) ... else if (isEdge) ...` block. The branch points are much narrower and sit in more architectural locations.
 
-Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:920-1202` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
+Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1578-1602` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:920-938`
+`path:packages/runtime/src/bootstrap.ts:1578-1602`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createDefaultApplicationLogger();
+  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
+  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
+  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
-  const hasHttpAdapter = options.adapter !== undefined;
-  const adapter = options.adapter ?? {
+  let bootstrappedModules: CompiledModule[] = [];
+  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+  const adapter = effectiveOptions.adapter ?? {
     async close() {},
     async listen() {},
   };
-  const runtimeCleanup: Array<() => void> = [];
-  const platformShell = createRuntimePlatformShell(options.platform?.components);
-  const timingEnabled = options.diagnostics?.timing === true;
+  const runtimeCleanup: RuntimeCleanupCallback[] = [];
+  if (studioDevtools) {
+    runtimeCleanup.push(() => studioDevtools.close());
+  }
+  const bootstrapReadySignal = createBootstrapReadySignal();
+  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
   const timingPhases: BootstrapTimingPhase[] = [];
 
   try {
     logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(options, logger);
+    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
 The root default is `createDefaultApplicationLogger()`, which keeps the shared bootstrap surface transport-neutral. Choose `createConsoleApplicationLogger()` only for an explicit Node-only setup imported from `@fluojs/runtime/node`.
@@ -55,11 +62,11 @@ Actual branching happens only at seams that need host-specific capabilities. Tho
 
 That is why the chapter title says "runtime branching," not "runtime fork." Fluo does not duplicate the whole runtime per host. It keeps the shared runtime shell in the center and branches only at explicit surface boundaries.
 
-This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:12-79`. The test enforces that the root runtime barrel must be transport-neutral, Node-only helpers must live under `./node`, Web helpers must live under `./web`, and lower-level adapter seams must live under `./internal/...` subpaths.
+This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:19-46`. The contiguous root-boundary tests enforce that the root runtime barrel must be transport-neutral, keep Bootstrap defaults detached from Node-only logger modules, and expose only Bootstrap-scoped operational helpers. Node-only helpers must live under `./node`, Web helpers must live under `./web`, and lower-level adapter seams must live under `./internal/...` subpaths.
 
 The root boundary starts with a deny list. The root barrel must not directly contain dispatch helpers, Web factories, Node shutdown helpers, or adapter Bootstrap helpers.
 
-`path:packages/runtime/src/exports.test.ts:13-30`
+`path:packages/runtime/src/exports.test.ts:19-46`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -69,9 +76,18 @@ it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
 });
 
+it('keeps root bootstrap defaults detached from Node-only logger modules', () => {
+  const bootstrapSource = readFileSync(new URL('./bootstrap.ts', import.meta.url), 'utf8');
+
+  expect(bootstrapSource).not.toContain('./logging/logger.js');
+  expect(bootstrapSource).not.toContain('./logging/json-logger.js');
+  expect(bootstrapSource).toContain('./logging/default-logger.js');
+});
+
 it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
+  expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
-  expect(runtime.createHealthModule).toBeTypeOf('function');
+  expect(runtime).toHaveProperty('createHealthModule');
   expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
@@ -98,23 +114,39 @@ shared bootstrap shell in root runtime
 This frame is the background for the whole chapter. Node, Web, and Edge are not three independent runtimes. They are three ways to attach different host I/O semantics to one transport-neutral Bootstrap core.
 
 ## 10.2 The root runtime barrel is intentionally transport-neutral and the export map enforces it
-The root public surface is defined in `path:packages/runtime/src/index.ts:1-30`. It exports the Bootstrap API, errors, diagnostics, health helpers, platform contracts, request transaction helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
+The root public surface is defined in `path:packages/runtime/src/index.ts:1-47`. It exports the Bootstrap API, errors, selected diagnostics types and helpers, health helpers, `ModuleGraphCompileCache`, multipart types and its consumed-body error, platform contracts, request transaction and route-inspection helpers, and selected runtime Tokens. It does not export Node adapter helpers or Web request dispatch helpers.
 
-The actual shape of the root barrel is small and selective. It exposes only `bootstrap`, health, error, platform types, request transaction, Tokens, and shared types.
+The actual shape of the root barrel is small and selective. It exposes `bootstrap`, health, errors, selected diagnostics and multipart exports, platform types, request transaction, route inspection, Tokens, and shared types.
 
-`path:packages/runtime/src/index.ts:1-30`
+`path:packages/runtime/src/index.ts:1-47`
 ```typescript
 export * from './abort.js';
 export * from './bootstrap.js';
-export * from './health/diagnostics.js';
 export * from './errors.js';
-export * from './health/health.js';
 export type {
+  BootstrapTimingDiagnostics,
+  BootstrapTimingPhase,
+  RuntimeDiagnosticsGraph,
+  RuntimeDiagnosticsModule,
+  RuntimeDiagnosticsProvider,
+  RuntimeDiagnosticsRelationships,
+} from './health/diagnostics.js';
+export {
+  createBootstrapTimingDiagnostics,
+  createRuntimeDiagnosticsGraph,
+} from './health/diagnostics.js';
+export * from './health/health.js';
+export { ModuleGraphCompileCache } from './module-graph.js';
+export type {
+  MultipartFieldPart,
+  MultipartFilePart,
   MultipartOptions,
+  MultipartPart,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { MultipartBodyConsumedError } from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,
@@ -132,28 +164,32 @@ export type {
   PlatformValidationResult,
 } from './platform-contract.js';
 export * from './request-transaction.js';
+export * from './route-inspection.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
+
+The root barrel deliberately omits `renderRuntimeDiagnosticsMermaid()`: it remains an internal implementation detail in `path:packages/runtime/src/health/diagnostics.ts`. Consumers that need Mermaid graph rendering should use the public [`@fluojs/studio` diagnostics contract](../../packages/studio/README.md), not a root runtime import.
 
 The shared `UploadedFile` contract keeps multipart payload bytes runtime-neutral as `Uint8Array`. Web adapters therefore do not need the Node.js `Buffer` global; Node-only application code that needs Buffer-specific APIs should convert explicitly with `Buffer.from(file.buffer)` at that boundary.
 
 This list contains no Node server helpers or Web dispatch helpers. A reader looking at the root API can already see that the shared Bootstrap contract and host-specific helpers have different boundaries.
 
-That omission is not accidental. `path:packages/runtime/src/exports.test.ts:13-29` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.
+That omission is not accidental. `path:packages/runtime/src/exports.test.ts:19-25` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.
 
 So the root runtime API is curated around portable Bootstrap concerns. It exposes only what every host can share. Runtime Tokens such as `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, and `PLATFORM_SHELL`, along with the shared runtime type system, belong here.
 
-The package export map in `path:packages/runtime/package.json:27-56` enforces this curation at the package resolution stage. The explicit subpaths are `.`, `./node`, `./web`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, and `./internal-node`.
+The package export map in `path:packages/runtime/package.json:27-61` enforces this curation at the package resolution stage. The explicit subpaths are `.`, `./node`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`, and `./internal-node`.
 
-The JSON export map repeats the same boundaries. The root entrypoint, Node, Web, and internal seams are each declared as independent package subpaths.
+The JSON export map repeats the same boundaries. The root entrypoint, Node, Web, devtools host bridge, and internal seams are each declared as independent package subpaths.
 
-`path:packages/runtime/package.json:27-56`
+`path:packages/runtime/package.json:27-61`
 ```json
 "exports": {
   ".": {
     "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    "import": "./dist/index.js",
+    "default": "./dist/index.js"
   },
   "./node": {
     "types": "./dist/node.d.ts",
@@ -162,6 +198,10 @@ The JSON export map repeats the same boundaries. The root entrypoint, Node, Web,
   "./web": {
     "types": "./dist/web.d.ts",
     "import": "./dist/web.js"
+  },
+  "./devtools": {
+    "types": "./dist/devtools/index.d.ts",
+    "import": "./dist/devtools/index.js"
   },
   "./internal": {
     "types": "./dist/internal.d.ts",
@@ -179,7 +219,7 @@ The JSON export map repeats the same boundaries. The root entrypoint, Node, Web,
     "types": "./dist/internal-node.d.ts",
     "import": "./dist/internal-node.js"
   }
-}
+},
 ```
 
 This excerpt shows that the package manager and TypeScript resolver see the same surface boundaries. The root, Node, Web, and internal seams do not get mixed into one barrel. The import path exposes cost and intent.
@@ -188,11 +228,11 @@ This matters because an export map is stronger than documentation. It prevents a
 
 `path:packages/runtime/src/node/node.test.ts:7-55` strengthens the same rule from the consumer's perspective. The test asserts that the root runtime API must not contain `bootstrapNodeApplication`, `createNodeHttpAdapter`, or `runNodeApplication`. Those helpers are legal only from the Node subpath.
 
-`path:packages/runtime/src/exports.test.ts:61-78` also checks whether the package export map and `typesVersions` declare this narrowed entrypoint. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
+`path:packages/runtime/src/exports.test.ts:100-123` also checks whether the package export map and `typesVersions` declare these narrowed entrypoints, including the `./devtools` host bridge. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
 
 The test reads package.json and confirms that its declarations include the narrowed subpaths. In particular, `internal-node` is separately pinned in `typesVersions` too.
 
-`path:packages/runtime/src/exports.test.ts:61-78`
+`path:packages/runtime/src/exports.test.ts:100-123`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -204,6 +244,12 @@ it('declares the narrowed package export map', () => {
 
   expect(packageJson.exports).toHaveProperty('./node');
   expect(packageJson.exports).toHaveProperty('./web');
+  expect(packageJson.exports).toMatchObject({
+    './devtools': {
+      import: './dist/devtools/index.js',
+      types: './dist/devtools/index.d.ts',
+    },
+  });
   expect(packageJson.exports).toHaveProperty('./internal');
   expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
   expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
@@ -211,6 +257,7 @@ it('declares the narrowed package export map', () => {
   expect(packageJson.typesVersions?.['*']).toMatchObject({
     'internal-node': ['./dist/internal-node.d.ts'],
   });
+});
 ```
 
 So the export map is not just distribution configuration. It is a verified boundary that separates the root, public Node/Web subpaths, and lower-level internal seams.
@@ -230,14 +277,21 @@ subpaths:
 This design makes portability mistakes visible. If application code imports a Node helper, the import path itself already declares the portability cost.
 
 ## 10.3 The Node branch packages server lifecycle, retries, compression, and shutdown behind the ./node subpath
-The public Node entrypoint is `path:packages/runtime/src/node.ts:1-18`. This file re-exports only logger factories and part of the API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
+The public Node entrypoint is `path:packages/runtime/src/node.ts:1-25`. This file re-exports logger factories, the Node file-system asset source and its types, and selected API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
 
-The Node public subpath does not open the whole internal file directly. As shown below, it exposes loggers and selected Node application helpers only.
+The Node public subpath does not open the whole internal file directly. As shown below, it exposes loggers, file-system asset helpers, and selected Node application helpers only.
 
-`path:packages/runtime/src/node.ts:1-18`
+`path:packages/runtime/src/node.ts:1-25`
 ```typescript
 export * from './logging/json-logger.js';
 export * from './logging/logger.js';
+export {
+  createNodeFileSystemAssetSource,
+} from './node/node-static-assets.js';
+export type {
+  NodeFileSystemAssetPrecompression,
+  NodeFileSystemAssetSourceOptions,
+} from './node/node-static-assets.js';
 export {
   bootstrapNodeApplication,
   createNodeHttpAdapter,
@@ -258,16 +312,17 @@ export type {
 
 This façade answers a different question than the root boundary. The root exports what every host can share. `./node` exports only the helpers that code choosing a Node host may use.
 
-The real implementation lives in `path:packages/runtime/src/node/internal-node.ts:1-421`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen retry behavior, compression wiring, and process-signal shutdown helpers all live in this file.
+The real implementation lives in `path:packages/runtime/src/node/internal-node.ts` and `path:packages/runtime/src/node/internal-node-listen.ts`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen lifecycle behavior, compression wiring, and process-signal shutdown helpers all live in this Node-only implementation.
 
-`NodeHttpApplicationAdapter` in `path:packages/runtime/src/node/internal-node.ts:108-194` is the core Node transport object. This adapter owns the native server, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
+`NodeHttpApplicationAdapter` in `path:packages/runtime/src/node/internal-node.ts:133-226` is the core Node transport object. This adapter owns the native server, its `NodeListenLifecycle`, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
 
-The constructor creates the request-response factory, creates an HTTP or HTTPS server depending on `httpsOptions`, and tracks connections so lingering sockets can be force-closed later.
+The constructor validates lifecycle options, creates the request-response factory, creates an HTTP or HTTPS server from `httpOptions` and `httpsOptions`, creates the `NodeListenLifecycle`, and tracks connections so lingering sockets can be force-closed later.
 
-`path:packages/runtime/src/node/internal-node.ts:108-129`
+`path:packages/runtime/src/node/internal-node.ts:133-156`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
+  private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
@@ -281,27 +336,39 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
-    private readonly compression = false,
+    compression = false,
     private readonly httpsOptions: HttpsServerOptions | undefined,
-    private readonly multipartOptions?: MultipartOptions,
-    private readonly maxBodySize = 1 * 1024 * 1024,
-    private readonly preserveRawBody = false,
+    multipartOptions?: MultipartOptions,
+    maxBodySize = 1 * 1024 * 1024,
+    preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
 ```
 
-The following constructor body actually performs Node server creation and socket tracking. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, and connection set management all belong inside the Node branch.
+The following constructor body actually validates lifecycle policy, performs Node server creation, initializes the listener lifecycle, and tracks sockets. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, listener admission, and connection set management all belong inside the Node branch.
 
-`path:packages/runtime/src/node/internal-node.ts:130-145`
+`path:packages/runtime/src/node/internal-node.ts:157-183`
 ```typescript
+    validateNodeLifecycleOptions({
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+      shutdownTimeoutMs: this.shutdownTimeoutMs,
+    });
     this.requestResponseFactory = createNodeRequestResponseFactory(
       compression,
       multipartOptions,
       maxBodySize,
       preserveRawBody,
     );
-    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+    this.server = createNodeServer(this.httpOptions, this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
+    });
+    this.listenLifecycle = new NodeListenLifecycle(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
     });
     this.server.on('connection', (socket) => {
       this.sockets.add(socket);
@@ -314,46 +381,100 @@ The following constructor body actually performs Node server creation and socket
 
 These two excerpts show why the Node branch needs its own subpath. `node:http`, `node:https`, socket sets, and server lifecycle are concrete capabilities that Web-standard hosts cannot share.
 
-Listening is handled by `listenNodeServerWithRetry()` in `path:packages/runtime/src/node/internal-node.ts:294-320`. This helper retries `EADDRINUSE` errors up to the configured limit. That behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
+Listening is coordinated by `NodeListenLifecycle` in `path:packages/runtime/src/node/internal-node-listen.ts:21-101`. It owns listener admission, retry cancellation, and close state for one Node server while delegating retry mechanics to its private helper. This behavior is clearly Node-host logic. It belongs in the Node branch, not in the portable Bootstrap core.
 
-`path:packages/runtime/src/node/internal-node.ts:294-320`
+`path:packages/runtime/src/node/internal-node-listen.ts:21-101`
 ```typescript
-function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening);
+/** Owns one Node server's listen, retry cancellation, and close admission state. */
+export class NodeListenLifecycle {
+  private closeInFlight?: Promise<void>;
+  private closing = false;
+  private listenAbortController?: AbortController;
+  private listenInFlight?: Promise<void>;
 
-        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
-          return;
-        }
+  constructor(
+    private readonly server: NodeServer,
+    private readonly options: NodeListenRetryOptions,
+  ) {}
 
-        reject(error);
-      };
+  close(closeServer: () => Promise<void>): Promise<void> {
+    if (this.closeInFlight) {
+      return this.closeInFlight;
+    }
 
-      const onListening = () => {
-        server.off('error', onError);
-        resolve();
-      };
+    this.closing = true;
+    const closeInFlight = (async () => {
+      await this.cancel();
+      await closeServer();
+    })().finally(() => {
+      if (this.closeInFlight === closeInFlight) {
+        this.closeInFlight = undefined;
+        this.closing = false;
+      }
+    });
+    this.closeInFlight = closeInFlight;
 
-      server.once('error', onError);
-      server.once('listening', onListening);
-      server.listen({ host: options.host, port: options.port });
-    };
+    return closeInFlight;
+  }
 
-    tryListen(0);
-  });
+  listen(onAdmitted: () => void): Promise<void> {
+    if (this.closing) {
+      return Promise.reject(new NodeListenCancelledError());
+    }
+
+    if (this.listenInFlight) {
+      return this.listenInFlight;
+    }
+
+    onAdmitted();
+    const abortController = new AbortController();
+    this.listenAbortController = abortController;
+    const listenInFlight = listenNodeServerWithRetry(
+      this.server,
+      this.options,
+      abortController.signal,
+    ).finally(() => {
+      if (this.listenInFlight === listenInFlight) {
+        this.listenInFlight = undefined;
+      }
+
+      if (this.listenAbortController === abortController) {
+        this.listenAbortController = undefined;
+      }
+    });
+    this.listenInFlight = listenInFlight;
+
+    return listenInFlight;
+  }
+
+  async cancel(): Promise<void> {
+    const listenInFlight = this.listenInFlight;
+    if (!listenInFlight) {
+      return;
+    }
+
+    this.listenAbortController?.abort();
+
+    try {
+      await listenInFlight;
+    } catch (error: unknown) {
+      if (error instanceof NodeListenCancelledError) {
+        return;
+      }
+
+      throw error;
+    }
+  }
 }
 ```
 
-The branch condition here is not a whole-runtime host choice. It is a Node server bind failure. Operational Node-only decisions stay inside `./node`, and the shared Bootstrap path does not need to know the retry policy.
+The branch condition here is not a whole-runtime host choice. It is listener admission and shutdown coordination for a Node server. Operational Node-only decisions stay inside `./node`, and the shared Bootstrap path does not need to know the retry policy or cancellation state.
 
-Shutdown is handled by `closeNodeServerWithDrain()` in `path:packages/runtime/src/node/internal-node.ts:335-368`. That function closes the server, closes idle connections, and force-closes sockets if the drain timeout is exceeded. This is another piece of host-specific operational logic separated from the root runtime.
+Shutdown is delegated through `NodeListenLifecycle.close()` before `closeNodeServerWithDrain()` closes the server, closes idle connections, and force-closes sockets if the drain timeout is exceeded. This is another piece of host-specific operational logic separated from the root runtime.
 
-`createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:240-253` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:255-264` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:266-277` adds shutdown-signal registration on top.
+`createNodeHttpAdapter()` in `path:packages/runtime/src/node/internal-node.ts:283-297` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/runtime/src/node/internal-node.ts:306-318` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` adds shutdown-signal registration on top.
 
-`path:packages/runtime/src/node/internal-node.ts:240-264`
+`path:packages/runtime/src/node/internal-node.ts:283-318`
 ```typescript
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
@@ -364,20 +485,31 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 
+/**
+ * Bootstrap node application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The bootstrap node application result.
+ */
 export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    logger,
   );
 }
 ```
@@ -388,23 +520,23 @@ The tests explain the intended public contract. `path:packages/runtime/src/node/
 
 `path:packages/runtime/src/node/node.test.ts:14-30`
 ```typescript
-it('uses the runtime default port instead of process.env.PORT', async () => {
-  const previousPort = process.env.PORT;
-  process.env.PORT = '4321';
 
-  try {
-    const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+  it('uses the runtime default port instead of process.env.PORT', async () => {
+    const previousPort = process.env.PORT;
+    process.env.PORT = '4321';
 
-    expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
-    await adapter.close();
-  } finally {
-    if (previousPort === undefined) {
-      delete process.env.PORT;
-    } else {
-      process.env.PORT = previousPort;
+    try {
+      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+
+      expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
+      await adapter.close();
+    } finally {
+      if (previousPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = previousPort;
+      }
     }
-  }
-});
 ```
 
 This test fixes two facts at once: the Node branch can see Node environment variables, and yet its default value is not tied to ambient process state. Portability cost is visible in the import path, but runtime defaults do not implicitly lean on host globals.
