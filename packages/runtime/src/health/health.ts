@@ -1,4 +1,5 @@
-import { Controller, Get } from '@fluojs/http';
+import type { Constructor } from '@fluojs/core';
+import { Controller, forRoutes, Get, type Middleware } from '@fluojs/http';
 
 import { defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
@@ -29,6 +30,8 @@ export interface ReadinessStatus {
  * Describes the health module options contract.
  */
 export interface HealthModuleOptions {
+  /** Class-based middleware applied only to the generated `/health` and `/ready` endpoints. */
+  endpointMiddleware?: readonly Constructor<Middleware>[];
   healthCheck?: (ctx: import('@fluojs/http').RequestContext) =>
     | HealthStatus
     | HealthCheckResponse
@@ -127,6 +130,9 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHe
 
   defineModule(RuntimeHealthModule, {
     controllers: [HealthController],
+    middleware: (options.endpointMiddleware ?? []).map((middlewareClass) =>
+      forRoutes(middlewareClass, `${basePath}/health`, `${basePath}/ready`),
+    ),
   });
 
   return RuntimeHealthModule;

@@ -12,6 +12,7 @@ fluo 애플리케이션을 위한 헬스 인디케이터(Health Indicator) 툴�
 - [공통 패턴](#공통-패턴)
   - [내장 인디케이터](#내장-인디케이터)
   - [DI 기반 인디케이터](#di-기반-인디케이터)
+  - [엔드포인트 미들웨어](#엔드포인트-미들웨어)
   - [실행 가드레일](#실행-가드레일)
   - [실패 시맨틱](#실패-시맨틱)
 - [NestJS 마이그레이션 경계](#nestjs-마이그레이션-경계)
@@ -150,6 +151,31 @@ TerminusModule.forRoot({
 ```
 
 named Redis indicator 의존성은 필수입니다. import된 module이나 global module 어디에서도 해당 token을 공급하지 않으면 bootstrap 중 module graph 검증이 누락된 token을 명시하는 `MODULE_VISIBILITY_ERROR`로 실패합니다. Prisma와 Drizzle indicator 의존성은 해당 token이 bootstrap graph 전체에 없을 때만 선택 사항입니다. 이 경우 owner module을 생략해도 애플리케이션은 bootstrap되지만 해당 indicator는 요청 시점의 `/health`에서 `down`을 보고합니다. Prisma 또는 Drizzle owner module이 애플리케이션의 다른 위치에 존재하지만 Terminus `imports`에서 생략된 경우에는 bootstrap이 `MODULE_VISIBILITY_ERROR`로 실패합니다. optional injection은 module visibility를 우회하지 않습니다. global module이 공급하는 의존성 — 예를 들어 `name` 없이 등록해 기본적으로 global인 `RedisModule.forRoot(...)` — 은 별도의 `imports` 항목 없이도 계속 보입니다.
+
+### 엔드포인트 미들웨어
+
+class 기반 `endpointMiddleware`로 Terminus가 생성한 엔드포인트에만 접근 정책을 적용하세요. 클래스는 DI를 통해 해석되고 선언 순서대로 `/health`와 `/ready` 모두에서 실행됩니다. 이 옵션을 생략하면 기존의 제한 없는 기본 동작이 유지됩니다. Custom `path` 값은 미들웨어 route match 전에 정규화됩니다.
+
+```typescript
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class HealthProbeAuthMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-health-token'] !== 'secret-token') {
+      throw new ForbiddenException('Health endpoints require x-health-token.');
+    }
+
+    await next();
+  }
+}
+
+TerminusModule.forRoot({
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+  path: '/internal/',
+});
+```
+
+위 미들웨어는 정규화된 `/internal/health` 및 `/internal/ready` route에서 실행되며, 관련 없는 애플리케이션 route에는 적용되지 않습니다.
 
 ### Readiness 참여
 

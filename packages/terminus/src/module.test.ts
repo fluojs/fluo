@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import type { MiddlewareContext, Next } from '@fluojs/http';
 import { getPrismaClientToken, getPrismaServiceToken } from '@fluojs/prisma';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { defineModule, type PlatformComponent } from '@fluojs/runtime';
@@ -125,6 +126,65 @@ describe('TerminusModule.forRoot', () => {
       const defaultReadyResponse = await app.request('GET', '/ready').send();
 
       expect(defaultReadyResponse.status).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('applies DI-backed endpoint middleware to normalized custom health and readiness routes in declaration order', async () => {
+    const calls: string[] = [];
+
+    @Inject(TerminusHealthService)
+    class FirstEndpointMiddleware {
+      constructor(private readonly healthService: TerminusHealthService) {}
+
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push(this.healthService instanceof TerminusHealthService ? 'first:before' : 'first:missing-service');
+        await next();
+        calls.push('first:after');
+      }
+    }
+
+    class SecondEndpointMiddleware {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('second:before');
+        await next();
+        calls.push('second:after');
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        TerminusModule.forRoot({
+          endpointMiddleware: [FirstEndpointMiddleware, SecondEndpointMiddleware],
+          indicators: [new MemoryHealthIndicator({ key: 'database' })],
+          path: '/internal/',
+        }),
+      ],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      await expect(app.request('GET', '/internal/health').send()).resolves.toMatchObject({
+        status: 200,
+      });
+      await expect(app.request('GET', '/internal/ready').send()).resolves.toMatchObject({
+        status: 200,
+      });
+
+      expect(calls).toEqual([
+        'first:before',
+        'second:before',
+        'second:after',
+        'first:after',
+        'first:before',
+        'second:before',
+        'second:after',
+        'first:after',
+      ]);
     } finally {
       await app.close();
     }

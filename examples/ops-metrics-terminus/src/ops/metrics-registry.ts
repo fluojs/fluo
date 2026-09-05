@@ -11,6 +11,16 @@ class MetricsTokenMiddleware {
   }
 }
 
+export class HealthEndpointMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-health-token'] !== 'secret-token') {
+      throw new ForbiddenException('Health endpoints require x-health-token.');
+    }
+
+    await next();
+  }
+}
+
 export const sharedRegistry = new Registry();
 
 export const opsMetricsModule = MetricsModule.forRoot({

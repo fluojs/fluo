@@ -73,6 +73,19 @@ await app.listen();
 
 ## 주요 패턴
 
+### 헬스 엔드포인트 미들웨어
+
+`HealthModule.forRoot()`는 생성된 health와 readiness route용 class 기반 `endpointMiddleware`를 받습니다. 미들웨어는 DI를 통해 해석되고 선언 순서대로 실행되며, 선택적 custom `path` 아래의 정규화된 두 엔드포인트 모두에 적용됩니다. 이 설정을 생략하면 기존 기본 동작이 유지됩니다.
+
+```typescript
+HealthModule.forRoot({
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+  path: '/internal/',
+});
+```
+
+이 구성은 `HealthProbeAuthMiddleware`를 `/internal/health`와 `/internal/ready`에 적용하며, 관련 없는 애플리케이션 route에는 적용하지 않습니다.
+
 ### 스트리밍 멀티파트 소비
 
 큰 업로드 파일을 `Uint8Array`로 실체화하지 않고 standalone raw `Request` 또는 request-like body에서

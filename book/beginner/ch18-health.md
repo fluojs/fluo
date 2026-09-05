@@ -90,7 +90,31 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 export class AppModule {}
 ```
 
-### 18.3.1 The Response Format
+### 18.3.1 Route-Scoped Endpoint Middleware
+Health and readiness probes often need a deployment-specific access policy without adding that policy to every application route. Pass class-based middleware through `endpointMiddleware`; Terminus resolves it through DI and applies it in declaration order to both generated probe routes.
+
+```typescript
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class HealthProbeAuthMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-health-token'] !== 'secret-token') {
+      throw new ForbiddenException('Health endpoints require x-health-token.');
+    }
+
+    await next();
+  }
+}
+
+TerminusModule.forRoot({
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+  path: '/internal/',
+});
+```
+
+This protects normalized `/internal/health` and `/internal/ready` only. Leaving `endpointMiddleware` out keeps the default endpoint behavior unchanged.
+
+### 18.3.2 The Response Format
 When a request is sent to the `/health` endpoint, Terminus returns a standardized JSON response. If every indicator passes, it returns a `200 OK` status. If even one indicator fails, such as when the database connection is unavailable, it returns `503 Service Unavailable` with a detailed report about what went wrong. This format is easy for humans to read and easy for automated monitoring tools such as Prometheus, Grafana, and Datadog to interpret. The application is speaking the same state language as the rest of the production infrastructure.
 
 If you are migrating from NestJS Terminus, do not start by recreating a controller method decorated with `@HealthCheck()` that calls `HealthCheckService.check([...])`. In Fluo, the primary API is the module registration shown above: indicators, indicator providers, readiness checks, and execution guardrails belong in `TerminusModule.forRoot(...)` so the runtime-owned `GET /health` and `GET /ready` routes stay aligned with platform diagnostics. `TerminusHealthService.check()` is still useful in tests or custom application flows, but it is not the default route authoring pattern.

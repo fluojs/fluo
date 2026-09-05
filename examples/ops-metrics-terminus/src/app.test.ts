@@ -22,11 +22,14 @@ describe('AppModule e2e', () => {
     const app = await createTestApp({ rootModule: AppModule });
 
     try {
-      await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+      const forbiddenHealthResult = await app.request('GET', '/health').send();
+      expect(forbiddenHealthResult.status).toBe(403);
+
+      await expect(app.request('GET', '/health').header('x-health-token', 'secret-token').send()).resolves.toMatchObject({
         status: 200,
       });
 
-      await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+      await expect(app.request('GET', '/ready').header('x-health-token', 'secret-token').send()).resolves.toMatchObject({
         status: 200,
       });
 
