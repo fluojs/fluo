@@ -1,6 +1,8 @@
 ---
 "@fluojs/runtime": major
 "@fluojs/config": major
+"@fluojs/cli": patch
+"@fluojs/http": patch
 "@fluojs/platform-nodejs": major
 "@fluojs/platform-express": patch
 "@fluojs/platform-fastify": patch

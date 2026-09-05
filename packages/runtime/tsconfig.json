@@ -2,6 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@fluojs/platform-nodejs": [
+        "../platform-nodejs/src/index.ts"
+      ],
       "@fluojs/testing/platform-shell-lifecycle-conformance": [
         "../testing/src/conformance/platform-shell-lifecycle-conformance.ts"
       ]

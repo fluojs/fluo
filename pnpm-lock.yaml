@@ -1023,9 +1023,6 @@ importers:
         specifier: workspace:^
         version: link:../studio
     devDependencies:
-      '@fluojs/platform-nodejs':
-        specifier: workspace:^
-        version: link:../platform-nodejs
       '@fluojs/serialization':
         specifier: workspace:^
         version: link:../serialization

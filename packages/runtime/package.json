@@ -67,7 +67,6 @@
     "@fluojs/studio": "workspace:^"
   },
   "devDependencies": {
-    "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/serialization": "workspace:^",
     "vitest": "^3.2.4"
   }

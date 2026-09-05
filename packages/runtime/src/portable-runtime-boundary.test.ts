@@ -21,9 +21,14 @@ describe('@fluojs/runtime portable package boundary', () => {
   it('publishes no Node engine or Node-only entrypoint', () => {
     const manifest = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-    ) as { engines?: { node?: string }; exports: Record<string, unknown> };
+    ) as {
+      devDependencies?: Record<string, string>;
+      engines?: { node?: string };
+      exports: Record<string, unknown>;
+    };
 
     expect(manifest.engines?.node).toBeUndefined();
+    expect(manifest.devDependencies).not.toHaveProperty('@fluojs/platform-nodejs');
     expect(manifest.exports).not.toHaveProperty('./node');
     expect(manifest.exports).not.toHaveProperty('./internal-node');
   });
