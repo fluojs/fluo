@@ -23,7 +23,7 @@ The easiest way to misunderstand Fluo runtime internals is to assume that `Appli
 
 All three shells are assembled inside `path:packages/runtime/src/bootstrap.ts`. They also share the lower bootstrap spine. Module Graph compilation, container registration, runtime Token registration, lifecycle singleton resolution, hook execution, and platform-shell startup are common.
 
-The public types in `path:packages/runtime/src/types.ts:163-199` make the similarity clear. `ApplicationContext` exposes `container`, `modules`, `rootModule`, `get()`, and `close()`. `Application` adds `state`, `dispatcher`, `listen()`, `ready()`, `connectMicroservice()`, and `startAllMicroservices()`. `MicroserviceApplication` reuses the context surface while adding transport methods such as `listen()`, `send()`, and `emit()`.
+The public types in `path:packages/runtime/src/types.ts:246-288` make the similarity clear. `ApplicationContext` exposes `container`, `modules`, `rootModule`, `get()`, and `close()`. `Application` adds `state`, `dispatcher`, `listen()`, `ready()`, `connectMicroservice()`, and `startAllMicroservices()`. `MicroserviceApplication` reuses the context surface while adding transport methods such as `listen()`, `send()`, and `emit()`.
 
 This is not accidental API symmetry. It reflects the implementation order. Fluo first builds a transport-neutral DI and lifecycle baseline, then each shell type wraps and exposes only the capabilities it promises.
 

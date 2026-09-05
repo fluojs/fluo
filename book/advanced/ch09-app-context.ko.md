@@ -23,7 +23,7 @@ Fluo runtime internals를 오해하는 가장 쉬운 방법은 `Application`, `A
 
 세 shell 모두 `path:packages/runtime/src/bootstrap.ts` 안에서 조립됩니다. 그리고 더 아래쪽 bootstrap spine을 공유합니다. module graph compilation, container registration, runtime token registration, lifecycle singleton resolution, hook execution, platform-shell startup이 공통입니다.
 
-`path:packages/runtime/src/types.ts:163-199`의 public type을 보면 닮은 점이 분명합니다. `ApplicationContext`는 `container`, `modules`, `rootModule`, `get()`, `close()`를 노출합니다. `Application`은 여기에 `state`, `dispatcher`, `listen()`, `ready()`, `connectMicroservice()`, `startAllMicroservices()`를 추가합니다. `MicroserviceApplication`은 context surface를 재사용하면서 `listen()`, `send()`, `emit()` 같은 transport method를 더합니다.
+`path:packages/runtime/src/types.ts:246-288`의 public type을 보면 닮은 점이 분명합니다. `ApplicationContext`는 `container`, `modules`, `rootModule`, `get()`, `close()`를 노출합니다. `Application`은 여기에 `state`, `dispatcher`, `listen()`, `ready()`, `connectMicroservice()`, `startAllMicroservices()`를 추가합니다. `MicroserviceApplication`은 context surface를 재사용하면서 `listen()`, `send()`, `emit()` 같은 transport method를 더합니다.
 
 이것은 우연한 API 대칭이 아닙니다. 구현 순서의 반영입니다. Fluo는 먼저 transport-neutral한 DI/lifecycle baseline을 만든 뒤, 각 shell type이 약속한 capability만 래핑해 노출합니다.
 
