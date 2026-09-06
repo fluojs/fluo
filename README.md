@@ -94,6 +94,7 @@ fluo isn't a monolith. It's a collection of precision-engineered modules:
 
 ## Where to Go Next?
 
+- [HTTP Dependency Security Update](./docs/reference/dependency-security-update.md): Published Fastify/Express dependency paths and consumer lockfile updates for the public upstream advisories.
 - 📖 **[Documentation Hub](./book/README.md)**: Deep dives into architecture, DI, and patterns.
 - 🚀 **[Getting Started](./book/beginner/ch02-cli-setup.md)**: Your first 15 minutes with fluo.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.md)**: The source of truth for official runtime/package coverage.

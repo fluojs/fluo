@@ -23,6 +23,8 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
+
 ## Runtime Cleanup Settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callbacks may be synchronous or asynchronous. Runtime close and

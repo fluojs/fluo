@@ -46,7 +46,7 @@
     "@fluojs/http": "workspace:^",
     "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/runtime": "workspace:^",
-    "fastify": "^5.8.5",
+    "fastify": "^5.12.3",
     "fastify-raw-body": "^5.0.0"
   },
   "devDependencies": {
