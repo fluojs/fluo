@@ -84,7 +84,7 @@ export const isConsumerVisibleFile = (file) => {
 		return false;
 	}
 	const withinPackage = file.replace(/^packages\/[^/]+\//, '');
-	return !/(^|\/)(test-types|__tests__|test)\//.test(withinPackage);
+	return !/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(withinPackage);
 };
 
 export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !file.endsWith('README.md');

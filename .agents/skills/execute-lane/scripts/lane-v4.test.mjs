@@ -257,6 +257,7 @@ test('C3b: test-support declarations outside src are not consumer-visible', () =
 	assert.equal(isConsumerVisibleFile('packages/platform-express/test-types/testing-http-adapter-portability.d.ts'), false);
 	assert.equal(isConsumerVisibleFile('packages/platform-bun/__tests__/helpers.ts'), false);
 	assert.equal(isConsumerVisibleFile('packages/platform-deno/test/helper.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/terminus/test-fixtures/public-subpaths-import.ts'), false);
 });
 
 test('C3b: a directory merely starting with "test" stays consumer-visible', () => {
