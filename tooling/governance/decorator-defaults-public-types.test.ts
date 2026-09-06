@@ -1,8 +1,12 @@
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
+const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const buildClosureScript = fileURLToPath(new URL('../scripts/run-workspace-build-closure.mjs', import.meta.url));
 const fixture = `${root}tooling/governance/decorator-defaults-consumer.ts`;
 const imports = [
   "import * as Http from '@fluojs/http';",
@@ -37,6 +41,15 @@ function compile(source: string): readonly ts.Diagnostic[] {
 }
 
 describe('published decorator default signatures', () => {
+  beforeAll(async () => {
+    for (const packageName of ['@fluojs/react', '@fluojs/openapi']) {
+      await execFileAsync(process.execPath, [buildClosureScript, packageName], {
+        cwd: root,
+        env: process.env,
+      });
+    }
+  }, 300_000);
+
   it('accepts every new caller path through public root and portable imports', () => {
     // Given
     const calls = ['Http', 'Portable'].flatMap((entry) => [
