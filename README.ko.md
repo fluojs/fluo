@@ -94,6 +94,7 @@ fluo는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된 �
 
 ## 이어서 읽기
 
+- [HTTP 의존성 보안 업데이트](./docs/reference/dependency-security-update.ko.md): 공개 upstream advisory에 대한 published Fastify/Express dependency 경로와 consumer lockfile 갱신 안내.
 - 📖 **[문서 포털](./book/README.ko.md)**: 아키텍처, DI, 패턴에 대한 심층 문서.
 - 🚀 **[시작하기](./book/beginner/ch02-cli-setup.ko.md)**: fluo와 함께하는 첫 15분.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md)**: 공식 런타임/패키지 범위를 보여주는 기준 문서.

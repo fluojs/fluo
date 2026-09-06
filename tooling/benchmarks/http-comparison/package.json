@@ -26,7 +26,7 @@
     "@nestjs/common": "^11.1.24",
     "@nestjs/core": "^11.1.24",
     "@nestjs/platform-fastify": "^11.1.24",
-    "fastify": "^5.8.5",
+    "fastify": "^5.12.3",
     "reflect-metadata": "^0.2.0"
   },
   "devDependencies": {
@@ -40,8 +40,8 @@
   "pnpm": {
     "overrides": {
       "esbuild": "0.28.1",
-      "fast-uri": "3.1.5",
-      "fastify": "5.8.5",
+      "fast-uri@3": "3.1.7",
+      "fastify": "5.12.3",
       "find-my-way": "9.7.0",
       "form-data": "4.0.6",
       "uuid": "11.1.1"
