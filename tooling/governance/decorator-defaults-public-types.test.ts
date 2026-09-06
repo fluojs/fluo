@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { cp, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +51,8 @@ describe('published decorator default signatures', () => {
 
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'fluo-decorator-declarations-'));
+    // Keep the copied CLI argv path aligned with Node's canonical import.meta URL.
+    root = await realpath(root);
     fixture = join(root, 'decorator-defaults-consumer.ts');
     const targets = ['@fluojs/react', '@fluojs/openapi'];
     const packages = new Set(targets.flatMap((name) => resolveWorkspaceBuildOrder(name, repositoryRoot)));
