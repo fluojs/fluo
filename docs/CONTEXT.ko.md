@@ -23,6 +23,8 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+[HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
+
 ## Decorator Default Audit
 
 [Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 소유한 공개 factory 165개를
@@ -30,6 +32,14 @@
 OpenAPI 빈 write, React options 부재, 필수 `UseAuth(strategyName)`의 시작점입니다.
 공개 declaration 검증은 `tooling/governance/decorator-defaults-public-types.test.ts`이며
 runtime 증거는 각 소유 패키지에 있습니다.
+
+## CLI Published Dependency Ranges
+
+[CLI README](../packages/cli/README.ko.md)와 [Node 24 release migration guide](./getting-started/migrate-node24.ko.md)는
+published starter의 패키지별 range를 문서화합니다. CLI build는 Changesets 이후 versioned
+manifest를 읽고 생성 metadata를 `dist`에 포함하여 monorepo 없이도 독립 major와 React의
+`0.x`를 보존합니다. Local tarball override는 계속 우선합니다. CLI published/standalone
+artifact 회귀와 `tooling/release/cli-published-dependencies.test.ts`가 release input 경계를 검증합니다.
 
 ## Runtime cleanup settlement
 

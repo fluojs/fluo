@@ -1383,7 +1383,7 @@ describe('@fluojs/platform-fastify', () => {
     class CustomFallbackController {
       @Query('/query')
       query(_input: undefined, context: RequestContext) {
-        return { method: context.request.method, route: 'query' };
+        return { body: context.request.body, method: context.request.method, route: 'query' };
       }
 
       @Route('PURGE', '/purge')
@@ -1477,7 +1477,13 @@ describe('@fluojs/platform-fastify', () => {
       expect(JSON.parse(allResponse.body)).toEqual({ method: 'PATCH', route: 'all' });
 
       const [queryResponse, purgeResponse] = await Promise.all([
-        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', target }),
+        requestHttp({
+          body: JSON.stringify({ term: 'fluo' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'QUERY',
+          path: '/custom-fallback/query',
+          target,
+        }),
         requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', target }),
       ]);
       expect(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))).toMatchObject({
@@ -1485,7 +1491,7 @@ describe('@fluojs/platform-fastify', () => {
       });
       expect(queryResponse.statusCode).toBe(200);
       expect(purgeResponse.statusCode).toBe(200);
-      expect(JSON.parse(queryResponse.body)).toEqual({ method: 'QUERY', route: 'query' });
+      expect(JSON.parse(queryResponse.body)).toEqual({ body: { term: 'fluo' }, method: 'QUERY', route: 'query' });
       expect(JSON.parse(purgeResponse.body)).toEqual({ method: 'PURGE', route: 'purge' });
 
       lifecycle.length = 0;

@@ -23,6 +23,8 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
+
 ## Decorator Default Audit
 
 [Public Decorator Defaults](./reference/decorator-defaults.md) reconciles all 165 owned public
@@ -30,6 +32,14 @@ factories: fifteen safe defaults and 150 preserved contracts. Start there for HT
 paths, `Module()` registration, OpenAPI empty writes, React options absence, and required
 `UseAuth(strategyName)`. Public declaration coverage is
 `tooling/governance/decorator-defaults-public-types.test.ts`; runtime evidence stays in the owning packages.
+
+## CLI Published Dependency Ranges
+
+The [CLI README](../packages/cli/README.md) and [Node 24 release migration guide](./getting-started/migrate-node24.md)
+document per-package published starter ranges. CLI builds read versioned manifests after Changesets
+and ship generated metadata in `dist`, preserving independent majors and React's `0.x` line without
+monorepo access. Local tarball overrides keep priority. CLI published/standalone artifact regressions
+and `tooling/release/cli-published-dependencies.test.ts` verify the release-input boundary.
 
 ## Runtime Cleanup Settlement
 
