@@ -82,7 +82,7 @@ describe('HTTP website guide snippets', () => {
   it.each([
     ['malformed HTTP module specifier', "import { Controller } from '@fluojs/htp';\n@Controller('/')\nclass Example {}\n"],
     ['unresolved HTTP imports', "import { Missing } from '@fluojs/http';\nMissing;\n"],
-    ['invalid route decorator arguments', "import { Controller, Get } from '@fluojs/http';\n@Controller('/')\nclass Example { @Get() handler() {} }\n"],
+    ['invalid route decorator arguments', "import { Controller, Get } from '@fluojs/http';\n@Controller('/')\nclass Example { @Get(123) handler() {} }\n"],
     ['invalid DTO member access', "import { Controller, FromBody, Post, RequestDto } from '@fluojs/http';\nclass Input { @FromBody() name!: string; }\n@Controller('/')\nclass Example { @Post('/') @RequestDto(Input) create(input: Input) { return input.missing; } }\n"],
   ])('%s produce semantic diagnostics', (relativePath, source) => {
     // Given
@@ -93,6 +93,17 @@ describe('HTTP website guide snippets', () => {
 
     // Then
     expect(diagnostics).not.toEqual([]);
+  });
+
+  it('accepts omitted and undefined route paths in public guide snippets', () => {
+    // Given
+    const source = "import { Controller, Get, Route } from '@fluojs/http';\n@Controller('cats')\nclass Example { @Get() list() {} @Get(undefined) samePath() {} @Route('QUERY') search() {} }\n";
+
+    // When
+    const diagnostics = semanticDiagnostics('tooling/governance/fixtures/default-route-paths.ts', source);
+
+    // Then
+    expect(diagnostics).toEqual([]);
   });
 
   it('selects malformed HTTP module specifiers for semantic compilation', () => {

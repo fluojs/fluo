@@ -448,6 +448,13 @@ the provider. See the
 
 ## Router and Path Decorators
 
+`@Path()` and `@Path(undefined)` use `''`, so `@Router('/cats')` serves GET `/cats`
+and `@Router()` serves GET `/`. An explicit `'/'` has the same effective route but a
+different raw path and never escapes the prefix. Omitted options leave the React metadata's
+`options` property absent; `Path(undefined, options)` still records explicit options.
+HTTP, React, and inspection metadata keep their existing contracts, including route conflicts
+and grammar rejection. `PageLayout`, `SuspenseFallback`, and `PageMetadata` still require values.
+
 `@Router(basePath)` marks a class as a React router and writes HTTP controller metadata equivalent
 to `@Controller(basePath)`. It also stores React router marker metadata readable through
 `getReactRouterMetadata(...)` for diagnostics and future rendering integration.

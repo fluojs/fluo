@@ -441,6 +441,13 @@ pre-commit shell failure는 별도 React SSR diagnostic phase로 남으며 provi
 
 ## Router 및 Path Decorators
 
+`@Path()`와 `@Path(undefined)`는 `''`를 사용하므로 `@Router('/cats')`에서는 GET `/cats`,
+`@Router()`에서는 GET `/`을 처리합니다. 명시적 `'/'`는 유효 route가 같지만 raw path가
+다르며 prefix를 무시하지 않습니다. Options를 생략하면 React metadata의 `options` 속성을
+만들지 않습니다. `Path(undefined, options)`는 명시적 options를 기록합니다. HTTP, React,
+inspection metadata와 route 충돌/grammar 거부 계약은 유지하며, `PageLayout`,
+`SuspenseFallback`, `PageMetadata`에는 계속 값이 필요합니다.
+
 `@Router(basePath)`는 class를 React router로 표시하고 `@Controller(basePath)`와 동등한 HTTP
 controller metadata를 기록합니다. 또한 diagnostics 및 향후 rendering integration을 위해
 `getReactRouterMetadata(...)`로 읽을 수 있는 React router marker metadata를 저장합니다.

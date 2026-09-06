@@ -23,6 +23,14 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+## Decorator Default Audit
+
+[Public Decorator Defaults](./reference/decorator-defaults.md) reconciles all 165 owned public
+factories: fifteen safe defaults and 150 preserved contracts. Start there for HTTP empty relative
+paths, `Module()` registration, OpenAPI empty writes, React options absence, and required
+`UseAuth(strategyName)`. Public declaration coverage is
+`tooling/governance/decorator-defaults-public-types.test.ts`; runtime evidence stays in the owning packages.
+
 ## Runtime Cleanup Settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callbacks may be synchronous or asynchronous. Runtime close and

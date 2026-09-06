@@ -95,6 +95,21 @@ export class UserController {
 
 데코레이터가 붙은 DTO 필드는 위 예시처럼 초기화하거나 optional로 선언하세요. `name!: string` 같은 definite assignment assertion은 Fluo가 제공하는 Babel decorator 설정에서 컴파일되지 않습니다. 해당 설정은 데코레이터가 붙은 클래스의 definitely assigned field를 `Definitely assigned fields cannot be initialized here, but only in the constructor` 오류로 거부합니다.
 
+### 선택적 route path
+
+`Get`, `Post`, `Put`, `Patch`, `Delete`, `Options`, `Head`, `All`, `Sse`, HTTP `Query`는
+path 생략 또는 `undefined`를 `''`로 받습니다. `Route(method)`도 path 기본값은 같지만
+method는 필수입니다. `@Controller('cats')`의 `@Get()`은 `GET /cats`, `@Controller()`
+아래에서는 `GET /`입니다. `('/')`는 유효 route가 같지만 raw path가 다르며 controller
+prefix를 무시하지 않습니다. 중복 검출과 잘못된 path/method 거부는 유지합니다.
+무인수 factory이지 bare `@Get` decorator가 아닙니다.
+
+`Sse()`는 GET + `text/event-stream`과 stream lifecycle을 유지합니다. `All()`은 wildcard,
+HTTP `Query()`는 query-string binding이나 GraphQL Query가 아닌 RFC QUERY입니다. Root와
+`@fluojs/http/portable`은 같은 기본값을 제공하지만 adapter method 지원을 확장하지 않습니다.
+`HttpCode(status)`, `Header(name, value)` 같은 필수 인수는
+[165개 API 전체 대조표](../../docs/reference/decorator-defaults.ko.md)를 참고하세요.
+
 ### 라우트 경로 계약
 
 `@Controller()`, `@Get()`, `@Post()` 같은 HTTP 라우트 데코레이터는 다음만 허용합니다.

@@ -21,6 +21,12 @@ If Chapter 4 explained the language model behind Decorators, this chapter connec
 
 ## 5.1 Why Routing Comes First in HTTP Work
 
+All HTTP verb factories, `Sse`, and HTTP `Query` allow `()` or `(undefined)` for `('')`.
+`Route(method)` shares that path default but requires its method. With `@Controller('posts')`,
+`@Get()` means GET `/posts`; with `@Controller()`, it means GET `/`. Explicit `'/'` keeps the
+prefix too and collides with `''` after normalization. SSE lifecycle, ALL wildcard behavior,
+RFC QUERY, and path/method validation remain unchanged.
+
 Part 1 starts at the point where a backend application begins to feel tangible. Users do not experience your dependency graph directly. They experience URLs, methods, and responses, so routing becomes the first practical HTTP topic.
 
 In fluo, Controllers are the center of routing. A Controller class groups related endpoints under a shared path prefix, and method Decorators connect individual methods to HTTP verbs. This creates a readable map from URLs to code.

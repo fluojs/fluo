@@ -31,6 +31,20 @@ This document defines the current fluo decorator and metadata contract. fluo use
 - HTTP route decorators record the HTTP method and route path on the decorated class method.
 - HTTP route paths follow the fluo route contract. Segments are literals or full-segment `:param` placeholders. Wildcards, regex-like syntax, and mixed segments such as `user-:id` are outside the route-decorator contract.
 
+## Safe Factory Defaults
+
+Exactly fifteen factories add omission defaults: the eleven HTTP route APIs (`Get`, `Post`,
+`Put`, `Patch`, `Delete`, `Options`, `Head`, `All`, `Sse`, `Query`, and the path of `Route`),
+React `Path`, core `Module`, and OpenAPI `ApiOperation`/`ApiBody`. Paths default to `''`;
+module/operation/body objects default to `{}`. Explicit `undefined` has the same meaning.
+`Route` still requires its method. No bare overload, reflection inference, or invalid-input
+coercion is added. The [complete audit](../reference/decorator-defaults.md) enumerates all
+165 APIs and preserves the other 150 contracts, including `UseAuth(strategyName)`.
+
+Empty paths retain controller/router prefixes and collide with explicit `'/'` routes after
+normalization. Empty Module metadata still registers and merges; empty OpenAPI metadata can
+overwrite stacked values. Omitted React Path options do not create an `options` property.
+
 ## Metadata Rules
 
 - fluo owns the metadata contract. Runtime consumers read fluo-defined metadata records, not compiler-emitted design metadata.

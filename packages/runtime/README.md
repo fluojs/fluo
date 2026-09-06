@@ -71,6 +71,10 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
+The `@Get()` above uses the empty relative path, so the controller serves GET `/`.
+With `@Controller('cats')` it would serve `/cats`, not bypass the prefix. An empty
+`@Module()` can also bootstrap and close without inventing providers.
+
 ## Common Patterns
 
 ### Health endpoint middleware

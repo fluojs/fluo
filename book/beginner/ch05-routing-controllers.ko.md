@@ -21,6 +21,12 @@ Chapter 4가 데코레이터의 언어 모델을 설명했다면, 이 장은 그
 
 ## 5.1 Why Routing Comes First in HTTP Work
 
+모든 HTTP verb factory, `Sse`, HTTP `Query`는 `('')` 대신 `()`나 `(undefined)`를 허용합니다.
+`Route(method)`도 path 기본값은 같지만 method는 필수입니다. `@Controller('posts')`의
+`@Get()`은 GET `/posts`, `@Controller()` 아래에서는 GET `/`입니다. 명시적 `'/'`도 prefix를
+유지하며 정규화 후 `''`와 충돌합니다. SSE lifecycle, ALL wildcard, RFC QUERY,
+path/method 검증은 바뀌지 않습니다.
+
 Part 1은 백엔드 애플리케이션이 손에 잡히기 시작하는 지점에서 출발합니다. 사용자는 여러분의 의존성 그래프를 직접 경험하지 않습니다. 사용자가 경험하는 것은 URL, 메서드, 그리고 응답이므로 라우팅이 첫 번째 실전 HTTP 주제가 됩니다.
 
 fluo에서 라우팅의 중심은 컨트롤러입니다. 컨트롤러 클래스는 공통 경로 접두사 아래에 관련 엔드포인트를 모으고, 메서드 데코레이터는 개별 메서드를 HTTP 동사와 연결합니다. 이렇게 하면 URL에서 코드로 이어지는 읽기 쉬운 지도가 생깁니다.

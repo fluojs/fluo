@@ -76,6 +76,16 @@ await app.listen(3000);
 
 ## 핵심 기능
 
+### 빈 decorator options
+
+`@ApiOperation()` / `@ApiOperation(undefined)`와 `@ApiBody()` / `@ApiBody(undefined)`는
+기존 `{}` 의미를 사용합니다. Summary, description, deprecated, required, schema를 임의로
+생성하지 않습니다. 빈 body metadata는 DTO에서 추론한 body를 유지하고, 추론한 body가 없으면
+`requestBody`를 추가하지 않습니다. 빈 write도 stacking의 이전 metadata를 덮어쓸 수 있으므로
+decorator 자체 생략과 항상 같지는 않습니다. 기존 적용 시 `null` 실패를 유지합니다.
+`ApiTag(tag)`, `ApiResponse(status, options?)`, parameter/security name은 계속 필수이며
+지원하는 OpenAPI Path Item method 집합은 바뀌지 않습니다.
+
 ### 자동 명세 생성
 fluo는 `sources`와 `descriptors`로 전달된 controller 및 handler descriptor만 조사하여 OpenAPI 3.1.0 문서를 작성합니다. 이 명시적 입력 집합의 경로, 메서드, 파라미터, 요청 바디가 포함되며, controller를 application module에 import하는 것만으로는 자동 추가되지 않습니다.
 
@@ -110,9 +120,9 @@ Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 respons
 `@fluojs/http`의 URI 기반 버전 관리를 자동으로 처리합니다. OpenAPI 경로에 해결된 버전 경로가 올바르게 반영됩니다.
 
 ### 보안 문서화
-`@ApiBearerAuth()` 및 `@ApiSecurity()`를 사용하여 Bearer 토큰이나 API 키와 같은 보안 요구사항을 쉽게 문서화할 수 있습니다.
+`@ApiBearerAuth()` 및 `@ApiSecurity(name, scopes?)`를 사용하여 Bearer 토큰이나 API 키와 같은 보안 요구사항을 쉽게 문서화할 수 있습니다.
 
-같은 scheme에 대해 여러 `@ApiSecurity()` 데코레이터를 쌓으면, 해당 scheme의 scope가 하나의 누적 OpenAPI security requirement로 병합됩니다. 따라서 라우트가 `['reports:read']`와 `['reports:write', 'reports:read']`처럼 겹치는 scope를 선언해도 OAuth 스타일 요구사항은 결정적으로 유지되며, 서로 다른 scheme은 별도 requirement로 남습니다.
+같은 scheme에 대해 여러 `@ApiSecurity(name, scopes?)` 데코레이터를 쌓으면, 해당 scheme의 scope가 하나의 누적 OpenAPI security requirement로 병합됩니다. 따라서 라우트가 `['reports:read']`와 `['reports:write', 'reports:read']`처럼 겹치는 scope를 선언해도 OAuth 스타일 요구사항은 결정적으로 유지되며, 서로 다른 scheme은 별도 requirement로 남습니다.
 
 ### 결정적인 Swagger UI 자산
 `ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다. 오프라인 또는 CSP 제어 환경에서 자체 호스팅 자산이 필요하면 `swaggerUiAssets.cssUrl`과 `swaggerUiAssets.jsBundleUrl`을 설정하세요. 생성된 HTML은 해당 URL을 이스케이프하며 Swagger UI 인스턴스를 `window.ui`에 노출하지 않습니다.

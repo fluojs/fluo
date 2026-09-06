@@ -30,7 +30,17 @@
 | DTO 스키마 생성 | DTO 스키마는 `getDtoBindingSchema(...)`와 `getDtoValidationSchema(...)`를 통한 바인딩/검증 메타데이터에서 파생되며, `components.schemas`로 출력됩니다. | `packages/openapi/src/schema-builder.ts` |
 | 배타적 스키마 경계 | `OpenApiSchemaObject`는 숫자 및 기존 boolean 배타적 경계 입력을 유지합니다. `minimum`/`maximum`과 짝을 이룬 `true` metadata는 OpenAPI 3.1 숫자 배타적 keyword로 생성되고, `false`는 포괄 경계를 유지한 채 생략되며, 정규화할 수 없는 배타적 값은 문서 생성을 실패시킵니다. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-builder.ts` |
 | Nullable 스키마 | `OpenApiSchemaObject`는 호환성을 위해 legacy boolean `nullable` 입력을 유지하지만 이를 내보내지는 않습니다. `true`는 선언된 scalar 또는 array `type` union에 `null`을 추가하고, `$ref`처럼 `type`이 없는 schema는 `anyOf`로 감쌉니다. `false`는 schema를 바꾸지 않고 제거합니다. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-nullable.test.ts` |
-| 보안 메타데이터 | `@ApiBearerAuth()`와 `@ApiSecurity()`는 operation 수준 보안 요구사항을 추가합니다. `securitySchemes` 옵션은 `components.securitySchemes`를 채웁니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
+| 보안 메타데이터 | `@ApiBearerAuth()`와 `@ApiSecurity(name, scopes?)`는 operation 수준 보안 요구사항을 추가합니다. `securitySchemes` 옵션은 `components.securitySchemes`를 채웁니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
+
+## Empty Decorator Options
+
+`ApiOperation()`과 `ApiBody()`는 생략 또는 `undefined` options를 `{}`로 받습니다. 정의하지
+않은 operation field는 생성 문서에 없습니다. 빈 body override는 DTO 추론을 보존하고 추론한
+body가 없으면 `requestBody`를 만들지 않습니다. 빈 metadata도 stacking에서 같은 key를
+덮어쓰고 defensive snapshot을 유지하므로 decorator 생략과 항상 같지는 않습니다. 타입 밖
+`null`은 기존 decorator 적용 시 실패를 유지합니다. Status, tag, parameter name, security
+scheme name은 필수입니다. [전체 기본값 조사](../reference/decorator-defaults.ko.md)와
+`packages/openapi/src/decorator-defaults.test.ts`를 참고하세요.
 
 ## 출력 표면
 

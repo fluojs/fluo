@@ -8,7 +8,7 @@ This chapter explains how to connect automatic API documentation to FluoBlog so 
 ## Learning Objectives
 - Understand why generated API documentation should stay close to the code.
 - Register `OpenApiModule` in FluoBlog and expose the generated document.
-- Use documentation Decorators such as `@ApiTag()`, `@ApiOperation()`, and `@ApiResponse()`.
+- Use documentation Decorators such as `@ApiTag(tag)`, `@ApiOperation()`, and `@ApiResponse(status, options?)`.
 - Learn how DTOs and HTTP metadata become OpenAPI schema information.
 - Understand how protected routes and versioned paths affect the generated documentation.
 - Finish Part 1 with a documented HTTP API foundation.
@@ -20,6 +20,12 @@ This chapter explains how to connect automatic API documentation to FluoBlog so 
 - Comfort reading Module configuration examples.
 
 ## 10.1 Why API Documentation Should Not Drift from the Code
+
+`ApiOperation()` and `ApiBody()` use the existing `{}` behavior, also for explicit `undefined`.
+They invent no operation fields or body schema/required flag. A DTO-inferred body survives;
+without one, no `requestBody` is added. Empty decorators can overwrite stacked metadata, so
+they are not always equivalent to omitting the decorator. Tag, response status, parameter
+name, and security scheme name remain required.
 
 Manual API documentation usually starts with good intentions. A team creates a wiki page or writes a separate Markdown file in the project's `docs/` folder. At first, it is accurate and helpful.
 
@@ -199,7 +205,7 @@ Using more specific names such as `PostCreateDto` or `UserCreateDto` is a good h
 
 ### Customizing Explicit Schema Surfaces
 
-The default mapping from TypeScript properties to OpenAPI properties is not always enough. When you need example values, read-only fields, or fully explicit schema composition, fluo exposes those controls through `@ApiBody()` and `@ApiResponse()` schema objects.
+The default mapping from TypeScript properties to OpenAPI properties is not always enough. When you need example values, read-only fields, or fully explicit schema composition, fluo exposes those controls through `@ApiBody({ schema })` and `@ApiResponse(status, { schema })` schema objects.
 
 ```typescript
 @ApiResponse(200, {
@@ -236,7 +242,7 @@ OpenAPI 3.1 represents nullable values with JSON Schema unions, such as `type: [
 
 If an application uses multiple authentication types, such as API keys for some paths and JWT for others, you can define multiple security schemas.
 
-In fluo, these security requirements are expressed together through the `OpenApiModule.forRoot(...)` configuration and Decorators such as `@ApiBearerAuth()` and `@ApiSecurity()`. In other words, instead of assembling a separate documentation builder during bootstrap, you keep the public documentation surface and security hints inside the same OpenAPI Module boundary. This level of detail turns the documentation into a practical guide for using the API safely and correctly, not just a list of paths.
+In fluo, these security requirements are expressed together through the `OpenApiModule.forRoot(...)` configuration and Decorators such as `@ApiBearerAuth()` and `@ApiSecurity(name, scopes?)`. In other words, instead of assembling a separate documentation builder during bootstrap, you keep the public documentation surface and security hints inside the same OpenAPI Module boundary. This level of detail turns the documentation into a practical guide for using the API safely and correctly, not just a list of paths.
 
 ### Integrating Swagger UI and Security
 

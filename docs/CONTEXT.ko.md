@@ -23,6 +23,14 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+## Decorator Default Audit
+
+[Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 소유한 공개 factory 165개를
+안전한 기본값 추가 15개와 계약 보존 150개로 대조합니다. HTTP 빈 상대 경로, `Module()` 등록,
+OpenAPI 빈 write, React options 부재, 필수 `UseAuth(strategyName)`의 시작점입니다.
+공개 declaration 검증은 `tooling/governance/decorator-defaults-public-types.test.ts`이며
+runtime 증거는 각 소유 패키지에 있습니다.
+
 ## Runtime cleanup settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callback은 동기 또는 비동기일 수 있습니다. Runtime close와

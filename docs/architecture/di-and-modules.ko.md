@@ -19,6 +19,11 @@
 - 모듈은 로컬 토큰도 아니고 import한 모듈의 재export 대상도 아닌 토큰을 export해서는 안 됩니다.
 - `@Global()` 또는 `global: true`로 표시된 모듈은 자신의 exported 토큰을 직접 import 없이 보이게 만듭니다. export되지 않은 공급자는 계속 비공개입니다.
 
+`@Module()`과 `@Module(undefined)`는 `{}`를 사용합니다. Module을 등록하고, decorator
+순서와 관계없이 기존 부분 metadata와 `@Global()`을 보존하며 module metadata version을
+증가시킵니다. Provider나 injection을 추론하지 않으며 decorator가 없는 클래스와 다릅니다.
+[Public Decorator Defaults](../reference/decorator-defaults.ko.md)를 참고하세요.
+
 ## Injection Rules
 
 - fluo는 명시적 토큰 기반 주입을 사용합니다. 생성자 해석은 선언된 토큰을 사용해야 하며, 방출된 타입 메타데이터에 의존해서는 안 됩니다.

@@ -1,7 +1,7 @@
 import {
+  type ClassDiMetadata,
   defineClassDiMetadata,
   defineModuleMetadata,
-  type ClassDiMetadata,
   type ModuleMetadata,
 } from './metadata.js';
 import type { InjectionToken } from './types.js';
@@ -13,10 +13,11 @@ type TupleOnly<T extends readonly unknown[]> = number extends T['length'] ? neve
 /**
  * Declares module-level metadata (`imports`, `providers`, `controllers`, `exports`, `global`) on a class.
  *
- * @param definition Module composition metadata consumed by the runtime module-graph compiler.
+ * @param definition Module composition metadata; omission or `undefined` uses `{}`.
  * @returns A standard class decorator that records the module contract on the target class.
+ * @remarks Empty metadata still registers the module, preserves earlier partial fields, and updates its metadata version.
  */
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };

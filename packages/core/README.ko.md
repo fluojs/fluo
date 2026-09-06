@@ -74,6 +74,12 @@ await import('./bootstrap.js');
 
 dynamic import는 의도적인 순서 보장입니다. decorated class를 static import한 일반 bootstrap module에서 나중에 `ensureMetadataSymbol()`을 호출하면 너무 늦습니다. ESM은 bootstrap module body를 실행하기 전에 static import graph를 먼저 평가하기 때문입니다.
 
+### 빈 module metadata
+
+`@Module()`과 `@Module(undefined)`는 `@Module({})`의 축약입니다. Module metadata 등록,
+앞서 선언된 부분 필드와 어느 순서의 `@Global()` 보존, metadata version 갱신은 유지합니다.
+Decorator가 없는 클래스와는 다릅니다.
+
 ### 명시적인 의존성 메타데이터
 
 `@Inject(...)`는 리플렉션 기반 추론 대신 코드 안에서 의존성 토큰을 직접 드러냅니다. 이 데코레이터는 표준 클래스 데코레이터이므로 constructor parameter나 property가 아니라 생성자 토큰을 선언할 클래스 위에 붙입니다. 상속된 constructor 토큰을 명시적으로 비우려면 `@Inject()`를 사용하면 됩니다.

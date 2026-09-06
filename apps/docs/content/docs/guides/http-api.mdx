@@ -12,6 +12,11 @@ Keep this split in mind: application code should depend on HTTP contracts, not o
 
 ## 1. Start with a controller
 
+`@Get()` means `@Get('')`: GET at the controller prefix, or `/` with `@Controller()`.
+All verb factories, `Sse`, and HTTP `Query` accept omitted or `undefined` paths;
+`Route(method)` keeps its required method. An explicit `'/'` never escapes the prefix.
+`HttpCode(status)`, `Header(name, value)`, DTO types, and other semantic values remain required.
+
 ```ts
 import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
