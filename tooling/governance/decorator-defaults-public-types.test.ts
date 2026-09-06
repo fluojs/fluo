@@ -1,13 +1,17 @@
 import { execFile } from 'node:child_process';
+import { cp, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import ts from 'typescript';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { resolveWorkspaceBuildOrder } from '../scripts/run-workspace-build-closure.mjs';
 
 const execFileAsync = promisify(execFile);
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const buildClosureScript = fileURLToPath(new URL('../scripts/run-workspace-build-closure.mjs', import.meta.url));
-const fixture = `${root}tooling/governance/decorator-defaults-consumer.ts`;
+const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
+let root: string;
+let fixture: string;
 const imports = [
   "import * as Http from '@fluojs/http';",
   "import * as Portable from '@fluojs/http/portable';",
@@ -24,11 +28,11 @@ function compile(source: string): readonly ts.Diagnostic[] {
     strict: true,
     target: ts.ScriptTarget.ESNext,
     paths: {
-      '@fluojs/core': [`${root}packages/core/dist/index.d.ts`],
-      '@fluojs/http': [`${root}packages/http/dist/index.d.ts`],
-      '@fluojs/http/portable': [`${root}packages/http/dist/index.portable.d.ts`],
-      '@fluojs/openapi': [`${root}packages/openapi/dist/index.d.ts`],
-      '@fluojs/react': [`${root}packages/react/dist/index.d.ts`],
+      '@fluojs/core': [join(root, 'packages/core/dist/index.d.ts')],
+      '@fluojs/http': [join(root, 'packages/http/dist/index.d.ts')],
+      '@fluojs/http/portable': [join(root, 'packages/http/dist/index.portable.d.ts')],
+      '@fluojs/openapi': [join(root, 'packages/openapi/dist/index.d.ts')],
+      '@fluojs/react': [join(root, 'packages/react/dist/index.d.ts')],
     },
   };
   const host = ts.createCompilerHost(options);
@@ -41,9 +45,34 @@ function compile(source: string): readonly ts.Diagnostic[] {
 }
 
 describe('published decorator default signatures', () => {
+  afterAll(async () => {
+    if (root) await rm(root, { force: true, recursive: true });
+  });
+
   beforeAll(async () => {
-    for (const packageName of ['@fluojs/react', '@fluojs/openapi']) {
-      await execFileAsync(process.execPath, [buildClosureScript, packageName], {
+    root = await mkdtemp(join(tmpdir(), 'fluo-decorator-declarations-'));
+    fixture = join(root, 'decorator-defaults-consumer.ts');
+    const targets = ['@fluojs/react', '@fluojs/openapi'];
+    const packages = new Set(targets.flatMap((name) => resolveWorkspaceBuildOrder(name, repositoryRoot)));
+    const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
+    for (const entry of [
+      'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+      'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+      'tooling/scripts/clean-dist.mjs', buildClosureScript,
+      'packages/testing/src/babel-decorators-plugin.ts',
+      ...[...packages].map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+    ]) {
+      await cp(join(repositoryRoot, entry), join(root, entry), {
+        recursive: true,
+        // Keep pnpm's relative workspace links inside this fixture, not the source checkout.
+        verbatimSymlinks: true,
+        filter: (source) => !['dist', '.vite', '.vite-temp'].includes(basename(source)),
+      });
+    }
+    // Only external dependencies/build tools are shared; package node_modules are copied above.
+    await symlink(join(repositoryRoot, 'node_modules'), join(root, 'node_modules'), 'dir');
+    for (const packageName of targets) {
+      await execFileAsync(process.execPath, [join(root, buildClosureScript), packageName], {
         cwd: root,
         env: process.env,
       });
