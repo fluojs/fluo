@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { initializeGitRepository, installDependencies } from './install.js';
 import { resolvePackageSpecs } from './package-spec-resolver.js';
-import { PUBLISHED_REACT_VERSION } from './published-react-version.js';
+import { PUBLISHED_INTERNAL_DEPENDENCIES } from './published-internal-dependencies.js';
 import { createReactViteSsrScaffoldFiles } from './react-vite-ssr-scaffold.js';
 import { type ResolvedBootstrapPlan, resolveBootstrapPlan } from './resolver.js';
 import type { StarterScaffoldRecipeId } from './starter-profiles.js';
@@ -42,26 +42,6 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
 } as const;
 
 const NODE_HTTP_LISTENER_ENGINE = '>=24.0.0 <27';
-
-const PUBLISHED_INTERNAL_DEPENDENCIES = {
-  '@fluojs/config': '^1.0.0',
-  '@fluojs/core': '^1.0.0',
-  '@fluojs/di': '^1.0.0',
-  '@fluojs/http': '^1.0.0',
-  '@fluojs/microservices': '^1.0.0',
-  '@fluojs/platform-bun': '^1.0.0',
-  '@fluojs/platform-cloudflare-workers': '^1.0.0',
-  '@fluojs/platform-deno': '^1.0.0',
-  '@fluojs/platform-express': '^1.0.0',
-  '@fluojs/platform-fastify': '^1.0.0',
-  '@fluojs/platform-nodejs': '^1.0.0',
-  '@fluojs/react': `^${PUBLISHED_REACT_VERSION}`,
-  '@fluojs/runtime': '^1.0.0',
-  '@fluojs/testing': '^1.0.0',
-  '@fluojs/validation': '^1.0.0',
-  '@fluojs/vite': '^1.0.0',
-} as const;
-
 
 type ApplicationStarterDescriptor = {
   adapterCall?: string;

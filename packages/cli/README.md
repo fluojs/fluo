@@ -94,6 +94,14 @@ Generated Node.js `dev`, `build`, and `start` package scripts delegate to `fluo 
 
 Generated starters set their `@fluojs/cli` `devDependency` from the generator CLI package version that created the project, so lifecycle scripts such as `pnpm dev`, `pnpm build`, and `pnpm start` keep using the same CLI behavior that scaffolded the starter instead of a stale hard-coded range.
 
+In published mode, every other internal `@fluojs/*` dependency and dev dependency uses
+`^<package version>` from that package's release manifest. The CLI build generates
+this metadata after Changesets versioning and ships it in `dist`, so an unpacked
+CLI does not need the monorepo or a registry lookup to scaffold. Versions remain
+independent, including React's `0.x` line; they are not all set to the CLI's major.
+This applies to every HTTP, microservice, mixed, React, Bun, Deno, and Workers
+starter. Internal local-sandbox tarball overrides still take precedence.
+
 Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. The React starter keeps decorator-bearing declarations in `src/app.ts` and JSX rendering in `.tsx` modules, so the supported `.ts` transform boundary stays explicit. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
 
 New non-Deno projects declare Vite `^8.2.2`, Vitest `^4.1.11`, and `@vitest/coverage-v8` `^4.1.11`. Generated ESM Vite configs use `build.rolldownOptions`; Babel handles standard decorators through `fluoDecoratorsPlugin()` before Rolldown/Oxc processes application code, while `vitest.config.ts` retains `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest`. Direct Oxc/esbuild decorator processing is not supported. Node.js `>=24.0.0 <27` and runtime-native starter metadata are unchanged. Existing projects are not rewritten; adopt the [generated toolchain baseline](../../docs/reference/toolchain-contract-matrix.md) explicitly when upgrading.
