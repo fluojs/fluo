@@ -1,0 +1,19 @@
+{
+  "@fluojs/cli": "3.7.9",
+  "@fluojs/config": "2.4.1",
+  "@fluojs/core": "3.1.2",
+  "@fluojs/di": "3.2.3",
+  "@fluojs/http": "3.3.4",
+  "@fluojs/microservices": "2.5.1",
+  "@fluojs/platform-bun": "3.6.2",
+  "@fluojs/platform-cloudflare-workers": "2.7.3",
+  "@fluojs/platform-deno": "2.8.4",
+  "@fluojs/platform-express": "2.9.5",
+  "@fluojs/platform-fastify": "2.10.6",
+  "@fluojs/platform-nodejs": "2.11.7",
+  "@fluojs/react": "0.2.8",
+  "@fluojs/runtime": "3.12.9",
+  "@fluojs/testing": "3.13.10",
+  "@fluojs/validation": "2.14.11",
+  "@fluojs/vite": "2.15.12"
+}

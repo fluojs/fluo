@@ -76,6 +76,16 @@ Do not request React `1.0` or infer graduation from other packages' major bumps.
 The pending Vite patch notes and CLI minor notes are retained, but aggregate with
 this coordinated major intent; they do not schedule a second release.
 
+New projects created by the released CLI use each internal package's own release
+range, not a shared CLI major or the old `^1.0.0` defaults. During the canonical
+release workflow, the build after Changesets versioning regenerates
+`packages/cli/src/new/published-internal-dependencies.ts` from the starter registry
+and the versioned package manifests. The compiled metadata ships inside the CLI
+artifact and works without the monorepo. Local sandbox tarballs override these
+ranges, so sandbox success alone does not verify published-mode ranges; the CLI's
+published dependency and standalone artifact tests cover that boundary. Do not
+edit package versions or publish locally to refresh this metadata.
+
 ## 3. Replace moved Node imports
 
 Install `@fluojs/platform-nodejs` as a direct dependency wherever your application

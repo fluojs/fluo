@@ -25,6 +25,14 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## CLI Published Dependency Ranges
+
+The [CLI README](../packages/cli/README.md) and [Node 24 release migration guide](./getting-started/migrate-node24.md)
+document per-package published starter ranges. CLI builds read versioned manifests after Changesets
+and ship generated metadata in `dist`, preserving independent majors and React's `0.x` line without
+monorepo access. Local tarball overrides keep priority. CLI published/standalone artifact regressions
+and `tooling/release/cli-published-dependencies.test.ts` verify the release-input boundary.
+
 ## Runtime Cleanup Settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callbacks may be synchronous or asynchronous. Runtime close and
