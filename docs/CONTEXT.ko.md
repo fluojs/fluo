@@ -23,6 +23,14 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+## CLI Published Dependency Ranges
+
+[CLI README](../packages/cli/README.ko.md)와 [Node 24 release migration guide](./getting-started/migrate-node24.ko.md)는
+published starter의 패키지별 range를 문서화합니다. CLI build는 Changesets 이후 versioned
+manifest를 읽고 생성 metadata를 `dist`에 포함하여 monorepo 없이도 독립 major와 React의
+`0.x`를 보존합니다. Local tarball override는 계속 우선합니다. CLI published/standalone
+artifact 회귀와 `tooling/release/cli-published-dependencies.test.ts`가 release input 경계를 검증합니다.
+
 ## Runtime cleanup settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callback은 동기 또는 비동기일 수 있습니다. Runtime close와

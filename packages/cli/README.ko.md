@@ -94,6 +94,14 @@ Non-interactive 출력에서는 이 블록 전에 설치 시 `Installing depende
 
 생성된 starter는 프로젝트를 만든 generator CLI package version을 기준으로 `@fluojs/cli` `devDependency`를 설정합니다. 따라서 `pnpm dev`, `pnpm build`, `pnpm start` 같은 lifecycle script는 오래된 hard-coded range가 아니라 starter를 스캐폴딩한 CLI 동작과 같은 기준을 사용합니다.
 
+Published mode에서 나머지 내부 `@fluojs/*` dependency와 dev dependency는 각
+패키지의 release manifest에서 얻은 `^<package version>`을 사용합니다. CLI build는
+Changesets versioning 이후 이 metadata를 생성하여 `dist`에 포함하므로, unpack한
+CLI도 monorepo나 registry 조회 없이 scaffold를 생성합니다. React의 `0.x`를 포함한
+버전은 패키지별로 독립적이며 CLI의 major로 통일하지 않습니다.
+모든 HTTP, microservice, mixed, React, Bun, Deno, Workers starter에 적용됩니다.
+내부 local sandbox의 tarball override는 계속 우선합니다.
+
 생성된 non-Deno standard starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하고, React SSR + Vite starter는 같은 plugin을 `vite.server.config.ts`에 적용합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
 
 새 non-Deno 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`을 유지합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. Node.js `>=24.0.0 <27`과 runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.

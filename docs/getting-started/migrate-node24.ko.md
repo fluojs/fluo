@@ -76,6 +76,16 @@ React `1.0`을 요청하거나 다른 패키지의 major bump로부터 승격을
 마세요. Pending Vite patch 노트와 CLI minor 노트는 보존되지만 coordinated
 major intent와 합산되며 두 번째 릴리스를 예약하지 않습니다.
 
+출시된 CLI로 생성한 새 프로젝트는 CLI의 공통 major나 이전 `^1.0.0` 기본값이
+아니라 각 내부 패키지의 release range를 사용합니다. Canonical release workflow는
+Changesets versioning 이후 build에서 starter registry와 versioned package manifest를
+읽어 `packages/cli/src/new/published-internal-dependencies.ts`를 재생성합니다.
+컴파일한 metadata는 CLI artifact에 포함되어 monorepo 없이도 동작합니다.
+Local sandbox tarball은 이 range를 덮어쓰므로 sandbox 성공만으로 published-mode
+range를 검증할 수 없습니다. CLI의 published dependency 및 standalone artifact
+test가 이 경계를 검증합니다. Metadata를 갱신하려고 package version을 직접
+편집하거나 로컬 publish를 실행하지 마세요.
+
 ## 3. Replace moved Node imports
 
 애플리케이션이나 integration이 Node helper를 import하는 곳에

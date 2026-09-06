@@ -336,22 +336,26 @@ describe('scaffoldBootstrapApp', () => {
     const vitestConfig = readFileSync(join(targetDirectory, 'vitest.config.ts'), 'utf8');
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const cliManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
+    const publishedRange = (directory: string): string => {
+      const manifest = JSON.parse(readFileSync(join(packageRoot, '..', directory, 'package.json'), 'utf8'));
+      return `^${manifest.version}`;
+    };
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
     expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
     expect(packageJson.dependencies).toMatchObject({
-      '@fluojs/config': '^1.0.0',
-      '@fluojs/core': '^1.0.0',
-      '@fluojs/di': '^1.0.0',
-      '@fluojs/http': '^1.0.0',
-      '@fluojs/platform-fastify': '^1.0.0',
-      '@fluojs/runtime': '^1.0.0',
-      '@fluojs/validation': '^1.0.0',
+      '@fluojs/config': publishedRange('config'),
+      '@fluojs/core': publishedRange('core'),
+      '@fluojs/di': publishedRange('di'),
+      '@fluojs/http': publishedRange('http'),
+      '@fluojs/platform-fastify': publishedRange('platform-fastify'),
+      '@fluojs/runtime': publishedRange('runtime'),
+      '@fluojs/validation': publishedRange('validation'),
     });
     expect(packageJson.devDependencies).toMatchObject({
       '@fluojs/cli': `^${cliManifest.version}`,
-      '@fluojs/testing': '^1.0.0',
-      '@fluojs/vite': '^1.0.0',
+      '@fluojs/testing': publishedRange('testing'),
+      '@fluojs/vite': publishedRange('vite'),
       '@vitest/coverage-v8': '^4.1.11',
       vite: '^8.2.2',
       vitest: '^4.1.11',
