@@ -20,6 +20,11 @@ Part 0 closes by moving one layer below Modules and Providers. If Chapter 3 show
 
 ## 4.1 What is a Decorator?
 
+Empty parentheses call a factory; they are not bare decorator syntax. `Module()` defaults to
+`{}`, while `Inject()` still means an explicit empty token override and `Scope(scope)` still
+requires a lifetime. The [165-API defaults audit](../../docs/reference/decorator-defaults.md)
+separates fifteen new conveniences from 150 unchanged contracts, including `UseAuth(strategyName)`.
+
 It is best to start with the simplest question. At first, you can understand a Decorator as a function-based mechanism that assigns behavior or metadata-related intent to a class or class member. The most important word here is **intent**, because Decorators reveal what role code plays in the application near the code itself.
 
 Decorators let you make declarations like these.

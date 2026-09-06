@@ -31,6 +31,20 @@
 - HTTP 라우트 데코레이터는 장식된 클래스 메서드에 HTTP 메서드와 라우트 경로를 기록합니다.
 - HTTP 라우트 경로는 fluo 라우트 계약을 따릅니다. 세그먼트는 리터럴이거나 전체 세그먼트 `:param` 자리표시자여야 합니다. 와일드카드, 정규표현식 유사 문법, `user-:id` 같은 혼합 세그먼트는 라우트 데코레이터 계약 밖입니다.
 
+## Safe Factory Defaults
+
+정확히 15개 factory에 생략 기본값을 추가합니다. HTTP route API 11개(`Get`, `Post`, `Put`,
+`Patch`, `Delete`, `Options`, `Head`, `All`, `Sse`, `Query`, `Route`의 path), React `Path`,
+core `Module`, OpenAPI `ApiOperation`/`ApiBody`입니다. Path는 `''`, module/operation/body
+객체는 `{}`가 기본값이며 명시적 `undefined`도 같습니다. `Route`의 method는 필수입니다.
+Bare overload, reflection 추론, 잘못된 입력의 강제 변환은 추가하지 않습니다.
+[전체 조사표](../reference/decorator-defaults.ko.md)는 API 165개를 모두 열거하고
+`UseAuth(strategyName)` 등 나머지 150개의 계약 보존을 기록합니다.
+
+빈 path는 controller/router prefix를 유지하고 정규화 후 명시적 `'/'` route와 충돌합니다.
+빈 Module metadata도 등록/병합하며, 빈 OpenAPI metadata는 stacked 값을 덮어쓸 수 있습니다.
+생략한 React Path options는 `options` 속성을 만들지 않습니다.
+
 ## Metadata Rules
 
 - fluo가 메타데이터 계약을 소유합니다. 런타임 소비자는 컴파일러가 방출한 설계 메타데이터가 아니라 fluo가 정의한 메타데이터 레코드를 읽습니다.

@@ -76,6 +76,12 @@ await import('./bootstrap.js');
 
 The dynamic import is intentional. An ordinary bootstrap module that statically imports decorated classes and then calls `ensureMetadataSymbol()` is too late, because ESM evaluates the static import graph before running the bootstrap module body.
 
+### Empty module metadata
+
+`@Module()` and `@Module(undefined)` are shorthand for `@Module({})`. They still register
+module metadata, preserve previously declared partial fields and `@Global()` in either
+order, and advance the metadata version. An undecorated class is different.
+
 ### Explicit dependency metadata
 
 `@Inject(...)` keeps dependency wiring visible in code instead of relying on emitted reflection metadata. It is a standard class decorator: place it on the class whose constructor tokens you are declaring, not on constructor parameters or properties. Call `@Inject()` when you want to record an explicit empty override for inherited constructor tokens.

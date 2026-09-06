@@ -27,6 +27,11 @@ React does not introduce a second matcher or route lifecycle. URL matching, DTO 
 validation, guards, interceptors, middleware, versioning, request scopes, and not-found ownership
 remain in `@fluojs/http`.
 
+`@Path()` and `@Path(undefined)` mean `@Path('')`: GET at the enclosing router prefix,
+or `/` under `@Router()`. `@Path('/')` resolves to the same catalog path but keeps a different
+raw path. Omitted options stay absent from React metadata; duplicate and invalid routes still
+fail through HTTP. Layout, fallback, and metadata factories still require explicit values.
+
 ## Concept translation
 
 | Familiar concept | Current fluo equivalent | Boundary |

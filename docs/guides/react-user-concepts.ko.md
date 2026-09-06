@@ -27,6 +27,11 @@ React는 두 번째 matcher나 route lifecycle을 만들지 않습니다. URL ma
 validation, guard, interceptor, middleware, versioning, request scope, not-found ownership은
 `@fluojs/http`에 남습니다.
 
+`@Path()`와 `@Path(undefined)`는 `@Path('')`와 같습니다. Router prefix에서 GET을 처리하며
+`@Router()` 아래에서는 `/`입니다. `@Path('/')`는 catalog path가 같지만 raw path는 다릅니다.
+생략한 options는 React metadata에 만들지 않고, 중복 및 잘못된 route는 HTTP에서 계속
+거부합니다. Layout, fallback, metadata factory에는 계속 명시적 값이 필요합니다.
+
 ## 개념 번역
 
 | 익숙한 개념 | 현재 fluo 동등 개념 | 경계 |

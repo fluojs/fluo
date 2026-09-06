@@ -25,6 +25,14 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## Decorator Default Audit
+
+[Public Decorator Defaults](./reference/decorator-defaults.md) reconciles all 165 owned public
+factories: fifteen safe defaults and 150 preserved contracts. Start there for HTTP empty relative
+paths, `Module()` registration, OpenAPI empty writes, React options absence, and required
+`UseAuth(strategyName)`. Public declaration coverage is
+`tooling/governance/decorator-defaults-public-types.test.ts`; runtime evidence stays in the owning packages.
+
 ## CLI Published Dependency Ranges
 
 The [CLI README](../packages/cli/README.md) and [Node 24 release migration guide](./getting-started/migrate-node24.md)

@@ -8,7 +8,7 @@
 ## Learning Objectives
 - 생성된 API 문서가 왜 코드와 가까이 있어야 하는지 이해합니다.
 - FluoBlog에 `OpenApiModule`을 등록하고 생성된 문서를 노출합니다.
-- `@ApiTag()`, `@ApiOperation()`, `@ApiResponse()` 같은 문서화 데코레이터를 사용합니다.
+- `@ApiTag(tag)`, `@ApiOperation()`, `@ApiResponse(status, options?)` 같은 문서화 데코레이터를 사용합니다.
 - DTO와 HTTP 메타데이터가 어떻게 OpenAPI 스키마 정보가 되는지 배웁니다.
 - 보호된 라우트와 버전 경로가 생성 문서에 어떤 영향을 주는지 이해합니다.
 - 문서화된 HTTP API 기반과 함께 Part 1을 마무리합니다.
@@ -20,6 +20,12 @@
 - 모듈 설정 예제를 읽는 데 익숙합니다.
 
 ## 10.1 Why API Documentation Should Not Drift from the Code
+
+`ApiOperation()`과 `ApiBody()`는 명시적 `undefined`까지 기존 `{}` 의미를 사용합니다.
+Operation field나 body schema/required를 임의로 생성하지 않습니다. DTO에서 추론한 body는
+유지하고, 없으면 `requestBody`를 추가하지 않습니다. 빈 decorator도 stacked metadata를
+덮어쓸 수 있으므로 자체 생략과 항상 같지는 않습니다. Tag, response status, parameter name,
+security scheme name은 필수입니다.
 
 수동 API 문서는 보통 좋은 의도로 시작합니다. 팀이 위키 페이지를 만들거나 프로젝트 루트의 `docs/` 폴더에 별도의 Markdown 파일을 작성하곤 하죠. 처음에는 정확하고 도움이 됩니다.
 
@@ -199,7 +205,7 @@ OpenAPI 문서를 생성할 때, DTO 클래스에 부여된 이름이 최종 사
 
 ### Customizing Explicit Schema Surfaces
 
-TypeScript 속성에서 OpenAPI 속성으로의 기본 매핑만으로는 충분하지 않은 경우가 있습니다. 예시 값을 제공하거나 특정 필드를 읽기 전용(read-only)으로 표시하거나, 더 명시적인 조합 스키마를 만들고 싶다면 fluo는 `@ApiBody()`와 `@ApiResponse()` 스키마 객체를 통해 그 제어 지점을 제공합니다.
+TypeScript 속성에서 OpenAPI 속성으로의 기본 매핑만으로는 충분하지 않은 경우가 있습니다. 예시 값을 제공하거나 특정 필드를 읽기 전용(read-only)으로 표시하거나, 더 명시적인 조합 스키마를 만들고 싶다면 fluo는 `@ApiBody({ schema })`와 `@ApiResponse(status, { schema })` 스키마 객체를 통해 그 제어 지점을 제공합니다.
 
 ```typescript
 @ApiResponse(200, {
@@ -236,7 +242,7 @@ OpenAPI 3.1은 nullable 값을 `type: ['string', 'null']` 같은 JSON Schema uni
 
 애플리케이션이 일부 경로에는 API 키를 사용하고 다른 경로에는 JWT를 사용하는 등 여러 유형의 인증을 사용하는 경우, 여러 보안 스키마를 정의할 수 있습니다.
 
-fluo에서는 이런 보안 요구사항을 `OpenApiModule.forRoot(...)` 설정과 `@ApiBearerAuth()`, `@ApiSecurity()` 같은 데코레이터로 함께 표현합니다. 즉, 부트스트랩 단계에서 별도 문서 빌더를 조립하는 대신, 공개할 문서 표면과 보안 힌트를 같은 OpenAPI 모듈 경계 안에서 유지합니다. 이러한 상세한 정보는 문서가 단순한 경로 목록을 넘어, API를 안전하고 올바르게 사용하기 위한 실질적인 가이드가 되게 합니다.
+fluo에서는 이런 보안 요구사항을 `OpenApiModule.forRoot(...)` 설정과 `@ApiBearerAuth()`, `@ApiSecurity(name, scopes?)` 같은 데코레이터로 함께 표현합니다. 즉, 부트스트랩 단계에서 별도 문서 빌더를 조립하는 대신, 공개할 문서 표면과 보안 힌트를 같은 OpenAPI 모듈 경계 안에서 유지합니다. 이러한 상세한 정보는 문서가 단순한 경로 목록을 넘어, API를 안전하고 올바르게 사용하기 위한 실질적인 가이드가 되게 합니다.
 
 ### Integrating Swagger UI and Security
 

@@ -25,6 +25,14 @@
 
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
 
+## Decorator Default Audit
+
+[Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 소유한 공개 factory 165개를
+안전한 기본값 추가 15개와 계약 보존 150개로 대조합니다. HTTP 빈 상대 경로, `Module()` 등록,
+OpenAPI 빈 write, React options 부재, 필수 `UseAuth(strategyName)`의 시작점입니다.
+공개 declaration 검증은 `tooling/governance/decorator-defaults-public-types.test.ts`이며
+runtime 증거는 각 소유 패키지에 있습니다.
+
 ## CLI Published Dependency Ranges
 
 [CLI README](../packages/cli/README.ko.md)와 [Node 24 release migration guide](./getting-started/migrate-node24.ko.md)는

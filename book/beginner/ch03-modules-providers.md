@@ -20,6 +20,10 @@ The project is now in your hands, so the next question is how its pieces should 
 
 ## 3.1 What is a Module?
 
+`@Module()` is shorthand for `@Module({})`, including when the definition is explicitly
+`undefined`. It still registers metadata and preserves earlier partial fields and `@Global()`
+in either order; it does not infer providers or constructor tokens.
+
 We start with Modules because they give the rest of this chapter its frame.
 
 In fluo, a Module is a class marked with `@Module()`. This Decorator is not just there to make the class look nice. It gives the framework the structural information it needs to understand how the application is assembled.

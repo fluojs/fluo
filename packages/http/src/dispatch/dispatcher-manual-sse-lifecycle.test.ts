@@ -184,7 +184,7 @@ function createFixture(options: ManualSseFixtureOptions = {}): ManualSseFixture 
 
   @Controller('/events')
   class ManualSseController {
-    @Sse('/')
+    @Sse()
     async stream(_input: undefined, context: RequestContext): Promise<SseResponse> {
       await context.container.resolve(RequestScopedDisposable);
       const response = new SseResponse(context);

@@ -20,6 +20,11 @@ Part 0는 모듈과 프로바이더보다 한 층 더 아래로 내려가며 마
 
 ## 4.1 What is a Decorator?
 
+빈 괄호는 factory 호출이며 bare decorator 문법이 아닙니다. `Module()`의 기본값은 `{}`지만
+`Inject()`는 계속 명시적 빈 token override이고 `Scope(scope)`의 lifetime은 필수입니다.
+[165개 API 기본값 조사](../../docs/reference/decorator-defaults.ko.md)는 새 편의 15개와
+`UseAuth(strategyName)` 등 계약을 유지한 150개를 구분합니다.
+
 시작은 가장 단순한 질문에서 출발하는 편이 좋습니다. 처음에는 데코레이터를 클래스나 클래스 멤버에 동작 또는 메타데이터 관련 의도를 부여하는 함수 기반 메커니즘으로 이해하면 됩니다. 여기에서 가장 중요한 단어는 **의도(intent)**이며, 데코레이터는 코드가 애플리케이션 안에서 어떤 역할을 하는지 가까운 위치에 드러내 줍니다.
 
 데코레이터를 사용하면 다음과 같은 선언을 할 수 있습니다.

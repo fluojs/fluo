@@ -71,6 +71,10 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
+위 `@Get()`은 빈 상대 경로를 사용하므로 GET `/`을 제공합니다. `@Controller('cats')`라면
+prefix를 무시하지 않고 `/cats`를 제공합니다. 빈 `@Module()`도 provider를 임의로 만들지
+않고 bootstrap하고 close할 수 있습니다.
+
 ## 주요 패턴
 
 ### 헬스 엔드포인트 미들웨어

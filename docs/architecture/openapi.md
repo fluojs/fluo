@@ -30,7 +30,17 @@ This document defines the current OpenAPI document-generation contract implement
 | DTO schema generation | DTO schemas are derived from binding and validation metadata through `getDtoBindingSchema(...)` and `getDtoValidationSchema(...)`, then emitted into `components.schemas`. | `packages/openapi/src/schema-builder.ts` |
 | Exclusive schema bounds | `OpenApiSchemaObject` retains numeric and legacy boolean exclusive-bound inputs. Paired `true` plus `minimum`/`maximum` metadata is emitted as the OpenAPI 3.1 numeric exclusive keyword, `false` is omitted while retaining the inclusive bound, and unnormalizable exclusive values fail document generation. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-builder.ts` |
 | Nullable schemas | `OpenApiSchemaObject` retains the legacy boolean `nullable` input for compatibility but never emits it. `true` adds `null` to declared scalar or array `type` unions, or wraps type-less schemas such as `$ref` in `anyOf`; `false` is removed without changing the schema. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-nullable.test.ts` |
-| Security metadata | `@ApiBearerAuth()` and `@ApiSecurity()` contribute operation-level security requirements. `securitySchemes` options populate `components.securitySchemes`. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
+| Security metadata | `@ApiBearerAuth()` and `@ApiSecurity(name, scopes?)` contribute operation-level security requirements. `securitySchemes` options populate `components.securitySchemes`. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
+
+## Empty Decorator Options
+
+`ApiOperation()` and `ApiBody()` accept omitted or `undefined` options as `{}`. Operation
+fields remain absent from generated documents when undefined. An empty body override preserves
+DTO inference and creates no `requestBody` without an inferred body. Empty metadata still
+overwrites the same key in stacking and retains defensive snapshots; decorator omission is not
+always equivalent. Out-of-type `null` keeps its existing decorator-application failure. Status,
+tag, parameter names, and security scheme names remain required. See the
+[full defaults audit](../reference/decorator-defaults.md) and `packages/openapi/src/decorator-defaults.test.ts`.
 
 ## Output Surface
 

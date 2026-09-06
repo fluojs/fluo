@@ -12,6 +12,11 @@ fluo의 HTTP 모델은 두 책임으로 나뉩니다.
 
 ## 1. Controller에서 시작
 
+`@Get()`은 `@Get('')`와 같습니다. Controller prefix의 GET이며 `@Controller()` 아래에서는
+`/`입니다. 모든 verb factory, `Sse`, HTTP `Query`는 path 생략 또는 `undefined`를 허용하고
+`Route(method)`의 method는 필수입니다. 명시적 `'/'`도 prefix를 무시하지 않습니다.
+`HttpCode(status)`, `Header(name, value)`, DTO type 등 의미상 필요한 값은 계속 필수입니다.
+
 ```ts
 import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 

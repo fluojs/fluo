@@ -229,11 +229,11 @@ export function Router(basePath = ''): ClassDecoratorLike {
  * `:param` placeholders only. The optional `options` value is metadata for future
  * render integrations; it does not create a React-owned matcher or `routes: []` table.
  *
- * @param path Route path relative to the containing `@Router(...)` base path.
- * @param options Optional render-facing metadata for the future React rendering layer.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the `@Router(...)` prefix.
+ * @param options Optional render-facing metadata. Omission keeps the metadata's `options` property absent.
  * @returns A method decorator that writes HTTP `GET` metadata plus React path metadata.
  */
-export function Path(path: string, options?: ReactPathOptions): MethodDecoratorLike {
+export function Path(path = '', options?: ReactPathOptions): MethodDecoratorLike {
   const httpDecorator = Get(path);
   const metadata = createReactPathMetadata(path, options);
 

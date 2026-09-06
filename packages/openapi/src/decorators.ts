@@ -268,10 +268,11 @@ export function ApiTag(tag: string): ClassDecoratorFn {
 /**
  * Describe a controller method's OpenAPI operation metadata.
  *
- * @param options Operation metadata such as summary, description, and deprecation flag.
+ * @param options Operation metadata; omission or `undefined` uses `{}` without inventing operation fields.
  * @returns A method decorator that stores operation metadata.
+ * @remarks An empty write can overwrite earlier stacked operation metadata; it is not equivalent to omitting the decorator.
  */
-export function ApiOperation(options: ApiOperationOptions): MethodDecoratorFn {
+export function ApiOperation(options: ApiOperationOptions = {}): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
     let map = bag[openApiMethodOperationKey] as Map<MetadataPropertyKey, ApiOperationMetadata> | undefined;
@@ -433,10 +434,11 @@ export function ApiCookie(name: string, options: ApiParameterOptions = {}): Meth
 /**
  * Declare an explicit request body for a controller method.
  *
- * @param options Request-body metadata and schema/content declarations.
+ * @param options Request-body metadata; omission or `undefined` uses `{}` without inventing a schema or required flag.
  * @returns A method decorator that stores request-body metadata.
+ * @remarks Empty metadata preserves DTO body inference and emits no body without inference. It can overwrite earlier stacked body metadata.
  */
-export function ApiBody(options: ApiBodyOptions): MethodDecoratorFn {
+export function ApiBody(options: ApiBodyOptions = {}): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
     let map = bag[openApiMethodRequestBodyKey] as Map<MetadataPropertyKey, ApiBodyMetadata> | undefined;

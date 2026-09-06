@@ -76,6 +76,16 @@ When a prebuilt descriptor and a discovered source resolve to the same OpenAPI p
 
 ## Core Capabilities
 
+### Empty decorator options
+
+`@ApiOperation()` / `@ApiOperation(undefined)` and `@ApiBody()` / `@ApiBody(undefined)`
+use the existing `{}` semantics. No summary, description, deprecated flag, required flag,
+or schema is invented. Empty body metadata preserves a DTO-inferred body and adds no
+`requestBody` when none is inferred. Empty writes can overwrite earlier stacked metadata,
+so these calls are not always equivalent to omitting the decorator. Existing application-time
+`null` failures remain. `ApiTag(tag)`, `ApiResponse(status, options?)`, and parameter/security
+names remain required; the supported OpenAPI Path Item methods do not change.
+
 ### Automated Specification Generation
 fluo inspects only the controllers and handler descriptors supplied through `sources` and `descriptors` to build an OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies for that explicit input set; importing a controller into an application module does not add it automatically.
 
@@ -110,9 +120,9 @@ Works with `@fluojs/validation` to derive request schemas from DTO binding and v
 Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI paths will correctly reflect the resolved versioned routes.
 
 ### Security Documentation
-Easily document authentication requirements like Bearer tokens or API keys using `@ApiBearerAuth()` and `@ApiSecurity()`.
+Easily document authentication requirements like Bearer tokens or API keys using `@ApiBearerAuth()` and `@ApiSecurity(name, scopes?)`.
 
-Stacking multiple `@ApiSecurity()` decorators for the same scheme merges scopes into one cumulative OpenAPI security requirement for that scheme. This keeps OAuth-style requirements deterministic when a route declares overlapping scopes such as `['reports:read']` and `['reports:write', 'reports:read']`, while different schemes remain separate requirements.
+Stacking multiple `@ApiSecurity(name, scopes?)` decorators for the same scheme merges scopes into one cumulative OpenAPI security requirement for that scheme. This keeps OAuth-style requirements deterministic when a route declares overlapping scopes such as `['reports:read']` and `['reports:write', 'reports:read']`, while different schemes remain separate requirements.
 
 ### Deterministic Swagger UI Assets
 When `ui: true` is enabled, the generated `/docs` page references an exact `swagger-ui-dist` asset version so release behavior stays deterministic across package updates. If your deployment requires self-hosted assets for offline or CSP-controlled environments, set `swaggerUiAssets.cssUrl` and `swaggerUiAssets.jsBundleUrl`; the generated HTML escapes those URLs and does not expose the Swagger UI instance on `window.ui`.

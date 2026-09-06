@@ -666,6 +666,9 @@ export function isSupportedNodeListenerVersion(version) {
 
 const ssotPairs = [
   ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+  ['docs/reference/decorator-defaults.md', 'docs/reference/decorator-defaults.ko.md'],
+  ['docs/architecture/decorators-and-metadata.md', 'docs/architecture/decorators-and-metadata.ko.md'],
+  ['docs/architecture/di-and-modules.md', 'docs/architecture/di-and-modules.ko.md'],
   ['docs/architecture/http-catch-all-route-grammar.md', 'docs/architecture/http-catch-all-route-grammar.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   [

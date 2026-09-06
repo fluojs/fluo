@@ -307,7 +307,7 @@ function mergeStandardDtoBinding(
 }
 
 function createRouteDecorator(method: HttpMethod, produces?: readonly string[]) {
-  return (path: string): MethodDecoratorLike => {
+  return (path = ''): MethodDecoratorLike => {
     validateRoutePath(path, `@${method}() path`);
 
     const decorator = (valueOrTarget: Function | object, contextOrPropertyKey: ClassMethodDecoratorContext | MetadataPropertyKey) => {
@@ -431,14 +431,14 @@ export function Version(version: string): ClassOrMethodDecoratorLike {
 /**
  * Registers a `GET` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `GET` handler mapping.
  */
 export const Get = createRouteDecorator('GET');
 /**
  * Registers a server-sent events route handler as `GET` with `text/event-stream` produces metadata.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `GET` SSE handler mapping.
  *
  * @remarks
@@ -449,7 +449,7 @@ export const Sse = createRouteDecorator('GET', ['text/event-stream']);
  * Registers a route handler for one validated HTTP method token.
  *
  * @param method HTTP method token, canonicalized to uppercase before metadata registration.
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers the method-specific handler mapping.
  *
  * @throws {InvalidHttpMethodError} When `method` is empty, contains non-token characters, or is the reserved `ALL` sentinel.
@@ -458,62 +458,62 @@ export const Sse = createRouteDecorator('GET', ['text/event-stream']);
  * Adapter wire support remains runtime-specific. `CONNECT` is outside ordinary routing conformance,
  * and custom methods are not implied to be OpenAPI Path Item operations.
  */
-export function Route(method: string, path: string): MethodDecoratorLike {
+export function Route(method: string, path = ''): MethodDecoratorLike {
   return createRouteDecorator(normalizeHttpRouteMethod(method))(path);
 }
 /**
  * Registers an RFC `QUERY` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `QUERY` handler mapping.
  */
-export const Query = (path: string): MethodDecoratorLike => Route('QUERY', path);
+export const Query = (path = ''): MethodDecoratorLike => Route('QUERY', path);
 /**
  * Registers a `POST` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `POST` handler mapping.
  */
 export const Post = createRouteDecorator('POST');
 /**
  * Registers a `PUT` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `PUT` handler mapping.
  */
 export const Put = createRouteDecorator('PUT');
 /**
  * Registers a `PATCH` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `PATCH` handler mapping.
  */
 export const Patch = createRouteDecorator('PATCH');
 /**
  * Registers a `DELETE` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `DELETE` handler mapping.
  */
 export const Delete = createRouteDecorator('DELETE');
 /**
  * Registers an `OPTIONS` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers an `OPTIONS` handler mapping.
  */
 export const Options = createRouteDecorator('OPTIONS');
 /**
  * Registers a `HEAD` route handler.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers a `HEAD` handler mapping.
  */
 export const Head = createRouteDecorator('HEAD');
 /**
  * Registers a route handler that matches all HTTP methods.
  *
- * @param path Route path relative to the controller base path.
+ * @param path Relative route path; omission or `undefined` uses `''`, preserving the controller prefix.
  * @returns A method decorator that registers an all-method handler mapping.
  */
 export const All = createRouteDecorator('ALL');

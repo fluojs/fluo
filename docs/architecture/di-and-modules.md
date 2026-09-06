@@ -19,6 +19,11 @@
 - A module MUST NOT export a token that is neither local nor re-exported from an imported module.
 - A module marked with `@Global()` or `global: true` makes its exported tokens visible without direct imports. Non-exported providers remain private.
 
+`@Module()` and `@Module(undefined)` use `{}`: they register a module, preserve earlier partial
+metadata and `@Global()` regardless of decorator order, and increment the module metadata version.
+They do not infer providers or injections and are not equivalent to leaving a class undecorated.
+See [Public Decorator Defaults](../reference/decorator-defaults.md).
+
 ## Injection Rules
 
 - fluo uses explicit token-based injection. Constructor resolution MUST use declared tokens, not emitted type metadata.

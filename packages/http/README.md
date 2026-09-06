@@ -97,6 +97,21 @@ export class UserController {
 
 Initialize decorated DTO fields, as shown above, or declare them optional. A definite assignment assertion such as `name!: string` does not compile with the Babel decorator configuration Fluo ships, which rejects a definitely assigned field on a decorated class with `Definitely assigned fields cannot be initialized here, but only in the constructor`.
 
+### Optional route paths
+
+`Get`, `Post`, `Put`, `Patch`, `Delete`, `Options`, `Head`, `All`, `Sse`, and HTTP `Query`
+accept omitted or `undefined` paths, meaning `''`. `Route(method)` has the same path default,
+but its method remains required. With `@Controller('cats')`, `@Get()` dispatches `GET /cats`;
+with `@Controller()`, it dispatches `GET /`. `('/')` resolves to the same route but keeps a
+different raw path; it never escapes the controller prefix. Duplicate detection and invalid
+path/method rejection are unchanged. These are factories, not bare `@Get` decorators.
+
+`Sse()` preserves GET plus `text/event-stream` and stream lifecycle. `All()` remains a wildcard
+and HTTP `Query()` means RFC QUERY, not query-string binding or GraphQL Query. Root and
+`@fluojs/http/portable` share these defaults without expanding adapter method support. See the
+[complete 165-API reconciliation](../../docs/reference/decorator-defaults.md) for unchanged
+required arguments such as `HttpCode(status)` and `Header(name, value)`.
+
 ### Route path contract
 
 HTTP route decorators such as `@Controller()`, `@Get()`, and `@Post()` accept only:
