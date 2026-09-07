@@ -9,7 +9,6 @@
     "fluo-issue-preflight": {
       "description": "Builds one source-read-only issue acceptance preflight.",
       "models": [
-        { "model": "ccapi/claude-opus-5", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-sol", "reasoning": "high" }
       ],
       "execution_mode": "in-process",
@@ -35,8 +34,7 @@
       "description": "Implements one Fluo issue inside its assigned worktree.",
       "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "models": [
-        { "model": "openai-codex/gpt-5.6-terra", "reasoning": "high" },
-        { "model": "ccapi/claude-opus-5", "reasoning": "high" }
+        { "model": "openai-codex/gpt-5.6-terra", "reasoning": "high" }
       ],
       "execution_mode": "process",
       "tools": {
@@ -61,7 +59,6 @@
     "fluo-contract-reviewer": {
       "description": "Reviews one exact issue head against its canonical contract.",
       "models": [
-        { "model": "ccapi/claude-sonnet-4-6", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-sol", "reasoning": "high" }
       ],
       "execution_mode": "in-process",
@@ -88,7 +85,6 @@
     "fluo-code-reviewer": {
       "description": "Reviews one exact issue head for code correctness and quality.",
       "models": [
-        { "model": "ccapi/claude-opus-5", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-sol", "reasoning": "high" }
       ],
       "execution_mode": "in-process",
@@ -115,7 +111,6 @@
     "fluo-verification-reviewer": {
       "description": "Reviews one parent-owned canonical verification receipt.",
       "models": [
-        { "model": "ccapi/claude-sonnet-4-6", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-sol", "reasoning": "high" }
       ],
       "execution_mode": "in-process",
@@ -142,7 +137,6 @@
     "fluo-issue-operator": {
       "description": "Performs one issue-bound Git or GitHub lifecycle operation.",
       "models": [
-        { "model": "ccapi/claude-sonnet-4-6", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-terra", "reasoning": "high" }
       ],
       "execution_mode": "process",
