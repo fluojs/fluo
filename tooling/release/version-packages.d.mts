@@ -28,6 +28,11 @@ export type ChangesetsVersionDependencies = {
 };
 
 export type VersionPackagesDependencies = {
+  readonly execFileSync?: (
+    command: string,
+    args: readonly string[],
+    options: { readonly stdio: 'inherit' },
+  ) => unknown;
   readonly existsSync?: (targetPath: string) => boolean;
   readonly readFileSync?: (targetPath: string, encoding: 'utf8') => string;
   readonly runChangesetsVersion?: (dependencies?: ChangesetsVersionDependencies) => void;

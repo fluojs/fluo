@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +90,7 @@ export function runChangesetsVersion(dependencies = {}) {
 
 export function runVersionPackages(dependencies = {}) {
   const {
+    execFileSync: executeFile = execFileSync,
     existsSync: pathExists = existsSync,
     readFileSync: readFile = readFileSync,
     runChangesetsVersion: runVersion = runChangesetsVersion,
@@ -102,6 +103,9 @@ export function runVersionPackages(dependencies = {}) {
   );
 
   runVersion();
+  executeFile(process.execPath, [join(repoRoot, 'packages/cli/scripts/generate-published-internal-dependencies.mjs')], {
+    stdio: 'inherit',
+  });
 
   const normalizedChangelogPaths = [];
   const pendingWrites = [];

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { runVersionPackages } from './version-packages.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const releaseVersions: Readonly<Record<string, string>> = JSON.parse(readFileSync(
@@ -35,6 +36,57 @@ function createReleaseFixture() {
 }
 
 describe('CLI release metadata generation', () => {
+  it('refreshes metadata from manifests changed during versioning', () => {
+    const fixture = createReleaseFixture();
+    execFileSync(process.execPath, [fixture.script], { timeout: 10_000 });
+    const nextVersions = { ...releaseVersions, '@fluojs/config': '9.8.7', '@fluojs/react': '0.12.3' };
+
+    runVersionPackages({
+      workspacePackageManifests: () => [],
+      runChangesetsVersion: () => {
+        for (const [name, version] of Object.entries(nextVersions)) {
+          writeFileSync(
+            join(fixture.root, 'packages', name.slice('@fluojs/'.length), 'package.json'),
+            JSON.stringify({ name, version, type: 'module' }),
+          );
+        }
+      },
+      execFileSync: (command, args) => {
+        expect(command).toBe(process.execPath);
+        expect(args).toEqual([join(repositoryRoot, 'packages/cli/scripts/generate-published-internal-dependencies.mjs')]);
+        // Execute only the copied generator: its import.meta.url confines all writes to the fixture.
+        execFileSync(process.execPath, [fixture.script], { timeout: 10_000 });
+      },
+    });
+
+    const output = execFileSync(process.execPath, [
+      '--input-type=module', '--eval',
+      `import { PUBLISHED_INTERNAL_DEPENDENCIES } from ${JSON.stringify(pathToFileURL(fixture.output).href)}; console.log(JSON.stringify(PUBLISHED_INTERNAL_DEPENDENCIES));`,
+    ], { encoding: 'utf8', timeout: 10_000 });
+    expect(JSON.parse(output)).toEqual(Object.fromEntries(
+      Object.entries(nextVersions).filter(([name]) => name !== '@fluojs/cli')
+        .map(([name, version]) => [name, `^${version}`]),
+    ));
+  });
+
+  it('propagates generator failure after versioning without replacing metadata', () => {
+    const fixture = createReleaseFixture();
+    const previousOutput = readFileSync(fixture.output, 'utf8');
+
+    expect(() => runVersionPackages({
+      workspacePackageManifests: () => [],
+      runChangesetsVersion: () => {
+        writeFileSync(join(fixture.root, 'packages/config/package.json'), JSON.stringify({
+          name: '@fluojs/config', version: '',
+        }));
+      },
+      execFileSync: () => {
+        execFileSync(process.execPath, [fixture.script], { stdio: 'pipe', timeout: 10_000 });
+      },
+    })).toThrowError('Command failed:');
+    expect(readFileSync(fixture.output, 'utf8')).toBe(previousOutput);
+  });
+
   it('refreshes stale metadata using independent release manifest versions', () => {
     // Given: a fixture copies stale generated metadata before applying new release manifests.
     const fixture = createReleaseFixture();
