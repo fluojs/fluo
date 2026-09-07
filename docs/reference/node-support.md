@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-The private root workspace and 34 Node-bound public packages declare `engines.node: ">=24.0.0 <27"`. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
+The private root workspace and 35 Node-bound public packages, including [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.md), declare `engines.node: ">=24.0.0 <27"`. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |

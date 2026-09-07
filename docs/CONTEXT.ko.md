@@ -95,6 +95,17 @@ Root와 Node-bound package의 `>=24.0.0 <27` 분류, 8개 portable omission, exa
 
 `@fluojs/cqrs`는 패키지 자체의 지원 계약에 따라 Node.js `>=24.0.0 <27`을 요구합니다. 이는 검증된 Node listener 지원 창으로 Node.js 24 미만과 Node.js 27+는 제외됩니다. consumer 계약은 [`packages/cqrs/README.ko.md`](../packages/cqrs/README.ko.md) 및 [Package Surface](./reference/package-surface.ko.md)를 참조하세요.
 
+## Next.js 호스팅
+
+[`@fluojs/platform-nextjs`](../packages/platform-nextjs/README.ko.md)는
+Node.js `>=24.0.0 <27`의 Next.js 16.x App Router와 Pages Router에서 Fluo를
+호스팅하며 `@fluojs/runtime` 3과 패키지에 포함된 Turbopack 데코레이터 로더를
+사용합니다. 백엔드는 서버 번들마다 지연 부트스트랩하고 Next.js가 서버와 프로세스
+수명주기를 소유합니다. Edge Runtime, webpack 통합, raw WebSocket upgrade는
+지원하지 않습니다. [패키지 목록](./reference/package-surface.ko.md)과
+[릴리스 배포 목록](./contracts/release-governance.ko.md#intended-publish-surface)에
+이 어댑터가 포함됩니다.
+
 ## 라이프사이클 및 multi-provider 순서
 
 [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.

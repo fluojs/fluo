@@ -28,6 +28,14 @@
 
 ## Adapter Portability Requirements
 
+Next.js처럼 host가 소유하는 route 통합은 Web dispatcher 접점에 대해
+`@fluojs/testing/web-runtime-adapter-portability`의
+`createWebRuntimeHttpAdapterPortabilityHarness(...)`를 사용하고, 외부 HTTP 경계는
+실제 host 통합 테스트로 검증합니다. Listener startup log, TLS configuration,
+process signal 소유권 검사는 어댑터가 해당 capability를 소유할 때만 적용합니다.
+Host가 거부하는 method를 지원한다고 주장하지 말고 host의 method 제한을 문서화하고
+검증합니다.
+
 - [ ] MUST: HTTP 어댑터는 `@fluojs/testing/http-adapter-portability`의 `createHttpAdapterPortabilityHarness(...)`를 실행합니다.
 - [ ] MUST: 독립적이고 순서가 보존되는 응답 `Set-Cookie` field를 검증하려면 `assertSupportsPortableResponseCookies()`를 실행합니다.
 - [ ] MUST: `assertSupportsCustomHttpRouteMethods()`로 `QUERY`와 extension HTTP method를 검증합니다.

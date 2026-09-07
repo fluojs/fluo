@@ -22,6 +22,11 @@ Fluo backend를 Next.js App Router Route Handlers와 Pages Router API Routes에
 
 ## 설치
 
+지원 host는 Node.js `>=24.0.0 <27`에서 실행하는 Next.js **16.x**
+(peer `>=16.0.0 <17`)이며 `@fluojs/runtime` `>=3.0.0 <4`가 필요합니다.
+Next.js Edge Runtime은 지원하지 않습니다.
+[Node.js 지원 계약](../../docs/reference/node-support.ko.md)을 참조하세요.
+
 Application이 이미 Fluo를 사용한다면 adapter 하나만 추가합니다.
 
 ```bash
@@ -155,6 +160,15 @@ Pages bridge는 raw `IncomingMessage`를 Web request로 변환하고 Fluo body
 parsing과 size limit을 그대로 사용하며 Web response를 `ServerResponse`로
 streaming합니다.
 
+입력은 Fluo parser보다 앞서 큐에 쌓지 않고 필요할 때 읽습니다. 크기를 초과한
+업로드에는 전송이 끝나기 전에도 HTTP 413을 보낼 수 있습니다. Bridge는 응답을
+보낸 뒤에만 남은 입력을 버려 drain하며 socket 소유권은 가져오지 않습니다.
+Raw-body capture는 원본 byte를 보존합니다.
+
+Client 연결 종료는 `context.request.signal`로 전파되고 response stream의
+읽기를 취소합니다. Lazy bootstrap 중 연결이 끊기면 그 요청을 dispatch하지 않고
+종료하며 공유 backend startup은 취소하지 않습니다.
+
 ## FluoFactory 연결
 
 Next adapter는 Fastify를 비롯한 다른 Fluo HTTP adapters와 같은 platform
@@ -204,9 +218,15 @@ ownership이 필요하면 Fluo를 별도 backend로 host하세요.
 ## Decorator compiler 연결
 
 `withFluoNextBackend()`는 adapter에 포함된 loader를 server-side Turbopack
-TypeScript rule에 추가합니다. Loader는 `@fluojs/vite`와 동일한 Babel TC39
+application `*.ts` rule에 추가하며 browser와 dependency 파일은 제외합니다.
+Loader는 `@fluojs/vite`와 동일한 Babel TC39
 decorators `2023-11` transform을 적용하고 JavaScript를 Turbopack에
 반환합니다.
+
+Packaged compiler integration은 Turbopack만 지원하며 webpack은 지원하지
+않습니다. Decorated backend 선언은 `.ts` 파일에 두세요. Helper는 `.tsx`
+rule을 추가하지 않습니다.
+[Compiler tooling 표](../../docs/reference/toolchain-contract-matrix.ko.md#빌드-구성)를 참조하세요.
 
 Vite와 Turbopack의 plugin contract가 다르므로 Vite plugin 자체를 Next.js에
 넣을 수는 없습니다. 재사용하는 부분은 compiler recipe이고, adapter는
@@ -264,16 +284,20 @@ await app.listen();
 ## Runtime contract
 
 - App Router Route Handlers와 Pages Router API Routes
-- Next.js 16 이상
-- Node.js runtime 전용
-- `next.config.ts`의 `withFluoNextBackend()`
+- Next.js 16.x (peer `>=16.0.0 <17`)
+- Node.js `>=24.0.0 <27` hosting 전용; Edge Runtime 미지원
+- `@fluojs/runtime` peer `>=3.0.0 <4`
+- Turbopack 전용 `next.config.ts`의 `withFluoNextBackend()`
 - request-lazy dynamic backend module import
 - App Router exports: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`
 - Pages Router default `NextApiHandler` export와 `bodyParser: false`
+- HTTP method 지원 범위는 Next.js routing으로 제한됩니다. Adapter는 이 host
+  boundary를 넘어 `QUERY`나 다른 custom method 지원을 추가하지 않습니다
 - Web-standard `Request`와 `Response`
 - Raw WebSocket upgrade seam 없음
 - Custom server 또는 process signal ownership 없음
-- Catch-all 하나의 bundle과 route configuration boundary
+- Catch-all bundle마다 하나의 lazy application을 사용하며 App Router와
+  Pages Router server bundle 사이에 singleton을 공유하지 않음
 
 Application이 raw Node.js transport ownership, WebSocket upgrades, independently hosted backend를 요구하면 Fluo Node 또는 Fastify platform adapter를 사용하세요.
 
@@ -290,3 +314,18 @@ Application이 raw Node.js transport ownership, WebSocket upgrades, independentl
 - `NextPagesRouterConfig`: 필수 static `bodyParser: false` literal type-check
 - `withFluoNextBackend(config)`: `@fluojs/platform-nextjs/next-config` export; packaged Turbopack decorator loader 추가
 - `decorators-loader`: config helper가 사용하는 packaged loader subpath
+
+## 개발 검증
+
+저장소 root에서 실행합니다.
+
+```bash
+pnpm --filter '@fluojs/platform-nextjs...' build
+pnpm --filter @fluojs/platform-nextjs typecheck
+pnpm --filter @fluojs/platform-nextjs test
+pnpm --filter @fluojs/platform-nextjs test:e2e
+```
+
+Unit suite에는 공통 Web portability 검사와 native Pages transport 회귀
+테스트가 포함됩니다. E2E suite는 package 배포 파일로 실제 Next.js application을
+빌드하고 source alias 없이 두 router를 HTTP로 검증합니다.

@@ -22,6 +22,10 @@ dependency injection.
 
 ## Installation
 
+Supported hosts are Next.js **16.x** (peer `>=16.0.0 <17`) on Node.js
+`>=24.0.0 <27`, with `@fluojs/runtime` `>=3.0.0 <4`. Next.js Edge Runtime is
+not supported. See the [Node.js support contract](../../docs/reference/node-support.md).
+
 If the application already uses Fluo, add only the adapter:
 
 ```bash
@@ -155,6 +159,15 @@ The Pages bridge converts the raw `IncomingMessage` into a Web request, keeps
 Fluo body parsing and size limits authoritative, and streams the Web response
 back through `ServerResponse`.
 
+Input is read on demand rather than queued ahead of the Fluo parser. An oversized
+upload can receive HTTP 413 before it finishes; only after the response is sent
+does the bridge discard the remaining input, without taking ownership of the
+socket. Raw-body capture preserves the original bytes.
+
+Client disconnects propagate to `context.request.signal` and cancel response
+stream reads. A disconnect during lazy bootstrap ends that request without
+dispatching it or cancelling the shared backend startup.
+
 ## FluoFactory Integration
 
 The Next adapter follows the same platform contract as Fastify and the other
@@ -202,8 +215,13 @@ or host Fluo separately when deterministic single-instance ownership matters.
 ## Decorator Compiler Wiring
 
 `withFluoNextBackend()` adds the adapter's packaged loader to the server-side
-Turbopack TypeScript rule. The loader applies the same Babel TC39 decorators
+Turbopack `*.ts` rule for application files, excluding browser and dependency
+files. The loader applies the same Babel TC39 decorators
 `2023-11` transform used by `@fluojs/vite` and returns JavaScript to Turbopack.
+
+The packaged compiler integration supports Turbopack only, not webpack.
+Keep decorated backend declarations in `.ts` files; the helper does not add
+a `.tsx` rule. See the [compiler tooling table](../../docs/reference/toolchain-contract-matrix.md#build-configuration).
 
 The Vite plugin itself cannot be inserted into Next.js because Vite and
 Turbopack have different plugin contracts. The shared compiler recipe is the
@@ -261,16 +279,20 @@ await app.listen();
 ## Runtime Contract
 
 - App Router Route Handlers and Pages Router API Routes
-- Next.js 16 or newer
-- Node.js runtime only
-- `withFluoNextBackend()` in `next.config.ts`
+- Next.js 16.x (peer `>=16.0.0 <17`)
+- Node.js `>=24.0.0 <27` hosting only; no Edge Runtime
+- `@fluojs/runtime` peer `>=3.0.0 <4`
+- `withFluoNextBackend()` in `next.config.ts` for Turbopack only
 - request-lazy dynamic backend module import
 - App Router exports: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`
 - Pages Router default `NextApiHandler` export with `bodyParser: false`
+- HTTP method availability remains bounded by Next.js routing; the adapter
+  does not add `QUERY` or other custom method support beyond that host boundary
 - Web-standard `Request` and `Response`
 - No raw WebSocket upgrade seam
 - No custom server or process signal ownership
-- One catch-all bundle and route configuration boundary
+- One lazy application per catch-all bundle, not a shared singleton across
+  App Router and Pages Router server bundles
 
 Use a Fluo Node or Fastify platform adapter when the application requires raw Node.js transport ownership, WebSocket upgrades, or an independently hosted backend.
 
@@ -287,3 +309,18 @@ Use a Fluo Node or Fastify platform adapter when the application requires raw No
 - `NextPagesRouterConfig`: type-checks the required static `bodyParser: false` literal
 - `withFluoNextBackend(config)`: exported from `@fluojs/platform-nextjs/next-config`; adds the packaged Turbopack decorator loader
 - `decorators-loader`: packaged loader subpath used by the config helper
+
+## Development Verification
+
+From the repository root:
+
+```bash
+pnpm --filter '@fluojs/platform-nextjs...' build
+pnpm --filter @fluojs/platform-nextjs typecheck
+pnpm --filter @fluojs/platform-nextjs test
+pnpm --filter @fluojs/platform-nextjs test:e2e
+```
+
+The unit suite includes shared Web portability checks and native Pages transport
+regressions. The E2E suite stages package distribution files, builds a real
+Next.js application, and verifies both routers over HTTP without source aliases.

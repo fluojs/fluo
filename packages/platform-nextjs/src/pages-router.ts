@@ -30,8 +30,7 @@ export function createNextPagesRouterHandler(
   const resolveAdapter = createLazyNextAdapterResolver(loadAdapter);
 
   return async (request, response) => {
-    const adapter = await resolveAdapter();
-    await dispatchNextPagesRequest(adapter, request, response);
+    await dispatchNextPagesRequest(resolveAdapter, request, response);
   };
 }
 

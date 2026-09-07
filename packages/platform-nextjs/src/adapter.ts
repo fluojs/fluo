@@ -101,6 +101,7 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
   constructor(options: NextAdapterOptions = {}) {
     validateMaxBodySize(options.maxBodySize);
     this.requestResponseFactory = createWebRequestResponseFactory({
+      consumeOriginalBody: true,
       maxBodySize: options.maxBodySize,
       rawBody: options.rawBody,
     });

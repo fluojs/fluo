@@ -34,7 +34,7 @@ describe('Node support classification', () => {
 
     // Then: only the eight portable roots omit engines; all Node claims agree.
     expect(omissions.map((manifest) => manifest.name).sort()).toEqual(portablePackages);
-    expect(nodeBound).toHaveLength(34);
+    expect(nodeBound).toHaveLength(35);
     for (const manifest of [root, ...nodeBound]) {
       expect(manifest.engines?.node, manifest.name).toBe('>=24.0.0 <27');
     }

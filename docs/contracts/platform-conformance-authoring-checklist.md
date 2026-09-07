@@ -28,6 +28,14 @@ Use this checklist when authoring or changing official platform-facing packages 
 
 ## Adapter Portability Requirements
 
+For host-owned route integrations such as Next.js, use
+`createWebRuntimeHttpAdapterPortabilityHarness(...)` from
+`@fluojs/testing/web-runtime-adapter-portability` for the Web dispatcher seam and
+real host integration tests for the exposed HTTP boundary. Listener startup logs,
+TLS configuration, and process signal ownership checks apply only when the adapter
+owns those capabilities. Document and verify host-imposed method restrictions
+rather than claiming support for methods the host rejects.
+
 - [ ] MUST: For HTTP adapters, run `createHttpAdapterPortabilityHarness(...)` from `@fluojs/testing/http-adapter-portability`.
 - [ ] MUST: Run `assertSupportsPortableResponseCookies()` to verify independent, ordered response `Set-Cookie` fields.
 - [ ] MUST: Verify `QUERY` and extension HTTP methods with `assertSupportsCustomHttpRouteMethods()`.

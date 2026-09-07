@@ -93,6 +93,7 @@ Prerelease workflowëŠ” Changesets prerelease mode(`changeset pre enter <tag>`)ë¥
 - `@fluojs/platform-deno`
 - `@fluojs/platform-express`
 - `@fluojs/platform-fastify`
+- `@fluojs/platform-nextjs`
 - `@fluojs/platform-nodejs`
 - `@fluojs/prisma`
 - `@fluojs/queue`

@@ -17,7 +17,7 @@
     "directory": "packages/platform-nextjs"
   },
   "engines": {
-    "node": ">=20.19.3 <21 || >=22.2.0 <27"
+    "node": ">=24.0.0 <27"
   },
   "publishConfig": {
     "access": "public"
@@ -53,6 +53,7 @@
     "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run -c vitest.config.ts",
+    "test:e2e": "node --test e2e/next.test.mjs",
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
@@ -62,12 +63,15 @@
     "@fluojs/http": "workspace:^"
   },
   "peerDependencies": {
-    "@fluojs/runtime": ">=2.0.0 <3",
+    "@fluojs/runtime": "workspace:^",
     "next": ">=16.0.0 <17"
   },
   "devDependencies": {
-    "@fluojs/core": "workspace:*",
-    "@fluojs/runtime": "workspace:*",
-    "vitest": "^3.2.4"
+    "@fluojs/core": "workspace:^",
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/testing": "workspace:^",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "vitest": "^4.1.11"
   }
 }
