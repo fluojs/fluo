@@ -95,6 +95,17 @@ See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0
 
 `@fluojs/cqrs` requires Node.js `>=24.0.0 <27` as its package-owned support contract. This is the verified Node listener support window: Node.js versions below 24 and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
 
+## Next.js Hosting
+
+[`@fluojs/platform-nextjs`](../packages/platform-nextjs/README.md) hosts Fluo in
+Next.js 16.x App Router and Pages Router on Node.js `>=24.0.0 <27`, using
+`@fluojs/runtime` 3 and the packaged Turbopack decorator loader. Backends bootstrap
+lazily per server bundle; Next.js owns the server and process lifecycle. Edge
+Runtime, webpack integration, and raw WebSocket upgrades are not supported.
+The [package surface](./reference/package-surface.md) and
+[release publish list](./contracts/release-governance.md#intended-publish-surface)
+include this adapter.
+
 ## Lifecycle & Multi-Provider Ordering
 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.md) is the source of truth for application and testing module bootstrap hooks. Eligible singleton `multi: true` contributions remain distinct lifecycle instances and run in declared provider order, including when they are interleaved with singleton providers. Framework integrations resolve each contribution through its owning DI container; the internal resolver registrar remains container-private.

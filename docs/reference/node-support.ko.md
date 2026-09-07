@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-Private root workspace와 34개 Node-bound public package는 `engines.node: ">=24.0.0 <27"`을 선언합니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
+Private root workspace와 [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)를 포함한 35개 Node-bound public package는 `engines.node: ">=24.0.0 <27"`을 선언합니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |

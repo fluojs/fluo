@@ -85,7 +85,7 @@ fluo는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된 �
 
 | 카테고리 | 패키지 |
 | :--- | :--- |
-| **런타임** | [Fastify](./packages/platform-fastify), [Node.js](./packages/platform-nodejs), [Bun](./packages/platform-bun), [Deno](./packages/platform-deno), [Workers](./packages/platform-cloudflare-workers) |
+| **런타임** | [Fastify](./packages/platform-fastify), [Node.js](./packages/platform-nodejs), [Next.js (Node.js)](./packages/platform-nextjs/README.ko.md), [Bun](./packages/platform-bun), [Deno](./packages/platform-deno), [Workers](./packages/platform-cloudflare-workers) |
 | **데이터베이스** | [Prisma](./packages/prisma), [Drizzle](./packages/drizzle), [Mongoose](./packages/mongoose) |
 | **API/통신** | [HTTP](./packages/http), [GraphQL](./packages/graphql), [OpenAPI](./packages/openapi), [WebSockets](./packages/websockets), [Socket.IO](./packages/socket.io) |
 | **로직** | [DI](./packages/di), [CQRS](./packages/cqrs), [Validation](./packages/validation), [Serialization](./packages/serialization), [Config](./packages/config), [I18n](./packages/i18n) |
