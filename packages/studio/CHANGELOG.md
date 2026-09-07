@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#3696](https://github.com/fluojs/fluo/pull/3696) [`f9e479a`](https://github.com/fluojs/fluo/commit/f9e479aa9b8f911b3b0d3c98821d9d6d6dbcebc3) Thanks [@ayden94](https://github.com/ayden94)! - Prepare the coordinated Node.js 24 release with explicit major intent for every current stable public package and minor intent for @fluojs/react. React remains on 0.x; this is not a 1.0 graduation. Pending feature and fix Changesets contribute their notes to the same next release per package, not a second Vite or CLI release. No package versions or changelogs are generated in this preparation change.
+
+  Node-bound packages and generated Node starters adopt the package-owned support range `>=24.0.0 <27`. Config's env-file, default `.env`, and watch features use that Node-only policy while its in-memory root stays portable. Preserve the eight package-wide engine omissions: config, email, i18n, platform-bun, platform-cloudflare-workers, platform-deno, react, and runtime.
+
+  Migration: Node.js 20 and Node.js 22 support is removed. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before upgrading Fluo packages, then replace @fluojs/runtime/node imports with @fluojs/platform-nodejs and @fluojs/runtime/internal-node with @fluojs/platform-nodejs/internal. There is no compatibility shim. Reinstall dependencies and native addons, refresh the lockfile, and verify application startup and shutdown.
+
+  Existing generated projects are not rewritten by a CLI upgrade. Adopt Vite ^8.2.2, Vitest and @vitest/coverage-v8 ^4.1.11 together, migrate build.rollupOptions to build.rolldownOptions, retain the separate Babel application/testing plugins, and remove the Babel ignore rule for src/\*_/_.test.ts. Node starters use node24 and @types/node ^24.0.0. The @fluojs/vite peer contract remains vite >=6.2.0; @fluojs/testing requires vitest ^4.1.11.
+
+  Follow the [English migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md) or [Korean migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.ko.md). Exact Node 24.0.0 and latest Node 26.x remain separate verification claims; latest Node 24.x owns release automation and Node 26 is never a publish runtime. Actual release and migration-document publication belong to the maintainer through the canonical Changesets workflow on main. This change does not claim publication; [#3169](https://github.com/fluojs/fluo/issues/3169) remains the release umbrella.
+
+### Minor Changes
+
+- [#3675](https://github.com/fluojs/fluo/pull/3675) [`be208de`](https://github.com/fluojs/fluo/commit/be208de88d953871463d5ec2e3bd1be026df5f32) Thanks [@ayden94](https://github.com/ayden94)! - Add explicit `graphNodeId` correlation to Runtime-produced Studio route descriptors and consume it in the Studio route panel without changing existing graph node IDs. Studio continues to parse persisted legacy route descriptors that omit the field by materializing the previous route-node ID convention at the wire boundary.
+
+- [#2851](https://github.com/fluojs/fluo/pull/2851) [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable React page catalogs and expose compiled route kinds, effective paths, versions, and parameter names through runtime inspection, `fluo inspect`, and Studio diagnostics.
+
+- [#3518](https://github.com/fluojs/fluo/pull/3518) [`e33e11f`](https://github.com/fluojs/fluo/commit/e33e11f15d9fcfe19fb4b89637102bc022885f8e) Thanks [@ayden94](https://github.com/ayden94)! - Serve the packaged Studio viewer through the supported `fluo-studio-viewer` HTTP launch command.
+
+- [#2917](https://github.com/fluojs/fluo/pull/2917) [`93e91a6`](https://github.com/fluojs/fluo/commit/93e91a6fd9625fbc62212b443f7ac38fe06f00ff) Thanks [@ayden94](https://github.com/ayden94)! - Preserve arbitrary string route kinds in static and live Studio artifacts while retaining the legacy `http` default when `kind` is omitted.
+
+- [#3634](https://github.com/fluojs/fluo/pull/3634) [`fe84a43`](https://github.com/fluojs/fluo/commit/fe84a438fa1544365059be80955013cccb5389e5) Thanks [@ayden94](https://github.com/ayden94)! - Make the Studio live wire schema the single type contract used by Runtime producers, and expose normalized parsed route descriptor types without narrowing legacy wire inputs.
+
+### Patch Changes
+
+- [#3668](https://github.com/fluojs/fluo/pull/3668) [`0a18afc`](https://github.com/fluojs/fluo/commit/0a18afc70589c33fa7d0d4974336125f330cc07e) Thanks [@ayden94](https://github.com/ayden94)! - Clarify static graph limits in Studio documentation.
+
+- [#3616](https://github.com/fluojs/fluo/pull/3616) [`4772475`](https://github.com/fluojs/fluo/commit/4772475b02ce84ee7ad532581f5827383fdc5c1b) Thanks [@ayden94](https://github.com/ayden94)! - Correct the packaged Studio README source-entry map.
+
+- [#3615](https://github.com/fluojs/fluo/pull/3615) [`7e04a10`](https://github.com/fluojs/fluo/commit/7e04a106aec8e1ce2d722c2800c293a2d335102e) Thanks [@ayden94](https://github.com/ayden94)! - Contain browser EventSource construction failures in Studio live mode.
+
+- [#3447](https://github.com/fluojs/fluo/pull/3447) [`ad48313`](https://github.com/fluojs/fluo/commit/ad4831301994dd61c0b01e409424b889db8d2db2) Thanks [@ayden94](https://github.com/ayden94)! - Reject timing diagnostics that use bootstrap phase names outside the published contract.
+
+- [#3617](https://github.com/fluojs/fluo/pull/3617) [`c9de01b`](https://github.com/fluojs/fluo/commit/c9de01b9c896657581d40e575339bcd0e6600fc0) Thanks [@ayden94](https://github.com/ayden94)! - Document deterministic filtered and serialized Mermaid rendering in the Studio README.
+
+- [#3681](https://github.com/fluojs/fluo/pull/3681) [`a981ca4`](https://github.com/fluojs/fluo/commit/a981ca40c51ab6ba5b57d47a9e3c5e33d6dc2c9a) Thanks [@ayden94](https://github.com/ayden94)! - Render canonical inspect-report summaries and snapshot-derived fallbacks in Studio static report views.
+
+- [#3422](https://github.com/fluojs/fluo/pull/3422) [`482af10`](https://github.com/fluojs/fluo/commit/482af10b73f50ffa08953782450729db15f2a86b) Thanks [@ayden94](https://github.com/ayden94)! - Keep Studio's Node engine contract independently installable by using runtime-neutral diagnostics declarations instead of a published runtime dependency.
+
+- [#3470](https://github.com/fluojs/fluo/pull/3470) [`29437ff`](https://github.com/fluojs/fluo/commit/29437ffc91db6f1d904b15bdce5c3236fa6f100e) Thanks [@ayden94](https://github.com/ayden94)! - Make static diagnostics file loading failure-safe and ensure the latest selected file wins over slower reads.
+
 ## 1.0.8
 
 ### Patch Changes

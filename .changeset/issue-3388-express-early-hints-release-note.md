@@ -1,7 +1,0 @@
----
-"@fluojs/platform-express": minor
----
-
-Add the optional request-scoped Early Hints capability to the Express 2.0.0 release. This backward-compatible adapter feature ships alongside the custom-route-methods and coordinated Node.js 24 migration.
-
-Migration: Node.js 20 and Node.js 22 support is removed; all Node.js versions below 24 and Node.js 27+ are unsupported. Upgrade local development, CI, container build/runtime stages, and production to Node.js >=24.0.0 <27 before installing this coordinated release.
