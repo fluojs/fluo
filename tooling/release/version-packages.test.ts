@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { normalizePackageChangelog, runChangesetsVersion, runVersionPackages } from './version-packages.mjs';
 
 describe('runChangesetsVersion', () => {
@@ -130,6 +130,7 @@ describe('runVersionPackages', () => {
     const writes: string[] = [];
 
     const result = runVersionPackages({
+      execFileSync: () => {},
       existsSync: (targetPath) => changelogs.has(targetPath),
       readFileSync: (targetPath) => {
         const changelog = changelogs.get(targetPath);
@@ -187,6 +188,7 @@ describe('runVersionPackages', () => {
 
     expect(() =>
       runVersionPackages({
+        execFileSync: () => {},
         existsSync: (targetPath) => changelogs.has(targetPath),
         readFileSync: (targetPath) => {
           const changelog = changelogs.get(targetPath);
@@ -224,5 +226,17 @@ describe('runVersionPackages', () => {
       }),
     ).toThrowError('Package CHANGELOG.md must contain at most one `## [Unreleased]` section.');
     expect(writes).toEqual([]);
+  });
+
+  it('propagates versioning failure without running the CLI dependency generator', () => {
+    const failure = new Error('versioning failed');
+    const generate = vi.fn();
+
+    expect(() => runVersionPackages({
+      execFileSync: generate,
+      runChangesetsVersion: () => { throw failure; },
+      workspacePackageManifests: () => [],
+    })).toThrow(failure);
+    expect(generate).not.toHaveBeenCalled();
   });
 });
