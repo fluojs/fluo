@@ -86,6 +86,62 @@ Handler failure isolation은 publish completion보다 좁은 계약입니다. �
 
 **마이그레이션 참고:** `waitForHandlers: false`를 사용하는 애플리케이션은 이제 background handler 및 transport 작업을 위해 `app.close()`가 최대 `shutdown.drainTimeoutMs`까지 기다린 뒤 transport cleanup을 계속할 수 있음을 shutdown budget에 반영해야 합니다. 해당 작업을 bounded하게 유지하거나 애플리케이션에 적절한 drain budget을 구성하세요.
 
+### 결과가 필요한 발행
+
+`publish(...)`는 기존 best-effort API이며 반환형 `Promise<void>`, 실패 격리, raw error를 포함하는 기존 로깅을 바꾸지 않습니다. 반응 결과를 호출자 정책으로 판단해야 할 때만 `EventBusLifecycleService.publishWithResult(event, options?)`를 선택하세요. 이 API는 같은 모듈 등록, effective singleton handler discovery, 수신자별 payload 복제를 사용하며 `Promise<EventPublishResult>`를 반환합니다. `EVENT_BUS` 런타임 facade도 이를 지원합니다. Facade를 주입하는 소비자는 루트 `@fluojs/event-bus`의 additive type `EventBusWithResults`를 사용하세요. 기존 `EventBus` 인터페이스에는 메서드를 추가하지 않으므로 기존 구현은 그대로 유효합니다.
+
+`EVENT_BUS` 토큰의 타입은 `Token<EventBusWithResults>`이므로 `container.resolve(EVENT_BUS)`가 결과형 facade를 추론합니다. 기존 소비자의 명시적 `container.resolve<EventBus>(EVENT_BUS)`도 유효하며 이 경우에는 기존 `publish` 계약만 보입니다.
+
+| 입력과 기본값 | 계약 |
+| --- | --- |
+| `event` | 이벤트 클래스의 인스턴스. Payload 검증과 민감 정보 제외는 애플리케이션 책임입니다. |
+| `waitForHandlers` | 호출 옵션, 모듈 `publish` 기본값 순으로 선택하며 최종 기본값은 `true`입니다. |
+| `timeoutMs` | 같은 순서로 선택하며 생략 시 제한이 없습니다. 양의 유한 값을 정수 밀리초로 내림하고, 0 이하 또는 유한하지 않은 값은 제한을 비활성화합니다. `waitForHandlers: false`에서는 무시합니다. |
+| `signal` | 호출별 선택적 `AbortSignal`. 이미 abort되었다면 아직 시작하지 않은 작업을 건너뜁니다. |
+
+| 결과 `status` | 의미 |
+| --- | --- |
+| `settled` | `outcomes`에 선택된 로컬 핸들러와 outbound transport channel 관측값이 있습니다. 모든 반응의 성공을 뜻하지 않습니다. |
+| `no-recipients` | 일치하는 로컬 핸들러도 구성된 transport도 없으며 `outcomes`는 빈 배열입니다. |
+| `rejected` | 발행을 수락하지 않은 lifecycle 상태가 `reason: 'stopping' \| 'stopped' \| 'failed'`로 반환됩니다. |
+| `background` | `waitForHandlers: false`로 예약했으며 `completion: Promise<EventPublishSettlement>`로 실제 작업 결과를 관찰합니다. |
+
+`EventPublishSettlement`는 `settled` 또는 `no-recipients`입니다. 각 `EventDeliveryOutcome`은 `target`과 다음 상태 중 하나만 포함하며 payload, handler 반환값, raw error를 담지 않습니다.
+
+| Outcome `status` | 추가 필드 |
+| --- | --- |
+| `succeeded` | 없음 |
+| `failed` | `reason: 'handler' \| 'transport' \| 'not-callable'` |
+| `timed-out` | `timeoutMs` |
+| `cancelled` | `started`: 시작 전 건너뜀은 `false`, 시작 후 대기 취소는 `true` |
+
+결과 배열은 완료 순서가 아닙니다. 일치하는 effective 로컬 핸들러를 discovery 순서로 먼저 나열하고, outbound channel을 channel 순서로 이어 붙입니다. 핸들러 target은 `kind: 'handler'`, 해당 발행 안에서만 유효한 0부터 시작하는 `index`, `moduleName`, `targetName`, `methodName`을 가집니다. 이 index는 영속 ID가 아닙니다. Transport target은 `kind: 'transport'`, `channel`을 가집니다. Channel은 이벤트의 구체 클래스에서 base class로 이어지는 순서 뒤에 matching descriptor의 channel을 더하고 중복은 처음 등장한 위치만 유지합니다. 배열 순서는 실행 직렬화를 보장하지 않습니다.
+
+Transport `succeeded`는 adapter의 해당 channel 발행 성공만 뜻합니다. 원격 핸들러나 subscriber의 존재·처리 결과·내구성을 보고하지 않습니다. Subscriber가 0이어도 adapter가 성공하면 transport 성공이며 `no-recipients`로 바뀌지 않습니다.
+
+Awaited `timed-out`/`cancelled`는 호출자의 관측 결과일 뿐입니다. 시작된 작업은 계속 실행될 수 있고 shutdown drain 추적에 남습니다. Background completion은 timeout과 시작 후 cancellation을 무시하고 실제 작업이 settle될 때까지 기다리므로 bounded shutdown 뒤에도 pending일 수 있고 process exit 시 사라질 수 있습니다. 시작 전 abort에 의한 건너뜀은 background에서도 적용됩니다. 버스는 저장, 재시도, 원격 acknowledgement를 추가하지 않습니다.
+
+Discovery와 payload preparation 오류는 여전히 promise를 reject합니다. 별도의 aggregate-reject API는 없으며 호출자가 `status`와 모든 outcome을 검사해 반응 실패 정책을 결정합니다. 아래는 이미 `EventBusModule.forRoot()`와 필요한 핸들러를 등록한 애플리케이션에서 주입받은 서비스를 사용하는 **범위가 한정된 소비자 함수**입니다. 필수 반응이 하나 이상 있고 모두 성공했을 때만 성공으로 취급합니다.
+
+```typescript
+import { EventBusLifecycleService } from '@fluojs/event-bus';
+
+async function requireReactions(eventBus: EventBusLifecycleService, event: object): Promise<void> {
+  const result = await eventBus.publishWithResult(event, { waitForHandlers: true });
+  if (
+    result.status !== 'settled' ||
+    result.outcomes.length === 0 ||
+    !result.outcomes.every(outcome => outcome.status === 'succeeded')
+  ) {
+    throw new Error('Required event reactions did not succeed.');
+  }
+}
+```
+
+이 정책도 구성되지 않은 필수 핸들러의 존재를 증명하지는 못합니다. 필요한 로컬 핸들러의 등록을 애플리케이션 테스트로 검증하고, 원격 처리 완료가 필요하면 별도 acknowledgement 계약을 설계하세요. [메시징 가이드의 두 소비자 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)는 인증이 이미 성공한 뒤 token record ID만 담는 last-used bookkeeping에는 기존 best-effort `publish`를, 결과가 필요한 반응에는 명시적 검사를 사용하는 차이를 보여 줍니다.
+
+`publishWithResult`가 보고하는 handler/transport 실패 로그는 기존의 안전한 target/status 메시지를 유지하지만 raw handler/transport error 인자를 logger에 전달하지 않습니다. 이는 raw error와 handler 반환값을 제외한 결과 계약과 같습니다. 핸들러나 adapter가 직접 쓰는 애플리케이션 로그는 애플리케이션 책임이며, 기존 `publish`와 inbound delivery의 로그까지 정제하는 전역 정책이 아닙니다.
+
 ## 일반적인 패턴
 
 ### 분산 팬아웃 (Redis)
@@ -167,7 +223,7 @@ class UserRegisteredEvent {
 
 ### 핵심 구성 요소
 - `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: 이벤트 버스 등록을 위한 기본 진입점입니다. `global`의 기본값은 `true`이며, event-bus provider를 event-bus 모듈을 import한 모듈을 통해서만 보이게 하려면 `global: false`를 설정하세요.
-- `EventBusLifecycleService`: 이벤트 발행(`publish(event, options?)`)과 platform status snapshot 생성을 위한 기본 서비스입니다.
+- `EventBusLifecycleService`: 기존 `publish(event, options?)`, opt-in `publishWithResult(event, options?)`, platform status snapshot 생성을 위한 기본 서비스입니다.
 - `@OnEvent(EventClass)`: 특정 메서드를 이벤트 핸들러로 지정하는 데코레이터입니다.
 - `EVENT_BUS`: 발행 facade를 위한 호환성 주입 토큰입니다.
 - `createEventBusPlatformStatusSnapshot(...)`: diagnostics와 health surface에서 사용하는 상태 스냅샷 헬퍼입니다.
@@ -175,6 +231,7 @@ class UserRegisteredEvent {
 ### 인터페이스
 - `EventBusTransport`: 외부 트랜스포트 어댑터 구현을 위한 계약입니다.
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
+- `EventBusWithResults`: 기존 `EventBus`를 확장하는 결과형 facade 계약입니다. `EventDeliveryTarget`, `EventDeliveryStatus`, `EventDeliveryOutcome`, `EventPublishSettlement`, `EventPublishResult`도 루트에서 type-only export됩니다.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
 
 Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. Shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
@@ -196,8 +253,25 @@ Handler discovery는 normalized effective singleton provider registration과 con
 
 ## 예제 소스
 
+- [실행 가능한 결과형 발행 예제](./examples/publish-results.ts): best-effort 소비자와 결과를 검사하는 소비자의 비교.
+- [결과와 정제된 실패 관측 테스트](./src/publish-result.test.ts), [timeout/cancellation 테스트](./src/publish-result-bounds.test.ts), [lifecycle/background completion 테스트](./src/publish-result-lifecycle.test.ts).
+- [결과형 공개 타입](./src/publish-result.ts), [발행 구현](./src/service.ts), [facade wiring](./src/module.ts).
 - `packages/event-bus/src/module.test.ts`: 핸들러 탐색 및 발행/구독 테스트 예제.
 - `packages/event-bus/src/public-surface.test.ts`: 공개 API 계약 검증 예제.
 - `packages/event-bus/src/status.test.ts`: status snapshot semantic 테스트 예제.
 - `packages/event-bus/src/shutdown-late-work.test.ts`: 늦은 handler 및 transport 등록 shutdown race 테스트 예제.
 - `packages/event-bus/src/transports/redis-transport.test.ts`: Redis transport 동작 테스트 예제.
+
+위 source evidence의 소유자 검증 명령은 저장소 루트에서 실행합니다. 이 문서의 예제는 workspace checkout을 대상으로 하며 최신 registry release 검증을 뜻하지 않습니다.
+
+```bash
+pnpm --dir packages/event-bus test
+pnpm --filter '@fluojs/event-bus...' build
+```
+
+Build 뒤에는 저장소의 Babel decorator 설정으로 예제를 변환하고 지원되는 Node.js에서 실행할 수 있습니다. Git에서 무시하는 `dist/` 안에 출력하면 패키지 자체 import도 해석됩니다. 예제는 HTTP 서버나 Redis를 열지 않으며 `authenticated: true`, `projectionReady: false`, 성공·실패 outcome과 background completion을 출력합니다.
+
+```bash
+pnpm exec babel packages/event-bus/examples/publish-results.ts --out-file packages/event-bus/dist/publish-results.example.mjs --config-file ./tooling/babel/babel.config.cjs
+node packages/event-bus/dist/publish-results.example.mjs
+```

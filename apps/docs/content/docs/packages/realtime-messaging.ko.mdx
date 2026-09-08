@@ -15,4 +15,8 @@ Realtime과 messaging package는 synchronous HTTP request/response만으로 끝�
 | `@fluojs/graphql` | GraphQL resolver, schema, DataLoader | `packages/graphql/README.ko.md` |
 | `@fluojs/cron` | Cron, interval, timeout trigger | `packages/cron/README.ko.md` |
 
+`@fluojs/event-bus`에서는 기존 best-effort `publish`와 raw error 로깅을 유지하면서 `EventBusLifecycleService.publishWithResult`로 결과 관측을 선택할 수 있습니다. `EVENT_BUS` 런타임 facade의 결과형 타입은 기존 `EventBus`를 바꾸지 않는 additive `EventBusWithResults`입니다. `settled`와 모든 outcome을 함께 확인해야 하며 `no-recipients`나 빈 결과는 필수 반응의 성공이 아닙니다. 관측 범위는 일치하는 로컬 핸들러와 outbound transport channel뿐이고, subscriber가 0인 adapter 성공도 transport 성공이지 원격 처리나 durability의 증거가 아닙니다.
+
+새 경로의 결과와 버스 로그는 raw handler/transport error와 handler 반환값을 제외하지만 app-owned 로그는 앱 책임입니다. Awaited timeout/cancellation은 시작된 작업을 종료하지 않습니다. Background completion은 실제 작업을 기다리며 timeout과 시작 후 cancellation을 무시하므로 bounded shutdown 뒤에도 pending일 수 있고 process exit 시 사라질 수 있습니다. 전체 계약은 [패키지 README](https://github.com/fluojs/fluo/blob/main/packages/event-bus/README.ko.md), 인증 후 best-effort bookkeeping과 필수 결과 검사의 비교는 [메시징 가이드](../guides/messaging-workflows#best-effort-versus-required-results)를 따르세요.
+
 client connection이 핵심이면 [실시간](../guides/realtime)을, backend workflow가 핵심이면 [메시징과 워크플로](../guides/messaging-workflows)를 읽으세요.

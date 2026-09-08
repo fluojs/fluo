@@ -18,6 +18,8 @@ function createEventBusProviders(options: EventBusModuleOptions = {}): Provider[
       useFactory: (service: unknown) => ({
         publish: (event: object, publishOptions?: EventPublishOptions) =>
           (service as EventBusLifecycleService).publish(event, publishOptions),
+        publishWithResult: (event: object, publishOptions?: EventPublishOptions) =>
+          (service as EventBusLifecycleService).publishWithResult(event, publishOptions),
       }),
     },
   ];

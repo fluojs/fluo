@@ -82,6 +82,71 @@ class AppModule {}
 
 `publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`, so awaited local handlers and awaited transport publishes share the same cancellation and timeout boundary.
 
+### Best-effort versus required results
+
+Do not interpret `publish` completion as every reaction succeeding. Legacy `publish` and its raw error logging remain unchanged. Choose `EventBusLifecycleService.publishWithResult` when results are required, and use the additive `EventBusWithResults` type when injecting the `EVENT_BUS` facade. The legacy `EventBus` type is unchanged. The [event-bus README](https://github.com/fluojs/fluo/blob/main/packages/event-bus/README.md) owns the complete result, default, and logging contract.
+
+The following consumer function runs **after authentication has already succeeded**. It assumes that `EventBusModule.forRoot()` and the last-used bookkeeping handler for `TokenUsedEvent` are registered. Credential verification and account admission finish before this function; a last-used storage failure must not turn that authentication decision into a failure. The event carries only the token record ID, never the raw bearer token, JWT, API key, or credential.
+
+```ts
+import { EventBusLifecycleService } from '@fluojs/event-bus';
+
+class TokenUsedEvent {
+  constructor(public readonly tokenRecordId: string) {}
+}
+
+async function afterAuthentication(
+  eventBus: EventBusLifecycleService,
+  authenticated: { userId: string; tokenRecordId: string },
+): Promise<{ userId: string; tokenRecordId: string }> {
+  try {
+    await eventBus.publish(new TokenUsedEvent(authenticated.tokenRecordId), {
+      waitForHandlers: false,
+    });
+  } catch {
+    console.warn('Last-used publication could not be prepared.');
+  }
+  return authenticated;
+}
+```
+
+Handler failures are isolated at the legacy publish boundary. The `catch` above is application policy to keep discovery/preparation failures, which can still reject, from propagating into an established authentication decision. Background work is shutdown-tracked but has no persistence or retry guarantee. This example is unsuitable for a policy that makes last-used bookkeeping a mandatory security condition. Because the legacy bus logs raw errors and handlers/transports can write their own logs, removing sensitive information from those paths is the application's responsibility.
+
+In contrast, the following consumer function **proceeds only after checking a required local reaction's result**. Register `ReactionRequested` and the required handlers in the same application and verify that registration with application tests. The `reactionId` and the policy that stops the next step on failure belong to the application; this is not an API for rolling back already committed business work.
+
+```ts
+import { EventBusLifecycleService } from '@fluojs/event-bus';
+
+class ReactionRequested {
+  constructor(public readonly reactionId: string) {}
+}
+
+async function requireReaction(
+  eventBus: EventBusLifecycleService,
+  reactionId: string,
+): Promise<void> {
+  const result = await eventBus.publishWithResult(new ReactionRequested(reactionId), {
+    waitForHandlers: true,
+    timeoutMs: 500,
+  });
+  if (
+    result.status !== 'settled' ||
+    result.outcomes.length === 0 ||
+    !result.outcomes.every(outcome => outcome.status === 'succeeded')
+  ) {
+    throw new Error('Required reaction was not observed as successful.');
+  }
+}
+```
+
+Checking only `settled`, or only calling `every(...)` on an empty array, can misclassify success. This code checks the overall `status`, a nonempty result, and every outcome. Outcomes are `succeeded`, `failed` (`reason: 'handler' | 'transport' | 'not-callable'`), `timed-out` (`timeoutMs`), or `cancelled` (`started`). `no-recipients` means there are neither local handlers nor a configured transport. Lifecycle refusal returns `rejected` with `reason: 'stopping' | 'stopped' | 'failed'`. Discovery/preparation errors still reject, and there is no separate aggregate-reject API.
+
+Results list matching effective local handlers in discovery order (`index`, `moduleName`, `targetName`, `methodName`), then outbound transport in channel order. The index is scoped to that publication; remote handlers/subscribers are not enumerated. An adapter publication that succeeds with zero subscribers is still a transport success. Do not use this check as evidence of remote processing completion or durability.
+
+Awaited timeout/cancellation ends only the observation; started work remains shutdown-tracked. With `waitForHandlers: false`, `background.completion` is a `Promise<EventPublishSettlement>` that ignores timeout and post-start cancellation to await actual work results. An already-aborted signal skips unstarted work, but completion can remain pending after bounded shutdown and be lost on process exit. Neither results nor bus logs for the new publication path contain raw handler/transport errors or handler return values; existing safe target/status messages remain. App-owned handler/transport log contents remain the application's responsibility.
+
+See the [executable consumer example](https://github.com/fluojs/fluo/blob/main/packages/event-bus/examples/publish-results.ts), [result tests](https://github.com/fluojs/fluo/blob/main/packages/event-bus/src/publish-result.test.ts), [bound tests](https://github.com/fluojs/fluo/blob/main/packages/event-bus/src/publish-result-bounds.test.ts), and [lifecycle tests](https://github.com/fluojs/fluo/blob/main/packages/event-bus/src/publish-result-lifecycle.test.ts). Repository owner verification commands are `pnpm --dir packages/event-bus test` and `pnpm --filter '@fluojs/event-bus...' build`.
+
 ### Redis fan-out
 
 Use the Redis subpath when event publication must cross processes.

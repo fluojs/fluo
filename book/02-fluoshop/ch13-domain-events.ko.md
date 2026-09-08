@@ -284,6 +284,38 @@ test('distinguishes publication completion from reaction success', async () => {
 
 두 번째 발행에서 실패 핸들러의 호출 횟수는 2가 된다. 버스가 같은 `eventId`를 알아보고 중복 전달을 막아 주지 않는다는 증거다. 미리보기 값은 같지만 그 이유는 저장소의 버전 조건이지 버스의 전달 보장이 아니다. `try/finally`는 assertion 실패 때도 애플리케이션 수명주기를 닫는다. 테스트의 5초 제한은 고정 대기가 아니라 멈춘 실험을 실패로 끝내는 상한이다.
 
+기존 `publish`가 raw `Error`를 logger에 전달하는 위 실험은 그대로 유효하다. 이제 opt-in `publishWithResult`를 비교하자. 다음은 **같은 테스트의 두 번째 발행 assertion 뒤, `finally` 앞에 넣는 추가 조각**이다. 기존 실험이나 `OrderEventsPublisher.announce()`의 정책을 교체하지 않는다.
+
+```typescript
+failures.length = 0;
+const result = await bus.publishWithResult(event, { waitForHandlers: true });
+expect(result.status).toBe('settled');
+if (result.status !== 'settled') throw new Error('Expected local observations.');
+expect(result.outcomes.map(outcome => outcome.status)).toEqual(['failed', 'succeeded']);
+expect(result.outcomes[0]).toMatchObject({
+  target: {
+    kind: 'handler',
+    index: 0,
+    moduleName: 'ExperimentModule',
+    targetName: 'BrokenReceiptListener',
+    methodName: 'handle',
+  },
+  status: 'failed',
+  reason: 'handler',
+});
+expect(attempts.count).toBe(3);
+expect(store.find('order-13')?.orderVersion).toBe(1);
+expect(failures).toEqual([undefined]);
+```
+
+예상 결과는 `settled` 안에 실패와 성공이 함께 있고, logger가 받은 error 인자에는 raw `Error`가 없다는 것이다. 기존의 안전한 target/status 메시지는 남는다. 결과도 payload, raw error, 핸들러 반환값을 담지 않는다. 이 정제는 새 발행 경로에 한정되며 핸들러나 transport가 직접 남기는 앱 로그까지 정제하지 않는다. `EVENT_BUS` 런타임 facade에서도 additive `EventBusWithResults` 타입으로 같은 API를 사용할 수 있고 기존 `EventBus`는 바뀌지 않는다.
+
+배열은 완료 순서가 아니라 일치하는 effective 로컬 핸들러의 discovery 순서이며, `index`는 이번 발행 안에서만 유효하다. Transport를 구성하면 그 뒤에 channel 순서의 outbound outcome이 붙는다. 원격 핸들러나 subscriber는 열거하지 않으며 subscriber가 없어도 adapter가 성공하면 transport 성공이다. 로컬 핸들러도 구성된 transport도 없을 때만 `no-recipients`와 빈 배열이 나온다. 따라서 필수 반응을 확인하려는 호출자는 `status === 'settled'`, 비어 있지 않은 결과, 모든 outcome의 `succeeded`를 함께 검사하고 필요한 핸들러의 등록도 별도로 검증해야 한다.
+
+실패 outcome은 `reason: 'handler' | 'transport' | 'not-callable'`을 가지며, `timed-out`에는 `timeoutMs`, `cancelled`에는 시작 여부인 `started`가 있다. Lifecycle의 `stopping`/`stopped`/`failed`는 `rejected`의 reason이고 discovery/preparation 오류는 여전히 reject한다. 결과를 묶어 자동 reject하는 API는 없다. Awaited timeout/cancellation은 관측만 끝내고 시작된 작업은 shutdown 추적에 남는다. `waitForHandlers: false`는 `background`와 `completion: Promise<EventPublishSettlement>`를 반환하며 timeout과 시작 후 취소를 무시하고 실제 작업을 기다린다. 이미 abort된 signal은 아직 시작하지 않은 작업을 건너뛴다. Completion은 bounded shutdown 뒤에도 pending일 수 있고 process exit 때 사라지므로 영속 outbox를 대신하지 못한다.
+
+인증이 이미 성공한 뒤 token record ID만 담아 last-used 기록을 best-effort `publish`하는 정책과, 반응 결과를 검사해 다음 단계를 결정하는 정책은 [메시징 가이드의 소비자 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)에서 비교한다. Credential 원문을 이벤트에 넣지 않으며 bookkeeping 실패로 인증 성공을 뒤집지 않는다. 이 장의 결제도 이미 성립한 사실이므로 관측 실패를 결제 rollback으로 해석하지 않는다.
+
 독자의 `fluo-blog`에서 실행할 명령은 다음과 같다. 이 원고 작성 단계에서는 이 애플리케이션 테스트를 실행하지 않았으며 아래 값은 기대 결과다.
 
 ```bash
@@ -309,6 +341,10 @@ Redis Pub/Sub 전송 어댑터를 붙여도 이 결론은 달라지지 않는다
 - [복제·호출·실패 기록 구현](../../packages/event-bus/src/service.ts)
 - [탐색·중복 발행·실패 격리 테스트](../../packages/event-bus/src/module.test.ts)
 - [백그라운드 작업의 종료 추적 테스트](../../packages/event-bus/src/shutdown-contract.test.ts)
+- [결과형 발행 실행 예제](../../packages/event-bus/examples/publish-results.ts), [결과 타입](../../packages/event-bus/src/publish-result.ts)
+- [결과 테스트](../../packages/event-bus/src/publish-result.test.ts), [bound 테스트](../../packages/event-bus/src/publish-result-bounds.test.ts), [lifecycle 테스트](../../packages/event-bus/src/publish-result-lifecycle.test.ts)
 - [원본 결제 원장의 수신 경계](./ch10-payment-webhooks.ko.md), [재고를 함께 확정하는 기존 서비스](./ch07-inventory-concurrency.ko.md), [전이 감사 기록](./ch06-order-state-machine.ko.md)
+
+패키지 소유자는 저장소 루트에서 `pnpm --dir packages/event-bus test`와 `pnpm --filter '@fluojs/event-bus...' build`로 근거를 검증한다. 이는 독자의 애플리케이션 테스트나 최신 registry release 검증을 대신하지 않는다.
 
 [이전: 중간에 멈춘 주문을 다시 맞추기](./ch12-reconciliation.ko.md) · [2권 목차](./toc.ko.md) · [다음: 저장은 됐는데 이벤트가 사라졌다면](./ch14-outbox-and-inbox.ko.md)
