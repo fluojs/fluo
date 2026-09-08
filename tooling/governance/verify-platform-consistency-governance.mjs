@@ -4335,7 +4335,7 @@ export async function main() {
   enforceReactPageCatalogContract();
   enforceReactPageMetadataIdentityContract();
   enforceReactClientSubpathContract();
-  enforceReactRscGraduationGovernance(behavioralChanges);
+  enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCustomMethodContract();

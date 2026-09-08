@@ -3,7 +3,7 @@ title: First Feature
 description: Find the guided first-feature lesson or the reference for an existing application.
 ---
 
-The first-feature walkthrough now belongs to the [FluoBlog tutorial](/en/docs/tutorial). It builds one posts API through complete, executable checkpoints instead of leaving module registration, validation, or tests for you to fill in.
+The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the primary learning path. The [FluoBlog tutorial](/en/docs/tutorial) is a short companion exercise for the initial HTTP, DI, and validation flow. It builds one posts API through complete, executable checkpoints instead of leaving module registration, validation, or tests for you to fill in.
 
 ## Build your first feature
 
@@ -19,5 +19,63 @@ Use the same FluoBlog project throughout. Each lesson states the required starti
 ## Add a feature to an existing application
 
 If your app already runs, use the [feature structure reference](https://github.com/fluojs/fluo/blob/main/docs/getting-started/first-feature-path.md) to check module registration and file responsibilities. Use [HTTP API](/en/docs/guides/http-api), [Validation & Serialization](/en/docs/guides/validation-serialization), and [Testing](/en/docs/guides/testing) for the specific capability you are adding.
+
+### HTTP and DI wiring
+
+The following `users` code is a structural reference for connecting a controller, service, and request DTOs in an existing application. It is neither the next FluoBlog exercise checkpoint nor a standalone application. It assumes a `UsersService` in `users.service.ts` in the same directory, with `create(name: string)` to create a user and `findById(id: string)` to return a user or `undefined`.
+
+Register `UsersController` in the feature module's `controllers` and `UsersService` in its `providers`, then import that feature module from the application's root module. This is the complete `users.controller.ts`:
+
+```ts
+import { Inject } from '@fluojs/core';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
+
+import { UsersService } from './users.service';
+
+class CreateUserDto {
+  @FromBody()
+  name = '';
+}
+
+class FindUserParamsDto {
+  @FromPath('id')
+  id = '';
+}
+
+@Controller('/users')
+@Inject(UsersService)
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Post('/')
+  @RequestDto(CreateUserDto)
+  create(input: CreateUserDto) {
+    return this.users.create(input.name);
+  }
+
+  @Get('/:id')
+  @RequestDto(FindUserParamsDto)
+  findOne(input: FindUserParamsDto) {
+    return this.users.findById(input.id);
+  }
+}
+```
+
+`@Inject(UsersService)` explicitly declares the constructor token on the class. `@RequestDto(...)` specifies the DTO received as each handler's first argument. `POST /users` receives the body's `name` through `@FromBody()`, while `GET /users/:id` receives the path's `id` through `@FromPath('id')`. The controller owns this transport wiring; the service owns business behavior.
+
+### Extracting the DTO and defining the validation scope
+
+To manage the request contract in a separate file, move `CreateUserDto` above into `create-user.dto.ts`. The following is the complete file. Remove the existing class declaration from the controller and replace it with `import { CreateUserDto } from './create-user.dto';`. This is not a second DTO to declare alongside the first or an additional route.
+
+```ts
+import { FromBody } from '@fluojs/http';
+
+export class CreateUserDto {
+  @FromBody()
+  name = '';
+}
+```
+
+Field initializers make these declarations compatible with Fluo's standard decorator toolchain. `@FromBody()` identifies the input source; it does not validate that `name` is a string or non-empty. This structural example does not implement value validation, persistence, or a `404` response for a missing user. Before accepting real external input, follow the `@fluojs/validation` wiring in [Validation & Serialization](/en/docs/guides/validation-serialization) and the [validation and error handling exercise](/en/docs/tutorial/validation-errors), then prove the behavior with [request tests](/en/docs/tutorial/testing).
 
 The [RealWorld API example](/en/docs/examples/realworld-api) is a separate reference application, not the next state of the tutorial project.

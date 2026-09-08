@@ -26,7 +26,7 @@ We do not check only successful responses. We examine whether invalid input leav
 
 The main chapters and comparison labs cover the current 43 public packages. We introduce foundations and HTTP, authentication, persistence, notifications, messaging, operations, React, and runtime adapters as the product requires them. The [fixed contents data](./series.json) records package assignments by chapter. Consult the [package surface](../docs/reference/package-surface.md) and owning README for actual support boundaries.
 
-The main path consistently uses Node.js 24, pnpm 10, Fastify, PostgreSQL, and Prisma. The transport, Drizzle, and Mongoose chapters in volume 2 and the runtime chapters in volume 3 compare different implementations of the same requirements. Learning multiple ORMs or brokers does not require installing all of them into the operational application at once.
+The main path consistently uses Node.js 24, pnpm 10, Fastify, PostgreSQL, and Prisma. The Node.js listener packages support `>=24.0.0 <27`, and the book's default exercises use 24.x. The transport, Drizzle, and Mongoose chapters in volume 2 and the runtime chapters in volume 3 compare different implementations of the same requirements. Learning multiple ORMs or brokers does not require installing all of them into the operational application at once.
 
 ## Manuscripts, executable examples, and contract documents
 
