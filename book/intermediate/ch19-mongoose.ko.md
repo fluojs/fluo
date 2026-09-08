@@ -182,6 +182,16 @@ await this.conn.transaction(async () => {
 
 ## 19.6 FluoShop Context: Product Catalog Persistence
 
+커밋 뒤 캐시 삭제가 필요하면 같은 연결의 활성 경계 안에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록합니다. `transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, `@Transaction(accessor?, boundary?)`의 마지막 boundary에 `{ requireAfterCommit: true }`를 주면 콜백 실행 전에 네이티브 커밋 관찰 능력을 요구합니다. 없으면 `AfterCommitCapabilityError`로 거부하며 기본 fail-open은 변경하지 않습니다. 옵션을 생략해도 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부합니다.
+
+위임된 Mongoose 콜백 재시도는 시도마다 독립 큐를 갖고 최종 성공한 시도만 실행합니다. 폐기된 시도·롤백·커밋 실패의 훅은 실행하지 않으며, 커밋만 재시도할 때 재등록하지 않습니다. 같은 시도의 중첩 경계는 큐를 공유하고, 저장점 없는 중첩 예외를 잡으면 최종 바깥 결과를 따릅니다. 사용자 callback scope는 native commit 시작 전에 닫습니다. commit 성공과 `endSession` 정리 시도 settlement 뒤 종료된 ALS 밖에서 FIFO로 하나씩 await하므로 새 조회는 예전 세션을 쓰지 않고 새 트랜잭션은 새 큐를 갖습니다. 종료는 훅도 기다리되 늦은 등록은 받지 않습니다.
+
+세션 정리가 성공하고 훅이 실패하면 모든 훅을 시도한 뒤 `AggregateError`를 확장한 `AfterCommitError`에 `committed: true`, 모든 성공·실패의 FIFO `results`, 모든 실패의 `errors`가 담깁니다. 이 오류로 native retry나 rollback·abort를 실행하지 않습니다. `AfterCommitCallback`, `TransactionBoundaryOptions`, `AfterCommitCapabilityError`, `AfterCommitError`는 `@fluojs/mongoose` 루트 export입니다. raw 외부 트랜잭션·다른 연결은 관찰하지 않으며, 캐시 삭제도 DB+Redis 원자성·outbox·크래시·네트워크 exactly-once를 만들지 않습니다.
+
+수동 세션 경로의 hook이 등록되었거나 `requireAfterCommit: true`로 opt-in한 소유 경계(중첩 `requestTransaction`에서 요구한 경우 포함)에서 커밋이 확인된 뒤 `endSession()`이 실패하면 종료된 ALS 밖에서 모든 훅을 시도한 뒤 루트 export인 `AfterCommitCleanupError`로 보고합니다. `AggregateError`를 직접 확장하며 `AfterCommitError`의 하위 클래스가 아니므로 `instanceof AfterCommitError`와 별도 분기로 처리해야 합니다. `committed`는 `true`, `cause`는 정리 실패, `results`는 훅 결과만 담은 FIFO 배열입니다. `errors`에는 정리 실패가 먼저, 실패한 훅의 이유들이 등록 순서대로 뒤따릅니다. 정리 실패도 이미 커밋된 DB 쓰기의 재시도나 rollback·abort 사유가 아닙니다. Hook도 없고 `requireAfterCommit`도 요구하지 않은 기존 경계는 원래 cleanup 오류 identity와 no-hook request cancellation 계약을 보존합니다.
+
+위 설명은 [공통 트랜잭션 계약](../../docs/architecture/transactions.ko.md)과 [Mongoose API](../../packages/mongoose/README.ko.md)에서 파생됩니다. [after-commit 테스트](../../packages/mongoose/src/after-commit.test.ts)는 검증 대상이며 이 장의 예제 실행 결과가 아닙니다. 현재 제품 적용은 [리뷰 비교 실습](../02-fluoshop/ch26-mongoose-lab.ko.md)을 참고하세요.
+
 FluoShop에서는 제품 유형에 따라 속성이 크게 달라질 수 있는 카탈로그 데이터에 MongoDB를 사용합니다. 전자제품, 의류, 디지털 상품처럼 서로 다른 형태의 문서를 같은 도메인 안에서 다뤄야 하기 때문입니다.
 
 기본 스키마를 정의한 뒤 Mongoose의 **Discriminators**를 사용하면 단일 컬렉션 안에 서로 다른 제품 유형을 저장하면서도 타입별 필드를 분리해 관리할 수 있습니다.

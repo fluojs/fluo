@@ -12,6 +12,10 @@ Writing to two stores in sequence does not solve this problem. Save the order fi
 
 Our shop is still a modular monolith using the same PostgreSQL database. We use that condition to save the order and "the fact to be delivered" in one transaction. This is an Outbox. In the receiving feature, an Inbox records that "this consumer received this fact and created this follow-up responsibility." Fluo does not generate these tables automatically, nor does registering `EventBusModule` or `PrismaModule` create this functionality. In this chapter, we write application-owned tables and actual transaction code.
 
+`PrismaService.afterCommit()` does not replace this Outbox. Registration inside the same Fluo boundary can defer work from nested calls until the successful final outer commit, but the queue is in memory: a process crash immediately after commit leaves no recovery mechanism for that work. Keep the Outbox insertion in the same database transaction as the order change. If you add a hook, use it for cache invalidation or an optional signal waking a relay that discovers already-persisted intent, and retain a path that searches the ledger without that signal. The implementation below keeps its existing callers outside transactions and does not make such a signal a required dependency.
+
+Choosing `transaction(fn, nativeOptions, { requireAfterCommit: true })` for a boundary that requires the signal rejects a lack of native commit observation before invoking the callback. This does not check durable delivery capability. Hook failures are reported as `AfterCommitError` after awaiting every hook in order; a payment with `committed: true` is not a reason to roll back or charge again. The Outbox, consumer idempotency, and operational policy determine whether to reprocess failed follow-up intent. Redis has no Fluo-owned commit tracking, and invoking Redis enqueue from a database hook does not commit both stores atomically. Network exactly-once delivery is not guaranteed either.
+
 ## A Schema That Distinguishes Delivery from Business Completion
 
 This chapter has one consumer: `notifications.receipt.v1`. It only stores the intent to prepare a receipt for a confirmed payment; it does not send email or call a payment provider. The name identifies a logical consumer in the notification feature, not a server instance ID. Even with two servers, duplicate detection must use the same consumer. Conversely, if fulfillment preparation consumes the same event, it needs a different name and its own processing history.
@@ -355,6 +359,7 @@ In a small service where every reaction is a short DB update like order persiste
 - [Prisma public exports](../../packages/prisma/src/index.ts), [transaction handle types](../../packages/prisma/src/types.ts)
 - [ALS context and current implementation](../../packages/prisma/src/service.ts)
 - [Prisma module and transaction tests](../../packages/prisma/src/module.test.ts)
+- [Boundary between after-commit work and durable delivery](../../docs/architecture/transactions.md), [after-commit regression verification target](../../packages/prisma/src/after-commit.test.ts)
 - [The meaning and limits of event-bus success](../../packages/event-bus/README.md)
 - [Listener failure isolation implementation](../../packages/event-bus/src/service.ts), [related tests](../../packages/event-bus/src/module.test.ts)
 - [The payment ledger and idempotent receipt](./ch10-payment-webhooks.md), [inventory consumption boundary](./ch07-inventory-concurrency.md), [audit transition schema](./ch06-order-state-machine.md)

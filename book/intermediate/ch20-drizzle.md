@@ -199,6 +199,14 @@ class CheckoutController {
 
 ## 20.6 FluoShop Context: Relational Schema
 
+To delete a cache after a price change, register `afterCommit(callback: () => void | Promise<void>): void` inside the same `DrizzleDatabase`'s active boundary. Manual calls use `transaction(fn, nativeOptions?, boundary?)`, request calls use `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, and decorators use `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`. Adding `{ requireAfterCommit: true }` in the final boundary position without moving existing arguments rejects a lack of native commit observation with `AfterCommitCapabilityError` before the callback. Existing default options and fail-open behavior remain, but registration on unsupported boundaries, outside a boundary, or in a closed scope is rejected.
+
+Nested boundaries share a queue and await its callbacks one at a time in FIFO order only after the successful final outer native commit. Rollback and failed commit do not run it, and a caught nested exception without a savepoint follows the final outer outcome. Hooks run outside the closed transaction's ALS context, so a fresh `current()` read does not use the old handle and a new transaction gets a fresh queue. Shutdown waits for running hooks but does not allow late registration.
+
+A hook failure does not prevent the remaining hooks from running. After collecting every outcome, `AfterCommitError`, extending `AggregateError`, reports `committed: true`, FIFO `results` for all outcomes, and `errors` for all failures. Do not retry or roll back already-committed database writes; choose a separate cache recovery policy. `AfterCommitCallback`, `TransactionBoundaryOptions`, and both errors are root exports of `@fluojs/drizzle`. Raw external transactions and other wrappers are not observed, and a database hook calling Redis provides no DB+Redis atomicity, outbox, or exactly-once behavior across crashes and networks.
+
+The [shared transaction contract](../../docs/architecture/transactions.md) and [Drizzle API](../../packages/drizzle/README.md) are authoritative. The [after-commit test](../../packages/drizzle/src/after-commit.test.ts) is a verification target; the [Prisma and Drizzle lab](../02-fluoshop/ch25-drizzle-lab.md) continues the current product comparison.
+
 FluoShop uses Drizzle for the **Order Management** service, where transaction integrity and relational constraints are important.
 
 Table definitions are managed in a central `schema.ts` file. Drizzle uses this definition for both migrations and type generation.

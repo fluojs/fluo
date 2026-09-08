@@ -37,6 +37,10 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 <!-- fluo:docs-navigation:end -->
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
 
+## Persistence After-Commit Work
+
+Prisma·Drizzle·Mongoose의 `afterCommit`은 [트랜잭션 문맥 계약](./architecture/transactions.ko.md#커밋-후-작업)이 실행 순서·native capability·중첩/재시도·post-commit 실패·shutdown을 소유합니다. 공개 인자와 cache invalidation 사용법은 [Prisma](../packages/prisma/README.ko.md#커밋-후-캐시-무효화), [Drizzle](../packages/drizzle/README.ko.md#커밋-후-캐시-무효화), [Mongoose](../packages/mongoose/README.ko.md#커밋-후-캐시-무효화) README를 읽으세요. Book은 이 계약의 적용 설명입니다. 검증 대상은 각 `packages/*/src/after-commit.test.ts`, `tooling/governance/after-commit-contract.test.ts`, native `packages/prisma/fixtures/after-commit/`이며 실제 실행 결과는 별도 receipt로 확인합니다. Redis의 commit tracking이나 DB+Redis 원자성, crash/network exactly-once 보장은 포함하지 않습니다.
+
 ## Decorator Default Audit
 
 [Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 소유한 공개 factory 165개를

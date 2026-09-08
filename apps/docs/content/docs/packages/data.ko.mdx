@@ -15,3 +15,5 @@ Data package는 모든 데이터베이스를 하나의 추상화 뒤에 숨기�
 | `@fluojs/queue` | Redis-backed jobs와 workers | `packages/queue/README.ko.md` |
 
 애플리케이션 기능의 storage path를 선택할 때는 [영속성](../guides/persistence)을 읽으세요.
+
+Prisma·Drizzle·Mongoose의 `afterCommit`으로 native commit 뒤 cache invalidation을 등록할 수 있습니다. [커밋 후 캐시 무효화](../guides/persistence#after-commit-cache-invalidation)는 `requireAfterCommit` 사전 검사와 이미 commit된 `AfterCommitError`를 설명합니다. 실행 계약은 `docs/architecture/transactions.ko.md`, 공개 API는 위 package README가 소유합니다. Redis commit tracking·DB+Redis 원자성·durable outbox·crash/network exactly-once 보장은 포함하지 않습니다.

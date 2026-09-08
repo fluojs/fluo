@@ -26,6 +26,7 @@ The index is a small pilot reference index linking documentation authority, boot
 | Initial HTTP exercise instructions | `apps/docs/content/docs/tutorial/` | A companion for checking the first routing, DI, and validation path, not a replacement for the entire book. |
 | Tutorial checkpoint behavior | `examples/fluo-blog/` source and tests | Lessons explain the same files and observable results in EN/KO. |
 | Package API and package-specific limitations | The owning `packages/*/README.md` and its Korean companion | Guides give a selected use case and link to the full contract. |
+| Persistence after-commit work | [Transaction Context Contract](./architecture/transactions.md#after-commit-work); APIs in [Prisma](../packages/prisma/README.md), [Drizzle](../packages/drizzle/README.md), and [Mongoose](../packages/mongoose/README.md) | Books and the website explain cache invalidation and failure recovery without adding Redis commit tracking, DB+Redis atomicity, or durable delivery guarantees. |
 | Cross-package runtime and architecture promises | The relevant `docs/contracts/` or `docs/architecture/` pair | Package READMEs and Book explain their application without redefining them. |
 | Runtime coverage and toolchain support | `docs/reference/package-surface.md` and `toolchain-contract-matrix.md` | Summaries link to the tables rather than maintaining separate inventories. |
 | AI navigation | `docs/CONTEXT.md` and its Korean companion | A route to the owning documents, not a second tutorial. |

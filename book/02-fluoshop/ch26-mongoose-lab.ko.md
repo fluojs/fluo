@@ -308,6 +308,16 @@ export class ReviewCatalog {
 
 MongoDB 드라이버나 Mongoose가 트랜잭션 콜백을 다시 호출할 수 있는 환경을 고려하여 콜백 안에는 DB 작업만 둔다. 이메일 발송, 결제 요청, 프로세스 메트릭 증가는 없다. `createdAt`과 키도 바깥에서 정해 같은 시도의 의미를 유지한다. 트랜잭션 지원이 없는 연결을 직접 실행으로 대체하면 이 설계가 깨지므로 `strictTransactions: true`를 사용했다.
 
+리뷰 요약 캐시를 추가한다면 삭제 자체를 콜백 안에서 실행하는 대신, 리뷰와 집계 저장이 성공한 뒤 같은 `MongooseConnection`에 `afterCommit(callback: () => void | Promise<void>): void`로 등록한다. 이 등록은 후속 실행 의도를 메모리에 넣는 것이지 외부 작업을 지금 수행하는 것이 아니다. 위의 DB 전용 구현에 캐시나 메일 전달 시스템을 이미 추가했다는 뜻도 아니다. 경계 옵션은 `transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, `@Transaction(accessor?, boundary?)`의 마지막 인수이며, `{ requireAfterCommit: true }`이면 네이티브 커밋 관찰 능력의 부재를 콜백 실행 전에 `AfterCommitCapabilityError`로 거부한다. 기존 fail-open 기본값은 유지하되, 지원 없는 경계와 경계 밖·닫힌 scope에서 훅 등록은 거부한다.
+
+Mongoose에 위임한 트랜잭션이 콜백을 재시도하면 **시도마다 별도 큐**를 만든다. 폐기된 시도의 훅은 실행하지 않고 최종 성공한 시도의 큐만 커밋 뒤 비운다. 커밋만 재시도하는 경로에서는 콜백을 다시 실행하거나 훅을 재등록하지 않는다. 같은 시도의 중첩 경계는 큐를 공유한다. 롤백·커밋 실패에서는 실행하지 않으며, 저장점 없는 중첩 예외를 잡으면 최종 바깥 결과를 따른다. 콜백 재실행과 커밋 재시도를 같은 “두 번 실행”으로 관측해서는 안 된다.
+
+사용자 callback scope는 native commit 시작 전에 닫힌다. 훅은 commit 성공과 세션 정리(`endSession`) 시도 settlement 뒤 종료된 ALS 바깥에서 FIFO로 하나씩 await된다. 새 조회에 예전 세션을 붙이지 않으며, 훅이 새 트랜잭션을 열면 새 큐를 사용한다. 첫 실패로 나머지를 건너뛰지 않는다. 세션 정리가 성공하고 훅이 실패하면 `AggregateError`의 하위 클래스 `AfterCommitError`에 `readonly committed = true`, 모든 성공·실패 결과의 FIFO `results: readonly PromiseSettledResult<void>[]`, 모든 실패의 `errors`가 남는다. 훅 오류는 네이티브 트랜잭션 재시도나 rollback·abort의 이유가 아니다. 종료는 실행 중 훅까지 기다리고 닫힌 큐의 늦은 등록은 받지 않는다.
+
+수동 세션 경로의 hook이 등록되었거나 `requireAfterCommit: true`로 opt-in한 소유 경계(중첩 `requestTransaction`에서 요구한 경우 포함)에서 네이티브 커밋이 확인된 뒤 `endSession()`이 실패해도 종료된 ALS 밖에서 모든 훅을 시도한다. 이때는 별도 `AfterCommitCleanupError`로 보고한다. 이 클래스는 `AfterCommitError`가 아니라 `AggregateError`를 직접 확장하므로 `instanceof AfterCommitError`만으로 잡히지 않는 별도 분기가 필요하다. `committed`는 `true`, `cause`는 정리 실패이며, `results`에는 훅 결과만 FIFO로 담긴다. `errors`의 첫 항목은 정리 실패이고 이어 실패한 훅의 이유가 등록 순서대로 온다. 이 경우에도 이미 커밋된 리뷰 쓰기를 재시도하거나 rollback·abort하지 않는다. 훅도 없고 `requireAfterCommit`도 요구하지 않은 기존 경계는 원래 cleanup 오류 identity와 no-hook request cancellation 계약을 보존한다.
+
+관련 타입 `AfterCommitCallback`, `TransactionBoundaryOptions`와 세 오류는 `@fluojs/mongoose` 루트 export다. API 소유자는 [패키지 README](../../packages/mongoose/README.ko.md), 공통 소유자는 [Transaction Context](../../docs/architecture/transactions.ko.md)다. raw connection이 직접 연 트랜잭션이나 다른 wrapper·connection은 관찰하지 않는다. 성공한 프로세스 내부 소유 경계의 실행에 한정되므로 MongoDB와 PostgreSQL·Redis를 원자적으로 묶거나 outbox, 크래시 복구, 네트워크 exactly-once를 제공하지 않는다. 캐시 삭제 재시도와 영속 전달 정책은 별도로 설계한다.
+
 ## 세션을 자동으로 받는 호출과 받지 않는 호출
 
 이 코드에서 `create([document])`의 대괄호는 스타일이 아니다. Fluo는 Mongoose의 배열 overload에 세션 옵션을 병합한다. `create(documentA, documentB)`처럼 위치 인자로 여러 문서를 넘기면 같은 자동 주입을 받지 않는다. 또한 `bulkWrite`, `find`, `findOne`, `aggregate`는 지원되지만 모든 모델 메서드나 문서 메서드가 자동으로 래핑되는 것은 아니다.
@@ -398,5 +408,6 @@ PostgreSQL 하나로 운영하면 백업, 장애 대응, 계정 권한, 관측 �
 - [Mongoose 연결 소유권·세션·저장 계약](../../packages/mongoose/README.ko.md), [공개 export](../../packages/mongoose/src/index.ts), [facade와 연결 옵션 타입](../../packages/mongoose/src/types.ts)
 - [지원되는 연산의 세션 병합과 종료 구현](../../packages/mongoose/src/connection.ts), [트랜잭션 대상 선택](../../packages/mongoose/src/transaction.ts), [비동기 모듈 등록](../../packages/mongoose/src/module.ts)
 - [서비스 경계 실험](../../packages/mongoose/src/vertical-slice.test.ts), [동시 세션 격리 테스트](../../packages/mongoose/src/session-isolation.test.ts), [모듈·옵션·정리 회귀 테스트](../../packages/mongoose/src/module.test.ts)
+- [시도별 after-commit 회귀 검증 대상](../../packages/mongoose/src/after-commit.test.ts), [공통 동작 행렬 검증 대상](../../tooling/governance/after-commit-contract.test.ts): 위 세션 전달 실험만으로 이 동작이나 실제 MongoDB 커밋을 검증했다고 주장하지 않는다.
 
 [이전](./ch25-drizzle-lab.ko.md) · [목차](./toc.ko.md) · [다음](./ch27-sale-observability.ko.md)

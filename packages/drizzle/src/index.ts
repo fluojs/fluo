@@ -1,3 +1,4 @@
+export * from './after-commit.js';
 export * from './database.js';
 export * from './module.js';
 export * from './status.js';

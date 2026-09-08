@@ -1,11 +1,12 @@
 import { Inject } from '@fluojs/core';
 import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
 
+import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 import { DrizzleDatabase } from './database.js';
 import type { DrizzleDatabaseLike } from './types.js';
 
 type TransactionCapableDrizzle<TTransactionOptions = unknown> = {
-  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
 };
 
 type TransactionAccessor<THost, TTransactionOptions> = (
@@ -68,11 +69,13 @@ function resolveDefaultTransactionTarget<THost, TTransactionOptions>(
  *
  * @param accessorOrOptions Optional target accessor, or Drizzle transaction options.
  * @param options Optional Drizzle transaction options when an accessor is supplied.
+ * @param boundary Optional Fluo capability requirements checked before the method runs.
  * @returns A standard 2023-11 method decorator.
  */
 export function Transaction<THost, TTransactionOptions = unknown>(
   accessorOrOptions?: TransactionAccessor<THost, TTransactionOptions> | TTransactionOptions,
   options?: TTransactionOptions,
+  boundary?: TransactionBoundaryOptions,
 ) {
   const accessor = typeof accessorOrOptions === 'function'
     ? accessorOrOptions as TransactionAccessor<THost, TTransactionOptions>
@@ -90,9 +93,15 @@ export function Transaction<THost, TTransactionOptions = unknown>(
     return async function transactionMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const drizzleDatabase = accessor ? accessor(this) : resolveDefaultTransactionTarget<THost, TTransactionOptions>(this);
 
+      if (boundary?.requireAfterCommit
+        && (!('afterCommit' in drizzleDatabase) || typeof drizzleDatabase.afterCommit !== 'function')) {
+        throw new AfterCommitCapabilityError();
+      }
+
       return drizzleDatabase.transaction(
         () => value.apply(this, args),
         transactionOptions,
+        boundary,
       );
     };
   };
