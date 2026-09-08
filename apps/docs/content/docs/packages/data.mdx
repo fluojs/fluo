@@ -15,3 +15,5 @@ Data packages keep storage semantics explicit instead of hiding every database b
 | `@fluojs/queue` | Redis-backed jobs and workers | `packages/queue/README.md` |
 
 Read [Persistence](../guides/persistence) when choosing a storage path for an application feature.
+
+For a queue-free cache increment or another pure single-key mutation, use [`CacheService.update`](https://github.com/fluojs/fluo/blob/main/packages/cache-manager/README.md#atomic-updates), not a `get`/`set` pair. The package README owns the set/delete decision, fixed-expiry TTL, retry/error contract, and optional store capability. Memory coordinates one shared store instance; Redis requires explicit cache-side `redis.atomicUpdates: true` through the canonical RedisModule DI path and the owner's single-primary/namespace prerequisites. This does not add a RedisService API, provide a database transaction, or change `remember` loader coalescing. See [Operations](../guides/operations#cache-update-drain) for drain and metadata considerations.

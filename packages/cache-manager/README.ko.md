@@ -13,6 +13,7 @@
   - [애플리케이션 레벨 캐싱](#애플리케이션-레벨-캐싱)
 - [공통 패턴](#공통-패턴)
   - [Redis 저장소 사용](#redis-저장소-사용)
+  - [원자 갱신](#원자-갱신)
   - [TTL 지터](#ttl-지터)
   - [쿼리 매개변수 기반 캐싱](#쿼리-매개변수-기반-캐싱)
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
@@ -164,14 +165,107 @@ class AppModule {}
 
 내장 `RedisStore`는 엔트리를 `JSON.stringify(...)`로 저장합니다. 따라서 캐시 값은 JSON 호환 형태여야 합니다. 일반 객체, 배열, 문자열, 숫자, 불리언, `null`은 안정적으로 round-trip 되지만, `Date`는 JSON 결과(예: ISO 문자열)로 돌아오고, 함수/`undefined`/`symbol`은 유지되지 않으며, `bigint`나 순환 그래프처럼 직렬화 불가능한 값은 캐싱 전에 정규화해야 합니다.
 
-양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요.
+일반 `set` 쓰기의 양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요. 원자 갱신은 아래에서 설명하는 절대 만료 `PXAT`를 사용합니다.
 예외적으로 큰 유한 TTL 값은 두 내장 store 모두에서 가장 큰 안전한 JavaScript 만료 timestamp로 제한되므로 Redis JSON metadata는 유한하게 유지되고 memory 경로와 일치합니다.
 
 Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 비어 있지 않은 prefix의 Redis glob metacharacter(`*`, `?`, `[`, `]`, `\`)는 `SCAN` 전에 escape되므로 설정한 prefix가 reset 소유권을 넓히지 않고 literal namespace로 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
 
+### 원자 갱신
+
+이 절은 추가 API인 `CacheService.update`의 계약을 소유합니다. 캐시 read/modify/write를 감싸던 애플리케이션의 key별 promise queue를 대체할 때 사용하세요. DB 트랜잭션, 원본 조회, 도메인 정책 집행 API가 아닙니다. `remember()`는 계속 read-through loader API이며 miss 합치기는 원자 갱신이 아닙니다.
+
+| 항목 | 계약 |
+| --- | --- |
+| 입력 | `cache.update<T>(key, reducer, { signal?, maxAttempts? })`. Reducer는 분리된 `T` snapshot 또는 누락/만료 시 `undefined`와 `{ attempt, signal }`을 받습니다. `attempt`는 1부터 시작하고 `signal`은 호출자 취소와 무효화/종료를 결합합니다. |
+| 결정 | `{ action: 'set', value, ttlSeconds? }` 또는 `{ action: 'delete' }`를 동기나 비동기로 반환합니다. 삭제는 명시적이며 undefined 값이나 잘못된 TTL을 삭제 요청으로 사용하지 마세요. 값은 선택한 store의 직렬화 계약을 충족해야 합니다. |
+| 기본값 | `maxAttempts`는 첫 시도를 포함해 `16`이며 양의 safe integer여야 합니다. Module TTL은 누락/만료 엔트리를 만들 때만 적용됩니다. 기본값은 memory `300`초, Redis/custom store `0`입니다. |
+| 출력 | `Promise<T \| undefined>`는 커밋한 값 또는 명시적 삭제 후 `undefined`로 resolve됩니다. Reducer 반환만으로 완료되는 것이 아닙니다. |
+| Capability | `CacheStore.atomicUpdate`는 선택적입니다. 기존 store의 기존 작업은 유지되며 capability가 없으면 `CacheUpdateError`의 `unsupported`로 reject됩니다. 비원자적 `get`/`set` fallback은 없습니다. |
+| 범위와 순서 | 두 내장 store 모두 한 store 인스턴스 안에서 key별 FIFO로 update를 수용하고 독립 key는 동시에 실행합니다. Memory의 `atomicUpdate.scope === 'local-process'`는 facade들이 공유하는 하나의 `MemoryStore` 범위이며 별도 store 인스턴스까지 포함하지 않습니다. Opt-in Redis는 참여 client 간 서버 트랜잭션을 사용하며 프로세스 간 전역 FIFO는 아닙니다. |
+
+Reducer는 순수해야 합니다. 일반 쓰기와 경합하면 새 snapshot으로 다시 실행될 수 있습니다. 그 안에서 I/O, 메시지 전송, 외부 부수 효과를 수행하지 마세요. 같은 key의 update를 중첩하거나 reducer에서 `cache.reset()` / `cache.close()`를 await하지 마세요. Queue나 lifecycle drain이 그 reducer 자신을 기다려 교착됩니다.
+
+다음 독립 consumer는 공개 import와 등록된 application context를 사용하며 앱의 key queue가 필요 없습니다. 산술은 예제 애플리케이션 로직이며 프레임워크의 rate-limit 또는 잠금 정책이 아닙니다.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { CacheModule, CacheService } from '@fluojs/cache-manager';
+
+@Inject(CacheService)
+class Counters {
+  constructor(private readonly cache: CacheService) {}
+
+  increment(key: string) {
+    return this.cache.update<number>(key, (value) => ({
+      action: 'set',
+      value: (value ?? 0) + 1,
+    }));
+  }
+}
+
+class AppModule {}
+defineModule(AppModule, {
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
+  providers: [Counters],
+});
+
+const app = await FluoFactory.createApplicationContext(AppModule);
+try {
+  const counters = await app.get(Counters);
+  const values = await Promise.all([
+    counters.increment('example:counter'),
+    counters.increment('example:counter'),
+  ]);
+  console.log(values); // [1, 2]
+} finally {
+  await app.close();
+}
+```
+
+**TTL:** 모든 update TTL은 초 단위입니다. Live entry에서 `ttlSeconds`를 생략하면 persistence를 포함한 절대 만료를 보존하며 sliding window를 다시 시작하지 않습니다. 생성 시 생략하면 module 기본값을 사용합니다. 명시적 양수 TTL은 `ceil(seconds * 1000)`으로 올림하고 최소 1밀리초, 절대 만료 timestamp는 `Number.MAX_SAFE_INTEGER`로 제한합니다. `0`은 persistent이며 `{ action: 'delete' }`는 삭제입니다. 음수 또는 유한하지 않은 TTL은 `RangeError`로 reject됩니다. Retry 결정의 순수성과 결정성을 유지하고 고정 만료를 연장하지 않도록 update TTL은 의도적으로 `ttlJitter`를 적용하지 않습니다. 기존 `set` / `remember` 쓰기의 invalid-TTL no-op은 그대로입니다.
+
+**실패:** `@fluojs/cache-manager`에서 `CacheUpdateError`를 import하고 `error.code`로 구분하세요. `unsupported`는 capability 부재, `invalidated`는 삭제/reset/만료에 의한 snapshot 무효화, `closed`는 service 종료, `cancelled`는 호출자 abort, `conflict`는 시도 한도 소진입니다. 잘못된 시도 한도도 `RangeError`로 reject됩니다. Reducer, store, 직렬화 실패는 그대로 전파되며 conflict로 재시도하거나 `CacheUpdateError`로 감싸지 않습니다.
+
+**취소와 drain:** Service는 queue 대기를 포함한 수용된 모든 update를 추적합니다. `del`, `reset`, `close`는 영향받는 늦은 reducer를 취소합니다. Reset과 close는 store 호출뿐 아니라 reducer/queued update 전체의 settle과 격리 연결 정리를 기다립니다. 취소는 협력적입니다. Signal을 무시하고 끝나지 않는 reducer는 drain을 무기한 붙잡을 수 있으며 강제 종료는 없습니다. Reset 중 시작한 update는 `invalidated`로 reject될 수 있으므로 reset을 await한 뒤 새 작업을 시작하세요. Commit dispatch 전 abort는 commit을 막습니다. Redis `EXEC`를 dispatch한 뒤에는 취소로 커밋된 트랜잭션을 되돌릴 수 없으므로 rollback을 가정하지 말고 완료를 기다리세요. `del`은 이때도 서버 무효화 순서를 안전하게 유지합니다.
+
+**Redis opt-in과 소유권:** [Redis 저장소 사용](#redis-저장소-사용)의 named `RedisModule` DI 등록을 우선 사용한 뒤 capability를 명시적으로 켭니다.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  keyPrefix: 'myapp:cache:',
+  redis: { clientName: 'cache', atomicUpdates: true },
+});
+```
+
+직접 `RedisStore`를 조합할 때는 `RedisStoreOptions.atomicUpdates: true`를 사용합니다. Compatible client는 `duplicate({ lazyConnect: false })`로 export된 구조적 `RedisAtomicClient` seam(`watch`, `get`, `multi`, `disconnect`)을 반환해야 하며, `multi()`는 `RedisAtomicTransaction`(`set`, `del`, `exec`)을 반환합니다. 이 선택적 타입의 소유자는 `@fluojs/cache-manager`입니다. [`@fluojs/redis`](../redis/README.ko.md#원시-클라이언트-접근-raw-client-access)가 이미 노출하는 full raw ioredis client가 이 seam을 제공하며 RedisService runtime API가 추가되는 것은 아닙니다. 각 atomic operation은 격리 duplicate를 소유하고 `finally`에서 disconnect하여 실패 시에도 WATCH를 해제합니다. 주입/공유 client는 Redis module 또는 애플리케이션 소유로 남으며 cache가 닫지 않습니다.
+
+새 `RedisAtomicClient` seam은 실제 ioredis와 호환되지만 raw ioredis 인스턴스 전체가 기존 `RedisCompatibleClient` 타입에 구조적으로 할당 가능하다는 뜻은 아닙니다. 기존 `scan(cursor, ...args: Array<string | number>)` 시그니처는 ioredis overload와 다릅니다. 이 공개 계약은 그대로이며, 예제와 native fixture에는 이 차이를 cast로 숨기지 말고 canonical RedisModule DI 경로를 사용하세요.
+
+`PXAT`를 위해 Redis **6.2 이상**, standalone/single-primary 트랜잭션, 비어 있지 않은 앱 전용 prefix를 사용하세요. 빈 prefix는 `RangeError`, `duplicate` 없는 client는 `unsupported`로 reject됩니다. Redis Cluster 지원은 주장하지 않습니다. Namespace prefix 전체가 같은 hash tag를 사용하지 않으면 data, epoch, marker key가 cross-slot이 되며, 이 조건만 충족해도 Cluster 지원을 보장하는 것은 아닙니다.
+
+무효화 identity 보장을 받으려면 namespace의 모든 참여자가 opt-in해야 합니다. WATCH는 data key, namespace epoch, key별 무효화 identity를 관찰합니다. 일반 동시 update/쓰기는 새 순수 reducer로 재시도할 수 있지만 삭제, reset, 만료는 오래된 작업을 재시도하지 않고 무효화합니다. `del`은 key가 없어도 트랜잭션 안에서 새 UUID generation을 SET하고 data를 DEL하여 delete/recreate 경합을 감지합니다. Reset은 namespace epoch를 교체하고 key별 marker를 포함한 다른 namespace key를 SCAN하되 epoch는 남깁니다.
+
+예약된 논리 key는 정확히 `'\0atomic-update-epoch'`와 `'\0atomic-update-key:'`로 시작하는 모든 key입니다. `\0`는 NUL 문자이며 이 key들은 앱 데이터가 아닙니다. Reset 후 persistent epoch key 하나, reset 전까지 서로 다른 `del` key마다 persistent marker 하나의 비용을 고려하세요. 외부에서 metadata를 수정하거나 eviction하지 마세요. Failover durability는 보장하지 않습니다. SCAN 기반 reset은 분산 전역 snapshot이 아니므로 원격 reset 시작 후 수용된 update를 전역으로 차단하지 않습니다.
+
+**Custom capability 구현자:** Export된 `CacheAtomicUpdate`, `CacheStoreUpdateOptions`, `CacheUpdateReducer`, `CacheUpdateContext`, `CacheUpdate`, `CacheUpdateOptions`가 handoff를 정의합니다. `atomicUpdate.update` 호출 시 무효화를 동기적으로 등록하고 I/O나 reducer 실행 전에 선택적 `options.admission`을 await하세요. 취소와 시도 한도를 지키고 `defaultTtlSeconds`는 새 entry에만 적용하며, direct-store 기본값 생략은 persistence입니다. Distributed capability에는 실제 서버 원자 primitive가 필요합니다. 내장 MemoryStore는 facade 호출뿐 아니라 direct-store `del` / `reset`에서도 update를 무효화합니다.
+
+**관찰과 근거:** `update`는 기존 `CacheObservation` event를 내보내지 않으며 observer taxonomy는 그대로입니다. [공유 캐시 아키텍처](../../docs/architecture/caching.ko.md), [update 타입과 TTL 로직](./src/atomic-update.ts), [service admission/drain](./src/service.ts), [memory 구현](./src/stores/memory-store.ts), [Redis 구현](./src/stores/redis-store.ts), [공개 export](./src/index.ts)를 참고하세요. 근거 대상은 [단위/lifecycle 테스트](./src/cache-update.test.ts), [queue 없는 앱 consumer](./src/cache-update.consumer.test.ts), [native Redis 테스트](./test/redis-update.native.test.ts)입니다.
+
+의존성이 이미 설치된 repository workspace에서 패키지와 dependency closure를 먼저 build하여 테스트에 필요한 모듈을 emit한 뒤, 지정 파일과 native suite를 실행합니다.
+
+```bash
+pnpm --filter '@fluojs/cache-manager...' build
+pnpm --dir packages/cache-manager exec vitest run -c vitest.config.ts src/cache-update.test.ts src/cache-update.consumer.test.ts
+pnpm --filter @fluojs/cache-manager test:redis
+```
+
+Native suite에는 Docker와 `redis:7.4-alpine`이 필요합니다. 임시 로컬 port를 쓰는 격리 container를 만들며 fixture를 사용할 수 없으면 skip하지 않고 실패합니다.
+
 ### TTL 지터
 
-함께 기록된 인기 키는 같은 시점에 만료되어 origin 부하를 동기화할 수 있습니다. `ttlJitter`를 사용하면 양수 TTL 지터를 중앙에서 opt-in할 수 있습니다. `CacheService`는 memory, Redis 또는 custom store에 쓰기를 넘기기 전에 유효 TTL을 한 번 계산합니다.
+함께 기록된 인기 키는 같은 시점에 만료되어 origin 부하를 동기화할 수 있습니다. `ttlJitter`를 사용하면 양수 TTL 지터를 중앙에서 opt-in할 수 있습니다. `CacheService`는 memory, Redis 또는 custom store에 `set` / `remember` 쓰기를 넘기기 전에 유효 TTL을 한 번 계산합니다. `update`에는 의도적으로 지터를 적용하지 않습니다.
 
 ```typescript
 CacheModule.forRoot({
@@ -274,7 +368,7 @@ CacheModule.forRoot({
 이 계약은 의도적으로 좁게 정의되어 있습니다.
 
 - **프라이버시**: observation은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않으므로 계측이 애플리케이션 데이터를 유출할 수 없습니다.
-- **operation taxonomy**: `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며, 내부 read는 별도의 `get`으로 보고되지 않습니다.
+- **operation taxonomy**: `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며, 내부 read는 별도의 `get`으로 보고되지 않습니다. `update`는 이 observation을 내보내지 않습니다.
 - **outcome**: `CacheObservation`은 discriminated union입니다. read 작업(`get`, `remember`)은 `hit`, `miss`, `error`만 보고할 수 있고, write, invalidation, lifecycle 작업은 `success`, `error`만 보고할 수 있습니다. 같은 key의 in-flight load에 합류한 `remember` 호출은 캐시된 값을 읽지 않았으므로 `miss`를 보고합니다.
 - **timing**: `durationMs`는 런타임의 monotonic `performance.now()` clock을 사용하여 store queue 직렬화를 포함한 전체 `CacheService` 작업 시간을 측정합니다.
 - **실패 격리**: observer 오류는 삼켜집니다. throw된 error나 rejected promise는 caller가 받는 값을 바꾸지 않고 unhandled rejection으로도 노출되지 않습니다. observer 작업은 cache 작업이 await하지 않습니다.
@@ -418,7 +512,8 @@ class ProductController {
 - `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
 
 ### 서비스
-- `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달하고 동시에 또는 반복해서 호출한 caller가 첫 teardown 완료를 공유하도록 합니다.
+- `CacheService`: 수동 캐시 작업(`get`, `set`, `update`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달하고 동시에 또는 반복해서 호출한 caller가 첫 teardown 완료를 공유하도록 합니다.
+- `CacheUpdateError`: [원자 갱신](#원자-갱신)의 안정적인 `CacheUpdateErrorCode` 분류를 제공하는 오류입니다. 관련 reducer, capability, Redis 구조적 타입도 같은 package root에서 export됩니다.
 
 ### 데코레이터
 - `@CacheTTL(seconds)`: 특정 핸들러의 TTL을 설정합니다.

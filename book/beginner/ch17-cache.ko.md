@@ -246,10 +246,10 @@ export class WeatherService {
 ### 17.5.2 Atomic Operations and Concurrency
 트래픽이 많은 환경에서 수동 캐시 관리를 사용할 때는 경쟁 상태(race condition)를 주의해야 합니다. 누락된 키에 대해 두 개의 요청이 동시에 들어오면 둘 다 고비용의 데이터베이스 쿼리를 실행할 수 있습니다. 내장 `CacheService.remember(...)`는 현재 `CacheService` 인스턴스 하나 안에서만 같은 키의 동시 miss를 합쳐 주므로, 단일 프로세스 내부 중복 완화에는 도움이 됩니다. 하지만 이것이 분산 락이나 다중 인스턴스 스탬피드 방지 기능을 의미하지는 않습니다. 여러 노드가 있는 배포에서는 선택한 저장소의 원자적 연산이나 별도 조정 전략을 함께 검토해야 합니다.
 
-"반짝 세일" 상품의 재고가 캐싱된 시나리오를 생각해 보십시오. 원자적 연산이 없다면 여러 서버 노드가 동시에 재고를 감소시키려 하여 "초과 판매" 오류가 발생할 수 있습니다. 이런 경우에는 Redis 같은 저장소가 제공하는 원자적 기능이나 분산 락을 조합해 전체 인프라에서 캐시 수정이 일관되게 유지되도록 설계해야 합니다. 이러한 수준의 신뢰성은 단순한 취미용 앱과 실제 상용 수준의 시스템을 가르는 차이점입니다.
+캐시 값 하나의 read/modify/write에는 선택적 store capability를 사용하는 `CacheService.update(...)`가 있습니다. 이것은 순수 reducer의 원자 갱신이지 원본 DB 작업의 중복 제거가 아닙니다. 재고 예약을 예로 들면 캐시 산술이 성공해도 DB의 주문과 예약이 함께 커밋되는 것은 아닙니다. 권위 있는 예약은 DB의 조건부 갱신과 트랜잭션에 남기고, cache-only 갱신과 구분하세요.
 
 ### 17.5.3 Partial Cache Updates: Granularity and Performance
-어떤 시나리오에서는 전체 객체를 교체하지 않고 캐시된 객체의 일부만 업데이트하고 싶을 수 있습니다. 단순한 키-값 저장소는 이를 직접 지원하지 않지만, 데이터를 더 작고 관련된 키들로 쪼개어 이를 달성할 수 있습니다. 예를 들어 전체 `User` 객체를 캐싱하는 대신 `user:1:profile`과 `user:1:settings`를 별도로 캐싱하는 식입니다. 이를 통해 변경된 부분만 무효화할 수 있어 데이터베이스에서 다시 가져와야 하는 데이터 양을 줄일 수 있습니다.
+캐시 객체의 일부 필드를 바꿀 때 `update` reducer에서 새 객체를 구성해 반환할 수 있습니다. Store에는 해당 key의 전체 값이 교체되므로 Redis hash field 갱신과 같지는 않습니다. 데이터를 `user:1:profile`과 `user:1:settings`처럼 더 작은 key로 나누면 변경된 부분만 무효화할 수 있지만 여러 key를 하나의 원자 트랜잭션으로 묶지는 않습니다.
 
 부분 업데이트를 구현할 때 저장소 공급자(예: Redis)가 지원하는 경우 **비트필드(Bitfields)나 해시(Hashes)**를 사용할 수도 있습니다. 이를 통해 서버 측에서 원자적으로 복잡한 객체 내의 단일 필드만 수정할 수 있습니다. 이러한 세밀한 제어는 여러 프로세스가 동일한 엔터티의 서로 다른 부분을 동시에 업데이트할 수 있는 고가용성 시스템에서 필수적입니다. 저장소 공급자의 네이티브 기능을 활용함으로써 매 업데이트마다 전체 객체를 직렬화하는 오버헤드 없이 높은 성능과 데이터 무결성을 유지할 수 있습니다.
 
@@ -275,9 +275,11 @@ export class PostsController {
 이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 
 ### 17.5.4 Advanced Manual Patterns: Coordinating Concurrent Writers
-`CacheService`의 애플리케이션 공개 표면은 `get`, `set`, `remember`, `del`, `reset`, 그리고 `close()`를 노출하는 store로 shutdown을 전달하는 `close()` teardown 경계에 집중되어 있습니다. 따라서 카운터 증가나 분산 락 같은 저장소 전용 원자 연산이 필요할 때는, 그것을 `CacheService`의 내장 애플리케이션 API로 가정하기보다 선택한 저장소의 별도 기능이나 애플리케이션 전용 조정 계층으로 다루는 편이 안전합니다.
+`CacheService.update<T>(key, reducer, options?)`는 기존 `get`, `set`, `remember`, `del`, `reset`, `close`에 추가된 API입니다. [cache-manager README](../../packages/cache-manager/README.ko.md#원자-갱신)가 입력·TTL·오류·소유권을 소유하며 [FluoBlog의 독립 consumer](../01-fluoblog/ch20-caching.ko.md#key-queue-없이-캐시-값-하나를-갱신하기)는 앱의 key queue 없이 증가시키는 실제 module 조합을 보여 줍니다.
 
-실무에서는 이 경계를 명확히 나누는 것이 중요합니다. 캐시 계층이 자동으로 모든 동기화 문제를 해결해 준다고 기대하지 말고, 필요한 락 전략이나 원자 갱신 전략을 저장소 특성에 맞게 명시적으로 설계하십시오. 이렇게 하면 문서화된 캐시 계약을 벗어나지 않으면서도 트래픽이 높은 환경의 경쟁 상태를 별도 설계로 관리할 수 있습니다.
+Reducer는 분리된 값 또는 누락/만료 시 `undefined`에서 명시적 set/delete를 결정하며 경합 시 다시 실행될 수 있으므로 I/O를 넣지 않습니다. 기본 최대 시도는 16입니다. Memory는 facade들이 공유하는 store 인스턴스 하나에서 key별 FIFO이고 별도 store는 조정하지 않습니다. Redis는 RedisModule DI와 cache 측 `redis.atomicUpdates: true`, Redis >=6.2 single-primary, 앱 전용 비어 있지 않은 prefix가 필요하며 Cluster 지원을 가정하지 않습니다. Capability 없는 custom store에는 비원자 fallback 없이 `unsupported`가 반환됩니다.
+
+Live entry의 TTL 생략은 절대 만료를 보존하고 생성에만 module 기본값을 사용합니다. Update는 invalid TTL을 `RangeError`로 거부하고 jitter 및 기존 `CacheObservation`을 적용하지 않습니다. 이는 기존 set/remember의 invalid-TTL no-op, 지터, 관찰 계약을 바꾸지 않습니다. 삭제/reset/close는 늦은 reducer를 취소하며 reset/close는 queued update와 reducer, 격리 연결 정리까지 기다립니다. 취소를 무시하는 reducer는 drain을 무기한 붙잡을 수 있고 same-key 중첩 update나 reducer 안의 reset/close await는 교착을 만듭니다. Redis EXEC dispatch 뒤의 취소는 커밋을 되돌리지 않습니다. 예약 metadata, 모든 namespace 참여자의 opt-in, SCAN reset의 전역 snapshot 부재와 failover durability 한계는 README의 운영 조건을 따르세요.
 
 ## 17.6 Cache Invalidation Strategies
 캐싱에서 가장 어려운 과제는 데이터의 최신성을 유지하는 것입니다. 사용자가 프로필을 업데이트하면 캐시된 버전은 즉시 제거되어야 합니다. 이를 **캐시 무효화(Cache Invalidation)**라고 합니다.

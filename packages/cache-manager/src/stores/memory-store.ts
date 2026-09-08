@@ -1,3 +1,12 @@
+import {
+  type CacheAtomicUpdate,
+  type CacheStoreUpdateOptions,
+  CacheUpdateError,
+  CacheUpdateQueue,
+  type CacheUpdateReducer,
+  checkUpdateSignal,
+  resolveUpdateExpiry,
+} from '../atomic-update.js';
 import { cloneCacheValue } from '../clone.js';
 import type { CacheStore } from '../types.js';
 
@@ -49,6 +58,46 @@ function normalizePositiveTtlMilliseconds(ttlSeconds: number, maximumTtlMillisec
 export class MemoryStore implements CacheStore {
   private readonly entries = new Map<string, MemoryCacheEntry>();
   private nextSweepAt = 0;
+  private readonly updates = new CacheUpdateQueue();
+  /** Atomic updates are local to this MemoryStore instance, including shared service facades. */
+  readonly atomicUpdate: CacheAtomicUpdate = {
+    scope: 'local-process',
+    update: <T>(key: string, reducer: CacheUpdateReducer<T>, options: CacheStoreUpdateOptions = {}) =>
+      this.updates.run(key, options, async (signal, maxAttempts) => {
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          checkUpdateSignal(signal);
+          const snapshot = this.get<T>(key);
+          const entry = this.entries.get(key);
+          const value = await snapshot;
+          checkUpdateSignal(signal);
+          const decision = await reducer(value, { signal, attempt });
+          checkUpdateSignal(signal);
+          if (entry?.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
+            throw new CacheUpdateError('invalidated');
+          }
+          if (this.entries.get(key) !== entry) continue;
+          switch (decision.action) {
+            case 'delete':
+              this.entries.delete(key);
+              return undefined;
+            case 'set': {
+              const expiresAt = resolveUpdateExpiry(
+                decision.ttlSeconds, entry?.expiresAt, entry !== undefined, options.defaultTtlSeconds ?? 0,
+              );
+              const replacement = { value: cloneCacheValue(decision.value), expiresAt };
+              this.entries.delete(key);
+              this.entries.set(key, replacement);
+              enforceEntryLimit(this.entries);
+              if (expiresAt !== undefined) {
+                this.nextSweepAt = this.nextSweepAt === 0 ? expiresAt : Math.min(this.nextSweepAt, expiresAt);
+              }
+              return cloneCacheValue(decision.value);
+            }
+          }
+        }
+        throw new CacheUpdateError('conflict');
+      }),
+  };
 
   async get<T = unknown>(key: string): Promise<T | undefined> {
     const now = Date.now();
@@ -99,10 +148,12 @@ export class MemoryStore implements CacheStore {
   }
 
   async del(key: string): Promise<void> {
+    this.updates.invalidate(key);
     this.entries.delete(key);
   }
 
   async reset(): Promise<void> {
+    this.updates.invalidate();
     this.entries.clear();
     this.nextSweepAt = 0;
   }

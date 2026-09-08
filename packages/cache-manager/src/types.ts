@@ -1,12 +1,16 @@
 import type { AsyncModuleOptions } from '@fluojs/core';
 import type { InterceptorContext } from '@fluojs/http';
 
+import type { CacheAtomicUpdate } from './atomic-update.js';
+
 type Awaitable<T> = T | Promise<T>;
 
 /**
  * Minimal cache-store contract implemented by built-in and custom cache adapters.
  */
 export interface CacheStore {
+  /** Optional atomic mutation capability; legacy stores remain valid without it. */
+  readonly atomicUpdate?: CacheAtomicUpdate;
   get<T>(key: string): Promise<T | undefined>;
   set<T>(key: string, value: T, ttlSeconds?: number): Promise<void>;
   del(key: string): Promise<void>;
@@ -25,16 +29,78 @@ export interface CacheStore {
  * Redis client subset required by `RedisStore`.
  */
 export interface RedisCompatibleClient {
+  /**
+   * Create an isolated connection for opt-in atomic updates.
+   * @param options Connect immediately so WATCH does not reuse shared connection state.
+   * @returns An operation-owned connection, disconnected after success or failure.
+   */
+  duplicate?(options: { lazyConnect: boolean }): RedisAtomicClient;
   del(key: string, ...keys: string[]): Promise<number> | number;
   get(key: string): Promise<string | null> | string | null;
   scan(cursor: string, ...args: Array<string | number>): Promise<[string | number, string[]]> | [string | number, string[]];
   set(key: string, value: string, ...args: Array<string | number>): Promise<unknown> | unknown;
 }
 
+/** Isolated WATCH connection owned and disconnected by the atomic cache operation. */
+export interface RedisAtomicClient {
+  /**
+   * Read the watched entry or invalidation identity.
+   * @param key Physical Redis key.
+   * @returns The stored string, or `null` for a missing key.
+   */
+  get(key: string): Promise<string | null>;
+  /**
+   * Watch keys until EXEC or connection teardown.
+   * @param keys Physical entry and metadata keys.
+   * @returns Redis acknowledgement after WATCH takes effect.
+   */
+  watch(...keys: string[]): Promise<unknown>;
+  /**
+   * Create a transaction on this isolated connection.
+   * @returns A command buffer committed by EXEC.
+   */
+  multi(): RedisAtomicTransaction;
+  /** Disconnect the operation-owned connection and release its WATCH state. */
+  disconnect(): void;
+}
+
+/** Minimal Redis transaction seam used for watched atomic cache commits. */
+export interface RedisAtomicTransaction {
+  /**
+   * Queue a persistent replacement.
+   * @param key Physical Redis key.
+   * @param value Serialized entry or invalidation identity.
+   * @returns This transaction for command chaining.
+   */
+  set(key: string, value: string): RedisAtomicTransaction;
+  /**
+   * Queue a replacement with an absolute expiry.
+   * @param key Physical Redis key.
+   * @param value Serialized entry.
+   * @param expiryMode Absolute millisecond expiry command.
+   * @param timestamp Unix expiry time in milliseconds.
+   * @returns This transaction for command chaining.
+   */
+  set(key: string, value: string, expiryMode: 'PXAT', timestamp: number): RedisAtomicTransaction;
+  /**
+   * Queue an entry deletion.
+   * @param key Physical Redis key.
+   * @returns This transaction for command chaining.
+   */
+  del(key: string): RedisAtomicTransaction;
+  /**
+   * Commit if all watched keys are unchanged.
+   * @returns Command results including errors, or `null` for a WATCH conflict.
+   */
+  exec(): Promise<Array<[Error | null, unknown]> | null>;
+}
+
 /**
  * Redis-specific cache bootstrap options.
  */
 export interface RedisCacheOptions {
+  /** Enable WATCH-based distributed updates; requires duplicate() and a non-empty namespace. */
+  atomicUpdates?: boolean;
   client?: RedisCompatibleClient;
   clientName?: string;
   scanCount?: number;

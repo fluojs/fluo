@@ -4,16 +4,18 @@
 
 이 문서는 `@fluojs/cache-manager`, `@fluojs/http`, 그리고 선택적인 Redis 저장소 경로 전반의 현재 캐시 계약을 정의합니다.
 
+패키지 API 시그니처, 필수 예제, 기본값, 오류 코드는 [cache-manager README](../../packages/cache-manager/README.ko.md)가 소유하며 [원자 갱신](../../packages/cache-manager/README.ko.md#원자-갱신)도 포함합니다. 이 아키텍처 문서는 별도 API 권위가 아니라 그 조합을 설명합니다.
+
 ## 모듈 및 저장소 모델
 
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, opt-in `ttlJitter`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, opt-in `observer`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | 비동기 모듈 진입점 | `CacheModule.forRootAsync({ inject, useFactory, global? })`는 동일한 공개 옵션을 injected factory로 해석하고 `forRoot(...)`와 같은 기본값으로 정규화합니다. Inject한 토큰은 모듈을 생성하는 container에서 사용할 수 있는 bootstrap runtime provider 또는 globally visible module export에서 해석되며, parent-local provider와 일반 sibling/parent export는 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되고, factory가 reject되면 부분 설정된 cache provider를 등록하지 않고 bootstrap이 실패합니다. Module metadata는 factory 실행 전에 확정되므로 모듈 가시성은 등록 호출의 `global`이 결정하고 factory 결과의 `global` 값은 무시됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
-| 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`과 공개 `close()` teardown 경계를 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
+| 캐시 서비스 | `CacheService`는 `get`, `set`, `update`, `remember`, `del`, `reset`과 공개 `close()` teardown 경계를 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
 | HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱을 수행하고 non-GET controller handler 이후 `@CacheEvict(...)` metadata를 소비합니다. 이 decorator는 해당 HTTP pipeline 밖의 임의 service method를 intercept하지 않습니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |
-| Redis 저장소 | `RedisStore`는 JSON 직렬화된 엔트리를 prefix가 붙은 키 공간에 저장하고, 양수 TTL에는 `EX`를 사용하며, 설정된 prefix를 scan해서 reset을 수행합니다. | `packages/cache-manager/src/stores/redis-store.ts` |
+| Redis 저장소 | `RedisStore`는 JSON 직렬화된 엔트리를 prefix가 붙은 키 공간에 저장하고, 일반 양수 TTL `set` 쓰기에는 `EX`, update에는 절대 만료 `PXAT`를 사용하며, 설정된 prefix를 scan해서 reset을 수행합니다. Opt-in atomic mode는 reset 후 namespace epoch를 남깁니다. | `packages/cache-manager/src/stores/redis-store.ts` |
 | Redis client 통합 | `redis.client`는 직접 전달한 `RedisCompatibleClient`를 받고 `@fluojs/redis`를 load하지 않은 채 가장 높은 우선순위를 가지며, 해당 client의 lifecycle은 애플리케이션이 소유합니다. 이 값이 없으면 cache module이 `@fluojs/redis`를 선택적으로 load하고 기본 또는 `redis.clientName` raw-client token을 해석합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | Redis namespace 소유권 | Top-level `keyPrefix`는 기본값이 `fluo:cache:`이고 모든 Redis key와 `reset()` scan 범위를 제한합니다. 비어 있지 않은 prefix의 Redis glob metacharacter는 `SCAN` 전에 escape되어 prefix가 literal로 match됩니다. 빈 prefix는 wildcard scan을 비활성화하고 reset을 현재 `RedisStore` 인스턴스가 추적한 key로 제한합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 
@@ -30,6 +32,8 @@
 
 ## TTL 및 쓰기 규칙
 
+아래 jitter와 invalid-TTL no-op 규칙은 `set` / `remember` 쓰기 및 HTTP 캐싱에 관한 것입니다. `update`는 TTL 생략 시 live entry의 절대 만료를 보존하고 생성에만 module 기본값을 사용하며, invalid TTL은 `RangeError`로 reject하고 의도적으로 jitter를 적용하지 않습니다. 초에서 밀리초로의 올림과 명시적 삭제 계약은 API 원본을 참고하세요.
+
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 기본 TTL 해석 | `CacheService.set(...)`는 TTL을 `ttlSeconds ?? options.ttl`로 해석하므로 per-call TTL이 지터 계산 전에 우선합니다. | `packages/cache-manager/src/service.ts` |
@@ -39,6 +43,20 @@
 | GET 전용 응답 캐싱 | `CacheInterceptor`는 `GET` 요청에 대해서만 read-through 캐싱을 수행합니다. GET이 아닌 요청은 캐시 읽기와 쓰기를 건너뜁니다. | `packages/cache-manager/src/interceptor.ts` |
 | 캐시 가능한 응답 형태 | 인터셉터는 나중에 재생할 수 있는 성공한 GET 결과만 캐싱합니다. 핸들러가 `undefined`, `SseResponse`, 2xx가 아닌 status, 이미 커밋된 응답을 반환한 경우 캐싱하지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | read-through 중복 제거 | `CacheService.remember(...)`는 key별 in-flight promise 맵으로 동시 miss를 중복 제거하며, 그 범위는 하나의 `CacheService` 인스턴스입니다. `CacheInterceptor`는 동시 GET miss를 합치지 않으며 각 miss가 handler를 호출합니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/interceptor.ts` |
+
+## 원자 갱신 조정
+
+`update`는 순수한 단일 key 갱신이며 원본 load 합치기, 도메인 트랜잭션, 분산 락이 아닙니다. 두 내장 store 모두 store별 key별 FIFO로 update를 대기시키며 독립 key는 동시에 진행합니다. Memory의 `local-process` 범위는 facade들이 공유하는 하나의 store 인스턴스이며 프로세스의 모든 store가 아닙니다. 선택적 `atomicUpdate`가 없는 custom store도 유효하지만 이 API는 `unsupported`로 거부하며 read/modify/write fallback을 추론하지 않습니다.
+
+Redis에는 cache 측의 명시적 `redis.atomicUpdates: true`(또는 `RedisStoreOptions.atomicUpdates`), compatible raw client의 격리 `duplicate({ lazyConnect: false })`, Redis >=6.2, 비어 있지 않은 앱 namespace가 필요합니다. Standalone/single-primary 트랜잭션이 지원 범위이며 Cluster 지원은 주장하지 않습니다. WATCH는 data, namespace epoch, key 무효화 identity를 관찰합니다. 일반 쓰기 경합은 reducer를 재실행할 수 있지만 삭제/reset/만료는 오래된 작업을 거부합니다. Namespace의 모든 참여자가 opt-in해야 합니다. `del`은 key가 없어도 한 트랜잭션에서 UUID marker를 쓰고 data를 삭제합니다. Reset은 epoch 하나를 보존하고 marker를 포함한 다른 namespace key를 SCAN합니다.
+
+API 원본에 NUL로 시작하는 예약 metadata key와 persistent 비용이 정의되어 있습니다. Reset 후 epoch 하나, reset 전까지 서로 다른 삭제 key마다 marker 하나가 남습니다. Metadata를 외부에서 수정하거나 eviction하면 안 되며 failover durability는 보장하지 않습니다. SCAN reset은 분산 전역 snapshot이 아니고 원격 reset 시작 후 시작한 update를 전역으로 차단하지 않습니다.
+
+Service는 삭제, reset, close 경계에 걸쳐 수용된 reducer와 queued update를 추적합니다. Reset/close는 작업 전체와 격리 연결 정리를 drain하며, 취소를 무시하는 reducer는 이 drain을 무기한 붙잡을 수 있습니다. Reducer 안에서 중첩 same-key update나 reset/close를 await하지 마세요. Reset과 경합하는 update는 `invalidated`로 거부될 수 있으므로 reset을 await한 뒤 새로 시작하세요. Dispatch 전 abort는 commit을 막지만 Redis EXEC dispatch 후 취소는 커밋된 트랜잭션을 되돌릴 수 없습니다. 완료를 기다려야 하며 `del`은 이때도 무효화 순서를 안전하게 유지합니다.
+
+Custom capability는 무효화를 동기적으로 등록하고 I/O/reducer 작업 전에 선택적 `CacheStoreUpdateOptions.admission`을 await합니다. Cache-manager는 격리 트랜잭션 client를 소유하고 disconnect하며, 공유 raw ioredis client는 [`@fluojs/redis`](../../packages/redis/README.ko.md#원시-클라이언트-접근-raw-client-access) 또는 앱 소유로 남습니다. `remember` loader 합치기 범위나 Redis 패키지 runtime API를 변경하는 것은 아닙니다.
+
+근거: [update 타입](../../packages/cache-manager/src/atomic-update.ts), [service lifecycle](../../packages/cache-manager/src/service.ts), [memory](../../packages/cache-manager/src/stores/memory-store.ts), [Redis](../../packages/cache-manager/src/stores/redis-store.ts), [단위/lifecycle 테스트](../../packages/cache-manager/src/cache-update.test.ts), [앱 consumer](../../packages/cache-manager/src/cache-update.consumer.test.ts), [native Redis 테스트](../../packages/cache-manager/test/redis-update.native.test.ts). [API 원본의 명령](../../packages/cache-manager/README.ko.md#원자-갱신)은 workspace 테스트와 Docker `redis:7.4-alpine` suite를 구분하며 링크가 실행 기록을 뜻하지는 않습니다.
 
 ## 무효화 규칙
 
@@ -54,6 +72,8 @@
 | teardown 소유권 diagnostic | `createCacheManagerPlatformStatusSnapshot(...)`은 store 분류만이 아니라 teardown 책임에서 `storeOwnershipMode`를 해석합니다. 메모리와 custom store는 `CacheService`가 lifecycle teardown 전달을 소유하므로 기본적으로 `framework`입니다. Redis는 `CacheService`에 대해 `external`로 유지됩니다. `@fluojs/redis`를 통해 해석된 client는 해당 integration이 lifecycle을 소유하고, `redis.client`로 직접 전달한 client는 애플리케이션이 lifecycle을 소유합니다. 명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. | `packages/cache-manager/src/status.ts`, `packages/cache-manager/src/service.ts` |
 
 ## 관찰 규칙
+
+`update`는 기존 `CacheObservation` event를 내보내지 않습니다. 아래 taxonomy는 그대로이며 update 실패는 직접 호출자에게 전달됩니다.
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
