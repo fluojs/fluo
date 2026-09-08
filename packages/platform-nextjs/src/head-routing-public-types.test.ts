@@ -1,10 +1,18 @@
+import { execFile } from 'node:child_process';
+import { access, cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import ts from 'typescript';
-import { expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { resolveWorkspaceBuildOrder } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 
-const fixture = fileURLToPath(new URL('../head-policy-consumer.mts', import.meta.url));
+const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const execFileAsync = promisify(execFile);
+let root: string;
+let fixture: string;
 const require = createRequire(import.meta.url);
 const nextManifest = require.resolve('next/package.json');
 const nextRequire = createRequire(nextManifest);
@@ -14,6 +22,42 @@ import type { NextAdapterOptions as AppOptions } from '@fluojs/platform-nextjs/a
 import type { FrameworkRequest } from '@fluojs/http';
 import type { FrameworkRequest as PortableRequest } from '@fluojs/http/portable';
 `;
+
+afterAll(async () => {
+  if (root) await rm(root, { force: true, recursive: true });
+});
+
+beforeAll(async () => {
+  root = await mkdtemp(join(tmpdir(), 'fluo-next-head-declarations-'));
+  // Canonicalize macOS /var so the copied closure CLI matches its import.meta URL.
+  root = await realpath(root);
+  fixture = join(root, 'packages/platform-nextjs/head-policy-consumer.mts');
+  const packages = resolveWorkspaceBuildOrder('@fluojs/platform-nextjs', repositoryRoot);
+  const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
+  for (const entry of [
+    'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+    'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+    'tooling/scripts/clean-dist.mjs', buildClosureScript,
+    'packages/testing/src/babel-decorators-plugin.ts',
+    ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+  ]) {
+    await cp(join(repositoryRoot, entry), join(root, entry), {
+      recursive: true,
+      verbatimSymlinks: true,
+      filter: (source) => !['dist', '.vite', '.vite-temp'].includes(basename(source)),
+    });
+  }
+  // Share only installed external tools; copied relative workspace links stay cold.
+  await symlink(join(repositoryRoot, 'node_modules'), join(root, 'node_modules'), 'dir');
+  for (const name of packages) {
+    await expect(access(join(root, 'packages', name.slice('@fluojs/'.length), 'dist')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  }
+  await execFileAsync(process.execPath, [join(root, buildClosureScript), '@fluojs/platform-nextjs'], {
+    cwd: root,
+    env: process.env,
+  });
+}, 300_000);
 
 function compile(source: string): readonly ts.Diagnostic[] {
   const options: ts.CompilerOptions = {
