@@ -237,6 +237,52 @@ Next 전용 loader와 config object를 제공합니다.
 `*.ts` rule이 이미 있다면 Fluo decorator rule을 뒤에 추가합니다. Helper는
 새 configuration object를 반환하며 input을 변경하지 않습니다.
 
+Backend와 client store가 함께 있는 앱에서는 두 번째 인자로 적용 범위와
+출력 경로 보존을 명시할 수 있습니다. 다음 예제는 decorated 선언과 DTO를
+`src/backend/` 안에 두는 앱을 위한 설정입니다.
+
+```typescript
+import {
+  type FluoNextBackendOptions,
+  withFluoNextBackend,
+} from '@fluojs/platform-nextjs/next-config';
+
+const backend = {
+  include: 'src/backend/**',
+  exclude: '**/*.test.ts',
+  preserveModulePaths: true,
+} satisfies FluoNextBackendOptions;
+
+export default withFluoNextBackend({}, backend);
+```
+
+| 옵션 | 기본값 | 계약 |
+| --- | --- | --- |
+| `include` | 생략 | Turbopack path glob 또는 `RegExp`로 대상 경로를 제한합니다. |
+| `exclude` | 생략 | Turbopack path glob 또는 `RegExp`로 대상 경로를 제외합니다. `include`와 모두 적용됩니다. |
+| `preserveModulePaths` | `false` | `true`이면 `as: '*.js'`를 생략하여 원래 `.ts` 모듈 경로를 보존합니다. |
+
+Path 조건은 Turbopack이 `turbopack.root` 기준의 project-relative 경로에
+적용합니다(기본 root는 Next 프로젝트). Helper는 pattern을 직접 실행하지
+않습니다. `include`/`exclude`는 기존 server/application/content 조건에
+추가되며 browser와 foreign dependency를 다시 포함하지 않습니다.
+기존 content 조건은 `@` 뒤에 word character가 있는 source에 반응하므로
+decorator가 아닌 import나 주석도 일치할 수 있습니다. Client module의 SSR
+처리는 browser가 아니므로 `include` 또는 `exclude`로 별도 경계를 선언하세요.
+기존 사용자 rule의 변환 범위는 helper가 변경하지 않습니다.
+
+옵션을 생략하면 기존의 넓은 `*.ts` 선택과 `as: '*.js'` 출력 규칙을
+그대로 유지합니다. 경로 보존을 선택하면 같은 Babel JavaScript 결과를 원래
+TypeScript filename으로 파싱하며, 버전별 `type: 'ecmascript'` 옵션을
+강제하지 않습니다. Scope 밖의 decorated backend는 별도 compiler 구성이
+없으면 동작하지 않을 수 있으므로 모든 backend 선언과 DTO 경로를 포함하세요.
+Compiler 오류는 Next dev/build에 그대로 전달됩니다.
+
+실제 Next 16.3.4 fixture에서 기존 헬퍼는 client store SSR import를
+`./store.ts.js`로 해석하여 dev의 GET `/`와 production build가 실패했습니다.
+Scope 제한과 경로 보존은 독립적인 opt-in이며, 재현 절차와 지원 범위 내
+버전별 검증 명령은 [실제 Next fixture](./e2e/README.ko.md)에 있습니다.
+
 ## Lifecycle
 
 Backend module은 첫 route request가 import할 때 일반 Fluo bootstrap을 한
@@ -414,7 +460,8 @@ Application이 raw Node.js transport ownership, WebSocket upgrades, independentl
 - `NextAppRouterMethodHandlers`: route module에서 구조분해 export하는 method-keyed App Router record (`createNextAppRouterHandler()` 반환)
 - `createNextPagesRouterHandler(loadAdapter)`: request-lazy streaming Pages Router API handler 생성
 - `NextPagesRouterConfig`: 필수 static `bodyParser: false` literal type-check
-- `withFluoNextBackend(config)`: `@fluojs/platform-nextjs/next-config` export; packaged Turbopack decorator loader 추가
+- `withFluoNextBackend(config, options?)`: `@fluojs/platform-nextjs/next-config` export; packaged Turbopack decorator loader와 opt-in 범위/경로 보존 추가
+- `FluoNextBackendOptions`: 같은 `next-config` subpath의 `include`, `exclude`, `preserveModulePaths` 옵션 타입
 - `decorators-loader`: config helper가 사용하는 packaged loader subpath
 
 ## 개발 검증
@@ -430,4 +477,5 @@ pnpm --filter @fluojs/platform-nextjs test:e2e
 
 Unit suite에는 공통 Web portability 검사와 native Pages transport 회귀
 테스트가 포함됩니다. E2E suite는 package 배포 파일로 실제 Next.js application을
-빌드하고 source alias 없이 두 router를 HTTP로 검증합니다.
+dev/build/start를 거쳐 source alias 없이 두 router와 client store SSR을
+HTTP로 검증합니다. [Fixture 실행 안내](./e2e/README.ko.md)를 참조하세요.

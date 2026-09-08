@@ -14,7 +14,7 @@ description: HTTP semantics, platform adapters, and OpenAPI publication.
 | `@fluojs/platform-bun` | Bun-native HTTP/WebSocket behavior | `packages/platform-bun/README.md` |
 | `@fluojs/platform-deno` | Deno-native request dispatch | `packages/platform-deno/README.md` |
 | `@fluojs/platform-cloudflare-workers` | Edge Workers request/response APIs | `packages/platform-cloudflare-workers/README.md` |
-| `@fluojs/platform-nextjs` | Next App/Pages Router hosting and opt-in application accessors | `packages/platform-nextjs/README.md` |
+| `@fluojs/platform-nextjs` | Next.js 16.x App/Pages Router hosting, opt-in application accessors and backend compiler scope | `packages/platform-nextjs/README.md` |
 | `@fluojs/openapi` | OpenAPI 3.1 and Swagger UI | `packages/openapi/README.md` |
 
 Read [HTTP API](../guides/http-api) and [Runtime Adapters](../guides/runtime-adapters) for task-oriented guidance.
@@ -26,3 +26,11 @@ close/dispose. It is not process/worker/serverless sharing or a request-data cac
 `publicToken<T>` from `@fluojs/core` enables `Container.resolve()` inference without
 replacing explicit `useExisting` aliases and module exports. Exact recipes and
 evidence live in the Next README above, `packages/core/README.md`, and `packages/di/README.md`.
+
+Next applications can declare backend compilation scope and preserve original
+SSR import paths with
+`withFluoNextBackend(config, { include, exclude, preserveModulePaths: true })`
+from `@fluojs/platform-nextjs/next-config`. Omitting options keeps existing
+behavior. The package README owns exact path conditions and Turbopack-only
+limitations; `packages/platform-nextjs/e2e/README.md` describes the real
+dev/build/start regressions.

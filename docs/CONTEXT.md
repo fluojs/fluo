@@ -128,6 +128,13 @@ The Next README above owns the API; executable evidence is
 `packages/platform-nextjs/src/application-public-types.test.ts`, and
 `packages/platform-nextjs/e2e/next.test.mjs`.
 
+The opt-in compiler scope and SSR module path preservation contract belongs to
+the [Next package README](../packages/platform-nextjs/README.md#decorator-compiler-wiring).
+`withFluoNextBackend` options `include`/`exclude` and `preserveModulePaths`
+do not change existing defaults. Execution evidence is linked from the
+[helper regressions](../packages/platform-nextjs/src/next-config.test.ts) and
+[real Next fixture](../packages/platform-nextjs/e2e/README.md).
+
 ## Lifecycle & Multi-Provider Ordering
 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.md) is the source of truth for application and testing module bootstrap hooks. Eligible singleton `multi: true` contributions remain distinct lifecycle instances and run in declared provider order, including when they are interleaved with singleton providers. Framework integrations resolve each contribution through its owning DI container; the internal resolver registrar remains container-private.

@@ -128,6 +128,13 @@ cache에 넣지 않습니다. [`publicToken<T>`](../packages/core/README.ko.md)�
 `packages/platform-nextjs/src/application-public-types.test.ts`,
 `packages/platform-nextjs/e2e/next.test.mjs`입니다.
 
+Compiler scope와 SSR module path 보존의 opt-in 계약은
+[Next package README](../packages/platform-nextjs/README.ko.md#decorator-compiler-연결)가
+소유합니다. `withFluoNextBackend`의 `include`/`exclude`와
+`preserveModulePaths`는 기존 기본 동작을 바꾸지 않습니다. 실행 근거는
+[helper 회귀](../packages/platform-nextjs/src/next-config.test.ts)와
+[실제 Next fixture](../packages/platform-nextjs/e2e/README.ko.md)에서 확인하세요.
+
 ## 라이프사이클 및 multi-provider 순서
 
 [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.

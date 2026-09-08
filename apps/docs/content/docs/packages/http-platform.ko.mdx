@@ -14,7 +14,7 @@ description: HTTP 의미론, platform adapter, OpenAPI publication을 다룹니�
 | `@fluojs/platform-bun` | Bun-native HTTP/WebSocket behavior | `packages/platform-bun/README.ko.md` |
 | `@fluojs/platform-deno` | Deno-native request dispatch | `packages/platform-deno/README.ko.md` |
 | `@fluojs/platform-cloudflare-workers` | Edge Workers request/response APIs | `packages/platform-cloudflare-workers/README.ko.md` |
-| `@fluojs/platform-nextjs` | Next App/Pages Router 호스팅과 opt-in application accessor | `packages/platform-nextjs/README.ko.md` |
+| `@fluojs/platform-nextjs` | Next.js 16.x App/Pages Router 호스팅과 opt-in application accessor 및 backend compiler 범위 | `packages/platform-nextjs/README.ko.md` |
 | `@fluojs/openapi` | OpenAPI 3.1과 Swagger UI | `packages/openapi/README.ko.md` |
 
 작업 중심 안내는 [HTTP API](../guides/http-api)와 [런타임 어댑터](../guides/runtime-adapters)를 읽으세요.
@@ -26,3 +26,10 @@ HMR 교체나 자동 retry를 하지 않으며 close/dispose는 application 소�
 `@fluojs/core`의 `publicToken<T>`는 `Container.resolve()` 추론을 돕지만 명시적
 `useExisting` alias와 module exports를 대신하지 않습니다. 정확한 recipe와 실행
 근거는 위 Next README와 `packages/core/README.ko.md`, `packages/di/README.ko.md`에 있습니다.
+
+Next 앱은 `@fluojs/platform-nextjs/next-config`의
+`withFluoNextBackend(config, { include, exclude, preserveModulePaths: true })`로
+backend 변환 범위를 선언하고 SSR import의 원래 모듈 경로를 보존할 수 있습니다.
+옵션을 생략하면 기존 동작을 유지합니다. 정확한 path 조건과 Turbopack 전용
+제약은 package README, 실제 dev/build/start 회귀는
+`packages/platform-nextjs/e2e/README.ko.md`를 참조하세요.

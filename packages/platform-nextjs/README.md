@@ -232,6 +232,53 @@ Existing `turbopack` options, aliases, and rules are preserved. When an
 application already has a `*.ts` rule, the Fluo decorator rule is appended.
 The helper returns a new configuration object and does not mutate its input.
 
+Applications with both a backend and client stores can declare compiler scope
+and output path preservation in the second argument. This example assumes
+decorated declarations and DTOs live under `src/backend/`.
+
+```typescript
+import {
+  type FluoNextBackendOptions,
+  withFluoNextBackend,
+} from '@fluojs/platform-nextjs/next-config';
+
+const backend = {
+  include: 'src/backend/**',
+  exclude: '**/*.test.ts',
+  preserveModulePaths: true,
+} satisfies FluoNextBackendOptions;
+
+export default withFluoNextBackend({}, backend);
+```
+
+| Option | Default | Contract |
+| --- | --- | --- |
+| `include` | Omitted | Restrict eligible paths with a Turbopack path glob or `RegExp`. |
+| `exclude` | Omitted | Exclude paths with a Turbopack path glob or `RegExp`. Both it and `include` apply. |
+| `preserveModulePaths` | `false` | When `true`, omit `as: '*.js'` to retain the original `.ts` module path. |
+
+Turbopack applies path conditions to project-relative paths under
+`turbopack.root` (the Next project by default). The helper does not evaluate
+patterns itself. `include`/`exclude` augment the existing
+server/application/content conditions; they cannot re-include browser or foreign
+dependency files. The existing content condition matches `@` followed by a word
+character, so imports and comments can match without decorators. Client-module
+SSR is not a browser compilation; declare its boundary with `include` or
+`exclude`. The helper does not change the scope of existing user rules.
+
+Omitting the options preserves the existing broad `*.ts` selection and
+`as: '*.js'` output rule. With path preservation, the same Babel JavaScript
+output is parsed under its original TypeScript filename; no version-specific
+`type: 'ecmascript'` option is forced. Include every backend declaration and DTO:
+decorated files outside the scope may not work without their own compiler
+configuration. Compiler errors propagate through Next dev/build.
+
+In the real Next 16.3.4 fixture, the legacy helper resolves the client store SSR
+import as `./store.ts.js`, failing dev GET `/` and the production build.
+Scope restriction and path preservation are independent opt-ins. See the
+[real Next fixture](./e2e/README.md) for reproduction and version-specific
+verification commands within the supported range.
+
 ## Lifecycle
 
 The backend module performs ordinary Fluo bootstrap once when the first route
@@ -409,7 +456,8 @@ Use a Fluo Node or Fastify platform adapter when the application requires raw No
 - `NextAppRouterMethodHandlers`: method-keyed App Router record returned by `createNextAppRouterHandler()`
 - `createNextPagesRouterHandler(loadAdapter)`: creates a request-lazy streaming Pages Router API handler
 - `NextPagesRouterConfig`: type-checks the required static `bodyParser: false` literal
-- `withFluoNextBackend(config)`: exported from `@fluojs/platform-nextjs/next-config`; adds the packaged Turbopack decorator loader
+- `withFluoNextBackend(config, options?)`: exported from `@fluojs/platform-nextjs/next-config`; adds the packaged Turbopack decorator loader with opt-in scope/path preservation
+- `FluoNextBackendOptions`: `include`, `exclude`, and `preserveModulePaths` option type on the same `next-config` subpath
 - `decorators-loader`: packaged loader subpath used by the config helper
 
 ## Development Verification
@@ -425,4 +473,5 @@ pnpm --filter @fluojs/platform-nextjs test:e2e
 
 The unit suite includes shared Web portability checks and native Pages transport
 regressions. The E2E suite stages package distribution files, builds a real
-Next.js application, and verifies both routers over HTTP without source aliases.
+Next.js application through dev/build/start, and verifies both routers and client
+store SSR over HTTP without source aliases. See the [fixture guide](./e2e/README.md).
