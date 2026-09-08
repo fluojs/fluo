@@ -2,6 +2,7 @@
 "@fluojs/http": minor
 "@fluojs/validation": minor
 "@fluojs/runtime": minor
+"@fluojs/testing": patch
 ---
 
 Add opt-in DTO and route input policies for unknown body fields and non-object
@@ -17,3 +18,6 @@ Schema failures, including empty issues arrays, remain explicit failures.
 Add a bootstrap binder factory that composes once with the configured default
 binder, preserving global converters for ordinary DTOs. Pure application contexts,
 native parser behavior, and HEAD policies are unchanged.
+
+Declare the validation development dependency used by the testing package's
+input conformance suite so package-local typechecking resolves its public types.
