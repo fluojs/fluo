@@ -108,4 +108,10 @@ without adding a source scanner or another route discovery path.
 
 ## related reference
 
+The [package README](../../packages/platform-nextjs/README.md#decorator-compiler-wiring)
+owns the Next compiler's opt-in `include`/`exclude` and `preserveModulePaths`
+contract. Existing defaults remain, without forcing a version-specific `type`
+option. The [real fixture](../../packages/platform-nextjs/e2e/README.md) exercises
+server DTOs together with client store SSR through dev/build/start.
+
 - [package-surface.md](./package-surface.md)
