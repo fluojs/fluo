@@ -3,7 +3,13 @@
 
 # Chapter 25. FluoShop Completed — Service Mesh Strategy
 
-This chapter closes the FluoShop architecture we have expanded throughout the Intermediate volume and summarizes the service mesh strategy in one place. Chapter 24 pushed portability all the way to edge deployment. This chapter reviews the final picture of operating multiple runtimes and services together, then connects it to the next step.
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
+This chapter gathers optional capabilities into the FluoShop design scenario and reviews service mesh strategy. "Completed" in the retained title and version label means a scenario recap, not a supplied runnable project or a verified multi-runtime deployment. You do not need every chapter’s capability in one app.
 
 ## Learning Objectives
 - Explain the final multi-runtime architecture of FluoShop by service.
@@ -20,7 +26,7 @@ This chapter closes the FluoShop architecture we have expanded throughout the In
 
 ## 25.1 The Final FluoShop Architecture
 
-The completed FluoShop system is a collection of services that run on runtimes matched to each domain's requirements. The important standard is not choosing the trendiest platform, but matching service responsibilities to operational constraints.
+The FluoShop design example places services on runtimes matched to each domain’s requirements. The important standard is not choosing the trendiest platform, but matching service responsibilities to operational constraints.
 
 - **Core API Gateway**: Handles edge HTTP ingress on **Cloudflare Workers** and routes GraphQL requests to a Node.js `>=24.0.0 <27` API service. The Worker does not host `@fluojs/graphql` itself.
 - **Product Service**: Manages catalog data with MongoDB and provides realtime updates through WebSockets. It runs on **Bun** for high-performance data serving and native WebSocket support.
@@ -159,7 +165,7 @@ Backend runtime boundaries keep changing. The edge is no longer a separate exper
 
 ## 25.11 Key Takeaways
 
-- FluoShop is now a completed distributed multi-runtime system that uses the strengths of Node, Bun, and Workers.
+- FluoShop is a design scenario combining Node, Bun, and Workers, not a verified completed system.
 - Service mesh strategies (Istio/Linkerd) handle infrastructure-level complexity for service discovery and security.
 - Sidecar proxies (Envoy) manage network "plumbing," while fluo manages application "logic."
 - Distributed tracing such as OpenTelemetry is needed to understand requests that pass through different runtimes.
@@ -178,7 +184,7 @@ Before operating FluoShop as a real service, check these operational foundations
 3. **Failover**: Have you tested how the API gateway handles a temporary outage of the order service?
 4. **CI/CD**: Is the monorepo configured so only changed services are deployed?
 
-After completing this checklist, FluoShop moves one step from an example project to an operable service structure. Repeating these checks in real environments makes a mixed-runtime distributed system more predictable to operate.
+This checklist is a starting point for planning operational verification, not a guarantee that checking every item makes a service deployable. Capture evidence against the actual implementation and each target runtime.
 
 ## 25.13 A Final Message to the Reader
 

@@ -3,6 +3,12 @@
 
 # Chapter 14. Authentication with JWT
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 기초 개념·애플리케이션 레퍼런스.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 FluoBlog에 JWT 기반 인증을 도입해 사용자 신원을 안전하게 전달하는 방법을 설명합니다. Chapter 13이 데이터 무결성을 정리했다면, 이제는 보호된 요청을 위해 토큰과 인증 흐름을 세웁니다.
 
 ## Learning Objectives

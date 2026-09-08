@@ -3,6 +3,12 @@
 
 # Chapter 5. Routing and Controllers
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 기초 개념·애플리케이션 레퍼런스.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 Chapter 4가 데코레이터의 언어 모델을 설명했다면, 이 장은 그 모델을 실제 HTTP 엔드포인트로 연결합니다. 이 장은 FluoBlog의 첫 `PostsController`를 만들며 라우트 선언, 입력 바인딩, 기능 모듈 연결이 어떻게 하나의 API 표면으로 모이는지 보여 줍니다.
 
 ## Learning Objectives

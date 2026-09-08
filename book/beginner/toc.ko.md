@@ -1,5 +1,20 @@
 # 목차
 
+**새 학습 경로는 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작합니다.** 아래 목차는 이전 판의 참고 문서와 안정 링크를 보존합니다. 새 시리즈의 순서와 장 번호는 새 권별 목차를 따르세요.
+
+[권 소개](./ch00-introduction.ko.md) · [Book 허브](../README.ko.md)
+
+**필요한 주제 선택**
+
+- [시작하기](ch01-fluo-intro.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [HTTP API 구축](ch05-routing-controllers.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [설정과 데이터](ch11-config.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [인증과 보안](ch14-jwt.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [캐싱과 운영](ch17-cache.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [테스트](ch20-testing.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+
+**기존 장·세부 항목 찾아보기**
+
 - [챕터 0. fluo에 오신 것을 환영합니다: 표준 우선 프레임워크](ch00-introduction.ko.md)
   - [fluo란 무엇인가요?](ch00-introduction.ko.md#what-is-fluo)
   - [왜 이 책인가요?](ch00-introduction.ko.md#why-this-book)
@@ -13,6 +28,8 @@
   - [시작해 봅시다](ch00-introduction.ko.md#lets-begin)
 
 ## 파트 0. 시작하기
+
+기초 개념 레퍼런스: 설계 철학, CLI 구조, 모듈·프로바이더, 표준 데코레이터를 찾아봅니다. 첫 실행 설정은 현재 튜토리얼을 따릅니다.
 
 - [챕터 1. fluo 소개와 설계 철학](ch01-fluo-intro.ko.md)
   - [학습 목표](ch01-fluo-intro.ko.md#learning-objectives)
@@ -60,6 +77,8 @@
   - [다음 파트 미리보기](ch04-decorators-intro.ko.md#next-part-preview)
 
 ## 파트 1. HTTP API 구축
+
+HTTP 레퍼런스: 라우팅, 검증, 직렬화, 예외, 가드·인터셉터, OpenAPI 중 필요한 주제를 선택합니다.
 
 - [챕터 5. 라우팅과 컨트롤러](ch05-routing-controllers.ko.md)
   - [학습 목표](ch05-routing-controllers.ko.md#learning-objectives)
@@ -129,6 +148,8 @@
 
 ## 파트 2. 설정과 데이터
 
+선택 설정·영속성: 데이터베이스나 트랜잭션이 앱에 필요할 때 찾아봅니다.
+
 - [챕터 11. 설정 관리](ch11-config.ko.md)
   - [학습 목표](ch11-config.ko.md#learning-objectives)
   - [11.1 명시적 설정이 필요한 이유](ch11-config.ko.md#111-the-need-for-explicit-configuration)
@@ -160,6 +181,8 @@
   - [13.7 요약](ch13-transactions.ko.md#137-summary)
 
 ## 파트 3. 인증과 보안
+
+선택 인증·접근 제어: 앱의 보안 정책에 필요한 기능을 적용합니다.
 
 - [챕터 14. JWT 인증](ch14-jwt.ko.md)
   - [학습 목표](ch14-jwt.ko.md#learning-objectives)
@@ -207,6 +230,8 @@
 
 ## 파트 4. 캐싱과 운영
 
+운영 레퍼런스: 캐시, 헬스 체크, 메트릭은 앱별 선택이며 튜토리얼 이수 요건이 아닙니다.
+
 - [챕터 17. 캐싱으로 고성능 만들기](ch17-cache.ko.md)
   - [학습 목표](ch17-cache.ko.md#learning-objectives)
   - [17.1 속도의 필요성: 왜 캐싱이 중요한가](ch17-cache.ko.md#171-the-need-for-speed-why-caching-matters)
@@ -239,6 +264,8 @@
   - [19.9 요약](ch19-metrics.ko.md#199-summary)
 
 ## 파트 5. 테스트
+
+테스트·배포 레퍼런스: 다른 Book 장을 모두 마친 뒤가 아니라 개발 중에 계속 테스트합니다.
 
 - [챕터 20. 테스트](ch20-testing.ko.md)
   - [학습 목표](ch20-testing.ko.md#learning-objectives)

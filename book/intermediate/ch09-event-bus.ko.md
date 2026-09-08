@@ -3,6 +3,12 @@
 
 # Chapter 9. Event Bus and Domain Events
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 Part 1의 transport 선택 위에 domain reaction 모델을 세우기 위해 FluoShop에 이벤트 버스를 도입합니다. Chapter 8이 서비스 간 계약을 정리했다면, 여기서는 하나의 비즈니스 사실이 여러 후속 동작으로 퍼질 때도 write 경계를 단단하게 유지하는 방법으로 초점을 옮깁니다.
 
 ## Learning Objectives

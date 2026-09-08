@@ -3,6 +3,12 @@
 
 # Chapter 4. Introduction to TC39 Stage 3 Decorators
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 Part 0 closes by moving one layer below Modules and Providers. If Chapter 3 showed the visible structure of a fluo application, this chapter explains the language feature that makes that structure easy to read. The goal is not to memorize every low-level Decorator API. It is to finish Part 0 with a stable understanding of why fluo stands on the TC39 standard model.
 
 ## Learning Objectives

@@ -1,5 +1,23 @@
 # 목차
 
+**새 학습 경로는 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작합니다.** 아래 목차는 이전 판의 참고 문서와 안정 링크를 보존합니다. 새 시리즈의 순서와 장 번호는 새 권별 목차를 따르세요.
+
+[권 소개](./ch00-introduction.ko.md) · [Book 허브](../README.ko.md)
+
+**필요한 주제 선택**
+
+트랜스포트는 [capability chooser](./ch01-microservices-intro.ko.md#123-transport-capability-chooser)와 [패키지 기능 매트릭스](../../packages/microservices/README.ko.md#트랜스포트-기능-매트릭스)에서 먼저 비교하세요.
+
+- [마이크로서비스 준비](ch01-microservices-intro.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [메시지 브로커](ch04-rabbitmq.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [이벤트 기반 아키텍처](ch09-event-bus.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [실시간 통신](ch13-websockets.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [알림 시스템](ch15-notifications.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [API 확장](ch18-graphql.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [플랫폼 이식성과 운영 전환](ch21-express-node.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+
+**기존 장·세부 항목 찾아보기**
+
 - [소개: 모놀리스를 넘어 확장하기](ch00-introduction.ko.md)
   - [중수편 여정](ch00-introduction.ko.md#the-intermediate-journey)
   - [FluoShop의 진화](ch00-introduction.ko.md#the-evolution-of-fluoshop)
@@ -10,6 +28,8 @@
   - [용어 사전](ch00-introduction.ko.md#용어-사전)
 
 ## 파트 0. 마이크로서비스 준비
+
+통신 경계·트랜스포트 선택: 아래 capability chooser부터 확인합니다. TCP와 Redis는 비교할 선택지이며 모든 브로커에 앞서 필수로 구현할 단계가 아닙니다.
 
 - [1. 마이크로서비스 아키텍처와 fluo 전략](ch01-microservices-intro.ko.md)
   - [1.1 FluoShop 토폴로지](ch01-microservices-intro.ko.md#11-the-fluoshop-topology)
@@ -42,6 +62,8 @@
   - [3.9 다음 파트 미리보기](ch03-redis-transport.ko.md#39-next-part-preview)
 
 ## 파트 1. 메시지 브로커
+
+대체 트랜스포트 기능: 전달, 요청·응답, 스트리밍, 재생, 소유권 요구에 따라 브로커나 gRPC를 고릅니다. 모든 트랜스포트를 사용할 필요는 없습니다.
 
 - [4. RabbitMQ](ch04-rabbitmq.ko.md)
   - [4.1 왜 FluoShop에 RabbitMQ를 사용할까](ch04-rabbitmq.ko.md#41-why-rabbitmq-in-fluoshop)
@@ -87,6 +109,8 @@
   - [8.7 요약](ch08-grpc.ko.md#87-summary)
 
 ## 파트 2. 이벤트 기반 아키텍처
+
+선택 이벤트·백그라운드 작업 모델: 작업 경계에 따라 이벤트 핸들러, CQRS·Saga, 큐, 스케줄링, 락을 비교합니다.
 
 - [9. 이벤트 버스와 도메인 이벤트](ch09-event-bus.ko.md)
   - [9.1 왜 파트 1 이후에는 이벤트 버스가 중요한가](ch09-event-bus.ko.md#91-why-the-event-bus-matters-after-part-1)
@@ -138,6 +162,8 @@
 
 ## 파트 3. 실시간 통신
 
+선택 실시간 연결 모델: 클라이언트·호스트 조건에 맞춰 WebSocket과 Socket.IO를 비교합니다.
+
 - [13. WebSocket 게이트웨이](ch13-websockets.ko.md)
   - [13.1 실시간으로의 전환](ch13-websockets.ko.md#131-the-shift-to-real-time)
   - [13.2 WebSocket 모듈 wiring](ch13-websockets.ko.md#132-websocket-module-wiring)
@@ -164,6 +190,8 @@
   - [14.11 요약](ch14-socketio.ko.md#1411-summary)
 
 ## 파트 4. 알림 시스템
+
+선택 알림 채널: 앱이 실제 사용하는 오케스트레이션과 전달 공급자를 고릅니다.
 
 - [15. 알림 오케스트레이션](ch15-notifications.ko.md)
   - [15.1 오케스트레이션 패턴](ch15-notifications.ko.md#151-the-orchestration-pattern)
@@ -202,6 +230,8 @@
 
 ## 파트 5. API 확장
 
+독립적인 API·저장소 선택: GraphQL은 API 주제이며 Mongoose와 Drizzle은 순차 마이그레이션 단계가 아닌 영속성 선택지입니다.
+
 - [18. GraphQL API](ch18-graphql.ko.md)
   - [18.1 왜 fluo에서 GraphQL을 사용할까?](ch18-graphql.ko.md#181-why-graphql-in-fluo)
   - [18.2 설치와 설정](ch18-graphql.ko.md#182-installation-and-setup)
@@ -231,6 +261,8 @@
   - [20.8 결론](ch20-drizzle.ko.md#208-conclusion)
 
 ## 파트 6. 플랫폼 이식성과 운영 전환
+
+런타임 선택·운영 검토: 대상 호스트를 고릅니다. 마지막 FluoShop 장은 사례 정리이며 누적 실행 체크포인트가 아닙니다.
 
 - [21. Express와 Node.js 어댑터](ch21-express-node.ko.md)
   - [21.1 Express 어댑터](ch21-express-node.ko.md#211-the-express-adapter)

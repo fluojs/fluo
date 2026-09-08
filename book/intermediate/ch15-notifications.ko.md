@@ -3,6 +3,12 @@
 
 # Chapter 15. Notification Orchestration
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 FluoShop의 여러 이벤트와 업무 흐름 위에 채널 독립적인 notification orchestration 계층을 세우는 방법을 설명합니다. Chapter 14에서 실시간 상호작용을 다뤘다면, 이제는 이메일, Slack, Discord 같은 후속 전달 채널을 현재 `@fluojs/notifications` 공개 API에 맞는 하나의 명시적인 dispatch boundary로 묶습니다.
 
 ## Learning Objectives

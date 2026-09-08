@@ -5,6 +5,8 @@ description: 첫 fluo 애플리케이션을 생성, 실행, 확인, 검증합니
 
 이 가이드는 빈 터미널에서 health endpoint가 동작하는 fluo 앱까지 안내합니다. 짧게 유지하되, 모든 단계에 확인 가능한 성공 신호를 둡니다.
 
+기능을 만들며 배우려면 [FluoBlog 튜토리얼](/ko/docs/tutorial)에서 시작하세요. 이 페이지는 설치와 런타임 실행 확인만 다룹니다.
+
 ## 시작 전 준비
 
 필요한 것:
@@ -29,7 +31,7 @@ fluo --version
 ## 2. 애플리케이션 생성
 
 ```bash
-fluo new my-backend
+fluo new my-backend --shape application --transport http --runtime node --platform fastify --package-manager pnpm
 cd my-backend
 pnpm install
 ```
@@ -59,6 +61,8 @@ curl http://localhost:3000/ready
 
 ## 4. 신뢰하기 전에 build
 
+빌드한 앱을 시작하기 전에 Ctrl+C로 `pnpm dev`를 종료하세요. 두 프로세스가 같은 포트를 사용하지 않도록 합니다.
+
 ```bash
 pnpm build
 pnpm start
@@ -72,7 +76,7 @@ pnpm start
 
 | 파일 또는 디렉터리 | 중요한 이유 |
 | --- | --- |
-| `src/app.module.ts` | Root module boundary. |
+| `src/app.ts` | 루트 `AppModule`과 애플리케이션 조립. |
 | `src/**/*.controller.ts` | HTTP entrypoint. |
 | `src/**/*.service.ts` | Business logic provider. |
 | `package.json` | Runtime lifecycle scripts. |
@@ -88,6 +92,6 @@ pnpm start
 
 ## 다음 단계
 
-- 실제 route는 [첫 기능 만들기](../guides/first-feature)에서 만듭니다.
-- Route 계층은 [HTTP API](../guides/http-api)에서 배웁니다.
-- 패키지는 [패키지 선택](../guides/package-selection)에서 고릅니다.
+- [FluoBlog 튜토리얼](/ko/docs/tutorial)에서 게시글 API를 만들고 테스트합니다.
+- Route 계층은 [HTTP API](/ko/docs/guides/http-api)에서 배웁니다.
+- 패키지는 [패키지 선택](/ko/docs/guides/package-selection)에서 고릅니다.

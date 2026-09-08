@@ -3,6 +3,12 @@
 
 # Chapter 6. Circular Dependency Detection and Escape Hatches
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 Fluo 컨테이너가 순환 의존성을 어떻게 탐지하고, 어떤 경우에 `forwardRef()`가 도움이 되며, 어떤 경우에는 구조를 다시 나눠야 하는지를 다룹니다. Chapter 5에서 scope와 캐시 정책을 정리했다면, 이제 DI 그래프가 깨지는 지점을 읽고 복구하는 규칙을 배웁니다.
 
 ## Learning Objectives

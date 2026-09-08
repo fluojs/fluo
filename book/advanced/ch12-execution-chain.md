@@ -3,6 +3,12 @@
 
 # Chapter 12. Execution Chain & Exception Chain: Guards, Interceptors, and Exception Handling
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — framework and contributor internals.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter analyzes how Middleware, Guard, Interceptor, and exception handling form an execution chain in the Fluo request pipeline. Chapter 11 covered the full request lifecycle. Here, we look more closely at where each chain component steps in and how those components are combined in order.
 
 ## Learning Objectives

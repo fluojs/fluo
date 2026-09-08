@@ -3,6 +3,12 @@
 
 # Chapter 4. RabbitMQ
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 FluoShop의 결제 이후 handoff를 작업 큐 중심 모델로 옮기기 위해 RabbitMQ를 도입합니다. Chapter 3에서 durable stream으로 복원력을 확보했다면, 이제는 큐 소유권과 competing consumer 모델이 중요한 fulfillment 흐름에 맞는 트랜스포트를 살펴봅니다.
 
 Caller-owned collaborator shutdown과 request cancellation cleanup을 포함한 패키지 수준 RabbitMQ transport 계약은 [`packages/microservices/README.ko.md`](../../packages/microservices/README.ko.md)에 정식으로 기록되어 있습니다.
@@ -83,7 +89,7 @@ const transport = new RabbitMqMicroserviceTransport({
 export class FulfillmentModule {}
 ```
 
-이 코드는 이제 매우 익숙하게 보여야 합니다. 핸들러 모델은 그대로 유지됩니다. 바뀌는 것은 트랜스포트 부트스트랩뿐입니다. 바로 이 연속성이 intermediate 책을 반복이 아닌 누적형 학습으로 만들어 줍니다. 2장의 `TcpMicroserviceTransport`를 쓰든 이 RabbitMQ 트랜스포트를 쓰든, `@MessagePattern` 핸들러는 데이터를 받기 위해 코드를 단 한 줄도 수정할 필요가 없습니다.
+이 코드는 이제 매우 익숙하게 보여야 합니다. 핸들러 모델은 그대로 유지됩니다. 바뀌는 것은 트랜스포트 부트스트랩뿐입니다. 이 공통점은 트랜스포트를 나란히 비교하기 위한 것이지, 각 장을 순서대로 실행해야 한다는 뜻은 아닙니다. 2장의 `TcpMicroserviceTransport`를 쓰든 이 RabbitMQ 트랜스포트를 쓰든, `@MessagePattern` 핸들러는 데이터를 받기 위해 코드를 단 한 줄도 수정할 필요가 없습니다.
 
 ### 4.2.3 Facade completion and shutdown ownership
 

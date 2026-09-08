@@ -23,6 +23,10 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+<!-- fluo:docs-navigation:start -->
+The primary learning path is the [three-volume product and pattern series](../book/README.md): build FluoBlog, add a merchandise shop to the same service, then examine Fluo internals. The [short HTTP exercise](../apps/docs/content/docs/tutorial/index.mdx) and [initial executable checkpoints](../examples/fluo-blog/README.md) are companions. Finalize the entire Korean book before translating it into English, and use the [documentation map](./README.md#source-ownership) to identify the source that owns each kind of fact.
+
+<!-- fluo:docs-navigation:end -->
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
 ## Decorator Default Audit

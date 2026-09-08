@@ -1,53 +1,47 @@
-# fluo 3권 시리즈
+# fluo: 제품을 만들며 배우는 백엔드 설계 3권 시리즈
 
-[English](./README.md) &nbsp;&middot;&nbsp; [한국어](./README.ko.md)
+[한국어](./README.ko.md) · [English](./README.md)
 
-이 3권 시리즈는 fluo를 단계적으로 익히기 위한 공식 학습 경로입니다. 현재 경험 수준에 맞는 권부터 시작한 뒤, 단일 HTTP 앱에서 분산 시스템, 프레임워크 내부 구조, 확장 지점까지 자연스럽게 이어서 읽을 수 있습니다.
+개인 블로그로 시작한 서비스가 독자를 모으고, 머천다이즈를 판매하는 상점으로 성장한다. 그 과정에서 기능을 명확하고 테스트 가능한 코드로 만들고, 돈과 재고의 일관성을 지키며, 마지막에는 그 코드를 실행하는 Fluo의 내부를 살펴본다.
 
-## 개요
+이 시리즈는 Book 자체가 중심 학습 경로다. 패키지별 API 목록을 순서대로 읽는 대신 제품에 생긴 문제를 해결하면서 좋은 코드 패턴과 백엔드 설계를 배운다. 패턴은 이름을 많이 사용하는 것이 아니라 실제 실패를 줄이는 근거가 있을 때 도입한다.
 
-- **초보편**은 **FluoBlog**를 만들면서 fluo의 멘탈 모델, 표준 데코레이터, CLI 설정부터 동작하는 HTTP 애플리케이션까지의 흐름을 다룹니다.
-- **중수편**은 그 기반을 **FluoShop**으로 확장해 분산 아키텍처, 전송 계층, 이벤트, 실시간 시스템, 알림, GraphQL, ORM 선택지, 크로스 런타임 이식성을 다룹니다.
-- **고수편**은 fluo의 내부 동작을 설명하며, DI와 런타임 아키텍처부터 어댑터 설계, 이식성 테스트, Studio, 커스텀 패키지, 기여 경로까지 다룹니다.
+## 세 권의 여정
 
-## 어떤 권부터 읽으면 좋은가
+| 권 | 제품과 질문 | 시작할 곳 |
+| --- | --- | --- |
+| 1권, 24장 | FluoBlog: 기능을 명확하고 테스트 가능하며 운영 가능한 코드로 만드는 방법 | [소개](./01-fluoblog/README.ko.md) · [목차](./01-fluoblog/toc.ko.md) |
+| 2권, 28장 | FluoShop: 같은 블로그에 머천다이즈 판매를 붙이고 돈·재고·외부 시스템의 일관성을 지키는 방법 | [소개](./02-fluoshop/README.ko.md) · [목차](./02-fluoshop/toc.ko.md) |
+| 3권, 20장 | Inside Fluo: 두 제품의 실행을 소스로 설명하고 프레임워크를 검증·확장하는 방법 | [소개](./03-internals/README.ko.md) · [목차](./03-internals/toc.ko.md) |
 
-- fluo가 처음이거나 가장 명확한 처음부터 끝까지의 학습 경로가 필요하다면 **[초보를 위한 fluo](./beginner/toc.ko.md)**부터 시작하세요.
-- 기본 개념은 이미 익혔고 멀티 서비스, 이벤트 기반, 실시간 시스템 설계로 넓히고 싶다면 **[중수를 위한 fluo](./intermediate/toc.ko.md)**부터 시작하세요.
-- 내부 구현, 플랫폼 경계, 확장 포인트, 기여자 수준의 이해가 필요하다면 **[고수를 위한 fluo](./advanced/toc.ko.md)**로 바로 가세요.
+처음 시작한다면 [1권 1장](./01-fluoblog/ch01-first-app.ko.md)으로 이동한다. 이미 Fluo를 사용하고 특정 패턴을 찾는다면 권별 목차에서 해당 주제를 고른다. 2권은 1권의 계정, 콘텐츠, 설정과 운영 기반을 유지한다. 3권의 실험은 같은 게시글·주문 요청을 대상으로 하므로 앞선 설계 결정이 내부 동작과 어떻게 연결되는지 확인할 수 있다.
 
-## 권별 구성
+## 어떤 방식으로 배우는가
 
-### [초보를 위한 fluo](./beginner/toc.ko.md)
+각 장은 제품에 생긴 구체적인 요구와 현재 코드의 한계에서 시작한다. 작은 구현을 만들고, 그 구현이 실패하는 조건을 확인하고, 필요한 패턴으로 바꾼다. 입력과 출력의 경계, 트랜잭션, 멱등성, 수명주기와 복구 책임을 코드와 테스트에 드러낸다.
 
-**FluoBlog**를 만들면서 fluo의 핵심 모델을 익히는 책입니다. 모듈, 프로바이더, 컨트롤러, TC39 표준 데코레이터, 라우팅, DTO 검증, 직렬화, 예외 처리, 가드, 인터셉터, OpenAPI, 설정 관리, Prisma, 트랜잭션, 인증, 스로틀링, 캐싱, 헬스 체크, 메트릭, 테스트를 다룹니다.
+정상 응답만 확인하지 않는다. 잘못된 입력이 데이터를 바꾸지 않는지, 같은 웹훅이 두 번 도착하면 무엇이 달라지는지, 외부 작업이 성공한 뒤 응답을 잃으면 어떻게 대사하는지 살펴본다. 언제 다른 선택이 더 단순한지도 설명한다. 모든 서비스를 Repository로 감싸거나 모든 작업을 CQRS로 바꾸는 것이 목표는 아니다.
 
-Testing 장은 정식 Node.js `>=24.0.0 <27` `@fluojs/testing` 경로를 다룹니다. 여기에는 `@fluojs/testing/vitest` decorator transform, 격리된 module/provider override를 사용하는 `createTestingModule({ rootModule })` slice test, runtime bootstrap option을 전달하고 app을 안정적으로 닫는 `createTestApp({ rootModule })` request-pipeline test가 포함됩니다. Node 24 미만과 Node 27 이상은 이 배포 패키지 범위 밖입니다.
+## 패키지를 넓게 쓰되 한 앱에 모두 넣지는 않는다
 
-### [중수를 위한 fluo](./intermediate/toc.ko.md)
+현재 공개 패키지 43개를 본문과 비교 실습에 배치했다. 기본 구조와 HTTP, 인증, 저장소, 알림, 메시징, 운영, React와 런타임 어댑터를 제품의 요구에 맞춰 도입한다. [확정 목차 데이터](./series.json)는 장별 패키지 연결을 기록한다. 실제 지원 범위는 [패키지 표면](../docs/reference/package-surface.ko.md)과 담당 README를 확인한다.
 
-**FluoShop**를 분산 애플리케이션으로 발전시키는 책입니다. 마이크로서비스 아키텍처, TCP, Redis, RabbitMQ, Kafka, NATS, MQTT, gRPC, 도메인 이벤트, CQRS, 사가, 큐, 스케줄링, 분산 락, WebSocket, Socket.IO, 알림, 이메일, Slack 및 Discord 연동, GraphQL, Mongoose, Drizzle, 어댑터 간 런타임 이식성을 다룹니다.
+본문은 Node.js 24, pnpm 10, Fastify, PostgreSQL과 Prisma를 일관된 기준으로 삼는다. 2권의 전송·Drizzle·Mongoose 장과 3권의 런타임 장은 같은 요구를 다른 구현으로 비교하는 실습이다. 여러 ORM이나 브로커를 배우기 위해 운영 앱에 모두 동시에 설치하도록 요구하지 않는다.
 
-모든 transport 장을 순서대로 읽기보다 microservices transport를 먼저 선택하려면 [Chapter 1 capability chooser](./intermediate/ch01-microservices-intro.ko.md#123-transport-capability-chooser)에서 시작한 뒤, [`@fluojs/microservices` capability matrix](../packages/microservices/README.ko.md#트랜스포트-기능-매트릭스)에서 package-level 계약을 확인하세요.
+## 본문, 실행 예제, 계약 문서의 관계
 
-### [고수를 위한 fluo](./advanced/toc.ko.md)
+새 본문은 book/01-fluoblog, book/02-fluoshop, book/03-internals에 있다. 독자가 작성하는 애플리케이션 파일, 설명용 부분 구현, 실제 저장소의 구현 근거를 구분한다. 본문이 모든 장의 완성 애플리케이션을 저장소에 이미 제공한다고 가정하지 않는다. 외부 데이터베이스·메일·브로커·결제사 실험에는 필요한 환경과 재현 절차가 있다.
 
-프레임워크 내부와 확장을 중심으로 설명하는 책입니다. 데코레이터 역사와 메타데이터, 커스텀 데코레이터, 프로바이더 해석, 스코프, 순환 의존성 처리, 동적 모듈, 모듈 그래프 컴파일, 애플리케이션 컨텍스트와 어댑터 계약, 런타임 분기, HTTP 파이프라인 내부, 커스텀 어댑터, 이식성 테스트, Studio, 커스텀 패키지 작성, fluo 기여 과정을 다룹니다.
+[짧은 FluoBlog HTTP 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [초기 실행 체크포인트](../examples/fluo-blog/README.ko.md)는 첫 라우트·DI·검증 경로를 확인하는 보조 자료다. 책 전체를 대체하거나 뒤의 데이터베이스·인증·상거래 기능까지 구현한 완성본은 아니다. [공식 예제 목록](../examples/README.ko.md)은 각 예제의 검증 범위를 설명한다.
 
-## 읽는 순서
+패키지 API와 수명주기는 [행동 계약](../docs/contracts/behavioral-contract-policy.ko.md)과 담당 README가 기준이다. Outbox, 영속 Saga 상태, 결제 대사, 파일 저장소와 같은 애플리케이션 설계를 패키지가 자동 제공하는 기능으로 설명하지 않는다. 프레임워크 계약과 제품의 정책은 서로 다른 책임이다.
 
-기본 권장 순서는 다음과 같습니다.
+## 이전 판과 안정 링크
 
-1. [초보를 위한 fluo](./beginner/toc.ko.md)
-2. [중수를 위한 fluo](./intermediate/toc.ko.md)
-3. [고수를 위한 fluo](./advanced/toc.ko.md)
+기존 [초보편](./beginner/toc.ko.md), [중수편](./intermediate/toc.ko.md), [고수편](./advanced/toc.ko.md)은 이전 판의 링크와 계약 근거를 보존하기 위해 남겨 둔다. 새 학습 순서와 장 번호는 위 세 권의 목차를 따른다. 이전 판의 project-state 표기는 새 시리즈의 실행 체크포인트가 아니다.
 
-이 허브는 선택용 안내 페이지로도 쓸 수 있습니다. 한 권의 목차를 끝까지 읽은 뒤 다시 돌아와 다음 권을 고르면 됩니다.
+## 언어와 검증
 
-## 길찾기
+한국어가 집필 원본이며 영어는 검토를 마친 한국어 원고의 번역이다. 장과 절의 흐름, 코드·명령·출력, 제약과 실패 조건을 두 언어에서 맞춘다. [집필 기준](./EDITORIAL.ko.md)은 공통 이름과 예제의 보장 범위를 설명한다.
 
-- 시리즈를 처음 시작한다면 **[초보편 목차](./beginner/toc.ko.md)**로 가세요.
-- 전체 챕터 목록으로 들어가기 전에 방향을 잡고 싶다면 **[초보편 챕터 0](./beginner/ch00-introduction.ko.md)**, **[중수편 챕터 0](./intermediate/ch00-introduction.ko.md)**, **[고수편 챕터 0](./advanced/ch00-introduction.ko.md)**부터 읽어도 좋습니다.
-- 초보편을 마쳤다면 **[중수편 목차](./intermediate/toc.ko.md)**로 이어서 읽으세요.
-- 내부 구조나 기여 맥락이 필요하다면 **[고수편 목차](./advanced/toc.ko.md)**로 이동하세요.
-- AI 도구이거나 학습 경로 대신 계약 레퍼런스가 필요하다면 **[AI Context Hub](../docs/CONTEXT.ko.md)**를 참고하세요.
+저장소에서 한국어 원고의 구조와 링크를 확인하려면 pnpm book:check:ko를, 양 언어의 구조와 코드 일치를 확인하려면 pnpm book:check를 실행한다. 이 검사는 문장의 교육적 완성도나 외부 결제사 연결 성공을 대신 증명하지 않는다. 기술·서사 검토와 해당 환경의 실행 확인을 함께 수행한다.

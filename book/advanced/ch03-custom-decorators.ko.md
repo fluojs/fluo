@@ -3,6 +3,12 @@
 
 # Chapter 3. Custom Decorators
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 앞선 두 장에서 정리한 표준 데코레이터와 메타데이터 엔진을 바탕으로, Fluo에 맞는 커스텀 데코레이터를 직접 설계하는 방법을 다룹니다. Chapter 2에서 메타데이터 저장 원리를 이해했다면, 이제 그 원리를 확장 API와 실전 패턴으로 연결합니다.
 
 ## Learning Objectives

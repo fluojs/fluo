@@ -3,6 +3,12 @@
 
 # Chapter 9. Event Bus and Domain Events
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter introduces an event bus to FluoShop so we can build a domain reaction model on top of the transport choices from Part 1. Chapter 8 organized service-to-service contracts. Here, we shift the focus to keeping the write boundary firm even when one business fact fans out into several follow-up actions.
 
 ## Learning Objectives

@@ -3,6 +3,12 @@
 
 # Chapter 7. MQTT
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 FluoShop의 메시징 범위를 서버 간 통신에서 edge device와 telemetry 입력까지 확장하며 MQTT가 필요한 지점을 정리합니다. Chapter 6이 빠른 내부 coordination을 다뤘다면, 여기서는 불안정한 연결과 retained state가 있는 physical edge 환경으로 흐름을 넓힙니다.
 
 ## Learning Objectives

@@ -3,6 +3,12 @@
 
 # Chapter 2. TCP Transport
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 FluoShop의 첫 실제 서비스 연결을 만들기 위해 TCP 트랜스포트를 설정하고 운영하는 방법을 설명합니다. Chapter 1에서 아키텍처 지도를 세웠다면, 이제 그 경계를 가장 단순한 요청 응답 링크로 구현해 이후 브로커 기반 장들과 비교할 기준선을 만듭니다.
 
 ## Learning Objectives

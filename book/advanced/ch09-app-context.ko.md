@@ -3,6 +3,12 @@
 
 # Chapter 9. Application Context and Platform Adapter Contracts
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 Fluo가 하나의 부트스트랩 spine 위에서 application context, full application, microservice shell을 어떻게 조립하는지 설명합니다. Chapter 8이 모듈 그래프와 초기화 순서를 확정했다면, 이 장은 그 결과물이 어떤 런타임 셸 계약으로 노출되는지 이어서 보여 줍니다.
 
 ## Learning Objectives

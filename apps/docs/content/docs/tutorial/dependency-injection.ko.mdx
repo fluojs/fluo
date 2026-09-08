@@ -1,0 +1,255 @@
+---
+title: 의존성 주입
+description: 첫 라우트를 유지하면서 게시글 저장 책임을 등록된 서비스로 옮깁니다.
+---
+
+## 목표와 이전 체크포인트
+
+[첫 번째 라우트](/ko/docs/tutorial/first-route)가 동작하는 상태에서 시작합니다. `GET /posts` 응답의 형태를 이미 확인했습니다. 이제 그 응답을 유지하면서 데이터를 `PostsService`로 옮기고 `GET /posts/:id`를 추가합니다.
+
+작업 대상은 `examples/fluo-blog/00-start`입니다. 터미널은 저장소 루트에 둡니다. 현재 자신의 앱은 체크포인트 01과 같은 상태입니다. 아래 변경을 같은 앱에 적용하고 완성 스냅샷은 수정하지 않습니다.
+
+`src/post.ts`와 `src/main.ts`는 체크포인트 01과 동일하게 유지합니다. 같은 응답 타입을 정의하고 해당 디렉터리의 `AppModule`로 Fastify를 시작합니다. `src/posts.service.ts`, `src/post-params.dto.ts`, `src/posts.module.ts`를 추가하고 `src/posts.controller.ts`, `src/app.ts`를 교체합니다.
+
+## 1. 서비스에 게시글 관리 맡기기
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/posts.service.ts */}
+```ts title="00-start/src/posts.service.ts"
+import { NotFoundException } from '@fluojs/http';
+
+import type { Post } from './post';
+
+export class PostsService {
+  private readonly posts: Post[] = [
+    { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+  ];
+
+  list(): readonly Post[] {
+    return [...this.posts];
+  }
+
+  get(id: string): Post {
+    const post = this.posts.find((candidate) => candidate.id === id);
+    if (!post) {
+      throw new NotFoundException(`Post ${id} was not found.`);
+    }
+    return post;
+  }
+}
+```
+
+서비스가 컬렉션과 조회 규칙을 소유합니다. `NotFoundException`은 Fluo의 HTTP 오류 처리를 거쳐 `404` 응답이 됩니다. 이 컬렉션은 여전히 메모리이며 영속 저장소가 아닙니다.
+
+## 2. 경로 매개변수를 명시적으로 바인딩하기
+
+URL의 `:id`를 읽는 DTO를 추가합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/post-params.dto.ts */}
+```ts title="00-start/src/post-params.dto.ts"
+import { FromPath } from '@fluojs/http';
+
+export class PostParamsDto {
+  @FromPath('id')
+  id = '';
+}
+```
+
+`@FromPath('id')`는 요청 값을 가져올 위치를 지정합니다. 문자열은 그대로 문자열입니다. 여기서는 Fluo에 숫자 변환을 요청하지 않습니다.
+
+## 3. 컨트롤러에 서비스 주입하기
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/posts.controller.ts */}
+```ts title="00-start/src/posts.controller.ts"
+import { Inject } from '@fluojs/core';
+import { Controller, Get, RequestDto } from '@fluojs/http';
+
+import type { Post } from './post';
+import { PostParamsDto } from './post-params.dto';
+import { PostsService } from './posts.service';
+
+@Inject(PostsService)
+@Controller('/posts')
+export class PostsController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Get()
+  list(): readonly Post[] {
+    return this.posts.list();
+  }
+
+  @Get('/:id')
+  @RequestDto(PostParamsDto)
+  get(input: PostParamsDto): Post {
+    return this.posts.get(input.id);
+  }
+}
+```
+
+`@Inject(PostsService)`는 **클래스 데코레이터**입니다. 첫 생성자 의존성의 런타임 토큰을 지정합니다. TypeScript 타입 표기만으로 DI 메타데이터가 만들어지지 않으며, 이 코드는 매개변수 데코레이터나 `emitDecoratorMetadata`를 사용하지 않습니다.
+
+`@RequestDto(PostParamsDto)`는 `get` 호출 전에 어떤 클래스로 값을 바인딩할지 HTTP 파이프라인에 알려줍니다. `list`는 기존 배열과 동일한 결과를 반환하는 메서드에 위임합니다.
+
+## 4. 기능을 등록하고 앱에서 import하기
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/posts.module.ts */}
+```ts title="00-start/src/posts.module.ts"
+import { Module } from '@fluojs/core';
+
+import { PostsController } from './posts.controller';
+import { PostsService } from './posts.service';
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService],
+})
+export class PostsModule {}
+```
+
+provider 등록을 통해 컨테이너가 컨트롤러에 전달할 `PostsService`를 생성합니다. 다른 기능이 이 서비스를 직접 resolve할 필요가 없으므로 여기서는 export하지 않습니다.
+
+`src/app.ts`의 루트 구성을 교체합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/app.ts */}
+```ts title="00-start/src/app.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsModule } from './posts.module';
+
+@Module({
+  imports: [HealthModule.forRoot(), PostsModule],
+})
+export class AppModule {}
+```
+
+이제 `PostsController`는 `PostsModule`에 속합니다. `AppModule.controllers`에도 직접 등록하지 마세요.
+
+## 5. 모듈 연결을 요청으로 검증하기
+
+`00-start/test/app.e2e.test.ts`를 아래 전체 코드로 교체합니다. 첫 수업의 health/readiness와 목록 검증을 유지하며 ID 조회와 없는 리소스 검증을 추가합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/test/app.e2e.test.ts */}
+```ts title="00-start/test/app.e2e.test.ts"
+import { createTestApp } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+describe('FluoBlog module and DI checkpoint', () => {
+  it.each([
+    ['/health', 'ok'],
+    ['/ready', 'ready'],
+  ])('preserves the starter endpoint when %s is requested', async (path, status) => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', path).send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ status });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves the list when the controller delegates to its provider', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('finds a post when its ID is bound from the path', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts/1').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        id: '1', title: 'Hello, Fluo!', content: 'My first post.',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns a resource error when the post ID is unknown', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts/999').send();
+
+      // Then
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({
+        error: { code: 'NOT_FOUND', status: 404 },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+```
+
+이 테스트는 실제 `AppModule`을 구성하므로 provider 등록이나 의존성 토큰을 빠뜨리면 실패합니다. URL 바인딩과 오류 응답도 함께 확인합니다.
+
+저장소 루트에서 실행합니다.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+```
+
+기존 health와 목록 검증을 포함한 모든 요청 테스트가 통과해야 합니다.
+
+## 6. 같은 API 실행해 보기
+
+실행 중인 서버를 종료합니다. 같은 학습 앱을 다시 빌드하고 시작하세요.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+두 번째 터미널에서 실행합니다.
+
+```bash
+curl -i http://127.0.0.1:3000/posts
+curl -i http://127.0.0.1:3000/posts/1
+curl -i http://127.0.0.1:3000/posts/999
+curl -i http://127.0.0.1:3000/health
+```
+
+| 요청 | 상태 코드 | 본문 |
+| --- | --- | --- |
+| `/posts` | `200` | `[{"id":"1","title":"Hello, Fluo!","content":"My first post."}]` |
+| `/posts/1` | `200` | `{"id":"1","title":"Hello, Fluo!","content":"My first post."}` |
+| `/posts/999` | `404` | 아래 오류 응답. |
+| `/health` | `200` | `{"status":"ok"}` |
+
+```json
+{"error":{"code":"NOT_FOUND","message":"Post 999 was not found.","status":404}}
+```
+
+프레임워크가 `error.requestId`를 추가할 수도 있습니다. 여기서는 라우트는 존재하지만 요청한 리소스가 없습니다. 서비스가 의도적으로 해당 오류를 선택합니다.
+
+## 복구
+
+[DI 체크포인트 완성본](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/02-dependency-injection)을 사용하세요. bootstrap이 `PostsService`를 resolve하지 못하면 `@Inject(PostsService)`와 `PostsModule.providers`를 모두 확인합니다. 모든 posts 요청이 `404`라면 루트 `AppModule`이 `PostsModule`을 import하는지, 실행 중인 프로세스가 `start:00`인지 확인합니다.
+
+이전: [첫 번째 라우트](/ko/docs/tutorial/first-route). 다음: [검증과 오류](/ko/docs/tutorial/validation-errors).

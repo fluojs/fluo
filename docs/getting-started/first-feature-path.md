@@ -4,6 +4,8 @@
 
 This document defines the minimal feature-slice structure used in fluo applications. The canonical examples in this repository are `examples/minimal/src/hello.*` and `examples/realworld-api/src/users/*`.
 
+For step-by-step instructions, use the [FluoBlog tutorial](../../apps/docs/content/docs/tutorial/index.mdx). This page remains the structural reference for an existing application.
+
 ## Required Files
 
 The smallest HTTP feature slice usually contains these files under a dedicated directory such as `src/users/` or `src/catalog/`.

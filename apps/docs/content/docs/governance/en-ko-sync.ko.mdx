@@ -15,3 +15,21 @@ description: 공식 fluo 문서의 locale parity 규칙입니다.
 ## 검증
 
 `pnpm docs:sync-check`는 `apps/docs/content/docs`를 순회하며 English page 또는 navigation metadata file에 Korean counterpart가 없거나 Korean page에 English counterpart가 없으면 실패합니다.
+
+파일 쌍을 확인하며 내비게이션 메타데이터의 내용이나 번역의 의미는 검사하지 않습니다. 별도 platform governance 검사는 지정된 계약의 제목 구조와 계약별 근거를 확인합니다. 이 검사들이 통과해도 두 언어의 명령, 기본값, 제약, 기대 응답을 함께 검토하세요.
+
+## 튜토리얼 소스 관리
+
+[Book 3권 시리즈](https://github.com/fluojs/fluo/blob/main/book/README.ko.md)가 제품·패턴 중심의 전체 학습 원본입니다. [짧은 FluoBlog 실습](/ko/docs/tutorial)은 초기 HTTP 경로를 확인하는 보조 자료입니다. 전체 한국어 원고를 먼저 검토하고 영어로 번역하며, 장·절 구조와 모든 코드·명령 블록을 보존합니다.
+
+완전한 소스 예제는 `fluo-tutorial-source` MDX 주석 뒤에 코드 블록을 둡니다. 마커는 `examples/fluo-blog/`의 파일을 가리키며 두 언어 모두 테스트한 파일을 그대로 보여줘야 합니다. 짧은 설명용 발췌에는 이 마커를 붙이지 않습니다.
+
+저장소 루트에서 실행합니다.
+
+```bash
+pnpm vitest run examples/fluo-blog tooling/governance/verify-platform-consistency-governance.test.ts
+pnpm book:check
+pnpm verify:docs
+```
+
+소스 일치 테스트는 문장이 아니라 게시하는 코드의 일치를 검사합니다. 예제 테스트는 단계별 동작을 확인합니다. 변경한 장은 명시된 출발점에서도 직접 따라가세요. 이 검사만으로 초보자가 파일을 어디에 넣어야 하는지 지침이 충분한지는 증명할 수 없습니다.

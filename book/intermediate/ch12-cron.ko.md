@@ -21,6 +21,12 @@
 
 # Chapter 12. Scheduling and Distributed Locks
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 FluoShop에 시간 기반 작업을 도입하고, queue와 구분되는 scheduling boundary를 설계하는 방법을 설명합니다. Chapter 11에서 이미 발생한 일을 background job으로 넘겼다면, 이제는 정해진 시각과 주기에 맞춰 distributed lock까지 포함한 작업을 운영 안전하게 실행합니다.
 
 ## Learning Objectives

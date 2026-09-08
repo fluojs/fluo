@@ -2,12 +2,13 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 디렉토리는 fluo의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, `../book/`의 학습 경로와 함께 읽는 것을 전제로 합니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
+이 디렉터리는 fluo의 공식 실행 예제를 모아 둔 곳입니다. 연속 학습은 [FluoBlog 튜토리얼](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [단계별 완성 코드](./fluo-blog/README.ko.md)에서 시작하세요. 다른 예제는 독립적인 기능 참고자료이며 해당 프로젝트의 후속 장이 아닙니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
 
 이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 유지합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
 
 ## 현재 공식 예제
 
+- [`./fluo-blog/`](./fluo-blog/README.ko.md) — 게시글, 명시적 DI, 검증, 오류, 테스트를 위한 연속 튜토리얼의 단계별 코드
 - `./minimal/` — 기본/명시적 HTTP 스타터 경로와 같은 가장 작은 실행 가능 앱
 - `./realworld-api/` — config, DTO validation, explicit DI, CRUD를 포함한 보다 현실적인 다중 모듈 HTTP API
 - `./auth-jwt-passport/` — JWT 발급과 passport core 기반 보호 라우트를 보여주는 bearer-token auth 예제
@@ -21,7 +22,7 @@
 
 ## 권장 읽기 순서
 
-레포를 처음 읽는다면 다음 순서를 권장합니다.
+fluo를 처음 배운다면 [FluoBlog 튜토리얼](../apps/docs/content/docs/tutorial/index.ko.mdx)을 먼저 완성하세요. 그다음 필요한 기능에 따라 독립적인 예제를 고르세요.
 
 1. `./minimal/README.ko.md` — 가장 작은 bootstrap과 request path
 2. `./realworld-api/README.ko.md` — 첫 실제 도메인 모듈과 DTO 경계
@@ -31,8 +32,8 @@
 6. `./graphql/README.ko.md` — code-first GraphQL query, DataLoader, SSE subscription 흐름
 7. `./react-stable-ssr/README.ko.md` — HTTP-owned handler로서의 안정 React SSR page
 8. `./react-vite-ssr/README.ko.md` — SSR baseline 위에 Vite build manifest와 hydration 추가
-9. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
-10. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
+
+[Book](../book/README.ko.md)은 개념과 내부 구조를 다루는 보충 자료입니다. 기존 장의 project-state 표기는 이 디렉터리의 스냅샷을 가리키지 않습니다.
 
 ## 예제가 문서에서 맡는 역할
 
@@ -65,6 +66,7 @@
 
 ```bash
 pnpm install
+pnpm vitest run examples/fluo-blog
 pnpm vitest run examples/minimal
 pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport

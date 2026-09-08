@@ -1,0 +1,819 @@
+{
+  "schemaVersion": 1,
+  "originalLanguage": "ko",
+  "volumes": [
+    {
+      "id": "01-fluoblog",
+      "title": "FluoBlog: 처음 만드는 운영 가능한 서비스",
+      "parts": [
+        "작은 기능을 끝까지 만들기",
+        "데이터와 API의 경계 세우기",
+        "재시작해도 데이터가 남는 서비스",
+        "여러 사람이 사용하는 블로그",
+        "독자가 쓰고 싶어지는 제품",
+        "개발자의 컴퓨터 밖으로 나가기"
+      ],
+      "chapters": [
+        {
+          "number": 1,
+          "slug": "ch01-first-app",
+          "title": "FluoBlog의 첫 실행 경로 만들기",
+          "part": 1,
+          "packages": [
+            "@fluojs/cli",
+            "@fluojs/core",
+            "@fluojs/runtime",
+            "@fluojs/platform-fastify",
+            "@fluojs/vite"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 2,
+          "slug": "ch02-first-http-route",
+          "title": "첫 게시글을 HTTP로 보여주기",
+          "part": 1,
+          "packages": [
+            "@fluojs/http"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 3,
+          "slug": "ch03-modules-and-di",
+          "title": "컨트롤러에서 로직 꺼내기",
+          "part": 1,
+          "packages": [
+            "@fluojs/core",
+            "@fluojs/di"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 4,
+          "slug": "ch04-testing-from-the-start",
+          "title": "동작을 증명하면서 개발하기",
+          "part": 1,
+          "packages": [
+            "@fluojs/testing"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 5,
+          "slug": "ch05-post-domain",
+          "title": "초안과 발행된 글은 무엇이 다른가",
+          "part": 2,
+          "packages": [],
+          "kind": "chapter"
+        },
+        {
+          "number": 6,
+          "slug": "ch06-request-boundaries",
+          "title": "외부 입력을 내부 데이터로 바꾸기",
+          "part": 2,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/validation"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 7,
+          "slug": "ch07-response-models",
+          "title": "저장한 데이터와 공개할 데이터 구분하기",
+          "part": 2,
+          "packages": [
+            "@fluojs/serialization"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 8,
+          "slug": "ch08-api-contracts",
+          "title": "사용자가 이해할 수 있는 API 계약 만들기",
+          "part": 2,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/openapi"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 9,
+          "slug": "ch09-configuration",
+          "title": "환경이 달라도 같은 코드 실행하기",
+          "part": 3,
+          "packages": [
+            "@fluojs/config"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 10,
+          "slug": "ch10-prisma-persistence",
+          "title": "메모리의 게시글을 데이터베이스로 옮기기",
+          "part": 3,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 11,
+          "slug": "ch11-publishing-transactions",
+          "title": "글 발행을 하나의 작업으로 보장하기",
+          "part": 3,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 12,
+          "slug": "ch12-efficient-queries",
+          "title": "글이 많아져도 목록이 느려지지 않게 하기",
+          "part": 3,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 13,
+          "slug": "ch13-accounts-and-credentials",
+          "title": "사용자와 자격 증명 모델링하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 14,
+          "slug": "ch14-authentication",
+          "title": "로그인 상태를 검증하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/jwt",
+            "@fluojs/passport"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 15,
+          "slug": "ch15-authorization",
+          "title": "누가 이 글을 수정할 수 있는가",
+          "part": 4,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/passport"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 16,
+          "slug": "ch16-abuse-protection",
+          "title": "정상 사용자와 서비스 보호하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/throttler",
+            "@fluojs/http"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 17,
+          "slug": "ch17-react-reading-and-writing",
+          "title": "독자가 볼 페이지와 작성자가 쓸 화면 만들기",
+          "part": 5,
+          "packages": [
+            "@fluojs/react",
+            "@fluojs/vite"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 18,
+          "slug": "ch18-uploads",
+          "title": "표지 이미지와 첨부파일 받기",
+          "part": 5,
+          "packages": [
+            "@fluojs/http"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 19,
+          "slug": "ch19-subscriptions-and-email",
+          "title": "새 글을 구독자에게 알리기",
+          "part": 5,
+          "packages": [
+            "@fluojs/queue",
+            "@fluojs/email",
+            "@fluojs/redis"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 20,
+          "slug": "ch20-caching",
+          "title": "인기 글을 빠르게 제공하기",
+          "part": 5,
+          "packages": [
+            "@fluojs/cache-manager",
+            "@fluojs/redis"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 21,
+          "slug": "ch21-scheduled-publishing",
+          "title": "예약 발행과 정기 작업 만들기",
+          "part": 6,
+          "packages": [
+            "@fluojs/cron"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 22,
+          "slug": "ch22-observability",
+          "title": "느린 요청과 실패를 설명할 수 있게 하기",
+          "part": 6,
+          "packages": [
+            "@fluojs/metrics",
+            "@fluojs/http"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 23,
+          "slug": "ch23-lifecycle-and-readiness",
+          "title": "시작하고 종료하는 순간까지 설계하기",
+          "part": 6,
+          "packages": [
+            "@fluojs/terminus",
+            "@fluojs/runtime",
+            "@fluojs/platform-fastify"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 24,
+          "slug": "ch24-first-release",
+          "title": "첫 출시와 첫 운영 회고",
+          "part": 6,
+          "packages": [
+            "@fluojs/testing",
+            "@fluojs/metrics",
+            "@fluojs/terminus"
+          ],
+          "kind": "chapter"
+        }
+      ]
+    },
+    {
+      "id": "02-fluoshop",
+      "title": "FluoShop: 인기를 얻은 블로그가 상점을 열다",
+      "parts": [
+        "독자가 고객이 되다",
+        "주문과 재고의 일관성",
+        "실패하는 외부 시스템과 협력하기",
+        "비동기 작업을 믿을 수 있게 만들기",
+        "고객과 운영자가 보는 시스템",
+        "필요한 곳만 분리하고 대안 비교하기",
+        "주문이 몰리고 장애가 생기는 날"
+      ],
+      "chapters": [
+        {
+          "number": 1,
+          "slug": "ch01-grow-the-blog",
+          "title": "기존 블로그에 상점을 붙이기",
+          "part": 1,
+          "packages": [
+            "@fluojs/core",
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 2,
+          "slug": "ch02-domain-boundaries",
+          "title": "콘텐츠·상품·주문의 경계 나누기",
+          "part": 1,
+          "packages": [
+            "@fluojs/di",
+            "@fluojs/core"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 3,
+          "slug": "ch03-catalog-and-money",
+          "title": "티셔츠 한 장을 상품으로 표현하기",
+          "part": 1,
+          "packages": [
+            "@fluojs/prisma",
+            "@fluojs/validation"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 4,
+          "slug": "ch04-storefront",
+          "title": "블로그에서 구매로 이어지는 경험 만들기",
+          "part": 1,
+          "packages": [
+            "@fluojs/react",
+            "@fluojs/vite"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 5,
+          "slug": "ch05-cart-and-pricing",
+          "title": "장바구니 가격을 믿으면 안 되는 이유",
+          "part": 2,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 6,
+          "slug": "ch06-order-state-machine",
+          "title": "주문을 상태 머신으로 설계하기",
+          "part": 2,
+          "packages": [],
+          "kind": "chapter"
+        },
+        {
+          "number": 7,
+          "slug": "ch07-inventory-concurrency",
+          "title": "마지막 티셔츠를 두 사람이 구매한다면",
+          "part": 2,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 8,
+          "slug": "ch08-idempotent-checkout",
+          "title": "구매 버튼을 두 번 눌러도 주문은 한 번만",
+          "part": 2,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 9,
+          "slug": "ch09-payment-boundary",
+          "title": "결제사를 애플리케이션 밖에 두기",
+          "part": 3,
+          "packages": [
+            "@fluojs/di",
+            "@fluojs/config"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 10,
+          "slug": "ch10-payment-webhooks",
+          "title": "결제 웹훅을 안전하게 처리하기",
+          "part": 3,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 11,
+          "slug": "ch11-refunds-and-compensation",
+          "title": "취소와 환불은 되돌리기 버튼이 아니다",
+          "part": 3,
+          "packages": [
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 12,
+          "slug": "ch12-reconciliation",
+          "title": "중간에 멈춘 주문을 다시 맞추기",
+          "part": 3,
+          "packages": [
+            "@fluojs/cron"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 13,
+          "slug": "ch13-domain-events",
+          "title": "주문 완료를 다른 기능에 알리기",
+          "part": 4,
+          "packages": [
+            "@fluojs/event-bus"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 14,
+          "slug": "ch14-outbox-and-inbox",
+          "title": "저장은 됐는데 이벤트가 사라졌다면",
+          "part": 4,
+          "packages": [
+            "@fluojs/event-bus",
+            "@fluojs/prisma"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 15,
+          "slug": "ch15-reliable-jobs",
+          "title": "실패한 작업을 다시 실행하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/queue",
+            "@fluojs/redis"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 16,
+          "slug": "ch16-cqrs-projections",
+          "title": "쓰기 모델과 조회 모델의 요구가 달라지다",
+          "part": 4,
+          "packages": [
+            "@fluojs/cqrs"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 17,
+          "slug": "ch17-order-sagas",
+          "title": "여러 단계의 주문 처리를 조율하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/cqrs"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 18,
+          "slug": "ch18-notification-channels",
+          "title": "이메일·Slack·Discord로 같은 사건 전달하기",
+          "part": 5,
+          "packages": [
+            "@fluojs/notifications",
+            "@fluojs/email",
+            "@fluojs/slack",
+            "@fluojs/discord"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 19,
+          "slug": "ch19-realtime-orders",
+          "title": "주문 상태를 실시간으로 보여주기",
+          "part": 5,
+          "packages": [
+            "@fluojs/socket.io",
+            "@fluojs/websockets"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 20,
+          "slug": "ch20-graphql-dashboard",
+          "title": "운영 대시보드에 맞는 조회 API 만들기",
+          "part": 5,
+          "packages": [
+            "@fluojs/graphql"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 21,
+          "slug": "ch21-commerce-caching",
+          "title": "상품은 캐시해도 재고 판단은 캐시만 믿지 않기",
+          "part": 5,
+          "packages": [
+            "@fluojs/redis",
+            "@fluojs/cache-manager"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 22,
+          "slug": "ch22-international-commerce",
+          "title": "해외 독자에게도 판매하기",
+          "part": 5,
+          "packages": [
+            "@fluojs/i18n"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 23,
+          "slug": "ch23-extract-fulfillment",
+          "title": "배송 처리를 별도 서비스로 꺼내기",
+          "part": 6,
+          "packages": [
+            "@fluojs/microservices"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 24,
+          "slug": "ch24-transport-lab",
+          "title": "메시지 전송 방식을 선택하는 실험실",
+          "part": 6,
+          "packages": [
+            "@fluojs/microservices"
+          ],
+          "kind": "comparison-lab"
+        },
+        {
+          "number": 25,
+          "slug": "ch25-drizzle-lab",
+          "title": "같은 저장소 계약을 Prisma와 Drizzle로 구현하기",
+          "part": 6,
+          "packages": [
+            "@fluojs/prisma",
+            "@fluojs/drizzle"
+          ],
+          "kind": "comparison-lab"
+        },
+        {
+          "number": 26,
+          "slug": "ch26-mongoose-lab",
+          "title": "리뷰·상품 문서 모델을 MongoDB로 구성해 보기",
+          "part": 6,
+          "packages": [
+            "@fluojs/mongoose"
+          ],
+          "kind": "comparison-lab"
+        },
+        {
+          "number": 27,
+          "slug": "ch27-sale-observability",
+          "title": "판매 이벤트를 관측하고 병목 찾기",
+          "part": 7,
+          "packages": [
+            "@fluojs/metrics",
+            "@fluojs/terminus"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 28,
+          "slug": "ch28-failure-drills",
+          "title": "장애 훈련으로 FluoShop 완성하기",
+          "part": 7,
+          "packages": [
+            "@fluojs/testing",
+            "@fluojs/queue",
+            "@fluojs/microservices"
+          ],
+          "kind": "chapter"
+        }
+      ]
+    },
+    {
+      "id": "03-internals",
+      "title": "Inside Fluo: 우리가 만든 서비스의 엔진룸",
+      "parts": [
+        "선언한 코드가 동작이 되기까지",
+        "의존성 주입과 모듈 그래프",
+        "런타임과 요청 실행 모델",
+        "같은 프레임워크, 서로 다른 호스트",
+        "확장하고 진단하고 기여하기"
+      ],
+      "chapters": [
+        {
+          "number": 1,
+          "slug": "ch01-trace-an-order",
+          "title": "주문 요청 하나를 소스 끝까지 따라가기",
+          "part": 1,
+          "packages": [
+            "@fluojs/core",
+            "@fluojs/runtime",
+            "@fluojs/http"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 2,
+          "slug": "ch02-standard-decorators",
+          "title": "표준 데코레이터와 빌드 도구의 역할",
+          "part": 1,
+          "packages": [
+            "@fluojs/core",
+            "@fluojs/vite"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 3,
+          "slug": "ch03-metadata-ownership",
+          "title": "메타데이터는 어디에 저장되는가",
+          "part": 1,
+          "packages": [
+            "@fluojs/core"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 4,
+          "slug": "ch04-custom-decorators",
+          "title": "커스텀 데코레이터를 안전하게 만들기",
+          "part": 1,
+          "packages": [
+            "@fluojs/core"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 5,
+          "slug": "ch05-provider-normalization",
+          "title": "Provider를 내부 표현으로 바꾸기",
+          "part": 2,
+          "packages": [
+            "@fluojs/di"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 6,
+          "slug": "ch06-resolution-algorithms",
+          "title": "의존성을 해석하는 알고리즘",
+          "part": 2,
+          "packages": [
+            "@fluojs/di"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 7,
+          "slug": "ch07-scopes-and-disposal",
+          "title": "인스턴스는 언제 만들어지고 사라지는가",
+          "part": 2,
+          "packages": [
+            "@fluojs/di"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 8,
+          "slug": "ch08-module-compilation",
+          "title": "모듈 그래프를 컴파일하기",
+          "part": 2,
+          "packages": [
+            "@fluojs/core",
+            "@fluojs/runtime"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 9,
+          "slug": "ch09-bootstrap-and-rollback",
+          "title": "애플리케이션 시작과 실패 복구",
+          "part": 3,
+          "packages": [
+            "@fluojs/runtime"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 10,
+          "slug": "ch10-http-pipeline",
+          "title": "HTTP 요청 파이프라인 해부하기",
+          "part": 3,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/core"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 11,
+          "slug": "ch11-dto-and-errors",
+          "title": "DTO와 응답이 변환되는 과정",
+          "part": 3,
+          "packages": [
+            "@fluojs/validation",
+            "@fluojs/serialization",
+            "@fluojs/http"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 12,
+          "slug": "ch12-cancellation-and-streaming",
+          "title": "요청이 끝나기 전에 연결이 끊긴다면",
+          "part": 3,
+          "packages": [
+            "@fluojs/http",
+            "@fluojs/runtime"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 13,
+          "slug": "ch13-node-adapters",
+          "title": "Node.js 어댑터 비교하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/platform-fastify",
+            "@fluojs/platform-nodejs",
+            "@fluojs/platform-express"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 14,
+          "slug": "ch14-fetch-adapters",
+          "title": "Fetch 기반 런타임으로 이동하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/platform-bun",
+            "@fluojs/platform-deno",
+            "@fluojs/platform-cloudflare-workers"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 15,
+          "slug": "ch15-nextjs-hosting",
+          "title": "Next.js 안에서 Fluo 실행하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/platform-nextjs",
+            "@fluojs/react"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 16,
+          "slug": "ch16-custom-adapter",
+          "title": "직접 어댑터를 만들고 계약 검증하기",
+          "part": 4,
+          "packages": [
+            "@fluojs/testing",
+            "@fluojs/runtime"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 17,
+          "slug": "ch17-extension-package",
+          "title": "재사용 가능한 Fluo 확장 패키지 만들기",
+          "part": 5,
+          "packages": [
+            "@fluojs/core",
+            "@fluojs/di"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 18,
+          "slug": "ch18-cli-and-studio",
+          "title": "CLI와 Studio가 애플리케이션을 보는 방법",
+          "part": 5,
+          "packages": [
+            "@fluojs/cli",
+            "@fluojs/studio"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 19,
+          "slug": "ch19-performance-experiments",
+          "title": "성능 주장을 실험으로 검증하기",
+          "part": 5,
+          "packages": [
+            "@fluojs/testing",
+            "@fluojs/runtime"
+          ],
+          "kind": "chapter"
+        },
+        {
+          "number": 20,
+          "slug": "ch20-contributing-a-change",
+          "title": "프레임워크 변경 하나를 끝까지 제출하기",
+          "part": 5,
+          "packages": [
+            "@fluojs/testing",
+            "@fluojs/core"
+          ],
+          "kind": "chapter"
+        }
+      ]
+    }
+  ]
+}

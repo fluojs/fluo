@@ -3,6 +3,12 @@
 
 # Chapter 18. GraphQL API
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 FluoShop에 REST와 다른 질의 계층을 추가하는 방식을 다룹니다. Chapter 17까지 알림과 실시간 흐름을 확장했다면, 여기서는 제품 카탈로그를 중심으로 GraphQL API와 실행 가드레일을 구성합니다.
 
 ## Learning Objectives

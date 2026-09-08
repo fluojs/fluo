@@ -3,6 +3,12 @@
 
 # Chapter 10. CQRS and Sagas
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 FluoShop의 event-driven 흐름 위에 command, query, saga를 분리해 더 명시적인 write, read, orchestration 모델을 세웁니다. Chapter 9가 business fact에 대한 반응을 정리했다면, 여기서는 그 사실을 기준으로 long-running workflow와 read projection을 조직하는 방법으로 초점을 옮깁니다.
 
 ## Learning Objectives

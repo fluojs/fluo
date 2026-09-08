@@ -3,6 +3,12 @@
 
 # Chapter 20. Drizzle ORM
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 FluoShop에서 관계형 데이터와 SQL 중심 워크로드를 다루기 위한 Drizzle 통합 방식을 설명합니다. Chapter 19에서 문서 모델 기반 영속성을 다뤘다면, 여기서는 타입 안전한 SQL 계층과 트랜잭션 경계를 fluo 패턴에 맞춰 정리합니다.
 
 ## Learning Objectives

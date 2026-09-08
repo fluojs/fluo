@@ -3,6 +3,12 @@
 
 # Chapter 14. Portability Testing and Conformance — 이식성 테스트와 적합성 검증
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 fluo가 여러 런타임에서 같은 동작을 유지하도록 검증하는 이식성 테스트와 적합성 테스트의 역할을 설명합니다. Chapter 13에서 어댑터를 구현했다면, 이제 그 어댑터가 계약을 실제로 지키는지 자동화로 증명해야 합니다.
 
 ## Learning Objectives

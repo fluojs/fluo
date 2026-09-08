@@ -1,0 +1,266 @@
+---
+title: Validation and errors
+description: Create posts through a bound and validated DTO, then observe 201, 400, and 404 responses.
+---
+
+## Goal and prior checkpoint
+
+Start after [Dependency injection](/en/docs/tutorial/dependency-injection). Checkpoint 02 lists posts, looks them up by ID, and returns a resource error for an unknown ID.
+
+Now work in `examples/fluo-blog/00-start`. Add `src/create-post.dto.ts`; replace `src/posts.controller.ts` and `src/posts.service.ts`. Keep `src/post.ts`, `src/post-params.dto.ts`, `src/posts.module.ts`, `src/app.ts`, and `src/main.ts` from checkpoint 02. The complete root registration is repeated below so the new route is not left disconnected.
+
+Your observable goal is: valid JSON creates post `2` with `201`; an invalid title returns `400` without creating anything; `/posts/999` still returns `404`.
+
+## 1. Define and bind the input
+
+The example already declares `@fluojs/validation` as a workspace dependency. The root install from [Create the app](/en/docs/tutorial/create-app) supplies it; do not add an invented registry version.
+
+{/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/src/create-post.dto.ts */}
+```ts title="00-start/src/create-post.dto.ts"
+import { FromBody } from '@fluojs/http';
+import { IsDefined, IsString, MaxLength, MinLength } from '@fluojs/validation';
+
+export class CreatePostDto {
+  @FromBody()
+  @IsDefined()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(120)
+  title = '';
+
+  @FromBody()
+  @IsDefined()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  content = '';
+}
+```
+
+The decorators have different jobs:
+
+| Decorator | Purpose |
+| --- | --- |
+| `@FromBody()` | Binds the JSON field with the same name. |
+| `@IsDefined()` | Rejects `null` and `undefined`; ordinary string/length validators do not make a field required on their own. |
+| `@IsString()` | Rejects values of another type; numbers are not silently converted. |
+| `@MinLength(...)` / `@MaxLength(...)` | Constrain the string's length: title 3–120, content 1–5000. |
+
+Initialize decorated fields as shown. Do not replace them with `title!: string`: the shipped standard-decorator transform does not support that decorated definite-assignment form.
+
+These rules do not trim whitespace or sanitize HTML. The API stores the accepted strings as supplied.
+
+## 2. Add creation to the existing service
+
+Replace the whole service, retaining its list and lookup methods:
+
+{/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/src/posts.service.ts */}
+```ts title="00-start/src/posts.service.ts"
+import { NotFoundException } from '@fluojs/http';
+
+import type { Post } from './post';
+
+export class PostsService {
+  // This mutable collection belongs to one application instance, not a database.
+  private readonly posts: Post[] = [
+    { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+  ];
+
+  list(): readonly Post[] {
+    return [...this.posts];
+  }
+
+  get(id: string): Post {
+    const post = this.posts.find((candidate) => candidate.id === id);
+    if (!post) {
+      throw new NotFoundException(`Post ${id} was not found.`);
+    }
+    return post;
+  }
+
+  create(title: string, content: string): Post {
+    const post: Post = { id: String(this.posts.length + 1), title, content };
+    this.posts.push(post);
+    return post;
+  }
+}
+```
+
+The service assigns the ID, then retains the post for subsequent requests in this application instance. This simple sequence is suitable for the exercise, not a durable or distributed ID strategy.
+
+## 3. Connect the DTO to the POST route
+
+{/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/src/posts.controller.ts */}
+```ts title="00-start/src/posts.controller.ts"
+import { Inject } from '@fluojs/core';
+import { Controller, Get, HttpCode, Post as PostRoute, RequestDto } from '@fluojs/http';
+
+import { CreatePostDto } from './create-post.dto';
+import type { Post } from './post';
+import { PostParamsDto } from './post-params.dto';
+import { PostsService } from './posts.service';
+
+@Inject(PostsService)
+@Controller('/posts')
+export class PostsController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Get()
+  list(): readonly Post[] {
+    return this.posts.list();
+  }
+
+  @Get('/:id')
+  @RequestDto(PostParamsDto)
+  get(input: PostParamsDto): Post {
+    return this.posts.get(input.id);
+  }
+
+  @PostRoute()
+  @HttpCode(201)
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto): Post {
+    return this.posts.create(input.title, input.content);
+  }
+}
+```
+
+`Post as PostRoute` avoids confusing the route decorator with the `Post` response interface. `@HttpCode(201)` makes the successful creation status explicit.
+
+**This is where validation is wired:** `@RequestDto(CreatePostDto)` selects the runtime DTO, `@FromBody()` binds its fields, and the default HTTP pipeline runs its validation rules before invoking `create`. The Fastify bootstrap used by this example already uses that pipeline. You do not need to install a NestJS-style global validation pipe or manually call `DefaultValidator` in the controller.
+
+Keep the feature's controller and provider registration:
+
+{/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/src/posts.module.ts */}
+```ts title="00-start/src/posts.module.ts"
+import { Module } from '@fluojs/core';
+
+import { PostsController } from './posts.controller';
+import { PostsService } from './posts.service';
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService],
+})
+export class PostsModule {}
+```
+
+The root application still imports that feature:
+
+{/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/src/app.ts */}
+```ts title="00-start/src/app.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsModule } from './posts.module';
+
+@Module({
+  imports: [HealthModule.forRoot(), PostsModule],
+})
+export class AppModule {}
+```
+
+## 4. Reject an invalid request first
+
+Stop the previous server, then run from the repository root:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+In the second terminal, send a title that is too short:
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/posts \
+  -H 'content-type: application/json' \
+  --data '{"title":"ab","content":"Valid content"}'
+```
+
+Expected status: `400`. The error body is:
+
+```json
+{
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Validation failed.",
+    "status": 400,
+    "details": [
+      {
+        "code": "MIN_LENGTH",
+        "field": "title",
+        "message": "title must have length at least 3.",
+        "source": "body"
+      }
+    ]
+  }
+}
+```
+
+An `error.requestId` may also be present. `source`, `field`, and `code` identify the failing input; clients should not parse the human-readable message.
+
+Confirm that the rejected request did not mutate the list:
+
+```bash
+curl -i http://127.0.0.1:3000/posts
+```
+
+Expected: `200` with only the original post:
+
+```json
+[{"id":"1","title":"Hello, Fluo!","content":"My first post."}]
+```
+
+## 5. Create, then read the same post
+
+Without restarting the server:
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/posts \
+  -H 'content-type: application/json' \
+  --data '{"title":"Learning Fluo","content":"Explicit modules and DI."}'
+curl -i http://127.0.0.1:3000/posts/2
+curl -i http://127.0.0.1:3000/posts
+```
+
+The POST returns `201`; `/posts/2` returns `200`. Both have this body:
+
+```json
+{"id":"2","title":"Learning Fluo","content":"Explicit modules and DI."}
+```
+
+The list returns `200` with both posts:
+
+```json
+[
+  {"id":"1","title":"Hello, Fluo!","content":"My first post."},
+  {"id":"2","title":"Learning Fluo","content":"Explicit modules and DI."}
+]
+```
+
+These IDs assume a fresh server and exactly one successful POST. Repeating the POST creates another record with the next ID.
+
+## 6. Distinguish bad input from a missing resource
+
+```bash
+curl -i http://127.0.0.1:3000/posts/999
+curl -i http://127.0.0.1:3000/health
+```
+
+The first request returns `404` with `{"error":{"code":"NOT_FOUND","message":"Post 999 was not found.","status":404}}`, optionally including `error.requestId`. The second remains `200` with `{"status":"ok"}`.
+
+`400` means the request did not meet the input contract. `404` here means the requested post does not exist. Do not turn both into a successful response containing an error string.
+
+Run your existing regression tests now. The next lesson replaces the same request test file with coverage for creation and validation:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+```
+
+Expected: your earlier health, list, lookup, and missing-resource tests still pass. The curl checks above exercise the new input boundary now; the next lesson makes those checks repeatable in the request suite.
+
+## Recovery
+
+Use the [complete validation checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/03-validation-errors). If short titles are accepted, compare the DTO imports and `@RequestDto(CreatePostDto)` registration, then rebuild the server. If `/posts/2` disappears after restarting, that is the documented in-memory behavior: restart restores only post `1`.
+
+Previous: [Dependency injection](/en/docs/tutorial/dependency-injection). Next: [Testing the whole feature](/en/docs/tutorial/testing).

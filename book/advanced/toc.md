@@ -1,5 +1,20 @@
 # Table of Contents
 
+**Start the current learning path with the [product and pattern three-volume series](../README.md).** The contents below preserve previous-edition references and stable links. Use the new volume contents for the current sequence and chapter numbers.
+
+[Volume introduction](./ch00-introduction.md) · [Book hub](../README.md)
+
+**Choose a topic**
+
+- [Decorators and Metadata](ch01-decorator-history.md) — Select the chapter you need in this group below.
+- [Inside the DI Container](ch04-provider-resolution.md) — Select the chapter you need in this group below.
+- [Inside Runtime Bootstrap](ch08-module-graph.md) — Select the chapter you need in this group below.
+- [Dissecting the HTTP Pipeline](ch11-request-pipeline.md) — Select the chapter you need in this group below.
+- [Testing and Diagnostics](ch14-portability-testing.md) — Select the chapter you need in this group below.
+- [Extending the Ecosystem](ch16-custom-package.md) — Select the chapter you need in this group below.
+
+**Browse existing chapters and sections**
+
 - [Introduction: Looking Inside the Engine Room](ch00-introduction.md)
   - [Source Analysis Posture](ch00-introduction.md#the-source-analysis-posture)
   - [What This Volume Covers](ch00-introduction.md#what-this-volume-covers)
@@ -29,6 +44,8 @@
   - [Summary of Expectations](ch00-introduction.md#summary-of-expectations)
 
 ## Part 1. Decorators and Metadata
+
+Language and metadata internals: trace decorator behavior, metadata ownership, and custom decorator boundaries.
 
 - [1. Legacy and Standard Decorators, History and Fluo's Choice](ch01-decorator-history.md)
   - [1.1 The Decade of Experimental Decorators](ch01-decorator-history.md#11-the-decade-of-experimental-decorators)
@@ -76,6 +93,8 @@
 
 ## Part 2. Inside the DI Container
 
+DI internals: choose provider resolution, scopes, circular dependencies, or dynamic module composition.
+
 - [4. Provider Normalization and Resolution Algorithms](ch04-provider-resolution.md)
   - [4.1 From Public Provider Syntax to Normalized Records](ch04-provider-resolution.md#41-from-public-provider-syntax-to-normalized-records)
   - [4.2 Registration Semantics, Duplicate Checks, and Scope Guardrails](ch04-provider-resolution.md#42-registration-semantics-duplicate-checks-and-scope-guardrails)
@@ -104,6 +123,8 @@
 
 ## Part 3. Inside Runtime Bootstrap
 
+Runtime internals: trace module graph compilation, application context, and runtime boundaries.
+
 - [8. Module Graph Compilation and Initialization Order](ch08-module-graph.md)
   - [8.1 The Bootstrap Pipeline Starts by Freezing Module Topology Before Constructing Anything](ch08-module-graph.md#81-the-bootstrap-pipeline-starts-by-freezing-module-topology-before-constructing-anything)
   - [8.2 Graph Compilation Is a Depth-First Walk with Explicit Cycle Rejection](ch08-module-graph.md#82-graph-compilation-is-a-depth-first-walk-with-explicit-cycle-rejection)
@@ -124,6 +145,8 @@
   - [10.5 Shared Request/Response Factories Are the Narrow Bridge That Keeps Higher Runtime Behavior Identical Across Hosts](ch10-runtime-branching.md#105-shared-requestresponse-factories-are-the-narrow-bridge-that-keeps-higher-runtime-behavior-identical-across-hosts)
 
 ## Part 4. Dissecting the HTTP Pipeline
+
+HTTP and adapter internals: trace request execution or study the contract needed to author an adapter.
 
 - [Chapter 11. Request Pipeline Anatomy: The Life of an HTTP Request](ch11-request-pipeline.md)
   - [What You Will Learn in This Chapter](ch11-request-pipeline.md#what-you-will-learn-in-this-chapter)
@@ -176,6 +199,8 @@
 
 ## Part 5. Testing and Diagnostics
 
+Contributor verification and diagnostics: use portability testing and Studio to investigate framework behavior.
+
 - [Chapter 14. Portability Testing and Conformance Verification](ch14-portability-testing.md)
   - [What You Will Learn in This Chapter](ch14-portability-testing.md#learning-objectives)
   - [Prerequisites](ch14-portability-testing.md#prerequisites)
@@ -204,6 +229,8 @@
   - [Summary](ch15-studio.md#summary)
 
 ## Part 6. Extending the Ecosystem
+
+Extension and contribution reference: review package boundaries and the contribution process for your change.
 
 - [Chapter 16. Building Custom Packages](ch16-custom-package.md)
   - [Monorepo Package Structure](ch16-custom-package.md#monorepo-package-structure)

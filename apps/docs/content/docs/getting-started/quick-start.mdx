@@ -5,6 +5,8 @@ description: Create, run, inspect, and verify your first fluo application.
 
 This guide takes you from an empty terminal to a running fluo app with a health endpoint. It is intentionally short, but every step has a visible success signal.
 
+Want to learn while building a feature? Start the [FluoBlog tutorial](/en/docs/tutorial) instead. This page is only the installation and runtime smoke check.
+
 ## Before you start
 
 You need:
@@ -29,7 +31,7 @@ Expected result: the second command prints a fluo CLI version instead of `comman
 ## 2. Create an application
 
 ```bash
-fluo new my-backend
+fluo new my-backend --shape application --transport http --runtime node --platform fastify --package-manager pnpm
 cd my-backend
 pnpm install
 ```
@@ -59,6 +61,8 @@ If your generated starter uses a different port, use the port printed by `pnpm d
 
 ## 4. Build before you trust it
 
+Stop `pnpm dev` with Ctrl+C before starting the built app, so both processes do not try to use the same port.
+
 ```bash
 pnpm build
 pnpm start
@@ -72,7 +76,7 @@ Start with these files in the generated app:
 
 | File or directory | Why it matters |
 | --- | --- |
-| `src/app.module.ts` | The root module boundary. |
+| `src/app.ts` | The root `AppModule` and application assembly. |
 | `src/**/*.controller.ts` | HTTP entrypoints. |
 | `src/**/*.service.ts` | Business logic providers. |
 | `package.json` | Runtime lifecycle scripts. |
@@ -88,6 +92,6 @@ Start with these files in the generated app:
 
 ## Next steps
 
-- Build a real route with [First Feature](../guides/first-feature).
-- Learn the route layer in [HTTP API](../guides/http-api).
-- Choose packages with [Package Selection](../guides/package-selection).
+- Build and test a posts API with the [FluoBlog tutorial](/en/docs/tutorial).
+- Learn the route layer in [HTTP API](/en/docs/guides/http-api).
+- Choose packages with [Package Selection](/en/docs/guides/package-selection).

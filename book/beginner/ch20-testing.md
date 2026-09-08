@@ -3,6 +3,12 @@
 
 # Chapter 20. Testing
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains how to verify FluoBlog's services and HTTP flow with automated tests. Chapter 19 covered how to observe runtime state in production. This chapter builds a safety net that verifies behavior repeatably before deployment.
 
 ## Learning Objectives

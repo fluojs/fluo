@@ -1,0 +1,166 @@
+---
+title: Your first route
+description: Register a posts controller in AppModule and verify its first HTTP response.
+---
+
+## Goal and starting point
+
+Start after [Create the app](/en/docs/tutorial/create-app), with dependencies installed and your terminal at the Fluo repository root. Work in `examples/fluo-blog/00-start`. This is the first completed feature checkpoint: `GET /posts` must return `200` and an array containing post `1`.
+
+Extend the same learning app you started in the previous lesson. Leave the completed `01-first-route` snapshot unchanged for comparison. Write every file below into `00-start`.
+
+## 1. Define the outcome in a test first
+
+Replace `00-start/test/app.e2e.test.ts` with this complete file. It preserves the existing health/readiness checks and adds the contract for the not-yet-created `/posts` route.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/test/app.e2e.test.ts */}
+```ts title="00-start/test/app.e2e.test.ts"
+import { createTestApp } from '@fluojs/testing';
+import { expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+it.each([
+  ['/health', 'ok'],
+  ['/ready', 'ready'],
+])('preserves the starter endpoint when %s is requested', async (path, status) => {
+  // Given
+  const app = await createTestApp({ rootModule: AppModule });
+  try {
+    // When
+    const response = await app.request('GET', path).send();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status });
+  } finally {
+    await app.close();
+  }
+});
+
+it('lists the initial post when the first route is requested', async () => {
+  // Given
+  const app = await createTestApp({ rootModule: AppModule });
+  try {
+    // When
+    const response = await app.request('GET', '/posts').send();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+    ]);
+  } finally {
+    await app.close();
+  }
+});
+```
+
+Run it from the repository root before adding the feature source.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+```
+
+The health checks pass, but the new posts assertion must fail because it receives `404` instead of `200`. After the implementation below, run the same command and require it to pass.
+
+## 2. Define the response shape
+
+Add or replace `00-start/src/post.ts` relative to `examples/fluo-blog/`:
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/post.ts */}
+```ts title="00-start/src/post.ts"
+export interface Post {
+  readonly id: string;
+  readonly title: string;
+  readonly content: string;
+}
+```
+
+`Post` describes the value returned to clients. An interface helps TypeScript check your code; it is not runtime input validation. We will add that boundary when requests start creating posts.
+
+## 3. Write the controller
+
+Add or replace `00-start/src/posts.controller.ts`:
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/posts.controller.ts */}
+```ts title="00-start/src/posts.controller.ts"
+import { Controller, Get } from '@fluojs/http';
+
+import type { Post } from './post';
+
+@Controller('/posts')
+export class PostsController {
+  @Get()
+  list(): readonly Post[] {
+    return [{ id: '1', title: 'Hello, Fluo!', content: 'My first post.' }];
+  }
+}
+```
+
+`@Controller('/posts')` sets the controller's path prefix. `@Get()` adds a GET handler at that prefix, so the route is `/posts`. Returning an array lets the HTTP pipeline write a JSON response. There is no need to create a Fastify route separately.
+
+## 4. Register the controller in the root module
+
+Replace `00-start/src/app.ts`. A class existing on disk does not make it part of the application: the module must register it.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/app.ts */}
+```ts title="00-start/src/app.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsController } from './posts.controller';
+
+@Module({
+  imports: [HealthModule.forRoot()],
+  controllers: [PostsController],
+})
+export class AppModule {}
+```
+
+## 5. Keep bootstrap separate
+
+The complete entrypoint is `00-start/src/main.ts`:
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/main.ts */}
+```ts title="00-start/src/main.ts"
+import { runFastifyApplication } from '@fluojs/platform-fastify';
+
+import { AppModule } from './app';
+
+await runFastifyApplication(AppModule, {
+  host: '127.0.0.1',
+  port: Number(process.env.PORT ?? '3000'),
+});
+```
+
+`AppModule` describes the application. `main.ts` starts its Fastify listener. This separation lets request tests import the module without opening a listening socket.
+
+## 6. Build and make the request
+
+Stop any earlier server with Ctrl+C. From the repository root:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+Keep the server running. In a second terminal:
+
+```bash
+curl -i http://127.0.0.1:3000/posts
+```
+
+Expected status: `200`. Expected JSON body:
+
+```json
+[{"id":"1","title":"Hello, Fluo!","content":"My first post."}]
+```
+
+This response is your first feature contract. A later service refactor must keep it intact, so rerun the request-test command from step 1 and require all cases to pass.
+
+## Recovery
+
+Compare your files with the [complete first-route checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/01-first-route). A `404` at `/posts` usually means the wrong checkpoint is running or `PostsController` is missing from `AppModule.controllers`. Rebuild after changing source; `start:00` runs the built file, not a development watcher.
+
+Previous: [Create the app](/en/docs/tutorial/create-app). Next: [Dependency injection](/en/docs/tutorial/dependency-injection).

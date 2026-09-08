@@ -21,6 +21,12 @@
 
 # Chapter 12. Scheduling and Distributed Locks
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains how to introduce time-based work into FluoShop and how to design a scheduling boundary that stays distinct from queues. In Chapter 11, work that had already happened was handed off to background jobs. Now FluoShop runs work at fixed times and intervals, including distributed locks, in a way that is safe to operate.
 
 ## Learning Objectives

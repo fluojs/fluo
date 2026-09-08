@@ -1,131 +1,23 @@
 ---
 title: 첫 기능 만들기
-description: module, service, controller, DTO, test 경로로 작은 feature slice를 만듭니다.
+description: 첫 기능의 연속 실습 또는 기존 앱을 위한 구조 레퍼런스를 찾습니다.
 ---
 
-Feature slice는 fluo 애플리케이션의 가장 작은 유용한 단위입니다. 하나의 domain concept에 module boundary, business logic provider, HTTP controller, public contract DTO, 동작을 증명하는 test를 제공합니다.
+첫 기능 실습은 이제 [FluoBlog 튜토리얼](/ko/docs/tutorial)에서 진행합니다. 모듈 등록, 검증, 테스트를 독자가 채우도록 남기지 않고, 완전한 실행 코드가 있는 단계들을 따라 하나의 게시글 API를 만듭니다.
 
-이 walkthrough는 `users` 기능을 사용합니다. 코드는 생성된 앱에 복사할 수 있는 shape로 보고, domain에 맞게 이름을 바꾸세요.
+## 첫 기능 만들기
 
-## 1. Module boundary 만들기
+[애플리케이션 생성](/ko/docs/tutorial/create-app)에서 시작해 다음 순서로 진행하세요.
 
-```ts
-import { Module } from '@fluojs/core';
+1. [첫 게시글 응답 반환하기](/ko/docs/tutorial/first-route).
+2. [명시적 DI로 모듈과 서비스 연결하기](/ko/docs/tutorial/dependency-injection).
+3. [입력 검증과 오류 처리하기](/ko/docs/tutorial/validation-errors).
+4. [테스트로 요청 동작 확인하기](/ko/docs/tutorial/testing).
 
-import { UsersController } from './users.controller';
-import { UsersService } from './users.service';
+전체 과정에서 같은 FluoBlog 프로젝트를 사용합니다. 각 장은 필요한 출발 상태, 정확한 파일 변경, 기대 응답, 복구할 수 있는 완성 코드를 제시합니다.
 
-@Module({
-  controllers: [UsersController],
-  providers: [UsersService],
-})
-export class UsersModule {}
-```
+## 기존 애플리케이션에 기능 추가하기
 
-Module은 review boundary입니다. 어떤 controller와 provider가 함께 속하는지 보여줍니다.
+이미 실행 중인 앱이 있다면 [기능 구조 레퍼런스](https://github.com/fluojs/fluo/blob/main/docs/getting-started/first-feature-path.ko.md)에서 모듈 등록과 파일별 책임을 확인하세요. 추가할 기능에 따라 [HTTP API](/ko/docs/guides/http-api), [검증과 직렬화](/ko/docs/guides/validation-serialization), [테스트](/ko/docs/guides/testing)를 참고하세요.
 
-## 2. Provider 추가
-
-```ts
-export interface UserSummary {
-  id: string;
-  name: string;
-}
-
-export class UsersService {
-  private readonly users = new Map<string, UserSummary>();
-
-  create(name: string): UserSummary {
-    const user = { id: crypto.randomUUID(), name };
-    this.users.set(user.id, user);
-    return user;
-  }
-
-  findById(id: string): UserSummary | undefined {
-    return this.users.get(id);
-  }
-}
-```
-
-Provider는 business behavior를 소유해야 합니다. Controller는 transport input을 provider call로 바꾸는 역할만 해야 합니다.
-
-## 3. HTTP boundary 정의
-
-```ts
-import { Inject } from '@fluojs/core';
-import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
-
-import { UsersService } from './users.service';
-
-class CreateUserDto {
-  @FromBody()
-  name!: string;
-}
-
-class FindUserParamsDto {
-  @FromPath('id')
-  id!: string;
-}
-
-@Controller('/users')
-@Inject(UsersService)
-export class UsersController {
-  constructor(private readonly users: UsersService) {}
-
-  @Post('/')
-  @RequestDto(CreateUserDto)
-  create(input: CreateUserDto) {
-    return this.users.create(input.name);
-  }
-
-  @Get('/:id')
-  @RequestDto(FindUserParamsDto)
-  findOne(input: FindUserParamsDto) {
-    return this.users.findById(input.id);
-  }
-}
-```
-
-Controller는 route shape와 request binding을 소유합니다. Package나 persistence 결정을 숨기면 안 됩니다.
-
-## 4. 입력이 외부에서 오면 validation 추가
-
-Route가 실제 외부 입력을 받기 시작하면 `@fluojs/validation`을 사용하세요. DTO validation은 edge에 두고, 검증된 값을 내부로 전달합니다.
-
-```ts
-import { FromBody } from '@fluojs/http';
-
-export class CreateUserDto {
-  @FromBody()
-  name!: string;
-}
-```
-
-그다음 앱에서 사용하는 validation pattern에 따라 DTO를 연결합니다. `@fluojs/validation` package reference는 `validate()`와 `materialize()`의 tradeoff를 설명합니다.
-
-## 5. 기능 검증
-
-생성된 앱을 실행하고 route를 호출합니다.
-
-```bash
-pnpm dev
-curl -X POST http://localhost:3000/users \
-  -H 'content-type: application/json' \
-  -d '{"name":"Ada"}'
-```
-
-그다음 `@fluojs/testing`으로 test를 추가해 동작이 prose에만 남지 않게 합니다.
-
-## 리뷰 체크리스트
-
-- Module이 feature boundary를 보여주나요?
-- Provider가 logic을 소유하고 controller는 얇게 유지되나요?
-- Controller가 transport behavior만 노출하나요?
-- 신뢰할 수 없는 입력이 business logic 전에 검증되나요?
-- Route를 증명하는 request-level 또는 app-level test가 있나요?
-
-## 다음 문서
-
-- 더 깊은 routing과 platform adapter는 [HTTP API](./http-api).
-- DTO input/output contract는 [검증과 직렬화](./validation-serialization).
-- App test ladder는 [테스트](./testing).
+[RealWorld API 예제](/ko/docs/examples/realworld-api)는 별도 참고 애플리케이션이며 튜토리얼 프로젝트의 다음 상태가 아닙니다.

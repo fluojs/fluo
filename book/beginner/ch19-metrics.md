@@ -3,6 +3,12 @@
 
 # Chapter 19. Metrics and Monitoring
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains the metrics collection and monitoring flow for observing FluoBlog's runtime state with numbers. If Chapter 18 checked whether the service is alive, this chapter extends that work into a way to continuously read performance and traffic changes.
 
 ## Learning Objectives
