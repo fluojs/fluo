@@ -123,9 +123,19 @@ For GET-only Fluo routes, explicitly select
 to support Next auto-HEAD and direct HEAD without an application wrapper.
 The [shared HTTP matching contract](./architecture/http-runtime.md#opt-in-head-route-selection)
 keeps HEAD visible and never retries a handler-produced 404.
+Opted-in HEAD cancels active response streams, then awaits the dispatch lifecycle,
+iterator cleanup, and request-scope disposal. Stream sources must cooperate with
+cancellation and settle their iterator `return()`.
 Evidence lives in `packages/http/src/head-routing.test.ts`,
 `packages/platform-nextjs/src/head-routing.test.ts`, and the packaged
 `packages/platform-nextjs/e2e/next.test.mjs`.
+
+The opt-in compiler scope and SSR module path preservation contract belongs to
+the [Next package README](../packages/platform-nextjs/README.md#decorator-compiler-wiring).
+`withFluoNextBackend` options `include`/`exclude` and `preserveModulePaths`
+do not change existing defaults. Execution evidence is linked from the
+[helper regressions](../packages/platform-nextjs/src/next-config.test.ts) and
+[real Next fixture](../packages/platform-nextjs/e2e/README.md).
 
 ## Lifecycle & Multi-Provider Ordering
 

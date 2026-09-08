@@ -35,6 +35,9 @@ async function json(file) {
 }
 
 async function installed(name, source = packageRoot) {
+  if (['next', 'react', 'react-dom'].includes(name) && process.env.FLUO_E2E_NEXT_ROOT) {
+    return realpath(path.join(process.env.FLUO_E2E_NEXT_ROOT, 'node_modules', name));
+  }
   for (const base of [source, worktree]) {
     try {
       return await realpath(path.join(base, 'node_modules', name));
@@ -106,7 +109,7 @@ async function prepare(app) {
       jsx: 'react-jsx',
       plugins: [{ name: 'next' }],
     },
-    include: ['next-env.d.ts', '**/*.ts', '.next/types/**/*.ts'],
+    include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
     exclude: ['node_modules'],
   }, null, 2));
   return versions;
@@ -274,7 +277,13 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
   const sentinel = path.join(evidence, 'bootstrap.jsonl');
   await writeFile(sentinel, '');
   const children = [];
-  const report = { node: process.version, commands: [], http: [], evidence };
+  const report = {
+    node: process.version,
+    compiler: process.env.FLUO_E2E_COMPILER ?? 'scoped',
+    commands: [],
+    http: [],
+    evidence,
+  };
   t.diagnostic(`Evidence: ${evidence}`);
   try {
     report.versions = await prepare(app);
@@ -289,6 +298,34 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
     delete env.FORCE_COLOR;
     delete env.NODE_OPTIONS;
     const nextCli = createRequire(path.join(app, 'package.json')).resolve('next/dist/bin/next');
+
+    await t.test('dev serves client store SSR alongside decorated server DTOs', async () => {
+      const dev = run(process.execPath,
+        [nextCli, 'dev', '--turbopack', '--hostname', '127.0.0.1', '--port', '0'],
+        app, { ...env, NODE_ENV: 'development', FLUO_E2E_PHASE: 'dev' },
+        path.join(evidence, 'dev.log'), children, true);
+      try {
+        const base = await dev.ready();
+        for (const [route, options, status, expected] of [
+          ['/', {}, 200, /<output id="store">FLUO_SSR_STORE_OK<\/output>/],
+          ['/api/app/health', {}, 200, /"status":"ok"/],
+          ['/api/app/binding?count=42', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie: 'session=hello' },
+            body: '{"message":"dev DTO"}',
+          }, 201, /"message":"dev DTO"/],
+        ]) {
+          const response = await request(base, route, options);
+          report.http.push({ ...response, phase: 'dev' });
+          assert.equal(response.status, status, response.body);
+          assert.match(response.body, expected);
+        }
+      } finally {
+        await stop(dev);
+        report.commands.push({ command: dev.command, ...await dev.exit, phase: 'dev' });
+        await writeFile(sentinel, '');
+      }
+    });
 
     await t.test('resolves only published package exports before building', async () => {
       const preflight = run(process.execPath, ['--input-type=module', '-e', `
@@ -353,6 +390,11 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
       return response;
     };
     const jsonHeaders = { 'content-type': 'application/json' };
+    await t.test('production renders the client store through its original import', async () => {
+      const response = await capture('/');
+      assert.equal(response.status, 200);
+      assert.match(response.body, /<output id="store">FLUO_SSR_STORE_OK<\/output>/);
+    });
     await t.test('App Router keeps Next.js host method restrictions', async () => {
       const response = await capture('/api/app/health', { method: 'QUERY' });
       assert.equal(response.status, 400);

@@ -25,10 +25,25 @@ Next는 파일 하나를 발견하고 Fluo는 그 파일 뒤에서 자신의 rou
 ```typescript
 import { withFluoNextBackend } from '@fluojs/platform-nextjs/next-config';
 
-export default withFluoNextBackend({});
+export default withFluoNextBackend({}, {
+  include: 'src/**',
+  exclude: 'src/client/**',
+  preserveModulePaths: true,
+});
 ```
 
 helper는 서버 애플리케이션의 `*.ts` 파일에 packaged Turbopack decorator loader를 추가한다. browser와 dependency 파일은 대상에서 제외한다. 같은 TC39 `2023-11` 변환 recipe를 사용하지만 Vite plugin을 Next에 꽂는 방식은 아니다. 별도의 Babel loader를 임의로 추가하거나 legacy decorator 플래그를 켜지 않는다. 기존 `*.ts` rule이 있으면 rule 구성을 보존하면서 Fluo rule을 추가하므로 설정 객체를 직접 파괴하지도 않는다.
+
+이 장에서는 backend 선언을 `src/`에 두고 client store는 `src/client/`로 분리한다.
+`include`와 `exclude`는 Turbopack root 기준 path glob이며 `RegExp`도 받을 수 있다.
+아래의 `src/app.ts`와 `src/posts/`에 있는 decorated 선언은 모두 포함해야 한다.
+Client component의 SSR 처리는 browser 조건만으로 제외되지 않는다. 주석이나 import의
+`@`도 기존 content 조건에 일치할 수 있으므로 명시적인 경계가 필요하다.
+`preserveModulePaths: true`는 Babel 결과의 경로를 `.js`로 바꾸지 않는다.
+Next 16.3.4에서 재현한 `store.ts.js` SSR import 실패는
+[실제 fixture](../../packages/platform-nextjs/e2e/README.ko.md)로 비교할 수 있다.
+두 번째 인자를 생략하면 기존의 넓은 선택 범위와 `.js` 출력 규칙을 유지하며,
+이 opt-in은 webpack이나 `.tsx` decorator 지원을 추가하지 않는다.
 
 decorated class는 `.ts`에 둔다. 화면용 JSX 파일인 `.tsx`를 변환해 줄 것이라고 기대하면 빌드 경계가 달라진다. 다음 예제에서 React 페이지를 `createElement()`로 작성하는 것은 바로 이 제약을 명시적으로 지키기 위해서다. 실제 화면 컴포넌트는 decorator가 없는 별도 `.tsx`로 옮기고 `.ts` router에서 호출해도 된다.
 

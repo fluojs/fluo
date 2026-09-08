@@ -123,9 +123,19 @@ GET-only Fluo route에서 application wrapper 없이 Next auto-HEAD와 직접 HE
 명시적으로 선택합니다.
 [공통 HTTP 매칭 계약](./architecture/http-runtime.ko.md#opt-in-head-route-selection)은
 HEAD method를 유지하며 handler가 반환한 404를 재시도하지 않습니다.
+Opt-in HEAD는 활성 response stream을 취소한 뒤 dispatch lifecycle, iterator cleanup,
+request-scope disposal을 기다립니다. Stream source는 cancellation에 협력하고
+iterator `return()`을 완료해야 합니다.
 검증 근거는 `packages/http/src/head-routing.test.ts`,
 `packages/platform-nextjs/src/head-routing.test.ts`, packaged
 `packages/platform-nextjs/e2e/next.test.mjs`에 있습니다.
+
+Compiler scope와 SSR module path 보존의 opt-in 계약은
+[Next package README](../packages/platform-nextjs/README.ko.md#decorator-compiler-연결)가
+소유합니다. `withFluoNextBackend`의 `include`/`exclude`와
+`preserveModulePaths`는 기존 기본 동작을 바꾸지 않습니다. 실행 근거는
+[helper 회귀](../packages/platform-nextjs/src/next-config.test.ts)와
+[실제 Next fixture](../packages/platform-nextjs/e2e/README.ko.md)에서 확인하세요.
 
 ## 라이프사이클 및 multi-provider 순서
 
