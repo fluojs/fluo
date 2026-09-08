@@ -169,6 +169,57 @@ Runtime bootstrap accepts the `conditionalRequest` option from `@fluojs/http`. I
 
 Pass `createAccessLogObserver(...)` through the bootstrap `observers` option to route portable request lifecycle records to application-owned structured logging. The observer preserves the dispatcher lifecycle for native adapters by selecting the complete fallback path; see the [`@fluojs/http` Access logging contract](../http/README.md#access-logging) for trusted client identity and header allowlist requirements.
 
+
+### HTTP binder composition
+
+**Scope and inputs:** `BootstrapApplicationOptions` and `CreateApplicationOptions`
+accept `binder?: (defaultBinder: Binder) => Binder`. Import bootstrap APIs from
+`@fluojs/runtime` and the `Binder` contract and `StandardSchemaBinder` from
+`@fluojs/http`. Omission preserves the existing default HTTP binding pipeline.
+`CreateApplicationContextOptions` excludes `binder`: pure DI contexts do not
+create an HTTP dispatcher.
+
+The synchronous factory runs once per HTTP application bootstrap, when runtime
+assembles the dispatcher, not once per request. It receives the default binder
+already configured with global `converters`. Delegate ordinary DTOs to that
+binder rather than constructing an unrelated default and losing those settings.
+The returned binder is reused by the application's dispatcher.
+
+This bootstrap fragment assumes an existing `AppModule` with registered
+controllers; see the [complete schema route example](../http/README.md#standard-schema-output-binding).
+
+```typescript
+import { StandardSchemaBinder } from '@fluojs/http';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.js';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+`bootstrapApplication({ rootModule: AppModule, ...options })` accepts the same
+factory. Existing `converters` can be supplied alongside `binder`; they continue
+to run through the fallback for ordinary DTOs. Schema tokens instead use their
+schema's conversion/default rules. Do not pass a binder instance or an async
+factory where this callback is expected.
+
+**Failures and ownership:** a result without a callable `bind` method rejects
+bootstrap with `TypeError`; factory exceptions propagate through existing
+bootstrap-failure cleanup. Runtime wires the binder but does not add a binder
+disposal hook. Application-owned external resources still need their normal
+lifecycle registration. The host owns shutdown and calls `app.close()`; the
+fragment above does not register process signals. This option changes neither
+native body parsing nor HEAD behavior. HTTP owns projection, validation errors,
+and request order; see its [input policy contract](../http/README.md#explicit-input-policies).
+
+**Evidence:** `src/types.ts`, `src/bootstrap.ts`, and
+`../testing/src/input-materialization.e2e.test.ts` are the option, composition,
+and application-boundary regression locations.
+
 ### Application Context (No HTTP)
 
 For background workers or scripts, use `createApplicationContext` to skip HTTP setup.

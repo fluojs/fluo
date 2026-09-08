@@ -1,6 +1,7 @@
 import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
+  Binder,
   ConditionalRequestOptions,
   ContentNegotiationOptions,
   ConverterLike,
@@ -187,6 +188,12 @@ export interface BootstrapApplicationOptions {
    */
   filters?: ExceptionFilterHandler[];
   converters?: readonly ConverterLike[];
+  /**
+   * Compose an HTTP binder once during bootstrap. The supplied default binder
+   * includes configured global converters; delegate ordinary DTOs to it.
+   * Omission preserves the existing default binding pipeline.
+   */
+  binder?: (defaultBinder: Binder) => Binder;
   interceptors?: InterceptorLike[];
   logger?: ApplicationLogger;
   middleware?: MiddlewareLike[];
@@ -207,7 +214,7 @@ export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'logger
 
 /** Options accepted by `FluoFactory.createApplicationContext(...)`. */
 export interface CreateApplicationContextOptions
-  extends Omit<BootstrapApplicationOptions, 'adapter' | 'converters' | 'filters' | 'logger' | 'middleware' | 'observers' | 'rootModule'> {
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'binder' | 'converters' | 'filters' | 'logger' | 'middleware' | 'observers' | 'rootModule'> {
 }
 
 /** Runtime transport contract used by microservice application shells. */

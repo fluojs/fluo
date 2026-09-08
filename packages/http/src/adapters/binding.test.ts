@@ -118,6 +118,26 @@ function createContext(
 }
 
 describe('DefaultBinder', () => {
+  it('honors opt-in body projection without replacing the original request body', async () => {
+    class ProjectedRequest {
+      @FromBody('post_title')
+      title = '';
+    }
+
+    // Seed the HTTP-owned DTO policy record independently of the new decorator.
+    Object.defineProperty(ProjectedRequest, Symbol.for('fluo.http.input-policy'), {
+      value: Object.freeze({ unknownFields: 'strip' }),
+    });
+    const body = Object.freeze({ post_title: 'Draft', authorId: 'client-owned' });
+    const context = createContext(createRequest({ body }));
+
+    await expect(new DefaultBinder().bind(ProjectedRequest, context)).resolves.toEqual({
+      title: 'Draft',
+    });
+    expect(context.requestContext.request.body).toBe(body);
+    expect(body.authorId).toBe('client-owned');
+  });
+
   it('binds explicit path/body fields into a DTO instance', async () => {
     class CreateUserRequest {
       @FromPath('id')

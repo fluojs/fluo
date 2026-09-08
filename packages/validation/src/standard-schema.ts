@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { CustomClassValidator } from '@fluojs/core/request-pipeline';
 
+import { DtoValidationError } from './errors.js';
 import type { ValidationIssue } from './types.js';
 
 /**
@@ -111,6 +112,40 @@ function toStandardValidationIssue(issue: StandardSchemaIssueLike): ValidationIs
     field: toFieldPath(toStandardSchemaPath(issue.path)) ?? issue.propString,
     message: issue.message,
   };
+}
+
+/**
+ * Parse unknown input and return the successful Standard Schema output.
+ *
+ * @param schema Standard Schema v1 validator, including asynchronous validators.
+ * @param value Unknown input to validate and transform.
+ * @returns The exact successful output, including schema defaults and transformations.
+ * @throws DtoValidationError When the schema returns a failure, including an empty issues array.
+ * @throws TypeError When the schema returns neither a success value nor an issues array.
+ * @remarks This opt-in materialization API does not change ValidateClass, which
+ * remains validation-only. Exceptions thrown by schema implementations propagate.
+ */
+export async function parseStandardSchema<Input, Output>(
+  schema: StandardSchemaV1Like<Input, Output>,
+  value: unknown,
+): Promise<Output> {
+  const result = await schema['~standard'].validate(value);
+  if (typeof result !== 'object' || result === null) {
+    throw new TypeError('Standard Schema returned an invalid result.');
+  }
+  if (result.issues !== undefined) {
+    if (!Array.isArray(result.issues)) {
+      throw new TypeError('Standard Schema failure must contain an issues array.');
+    }
+    throw new DtoValidationError(
+      'Standard Schema validation failed.',
+      result.issues.map((issue) => toStandardValidationIssue(issue)),
+    );
+  }
+  if (!('value' in result)) {
+    throw new TypeError('Standard Schema success must contain a value.');
+  }
+  return result.value;
 }
 
 function isStandardSchemaFailureResult(

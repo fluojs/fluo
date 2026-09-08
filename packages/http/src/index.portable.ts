@@ -25,6 +25,10 @@ export * from './context/request-context.js';
 export * from './context/sse.js';
 export * from './connection.js';
 export * from './cookie-helpers.js';
+export { InputPolicy } from './input-policy.js';
+export type { InputPolicyOptions } from './input-policy.js';
+export { createSchemaDto, StandardSchemaBinder } from './schema-binding.js';
+export type { SchemaBindingField, SchemaDtoOptions } from './schema-binding.js';
 export {
   All,
   Controller,

@@ -287,7 +287,7 @@ describe('legacy Book runtime source consumers', () => {
     const contextMarker = 'path:packages/runtime/src/bootstrap.ts:860-900';
     const listenMarker = 'path:packages/runtime/src/bootstrap.ts:741-789';
     const readyMarker = 'path:packages/runtime/src/bootstrap.ts:654-660';
-    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1548-1568';
+    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1553-1573';
     const contextGet = sourceExample(content, contextMarker);
     const applicationListen = sourceExample(content, listenMarker);
 

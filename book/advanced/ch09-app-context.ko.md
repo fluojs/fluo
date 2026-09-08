@@ -548,11 +548,11 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 이 guard를 통과한 뒤에야 `listen()`은 `await this.ready()`를 호출하고, 그 다음 `await this.adapter.listen(this.dispatcher)`를 실행합니다. 성공하면 state를 `'ready'`로 바꾸고 startup log를 남깁니다. 즉 transport adapter가 application state transition을 단독으로 소유하지 않습니다. 더 큰 runtime shell policy의 일부로 참여합니다.
 
-dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:1548-1568`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
+dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:1553-1573`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
 
 dispatcher 생성은 full application branch에만 필요한 request-facing 단계입니다. compiled module baseline에서 handler source를 만들고, HTTP pipeline 옵션을 묶은 뒤 dispatcher를 반환합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1548-1568`
+`path:packages/runtime/src/bootstrap.ts:1553-1573`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,

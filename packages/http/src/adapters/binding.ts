@@ -2,6 +2,7 @@ import { type Constructor, InvariantError, type Token } from '@fluojs/core';
 
 import { BadRequestException, type HttpExceptionDetail } from '../exceptions.js';
 import { toInputErrorDetail } from '../input-error-detail.js';
+import { getInputPolicy, type InputPolicyOptions } from '../input-policy.js';
 import type { ArgumentResolverContext, Binder, Converter, ConverterLike, ConverterTarget, FrameworkRequest } from '../types.js';
 import { getCompiledDtoBindingPlan } from './dto-binding-plan.js';
 
@@ -18,15 +19,27 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function validateBodyKeys(
+/**
+ * Validate and optionally project the body into a binding-local request view.
+ *
+ * @param request Original adapter-normalized request.
+ * @param bodyKeys Allowed body source keys, including declared aliases.
+ * @param policy Explicit DTO and route input policies.
+ * @returns The original request or a shallow binding-only view with a projected body.
+ * @throws BadRequestException For invalid bodies, dangerous keys, or rejected unknown keys.
+ * @internal
+ */
+export function prepareBindingRequest(
   request: FrameworkRequest,
   bodyKeys: ReadonlySet<string>,
-): void {
+  policy: InputPolicyOptions,
+): FrameworkRequest {
   if (request.body === undefined || request.body === null) {
-    return;
+    return request;
   }
 
-  if (!isPlainObject(request.body)) {
+  const plain = isPlainObject(request.body);
+  if (!plain && policy.nonObjects !== 'empty') {
     throw new BadRequestException('Request body must be a plain object.', {
       details: [toInputErrorDetail({ code: 'INVALID_BODY', message: 'Request body must be a plain object.', source: 'body' })],
     });
@@ -34,13 +47,13 @@ function validateBodyKeys(
 
   const details: HttpExceptionDetail[] = [];
 
-  for (const key of Object.keys(request.body)) {
+  for (const key of Object.keys(Object(request.body))) {
     if (DANGEROUS_KEYS.has(key)) {
       details.push(toInputErrorDetail({ code: 'DANGEROUS_KEY', field: key, message: `Dangerous body key ${key} is not allowed.`, source: 'body' }));
       continue;
     }
 
-    if (!bodyKeys.has(key)) {
+    if (plain && policy.unknownFields !== 'strip' && !bodyKeys.has(key)) {
       details.push(toInputErrorDetail({ code: 'UNKNOWN_FIELD', field: key, message: `Unknown body field ${key}.`, source: 'body' }));
     }
   }
@@ -50,6 +63,20 @@ function validateBodyKeys(
       details,
     });
   }
+
+  if (!plain) {
+    return { ...request, body: {} };
+  }
+  if (policy.unknownFields === 'strip') {
+    const body: Record<string, unknown> = Object.create(null);
+    for (const key of Object.keys(request.body as Record<string, unknown>)) {
+      if (bodyKeys.has(key)) {
+        body[key] = (request.body as Record<string, unknown>)[key];
+      }
+    }
+    return { ...request, body };
+  }
+  return request;
 }
 
 /**
@@ -136,12 +163,9 @@ export class DefaultBinder implements Binder {
 
   async bind(dto: Constructor, context: ArgumentResolverContext): Promise<unknown> {
     const plan = getCompiledDtoBindingPlan(dto);
-    const request = context.requestContext.request;
+    const originalRequest = context.requestContext.request;
     const value = new dto() as Record<string | symbol, unknown>;
-
-    if (request.body !== undefined && request.body !== null) {
-      validateBodyKeys(request, plan.bodyKeys);
-    }
+    const request = prepareBindingRequest(originalRequest, plan.bodyKeys, getInputPolicy(dto, context.handler));
 
     const details: HttpExceptionDetail[] = [];
 

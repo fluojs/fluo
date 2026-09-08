@@ -154,7 +154,10 @@ target이 해당 value를 독립적으로 실체화하고 검증할 수 있습�
 
 ### Standard Schema 지원
 
-Standard Schema adapter는 유효하지 않은 입력을 명시적인 issue로 보고해야 합니다. issue가 없는 검증 결과는 성공으로 처리합니다.
+`ValidateClass`에서 Standard Schema adapter는 유효하지 않은 입력을 명시적인
+issue로 보고해야 합니다. Issue가 없는 결과와 기존 `issues: []` 경우는 성공으로
+처리합니다. 이는 검증 전용 계약입니다. 성공한 transformed/defaulted output으로
+DTO나 그 field를 교체하지 않습니다.
 
 ```ts
 import { ValidateClass } from '@fluojs/validation';
@@ -169,6 +172,54 @@ class RestrictedUserDto {
 ```
 
 `ValidateClass(...)`는 custom class-level validator도 받을 수 있습니다. `Validate(...)`는 built-in decorator만으로 부족할 때 custom field-level validator를 붙이고, `ValidateIf(...)`는 predicate가 false를 반환하면 dependent validator를 short-circuit합니다.
+
+### Standard Schema output parsing
+
+**범위와 import:** 성공한 schema output 자체가 필요하면 `@fluojs/validation`의
+`parseStandardSchema`, `StandardSchemaV1Like`를 사용하세요. Zod나 Valibot 같은
+Standard Schema v1 구현은 application dependency로 제공합니다. 독립 parsing에는
+HTTP 등록이 필요하지 않습니다.
+
+```ts
+import { parseStandardSchema } from '@fluojs/validation';
+import { z } from 'zod';
+
+const DraftSchema = z.object({
+  title: z.string().trim(),
+  count: z.coerce.number().int().default(1),
+});
+
+const input = await parseStandardSchema(DraftSchema, { title: '  Draft  ' });
+// input: { title: string; count: number }
+// value: { title: 'Draft', count: 1 }
+```
+
+**입력·기본값·출력:** `parseStandardSchema(schema, value)`는 unknown input을 받고
+schema에서 추론한 `Promise<Output>`을 반환합니다. 동기 또는 비동기 검증을
+await하고 transform, default, 유효한 `{ value: undefined }` 결과를 포함한
+성공 `value`를 그대로 반환합니다. Class hydration, HTTP source selection,
+unknown-field policy, implicit coercion을 추가하지 않습니다. 값 수준의 선택은
+schema가 소유합니다.
+
+**실패:** `issues: []`를 포함한 모든 issues array 반환은 `DtoValidationError`로
+reject됩니다. Issue는 message를 유지하며 정규화된 code와 `posts[0].title` 같은
+dot/index path를 사용합니다. Standard Schema issue에 HTTP `source`가 반드시
+있는 것은 아닙니다. Non-object result, 배열이 아닌 issues, issues와 성공
+`value`가 모두 없는 결과는 `TypeError`로 reject됩니다. Schema 구현이 던지거나
+reject한 예외는 그대로 전파됩니다.
+
+**소유권과 대안:** schema와 input은 caller가 소유하며 완료를 await해야 합니다.
+이 helper는 listener나 disposable resource를 생성하지 않고, 사용자 schema
+코드가 수행하는 mutation을 격리하지도 않습니다. `ValidateClass`는 기존
+empty-issues 동작을 포함한 검증 전용 API로 유지됩니다.
+`DefaultValidator.materialize(..., { undeclaredProperties: 'reject' })`는 별도의
+class hydration/rejection 계약이며 schema output parsing이나 HTTP projection이
+아닙니다. Handler output binding에는
+[`createSchemaDto`와 `StandardSchemaBinder`](../http/README.ko.md#standard-schema-output-binding)를
+사용하세요. HTTP는 parser의 `DtoValidationError` 실패를 400으로 바꿉니다.
+
+**근거:** `src/standard-schema.ts`, `src/index.ts`의 export,
+`src/standard-schema-output.test.ts`가 parser와 호환성 경계의 확인 위치입니다.
 
 ### Custom field 검증
 
@@ -209,7 +260,7 @@ reverse-map 멤버 이름은 값이 아니므로 거부됩니다.
 - **배열 데코레이터**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
 - **Mapped DTO 헬퍼**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
 - **Mapped DTO 서브패스**: `@fluojs/validation/mapped-types`
-- **Standard Schema 계약**: `ValidateClass(...)` 스키마를 타입 지정하기 위한 `StandardSchemaV1Like`
+- **Standard Schema 계약**: schema 타입을 위한 `StandardSchemaV1Like`, 성공한 output parsing을 위한 `parseStandardSchema`, 검증 전용 연동을 위한 `ValidateClass(...)`
 - **검증 흐름**: 실체화 및 검증을 위한 `materialize()`, 단순 검증을 위한 `validate()`
 
 ## 관련 패키지
