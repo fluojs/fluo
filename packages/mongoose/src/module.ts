@@ -1,3 +1,4 @@
+import type { TransactionRollbackObserver } from './result-rollback.js';
 import type { AsyncModuleOptions } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
@@ -9,6 +10,7 @@ import type { MongooseConnectionLike, MongooseModuleOptions } from './types.js';
 
 type MongooseRuntimeOptions = {
   strictTransactions: boolean;
+  rollbackObserver?: TransactionRollbackObserver;
 };
 
 type ResolvedMongooseModuleOptions<TConnection extends MongooseConnectionLike> = Omit<
@@ -49,8 +51,8 @@ function normalizeMongooseModuleOptions<TConnection extends MongooseConnectionLi
   };
 }
 
-function createRuntimeOptionsProviderValue(strictTransactions: boolean): MongooseRuntimeOptions {
-  return { strictTransactions };
+function createRuntimeOptionsProviderValue(strictTransactions: boolean, rollbackObserver?: TransactionRollbackObserver): MongooseRuntimeOptions {
+  return { strictTransactions, ...(rollbackObserver && { rollbackObserver }) };
 }
 
 function createMongooseRuntimeProviders<TConnection extends MongooseConnectionLike>(
@@ -74,6 +76,7 @@ function createMongooseRuntimeProviders<TConnection extends MongooseConnectionLi
       useFactory: (options: unknown) =>
         createRuntimeOptionsProviderValue(
           (options as ResolvedMongooseModuleOptions<TConnection>).strictTransactions,
+          (options as ResolvedMongooseModuleOptions<TConnection>).rollbackObserver,
         ),
     },
     MongooseConnection,

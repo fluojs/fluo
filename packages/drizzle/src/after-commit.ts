@@ -2,9 +2,11 @@
 export type AfterCommitCallback = () => void | Promise<void>;
 
 /** Fluo boundary requirements, separate from the native Drizzle transaction options. */
-export interface TransactionBoundaryOptions {
+export interface TransactionBoundaryOptions<T = unknown> {
   /** Reject before user work when the boundary cannot register native after-commit work. */
   readonly requireAfterCommit?: boolean;
+  /** Roll back the shared native transaction when this application-owned predicate rejects its result. */
+  readonly shouldRollback?: (value: T) => boolean;
 }
 
 /** Indicates that the current boundary cannot guarantee native after-commit execution. */

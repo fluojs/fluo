@@ -3,10 +3,11 @@ import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http'
 
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 import { DrizzleDatabase } from './database.js';
+import { TransactionRollbackCapabilityError } from './result-rollback.js';
 import type { DrizzleDatabaseLike } from './types.js';
 
 type TransactionCapableDrizzle<TTransactionOptions = unknown> = {
-  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
 };
 
 type TransactionAccessor<THost, TTransactionOptions> = (
@@ -72,26 +73,30 @@ function resolveDefaultTransactionTarget<THost, TTransactionOptions>(
  * @param boundary Optional Fluo capability requirements checked before the method runs.
  * @returns A standard 2023-11 method decorator.
  */
-export function Transaction<THost, TTransactionOptions = unknown>(
+export function Transaction<THost, TTransactionOptions = unknown, TResult = unknown>(
   accessorOrOptions?: TransactionAccessor<THost, TTransactionOptions> | TTransactionOptions,
   options?: TTransactionOptions,
-  boundary?: TransactionBoundaryOptions,
+  boundary?: TransactionBoundaryOptions<TResult>,
 ) {
   const accessor = typeof accessorOrOptions === 'function'
     ? accessorOrOptions as TransactionAccessor<THost, TTransactionOptions>
     : undefined;
   const transactionOptions = accessor ? options : accessorOrOptions as TTransactionOptions | undefined;
 
-  return <TArgs extends unknown[], TResult>(
-    value: TransactionMethod<THost, TArgs, TResult>,
-    context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
-  ): TransactionMethod<THost, TArgs, TResult> => {
+  return <TArgs extends unknown[], TMethodResult extends TResult>(
+    value: TransactionMethod<THost, TArgs, TMethodResult>,
+    context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TMethodResult>>,
+  ): TransactionMethod<THost, TArgs, TMethodResult> => {
     if (context.kind !== 'method') {
       throw new Error('@Transaction() can only decorate methods.');
     }
 
-    return async function transactionMethod(this: THost, ...args: TArgs): Promise<TResult> {
+    return async function transactionMethod(this: THost, ...args: TArgs): Promise<TMethodResult> {
       const drizzleDatabase = accessor ? accessor(this) : resolveDefaultTransactionTarget<THost, TTransactionOptions>(this);
+
+      if (boundary?.shouldRollback && !(drizzleDatabase instanceof DrizzleDatabase)) {
+        throw new TransactionRollbackCapabilityError();
+      }
 
       if (boundary?.requireAfterCommit
         && (!('afterCommit' in drizzleDatabase) || typeof drizzleDatabase.afterCommit !== 'function')) {

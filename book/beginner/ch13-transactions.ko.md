@@ -126,6 +126,13 @@ export class UsersService {
 Prisma의 boundary 옵션은 기존 인수 뒤에 추가합니다. 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, 데코레이터는 `@Transaction(input?, boundary?)`입니다. 마지막 인수의 `{ requireAfterCommit: true }`는 네이티브 커밋 관찰 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부합니다. 생략된 네이티브 옵션과 기본 fail-open은 유지되지만, 지원 없는 직접 실행 경로·경계 밖·닫힌 scope에서 훅 등록은 허용되지 않습니다.
 
 ### Nested Transactions and Reusability
+
+반환값으로 rollback을 선택하려면 기존 마지막 Fluo boundary에 `shouldRollback`을 명시합니다. 소비자가 정한 `Result`에 맞춘 `TransactionBoundaryOptions<Result<T>>` 예제는 [Prisma README](../../packages/prisma/README.ko.md#반환값으로-롤백-선택)를 참고하세요. 옵션 생략 시 실패처럼 보이는 값도 정상 반환이므로 commit할 수 있습니다. 루트 predicate가 실패를 선택하면 native rollback·cleanup 성공 뒤 같은 값을 반환합니다.
+
+중첩 predicate의 실패는 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만듭니다. 루트도 자기 결과를 거부하면 루트 값을, 그렇지 않으면 rollback 뒤 첫 중첩 실패값을 `readonly result: unknown`으로 담은 `TransactionRollbackOnlyError`를 받습니다. 미지원 fallback/legacy target은 callback 전에 `TransactionRollbackCapabilityError`로 거부합니다. native 오류는 domain 결과로 가리지 않으며 이미 commit한 `AfterCommitError`와 다릅니다. 잡힌 평범한 중첩 예외는 rollback-only를 만들지 않고 기존 commit/hook을 유지합니다. rollback은 모든 hook을 버리고 native callback retry는 새 owner를 사용합니다. 외부 raw transaction·Redis `MULTI/EXEC`는 지원하지 않고 savepoint·durability 보장을 추가하지 않습니다. [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)이 상세 의미를 소유합니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
 Fluo는 이미 활성화된 트랜잭션 클라이언트를 재사용함으로써 "중첩된" 트랜잭션을 처리합니다. `Service A`의 `@Transaction()` 메서드가 `Service B`의 `@Transaction()` 메서드를 호출하면, 두 메서드는 동일한 외부 트랜잭션을 공유하게 됩니다. 모든 작업은 하나의 응집력 있는 작업 단위로 취급됩니다.
 
 after-commit 큐도 공유합니다. 성공한 바깥 네이티브 커밋 뒤에만 FIFO로 하나씩 실행하고 각 Promise를 기다립니다. 롤백·커밋 실패에서는 실행하지 않으며, 저장점 없는 중첩 예외를 잡은 경우 최종 바깥 결과를 따릅니다. scope를 닫고 종료된 ALS를 벗어난 뒤 훅을 호출하므로 새로운 `current()` 조회는 예전 핸들을 사용하지 않고 새 트랜잭션은 새 큐를 갖습니다. 종료는 훅도 기다리지만 닫힌 큐에 늦게 등록할 수는 없습니다.

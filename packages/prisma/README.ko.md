@@ -198,6 +198,58 @@ await this.prisma.transaction(async () => {
 
 이미 활성 트랜잭션 컨텍스트가 있는 상태에서 `transaction()`을 호출하면 `PrismaService`는 중첩 Prisma 트랜잭션을 새로 열지 않고 활성 트랜잭션 클라이언트를 재사용합니다. 중첩 호출에는 isolation level 같은 native 트랜잭션 옵션을 전달하면 안 됩니다. 활성 컨텍스트에서 native 옵션을 제공하면 ambient transaction을 재사용하는 동안 호출자의 의도를 조용히 버리지 않도록 예외로 거부합니다. 별도 `boundary`의 `requireAfterCommit`은 native 옵션이 아니라 현재 경계의 capability 요구입니다.
 
+### 반환값으로 롤백 선택
+
+먼저 native rollback 확인 capability를 등록하세요. 아래 완전한 등록 helper가 반환하는 module을 애플리케이션 imports에 넣습니다. `forRootAsync`의 factory 결과도 `rollbackObserver`를 받으며, 직접 생성하는 wrapper/facade의 기존 런타임 옵션에도 같은 필드를 전달할 수 있습니다. 이 옵션은 driver native 옵션이 아닙니다.
+
+```ts
+import { createPrismaRollbackObserver, PrismaModule } from '@fluojs/prisma';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
+
+export function resultTransactions(databaseUrl: string) {
+  const observed = createPrismaRollbackObserver(new PrismaPg({ connectionString: databaseUrl }));
+  return PrismaModule.forRoot({
+    client: new PrismaClient({ adapter: observed.adapter }),
+    rollbackObserver: observed.rollbackObserver,
+  });
+}
+```
+
+이 구성에서만 아래 `shouldRollback` 예제를 사용합니다. Observer가 없는 기존 wrapper는 평범한 transaction에는 계속 사용할 수 있지만 Result opt-in은 callback 전에 거부됩니다.
+
+
+`shouldRollback`은 callback이 정상 반환한 값을 동기적으로 판정하는 opt-in입니다. 아래는 등록된 `PrismaService<PrismaClient>`를 받는 완전한 소비자 helper입니다. `persist`는 같은 wrapper의 `current()` 또는 facade로 DB 작업을 수행하는 애플리케이션 callback이며, `Result`도 애플리케이션 타입입니다. Fluo가 이 형태를 인식하거나 전역 `Result`를 제공하지 않습니다.
+
+```ts
+import type { PrismaClient } from '@prisma/client';
+import type { PrismaService, TransactionBoundaryOptions } from '@fluojs/prisma';
+
+type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
+export function persistWithResult<T>(
+  prisma: PrismaService<PrismaClient>,
+  persist: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const boundary: TransactionBoundaryOptions<Result<T>> = {
+    shouldRollback: (value) => !value.ok,
+  };
+  return prisma.transaction(persist, undefined, boundary);
+}
+```
+
+`undefined`는 기존 native 옵션 자리입니다. request 경계는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, decorator는 `@Transaction(input?, boundary?)`이며, 예를 들어 `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`로 선언합니다. native 옵션과 섞지 않으며 중첩 native 옵션 금지도 유지됩니다.
+
+루트에서 `{ ok: false, error: 'CONFLICT' }`를 반환하면 native rollback과 필요한 cleanup이 성공한 뒤 **동일한 객체**를 받습니다. 옵션 생략 시 값 자체는 rollback을 유발하지 않습니다. 중첩 predicate가 실패를 표시하면 중첩 호출은 원래 값을 반환하지만 공유 owner는 sticky rollback-only가 됩니다. 루트 predicate도 루트 결과를 거부하면 그 루트 값을 반환하고, 그렇지 않으면 rollback 뒤 `TransactionRollbackOnlyError`가 첫 중첩 실패값을 `readonly result: unknown`으로 담아 던져집니다.
+
+`TransactionRollbackCapabilityError`는 fallback이나 rollback을 소유할 수 없는 legacy target에서 callback 실행 전에 발생합니다. 두 오류는 `@fluojs/prisma`의 root export이며 `instanceof`로 구분합니다. native commit·rollback·cleanup 오류는 domain 결과로 바꾸지 않고 전파됩니다. 이미 commit한 뒤의 `AfterCommitError`와 혼동하지 마세요.
+
+rollback은 모든 hook을 폐기합니다. 단순히 잡힌 중첩 예외는 rollback-only를 만들지 않으므로 최종 commit 시 기존 write와 hook을 유지합니다. native callback retry마다 owner를 새로 만들며, 외부 raw transaction과 Redis `MULTI/EXEC`는 지원하지 않습니다. savepoint나 durability 보장을 추가하지 않습니다. 전체 중첩·재시도·실패 규칙은 [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
 ### 커밋 후 캐시 무효화
 
 `PrismaService.afterCommit(...)`은 같은 wrapper가 소유하는 열린 native transaction에 작업을 등록합니다. 이 예제는 기존 Prisma `User` 모델(`id`, `name`), 등록된 `PrismaService<PrismaClient>`와 `CacheModule`의 `CacheService`를 사용하는 애플리케이션 함수입니다.
@@ -322,7 +374,7 @@ defineModule(ManualPrismaModule, {
 
 Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 한다면 `PrismaService<TClient>`를 사용하세요. 생성된 Prisma Client delegate를 직접 호출하는 repository 주입에는 `PrismaServiceFacade<TClient>`를 사용하세요. 이 facade는 활성 트랜잭션이 있으면 해당 트랜잭션 client로, 없으면 root client로 호출을 전달합니다. `PrismaService.createFacade(...)`는 module-provider wiring을 위한 저수준 compatibility helper로 유지되며, 애플리케이션 코드는 `PrismaModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용해야 합니다.
 
-`boundary?: TransactionBoundaryOptions`는 기존 인자 **뒤**의 Fluo 전용 옵션이며 Prisma에 전달하는 native 옵션과 섞지 않습니다. `fn`은 기존 async callback이며 성공한 outer boundary는 commit과 등록 hook drain 뒤 원래 `T`를 반환합니다.
+`boundary?: TransactionBoundaryOptions<T>`는 기존 인자 **뒤**의 Fluo 전용 옵션이며 Prisma에 전달하는 native 옵션과 섞지 않습니다. `fn`은 기존 async callback입니다. commit 경로는 등록 hook drain 뒤 원래 `T`를 반환하고, opt-in rollback 경로는 [반환값으로 롤백 선택](#반환값으로-롤백-선택)의 반환·오류 규칙을 따릅니다.
 
 - `afterCommit(callback: AfterCommitCallback): void`
   - 열린 native transaction scope에 callback을 등록하며 직접 실행하지 않습니다. 미지원·native transaction 없음·scope 밖·닫힌 scope에서는 거부됩니다.
@@ -338,7 +390,13 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 모두 root `@fluojs/prisma`에서 import합니다.
 
 - `AfterCommitCallback`: `() => void | Promise<void>`.
-- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `TransactionBoundaryOptions<T = unknown>`: `{ readonly requireAfterCommit?: boolean; readonly shouldRollback?: (value: T) => boolean }`.
+- `createPrismaRollbackObserver(...)`: 위의 public native observation helper입니다.
+- `TransactionRollbackObserver`: `run<T>(callback): Promise<T>`로 owner observation scope를 열고 `beginAttempt(transaction)`으로 native attempt를 연결하는 고급 capability 계약입니다.
+- `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>`는 독립적으로 확인한 rollback 성공만 반환하고 실패/불확실성은 오류로 보고합니다. Sentinel 일치나 no-op 함수로 구현하지 마세요.
+- `TransactionRollbackUnconfirmedError`: 양의 native rollback 확인이 없어 정상 Result를 반환할 수 없음을 나타냅니다.
+- `TransactionRollbackCapabilityError`: opt-in rollback을 지원하지 않는 경계에서 callback 전에 발생합니다.
+- `TransactionRollbackOnlyError`: 중첩 opt-in 실패로 rollback-only인 owner가 루트 실패값을 반환할 수 없을 때 발생하며, `readonly result: unknown`에 첫 중첩 실패값을 담습니다.
 - `AfterCommitCapabilityError`: 요청한 native commit capability가 없거나 미지원 경계에 hook을 등록할 때의 오류.
 - `AfterCommitError extends AggregateError`: `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]`로 모든 FIFO 결과를 제공하고 상속한 `errors`로 모든 실패를 제공합니다.
 

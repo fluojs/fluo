@@ -320,6 +320,13 @@ Mongoose에 위임한 트랜잭션이 콜백을 재시도하면 **시도마다 �
 
 ## 세션을 자동으로 받는 호출과 받지 않는 호출
 
+예상된 리뷰 거절을 Result로 반환하는 대안은 [Mongoose README](../../packages/mongoose/README.ko.md#반환값으로-롤백-선택)의 `TransactionBoundaryOptions<T>.shouldRollback`이다. 기존 Fluo boundary 자리에만 추가하며 native 옵션 인자를 만들지 않는다. 루트 predicate가 거부하면 native rollback·session cleanup 성공 뒤 같은 루트 값을 반환한다. 중첩 opt-in 실패는 원래 값을 반환하지만 owner를 sticky rollback-only로 만들어, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 담은 `TransactionRollbackOnlyError`를 던진다.
+
+미지원 fallback/legacy target은 callback 전에 `TransactionRollbackCapabilityError`로 거부한다. native 오류는 domain 값으로 가리지 않으며 commit 뒤의 `AfterCommitError`·`AfterCommitCleanupError`와 구별한다. native callback retry마다 새 owner를 사용하므로 이전 실패값과 rollback-only, hook은 다음 attempt로 넘어가지 않는다. 잡힌 일반 중첩 예외는 기존 commit/hook을 유지하지만 opt-in rollback은 모든 hook을 버린다. 외부 raw transaction·Redis `MULTI/EXEC`·savepoint·durability 확장을 제공하지 않는다. [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)이 상세 의미를 소유한다. 이 장의 `ReviewAlreadyExists`와 HTTP 오류 매핑은 기존 예외 기반 선택이며, 아래 DB 검증이 이 Result 대안까지 실행했다고 주장하지 않는다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
+
 이 코드에서 `create([document])`의 대괄호는 스타일이 아니다. Fluo는 Mongoose의 배열 overload에 세션 옵션을 병합한다. `create(documentA, documentB)`처럼 위치 인자로 여러 문서를 넘기면 같은 자동 주입을 받지 않는다. 또한 `bulkWrite`, `find`, `findOne`, `aggregate`는 지원되지만 모든 모델 메서드나 문서 메서드가 자동으로 래핑되는 것은 아니다.
 
 `this.conn.model(...)`은 트랜잭션 안에서 호출해야 그 활성 세션을 반영한 facade를 얻는다. 트랜잭션 밖에서 모델을 필드에 캐시한 뒤 나중에 호출하는 식으로 바꾸지 않는다. `current()`는 루트 연결을 반환하는 탈출구이며 세션 선택까지 대신하는 메서드가 아니다. 루트 모델로 네이티브 작업을 수행하려면 세션을 명시적으로 연결하고 그 타입과 수명도 관리해야 한다.

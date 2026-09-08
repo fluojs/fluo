@@ -210,6 +210,62 @@ If the wrapped connection implements `connection.transaction(...)`, fluo treats 
 
 For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. `create(...)` injects the session only through Mongoose's array overload, `create([docs], options?)`. Positional `create(docA, docB)` arguments are forwarded unchanged—even when the last document contains option-like fields such as `timestamps`—and therefore do not receive automatic session injection. Use the array overload for transaction participation. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, including the third options argument of `findOne(filter, projection, options)`, fluo throws a session conflict error to prevent accidental transaction escapes. Pass a result-specialized `MongooseModelFacade` as the `model<TModel>(...)` type argument when repository code needs typed operation results.
 
+### Choosing Rollback from a Result
+
+First register native rollback confirmation. Include the module returned by this complete helper in application imports. A `forRootAsync` factory can return the same `rollbackObserver`; directly constructed wrappers/facades accept it in their existing runtime-options object too. It is not a native driver option.
+
+```ts
+import { createMongooseRollbackObserver, MongooseModule } from '@fluojs/mongoose';
+import mongoose from 'mongoose';
+
+export function resultTransactions(databaseUrl: string) {
+  const connection = mongoose.createConnection(databaseUrl, { monitorCommands: true });
+  return MongooseModule.forRoot({
+    connection,
+    rollbackObserver: createMongooseRollbackObserver(connection.getClient()),
+    dispose: () => connection.close(),
+  });
+}
+```
+
+Use the `shouldRollback` example below with this configuration. Existing wrappers without an observer still support ordinary transactions, but Result opt-in rejects before callbacks. These capability types and errors are also package root exports.
+
+- `createMongooseRollbackObserver(...)`: the public native observation helper above.
+- `TransactionRollbackObserver`: advanced capability contract whose `run<T>(callback): Promise<T>` opens an owner observation scope and whose `beginAttempt(transaction)` binds a native attempt.
+- `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>` returns only independently confirmed rollback success and reports failure/uncertainty by throwing. Do not implement it using sentinel identity or a no-op.
+- `TransactionRollbackUnconfirmedError`: positive native rollback confirmation is absent, so a normal Result cannot be returned.
+
+
+`shouldRollback` is an opt-in synchronous predicate for a callback's normal return value. This complete consumer helper accepts a registered connection wrapper. `persist` performs DB work through that wrapper's supported model facade or an explicit ambient session. This `Result` is a consumer type, not a global Fluo result convention.
+
+```ts
+import type { MongooseConnection, TransactionBoundaryOptions } from '@fluojs/mongoose';
+
+type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
+export function persistWithResult<T>(
+  conn: MongooseConnection,
+  persist: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const boundary: TransactionBoundaryOptions<Result<T>> = {
+    shouldRollback: (value) => !value.ok,
+  };
+  return conn.transaction(persist, boundary);
+}
+```
+
+Use the existing Fluo boundary position in `transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, and `@Transaction(accessor?, boundary?)`, for example `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. No Mongoose native-options argument is added.
+
+If the root predicate returns `true`, the same root value is returned after native rollback and required session cleanup succeed. A nested predicate returning `true` returns the original nested value while marking the shared owner sticky rollback-only. If the root also rejects its own result, its root failure value is returned; otherwise, `TransactionRollbackOnlyError` is thrown after rollback with the first nested failure in `readonly result: unknown`. Omission preserves existing exception-based behavior.
+
+A fallback or legacy target that cannot own rollback rejects with `TransactionRollbackCapabilityError` before the opted-in callback. Both errors are root exports of `@fluojs/mongoose`; distinguish them with `instanceof`. Native commit, rollback, and cleanup errors are not hidden by domain results. Distinguish these rollback errors from `AfterCommitError` and `AfterCommitCleanupError`, which follow an already-completed commit.
+
+Rollback discards all hooks. Ordinary caught nested exceptions do not mark rollback-only, so a final commit retains writes and hooks. Native callback retries create a fresh owner and queue per attempt without carrying earlier failure values or rollback-only state; commit-only retries do not rerun the callback. External raw transactions and Redis `MULTI/EXEC` are unsupported; this adds no savepoint or durability guarantee. Follow the [shared-owner contract](../../docs/architecture/transactions.md#result-based-rollback) for the complete rules.
+
+Result rollback also requires a registered `rollbackObserver` backed by native evidence. A sentinel or local session state is not proof of rollback. Missing capability rejects before the callback; missing or failed confirmation rejects with a native error or `TransactionRollbackUnconfirmedError`, never a normal Result. The shared contract above specifies registration helpers and supported configurations.
+
 ### Cache Invalidation After Commit
 
 `MongooseConnection.afterCommit(...)` registers work on an open native transaction owned by the same wrapper. This function uses an application-owned connection whose `User` model is already compiled, and `CacheService` from a registered `CacheModule`. The supported array `create` facade attaches the ambient session.
@@ -247,17 +303,19 @@ Commits from external raw-client transactions, other wrappers, or other connecti
 
 | Transaction API | Inputs and completion |
 | --- | --- |
-| `transaction(fn, boundary?): Promise<T>` | Appends Fluo `boundary` after the existing async `fn`. The outer boundary returns the original result after commit and hook drain. |
+| `transaction(fn, boundary?): Promise<T>` | Appends Fluo `boundary` after the existing async `fn`. The commit path returns the original result after hook drain; opt-in rollback follows the return and error rules above. |
 | `requestTransaction(fn, signal?, boundary?): Promise<T>` | Takes `boundary` after the existing request `AbortSignal`. |
 | `afterCommit(callback: AfterCommitCallback): void` | Registers work in an open native scope without running it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration. |
 | `Transaction(accessor?, boundary?)` | Fluo `boundary` is the second argument, after the existing connection accessor. |
 
-The boundary APIs take Fluo-only `boundary?: TransactionBoundaryOptions`; do not merge it into native Mongoose options. `afterCommit` itself does not take a boundary argument.
+The boundary APIs take Fluo-only `boundary?: TransactionBoundaryOptions<T>`; no native Mongoose options argument is added. `afterCommit` itself does not take a boundary argument.
 
 Additional exports from the root `@fluojs/mongoose` package:
 
 - `AfterCommitCallback`: `() => void | Promise<void>`.
-- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `TransactionBoundaryOptions<T = unknown>`: `{ readonly requireAfterCommit?: boolean; readonly shouldRollback?: (value: T) => boolean }`.
+- `TransactionRollbackCapabilityError`: raised before the callback on a boundary that cannot support opt-in rollback.
+- `TransactionRollbackOnlyError`: raised when an owner marked rollback-only by a nested opt-in failure cannot return a root failure value; `readonly result: unknown` contains the first nested failure value.
 - `AfterCommitCapabilityError`: failure when required native commit capability is missing or a hook is registered on an unsupported boundary.
 - `AfterCommitError extends AggregateError`: exposes `readonly committed = true` and `results: readonly PromiseSettledResult<void>[]` for every FIFO outcome, with all failures in inherited `errors`.
 - `AfterCommitCleanupError extends AggregateError`: a separate class for manual-session cleanup failure after confirmed commit when hooks are registered or `requireAfterCommit: true` is required. Exposes `readonly committed = true`, cleanup failure as `cause`, hook-only FIFO `results: readonly PromiseSettledResult<void>[]`, and cleanup-first `errors`. It does not extend `AfterCommitError`.

@@ -42,6 +42,8 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 ## Persistence After-Commit Work
 
+반환값 기반 rollback은 [공유 transaction owner 계약](./architecture/transactions.ko.md#반환값-기반-롤백)을 먼저 읽으세요. Prisma·Drizzle·Mongoose의 별도 `TransactionBoundaryOptions<T = unknown>.shouldRollback`은 소비자가 정의한 동기 predicate이며 전역 `Result` 형태를 만들지 않습니다. 명시적 루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환합니다. 중첩 opt-in 실패는 원래 값을 반환하되 owner를 sticky rollback-only로 만들며, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 `result: unknown`에 담은 `TransactionRollbackOnlyError`가 발생합니다. 미지원 fallback/legacy target은 callback 전에 `TransactionRollbackCapabilityError`로 거부하고 native 오류는 가리지 않습니다. rollback은 hook을 폐기하고 native callback retry는 새 owner를 사용합니다. 일반적인 잡힌 중첩 예외는 기존 commit/hook 동작을 유지하며 raw 외부 transaction·Redis `MULTI/EXEC`·savepoint·durability 확장은 지원하지 않습니다. 정확한 인자 위치와 소비자 예제는 각 패키지 README가 소유합니다.
+
 Prisma·Drizzle·Mongoose의 `afterCommit`은 [트랜잭션 문맥 계약](./architecture/transactions.ko.md#커밋-후-작업)이 실행 순서·native capability·중첩/재시도·post-commit 실패·shutdown을 소유합니다. 공개 인자와 cache invalidation 사용법은 [Prisma](../packages/prisma/README.ko.md#커밋-후-캐시-무효화), [Drizzle](../packages/drizzle/README.ko.md#커밋-후-캐시-무효화), [Mongoose](../packages/mongoose/README.ko.md#커밋-후-캐시-무효화) README를 읽으세요. Book은 이 계약의 적용 설명입니다. 검증 대상은 각 `packages/*/src/after-commit.test.ts`, `tooling/governance/after-commit-contract.test.ts`, native `packages/prisma/fixtures/after-commit/`이며 실제 실행 결과는 별도 receipt로 확인합니다. Redis의 commit tracking이나 DB+Redis 원자성, crash/network exactly-once 보장은 포함하지 않습니다.
 
 ## Decorator Default Audit

@@ -1,3 +1,4 @@
+import type { TransactionRollbackObserver } from './result-rollback.js';
 import type { AsyncModuleOptions, Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 
@@ -25,6 +26,7 @@ interface NormalizedPrismaModuleOptions<
   client: TClient;
   global: boolean;
   strictTransactions: boolean;
+  rollbackObserver?: TransactionRollbackObserver;
 }
 
 /**
@@ -47,6 +49,7 @@ const PRISMA_NORMALIZED_OPTIONS = Symbol('fluo.prisma.normalized-options');
 
 type PrismaRuntimeOptions = {
   strictTransactions: boolean;
+  rollbackObserver?: TransactionRollbackObserver;
 };
 
 function isObjectLike(value: unknown): value is object {
@@ -95,6 +98,7 @@ function normalizePrismaModuleOptions<
     client: options.client,
     global: options.global ?? false,
     strictTransactions: options.strictTransactions ?? false,
+    ...(options.rollbackObserver && { rollbackObserver: options.rollbackObserver }),
   };
 }
 
@@ -138,6 +142,7 @@ function createPrismaRuntimeProviders<
       inject: [normalizedOptionsToken],
       provide: optionsToken,
       useFactory: (options: unknown) => ({
+        ...((options as PrismaRuntimeOptions).rollbackObserver && { rollbackObserver: (options as PrismaRuntimeOptions).rollbackObserver }),
         strictTransactions:
           (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>).strictTransactions,
       }),

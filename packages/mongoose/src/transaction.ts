@@ -3,10 +3,11 @@ import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http'
 
 import { AfterCommitCapabilityError } from './after-commit.js';
 import { MongooseConnection } from './connection.js';
+import { TransactionRollbackCapabilityError } from './result-rollback.js';
 import type { MongooseConnectionLike, TransactionBoundaryOptions } from './types.js';
 
 type TransactionConnection = {
-  transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
 };
 
 type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
@@ -87,20 +88,24 @@ function resolveTransactionConnection<THost>(self: THost, accessor?: (self: THos
  * @param boundary Optional package-owned capability requirements forwarded to the transaction boundary.
  * @returns A standard method decorator that executes the original method inside a Mongoose transaction.
  * @throws {AfterCommitCapabilityError} When opted-in after-commit support is absent from the selected target.
+ * @throws {TransactionRollbackCapabilityError} When an opted-in Result policy selects a non-Fluo target.
  */
-export function Transaction<THost>(
+export function Transaction<THost, TBoundaryResult = unknown>(
   accessor?: (self: THost) => TransactionConnection,
-  boundary?: TransactionBoundaryOptions,
-): <TArgs extends unknown[], TResult>(
+  boundary?: TransactionBoundaryOptions<TBoundaryResult>,
+): <TArgs extends unknown[], TResult extends TBoundaryResult>(
   value: TransactionMethod<THost, TArgs, TResult>,
   context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
 ) => TransactionMethod<THost, TArgs, TResult> {
-  return function transactionDecorator<TArgs extends unknown[], TResult>(
+  return function transactionDecorator<TArgs extends unknown[], TResult extends TBoundaryResult>(
     value: TransactionMethod<THost, TArgs, TResult>,
     _context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
   ) {
     return async function transactionWrappedMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const connection = resolveTransactionConnection(this, accessor);
+      if (boundary?.shouldRollback && !(connection instanceof MongooseConnection)) {
+        throw new TransactionRollbackCapabilityError();
+      }
       if (boundary?.requireAfterCommit && (
         !('afterCommit' in connection) || typeof connection.afterCommit !== 'function'
       )) {

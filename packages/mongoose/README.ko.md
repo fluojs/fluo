@@ -213,6 +213,62 @@ await this.conn.transaction(async () => {
 
 지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. `create(...)`는 Mongoose의 array overload인 `create([docs], options?)`를 통해서만 session을 주입합니다. Positional `create(docA, docB)` 인자는 마지막 문서에 `timestamps` 같은 option-like field가 있어도 그대로 전달되며 자동 session 주입을 받지 않습니다. 트랜잭션 참여가 필요하면 array overload를 사용하세요. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, `findOne(filter, projection, options)`의 세 번째 options 인자를 포함해 의도치 않은 트랜잭션 탈출을 방지하는 세션 충돌 에러를 발생시킵니다. Repository code에서 typed operation result가 필요하면 result-specialized `MongooseModelFacade`를 `model<TModel>(...)` 타입 인자로 전달하세요.
 
+### 반환값으로 롤백 선택
+
+먼저 native rollback 확인 capability를 등록하세요. 아래 완전한 등록 helper가 반환하는 module을 애플리케이션 imports에 넣습니다. `forRootAsync`의 factory 결과도 `rollbackObserver`를 받으며, 직접 생성하는 wrapper/facade의 기존 런타임 옵션에도 같은 필드를 전달할 수 있습니다. 이 옵션은 driver native 옵션이 아닙니다.
+
+```ts
+import { createMongooseRollbackObserver, MongooseModule } from '@fluojs/mongoose';
+import mongoose from 'mongoose';
+
+export function resultTransactions(databaseUrl: string) {
+  const connection = mongoose.createConnection(databaseUrl, { monitorCommands: true });
+  return MongooseModule.forRoot({
+    connection,
+    rollbackObserver: createMongooseRollbackObserver(connection.getClient()),
+    dispose: () => connection.close(),
+  });
+}
+```
+
+이 구성에서만 아래 `shouldRollback` 예제를 사용합니다. Observer가 없는 기존 wrapper는 평범한 transaction에는 계속 사용할 수 있지만 Result opt-in은 callback 전에 거부됩니다. 다음 capability 타입과 오류도 package root export입니다.
+
+- `createMongooseRollbackObserver(...)`: 위의 public native observation helper입니다.
+- `TransactionRollbackObserver`: `run<T>(callback): Promise<T>`로 owner observation scope를 열고 `beginAttempt(transaction)`으로 native attempt를 연결하는 고급 capability 계약입니다.
+- `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>`는 독립적으로 확인한 rollback 성공만 반환하고 실패/불확실성은 오류로 보고합니다. Sentinel 일치나 no-op 함수로 구현하지 마세요.
+- `TransactionRollbackUnconfirmedError`: 양의 native rollback 확인이 없어 정상 Result를 반환할 수 없음을 나타냅니다.
+
+
+`shouldRollback`은 callback의 정상 반환값을 동기적으로 판정하는 opt-in입니다. 아래는 등록된 connection wrapper를 받는 완전한 소비자 helper입니다. `persist`는 같은 wrapper의 지원되는 model facade 또는 명시적 ambient session으로 DB 작업을 수행합니다. 이 `Result`는 소비자 타입이며 Fluo의 전역 결과 규칙이 아닙니다.
+
+```ts
+import type { MongooseConnection, TransactionBoundaryOptions } from '@fluojs/mongoose';
+
+type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
+export function persistWithResult<T>(
+  conn: MongooseConnection,
+  persist: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const boundary: TransactionBoundaryOptions<Result<T>> = {
+    shouldRollback: (value) => !value.ok,
+  };
+  return conn.transaction(persist, boundary);
+}
+```
+
+`transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, `@Transaction(accessor?, boundary?)`의 기존 Fluo boundary 자리를 사용합니다. 예를 들어 `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`로 선언합니다. Mongoose native 옵션 인자는 추가되지 않습니다.
+
+루트 predicate가 `true`이면 native rollback과 필요한 session cleanup 성공 뒤 같은 루트 값이 반환됩니다. 중첩 predicate가 `true`이면 중첩 호출은 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만듭니다. 루트도 자기 결과를 거부하면 그 루트 실패값을 반환하고, 그렇지 않으면 rollback 뒤 `TransactionRollbackOnlyError`를 던지며 `readonly result: unknown`에 첫 중첩 실패값을 담습니다. 옵션 생략 시 기존 예외 기반 동작을 유지합니다.
+
+fallback 또는 rollback을 소유할 수 없는 legacy target은 opt-in callback 전에 `TransactionRollbackCapabilityError`로 거부합니다. 두 오류는 `@fluojs/mongoose` root export이며 `instanceof`로 구분합니다. native commit·rollback·cleanup 오류는 domain 결과로 가리지 않습니다. 이미 commit한 뒤의 `AfterCommitError`와 `AfterCommitCleanupError`는 이 rollback 오류와 구별해야 합니다.
+
+rollback은 모든 hook을 버립니다. 단순히 잡힌 중첩 예외는 rollback-only를 만들지 않아 최종 commit 시 write와 hook이 유지됩니다. native callback retry는 attempt마다 새 owner와 queue를 만들어 이전 실패값·rollback-only를 넘기지 않으며 commit-only retry는 callback을 다시 실행하지 않습니다. 외부 raw transaction과 Redis `MULTI/EXEC`는 지원하지 않고 savepoint·durability 보장을 추가하지 않습니다. 전체 규칙은 [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
 ### 커밋 후 캐시 무효화
 
 `MongooseConnection.afterCommit(...)`은 같은 wrapper가 소유하는 열린 native transaction에 작업을 등록합니다. 다음은 `User` 모델이 이미 compile된 애플리케이션 소유 connection과 `CacheModule`의 `CacheService`를 사용하는 함수입니다. 지원되는 array `create` facade가 ambient session을 붙입니다.
@@ -250,17 +306,19 @@ Session 정리가 성공했는데 hook이 실패하면, 한 실패로 중단하�
 
 | 트랜잭션 API | 입력과 완료 |
 | --- | --- |
-| `transaction(fn, boundary?): Promise<T>` | 기존 async `fn` 뒤에 Fluo `boundary`를 추가합니다. outer boundary는 commit과 hook drain 뒤 원래 결과를 반환합니다. |
+| `transaction(fn, boundary?): Promise<T>` | 기존 async `fn` 뒤에 Fluo `boundary`를 추가합니다. commit 경로는 hook drain 뒤 원래 결과를 반환하며 opt-in rollback은 위의 반환·오류 규칙을 따릅니다. |
 | `requestTransaction(fn, signal?, boundary?): Promise<T>` | 기존 request `AbortSignal` 뒤에 `boundary`를 받습니다. |
 | `afterCommit(callback: AfterCommitCallback): void` | 열린 native scope에 등록하며 즉시 실행하지 않습니다. 미지원·native transaction 없음·scope 밖·닫힌 scope는 거부됩니다. |
 | `Transaction(accessor?, boundary?)` | 기존 connection accessor 뒤의 두 번째 인자가 Fluo `boundary`입니다. |
 
-경계 API의 `boundary?: TransactionBoundaryOptions`는 Fluo 전용이며 native Mongoose 옵션과 섞지 않습니다. `afterCommit` 자체에는 boundary 인자가 없습니다.
+경계 API의 `boundary?: TransactionBoundaryOptions<T>`는 Fluo 전용이며 native Mongoose 옵션 인자는 추가하지 않습니다. `afterCommit` 자체에는 boundary 인자가 없습니다.
 
 Root `@fluojs/mongoose`의 추가 export:
 
 - `AfterCommitCallback`: `() => void | Promise<void>`.
-- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `TransactionBoundaryOptions<T = unknown>`: `{ readonly requireAfterCommit?: boolean; readonly shouldRollback?: (value: T) => boolean }`.
+- `TransactionRollbackCapabilityError`: opt-in rollback을 지원하지 않는 경계에서 callback 전에 발생합니다.
+- `TransactionRollbackOnlyError`: 중첩 opt-in 실패로 rollback-only인 owner가 루트 실패값을 반환할 수 없을 때 발생하며, `readonly result: unknown`에 첫 중첩 실패값을 담습니다.
 - `AfterCommitCapabilityError`: 요청한 native commit capability가 없거나 미지원 경계에 hook을 등록할 때의 오류.
 - `AfterCommitError extends AggregateError`: `readonly committed = true`와 `results: readonly PromiseSettledResult<void>[]`로 모든 FIFO 결과를 제공하고 상속한 `errors`로 모든 실패를 제공합니다.
 - `AfterCommitCleanupError extends AggregateError`: hook 등록 또는 `requireAfterCommit: true` opt-in이 있는 수동 session 경계의 확인된 commit 이후 cleanup 실패를 보고하는 별도 클래스입니다. `readonly committed = true`, cleanup 실패인 `cause`, hook-only FIFO `results: readonly PromiseSettledResult<void>[]`, cleanup-first `errors`를 제공합니다. `AfterCommitError`의 하위 클래스가 아닙니다.

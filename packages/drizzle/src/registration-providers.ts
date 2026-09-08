@@ -1,3 +1,4 @@
+import type { TransactionRollbackObserver } from './result-rollback.js';
 import type { Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 
@@ -18,6 +19,7 @@ import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
  */
 export type DrizzleRuntimeOptions = {
   strictTransactions: boolean;
+  rollbackObserver?: TransactionRollbackObserver;
 };
 
 /**
@@ -74,8 +76,8 @@ function assertUniqueDrizzleRegistrationIdentities(identities: readonly string[]
   }
 }
 
-function createRuntimeOptionsProviderValue(strictTransactions: boolean): DrizzleRuntimeOptions {
-  return { strictTransactions };
+function createRuntimeOptionsProviderValue(strictTransactions: boolean, rollbackObserver?: TransactionRollbackObserver): DrizzleRuntimeOptions {
+  return { strictTransactions, ...(rollbackObserver && { rollbackObserver }) };
 }
 
 /**
@@ -161,7 +163,7 @@ export function createDrizzleRuntimeProviders<
           TTransactionOptions
         >;
 
-        return createRuntimeOptionsProviderValue(options.strictTransactions);
+        return createRuntimeOptionsProviderValue(options.strictTransactions, options.rollbackObserver);
       },
     },
     ...(name === undefined

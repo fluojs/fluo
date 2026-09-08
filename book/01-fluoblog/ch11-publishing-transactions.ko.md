@@ -171,7 +171,13 @@ export class PublishingService {
 
 새 시각은 한 번 생성해서 두 행에 함께 쓴다. 두 번의 `new Date()`를 호출해서 기록마다 조금씩 다른 시각을 만들지 않는다. 이 값은 서비스가 정한 발행 시각이지 DB 확정 순서를 나타내는 전역 시계가 아니다. 저장소가 늘어나거나 서버 시계가 어긋나면 시각만으로 모든 사건의 순서를 증명할 수 없다.
 
-`record()`가 실패하면 오류가 트랜잭션 콜백 바깥까지 전파된다. 그때 앞선 게시글 갱신도 롤백된다. 내부에서 오류를 잡고 `{ success: false }`를 반환하면 콜백이 정상 완료되어 첫 번째 갱신이 확정될 수 있으므로 그렇게 처리하지 않는다. 서비스의 반환 Promise가 성공한 뒤에야 호출자는 발행이 확정된 결과를 받는다.
+`record()`가 실패하면 오류가 트랜잭션 콜백 바깥까지 전파된다. 그때 앞선 게시글 갱신도 롤백된다. 이 구현은 반환값 predicate를 설정하지 않았으므로 내부에서 오류를 잡고 `{ success: false }`를 반환하면 첫 번째 갱신이 확정될 수 있다. 따라서 이 장의 예외 기반 구현에서는 그렇게 처리하지 않는다. 이 서비스의 반환 Promise가 성공한 뒤에야 호출자는 발행이 확정된 결과를 받는다.
+
+예상된 발행 거절을 소비자 정의 `Result`로 모델링하는 대안은 별도 Fluo boundary의 `shouldRollback`이다. [Prisma의 타입 지정 예제](../../packages/prisma/README.ko.md#반환값으로-롤백-선택)처럼 `TransactionBoundaryOptions<Result<T>>`에 동기 predicate를 넣는다. 루트 실패는 native rollback과 필요한 cleanup 성공 뒤 같은 값을 반환하므로, 이 대안에서는 Promise가 fulfilled라는 사실만으로 발행 성공을 판단하지 않고 Result를 판별해야 한다. native 오류를 domain 거절로 바꾸는 방법은 아니다.
+
+중첩 opt-in 실패는 안쪽에 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만든다. 루트도 자기 결과를 거부하면 루트 실패값을 반환하고, 그렇지 않으면 첫 중첩 실패값을 담은 `TransactionRollbackOnlyError`로 끝난다. 단순히 잡힌 중첩 예외는 이 표시를 만들지 않는다. rollback은 모든 hook을 버리고 native callback retry는 새 owner를 사용한다. callback 전 capability 실패와 native 오류, commit 뒤 hook 오류의 구분 및 savepoint·durability 한계는 [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따른다. 아래 HTTP 계약과 예제 코드는 기존 예외 기반 선택을 유지한다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
 
 ## 기존 HTTP 결과와 오류 계약에 연결하기
 

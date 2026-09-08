@@ -177,6 +177,68 @@ When `database.transaction(...)` is unavailable and `strictTransactions` is `fal
 
 Async work created inside a transaction can inherit its ALS context even when it runs after the owning transaction has committed, rolled back, or otherwise settled. A later `transaction(...)` or `requestTransaction(...)` call from that inherited continuation is treated as a fresh lifecycle-tracked root instead of reusing the closed transaction handle. Shutdown drains that fresh root before `dispose(database)`, while calls that begin before the owner settles continue to share the active boundary.
 
+### Choosing Rollback from a Result
+
+First register native rollback confirmation. Include the module returned by this complete helper in application imports. A `forRootAsync` factory can return the same `rollbackObserver`; directly constructed wrappers/facades accept it in their existing runtime-options object too. It is not a native driver option.
+
+```ts
+import { createDrizzleRollbackObserver, DrizzleModule } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+export function resultTransactions(databaseUrl: string) {
+  const pool = new Pool({ connectionString: databaseUrl });
+  const observed = createDrizzleRollbackObserver(pool);
+  const database = drizzle(observed.client);
+  type NativeTransaction = Parameters<Parameters<typeof database.transaction>[0]>[0];
+  type NativeOptions = Parameters<typeof database.transaction>[1];
+  return DrizzleModule.forRoot<typeof database, NativeTransaction, NativeOptions>({
+    database,
+    rollbackObserver: observed.rollbackObserver,
+    dispose: () => pool.end(),
+  });
+}
+```
+
+Use the `shouldRollback` example below with this configuration. Existing wrappers without an observer still support ordinary transactions, but Result opt-in rejects before callbacks. These capability types and errors are also package root exports.
+
+- `createDrizzleRollbackObserver(...)`: the public native observation helper above.
+- `TransactionRollbackObserver`: advanced capability contract whose `run<T>(callback): Promise<T>` opens an owner observation scope and whose `beginAttempt(transaction)` binds a native attempt.
+- `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>` returns only independently confirmed rollback success and reports failure/uncertainty by throwing. Do not implement it using sentinel identity or a no-op.
+- `TransactionRollbackUnconfirmedError`: positive native rollback confirmation is absent, so a normal Result cannot be returned.
+
+
+`shouldRollback` is an opt-in synchronous predicate for a callback's normal return value. This complete consumer helper accepts a registered Node PostgreSQL wrapper. `persist` performs DB work through that same wrapper's `current()` or facade. `Result` is consumer-defined; Fluo introduces no global result shape.
+
+```ts
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { DrizzleDatabase, TransactionBoundaryOptions } from '@fluojs/drizzle';
+
+type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
+export function persistWithResult<T>(
+  db: DrizzleDatabase<NodePgDatabase>,
+  persist: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const boundary: TransactionBoundaryOptions<Result<T>> = {
+    shouldRollback: (value) => !value.ok,
+  };
+  return db.transaction(persist, undefined, boundary);
+}
+```
+
+Requests retain `requestTransaction(fn, signal?, nativeOptions?, boundary?)`; decorators retain `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`. Declare the predicate in the third position, for example `@Transaction(undefined, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. Do not merge it into native options; nested native options remain rejected.
+
+If the root predicate returns `true`, the same root value is returned after native rollback and required cleanup succeed. A nested predicate returning `true` returns the original nested value while marking the shared owner sticky rollback-only. If the root also rejects its own result, its root failure value is returned; otherwise, `TransactionRollbackOnlyError` reports the first nested failure in `readonly result: unknown` after rollback. Omission preserves existing exception-based behavior.
+
+A fallback or legacy target that cannot own rollback rejects with `TransactionRollbackCapabilityError` before the opted-in callback. Both errors are root exports of `@fluojs/drizzle`; distinguish them with `instanceof`. Native commit, rollback, and cleanup errors are not hidden by domain values. These errors differ from `AfterCommitError`, which reports hook failure after commit.
+
+Rollback discards all owner hooks. Ordinary caught nested exceptions do not mark rollback-only, so a final commit retains writes and hooks. Native callback retries receive a fresh owner per attempt. External raw transactions and Redis `MULTI/EXEC` are unsupported; this adds no savepoint or durability guarantee. Follow the [shared-owner contract](../../docs/architecture/transactions.md#result-based-rollback) for the complete rules.
+
+Result rollback also requires a registered `rollbackObserver` backed by native evidence. A sentinel or local session state is not proof of rollback. Missing capability rejects before the callback; missing or failed confirmation rejects with a native error or `TransactionRollbackUnconfirmedError`, never a normal Result. The shared contract above specifies registration helpers and supported configurations.
+
 ### Cache Invalidation After Commit
 
 `DrizzleDatabase.afterCommit(...)` registers work on an open native transaction owned by the same wrapper. This application function assumes an existing `users` table (`id`, `name`) in `./schema`, a registered Node PostgreSQL Drizzle handle, and `CacheService` from a registered `CacheModule`.
@@ -312,7 +374,7 @@ defineModule(ManualDrizzleModule, {
 
 | API | Inputs and completion |
 | --- | --- |
-| `transaction(fn, nativeOptions?, boundary?): Promise<T>` | Appends `boundary` after the existing async `fn` and Drizzle options. The outer boundary returns the original result after native commit and hook drain. |
+| `transaction(fn, nativeOptions?, boundary?): Promise<T>` | Appends `boundary` after the existing async `fn` and Drizzle options. The commit path returns the original result after hook drain; opt-in rollback follows the return and error rules above. |
 | `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>` | Preserves the existing request `AbortSignal` and native-options positions, with `boundary` last. |
 | `afterCommit(callback: AfterCommitCallback): void` | Registers work in an open native scope without running it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration. |
 | `Transaction(accessorOrOptions?, nativeOptions?, boundary?)` | Preserves the existing interpretation of the first argument as an accessor or native options. The second native-options argument keeps its existing accessor-only role; Fluo `boundary` is always third. |
@@ -323,12 +385,14 @@ Import these values and types from the root `@fluojs/drizzle` package.
 import {
   AfterCommitCapabilityError,
   AfterCommitError,
+  TransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError,
   type AfterCommitCallback,
   type TransactionBoundaryOptions,
 } from '@fluojs/drizzle';
 ```
 
-`AfterCommitCallback` is `() => void | Promise<void>` and `TransactionBoundaryOptions` is `{ readonly requireAfterCommit?: boolean }`. `AfterCommitCapabilityError` rejects missing required native commit capability or hook registration on an unsupported boundary. `AfterCommitError extends AggregateError` exposes `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]`, and all failures in inherited `errors`. `boundary` is Fluo-only; do not merge it into native options.
+`AfterCommitCallback` is `() => void | Promise<void>` and `TransactionBoundaryOptions<T = unknown>` is `{ readonly requireAfterCommit?: boolean; readonly shouldRollback?: (value: T) => boolean }`. `AfterCommitCapabilityError` rejects missing required native commit capability or hook registration on an unsupported boundary. `AfterCommitError extends AggregateError` exposes `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]`, and all failures in inherited `errors`. `boundary?: TransactionBoundaryOptions<T>` is Fluo-only; do not merge it into native options. See [Choosing Rollback from a Result](#choosing-rollback-from-a-result) for the failure conditions and `result` of `TransactionRollbackCapabilityError` and `TransactionRollbackOnlyError`.
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`

@@ -49,6 +49,26 @@ Mongoose manual 경로는 실제 connection의 `startSession`과 `model`을 바�
 
 ## 수용 검증 항목
 
+#3718의 반환값 기반 rollback 수용 기준도 같은 native 경계에서 확인합니다.
+공통 의미는 [공유 owner 계약](../../../../docs/architecture/transactions.ko.md#반환값-기반-롤백),
+정확한 API와 소비자 타입은 세 패키지 README가 소유합니다. 아래 기준을 문서화한
+것만으로 실행 통과를 주장하지 않으며, 최신 fixture의 실제 TAP와 receipt를 확인해야 합니다.
+
+- predicate를 생략하면 실패처럼 보이는 반환값도 기존대로 commit합니다.
+- 명시적 루트 실패는 쓰기와 hook을 rollback하고, native rollback·cleanup 성공 뒤
+  같은 객체를 반환해야 합니다.
+- 중첩 opt-in 실패는 원래 값을 반환하면서 owner를 sticky rollback-only로 만듭니다.
+  루트도 실패를 선택하면 같은 루트 실패값을 반환하고, 그렇지 않으면
+  `TransactionRollbackOnlyError.result`가 첫 중첩 실패값을 담아야 합니다.
+- 잡힌 평범한 중첩 예외는 기존 commit/hook을 유지해야 하며, native callback retry는
+  새 owner를 사용해 폐기된 attempt의 hook·실패값·rollback-only를 넘기지 않아야 합니다.
+- native commit·rollback·cleanup 오류를 domain 결과나 rollback-only 오류로
+  가리지 않아야 합니다. fallback/legacy target의 callback 전
+  `TransactionRollbackCapabilityError` 검사는 unit 경계의 별도 검증 대상입니다.
+
+raw 외부 transaction과 Redis `MULTI/EXEC`는 대상이 아니며 savepoint, durability,
+DB+Redis 원자성이나 durable delivery를 검증했다는 의미가 아닙니다.
+
 Prisma, Drizzle, Mongoose manual, Mongoose delegated 각각에서 다음을 검증합니다.
 
 - 커밋 전 데이터는 root 읽기에 보이지 않습니다. Hook은 커밋 후 영속 데이터를
@@ -78,9 +98,11 @@ sleep이나 driver 대체 없이 `finally`에서 failpoint를 해제합니다.
 더 넓은 동시성, lifecycle, retry, 오류 행렬은 결정적인 unit suite가 담당합니다.
 이 fixture는 실제 driver와 native commit 경계의 실행 증거를 제공합니다.
 
+이 fixture는 Result root/nested 성공·실패, ignored failure, 임의 기본 반환값, 잡힌 예외, native commit 오류를 각 wrapper의 세 공개 진입점에서 검증하고 독립 owner 동시성도 실제 DB에서 확인합니다. Prisma의 public adapter factory observer는 SQL rollback과 cleanup을 함께 확인하며, PostgreSQL backend 종료로 native runner가 숨기는 rollback 오류가 정상 Result 대신 전파됨을 확인합니다. Drizzle도 실제 SQL rollback rejection을 검증합니다. Mongo는 session/transaction/request/connection별 command 이벤트로 성공한 abort를 확인하고 일회성 서버 abort 오류가 driver 내부에서 숨겨져도 정상 Result를 반환하지 않음을 검증합니다. 관찰 불가능한 구성이나 불충분한 증거를 성공한 native rollback으로 간주하지 않습니다. [엄격한 공유 계약](../../../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+
 ## 증거와 정리
 
-`pnpm test`는 고유한 `.omo/issue-3717-native/run-*` receipt 경로, 실제 port/DB,
+`pnpm test`는 고유한 `.omo/issue-3718-native/run-*` receipt 경로, 실제 port/DB,
 공개 import 경로, Node TAP 결과를 출력합니다. `commands.json`에는 각 명령,
 출력, 종료 코드가 기록됩니다. 컨테이너 로그와 `result.json`에는 readiness,
 이미지 식별 정보, 정리 결과가 보존됩니다. 성공하려면 테스트 프로세스와 정리가

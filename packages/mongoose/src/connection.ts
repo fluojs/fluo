@@ -1,3 +1,4 @@
+import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown } from '@fluojs/runtime';
@@ -8,6 +9,7 @@ import {
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
 import { AfterCommitCapabilityError, AfterCommitCleanupError, AfterCommitError } from './after-commit.js';
+import { evaluateResult, ResultBoundary, type RollbackOwner, TransactionRollbackCapabilityError } from './result-rollback.js';
 import { createMongoosePlatformStatusSnapshot } from './status.js';
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
 import type {
@@ -57,14 +59,16 @@ type AmbientSessionScope = {
 };
 
 // Each native callback attempt owns a mutable registration queue and closes it before commit begins.
-type TransactionOwner = {
+type TransactionOwner = RollbackOwner & {
   readonly callbacks: AfterCommitCallback[];
   afterCommitEnabled: boolean;
+  resultRollbackEnabled: boolean;
   open: boolean;
 };
 
 type MongooseRuntimeOptions = {
   strictTransactions: boolean;
+  rollbackObserver?: TransactionRollbackObserver;
 };
 
 type MongooseModelFactoryConnection = MongooseConnectionLike & {
@@ -186,7 +190,18 @@ function resolveModelFactory(connection: MongooseConnectionLike): MongooseModelF
   return modelConnection.model;
 }
 
-async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: () => Promise<T>): Promise<T> {
+function assertRollbackSessionCapability(session: MongooseSessionLike): void {
+  if (!isObjectLike(session) || ['startTransaction', 'commitTransaction', 'abortTransaction', 'endSession']
+    .some((method) => typeof Reflect.get(session, method) !== 'function')) {
+    throw new TransactionRollbackCapabilityError();
+  }
+}
+
+async function executeSessionTransaction<T>(
+  session: MongooseSessionLike,
+  fn: () => Promise<T>,
+  owner: TransactionOwner,
+): Promise<T> {
   try {
     await session.startTransaction();
     const result = await fn();
@@ -196,7 +211,9 @@ async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: ()
     try {
       await session.abortTransaction();
     } catch (abortError) {
-      void abortError;
+      if (owner.resultRollbackEnabled) {
+        throw new AggregateError([error, abortError], 'Mongoose transaction failed and native rollback failed.', { cause: error });
+      }
     }
 
     throw error;
@@ -365,20 +382,24 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    * ```
    *
    * @param fn Callback executed within the transaction scope.
-   * @param boundary Optional native after-commit capability requirement, checked before invoking `fn`.
+   * @param boundary Optional native capability requirements and application-owned Result rollback predicate.
    * @returns The callback result after the session transaction finishes or the direct-execution fallback completes.
    * @throws {AfterCommitError} After committed work when one or more hooks fail.
    * @throws {AfterCommitCleanupError} After committed work and hook drain when manual session cleanup fails.
    * @throws {AfterCommitCapabilityError} When required native support is unavailable.
+   * @throws {TransactionRollbackCapabilityError} When Result rollback cannot own a native boundary.
+   * @throws {TransactionRollbackOnlyError} When a nested Result rejected but the root result did not.
    */
-  async transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions): Promise<T> {
+  async transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions<T>): Promise<T> {
     this.assertTransactionsAvailable();
+    this.assertResultRollbackCapability(boundary);
     this.assertAfterCommitCapability(boundary);
 
     const currentSession = this.sessions.getStore();
     if (currentSession?.owner.open) {
       currentSession.owner.afterCommitEnabled ||= boundary?.requireAfterCommit === true;
-      return fn();
+      currentSession.owner.resultRollbackEnabled ||= boundary?.shouldRollback !== undefined;
+      return evaluateResult(currentSession.owner, await fn(), boundary?.shouldRollback);
     }
 
     if (typeof this.connection.transaction === 'function') {
@@ -396,6 +417,10 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
 
     if (!session) {
+      if (boundary?.shouldRollback) {
+        activeCallback.settle();
+        throw new TransactionRollbackCapabilityError();
+      }
       return this.runDirectTransaction(fn, activeCallback);
     }
 
@@ -412,29 +437,37 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    *
    * @param fn Callback executed within the request transaction scope.
    * @param signal Optional abort signal linked to the request lifecycle.
-   * @param boundary Optional native after-commit capability requirement, checked before invoking `fn`.
+   * @param boundary Optional native capability requirements and application-owned Result rollback predicate.
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
    * @throws {AfterCommitError} After committed work when one or more hooks fail.
    * @throws {AfterCommitCleanupError} After committed work and hook drain when manual session cleanup fails.
    * @throws {AfterCommitCapabilityError} When required native support is unavailable.
+   * @throws {TransactionRollbackCapabilityError} When Result rollback cannot own a native boundary.
+   * @throws {TransactionRollbackOnlyError} When a nested Result rejected but the root result did not.
    */
   async requestTransaction<T>(
     fn: () => Promise<T>,
     signal?: AbortSignal,
-    boundary?: TransactionBoundaryOptions,
+    boundary?: TransactionBoundaryOptions<T>,
   ): Promise<T> {
     this.assertRequestTransactionsAvailable();
+    this.assertResultRollbackCapability(boundary);
     this.assertAfterCommitCapability(boundary);
     const currentScope = this.sessions.getStore();
     if (currentScope?.owner.open) {
       this.assertRequestTransactionsAvailable();
       currentScope.owner.afterCommitEnabled ||= boundary?.requireAfterCommit === true;
+      currentScope.owner.resultRollbackEnabled ||= boundary?.shouldRollback !== undefined;
 
       const abortContext = createRequestAbortContext(signal);
       const active = this.trackActiveRequestTransaction(abortContext.controller);
 
       try {
-        return await raceWithAbortAndDrainCallback(fn, abortContext.signal);
+        return evaluateResult(
+          currentScope.owner,
+          await raceWithAbortAndDrainCallback(fn, abortContext.signal),
+          boundary?.shouldRollback,
+        );
       } finally {
         abortContext.cleanup();
         currentScope.activeSession.retainRequestTransaction(active);
@@ -456,9 +489,12 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     try {
       if (typeof this.connection.transaction === 'function') {
         let delegatedCallbackStarted = false;
+        let resultRollbackEnabled = boundary?.shouldRollback !== undefined;
         const delegatedTransaction = this.runConnectionTransaction(() => {
           delegatedCallbackStarted = true;
-          return raceWithAbortAndDrainCallback(fn, abortContext.signal);
+          return raceWithAbortAndDrainCallback(fn, abortContext.signal).finally(() => {
+            resultRollbackEnabled ||= this.sessions.getStore()?.owner.resultRollbackEnabled === true;
+          });
         }, confirmCommit, boundary);
 
         try {
@@ -468,7 +504,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
             () => delegatedCallbackStarted,
           );
         } catch (error) {
-          if (committed) {
+          if (committed || (resultRollbackEnabled && delegatedCallbackStarted)) {
             return await delegatedTransaction;
           }
           throw error;
@@ -479,6 +515,9 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         untrackActiveInFinally = false;
       });
       if (!resolvedSession) {
+        if (boundary?.shouldRollback) {
+          throw new TransactionRollbackCapabilityError();
+        }
         return await raceWithAbortAndDrainCallback(fn, abortContext.signal);
       }
 
@@ -497,7 +536,18 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
-  private assertAfterCommitCapability(boundary?: TransactionBoundaryOptions): void {
+  private assertResultRollbackCapability<T>(boundary?: TransactionBoundaryOptions<T>): void {
+    if (!boundary?.shouldRollback) return;
+    if (!this.connectionOptions.rollbackObserver) throw new TransactionRollbackCapabilityError();
+    const scope = this.sessions.getStore();
+    if (scope?.owner.open) {
+      assertRollbackSessionCapability(scope.session);
+    } else if (typeof this.connection.transaction !== 'function' && typeof this.connection.startSession !== 'function') {
+      throw new TransactionRollbackCapabilityError();
+    }
+  }
+
+  private assertAfterCommitCapability<T>(boundary?: TransactionBoundaryOptions<T>): void {
     if (!boundary?.requireAfterCommit) {
       return;
     }
@@ -526,25 +576,39 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     fn: () => Promise<T>,
     activeCallback?: ActiveTransactionCallbackHandle,
     confirmCommit?: () => void,
-    boundary?: TransactionBoundaryOptions,
+    boundary?: TransactionBoundaryOptions<T>,
   ): Promise<T> {
     const activeSession = this.trackActiveSession();
     const owner: TransactionOwner = {
       callbacks: [],
       afterCommitEnabled: boundary?.requireAfterCommit === true,
+      resultRollbackEnabled: boundary?.shouldRollback !== undefined,
       open: true,
     };
+    const resultBoundary = new ResultBoundary(owner, boundary?.shouldRollback);
 
     try {
       let result: T;
       try {
-        result = await this.sessions.run({ activeSession, session, owner }, () =>
-          executeSessionTransaction(session, () => this.runOwnerCallback(owner, fn)),
-        );
+        if (owner.resultRollbackEnabled) assertRollbackSessionCapability(session);
+        result = await observeRollback(this.connectionOptions.rollbackObserver, () => {
+          owner.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session, this.connection);
+          return this.sessions.run({ activeSession, session, owner }, () =>
+            executeSessionTransaction(session, () => this.runOwnerCallback(owner, fn, resultBoundary), owner),
+          );
+        });
       } catch (error) {
         owner.callbacks.length = 0;
-        await session.endSession();
-        throw error;
+        if (owner.resultRollbackEnabled) {
+          try {
+            if (typeof session.endSession === 'function') await session.endSession();
+          } catch (cleanupError) {
+            throw new AggregateError([error, cleanupError], 'Mongoose transaction failed and session cleanup failed.', { cause: error });
+          }
+        } else {
+          await session.endSession();
+        }
+        return await resultBoundary.recover(error);
       }
 
       if (!owner.afterCommitEnabled) {
@@ -607,28 +671,42 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   private async runConnectionTransaction<T>(
     fn: () => Promise<T>,
     confirmCommit?: () => void,
-    boundary?: TransactionBoundaryOptions,
+    boundary?: TransactionBoundaryOptions<T>,
   ): Promise<T> {
     const activeSession = this.trackActiveSession();
     let owner: TransactionOwner | undefined;
+    let resultBoundary: ResultBoundary<T> | undefined;
 
     try {
       if (typeof this.connection.transaction !== 'function') {
         throw new Error('Mongoose connection transaction resolver initialization failed.');
       }
 
-      const result = await this.connection.transaction((session) => {
-        if (owner) {
-          owner.callbacks.length = 0;
-        }
-        const attempt: TransactionOwner = {
-          callbacks: [],
-          afterCommitEnabled: boundary?.requireAfterCommit === true,
-          open: true,
-        };
-        owner = attempt;
-        return this.sessions.run({ activeSession, session, owner: attempt }, () => this.runOwnerCallback(attempt, fn));
-      });
+      let result: T;
+      try {
+        result = await observeRollback(this.connectionOptions.rollbackObserver, () => this.connection.transaction!((session) => {
+          if (owner) {
+            owner.callbacks.length = 0;
+          }
+          const attempt: TransactionOwner = {
+            callbacks: [],
+            afterCommitEnabled: boundary?.requireAfterCommit === true,
+            resultRollbackEnabled: boundary?.shouldRollback !== undefined,
+            open: true,
+          };
+          owner = attempt;
+          attempt.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session, this.connection);
+          const attemptBoundary = new ResultBoundary(attempt, boundary?.shouldRollback);
+          resultBoundary = attemptBoundary;
+          if (attempt.resultRollbackEnabled) assertRollbackSessionCapability(session);
+          return this.sessions.run({ activeSession, session, owner: attempt }, () =>
+            this.runOwnerCallback(attempt, fn, attemptBoundary),
+          );
+        }));
+      } catch (error) {
+        if (resultBoundary) return await resultBoundary.recover(error);
+        throw error;
+      }
       if (owner?.afterCommitEnabled) {
         activeSession.confirmCommit();
         confirmCommit?.();
@@ -644,9 +722,15 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
-  private async runOwnerCallback<T>(owner: TransactionOwner, fn: () => Promise<T>): Promise<T> {
+  private async runOwnerCallback<T>(
+    owner: TransactionOwner,
+    fn: () => Promise<T>,
+    resultBoundary: ResultBoundary<T>,
+  ): Promise<T> {
     try {
-      return await fn();
+      const result = resultBoundary.evaluate(await fn());
+      resultBoundary.assertCommittable();
+      return result;
     } catch (error) {
       owner.callbacks.length = 0;
       throw error;

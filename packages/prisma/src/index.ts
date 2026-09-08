@@ -1,5 +1,7 @@
 export * from './after-commit.js';
 export * from './module.js';
+export * from './rollback-observer.js';
+export { TransactionRollbackCapabilityError, TransactionRollbackOnlyError, TransactionRollbackUnconfirmedError, type TransactionRollbackObservation, type TransactionRollbackObserver } from './result-rollback.js';
 export * from './service.js';
 export * from './status.js';
 export * from './tokens.js';

@@ -177,6 +177,68 @@ await this.db.transaction(async () => {
 
 Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, rollback 또는 다른 방식으로 settle된 뒤 실행되더라도 ALS context를 상속할 수 있습니다. 이렇게 상속된 continuation에서 나중에 호출하는 `transaction(...)` 또는 `requestTransaction(...)`은 닫힌 transaction handle을 재사용하지 않고 lifecycle tracking이 적용된 새 root로 처리됩니다. Shutdown은 `dispose(database)` 전에 이 새 root를 drain하며, owner가 settle되기 전에 시작한 호출은 계속 활성 boundary를 공유합니다.
 
+### 반환값으로 롤백 선택
+
+먼저 native rollback 확인 capability를 등록하세요. 아래 완전한 등록 helper가 반환하는 module을 애플리케이션 imports에 넣습니다. `forRootAsync`의 factory 결과도 `rollbackObserver`를 받으며, 직접 생성하는 wrapper/facade의 기존 런타임 옵션에도 같은 필드를 전달할 수 있습니다. 이 옵션은 driver native 옵션이 아닙니다.
+
+```ts
+import { createDrizzleRollbackObserver, DrizzleModule } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+export function resultTransactions(databaseUrl: string) {
+  const pool = new Pool({ connectionString: databaseUrl });
+  const observed = createDrizzleRollbackObserver(pool);
+  const database = drizzle(observed.client);
+  type NativeTransaction = Parameters<Parameters<typeof database.transaction>[0]>[0];
+  type NativeOptions = Parameters<typeof database.transaction>[1];
+  return DrizzleModule.forRoot<typeof database, NativeTransaction, NativeOptions>({
+    database,
+    rollbackObserver: observed.rollbackObserver,
+    dispose: () => pool.end(),
+  });
+}
+```
+
+이 구성에서만 아래 `shouldRollback` 예제를 사용합니다. Observer가 없는 기존 wrapper는 평범한 transaction에는 계속 사용할 수 있지만 Result opt-in은 callback 전에 거부됩니다. 다음 capability 타입과 오류도 package root export입니다.
+
+- `createDrizzleRollbackObserver(...)`: 위의 public native observation helper입니다.
+- `TransactionRollbackObserver`: `run<T>(callback): Promise<T>`로 owner observation scope를 열고 `beginAttempt(transaction)`으로 native attempt를 연결하는 고급 capability 계약입니다.
+- `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>`는 독립적으로 확인한 rollback 성공만 반환하고 실패/불확실성은 오류로 보고합니다. Sentinel 일치나 no-op 함수로 구현하지 마세요.
+- `TransactionRollbackUnconfirmedError`: 양의 native rollback 확인이 없어 정상 Result를 반환할 수 없음을 나타냅니다.
+
+
+`shouldRollback`은 callback의 정상 반환값에 대한 동기 opt-in predicate입니다. 다음은 등록된 Node PostgreSQL wrapper를 받는 완전한 소비자 helper입니다. `persist`는 같은 wrapper의 `current()` 또는 facade로 DB 작업을 수행합니다. `Result`는 소비자 정의이며 Fluo는 전역 결과 형태를 도입하지 않습니다.
+
+```ts
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { DrizzleDatabase, TransactionBoundaryOptions } from '@fluojs/drizzle';
+
+type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
+export function persistWithResult<T>(
+  db: DrizzleDatabase<NodePgDatabase>,
+  persist: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const boundary: TransactionBoundaryOptions<Result<T>> = {
+    shouldRollback: (value) => !value.ok,
+  };
+  return db.transaction(persist, undefined, boundary);
+}
+```
+
+request는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`를, decorator는 `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`를 유지합니다. 예를 들어 `@Transaction(undefined, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`처럼 세 번째 자리에 선언합니다. native 옵션과 합치지 않으며 중첩 native 옵션도 계속 거부합니다.
+
+루트 predicate가 `true`이면 native rollback과 필요한 cleanup 성공 뒤 같은 루트 값이 반환됩니다. 중첩 predicate가 `true`이면 중첩 호출은 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만듭니다. 루트도 자기 결과를 거부하면 그 루트 실패값을 반환하고, 그렇지 않으면 rollback 뒤 `TransactionRollbackOnlyError`가 첫 중첩 실패값을 `readonly result: unknown`으로 보고합니다. 옵션을 생략하면 기존 예외 기반 동작을 유지합니다.
+
+fallback 또는 rollback을 소유할 수 없는 legacy target은 opt-in callback 전에 `TransactionRollbackCapabilityError`로 거부합니다. 두 오류는 `@fluojs/drizzle` root export이며 `instanceof`로 구분합니다. native commit·rollback·cleanup 오류는 domain 값으로 가리지 않습니다. 이미 commit된 hook 실패인 `AfterCommitError`와 별개입니다.
+
+rollback은 owner의 모든 hook을 버립니다. 단순히 잡힌 중첩 예외는 rollback-only를 만들지 않아 최종 commit 시 write와 hook이 유지됩니다. native callback retry는 attempt마다 새 owner를 사용합니다. 외부 raw transaction과 Redis `MULTI/EXEC`는 지원하지 않으며 savepoint·durability 보장을 추가하지 않습니다. 전체 규칙은 [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
 ### 커밋 후 캐시 무효화
 
 `DrizzleDatabase.afterCommit(...)`은 같은 wrapper의 열린 native transaction에 작업을 등록합니다. 다음은 기존 `./schema`의 `users` 테이블(`id`, `name`), 등록된 Node PostgreSQL Drizzle handle과 `CacheModule`의 `CacheService`를 사용하는 애플리케이션 함수입니다.
@@ -312,7 +374,7 @@ defineModule(ManualDrizzleModule, {
 
 | API | 입력과 완료 |
 | --- | --- |
-| `transaction(fn, nativeOptions?, boundary?): Promise<T>` | 기존 async `fn`과 Drizzle 옵션 뒤에 `boundary`를 추가합니다. outer boundary는 native commit과 hook drain 뒤 원래 결과를 반환합니다. |
+| `transaction(fn, nativeOptions?, boundary?): Promise<T>` | 기존 async `fn`과 Drizzle 옵션 뒤에 `boundary`를 추가합니다. commit 경로는 hook drain 뒤 원래 결과를 반환하며 opt-in rollback은 위의 반환·오류 규칙을 따릅니다. |
 | `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>` | 기존 request `AbortSignal`과 native 옵션 자리를 유지하며 마지막에 `boundary`를 받습니다. |
 | `afterCommit(callback: AfterCommitCallback): void` | 열린 native scope에 등록합니다. 즉시 실행하지 않으며 미지원·native transaction 없음·scope 밖·닫힌 scope에서는 거부합니다. |
 | `Transaction(accessorOrOptions?, nativeOptions?, boundary?)` | 기존 첫 인자의 accessor 또는 native 옵션 해석을 보존합니다. 두 번째 native 옵션은 accessor 사용 시의 기존 자리이고, Fluo `boundary`는 항상 세 번째입니다. |
@@ -323,12 +385,14 @@ defineModule(ManualDrizzleModule, {
 import {
   AfterCommitCapabilityError,
   AfterCommitError,
+  TransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError,
   type AfterCommitCallback,
   type TransactionBoundaryOptions,
 } from '@fluojs/drizzle';
 ```
 
-`AfterCommitCallback`은 `() => void | Promise<void>`, `TransactionBoundaryOptions`는 `{ readonly requireAfterCommit?: boolean }`입니다. `AfterCommitCapabilityError`는 요청한 native commit capability가 없거나 미지원 경계의 hook 등록을 거부합니다. `AfterCommitError extends AggregateError`는 `readonly committed = true`와 `results: readonly PromiseSettledResult<void>[]`를 제공하고 상속한 `errors`에 모든 실패를 담습니다. `boundary`는 Fluo 전용이며 native 옵션에 합치지 않습니다.
+`AfterCommitCallback`은 `() => void | Promise<void>`, `TransactionBoundaryOptions<T = unknown>`는 `{ readonly requireAfterCommit?: boolean; readonly shouldRollback?: (value: T) => boolean }`입니다. `AfterCommitCapabilityError`는 요청한 native commit capability가 없거나 미지원 경계의 hook 등록을 거부합니다. `AfterCommitError extends AggregateError`는 `readonly committed = true`와 `results: readonly PromiseSettledResult<void>[]`를 제공하고 상속한 `errors`에 모든 실패를 담습니다. `boundary?: TransactionBoundaryOptions<T>`는 Fluo 전용이며 native 옵션에 합치지 않습니다. `TransactionRollbackCapabilityError`와 `TransactionRollbackOnlyError`의 실패 조건과 `result`는 [반환값으로 롤백 선택](#반환값으로-롤백-선택)을 참고하세요.
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`

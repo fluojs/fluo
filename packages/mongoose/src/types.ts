@@ -1,12 +1,15 @@
+import type { TransactionRollbackObserver } from './result-rollback.js';
 import type { MaybePromise } from '@fluojs/core';
 
 /** Work registered during a transaction callback to run after confirmed native commit. */
 export type AfterCommitCallback = () => void | Promise<void>;
 
 /** Package-owned transaction requirements, separate from native driver options. */
-export interface TransactionBoundaryOptions {
+export interface TransactionBoundaryOptions<T = unknown> {
   /** Rejects before the user callback when the connection cannot provide native after-commit semantics. */
   readonly requireAfterCommit?: boolean;
+  /** Rolls back when the application-owned predicate rejects the resolved callback value. */
+  readonly shouldRollback?: (value: T) => boolean;
 }
 
 /**
@@ -84,6 +87,8 @@ export interface MongooseModuleOptions<TConnection extends MongooseConnectionLik
    * Leave this disabled when `transaction()` / `requestTransaction()` should fall back to direct execution.
    */
   strictTransactions?: boolean;
+  /** Public native observation capability required for opt-in Result rollback; never forwarded as native options. */
+  rollbackObserver?: TransactionRollbackObserver;
 }
 
 /**
@@ -118,7 +123,7 @@ export interface MongooseHandleProvider<TConnection extends MongooseConnectionLi
    * @param boundary Optional package-owned capability requirements, checked before invoking `fn`.
    * @returns The callback result after the session transaction finishes or the direct-execution fallback completes.
    */
-  transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
   /**
    * Opens an abort-aware request transaction boundary around `fn`.
    *
@@ -127,5 +132,5 @@ export interface MongooseHandleProvider<TConnection extends MongooseConnectionLi
    * @param boundary Optional package-owned capability requirements, checked before invoking `fn`.
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
    */
-  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, boundary?: TransactionBoundaryOptions): Promise<T>;
+  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
 }

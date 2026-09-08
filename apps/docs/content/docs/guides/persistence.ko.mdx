@@ -193,6 +193,18 @@ await this.conn.transaction(async () => {
 
 fluo는 지원되는 `MongooseConnection.model(...)` facade method에서만 ambient session을 병합합니다. `current().model(...)`이 반환한 raw model의 operation option은 재작성하지 않으므로, 해당 호출이 transaction에 참여해야 한다면 `currentSession()`을 명시적으로 전달해야 합니다.
 
+## Result-based rollback
+
+예상된 실패를 값으로 반환하는 서비스는 기존 Fluo boundary의 `shouldRollback`을 명시해야 그 값으로 rollback을 선택할 수 있습니다. `TransactionBoundaryOptions<T = unknown>`은 `readonly shouldRollback?: (value: T) => boolean`을 받으며 Fluo가 전역 `Result` 모양을 정하지 않습니다. 타입이 지정된 소비자 예제는 [Prisma README](https://github.com/fluojs/fluo/blob/main/packages/prisma/README.ko.md#반환값으로-롤백-선택)를 참고하세요.
+
+루트 predicate가 실패를 선택하면 native rollback·cleanup 성공 뒤 같은 루트 값을 반환합니다. 중첩 실패값은 안쪽 호출에 그대로 반환되지만 공유 owner는 sticky rollback-only가 됩니다. 루트도 자기 결과를 거부하면 그 루트 실패값을 반환하고, 그렇지 않으면 `TransactionRollbackOnlyError`가 첫 중첩 실패값을 `readonly result: unknown`으로 보고합니다. 단순히 잡힌 중첩 예외는 이 표시를 만들지 않으므로 기존 최종 commit과 hook을 유지합니다.
+
+세 패키지의 `TransactionRollbackCapabilityError`는 미지원 fallback/legacy target에서 callback 전에 발생합니다. native commit·rollback·cleanup 오류는 그대로 전파하며 이미 commit한 뒤의 `AfterCommitError` 또는 Mongoose `AfterCommitCleanupError`와 구별합니다. rollback은 hook을 폐기하고 native callback retry는 새 owner를 사용합니다. raw 외부 transaction과 Redis `MULTI/EXEC`는 지원하지 않으며 savepoint·durability 보장을 추가하지 않습니다. 상세 의미는 [공유 owner 계약](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.ko.md#반환값-기반-롤백)이 소유합니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
+옵션 위치는 아래 after-commit 설명과 동일합니다. Prisma/Drizzle의 native 옵션·signal 자리를 바꾸지 않고 마지막 Fluo boundary에 넣으며, Mongoose에 native 옵션 인자를 추가하지 않습니다.
+
 ## After-commit cache invalidation
 
 Prisma, Drizzle, Mongoose wrapper의 `afterCommit(...)`은 DB write가 실제로 commit된 뒤 캐시를 무효화할 때 사용합니다. 규범 원본은 `docs/architecture/transactions.ko.md`이며 공개 인자와 import는 각 `packages/prisma/README.ko.md`, `packages/drizzle/README.ko.md`, `packages/mongoose/README.ko.md`가 소유합니다. 이 가이드는 해당 계약의 적용 설명입니다.

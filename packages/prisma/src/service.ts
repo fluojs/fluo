@@ -1,3 +1,4 @@
+import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
 import { Inject } from '@fluojs/core';
 import {
   type AfterCommitCallback,
@@ -18,6 +19,7 @@ import {
 } from './integration.js';
 
 import { markPrismaServiceHandle } from './prisma-service-brand.js';
+import { evaluateResult, ResultBoundary, type RollbackOwner, TransactionRollbackCapabilityError } from './result-rollback.js';
 import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import type {
@@ -36,6 +38,7 @@ const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
 
 interface PrismaServiceOptions {
   strictTransactions: boolean;
+  rollbackObserver?: TransactionRollbackObserver;
 }
 
 type ActiveTransactionBoundary = {
@@ -51,7 +54,7 @@ type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
 type TransactionContext<TTransactionClient> = {
   client: TTransactionClient;
-  owner: { closed: boolean; hooks: AfterCommitCallback[] };
+  owner: RollbackOwner & { closed: boolean; hooks: AfterCommitCallback[] };
   deferredRequestTransactionHandles?: Set<ActiveRequestTransactionHandle>;
   requestAbortSignal?: AbortSignal;
 };
@@ -266,6 +269,12 @@ export class PrismaService<
     }
   }
 
+  private assertResultRollbackCapability(): void {
+    if (typeof this.client.$transaction !== 'function' || this.transactions.kind === 'unavailable' || !this.serviceOptions.rollbackObserver) {
+      throw new TransactionRollbackCapabilityError();
+    }
+  }
+
   private async drainAfterCommit(owner: TransactionContext<TTransactionClient>['owner']): Promise<void> {
     const hooks = owner.hooks.splice(0);
     await this.transactions.run(undefined, async () => {
@@ -291,17 +300,21 @@ export class PrismaService<
       options?: TTransactionOptions,
     ) => Promise<T>,
     options?: TTransactionOptions,
-    boundary?: TransactionBoundaryOptions,
+    boundary?: TransactionBoundaryOptions<T>,
   ): Promise<T> {
+    if (boundary?.shouldRollback) {
+      this.assertResultRollbackCapability();
+    }
     if (boundary?.requireAfterCommit) {
       this.assertAfterCommitCapability();
     }
-    if (this.activeContext()) {
+    const current = this.activeContext();
+    if (current) {
       if (options !== undefined) {
         throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
       }
 
-      return fn();
+      return evaluateResult(current.owner, await fn(), boundary?.shouldRollback);
     }
 
     this.assertTransactionBoundariesAvailable();
@@ -320,25 +333,40 @@ export class PrismaService<
       this.assertTransactionContextAvailable();
 
       const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
-      const owner: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
+      let owner: TransactionContext<TTransactionClient>['owner'] | undefined;
+      let policy: ResultBoundary<T> | undefined;
 
       try {
-        const result = await run(
-          (transactionClient) =>
-            this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles, owner }, async () => {
+        const result = await observeRollback(this.serviceOptions.rollbackObserver, () => run(
+          (transactionClient) => {
+            if (owner) owner.hooks.length = 0;
+            const attempt: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
+            attempt.observation = this.serviceOptions.rollbackObserver?.beginAttempt(transactionClient);
+            const attemptPolicy = new ResultBoundary(attempt, boundary?.shouldRollback);
+            owner = attempt;
+            policy = attemptPolicy;
+            return this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles, owner: attempt }, async () => {
               try {
-                return await fn();
+                const value = attemptPolicy.evaluate(await fn());
+                attemptPolicy.assertCommittable();
+                return value;
               } finally {
-                owner.closed = true;
+                attempt.closed = true;
               }
-            }),
+            });
+          },
           options,
-        );
-        await this.drainAfterCommit(owner);
+        ));
+        if (owner) await this.drainAfterCommit(owner);
         return result;
+      } catch (error) {
+        if (policy) return await policy.recover(error);
+        throw error;
       } finally {
-        owner.closed = true;
-        owner.hooks.length = 0;
+        if (owner) {
+          owner.closed = true;
+          owner.hooks.length = 0;
+        }
         for (const handle of deferredRequestTransactionHandles) {
           this.untrackActiveRequestTransaction(handle);
         }
@@ -432,13 +460,15 @@ export class PrismaService<
    * @param fn Callback executed inside the transaction flow where `current()` resolves from ALS to the active transaction client,
    * or reuses the already-active context / direct-execution path when no new boundary is opened.
    * @param options Optional Prisma transaction options forwarded to `$transaction`.
-   * @param boundary Optional requirement for native afterCommit capability, checked before `fn`.
+   * @param boundary Optional native capability requirement and explicit Result rollback predicate.
    * @returns The callback result, after commit when a new interactive transaction is opened, or from direct execution when
-   * nested context reuse or non-strict `$transaction` fallback applies.
+   * nested context reuse or non-strict `$transaction` fallback applies. An opted-in root failure returns unchanged after rollback.
+   * @throws {TransactionRollbackOnlyError} When a nested policy rejected a value but the root did not return an opted-in failure.
+   * @throws {TransactionRollbackCapabilityError} When an opted-in policy has no native rollback boundary.
    * @throws {Error} When nested transaction options are provided while already inside an active transaction.
    * @throws {Error} When strict transaction mode is enabled and the Prisma client does not implement `$transaction`.
    */
-  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T> {
+  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T> {
     return this.runWithTransactionClient(
       fn,
       (callback, transactionOptions) => this.client.$transaction!(callback, transactionOptions),
@@ -459,15 +489,20 @@ export class PrismaService<
    * transaction client, or reuses the already-active context / direct-execution path when no new boundary is opened.
    * @param signal Optional abort signal propagated to request transaction handling.
    * @param options Optional Prisma transaction options forwarded to `$transaction`.
-   * @param boundary Optional requirement for native afterCommit capability, checked before `fn`.
+   * @param boundary Optional native capability requirement and explicit Result rollback predicate.
    * @returns The callback result, after commit when a new interactive transaction is opened, or from direct execution when
-   * nested context reuse or non-strict `$transaction` fallback applies.
+   * nested context reuse or non-strict `$transaction` fallback applies. An opted-in root failure returns unchanged after rollback.
+   * @throws {TransactionRollbackOnlyError} When a nested policy rejected a value but the root did not return an opted-in failure.
+   * @throws {TransactionRollbackCapabilityError} When an opted-in policy has no native rollback boundary.
    * @throws {Error} When nested transaction options are provided while already inside an active transaction.
    * @throws {Error} When strict transaction mode is enabled and the Prisma client does not implement `$transaction`.
    * @throws {Error} Propagates an abort-related error when `signal` aborts before the transaction callback settles; concrete
    * error type/message depends on the runtime abort implementation.
    */
-  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T> {
+  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T> {
+    if (boundary?.shouldRollback) {
+      this.assertResultRollbackCapability();
+    }
     if (boundary?.requireAfterCommit) {
       this.assertAfterCommitCapability();
     }
@@ -478,14 +513,16 @@ export class PrismaService<
         throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
       }
 
-      return this.runNestedRequestTransaction(current, fn, signal);
+      return this.runNestedRequestTransaction(current, async () =>
+        evaluateResult(current.owner, await fn(), boundary?.shouldRollback), signal);
     }
 
     this.assertRequestTransactionsAvailable();
 
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
-    const owner: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
+    let owner: TransactionContext<TTransactionClient>['owner'] | undefined;
+    let policy: ResultBoundary<T> | undefined;
 
     try {
       const result = await this.runWithRequestTransactionClient<T>(
@@ -494,21 +531,32 @@ export class PrismaService<
           this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
         options,
         abortContext.signal,
-        owner,
+        () => {
+          if (owner) owner.hooks.length = 0;
+          const attempt: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
+          owner = attempt;
+          policy = new ResultBoundary(attempt, boundary?.shouldRollback);
+          return { owner: attempt, policy };
+        },
       );
 
       // Opt-in hooks observe a confirmed commit, not cancellation arriving during post-commit work.
-      if (!boundary?.requireAfterCommit && owner.hooks.length === 0) {
+      if (!boundary?.requireAfterCommit && !boundary?.shouldRollback && !owner?.hooks.length) {
         this.throwIfRequestAborted(abortContext.signal);
       }
-      if (typeof this.client.$transaction === 'function') {
+      if (owner) {
         await this.drainAfterCommit(owner);
       }
 
       return result;
+    } catch (error) {
+      if (policy) return await policy.recover(error);
+      throw error;
     } finally {
-      owner.closed = true;
-      owner.hooks.length = 0;
+      if (owner) {
+        owner.closed = true;
+        owner.hooks.length = 0;
+      }
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
     }
@@ -522,7 +570,7 @@ export class PrismaService<
     ) => Promise<T>,
     options: TTransactionOptions | undefined,
     signal: AbortSignal,
-    owner: TransactionContext<TTransactionClient>['owner'],
+    createAttempt: () => { owner: TransactionContext<TTransactionClient>['owner']; policy: ResultBoundary<T> },
   ): Promise<T> {
     if (typeof this.client.$transaction !== 'function') {
       if (this.serviceOptions.strictTransactions) {
@@ -534,16 +582,22 @@ export class PrismaService<
 
     this.assertTransactionContextAvailable();
 
-    return run(
-      (transactionClient) => this.transactions.run({ client: transactionClient, requestAbortSignal: signal, owner }, async () => {
-        try {
-          return await fn();
-        } finally {
-          owner.closed = true;
-        }
-      }),
+    return observeRollback(this.serviceOptions.rollbackObserver, () => run(
+      (transactionClient) => {
+        const { owner, policy } = createAttempt();
+        owner.observation = this.serviceOptions.rollbackObserver?.beginAttempt(transactionClient);
+        return this.transactions.run({ client: transactionClient, requestAbortSignal: signal, owner }, async () => {
+          try {
+            const value = policy.evaluate(await fn());
+            policy.assertCommittable();
+            return value;
+          } finally {
+            owner.closed = true;
+          }
+        });
+      },
       options,
-    );
+    ));
   }
 
   private async runNestedRequestTransaction<T>(

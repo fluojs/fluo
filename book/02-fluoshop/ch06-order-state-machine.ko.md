@@ -278,7 +278,11 @@ export class OrderTransitionsService {
 
 여기서는 서비스 메서드 전체를 명시적 `transaction`으로 감쌌다. 트랜잭션은 두 쓰기의 원자성을 제공하고, `where.version`은 오래된 판단의 덮어쓰기를 막는다. 둘은 서로 대체되지 않는다. `ReadCommitted` 트랜잭션 안에서 읽었다는 이유만으로 두 요청이 같은 버전을 보는 일이 사라지지는 않는다.
 
-첫 요청이 버전 0에서 1로 바꾼 후 두 번째 요청의 조건부 갱신이 실행되면, 두 번째는 변경 건수 0을 받는다. 그 요청은 감사 기록을 만들지 않고 예외로 끝난다. 반대로 갱신은 성공했는데 감사 행 삽입이 실패하면 트랜잭션 전체가 롤백된다. 오류를 잡아서 `{ ok: false }`를 반환하면 콜백이 정상 종료되어 앞의 갱신이 커밋될 수 있으므로, DB 원자성 경계 안에서는 실패를 예외로 전달한다.
+첫 요청이 버전 0에서 1로 바꾼 후 두 번째 요청의 조건부 갱신이 실행되면, 두 번째는 변경 건수 0을 받는다. 그 요청은 감사 기록을 만들지 않고 예외로 끝난다. 반대로 갱신은 성공했는데 감사 행 삽입이 실패하면 트랜잭션 전체가 롤백된다. 이 구현은 `shouldRollback`을 설정하지 않았으므로 오류를 잡아서 `{ ok: false }`를 반환하면 앞의 갱신이 커밋될 수 있다. 이 장의 DB 원자성 경계에서는 실패를 예외로 전달한다.
+
+소비자 Result로 예상된 거절을 표현하려면 [반환값 기반 롤백 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)에 따라 마지막 Fluo boundary에 predicate를 명시하는 별도 선택이 필요하다. 성공한 rollback 뒤 같은 루트 실패값을 받는 것과 commit 성공은 다르다. 중첩 opt-in 실패가 표시한 sticky rollback-only도 루트에서 무시할 수 없으며 native 오류는 계속 전파된다. 이 기능이 주문 전이 규칙이나 아래 예외 기반 HTTP 계약을 자동으로 바꾸지는 않는다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
 
 다음은 `src/orders/orders.module.ts`의 **이 단계 등록 파일**이다. 이후 장에서 같은 모듈에 주문 생성 서비스와 재고 모듈을 추가한다. 여러 `OrdersModule`을 병렬로 만드는 것이 아니다.
 
