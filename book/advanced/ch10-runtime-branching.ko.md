@@ -27,11 +27,11 @@
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 좁고, 더 아키텍처적인 위치에 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1602`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
+`path:packages/runtime/src/bootstrap.ts:1583-1607`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
 
 그 중심부는 host 이름을 판별하는 대신 이미 준비된 adapter와 platform shell을 받아 조립합니다. 아래 발췌에서 runtime은 module graph, provider, token, lifecycle 순서를 다루고, Node나 Web이라는 이름을 조건으로 삼지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1578-1602`
+`path:packages/runtime/src/bootstrap.ts:1583-1607`
 ```typescript
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
