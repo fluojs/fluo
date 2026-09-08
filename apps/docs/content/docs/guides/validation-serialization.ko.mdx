@@ -9,12 +9,13 @@ description: 안전한 입력과 출력을 위해 명시적인 request DTO와 re
 
 ```txt
 client input
-  -> HTTP binding
-  -> request DTO materialization
-  -> validation rules
+  -> transport parsing / middleware
+  -> guards / interceptor-before (original parsed input)
+  -> HTTP binding / projection
+  -> schema output OR class DTO conversion + validation
   -> service logic
   -> response DTO
-  -> serialization rules
+  -> interceptor-after / serialization rules
   -> client response
 ```
 
@@ -37,6 +38,8 @@ pnpm add @fluojs/validation @fluojs/serialization
 
 HTTP 애플리케이션에서는 보통 `@fluojs/http`와 함께 사용합니다.
 
+입력 정책과 schema mapping의 owner는 [HTTP package README](https://github.com/fluojs/fluo/blob/main/packages/http/README.ko.md#명시적-입력-정책), schema output parsing의 owner는 [validation README](https://github.com/fluojs/fluo/blob/main/packages/validation/README.ko.md#standard-schema-output-parsing), application binder 조합의 owner는 [runtime README](https://github.com/fluojs/fluo/blob/main/packages/runtime/README.ko.md#http-binder-composition)입니다. 아래는 이 계약을 적용하는 사용 예입니다.
+
 ## Request validation
 
 Request validation이 답하는 질문은 하나입니다. **어떤 데이터가 애플리케이션 안으로 들어와도 되는가?**
@@ -48,17 +51,22 @@ Request validation이 답하는 질문은 하나입니다. **어떤 데이터가
 전송 경계에서는 익명 객체 타입보다 DTO class를 선호하세요.
 
 ```ts
+import { FromBody, Optional } from '@fluojs/http';
 import { IsBoolean, IsOptional, IsString, MinLength } from '@fluojs/validation';
 
 export class CreatePostDto {
+  @FromBody()
   @IsString()
   @MinLength(3)
   title = '';
 
+  @FromBody()
   @IsString()
   @MinLength(10)
   body = '';
 
+  @FromBody()
+  @Optional()
   @IsOptional()
   @IsBoolean()
   published?: boolean;
@@ -96,6 +104,18 @@ export class PostsController {
 ```
 
 이 route로 request가 들어오면 HTTP pipeline은 request data를 bind하고, `CreatePostDto` instance를 만들고, validation rule을 적용한 뒤 handler를 호출합니다.
+
+`FromBody`는 출처를 선언합니다. Validation decorator만으로 출처를 추론하지 않습니다. HTTP `Optional`은 source가 없을 때 binding 실패를 생략하며 validation의 `IsOptional`은 `null`/`undefined`일 때 field rule을 건너뜁니다. 명시적 `null`도 거부할 필수 field에는 `IsDefined`를 추가하세요.
+
+### 원본을 보존하는 입력 정책
+
+기본 body policy는 `{ unknownFields: 'reject', nonObjects: 'reject' }`입니다. DTO 클래스나 route method에 `@InputPolicy({ unknownFields: 'strip' })`를 선언하면 알려진 body source key만 binding에 전달합니다. Alias도 허용 목록에 반영됩니다. 일반 클래스 DTO에는 schema binder를 설치할 필요가 없습니다.
+
+Route가 명시한 policy field만 DTO field보다 우선합니다. `strip`만으로 배열이나 원시 body를 허용하지 않습니다. 필요한 소비자만 `nonObjects: 'empty'`를 별도로 선택하며, 그 경우에도 필수 class binding은 `MISSING_FIELD`로 실패할 수 있습니다. `null`과 absent body의 기존 누락 동작은 유지합니다. 위험한 own enumerable body key인 `__proto__`, `constructor`, `prototype`은 policy와 무관하게 계속 차단합니다.
+
+Projection은 shallow binding-local view를 사용하며 `RequestContext.request.body`를 교체하지 않습니다. Guard와 interceptor-before는 원래 parsed input을 보고, 이후 binding/projection, schema parsing 또는 converter와 클래스 검증, handler/service, interceptor-after 순서로 진행합니다. 이후 context reader도 원래 body를 봅니다. 검증된 handler 인수를 얻기 위해 context getter로 돌아가지 마세요.
+
+Guard에서 원본으로 인증하고, 검증된 입력이 필요한 업무 인가는 handler/service에서 서버가 확인한 identity와 함께 수행합니다. Projection 자체는 authorization이 아닙니다. Conditional request는 guard 이후 interceptor 이전에 완료될 수 있고, parser 오류와 byte limit은 여전히 guard보다 먼저 적용됩니다. Native parser와 HEAD policy는 바뀌지 않습니다. 표준·legacy 선언 및 조합 decorator의 정확한 계약은 HTTP owner를 참고하세요.
 
 ### `materialize()` vs `validate()`
 
@@ -173,10 +193,12 @@ fluo validation은 의도적으로 엄격합니다. Transport layer가 `'42'`를
 변환은 변환 책임이 있는 경계에서 명시적으로 수행하세요.
 
 ```ts
-import { Controller, Get, RequestDto } from '@fluojs/http';
+import { Controller, FromQuery, Get, Optional, RequestDto } from '@fluojs/http';
 import { IsOptional, IsString } from '@fluojs/validation';
 
 class ListPostsQueryDto {
+  @FromQuery()
+  @Optional()
   @IsOptional()
   @IsString()
   page = '1';
@@ -244,11 +266,76 @@ class RestrictedUserDto {
 }
 ```
 
+`ValidateClass`는 검증 전용입니다. Schema의 trim, coercion, default가 성공해도 기존 DTO의 field를 그 output으로 교체하지 않으며 기존 `issues: []` 성공 동작도 유지합니다.
+
+### Standard Schema output을 handler에 전달하기
+
+이미 schema를 소유한 앱은 `createSchemaDto`와 `StandardSchemaBinder`를 선택할 수 있습니다. 별도의 projection interceptor, `safeParse` guard, context 저장/getter 대신 성공 output을 handler 인수로 받습니다. 다음은 기존 controller를 교체하지 않는 독립 preview application 예제입니다. Fluo decorator build 설정과 `@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`, `@fluojs/platform-nodejs`, Zod 4가 필요합니다. Zod는 예시 vendor이며 다른 Standard Schema v1 구현도 지원합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
+} from '@fluojs/http';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { z } from 'zod';
+
+const PreviewRequest = createSchemaDto(z.object({
+  title: z.string().trim().min(1),
+  count: z.coerce.number().int().positive().default(1),
+  id: z.string().regex(/^[1-9][0-9]*$/)
+    .transform(Number).refine(Number.isSafeInteger),
+  tags: z.union([z.string(), z.array(z.string())])
+    .transform((value) => typeof value === 'string' ? [value] : value)
+    .default([]),
+}), {
+  fields: {
+    title: { source: 'body', key: 'post_title' },
+    count: { source: 'body' },
+    id: { source: 'path', key: 'postId' },
+    tags: { source: 'query', key: 'tag' },
+  },
+  policy: { unknownFields: 'strip' },
+});
+
+@Controller('/previews')
+class PreviewController {
+  @Post('/:postId')
+  @RequestDto(PreviewRequest)
+  preview(input: InstanceType<typeof PreviewRequest>) {
+    return input;
+  }
+}
+
+@Module({ controllers: [PreviewController] })
+class PreviewModule {}
+
+const app = await FluoFactory.create(PreviewModule, {
+  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+`POST /previews/7?tag=a&tag=b`에 `{ "post_title": "  Draft  ", "authorId": "untrusted" }`를 보내면 예상 handler input은 `{ title: 'Draft', count: 1, id: 7, tags: ['a', 'b'] }`이며 기본 POST 성공 상태는 `201`입니다. 이 preview는 저장하거나 인증하지 않습니다. 공개 쓰기 API에서는 서버 identity와 별도 response contract를 연결해야 합니다. Host는 종료 시 `app.close()`를 호출해야 하며 위 bootstrap은 process signal을 자동 등록하지 않습니다.
+
+`fields`의 property는 logical schema input name이고 `key`는 선택적 transport alias입니다. Source는 `body`, `path`, `query`를 명시합니다. 누락된 mapped value는 schema default가 적용되도록 생략하고 명시적 `null`은 전달합니다. 매핑하지 않은 query/path key는 무시하지만 body unknown-field policy는 독립적으로 유지합니다. Schema 자체의 strip 설정은 HTTP가 먼저 거부한 body key를 처리할 수 없습니다.
+
+Query의 `repeatedQuery` 기본값은 `preserve`입니다. Scalar는 scalar로 유지하고 배열은 복사합니다. 위 예제는 그 이후 schema가 두 형태를 배열로 통일합니다. `first`, `last`는 배열의 첫/마지막 값을 선택하고, `reject`는 둘 이상이면 HTTP 400 / `REPEATED_QUERY`를 만듭니다. `reject`의 원소 하나인 배열은 scalar로 바뀌지 않습니다.
+
+`InstanceType<typeof PreviewRequest>`는 변환·기본값을 반영한 schema **output** 타입입니다. 이 opaque `RequestDto` token을 생성자로 호출하면 `InvariantError`가 발생합니다. 상속하거나 mapped-class DTO helper에 넘기지 마세요. Runtime reflected class-field metadata나 자동 OpenAPI schema conversion이 아니므로 기존 클래스 계약이 필요하면 클래스 DTO를 유지하고, schema-token route의 OpenAPI는 명시적으로 작성합니다.
+
+`bootstrapApplication`도 같은 binder factory를 받습니다. Factory는 bootstrap마다 한 번 호출되고 설정된 global converter를 가진 default binder를 받습니다. `StandardSchemaBinder`는 일반 DTO를 그 fallback으로 위임하므로 기존 converter/class-validation 경로가 유지됩니다. Schema token에는 schema conversion을 사용합니다. Pure application context에는 `binder` option이 없습니다.
+
+HTTP 밖에서는 `@fluojs/validation`의 `parseStandardSchema(schema, value)`로 같은 성공 output을 얻습니다. Async validator도 await하며 output을 그대로 반환합니다. `issues: []`를 포함한 failure는 `DtoValidationError`이고 schema binder는 이를 HTTP 400으로 매핑합니다. Malformed result는 `TypeError`, schema 구현 예외는 그대로 전파됩니다. `ValidateClass`의 검증 전용 동작이나 `materialize(..., { undeclaredProperties: 'reject' })`의 클래스 실체화 정책을 바꾸는 API가 아닙니다.
+
 ### Validation API summary
 
 | 영역 | Public API |
 | --- | --- |
 | Engine | `DefaultValidator`, `Validator`, `DtoValidationError`, `ValidationIssue` |
+| Schema output | `parseStandardSchema`; HTTP의 `createSchemaDto`, `StandardSchemaBinder` |
 | Core type decorators | `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt` |
 | Presence and comparison | `IsDefined`, `IsOptional`, `IsEmpty`, `IsNotEmpty`, `Equals`, `NotEquals`, `IsIn`, `IsNotIn` |
 | Strings and network values | `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains` |
@@ -443,6 +530,9 @@ Service는 더 풍부한 internal record를 사용할 수 있습니다. Controll
 
 ## Testing checklist
 
+- Strict 기본값, route/DTO policy 우선순위, alias, 위험 key, 배열·원시 body와 `null`/누락을 구분합니다.
+- Guard와 interceptor-before가 원본을 보고 handler가 변환된 output을 받는지 확인합니다. Async schema 완료는 명시적 signal로 기다리고 고정 sleep에 의존하지 않습니다.
+- Repeated query의 네 정책, schema default, HTTP 400과 schema 구현 오류, 일반 DTO fallback을 확인합니다.
 - Invalid request body를 보내 deterministic validation failure를 확인합니다.
 - Optional field, nested DTO path, array, mapped DTO variant를 테스트합니다.
 - Response DTO가 민감한 field를 노출하지 않는지 확인합니다.
@@ -452,6 +542,8 @@ Service는 더 풍부한 internal record를 사용할 수 있습니다. Controll
 
 ## 관련 문서
 
+- [Book: 외부 입력을 내부 데이터로 바꾸기](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/ch06-request-boundaries.ko.md)
+- [Application 입력 conformance](https://github.com/fluojs/fluo/blob/main/packages/testing/src/input-materialization.e2e.test.ts), [native Next App Router 요청](https://github.com/fluojs/fluo/blob/main/packages/platform-nextjs/src/schema-input-materialization.test.ts), [cold public declaration](https://github.com/fluojs/fluo/blob/main/packages/runtime/src/input-materialization-public-types.test.ts): 회귀 근거 위치이며 위 preview 예제의 실행 결과를 대신하지 않습니다.
 - [HTTP API](./http-api)
 - [Testing](./testing)
 - [Package Selection](./package-selection)

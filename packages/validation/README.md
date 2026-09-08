@@ -159,7 +159,10 @@ so each nested target can materialize and validate the value independently.
 
 ### Standard Schema support
 
-Standard Schema adapters are expected to report invalid input through explicit issues. Validation results without issues are treated as successful.
+For `ValidateClass`, Standard Schema adapters are expected to report invalid input
+through explicit issues. Results without issues, and the existing empty
+`issues: []` case, are treated as successful. This is a validation-only contract:
+successful transformed/defaulted output does not replace the DTO or its fields.
 
 ```ts
 import { ValidateClass } from '@fluojs/validation';
@@ -174,6 +177,54 @@ class RestrictedUserDto {
 ```
 
 `ValidateClass(...)` also accepts custom class-level validators. `Validate(...)` attaches custom field-level validators when built-in decorators are not enough, and `ValidateIf(...)` short-circuits dependent validators when its predicate returns false.
+
+### Standard Schema output parsing
+
+**Scope and imports:** use `parseStandardSchema` and `StandardSchemaV1Like` from
+`@fluojs/validation` when the successful schema output is the value the caller
+needs. Supply a Standard Schema v1 implementation such as Zod or Valibot as an
+application dependency. No HTTP registration is needed for standalone parsing.
+
+```ts
+import { parseStandardSchema } from '@fluojs/validation';
+import { z } from 'zod';
+
+const DraftSchema = z.object({
+  title: z.string().trim(),
+  count: z.coerce.number().int().default(1),
+});
+
+const input = await parseStandardSchema(DraftSchema, { title: '  Draft  ' });
+// input: { title: string; count: number }
+// value: { title: 'Draft', count: 1 }
+```
+
+**Inputs, defaults, and output:** `parseStandardSchema(schema, value)` accepts
+unknown input and returns `Promise<Output>` inferred from the schema. It awaits
+sync or async validation and returns the successful `value` unchanged, including
+transforms, defaults, and a valid `{ value: undefined }` result. It adds no class
+hydration, HTTP source selection, unknown-field policy, or implicit coercion;
+the schema owns those value-level choices.
+
+**Failures:** any returned issues array, including `issues: []`, rejects with
+`DtoValidationError`. Issues retain messages and use normalized codes and
+dot/index paths such as `posts[0].title`; Standard Schema issues need not carry
+an HTTP `source`. Non-object results, non-array issues, and results with neither
+issues nor a success `value` reject with `TypeError`. Exceptions thrown or
+rejected by the schema implementation propagate unchanged.
+
+**Ownership and alternatives:** the caller owns the schema and input and must
+await completion; this helper creates no listener or disposable resource and
+does not isolate mutations performed by user-supplied schema code.
+`ValidateClass` remains validation-only, including its existing empty-issues
+behavior. `DefaultValidator.materialize(..., { undeclaredProperties: 'reject' })`
+is a separate class hydration/rejection contract, not schema output parsing or
+HTTP projection. For handler output binding, use
+[`createSchemaDto` and `StandardSchemaBinder`](../http/README.md#standard-schema-output-binding);
+HTTP maps parser `DtoValidationError` failures to 400.
+
+**Evidence:** `src/standard-schema.ts`, the export in `src/index.ts`, and
+`src/standard-schema-output.test.ts` cover the parser and compatibility boundary.
 
 ### Custom field validation
 
@@ -214,7 +265,7 @@ reverse-map member names are not values and are rejected.
 - **Array decorators**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
 - **Mapped DTO helpers**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
 - **Mapped DTO subpath**: `@fluojs/validation/mapped-types`
-- **Standard Schema contract**: `StandardSchemaV1Like` for typing `ValidateClass(...)` schemas
+- **Standard Schema contract**: `StandardSchemaV1Like` for typing schemas, `parseStandardSchema` for successful output parsing, and `ValidateClass(...)` for validation-only integration
 - **Validation flow**: `materialize()` for hydration + validation, `validate()` for validation-only checks
 
 ## Related Packages

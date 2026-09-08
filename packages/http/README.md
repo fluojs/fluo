@@ -244,6 +244,217 @@ any existing `Vary` fields.
 
 ## Common Patterns
 
+### Explicit input policies
+
+**Scope and imports:** `InputPolicy` and `InputPolicyOptions` from `@fluojs/http`
+or `@fluojs/http/portable` configure top-level body binding for a class DTO or a
+route method. Ordinary class DTOs need no schema binder. They still require
+`RequestDto` and explicit source decorators such as `FromBody`.
+
+| Option | Default | Opt-in behavior |
+| --- | --- | --- |
+| `unknownFields` | `'reject'` | `'strip'` projects only declared body source keys, including aliases. |
+| `nonObjects` | `'reject'` | `'empty'` supplies an empty body to binding for arrays, primitives, and other non-plain values. |
+
+Omitted fields retain strict defaults. A route overrides only the policy fields
+it explicitly declares; other fields come from the DTO, including inherited DTO
+policy. `null` and absent bodies retain existing missing-field behavior.
+`nonObjects: 'empty'` does not make required class fields optional:
+`FromBody` still reports `MISSING_FIELD` unless `Optional` permits omission.
+Field initializers do not satisfy required transport fields.
+
+```ts
+import {
+  Controller, FromBody, InputPolicy, Post, RequestDto,
+} from '@fluojs/http';
+import { IsDefined, IsString } from '@fluojs/validation';
+
+@InputPolicy({ unknownFields: 'strip' })
+class DraftInput {
+  @FromBody('post_title')
+  @IsDefined()
+  @IsString()
+  title = '';
+}
+
+@Controller('/drafts')
+class DraftController {
+  @Post()
+  @RequestDto(DraftInput)
+  create(input: DraftInput) {
+    return { title: input.title };
+  }
+
+  @Post('/strict')
+  @RequestDto(DraftInput)
+  @InputPolicy({ unknownFields: 'reject' })
+  strict(input: DraftInput) {
+    return { title: input.title };
+  }
+}
+```
+
+Here `{ post_title: 'Draft', authorId: 'untrusted' }` binds to
+`{ title: 'Draft' }` on `/drafts`, but fails on `/drafts/strict`.
+The allowlist uses the transport alias `post_title`, not the logical field
+`title`. Unknown keys fail with HTTP 400 / `UNKNOWN_FIELD`; invalid body shapes
+fail with HTTP 400 / `INVALID_BODY`. Dangerous own enumerable body keys
+`__proto__`, `constructor`, and `prototype` remain blocked, including with
+`strip` or `empty`; projection never turns them into accepted input.
+Unsupported JavaScript policy values throw `TypeError` at declaration.
+
+**Order and ownership:** after transport parsing and middleware, guards and
+interceptor-before code see the original parsed input. If they continue, binding
+checks/projects input, converters and ordinary class validation run, the
+handler/service executes, and interceptor-after code receives the result.
+Configured conditional requests may finish after guards and before interceptors.
+Projection uses a binding-local request view; it never replaces
+`RequestContext.request.body`. That original body remains visible to later
+context readers too. Projection is shallow, not a deep clone or recursive
+sanitizer. Keep server-owned identity and authorization decisions outside
+client input; a guard does not receive a future validated handler argument.
+Parser failures still precede guards. Neither parser nor HEAD policy changes.
+
+**Decorator composition:** standard class/method declarations and the existing
+legacy declaration path are supported. A standard composed method decorator
+forwards the same value and context to each declaration; it must retain
+`RequestDto` and the route declaration:
+
+```ts
+function StrictDraft(value: Function, context: ClassMethodDecoratorContext) {
+  InputPolicy({ unknownFields: 'reject' })(value, context);
+  RequestDto(DraftInput)(value, context);
+  Post('/composed')(value, context);
+}
+```
+
+Use `@StrictDraft` on a controller method. For legacy integrations, the equivalent
+policy calls are `InputPolicy(options)(DtoClass)` and
+`InputPolicy(options)(ControllerClass.prototype, methodName, descriptor)`.
+These declarations do not replace the DTO token or alter sibling route policies.
+Application source should retain the standard decorator configuration rather
+than enable `emitDecoratorMetadata`.
+
+### Standard Schema output binding
+
+**Scope and prerequisites:** `createSchemaDto`, `StandardSchemaBinder`,
+`SchemaDtoOptions`, and `SchemaBindingField` are public exports from
+`@fluojs/http` and `@fluojs/http/portable`. Supply a Standard Schema v1
+implementation and install the binder at application bootstrap. Schema libraries
+are application dependencies; no particular vendor is required.
+
+`createSchemaDto(schema, { fields, policy? })` returns an opaque token for
+`RequestDto`. `InstanceType<typeof Token>` is the schema's **output** type,
+including transformations and defaults, not its input type. The binder returns
+the successful schema output directly rather than constructing a class instance.
+
+| Mapping input | Contract |
+| --- | --- |
+| `fields` record property | Logical schema input name. |
+| `source` | Explicit `'body'`, `'path'`, or `'query'`; no source inference. |
+| `key` | Optional transport alias; defaults to the logical input name. |
+| Missing mapped value | Omitted from schema input so the schema owns required values and defaults. Explicit `null` is passed through. |
+| Unmapped query/path keys | Ignored; this does not relax the independent body unknown-field policy. |
+| `policy` | The same body options as `InputPolicy`; explicit route fields override them. |
+
+Query mappings also accept `repeatedQuery`:
+
+| Value | Behavior |
+| --- | --- |
+| Omitted or `'preserve'` | Scalars remain scalars; arrays are copied without changing their values or order. |
+| `'first'` / `'last'` | Select the first/last array element; a scalar remains a scalar. |
+| `'reject'` | More than one array element fails with HTTP 400 / `REPEATED_QUERY`; a one-element array is still an array. |
+
+The schema receives one projected object containing the mapped logical names.
+Its own unknown-key option cannot strip transport body keys that HTTP rejects
+before parsing that object. Configure `policy: { unknownFields: 'strip' }`
+explicitly when that is the intended body boundary.
+
+The following standalone application fragment uses Zod 4 as one Standard Schema
+vendor. Install `@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`,
+`@fluojs/platform-nodejs`, and `zod` in an application with Fluo's supported
+decorator build configuration:
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
+} from '@fluojs/http';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { bootstrapApplication } from '@fluojs/runtime';
+import { z } from 'zod';
+
+const DraftRequest = createSchemaDto(z.object({
+  title: z.string().trim().min(1),
+  count: z.coerce.number().int().min(1).default(1),
+  id: z.coerce.number().int().positive(),
+  tag: z.string().optional(),
+}), {
+  fields: {
+    title: { source: 'body', key: 'post_title' },
+    count: { source: 'body' },
+    id: { source: 'path', key: 'postId' },
+    tag: { source: 'query', repeatedQuery: 'first' },
+  },
+  policy: { unknownFields: 'strip' },
+});
+
+@Controller('/drafts')
+class DraftController {
+  @Post('/:postId')
+  @RequestDto(DraftRequest)
+  create(input: InstanceType<typeof DraftRequest>) {
+    return input;
+  }
+}
+
+@Module({ controllers: [DraftController] })
+class AppModule {}
+
+const app = await bootstrapApplication({
+  rootModule: AppModule,
+  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+For `POST /drafts/7?tag=a&tag=b` with
+`{ "post_title": "  Draft  ", "authorId": "untrusted" }`, the expected handler
+input and JSON result are `{ title: 'Draft', count: 1, id: 7, tag: 'a' }`.
+An array body still fails unless `nonObjects: 'empty'` is explicitly selected.
+The application owns shutdown and must call `app.close()` at its host boundary;
+this fragment does not install process-signal handlers.
+
+**Compatibility and failures:** `StandardSchemaBinder` delegates ordinary DTOs
+to its fallback, preserving the ordinary converter/class-validation path.
+Pass the bootstrap-supplied default binder so configured global converters are
+retained; constructing `new StandardSchemaBinder()` directly uses a default
+binder without those application settings. Schema tokens use schema conversion,
+not class-field converters. Async schema validators are awaited before the
+handler. `DtoValidationError`, including a failure with `issues: []`, becomes
+HTTP 400. Malformed results throw `TypeError`, and schema implementation
+exceptions propagate through the normal server-error path rather than being
+disguised as validation failures. See the
+[output parser contract](../validation/README.md#standard-schema-output-parsing).
+
+Do not construct, subclass, or pass a schema token to mapped-class DTO helpers
+such as `PickType`, `OmitType`, `PartialType`, or `IntersectionType`.
+Construction throws `InvariantError`; the token is not runtime reflected
+class-field metadata and does not provide automatic OpenAPI schema conversion.
+Keep ordinary class DTOs when those class contracts are needed, or document
+schema-token routes with explicit application-owned OpenAPI schemas.
+Invalid mapping sources, repeated-query options, or dangerous logical/source
+keys throw `TypeError` during token creation.
+
+**Evidence:** implementations are `src/input-policy.ts`,
+`src/adapters/binding.ts`, `src/schema-binding.ts`, and
+`src/dispatch/dispatch-handler-policy.ts`; exports are in `src/index.portable.ts`.
+Regression locations are `src/adapters/binding.test.ts`,
+`src/input-materialization.test.ts`, and
+`../testing/src/input-materialization.e2e.test.ts`. Bootstrap composition belongs
+to the [runtime contract](../runtime/README.md#http-binder-composition).
+
 ### Guards and interceptors
 
 ```ts
@@ -557,7 +768,8 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 ## Public API
 
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
+- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`, `InputPolicy`
+- **Explicit input materialization**: `InputPolicyOptions`, `createSchemaDto`, `StandardSchemaBinder`, `SchemaDtoOptions`, `SchemaBindingField`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `getResponseHeader`, `hasResponseHeader`, `appendVaryHeader`, `buildContentDisposition`
 - **Response cookie helpers**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`

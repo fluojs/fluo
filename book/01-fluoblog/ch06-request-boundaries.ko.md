@@ -342,6 +342,104 @@ console.log('Request boundary checks passed.');
 
 단, 문자열 길이 검증은 파싱 후의 값 제한이다. 수십 MB의 요청을 먼저 메모리에 읽는 비용까지 이 DTO가 막아 주지는 않는다. 그런 제한은 Fastify의 `maxBodySize` 같은 transport 경계에서 별도로 설정해야 한다. 파일 업로드와 과도한 요청을 다루는 장에서 바이트 제한과 사용 정책을 더한다. 지금의 상한을 전체 서비스 보호 기능으로 과장하지 않는다.
 
+## 선택 실험: 원본을 보존하면서 입력을 투영한다
+
+여기까지의 클래스 DTO 실습과 확인 스크립트는 그대로 유지한다. `/posts`는 계속 알 수 없는 본문 필드를 거부하고, 뒤의 OpenAPI 장도 이 클래스의 바인딩·검증 메타데이터를 사용한다. 다음은 기존 입력 schema가 있는 소비 앱을 위한 **선택적 비교 실험**이지 본문의 최종 구현을 교체하는 지시가 아니다.
+
+### 거부와 제거는 서로 다른 앱 정책이다
+
+추가 필드를 실수로 보내는 클라이언트와 호환해야 한다면 `@fluojs/http`의 `@InputPolicy({ unknownFields: 'strip' })`를 별도 DTO 클래스나 route method에 선언할 수 있다. 기본값은 여전히 `unknownFields: 'reject'`, `nonObjects: 'reject'`다. Route는 명시한 policy field만 DTO 설정보다 우선하며, 생략한 field는 DTO 설정을 유지한다. `@FromBody('post_title')`를 사용했다면 허용 목록의 key는 `title`이 아니라 transport alias `post_title`이다. 일반 클래스 DTO에 이 정책만 적용할 때는 schema binder가 필요하지 않다.
+
+`strip`은 비객체 입력을 숨기는 옵션이 아니다. 배열·원시 값을 빈 binding body로 취급하려는 소비자만 `nonObjects: 'empty'`를 별도로 선택한다. 그 경우에도 필수 클래스 field는 `MISSING_FIELD`로 실패할 수 있다. `null`과 body 부재의 기존 누락 동작은 바뀌지 않는다. 위험한 own enumerable key인 `__proto__`, `constructor`, `prototype`은 `strip`과 `empty`에서도 차단된다. 이는 최상위 입력 경계이며 재귀 sanitizer가 아니다.
+
+본문 전체를 교체하는 projection interceptor와도 구별해야 한다. Framework projection은 binding-local request view만 만들고 `RequestContext.request.body`를 교체하지 않는다. Transport parsing과 middleware 이후, 요청을 계속 처리하는 경로의 순서는 다음과 같다.
+
+```text
+guard: original parsed input
+  -> interceptor-before: original parsed input
+  -> binding / projection
+  -> schema parsing OR converters + class validation
+  -> handler / service
+  -> interceptor-after
+```
+
+설정된 conditional request는 guard 이후, interceptor 이전에 완료될 수 있다. Parser 실패와 byte limit은 여전히 guard보다 먼저 적용된다. 이 기능은 native parser나 HEAD 정책을 바꾸지 않는다. 인증 guard가 확인할 원본과 서비스에 전달할 검증된 인수는 다른 값이며, 이후 context reader도 원래 body를 본다. `strip`은 인증이나 소유자 확인을 대신하지 않는다. 아래 실험도 작성자를 `author-1`로 고정하는 로컬 실습일 뿐이다.
+
+### 기존 schema의 성공 값을 서비스 인수로 받는다
+
+Zod 4를 선택한다면 실습 앱에서 `pnpm add zod@^4`로 설치한다. 다른 Standard Schema v1 vendor도 사용할 수 있다. 다음은 별도로 추가하는 **`src/schema-boundary-app.ts` 전체**다. 기존 `PostsModule`과 서비스를 재사용하지만 새 route는 `/schema-drafts`에만 등록한다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { Controller, createSchemaDto, HttpCode, Post, RequestDto } from '@fluojs/http';
+import { z } from 'zod';
+import { runPostCommand } from './posts/post-http-error.js';
+import { PostsModule } from './posts/posts.module.js';
+import { PostsService } from './posts/posts.service.js';
+
+const SchemaDraftRequest = createSchemaDto(z.object({
+  title: z.string().max(120).trim(),
+  content: z.string().max(50_000).default(''),
+  slug: z.string().max(80).trim().default(''),
+}), {
+  fields: {
+    title: { source: 'body', key: 'post_title' },
+    content: { source: 'body' },
+    slug: { source: 'body' },
+  },
+  policy: { unknownFields: 'strip' },
+});
+
+@Controller('/schema-drafts')
+@Inject(PostsService)
+class SchemaDraftController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Post()
+  @HttpCode(201)
+  @RequestDto(SchemaDraftRequest)
+  create(input: InstanceType<typeof SchemaDraftRequest>) {
+    return runPostCommand(() => this.posts.create('author-1', {
+      title: input.title, content: input.content, slug: input.slug,
+    }));
+  }
+}
+
+@Module({
+  imports: [PostsModule],
+  controllers: [SchemaDraftController],
+})
+export class SchemaBoundaryModule {}
+```
+
+Title은 기존 실습처럼 원문 길이를 먼저 제한하고 그다음 trim한다. 반면 `content`, `slug` 누락에 빈 문자열을 주는 것은 이 실험에서 선택한 별도 앱 계약이다. Binder가 누락된 mapping을 schema input에서 생략하므로 schema default가 동작한다. 명시적 `null`은 누락으로 바꾸지 않고 schema에 전달하므로 위 문자열 schema에서는 실패한다.
+
+다음은 선택 실험용 **`src/schema-boundary-main.ts` 전체**다. 기존 CLI/Vite 실행 설정의 entry를 이 파일로 선택하고 기존 서버와 동시에 같은 port에서 실행하지 않는다. 본문의 `src/main.ts`는 수정하지 않는다.
+
+```ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+import { StandardSchemaBinder } from '@fluojs/http';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { bootstrapApplication } from '@fluojs/runtime';
+
+ensureMetadataSymbol();
+const { SchemaBoundaryModule } = await import('./schema-boundary-app.js');
+const app = await bootstrapApplication({
+  rootModule: SchemaBoundaryModule,
+  adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+이 adapter-first 예제는 종료 signal을 자동 등록하지 않는다. 실행 host가 종료 시 `await app.close()`를 호출하거나 Node shutdown registration을 연결해야 한다. `FluoFactory.create(SchemaBoundaryModule, options)`도 같은 `binder` option을 받는다. Factory는 bootstrap마다 한 번 조합되며, 제공받은 default binder에는 설정된 global converter가 포함된다. 일반 DTO는 이 fallback으로 위임되므로 기존 `/posts/:id`의 `PostIdConverter`와 클래스 검증은 유지된다. 순수 application context에는 이 HTTP option이 없다.
+
+Listen 완료 후 `POST /schema-drafts`에 `{ "post_title": "  Draft  ", "authorId": "other-author" }`를 보내면 예상 결과는 `201`이다. Service는 `{ title: 'Draft', content: '', slug: '' }`를 받고 작성자는 계속 서버의 `author-1`이다. 별도 projection interceptor, `safeParse` guard, context 저장/getter 없이 handler 인수가 성공한 schema output이 된다. 동일한 추가 필드를 기존 `/posts`에 보내면 여전히 `UNKNOWN_FIELD`로 실패한다. 새 route에 배열 body를 보내면 `INVALID_BODY`, 제목을 생략하면 schema 검증 실패로 `400`이 된다. 이 원고는 이 선택 실험을 실행했다고 주장하지 않는다.
+
+`InstanceType<typeof SchemaDraftRequest>`는 schema input이 아니라 **output** 타입이다. Token을 `new`로 호출하면 `InvariantError`가 발생한다. 상속하거나 `PickType`, `OmitType`, `PartialType`, `IntersectionType`에 넘기지 않는다. Token은 reflected class-field metadata나 자동 OpenAPI schema conversion이 아니므로, 이 실험을 공개 API로 채택할 때는 요청 schema도 별도로 문서화해야 한다. 본문의 클래스 DTO를 유지하는 이유다.
+
+`@ValidateClass(schema)`는 계속 검증 전용이며 trim/default 결과로 기존 DTO를 교체하지 않는다. HTTP 밖에서 성공 값을 얻으려면 `@fluojs/validation`의 `parseStandardSchema(schema, value)`를 await한다. Schema binder도 이 parser로 async validator를 기다린 뒤 handler를 호출한다. `issues: []`를 포함한 schema failure는 `DtoValidationError`이고 HTTP에서는 `400`으로 바뀐다. 기존 `ValidateClass`의 empty-issues 성공 동작은 유지된다. Malformed schema result는 `TypeError`, schema 구현이 던진 예외는 그대로 전파되므로 서버 결함을 정상적인 입력 거부로 숨기지 않는다.
+
 ## 명령을 작게 만들면 다음 경계가 보인다
 
 완성된 입력 경계는 클라이언트에게 서버 상태를 고를 권한을 주지 않는다. 변환기는 URL 표기를 정규화하고, DTO는 필요한 데이터의 모양을 검증하며, 서비스는 초안·발행 규칙을 지킨다. 각 계층의 오류를 한곳에서 HTTP로 번역하므로 프레임워크를 바꿔도 도메인의 의미를 유지할 수 있다.
@@ -352,6 +450,9 @@ console.log('Request boundary checks passed.');
 
 ## 근거와 이어 읽기
 
+- [HTTP 입력 정책과 schema binding 계약](../../packages/http/README.ko.md#명시적-입력-정책), [schema output parser 계약](../../packages/validation/README.ko.md#standard-schema-output-parsing), [runtime binder 조합 계약](../../packages/runtime/README.ko.md#http-binder-composition): 선택 실험의 API owner다.
+- [입력 정책·mapping 테스트](../../packages/http/src/input-materialization.test.ts), [schema output 테스트](../../packages/validation/src/standard-schema-output.test.ts), [application 경계 테스트](../../packages/testing/src/input-materialization.e2e.test.ts): projection, 원본 guard, 변환 결과, fallback의 회귀 확인 위치다.
+- [Next App Router native 요청 테스트](../../packages/platform-nextjs/src/schema-input-materialization.test.ts), [cold public declaration 테스트](../../packages/runtime/src/input-materialization-public-types.test.ts): 실제 adapter와 공개 타입의 근거 위치이며, 위 Book 실습을 실행했다는 뜻은 아니다.
 - [`@fluojs/http` README](../../packages/http/README.ko.md), [공개 export](../../packages/http/src/index.portable.ts): `RequestDto`, `FromBody`, `FromPath`, `Convert`, `HttpCode`의 공개 경로다.
 - [기본 바인더](../../packages/http/src/adapters/binding.ts)와 [바인딩 테스트](../../packages/http/src/adapters/binding.test.ts): 알 수 없는 본문 key, 필수 출처, 변환기 해석의 근거다.
 - [핸들러 호출 정책](../../packages/http/src/dispatch/dispatch-handler-policy.ts), [HTTP 검증 어댑터](../../packages/http/src/adapters/dto-validation-adapter.ts): 바인딩 뒤 검증과 `400` 번역을 확인할 수 있다.

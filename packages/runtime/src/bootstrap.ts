@@ -1534,8 +1534,13 @@ function createRuntimeDispatcherOptions(
     rootContainer: bootstrapped.container,
   };
 
-  if (converters.length > 0) {
-    dispatcherOptions.binder = new RuntimeDefaultBinder(converters);
+  if (options.binder !== undefined || converters.length > 0) {
+    const defaultBinder = new RuntimeDefaultBinder(converters);
+    const binder = options.binder === undefined ? defaultBinder : options.binder(defaultBinder);
+    if (typeof binder !== 'object' || binder === null || typeof binder.bind !== 'function') {
+      throw new TypeError('The bootstrap binder factory must return a Binder.');
+    }
+    dispatcherOptions.binder = binder;
   }
 
   if (errorHandler) {

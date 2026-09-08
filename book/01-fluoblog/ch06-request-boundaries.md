@@ -342,6 +342,104 @@ Sending an array as the body makes the default binder reject a violation of the 
 
 String length validation, however, limits values after parsing. This DTO does not prevent the cost of first reading a request of tens of MB into memory. Such limits must be configured separately at the transport boundary, using an option such as Fastify's `maxBodySize`. The chapters on file uploads and excessive requests will add byte limits and usage policies. Do not overstate the current limits as protection for the entire service.
 
+## Optional Experiment: Project Input While Preserving the Original
+
+Keep the class DTO exercise and check script above unchanged. `/posts` still rejects unknown body fields, and the later OpenAPI chapter still uses these classes' binding and validation metadata. The following is an **optional comparison experiment** for a consumer app with an existing input schema, not an instruction to replace the chapter's final implementation.
+
+### Rejection and Removal Are Different Application Policies
+
+When compatibility with clients that send extra fields is intentional, declare `@InputPolicy({ unknownFields: 'strip' })` from `@fluojs/http` on a separate DTO class or route method. The defaults remain `unknownFields: 'reject'` and `nonObjects: 'reject'`. A route overrides only explicitly declared policy fields; omitted fields retain the DTO settings. With `@FromBody('post_title')`, the allowlist key is the transport alias `post_title`, not `title`. Applying this policy alone to an ordinary class DTO does not require a schema binder.
+
+`strip` does not hide non-object input. Only consumers that intend to treat arrays or primitives as an empty binding body should separately select `nonObjects: 'empty'`. Required class fields can still fail with `MISSING_FIELD`. Existing missing-value behavior for `null` and absent bodies is unchanged. Dangerous own enumerable keys `__proto__`, `constructor`, and `prototype` remain blocked with both `strip` and `empty`. This is a top-level input boundary, not a recursive sanitizer.
+
+Distinguish this from a projection interceptor that replaces the entire body. Framework projection creates only a binding-local request view and does not replace `RequestContext.request.body`. After transport parsing and middleware, the path that continues processing follows this order:
+
+```text
+guard: original parsed input
+  -> interceptor-before: original parsed input
+  -> binding / projection
+  -> schema parsing OR converters + class validation
+  -> handler / service
+  -> interceptor-after
+```
+
+Configured conditional requests may finish after guards and before interceptors. Parser failures and byte limits still apply before guards. This feature changes neither native parser nor HEAD policies. The original input inspected by an authentication guard and the validated argument passed to a service are different values; later context readers also see the original body. `strip` does not replace authentication or ownership checks. The experiment below is still only a local exercise with the author fixed to `author-1`.
+
+### Receive an Existing Schema's Successful Value as a Service Argument
+
+If you choose Zod 4, install it in the exercise app with `pnpm add zod@^4`. Other Standard Schema v1 vendors are also supported. The following is the complete additional **`src/schema-boundary-app.ts` file**. It reuses the existing `PostsModule` and service but registers the new route only at `/schema-drafts`.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { Controller, createSchemaDto, HttpCode, Post, RequestDto } from '@fluojs/http';
+import { z } from 'zod';
+import { runPostCommand } from './posts/post-http-error.js';
+import { PostsModule } from './posts/posts.module.js';
+import { PostsService } from './posts/posts.service.js';
+
+const SchemaDraftRequest = createSchemaDto(z.object({
+  title: z.string().max(120).trim(),
+  content: z.string().max(50_000).default(''),
+  slug: z.string().max(80).trim().default(''),
+}), {
+  fields: {
+    title: { source: 'body', key: 'post_title' },
+    content: { source: 'body' },
+    slug: { source: 'body' },
+  },
+  policy: { unknownFields: 'strip' },
+});
+
+@Controller('/schema-drafts')
+@Inject(PostsService)
+class SchemaDraftController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Post()
+  @HttpCode(201)
+  @RequestDto(SchemaDraftRequest)
+  create(input: InstanceType<typeof SchemaDraftRequest>) {
+    return runPostCommand(() => this.posts.create('author-1', {
+      title: input.title, content: input.content, slug: input.slug,
+    }));
+  }
+}
+
+@Module({
+  imports: [PostsModule],
+  controllers: [SchemaDraftController],
+})
+export class SchemaBoundaryModule {}
+```
+
+As in the existing exercise, the title's raw length is limited before trimming. Supplying empty strings for missing `content` and `slug`, however, is a separate application contract chosen for this experiment. The binder omits missing mappings from schema input, allowing schema defaults to run. Explicit `null` is passed to the schema rather than treated as missing, so it fails the string schemas above.
+
+The following is the complete optional **`src/schema-boundary-main.ts` file**. Select this file as the entry in the existing CLI/Vite execution configuration, and do not run it on the same port alongside the existing server. Leave the chapter's `src/main.ts` unchanged.
+
+```ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+import { StandardSchemaBinder } from '@fluojs/http';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { bootstrapApplication } from '@fluojs/runtime';
+
+ensureMetadataSymbol();
+const { SchemaBoundaryModule } = await import('./schema-boundary-app.js');
+const app = await bootstrapApplication({
+  rootModule: SchemaBoundaryModule,
+  adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+This adapter-first example does not automatically register shutdown signals. The execution host must call `await app.close()` during shutdown or install Node shutdown registration. `FluoFactory.create(SchemaBoundaryModule, options)` accepts the same `binder` option. The factory composes once per bootstrap, and the supplied default binder includes configured global converters. Ordinary DTOs delegate to that fallback, preserving the existing `/posts/:id` route's `PostIdConverter` and class validation. Pure application contexts do not expose this HTTP option.
+
+After listening completes, send `{ "post_title": "  Draft  ", "authorId": "other-author" }` to `POST /schema-drafts`; the expected status is `201`. The service receives `{ title: 'Draft', content: '', slug: '' }`, and the author remains the server's `author-1`. The handler argument becomes successful schema output without a separate projection interceptor, `safeParse` guard, or context storage/getter. Sending the same extra field to the existing `/posts` route still fails with `UNKNOWN_FIELD`. An array body on the new route fails with `INVALID_BODY`; omitting the title produces a schema validation failure and `400`. This manuscript does not claim that this optional experiment was executed.
+
+`InstanceType<typeof SchemaDraftRequest>` is the schema **output** type, not its input type. Calling the token with `new` throws `InvariantError`. Do not subclass it or pass it to `PickType`, `OmitType`, `PartialType`, or `IntersectionType`. The token is neither reflected class-field metadata nor automatic OpenAPI schema conversion, so adopting this experiment as a public API also requires explicitly documenting its request schema. This is why the chapter retains its class DTOs.
+
+`@ValidateClass(schema)` remains validation-only and does not replace the existing DTO with trim/default results. Outside HTTP, await `parseStandardSchema(schema, value)` from `@fluojs/validation` to obtain the successful value. The schema binder also uses this parser to await async validators before calling the handler. Schema failures, including `issues: []`, become `DtoValidationError` and map to `400` in HTTP. The existing empty-issues success behavior of `ValidateClass` remains unchanged. Malformed schema results throw `TypeError`, and schema implementation exceptions propagate unchanged so server defects are not disguised as ordinary input rejection.
+
 ## Small Commands Reveal the Next Boundary
 
 The finished input boundary does not give the client authority to choose server state. The converter normalizes URL notation, DTOs validate the shape of the required data, and the service enforces the draft and publication rules. Translating errors from each layer into HTTP at one place lets us preserve the domain's meaning even if the framework changes.
@@ -352,6 +450,9 @@ The request's `authorId` is no longer stored, but the object returned by the con
 
 ## Sources and Further Reading
 
+- [HTTP input policy and schema binding contract](../../packages/http/README.md#explicit-input-policies), [schema output parser contract](../../packages/validation/README.md#standard-schema-output-parsing), [runtime binder composition contract](../../packages/runtime/README.md#http-binder-composition): the API owners for the optional experiment.
+- [Input policy and mapping tests](../../packages/http/src/input-materialization.test.ts), [schema output tests](../../packages/validation/src/standard-schema-output.test.ts), [application-boundary tests](../../packages/testing/src/input-materialization.e2e.test.ts): regression locations for projection, original-input guards, transformed output, and fallback behavior.
+- [Next App Router native request tests](../../packages/platform-nextjs/src/schema-input-materialization.test.ts), [cold public declaration tests](../../packages/runtime/src/input-materialization-public-types.test.ts): evidence locations for the real adapter and public types, not a claim that the Book exercise above was executed.
 - [`@fluojs/http` README](../../packages/http/README.md), [public exports](../../packages/http/src/index.portable.ts): the public paths for `RequestDto`, `FromBody`, `FromPath`, `Convert`, and `HttpCode`.
 - [Default binder](../../packages/http/src/adapters/binding.ts) and [binding tests](../../packages/http/src/adapters/binding.test.ts): evidence for unknown body keys, required sources, and converter resolution.
 - [Handler invocation policy](../../packages/http/src/dispatch/dispatch-handler-policy.ts), [HTTP validation adapter](../../packages/http/src/adapters/dto-validation-adapter.ts): where to confirm validation after binding and translation to `400`.

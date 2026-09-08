@@ -108,6 +108,7 @@
     "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/platform-express": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
+    "@fluojs/validation": "workspace:^",
     "vitest": "^4.1.11"
   }
 }

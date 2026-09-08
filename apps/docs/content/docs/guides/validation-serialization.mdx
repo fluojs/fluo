@@ -9,12 +9,13 @@ Validation protects the **input** side: unknown request data becomes a named, va
 
 ```txt
 client input
-  -> HTTP binding
-  -> request DTO materialization
-  -> validation rules
+  -> transport parsing / middleware
+  -> guards / interceptor-before (original parsed input)
+  -> HTTP binding / projection
+  -> schema output OR class DTO conversion + validation
   -> service logic
   -> response DTO
-  -> serialization rules
+  -> interceptor-after / serialization rules
   -> client response
 ```
 
@@ -37,6 +38,8 @@ pnpm add @fluojs/validation @fluojs/serialization
 
 HTTP applications usually use these together with `@fluojs/http`.
 
+The [HTTP package README](https://github.com/fluojs/fluo/blob/main/packages/http/README.md#explicit-input-policies) owns input policies and schema mappings, the [validation README](https://github.com/fluojs/fluo/blob/main/packages/validation/README.md#standard-schema-output-parsing) owns schema output parsing, and the [runtime README](https://github.com/fluojs/fluo/blob/main/packages/runtime/README.md#http-binder-composition) owns application binder composition. The examples below apply those contracts.
+
 ## Request validation
 
 Request validation answers one question: **what data is allowed to enter the application?**
@@ -48,17 +51,22 @@ Network input is untrusted. A route body, query string, path parameter, header, 
 Prefer DTO classes at transport boundaries instead of anonymous object types.
 
 ```ts
+import { FromBody, Optional } from '@fluojs/http';
 import { IsBoolean, IsOptional, IsString, MinLength } from '@fluojs/validation';
 
 export class CreatePostDto {
+  @FromBody()
   @IsString()
   @MinLength(3)
   title = '';
 
+  @FromBody()
   @IsString()
   @MinLength(10)
   body = '';
 
+  @FromBody()
+  @Optional()
   @IsOptional()
   @IsBoolean()
   published?: boolean;
@@ -96,6 +104,18 @@ export class PostsController {
 ```
 
 When a request reaches this route, the HTTP pipeline binds request data, creates a `CreatePostDto` instance, applies validation rules, and only then calls the handler.
+
+`FromBody` declares the source; validation decorators alone do not infer it. HTTP `Optional` skips a binding failure when the source is absent, while validation's `IsOptional` skips field rules for `null`/`undefined`. Add `IsDefined` to required fields that must also reject explicit `null`.
+
+### Input policies that preserve the original
+
+The default body policy is `{ unknownFields: 'reject', nonObjects: 'reject' }`. Declare `@InputPolicy({ unknownFields: 'strip' })` on a DTO class or route method to pass only known body source keys into binding. The allowlist includes aliases. Ordinary class DTOs do not require a schema binder.
+
+Only policy fields explicitly declared on a route override DTO fields. `strip` alone does not accept array or primitive bodies. Consumers that need it must separately select `nonObjects: 'empty'`; required class bindings can still fail with `MISSING_FIELD`. Existing missing-value behavior for `null` and absent bodies is preserved. Dangerous own enumerable body keys `__proto__`, `constructor`, and `prototype` remain blocked regardless of policy.
+
+Projection uses a shallow binding-local view and does not replace `RequestContext.request.body`. Guards and interceptor-before code see original parsed input, followed by binding/projection, schema parsing or converters and class validation, handler/service, and interceptor-after. Later context readers also see the original body. Do not route back through a context getter to obtain the validated handler argument.
+
+Authenticate in a guard using the original input, and perform business authorization that needs validated input in the handler/service together with server-verified identity. Projection itself is not authorization. Conditional requests may finish after guards and before interceptors; parser errors and byte limits still apply before guards. Native parser and HEAD policies do not change. See the HTTP owner for the precise standard/legacy declaration and composed-decorator contracts.
 
 ### `materialize()` vs `validate()`
 
@@ -173,10 +193,12 @@ fluo validation is intentionally strict. If the transport layer provides `'42'` 
 Convert values deliberately at the boundary where conversion belongs.
 
 ```ts
-import { Controller, Get, RequestDto } from '@fluojs/http';
+import { Controller, FromQuery, Get, Optional, RequestDto } from '@fluojs/http';
 import { IsOptional, IsString } from '@fluojs/validation';
 
 class ListPostsQueryDto {
+  @FromQuery()
+  @Optional()
   @IsOptional()
   @IsString()
   page = '1';
@@ -244,11 +266,76 @@ class RestrictedUserDto {
 }
 ```
 
+`ValidateClass` is validation-only. Even when schema trimming, coercion, or defaults succeed, it does not replace existing DTO fields with that output, and its existing `issues: []` success behavior remains unchanged.
+
+### Pass Standard Schema output to the handler
+
+Applications that already own a schema can choose `createSchemaDto` and `StandardSchemaBinder`. Receive successful output as the handler argument instead of maintaining a separate projection interceptor, `safeParse` guard, and context storage/getter. The following is an independent preview application, not a replacement for the existing controllers. It requires Fluo's decorator build configuration, `@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`, `@fluojs/platform-nodejs`, and Zod 4. Zod is an example vendor; other Standard Schema v1 implementations are supported.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
+} from '@fluojs/http';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { z } from 'zod';
+
+const PreviewRequest = createSchemaDto(z.object({
+  title: z.string().trim().min(1),
+  count: z.coerce.number().int().positive().default(1),
+  id: z.string().regex(/^[1-9][0-9]*$/)
+    .transform(Number).refine(Number.isSafeInteger),
+  tags: z.union([z.string(), z.array(z.string())])
+    .transform((value) => typeof value === 'string' ? [value] : value)
+    .default([]),
+}), {
+  fields: {
+    title: { source: 'body', key: 'post_title' },
+    count: { source: 'body' },
+    id: { source: 'path', key: 'postId' },
+    tags: { source: 'query', key: 'tag' },
+  },
+  policy: { unknownFields: 'strip' },
+});
+
+@Controller('/previews')
+class PreviewController {
+  @Post('/:postId')
+  @RequestDto(PreviewRequest)
+  preview(input: InstanceType<typeof PreviewRequest>) {
+    return input;
+  }
+}
+
+@Module({ controllers: [PreviewController] })
+class PreviewModule {}
+
+const app = await FluoFactory.create(PreviewModule, {
+  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+For `POST /previews/7?tag=a&tag=b` with `{ "post_title": "  Draft  ", "authorId": "untrusted" }`, the expected handler input is `{ title: 'Draft', count: 1, id: 7, tags: ['a', 'b'] }`, with the default POST success status `201`. This preview neither persists data nor authenticates requests. A public write API must connect server identity and a separate response contract. The host must call `app.close()` during shutdown; this bootstrap does not automatically register process signals.
+
+Each `fields` property is a logical schema input name, and `key` is an optional transport alias. Explicitly select `body`, `path`, or `query` as the source. Missing mapped values are omitted to allow schema defaults; explicit `null` is passed through. Unmapped query/path keys are ignored, but body unknown-field policy remains independent. A schema's own strip setting cannot process body keys that HTTP rejects first.
+
+Query `repeatedQuery` defaults to `preserve`: scalars remain scalars and arrays are copied. The example subsequently uses its schema to normalize both shapes into an array. `first` and `last` select the first/last array value; `reject` produces HTTP 400 / `REPEATED_QUERY` for more than one value. A one-element array under `reject` does not become a scalar.
+
+`InstanceType<typeof PreviewRequest>` is the schema **output** type, including transformations and defaults. Constructing this opaque `RequestDto` token throws `InvariantError`. Do not subclass it or pass it to mapped-class DTO helpers. It is neither runtime reflected class-field metadata nor automatic OpenAPI schema conversion: retain class DTOs when those class contracts are needed, and explicitly document OpenAPI for schema-token routes.
+
+`bootstrapApplication` accepts the same binder factory. It runs once per bootstrap and receives a default binder with configured global converters. `StandardSchemaBinder` delegates ordinary DTOs to that fallback, preserving existing converter/class-validation paths. Schema tokens use schema conversion instead. Pure application contexts have no `binder` option.
+
+Outside HTTP, obtain the same successful output with `parseStandardSchema(schema, value)` from `@fluojs/validation`. It awaits async validators and returns output unchanged. Failures, including `issues: []`, become `DtoValidationError`, which the schema binder maps to HTTP 400. Malformed results throw `TypeError`; schema implementation exceptions propagate unchanged. This API changes neither validation-only `ValidateClass` nor the class materialization policy of `materialize(..., { undeclaredProperties: 'reject' })`.
+
 ### Validation API summary
 
 | Area | Public API |
 | --- | --- |
 | Engine | `DefaultValidator`, `Validator`, `DtoValidationError`, `ValidationIssue` |
+| Schema output | `parseStandardSchema`; HTTP's `createSchemaDto`, `StandardSchemaBinder` |
 | Core type decorators | `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt` |
 | Presence and comparison | `IsDefined`, `IsOptional`, `IsEmpty`, `IsNotEmpty`, `Equals`, `NotEquals`, `IsIn`, `IsNotIn` |
 | Strings and network values | `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains` |
@@ -443,6 +530,9 @@ The service can use richer internal records. The public response remains stable 
 
 ## Testing checklist
 
+- Distinguish strict defaults, route/DTO policy precedence, aliases, dangerous keys, array/primitive bodies, and `null`/missing values.
+- Verify that guards and interceptor-before see original input while handlers receive transformed output. Await async schema completion through an explicit signal rather than fixed sleeps.
+- Cover all four repeated-query policies, schema defaults, HTTP 400 versus schema implementation errors, and ordinary DTO fallback.
 - Send invalid request bodies and assert deterministic validation failures.
 - Test optional fields, nested DTO paths, arrays, and mapped DTO variants.
 - Assert that response DTOs do not expose sensitive fields.
@@ -452,6 +542,8 @@ The service can use richer internal records. The public response remains stable 
 
 ## Related reading
 
+- [Book: Turning External Input into Internal Data](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/ch06-request-boundaries.md)
+- [Application input conformance](https://github.com/fluojs/fluo/blob/main/packages/testing/src/input-materialization.e2e.test.ts), [native Next App Router requests](https://github.com/fluojs/fluo/blob/main/packages/platform-nextjs/src/schema-input-materialization.test.ts), [cold public declarations](https://github.com/fluojs/fluo/blob/main/packages/runtime/src/input-materialization-public-types.test.ts): regression evidence locations, not substitutes for executing the preview example above.
 - [HTTP API](./http-api)
 - [Testing](./testing)
 - [Package Selection](./package-selection)

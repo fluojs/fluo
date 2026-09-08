@@ -168,6 +168,57 @@ Runtime bootstrap은 `@fluojs/http`의 `conditionalRequest` option을 받습니�
 
 `createAccessLogObserver(...)`를 bootstrap `observers` option으로 전달하면 portable request lifecycle record를 애플리케이션 소유 structured logging으로 라우팅할 수 있습니다. Observer는 native adapter에서도 complete fallback path를 선택해 dispatcher lifecycle을 보존합니다. Trusted client identity와 header allowlist 요구사항은 [`@fluojs/http` Access logging 계약](../http/README.ko.md#access-logging)을 참고하세요.
 
+### HTTP binder composition
+
+**범위와 입력:** `BootstrapApplicationOptions`, `CreateApplicationOptions`는
+`binder?: (defaultBinder: Binder) => Binder`를 받습니다. Bootstrap API는
+`@fluojs/runtime`, `Binder` 계약과 `StandardSchemaBinder`는 `@fluojs/http`에서
+import합니다. 생략하면 기존 default HTTP binding pipeline을 유지합니다.
+`CreateApplicationContextOptions`는 `binder`를 제외합니다. 순수 DI context는
+HTTP dispatcher를 생성하지 않습니다.
+
+동기 factory는 request마다가 아니라 runtime이 dispatcher를 조립할 때 HTTP
+application bootstrap마다 한 번 실행됩니다. Global `converters`가 이미
+설정된 default binder를 받습니다. 별개의 default를 만들어 설정을 잃지 말고
+일반 DTO를 제공받은 binder로 위임하세요. 반환한 binder는 application의
+dispatcher가 재사용합니다.
+
+다음 bootstrap fragment는 controller가 등록된 기존 `AppModule`을 전제로 합니다.
+[완전한 schema route 예제](../http/README.ko.md#standard-schema-output-binding)도
+참고하세요.
+
+```typescript
+import { StandardSchemaBinder } from '@fluojs/http';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.js';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+`bootstrapApplication({ rootModule: AppModule, ...options })`도 같은 factory를
+받습니다. 기존 `converters`는 `binder`와 함께 지정할 수 있고 일반 DTO의
+fallback을 통해 계속 실행됩니다. Schema token은 대신 schema의
+conversion/default rule을 사용합니다. 이 callback 자리에 binder instance나
+async factory를 전달하지 마세요.
+
+**실패와 소유권:** 호출 가능한 `bind` method가 없는 결과는 bootstrap을
+`TypeError`로 reject합니다. Factory 예외는 기존 bootstrap-failure cleanup을
+거쳐 전파됩니다. Runtime은 binder를 연결하지만 binder disposal hook을 추가하지
+않습니다. Application-owned 외부 resource에는 기존 lifecycle 등록이 필요합니다.
+종료는 host가 소유하고 `app.close()`를 호출합니다. 위 fragment는 process
+signal을 등록하지 않습니다. 이 option은 native body parsing이나 HEAD 동작을
+바꾸지 않습니다. Projection, validation error, request 순서는 HTTP가 소유합니다.
+HTTP의 [입력 정책 계약](../http/README.ko.md#명시적-입력-정책)을 참고하세요.
+
+**근거:** `src/types.ts`, `src/bootstrap.ts`,
+`../testing/src/input-materialization.e2e.test.ts`는 option, composition,
+application boundary 회귀의 확인 위치입니다.
+
 ### 애플리케이션 컨텍스트 (HTTP 제외)
 
 백그라운드 워커나 스크립트의 경우, `createApplicationContext`를 사용하여 HTTP 설정을 건너뛸 수 있습니다.

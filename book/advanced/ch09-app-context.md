@@ -548,11 +548,11 @@ That exact error string is verified in `path:packages/runtime/src/application.te
 
 Only after this guard passes does `listen()` call `await this.ready()`, then `await this.adapter.listen(this.dispatcher)`. On success, it changes state to `'ready'` and writes the startup log. The transport adapter does not own the application state transition by itself. It participates as part of the larger runtime shell policy.
 
-Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:1548-1568`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
+Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:1553-1573`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
 
 Dispatcher creation is the request-facing step needed only by the full application branch. It creates handler sources from the compiled Module baseline, groups HTTP pipeline options, and returns the dispatcher.
 
-`path:packages/runtime/src/bootstrap.ts:1548-1568`
+`path:packages/runtime/src/bootstrap.ts:1553-1573`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,

@@ -240,6 +240,215 @@ canonical `406 Not Acceptable` response를 반환합니다. 성공한 모든 for
 
 ## 주요 패턴
 
+### 명시적 입력 정책
+
+**범위와 import:** `@fluojs/http` 또는 `@fluojs/http/portable`의 `InputPolicy`,
+`InputPolicyOptions`는 클래스 DTO나 route method의 최상위 body binding을
+설정합니다. 일반 클래스 DTO에는 schema binder가 필요하지 않습니다.
+`RequestDto`와 `FromBody` 같은 명시적 source decorator는 여전히 필요합니다.
+
+| Option | 기본값 | Opt-in 동작 |
+| --- | --- | --- |
+| `unknownFields` | `'reject'` | `'strip'`은 alias를 포함한 선언된 body source key만 투영합니다. |
+| `nonObjects` | `'reject'` | `'empty'`는 배열, 원시 값 및 다른 non-plain 값을 binding용 빈 body로 취급합니다. |
+
+생략한 field는 엄격한 기본값을 유지합니다. Route는 명시한 policy field만
+덮어쓰고 나머지는 상속된 DTO policy를 포함한 DTO 설정에서 가져옵니다.
+`null`과 body 부재는 기존 missing-field 동작을 유지합니다.
+`nonObjects: 'empty'`가 필수 클래스 field를 optional로 만들지는 않습니다.
+`Optional`로 누락을 허용하지 않으면 `FromBody`는 계속 `MISSING_FIELD`를
+보고합니다. Field initializer는 필수 transport field를 대신하지 않습니다.
+
+```ts
+import {
+  Controller, FromBody, InputPolicy, Post, RequestDto,
+} from '@fluojs/http';
+import { IsDefined, IsString } from '@fluojs/validation';
+
+@InputPolicy({ unknownFields: 'strip' })
+class DraftInput {
+  @FromBody('post_title')
+  @IsDefined()
+  @IsString()
+  title = '';
+}
+
+@Controller('/drafts')
+class DraftController {
+  @Post()
+  @RequestDto(DraftInput)
+  create(input: DraftInput) {
+    return { title: input.title };
+  }
+
+  @Post('/strict')
+  @RequestDto(DraftInput)
+  @InputPolicy({ unknownFields: 'reject' })
+  strict(input: DraftInput) {
+    return { title: input.title };
+  }
+}
+```
+
+`{ post_title: 'Draft', authorId: 'untrusted' }`는 `/drafts`에서
+`{ title: 'Draft' }`로 bind되지만 `/drafts/strict`에서는 실패합니다.
+허용 목록은 logical field `title`이 아니라 transport alias `post_title`을
+사용합니다. 알 수 없는 key는 HTTP 400 / `UNKNOWN_FIELD`, 잘못된 body shape은
+HTTP 400 / `INVALID_BODY`로 실패합니다. 위험한 own enumerable body key인
+`__proto__`, `constructor`, `prototype`은 `strip`이나 `empty`에서도 계속
+차단되며 projection으로 허용된 입력이 되지 않습니다. 지원하지 않는
+JavaScript policy 값은 선언 시 `TypeError`를 던집니다.
+
+**순서와 소유권:** transport parsing과 middleware 이후 guard와
+interceptor-before 코드는 원래 parsed input을 봅니다. 실행을 계속하면
+binding의 검사·투영, converter와 일반 클래스 검증, handler/service,
+결과를 받는 interceptor-after 순서로 진행합니다. 설정된 conditional request는
+guard 이후, interceptor 이전에 완료될 수 있습니다. Projection은 binding-local
+request view를 사용하며 `RequestContext.request.body`를 교체하지 않습니다.
+이후 context reader도 원래 body를 볼 수 있습니다. Projection은 shallow하며
+deep clone이나 재귀 sanitizer가 아닙니다. 서버 소유 identity와 authorization
+결정은 client input과 분리하세요. Guard는 앞으로 만들어질 검증된 handler
+인수를 받지 않습니다. Parser 실패는 여전히 guard보다 먼저 발생합니다.
+Parser와 HEAD policy는 모두 바뀌지 않습니다.
+
+**Decorator 조합:** 표준 class/method 선언과 기존 legacy 선언 경로를 지원합니다.
+표준 조합 method decorator는 같은 value와 context를 각 선언에 전달하고
+`RequestDto`와 route 선언을 유지해야 합니다.
+
+```ts
+function StrictDraft(value: Function, context: ClassMethodDecoratorContext) {
+  InputPolicy({ unknownFields: 'reject' })(value, context);
+  RequestDto(DraftInput)(value, context);
+  Post('/composed')(value, context);
+}
+```
+
+Controller method에 `@StrictDraft`를 사용합니다. Legacy integration의 동등한
+policy 호출은 `InputPolicy(options)(DtoClass)`와
+`InputPolicy(options)(ControllerClass.prototype, methodName, descriptor)`입니다.
+이 선언은 DTO token을 교체하거나 sibling route policy를 바꾸지 않습니다.
+Application source는 `emitDecoratorMetadata`를 켜는 대신 표준 decorator
+설정을 유지해야 합니다.
+
+### Standard Schema output binding
+
+**범위와 사전 조건:** `createSchemaDto`, `StandardSchemaBinder`,
+`SchemaDtoOptions`, `SchemaBindingField`는 `@fluojs/http`와
+`@fluojs/http/portable`의 공개 export입니다. Standard Schema v1 구현을
+제공하고 application bootstrap에서 binder를 설치하세요. Schema library는
+application dependency이며 특정 vendor를 요구하지 않습니다.
+
+`createSchemaDto(schema, { fields, policy? })`는 `RequestDto`용 opaque token을
+반환합니다. `InstanceType<typeof Token>`은 input type이 아니라 변환과 기본값을
+포함한 schema의 **output** type입니다. Binder는 클래스 instance를 생성하는
+대신 성공한 schema output을 직접 반환합니다.
+
+| Mapping 입력 | 계약 |
+| --- | --- |
+| `fields` record property | Logical schema input name입니다. |
+| `source` | 명시적 `'body'`, `'path'`, `'query'`이며 출처를 추론하지 않습니다. |
+| `key` | 선택적 transport alias이며 기본값은 logical input name입니다. |
+| 누락된 mapped value | Schema input에서 생략하여 required value와 default를 schema가 소유하게 합니다. 명시적 `null`은 그대로 전달합니다. |
+| 매핑하지 않은 query/path key | 무시합니다. 독립적인 body unknown-field policy를 완화하지는 않습니다. |
+| `policy` | `InputPolicy`와 같은 body option이며 명시적 route field가 우선합니다. |
+
+Query mapping에는 `repeatedQuery`도 지정할 수 있습니다.
+
+| 값 | 동작 |
+| --- | --- |
+| 생략 또는 `'preserve'` | Scalar는 scalar로 유지하고 배열은 값과 순서를 바꾸지 않고 복사합니다. |
+| `'first'` / `'last'` | 배열의 첫/마지막 원소를 선택하며 scalar는 scalar로 유지합니다. |
+| `'reject'` | 배열 원소가 둘 이상이면 HTTP 400 / `REPEATED_QUERY`로 실패합니다. 원소 하나인 배열은 여전히 배열입니다. |
+
+Schema는 매핑된 logical name을 담은 투영 객체 하나를 받습니다. Schema 자체의
+unknown-key option으로는 그 객체를 parse하기 전에 HTTP가 거부하는 transport
+body key를 제거할 수 없습니다. 그런 body boundary가 필요하면
+`policy: { unknownFields: 'strip' }`을 명시하세요.
+
+다음 독립 application fragment는 Standard Schema vendor의 한 예로 Zod 4를
+사용합니다. Fluo가 지원하는 decorator build 설정이 있는 application에
+`@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`, `@fluojs/platform-nodejs`,
+`zod`를 설치하세요.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
+} from '@fluojs/http';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { bootstrapApplication } from '@fluojs/runtime';
+import { z } from 'zod';
+
+const DraftRequest = createSchemaDto(z.object({
+  title: z.string().trim().min(1),
+  count: z.coerce.number().int().min(1).default(1),
+  id: z.coerce.number().int().positive(),
+  tag: z.string().optional(),
+}), {
+  fields: {
+    title: { source: 'body', key: 'post_title' },
+    count: { source: 'body' },
+    id: { source: 'path', key: 'postId' },
+    tag: { source: 'query', repeatedQuery: 'first' },
+  },
+  policy: { unknownFields: 'strip' },
+});
+
+@Controller('/drafts')
+class DraftController {
+  @Post('/:postId')
+  @RequestDto(DraftRequest)
+  create(input: InstanceType<typeof DraftRequest>) {
+    return input;
+  }
+}
+
+@Module({ controllers: [DraftController] })
+class AppModule {}
+
+const app = await bootstrapApplication({
+  rootModule: AppModule,
+  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
+});
+await app.listen();
+```
+
+`POST /drafts/7?tag=a&tag=b`에
+`{ "post_title": "  Draft  ", "authorId": "untrusted" }`를 보내면 예상되는
+handler input과 JSON 결과는 `{ title: 'Draft', count: 1, id: 7, tag: 'a' }`입니다.
+배열 body는 `nonObjects: 'empty'`를 명시하지 않으면 여전히 실패합니다.
+종료는 application이 소유하며 host boundary에서 `app.close()`를 호출해야
+합니다. 이 fragment는 process-signal handler를 설치하지 않습니다.
+
+**호환성과 실패:** `StandardSchemaBinder`는 일반 DTO를 fallback으로 위임하여
+기존 converter/class-validation 경로를 유지합니다. 설정된 global converter를
+보존하려면 bootstrap이 제공한 default binder를 전달하세요.
+`new StandardSchemaBinder()`를 직접 만들면 해당 application 설정이 없는
+default binder를 사용합니다. Schema token은 class-field converter가 아니라
+schema conversion을 사용합니다. Async schema validator는 handler 전에
+await됩니다. `issues: []`인 실패를 포함한 `DtoValidationError`는 HTTP 400이
+됩니다. Malformed result는 `TypeError`를 던지고 schema 구현의 예외는
+validation failure로 위장되지 않고 일반 server-error 경로로 전파됩니다.
+[Output parser 계약](../validation/README.ko.md#standard-schema-output-parsing)을
+참고하세요.
+
+Schema token을 생성자로 호출하거나 상속하거나 `PickType`, `OmitType`,
+`PartialType`, `IntersectionType` 같은 mapped-class DTO helper에 넘기지 마세요.
+생성자 호출은 `InvariantError`를 던집니다. 이 token은 runtime reflected
+class-field metadata가 아니며 자동 OpenAPI schema conversion도 제공하지
+않습니다. 해당 클래스 계약이 필요하면 일반 클래스 DTO를 유지하고, schema-token
+route를 문서화할 때는 application-owned OpenAPI schema를 명시하세요.
+잘못된 mapping source, repeated-query option, 위험한 logical/source key는
+token 생성 시 `TypeError`를 던집니다.
+
+**근거:** 구현은 `src/input-policy.ts`, `src/adapters/binding.ts`,
+`src/schema-binding.ts`, `src/dispatch/dispatch-handler-policy.ts`에 있고
+export는 `src/index.portable.ts`에 있습니다. 회귀 확인 위치는
+`src/adapters/binding.test.ts`, `src/input-materialization.test.ts`,
+`../testing/src/input-materialization.e2e.test.ts`입니다. Bootstrap 조합은
+[runtime 계약](../runtime/README.ko.md#http-binder-composition)이 소유합니다.
+
 ### 가드와 인터셉터
 
 ```ts
@@ -549,7 +758,8 @@ export class UploadController {
 ## 공개 API
 
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
-- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`
+- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`, `InputPolicy`
+- **명시적 입력 materialization**: `InputPolicyOptions`, `createSchemaDto`, `StandardSchemaBinder`, `SchemaDtoOptions`, `SchemaBindingField`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **응답 쿠키 helper**: `setCookie`, `clearCookie`, `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`
 - **Conditional request 타입**: `EntityTagStrength`, `EntityTag`, `ResponseValidators`, `ConditionalRequestContext`, `ConditionalRequestResolution`, `ConditionalRequestResolver`, `ConditionalRequestOptions`
