@@ -74,6 +74,39 @@ fluo DI supports four provider shapes:
 - **Factory Providers**: `{ provide: 'ASYNC_CONFIG', useFactory: async (db) => await db.load(), inject: [Database] }`. Add `resolverClass` when the factory should inherit the referenced class's DI metadata, such as `@Scope(...)`, unless an explicit provider `scope` is set.
 - **Alias Providers**: `{ provide: ILogger, useExisting: PinoLogger }` allows mapping one token to another existing provider.
 
+### Typed public token resolution
+
+Symbols created by `publicToken<T>()` from `@fluojs/core` infer the return type
+of `resolve()`. Names and metadata registries do not unify distinct constructors;
+an explicit alias points to the existing provider.
+
+```ts
+import { publicToken } from '@fluojs/core';
+import { Container } from '@fluojs/di';
+
+class PostsService { title() { return 'FluoBlog'; } }
+const POSTS = publicToken<PostsService>('my-blog/posts/v1');
+const container = new Container().register(
+  PostsService,
+  { provide: POSTS, useExisting: PostsService },
+);
+try {
+  const posts = await container.resolve(POSTS); // PostsService
+  posts.title();
+} finally {
+  await container.dispose();
+}
+```
+
+Injection from another module requires exporting the alias from its owning
+module and importing that module. The original class need not be exported, but
+each exposed token needs its own alias/exports declaration. Manual
+`Symbol.for('my-blog/posts/v1')` and `resolve<PostsService>(token)` can still use
+the same alias. Tokens do not change scope. Keep request/actor/session providers
+in per-request child scopes, dispose them in `finally`, and never put them into
+root singletons or global caches. For multi-provider tokens, declare T as the
+actual returned array type.
+
 ### Scope Management
 - **Singleton** (Default): Instance is created once and shared across the entire container.
 - **Request**: Instance is created once per `createRequestScope()` call.

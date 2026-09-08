@@ -125,6 +125,16 @@ The [package surface](./reference/package-surface.md) and
 [release publish list](./contracts/release-governance.md#intended-publish-surface)
 include this adapter.
 
+Opt-in `defineNextApplication({ key, load })` retains one application Promise,
+including failure, per key in the same JS global without HMR replacement or
+automatic retry. It does not share across processes/workers/serverless instances
+or store request/actor/session data. [`publicToken<T>`](../packages/core/README.md)
+and explicit `useExisting`/module exports preserve the [DI contract](../packages/di/README.md).
+The Next README above owns the API; executable evidence is
+`packages/platform-nextjs/src/application-accessor.test.ts`,
+`packages/platform-nextjs/src/application-public-types.test.ts`, and
+`packages/platform-nextjs/e2e/next.test.mjs`.
+
 For GET-only Fluo routes, explicitly select
 [`headRouting: 'explicit-or-get'`](../packages/platform-nextjs/README.md#head-routing)
 to support Next auto-HEAD and direct HEAD without an application wrapper.

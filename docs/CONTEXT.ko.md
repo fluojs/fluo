@@ -125,6 +125,16 @@ Node.js `>=24.0.0 <27`의 Next.js 16.x App Router와 Pages Router에서 Fluo를
 [릴리스 배포 목록](./contracts/release-governance.ko.md#intended-publish-surface)에
 이 어댑터가 포함됩니다.
 
+Opt-in `defineNextApplication({ key, load })`는 같은 JS global에서 key별
+application Promise와 실패를 보존하며 HMR 교체나 자동 재시도를 하지 않습니다.
+Process/worker/serverless 사이의 공유가 아니며 request/actor/session은 전역
+cache에 넣지 않습니다. [`publicToken<T>`](../packages/core/README.ko.md)과
+명시적 `useExisting`/module exports는 [DI 계약](../packages/di/README.ko.md)을
+유지합니다. 공개 API 소유자는 위 Next README이며 실행 근거는
+`packages/platform-nextjs/src/application-accessor.test.ts`,
+`packages/platform-nextjs/src/application-public-types.test.ts`,
+`packages/platform-nextjs/e2e/next.test.mjs`입니다.
+
 GET-only Fluo route에서 application wrapper 없이 Next auto-HEAD와 직접 HEAD를
 지원하려면 [`headRouting: 'explicit-or-get'`](../packages/platform-nextjs/README.ko.md#head-routing)을
 명시적으로 선택합니다.

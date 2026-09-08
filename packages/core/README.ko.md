@@ -165,6 +165,27 @@ class TransactionContext {}
 class Logger {}
 ```
 
+### Typed public token
+
+`publicToken<T>(namespace)`는 `Symbol.for(namespace)`와 동일한 symbol에
+`PublicToken<T>` 타입을 부여합니다. `@fluojs/di`의 `container.resolve(token)`이
+`Promise<T>`를 추론하며 기존 string/symbol/class `Token<T>`는 그대로입니다.
+
+```ts
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader { title(): string }
+export const POSTS = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+Namespace는 application이 소유하고 모든 선언에서 같은 서비스 계약을 사용해야
+합니다. 다른 앱에는 다른 namespace를, 호환되지 않는 계약에는 다른 version을
+사용하세요. 이 타입은 runtime validation이나 provider 등록이 아닙니다.
+`{ provide: POSTS, useExisting: PostsService }`를 소유 module에 선언하고,
+다른 module이 주입하려면 `exports: [POSTS]`와 해당 module의 `imports`가 필요합니다.
+Class를 다시 평가하면 이름이 같아도 다른 constructor이며 자동으로 합치지 않습니다.
+기존 `Symbol.for(...)` + `useExisting` + 명시적 `resolve<T>(...)` recipe도 유효합니다.
+
 ## 문제 해결
 
 ### 데코레이터 메타데이터를 찾을 수 없음
@@ -184,6 +205,7 @@ class Logger {}
 - **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
 - **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **메타데이터 런타임**: `ensureMetadataSymbol`, `getModuleMetadata`
+- **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`
 - **타입**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
 - **Request-pipeline 통합 seam**: `@fluojs/core/request-pipeline`을 통한 DTO validation/binding 메타데이터 헬퍼와 표준 데코레이터 metadata bag reader
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 더 넓은 메타데이터 헬퍼, 컨트롤러/라우트 헬퍼, injection 헬퍼, clone 유틸리티

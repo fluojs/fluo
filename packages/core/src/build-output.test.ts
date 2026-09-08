@@ -10,6 +10,7 @@ const supportedBuildModules = [
   'index',
   'internal',
   'metadata',
+  'public-token',
   'request-pipeline',
   'types',
   'utils',

@@ -11,7 +11,7 @@ export default withFluoNextBackend(config,
   process.env.FLUO_E2E_COMPILER === 'legacy' ? {}
     : process.env.FLUO_E2E_COMPILER === 'preserve' ? { preserveModulePaths: true }
       : {
-        include: /(?:^|\/)backend\.ts$/u,
+        include: /(?:^|\/)(?:shared-)?backend\.ts$/u,
         exclude: '**/*.test.ts',
         preserveModulePaths: process.env.FLUO_E2E_COMPILER !== 'scope-only',
       });

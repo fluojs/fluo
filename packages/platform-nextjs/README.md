@@ -17,6 +17,7 @@ dependency injection.
 - [Pipeline Compatibility](#pipeline-compatibility)
 - [Decorator Compiler Wiring](#decorator-compiler-wiring)
 - [Lifecycle](#lifecycle)
+- [Process-local application accessor](#process-local-application-accessor)
 - [Options](#options)
 - [Runtime Contract](#runtime-contract)
 - [Public API](#public-api)
@@ -265,9 +266,14 @@ component-oriented `cookies()` helper.
 
 App Router and Pages Router are both supported in one hybrid Next application.
 Because Next emits them as separate server route bundles, enabling both
-catch-alls simultaneously creates one lazy Fluo application per bundle. Use
-one catch-all during migration when process-wide singleton state is required,
-or host Fluo separately when deterministic single-instance ownership matters.
+catch-alls with the default per-closure lazy recipe above creates a separate
+Fluo application per bundle. Sharing one application Promise requires every
+shared consumer to explicitly use `defineNextApplication` with the same key
+and execute within the same JS global (`globalThis`). See the
+[opt-in sharing contract](#process-local-application-accessor).
+Different processes, workers, serverless instances, and JS globals remain isolated.
+Use one catch-all during migration to avoid per-bundle bootstrap without explicit
+sharing, or host Fluo separately when deterministic single-instance ownership matters.
 
 ## Decorator Compiler Wiring
 
@@ -362,6 +368,104 @@ Next.js owns process startup and shutdown. The package does not register
 process signal handlers or automatically create a second application after
 explicit close.
 
+## Process-local application accessor
+
+Existing lazy handlers retain one Promise per closure. Choose the root export
+`defineNextApplication({ key, load })` only when RSC, auth callbacks, and Route
+Handlers must use one application in the same JS process and `globalThis`.
+The Node/Next/runtime and decorator compiler prerequisites in Shared Setup remain.
+
+| Field | Contract |
+| --- | --- |
+| Input | Fixed application-owned string `key`, argument-free async `load` |
+| Default | Opt-in; existing lazy helpers are unchanged. Definition does not load |
+| Output/order | The first invocation claims the key and stores a Promise before running load. Calls with that key return the exact same Promise |
+| Failures | Sync throws and async rejections remain cached. Redefining with another loader retains the first result; there is no automatic retry |
+| Ownership | The caller owns bootstrap/listen failure cleanup, consumer drain, `app.close()` or context/container disposal. The accessor registers no signals |
+| Reload | HMR evaluation does not replace a live graph. After close, the Promise still yields the closed graph. No reset/evict API; restart the host to apply a new bootstrap |
+| Isolation | Different keys, processes, workers, serverless instances, and JS globals are isolated. This is not a distributed singleton or a guarantee of one connection |
+| Data | Do not capture request/actor/session data in key or load. Only application resource Promises belong in the global cache; pass request data as method arguments or through request scopes |
+| Type/identity | All loaders using one key must agree on application type/contract. There is no runtime shape validation or class-name identity inference |
+
+This file reuses `src/backend.ts` above without each bundle implementing its own
+global Promise. Route every shared consumer through the accessor; mixing it with
+direct backend imports can bootstrap outside this cache.
+
+```typescript
+// src/application.ts
+import { defineNextApplication } from '@fluojs/platform-nextjs';
+
+export const getApplication = defineNextApplication({
+  key: 'my-blog/application/v1',
+  load: () => import('./backend'),
+});
+```
+
+The route facade obtains its adapter from the same graph.
+
+```typescript
+// app/api/[[...path]]/route.ts
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { getApplication } from '../../../src/application';
+
+export const { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } =
+  createNextAppRouterHandler(() => getApplication().then(({ nextAdapter }) => nextAdapter));
+```
+
+Keep service contracts separate from runtime class imports. Import the following
+module from the existing `AppModule`. The owning module registers the provider and
+alias once each; tokens injected from other modules must be exported.
+
+```typescript
+// src/posts-contract.ts
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader { title(): string }
+export const POSTS = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+```typescript
+// src/posts.module.ts
+import { Module } from '@fluojs/core';
+import { POSTS, type PostsReader } from './posts-contract';
+
+class PostsService implements PostsReader {
+  title() { return 'FluoBlog'; }
+}
+
+@Module({
+  providers: [PostsService, { provide: POSTS, useExisting: PostsService }],
+  exports: [POSTS],
+})
+export class PostsModule {}
+```
+
+Using this application function from RSC or auth callbacks also removes repeated
+`container.resolve` calls and runtime class imports.
+
+```typescript
+// src/posts.ts
+import { getApplication } from './application';
+import { POSTS } from './posts-contract';
+
+export async function getPosts() {
+  return (await getApplication()).app.container.resolve(POSTS); // Promise<PostsReader>
+}
+```
+
+Add aliases/exports only for tokens needing a public boundary. Existing class
+token providers are not replaced, and distinct constructors with identical names
+are not merged. `Symbol.for(...)` + `useExisting` + `resolve<PostsReader>(...)`
+remains the valid manual recipe; `publicToken` only adds inference for that symbol.
+Every declaration of one namespace must agree on the service contract.
+Cyclic initialization in which load awaits its own accessor is unsupported.
+
+`src/application-accessor.test.ts` covers concurrency, failure, module evaluation,
+and pending/failed/successful close. `src/application-public-types.test.ts` compiles
+emitted public declarations. `e2e/next.test.mjs` exercises separate RSC/auth/route
+evaluations, overlapping initialization, key/process isolation, request-data
+separation, and retained close/failure in an actual Next production build.
+
 ## Options
 
 ```typescript
@@ -396,8 +500,11 @@ await app.listen();
 - Web-standard `Request` and `Response`
 - No raw WebSocket upgrade seam
 - No custom server or process signal ownership
-- One lazy application per catch-all bundle, not a shared singleton across
-  App Router and Pages Router server bundles
+- Separate lazy applications per catch-all bundle with the default per-closure
+  recipe. Consumers explicitly using `defineNextApplication` with the same key
+  share only within the same JS global (`globalThis`), under the
+  [opt-in contract](#process-local-application-accessor).
+  Different processes, workers, serverless instances, and JS globals remain isolated
 
 Use a Fluo Node or Fastify platform adapter when the application requires raw Node.js transport ownership, WebSocket upgrades, or an independently hosted backend.
 
@@ -406,6 +513,8 @@ Use a Fluo Node or Fastify platform adapter when the application requires raw No
 - `createNextAdapter(options)`: creates the HTTP adapter passed to `FluoFactory.create()`
 - `NextAdapterOptions`: adapter-owned request parsing and opt-in HEAD routing options
 - `NextAdapterLoader`: dynamic canonical backend adapter loader
+- `defineNextApplication(options)`: process-local application Promise accessor for an explicit key
+- `NextApplicationOptions<T>`: application-owned key and async load contract
 - `createNextAppRouterHandler(loadAdapter)`: creates method-keyed App Router handler exports (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`) ready for destructuring
 - `NextHttpApplicationAdapter`: `HttpApplicationAdapter` with bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS` handlers
 - `NextAppRouteHandler`: Web request handler type used by those bound methods

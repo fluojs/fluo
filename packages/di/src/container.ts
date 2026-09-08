@@ -1,4 +1,4 @@
-import { formatTokenName, InvariantError, type Token } from '@fluojs/core';
+import { formatTokenName, InvariantError, type PublicToken, type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 
 import {
@@ -649,6 +649,8 @@ export class Container {
    * @throws {ScopeMismatchError} When singleton providers depend on request-scoped providers.
    * @throws {CircularDependencyError} When provider dependency resolution detects a cycle.
    */
+  resolve<T>(token: PublicToken<T>): Promise<T>;
+  resolve<T>(token: Token<T>): Promise<T>;
   async resolve<T>(token: Token<T>): Promise<T> {
     if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(

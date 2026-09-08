@@ -203,6 +203,58 @@ export default function Home() {
 
 The print link is an independent HTTP navigation, not a component call that inserts an HTML document into the Next layout. Because ownership of the full-document response is separate, Next's layout and Fluo's `<html>` do not become nested. Preserving this distinction also makes it possible to describe a gradual migration that retains some existing Fluo pages.
 
+## When RSC and Authentication Paths Need the Same Application
+
+The earlier per-facade lazy recipe remains valid. If the introduction page's RSC
+and an authentication callback also need the post service in the same process,
+choose `defineNextApplication` instead of implementing a global Promise in each
+bundle. This is the complete `src/application.ts`, loading the earlier
+`src/backend.ts`. Every shared consumer uses this function instead of importing
+the backend directly.
+
+```typescript
+import { defineNextApplication } from '@fluojs/platform-nextjs';
+
+export const getApplication = defineNextApplication({
+  key: 'fluo-blog/application/v1',
+  load: () => import('./backend'),
+});
+```
+
+Connect the route facade's loader as
+`() => getApplication().then(({ nextAdapter }) => nextAdapter)`.
+RSC calls `await getApplication()` while handling the request. Configure that
+Next page for dynamic rendering if static rendering during build must not execute
+the backend. Definition alone does not load, but invoking the accessor starts
+actual bootstrap.
+
+A class evaluated again in another bundle is a different constructor even with
+the same name. When the post service needs a public boundary, declare
+`publicToken<PostsReader>('fluo-blog/posts/v1')` in a separate contract file.
+Use a type-only import of `PostsReader` there. In `PostsModule`, which owns the
+actual provider, add `{ provide: POSTS, useExisting: PostsReader }` and
+`exports: [PostsReader, POSTS]`. This adds the new token while preserving the
+existing class export. Consuming modules must still import `PostsModule`.
+A small RSC/auth application function returning
+`(await getApplication()).app.container.resolve(POSTS)` keeps
+`Promise<PostsReader>` inference while reducing repeated accessor code.
+The [Next README](../../packages/platform-nextjs/README.md#process-local-application-accessor)
+contains exact examples by file.
+
+The first invocation of a key owns the loader, including its failure. Editing
+code through HMR does not replace the graph in use. The application must drain
+consumers and call `app.close()`; invoking the accessor after close does not create
+a new graph. Apply a changed bootstrap by restarting the host. Other keys,
+processes, workers, and serverless instances do not share that singleton.
+Pass authenticated actors and sessions as per-call arguments or through request
+scopes, never inside this global Promise. The manual `Symbol.for` + `useExisting`
+recipe remains valid.
+
+The package's real Next E2E subscribes before releasing an HTTP gate so all three
+paths join during initialization. It checks separate module evaluations, the same
+instance, key/process isolation, and retained failure/close. The application
+accessor does not implement Next authentication or the Flight protocol.
+
 ## Do Not Disguise the Blog Link Checker's HEAD as GET
 
 The blog link checker sends HEAD to inspect a post's status and headers without
@@ -352,7 +404,7 @@ Another failure occurs when the browser cancels a request during lazy bootstrap.
 
 The Next adapter does not register process signal handlers. After `app.close()`, the same facade keeps returning 503 instead of automatically creating a new application. This differs from the restart after a successful Worker lazy close in Chapter 14. Rather than generalize shutdown policy into a single shared helper call, document what the host owns.
 
-Singleton sharing between App Router and Pages Router bundles is not guaranteed either. Importing the same file in a test and receiving the same instance is not evidence for the deployment model. If you need deterministic ownership of a single backend instance or raw WebSocket upgrades, keeping a separate backend with a Fastify or Node adapter is clearer. Using Next does not require pulling an already-working order server inside it.
+Singleton sharing between App Router and Pages Router bundles is not guaranteed by default. The earlier accessor provides explicit sharing within one JS global, not a single instance across processes. Importing the same file in a test and receiving the same instance is not evidence for the deployment model. If you need deterministic ownership of a single backend instance or raw WebSocket upgrades, keeping a separate backend with a Fastify or Node adapter is clearer. Using Next does not require pulling an already-working order server inside it.
 
 The same applies to `@fluojs/react`. If Next owns all screens, Fluo can provide only a JSON API. Register a renderer alongside it only when there is a concrete reason to retain existing Fluo HTML pages. This chapter's printable document uses the stable SSR path and does not mix an experimental RSC subpath with Next's Flight implementation. Ownership of responses, assets, and navigation matters more than their shared React name.
 
