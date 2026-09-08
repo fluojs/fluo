@@ -209,9 +209,14 @@ component-oriented `cookies()` helper.
 
 App Router and Pages Router are both supported in one hybrid Next application.
 Because Next emits them as separate server route bundles, enabling both
-catch-alls simultaneously creates one lazy Fluo application per bundle. Use
-one catch-all during migration when process-wide singleton state is required,
-or host Fluo separately when deterministic single-instance ownership matters.
+catch-alls with the default per-closure lazy recipe above creates a separate
+Fluo application per bundle. Sharing one application Promise requires every
+shared consumer to explicitly use `defineNextApplication` with the same key
+and execute within the same JS global (`globalThis`). See the
+[opt-in sharing contract](#process-local-application-accessor).
+Different processes, workers, serverless instances, and JS globals remain isolated.
+Use one catch-all during migration to avoid per-bundle bootstrap without explicit
+sharing, or host Fluo separately when deterministic single-instance ownership matters.
 
 ## Decorator Compiler Wiring
 
@@ -437,9 +442,11 @@ await app.listen();
 - Web-standard `Request` and `Response`
 - No raw WebSocket upgrade seam
 - No custom server or process signal ownership
-- One lazy application per catch-all bundle, not a shared singleton across
-  App Router and Pages Router server bundles by default. Explicit sharing follows
-  the opt-in `defineNextApplication` contract
+- Separate lazy applications per catch-all bundle with the default per-closure
+  recipe. Consumers explicitly using `defineNextApplication` with the same key
+  share only within the same JS global (`globalThis`), under the
+  [opt-in contract](#process-local-application-accessor).
+  Different processes, workers, serverless instances, and JS globals remain isolated
 
 Use a Fluo Node or Fastify platform adapter when the application requires raw Node.js transport ownership, WebSocket upgrades, or an independently hosted backend.
 

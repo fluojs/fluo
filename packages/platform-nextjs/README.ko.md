@@ -210,11 +210,16 @@ handler에 도달한 cookie header를 `@FromCookie` 또는 `RequestContext`로
 읽습니다.
 
 App Router와 Pages Router를 하나의 hybrid Next application에서 함께 사용할
-수도 있습니다. 다만 Next는 두 router를 별도 server route bundles로
-만들기 때문에 catch-all을 동시에 활성화하면 bundle마다 lazy Fluo
-application이 하나씩 생성됩니다. Process-wide singleton state가 필요하면
-migration 중에는 catch-all 하나만 사용하고, deterministic single-instance
-ownership이 필요하면 Fluo를 별도 backend로 host하세요.
+수도 있습니다. Next는 두 router를 별도 server route bundles로 만들므로,
+위의 기본 per-closure lazy recipe로 두 catch-all을 동시에 활성화하면
+bundle마다 별도 Fluo application이 생성됩니다. 공유할 모든 소비자가
+명시적으로 같은 key의 `defineNextApplication`을 사용하고 같은 JS
+global(`globalThis`)에서 실행될 때만 하나의 application Promise를 공유합니다.
+[Opt-in 공유 계약](#process-local-application-accessor)을 참조하세요.
+서로 다른 process, worker, serverless instance, JS global은 계속 격리됩니다.
+명시적 공유 없이 migration 중 bundle별 bootstrap을 피하려면 catch-all
+하나만 사용하세요. Deterministic single-instance ownership이 필요하면
+Fluo를 별도 backend로 host하세요.
 
 ## Decorator compiler 연결
 
@@ -441,9 +446,11 @@ await app.listen();
 - Web-standard `Request`와 `Response`
 - Raw WebSocket upgrade seam 없음
 - Custom server 또는 process signal ownership 없음
-- Catch-all bundle마다 하나의 lazy application을 사용하며 App Router와
-  Pages Router server bundle 사이에 기본적으로 singleton을 공유하지 않음.
-  명시적 공유는 `defineNextApplication` opt-in 계약을 따름
+- 기본 per-closure recipe는 catch-all bundle마다 별도 lazy application을 사용.
+  명시적으로 같은 key의 `defineNextApplication`을 사용하는 소비자는 같은 JS
+  global(`globalThis`) 안에서만 공유하며,
+  [opt-in 계약](#process-local-application-accessor)을 따름.
+  서로 다른 process, worker, serverless instance, JS global은 계속 격리됨
 
 Application이 raw Node.js transport ownership, WebSocket upgrades, independently hosted backend를 요구하면 Fluo Node 또는 Fastify platform adapter를 사용하세요.
 
