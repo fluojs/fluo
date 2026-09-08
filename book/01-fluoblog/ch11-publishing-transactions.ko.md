@@ -317,6 +317,14 @@ Fluo는 비동기 로컬 저장소인 `AsyncLocalStorage`로 현재 트랜잭션
 
 발행 후 이메일을 보내고 싶어도 이 트랜잭션 안에 네트워크 전송을 추가하지 않는다. DB 롤백은 이미 전송된 이메일을 회수할 수 없다. 그렇다고 확정 직후 한 줄로 보내면 프로세스가 그 사이 종료될 때 전송 의도가 사라질 수 있다. 그 문제에는 애플리케이션 소유의 영속 전달 의도가 필요하며, 후속 비동기 장에서 별도로 다룬다. 현재의 `PostPublication`은 발행 기록일 뿐 전송 완료 상태나 재시도 책임을 가진 outbox가 아니다.
 
+캐시 삭제처럼 **성공한 최종 커밋 뒤에만 시작할 작업**은 같은 `PrismaService`의 활성 경계 안에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록할 수 있다. 등록 자체는 작업 완료를 기다리지 않는다. 바깥 네이티브 트랜잭션이 성공적으로 커밋된 뒤 Fluo가 등록 순서(FIFO)대로 하나씩 호출하고 각 Promise를 기다린다. 중첩 경계는 큐를 공유하므로 안쪽 `transaction()`의 반환을 최종 커밋으로 오해하지 않는다. 롤백·커밋 실패 때는 실행하지 않는다. 저장점 없는 중첩 호출의 예외를 바깥에서 잡았다면 별도 중첩 롤백이 생기는 것이 아니라 최종 바깥 결과에 따라 큐가 실행되거나 폐기된다.
+
+이 기능을 필수로 요구하는 경계에는 기존 인수 **뒤에** `{ requireAfterCommit: true }`를 전달한다. Prisma에서는 `transaction(fn, nativeOptions?, boundary?)`, `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, `@Transaction(input?, boundary?)`다. 예를 들어 기존 데코레이터 옵션은 첫 인수에 유지하고 두 번째에 boundary를 추가한다. 생략된 네이티브 옵션과 기본 fail-open 동작은 바뀌지 않는다. 다만 opt-in 경계는 네이티브 커밋을 관찰할 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부한다. 그 옵션을 생략했더라도 지원 없는 직접 실행 경로나 경계 밖·이미 닫힌 경계에서 훅 등록이 허용되는 것은 아니다.
+
+훅 실행 시에는 기존 트랜잭션 scope가 닫혔고 종료된 ALS 바깥이다. `current()`로 새로 읽으면 예전 트랜잭션 핸들을 받지 않으며 새 트랜잭션은 새 큐를 갖는다. 닫힌 큐에 늦게 등록할 수 없다. 첫 훅이 실패해도 나머지는 순서대로 실행한다. 하나라도 실패하면 바깥 호출은 `AggregateError`를 확장한 `AfterCommitError`로 거부되지만 DB는 이미 커밋됐다. `readonly committed = true`, 모든 성공·실패 결과를 FIFO로 담는 `results: readonly PromiseSettledResult<void>[]`, 모든 실패를 담는 `errors`를 구분해서 읽는다. 이를 DB 롤백으로 표시하거나 발행 트랜잭션 전체를 재시도하지 않는다. 이 오류들과 `AfterCommitCallback`, `TransactionBoundaryOptions`는 `@fluojs/prisma` 루트 export이며, 후자의 옵션은 `readonly requireAfterCommit?: boolean`이다.
+
+이 보장은 성공한 프로세스 내부 경계 소유자의 호출에 한정된다. 원시 client가 직접 연 트랜잭션, 다른 래퍼·연결의 커밋은 관찰하지 않는다. 크래시 복구, 네트워크 전달의 exactly-once, 분산 트랜잭션이나 outbox는 제공하지 않는다. 19장의 전달 원장은 여전히 필요하고, 20장에서는 캐시 무효화의 제한된 용도로 이 훅을 적용한다. 공통 의미의 권위는 [Transaction Context](../../docs/architecture/transactions.ko.md), Prisma API의 권위는 [패키지 README](../../packages/prisma/README.ko.md)에 있다.
+
 ## 실패를 넣어도 한 작업인지 검사하기
 
 다음은 `test/publishing.integration.test.ts`의 완전한 파일이다. 10장과 이 장의 마이그레이션을 적용한 독립 PostgreSQL DB, Prisma 6.19.0 생성 클라이언트, 표준 데코레이터를 처리하는 Vitest 구성이 필요하다. 첫 테스트는 실제 DB 갱신 뒤 기록 저장 경계에서 실패시킨다. 두 번째 테스트는 두 호출이 초안을 읽은 순간을 먼저 관측한 뒤 동시에 진행시켜, 경합이 우연히 발생하기를 기다리지 않는다.
@@ -492,6 +500,8 @@ pnpm exec vitest run test/publishing.integration.test.ts
 
 종료가 시작되면 Fluo의 Prisma 서비스는 새로운 바깥 수동·서비스 트랜잭션을 거부한다. 이미 열린 경계는 정리된 뒤 연결이 해제되도록 기다린다. 이것은 일반 메서드가 모든 HTTP 취소 신호를 자동으로 이어받는다는 계약은 아니다. 요청 전체 취소가 필요한 별도 작업에는 `requestTransaction` 경계와 신호를 명시한다. 현재 발행 작업에는 짧은 서비스 경계를 유지한다.
 
+등록한 after-commit 작업도 이 종료 대기에 포함된다. 커밋은 끝났더라도 훅이 아직 실행 중이면 연결 정리 전에 완료를 기다린다. 그러므로 훅에 넣는 외부 호출의 시간 예산과 실패 기록은 애플리케이션이 정해야 하며, 종료 대기를 영속 전달 보장으로 해석하지 않는다.
+
 이제 발행 결과는 한 행의 상태만 보아 추측하는 것이 아니라, 게시글과 일치하는 발행 기록으로 설명할 수 있다. 그러나 성공적으로 발행된 글이 많아지면 첫 20개를 읽는 단순 조회에도 요구가 붙는다. 독자는 다음 페이지를 보고 싶어 하고 운영자는 큰 본문을 매번 읽는 비용을 줄이고 싶어 한다. 다음 장에서는 방금 확정한 발행 시각과 ID를 함께 사용해 목록의 경계와 조회 비용을 설계한다.
 
 ## 근거가 되는 구현과 계약
@@ -504,5 +514,7 @@ pnpm exec vitest run test/publishing.integration.test.ts
 - [서비스·저장소·응답 순서의 통합 테스트](../../packages/prisma/src/vertical-slice.test.ts)
 - [데코레이터와 중첩 옵션 거부 계약 테스트](../../packages/prisma/src/transaction-decorator.red.test.ts)
 - [종료 중 활성 경계와 연결 해제 순서 테스트](../../packages/prisma/src/shutdown-drain-status.test.ts)
+- [after-commit 회귀 검증 대상](../../packages/prisma/src/after-commit.test.ts), [공통 동작 행렬 검증 대상](../../tooling/governance/after-commit-contract.test.ts)
+- [네이티브 Prisma 검증 fixture](../../packages/prisma/fixtures/after-commit/): 실행 환경과 실제 결과는 별도 검증 기록으로 확인한다. 이 장은 해당 fixture의 통과 기록이 아니다.
 
 [이전: 메모리의 게시글을 데이터베이스로 옮기기](./ch10-prisma-persistence.ko.md) · [1권 목차](./toc.ko.md) · [다음: 글이 많아져도 목록이 느려지지 않게 하기](./ch12-efficient-queries.ko.md)

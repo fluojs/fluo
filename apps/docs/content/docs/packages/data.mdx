@@ -15,3 +15,5 @@ Data packages keep storage semantics explicit instead of hiding every database b
 | `@fluojs/queue` | Redis-backed jobs and workers | `packages/queue/README.md` |
 
 Read [Persistence](../guides/persistence) when choosing a storage path for an application feature.
+
+Prisma, Drizzle, and Mongoose `afterCommit` can register cache invalidation after native commit. [After-commit cache invalidation](../guides/persistence#after-commit-cache-invalidation) explains `requireAfterCommit` preflight and the already-committed `AfterCommitError`. `docs/architecture/transactions.md` owns execution semantics and the package READMEs above own public APIs. This does not include Redis commit tracking, DB+Redis atomicity, a durable outbox, or crash/network exactly-once guarantees.

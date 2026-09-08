@@ -14,6 +14,7 @@ Node.js `>=24.0.0 <27` Prisma lifecycle and ALS-backed transaction context for f
   - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
   - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
   - [Manual Transactions and current()](#manual-transactions-and-current)
+  - [Cache Invalidation After Commit](#cache-invalidation-after-commit)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
   - [Async Configuration and Isolation](#async-configuration-and-isolation)
   - [Manual Module Composition](#manual-module-composition)
@@ -196,7 +197,53 @@ await this.prisma.transaction(async () => {
 });
 ```
 
-When `transaction()` is called while a transaction context is already active, `PrismaService` reuses the active transaction client instead of opening a nested Prisma transaction. Nested calls must not pass transaction options such as isolation levels; providing options in an active context is rejected so the package does not silently drop caller intent while reusing the ambient transaction.
+When `transaction()` is called while a transaction context is already active, `PrismaService` reuses the active transaction client instead of opening a nested Prisma transaction. Nested calls must not pass native transaction options such as isolation levels; providing native options in an active context is rejected so the package does not silently drop caller intent while reusing the ambient transaction. `requireAfterCommit` in the separate `boundary` is a capability requirement on the current boundary, not a native option.
+
+### Cache Invalidation After Commit
+
+`PrismaService.afterCommit(...)` registers work on an open native transaction owned by the same wrapper. This application function assumes an existing Prisma `User` model (`id`, `name`), a registered `PrismaService<PrismaClient>`, and `CacheService` from a registered `CacheModule`.
+
+```ts
+import type { PrismaClient } from '@prisma/client';
+import type { CacheService } from '@fluojs/cache-manager';
+import { PrismaService } from '@fluojs/prisma';
+
+async function renameUser(
+  prisma: PrismaService<PrismaClient>,
+  cache: CacheService,
+  id: string,
+  name: string,
+) {
+  return prisma.transaction(async () => {
+    const user = await prisma.current().user.update({ where: { id }, data: { name } });
+    prisma.afterCommit(async () => {
+      await cache.del(`user:${id}`);
+    });
+    return user;
+  }, undefined, { requireAfterCommit: true });
+}
+```
+
+`undefined` preserves the existing native-options position. `requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Omitting it or passing `false` preserves existing `strictTransactions` defaults and fail-open fallback, but hooks cannot be registered in a fallback without a native transaction. Use `@Transaction(undefined, { requireAfterCommit: true })`, or supply an explicit accessor as the first argument, to declare the same requirement.
+
+Hooks run sequentially in FIFO order only after successful outer native commit and scope closure, outside the ended ALS context. They do not run on rollback, failed commit, or discarded callback attempts. Nested boundaries share the queue, so a caught nested exception without a savepoint follows the final outer commit/rollback outcome. Root reads in hooks do not use the old transaction handle, and new transactions own fresh queues. Registration outside a scope, in a closed scope, or late during drain is rejected. Shutdown drains hooks before disconnecting.
+
+If a hook fails, all remaining hooks still run before `AfterCommitError` is thrown. The database is already committed: do not retry the original write. The following error-handling fragment calls the function above; `report` and cache recovery policy are application-owned.
+
+```ts
+import { AfterCommitError } from '@fluojs/prisma';
+
+try {
+  await renameUser(prisma, cache, id, name);
+} catch (error) {
+  if (error instanceof AfterCommitError) {
+    report({ committed: error.committed, results: error.results, errors: error.errors });
+  }
+  throw error;
+}
+```
+
+`results` contains every fulfilled and rejected outcome in registration order; `errors` contains all failure reasons. Hook failures do not trigger native transaction retry or rollback. Commits from external raw-client transactions, other wrappers, or other connections are not observed. Redis itself is unsupported, and calling Redis from a DB hook does not create DB+Redis atomicity. This covers successful in-process owner invocations, not crash/network exactly-once or a durable outbox. Follow the [Transaction Context Contract](../../docs/architecture/transactions.md#after-commit-work) for the complete ordering and limitations.
 
 ### Shutdown and Status Contracts
 
@@ -269,16 +316,32 @@ defineModule(ManualPrismaModule, {
 
 - `current(): TClient | PrismaTransactionClient<TClient>`
   - Returns the ambient transaction client or the root client.
-- `transaction(fn, options?): Promise<T>`
-  - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested transaction options are rejected because no new Prisma transaction boundary is opened. New outer transaction boundaries are rejected once shutdown starts.
-- `requestTransaction(fn, signal?, options?): Promise<T>`
-  - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
+- `transaction(fn, nativeOptions?, boundary?): Promise<T>`
+  - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested native transaction options are rejected because no new Prisma transaction boundary is opened. New outer transaction boundaries are rejected once shutdown starts.
+- `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>`
+  - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested native options to avoid silently ignoring transaction settings.
 
 Use `PrismaService<TClient>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `PrismaServiceFacade<TClient>` for repository injections that call generated Prisma Client delegates directly; the facade forwards those calls to the active transaction client when one exists and to the root client otherwise. `PrismaService.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `PrismaModule.forRoot(...)` / `forRootAsync(...)`.
 
+`boundary?: TransactionBoundaryOptions` is a Fluo-only option **after** the existing arguments; do not merge it into Prisma native options. `fn` remains the existing async callback, and a successful outer boundary returns its original `T` after commit and registered-hook drain.
+
+- `afterCommit(callback: AfterCommitCallback): void`
+  - Registers a callback in an open native transaction scope without executing it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration.
+
 ### `Transaction`
 
+- `Transaction(input?, boundary?)`: `input` remains the existing service accessor or Prisma native transaction options. `boundary` is the second argument; omitting it preserves existing behavior.
+
 - Standard TC39 method decorator for service-layer transaction boundaries. It resolves a Prisma service/facade-shaped property by default, accepts an accessor for named clients or ambiguous hosts, and can forward Prisma transaction options to the outer boundary.
+
+### After-Commit Exports
+
+Import all of these from the root `@fluojs/prisma` package.
+
+- `AfterCommitCallback`: `() => void | Promise<void>`.
+- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `AfterCommitCapabilityError`: failure when required native commit capability is missing or a hook is registered on an unsupported boundary.
+- `AfterCommitError extends AggregateError`: exposes `readonly committed = true` and `results: readonly PromiseSettledResult<void>[]` for every FIFO outcome, with all failures in inherited `errors`.
 
 ### `PrismaTransactionInterceptor` (deprecated compatibility)
 
@@ -330,6 +393,8 @@ token are deliberately not exported.
 - `@fluojs/terminus`: Provides a health indicator for Prisma.
 
 ## Example Sources
+
+- `packages/prisma/src/after-commit.test.ts`: after-commit contract verification target. Native boundaries are covered by `packages/prisma/fixtures/after-commit/` and common behavior by `tooling/governance/after-commit-contract.test.ts`; execution results require a separate verification receipt.
 
 - `packages/prisma/src/vertical-slice.test.ts`: DTO → Service → Repository → Prisma flow.
 - `packages/prisma/src/module.test.ts`: Module lifecycle, named clients, async factories, strict transaction behavior, and status snapshots.

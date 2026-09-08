@@ -16,6 +16,7 @@
   - [기존 문서 저장](#기존-문서-저장)
   - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
+  - [커밋 후 캐시 무효화](#커밋-후-캐시-무효화)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -212,7 +213,57 @@ await this.conn.transaction(async () => {
 
 지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. `create(...)`는 Mongoose의 array overload인 `create([docs], options?)`를 통해서만 session을 주입합니다. Positional `create(docA, docB)` 인자는 마지막 문서에 `timestamps` 같은 option-like field가 있어도 그대로 전달되며 자동 session 주입을 받지 않습니다. 트랜잭션 참여가 필요하면 array overload를 사용하세요. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, `findOne(filter, projection, options)`의 세 번째 options 인자를 포함해 의도치 않은 트랜잭션 탈출을 방지하는 세션 충돌 에러를 발생시킵니다. Repository code에서 typed operation result가 필요하면 result-specialized `MongooseModelFacade`를 `model<TModel>(...)` 타입 인자로 전달하세요.
 
+### 커밋 후 캐시 무효화
+
+`MongooseConnection.afterCommit(...)`은 같은 wrapper가 소유하는 열린 native transaction에 작업을 등록합니다. 다음은 `User` 모델이 이미 compile된 애플리케이션 소유 connection과 `CacheModule`의 `CacheService`를 사용하는 함수입니다. 지원되는 array `create` facade가 ambient session을 붙입니다.
+
+```ts
+import type { CacheService } from '@fluojs/cache-manager';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type UserCreateModel = MongooseModelFacade<Promise<readonly { name: string }[]>>;
+
+async function createUser(conn: MongooseConnection, cache: CacheService, name: string) {
+  return conn.transaction(async () => {
+    const users = await conn.model<UserCreateModel>('User').create([{ name }]);
+    conn.afterCommit(async () => {
+      await cache.del('users:list');
+    });
+    return users;
+  }, { requireAfterCommit: true });
+}
+```
+
+`requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 기존 `strictTransactions: false`와 직접 실행 fallback은 옵션 생략 또는 `false`일 때 그대로지만, native transaction 없는 fallback에서 hook 등록은 거부됩니다. 서비스에서도 `@Transaction(undefined, { requireAfterCommit: true })` 또는 `@Transaction((self) => self.conn, { requireAfterCommit: true })`를 사용할 수 있습니다.
+
+Delegated `connection.transaction(...)`이 callback을 재시도하면 attempt마다 별도 queue를 사용하고 최종 성공한 attempt만 drain합니다. 폐기된 attempt, rollback, 실패한 commit의 hook은 실행하지 않습니다. commit만 재시도하고 callback은 다시 실행하지 않는 경우 hook을 재등록하지 않습니다. 같은 attempt의 중첩 경계는 queue를 공유하며 savepoint 없는 중첩 예외를 outer가 잡으면 최종 outer commit/rollback 결과를 따릅니다.
+
+사용자 callback이 settle되면 native commit을 시작하기 전에 등록 scope를 닫습니다. 성공한 outer native commit과 소유 session의 `endSession()` 정리 시도 settlement 뒤, 종료된 ALS 밖에서 hook을 FIFO 순서로 하나씩 await합니다. hook의 `current()`는 root connection이고 `currentSession()`에는 이전 session이 없습니다. lifecycle이 허용하는 새 transaction은 새 queue를 소유합니다. scope 밖·닫힌 scope·drain 중 늦은 등록은 거부됩니다. shutdown은 hook drain까지 기다린 뒤 설정된 `dispose(connection)`을 호출합니다.
+
+Session 정리가 성공했는데 hook이 실패하면, 한 실패로 중단하지 않고 모두 실행한 뒤 `AfterCommitError`를 던집니다. `committed`는 `true`, `results`는 성공과 실패 전체의 FIFO 결과, 상속한 `errors`는 모든 hook 실패 이유입니다. `error instanceof AfterCommitError`로 구분하고 DB write를 다시 실행하지 마세요. Fluo는 hook 실패로 native transaction을 재시도하거나 rollback하지 않으며, 캐시 복구·재조정은 애플리케이션 책임입니다.
+
+수동 session 경로의 hook이 등록되었거나 `requireAfterCommit: true`로 opt-in한 소유 경계(중첩 `requestTransaction`에서 요구한 경우 포함)에서 **commit 성공을 확인한 뒤** `endSession()`이 실패하면 모든 hook을 종료된 ALS 밖에서 그대로 시도하고, drain 후 `AfterCommitCleanupError`로 보고합니다. 이 클래스는 `AfterCommitError`가 아닌 `AggregateError`를 직접 확장하므로 `instanceof AfterCommitError`만으로 잡을 수 없습니다. 별도로 `AfterCommitCleanupError`를 root package에서 import해 구분하세요. `committed`는 `true`, `cause`는 cleanup 실패, `results: readonly PromiseSettledResult<void>[]`는 **hook 결과만** FIFO로 담습니다. `errors`는 cleanup 실패를 첫 항목에, 실패한 hook 이유를 등록 순서대로 뒤에 담습니다. hook이 없어도 opt-in했다면, 또는 등록한 hook이 전부 성공해도 cleanup 실패는 이 오류로 보고되며, cleanup 실패를 `results`의 가상 hook으로 추가하지 않습니다. DB write는 이미 확정되었으므로 이 오류로 native retry·rollback·abort를 실행하지 마세요. Hook도 없고 `requireAfterCommit`도 요구하지 않은 기존 경계는 원래 cleanup 오류 identity와 no-hook request cancellation 계약을 보존합니다.
+
+외부 raw-client transaction·다른 wrapper·connection의 commit은 관찰하지 않습니다. Redis 자체는 Fluo-owned commit tracking이 없어 미지원이며 DB hook의 Redis 호출도 DB+Redis 원자성을 제공하지 않습니다. in-process 성공 owner invocation만 다루고 durable outbox·crash/network exactly-once를 보장하지 않습니다. 전체 계약은 [트랜잭션 문맥 계약](../../docs/architecture/transactions.ko.md#커밋-후-작업)을 따릅니다.
+
 ## 공개 API
+
+| 트랜잭션 API | 입력과 완료 |
+| --- | --- |
+| `transaction(fn, boundary?): Promise<T>` | 기존 async `fn` 뒤에 Fluo `boundary`를 추가합니다. outer boundary는 commit과 hook drain 뒤 원래 결과를 반환합니다. |
+| `requestTransaction(fn, signal?, boundary?): Promise<T>` | 기존 request `AbortSignal` 뒤에 `boundary`를 받습니다. |
+| `afterCommit(callback: AfterCommitCallback): void` | 열린 native scope에 등록하며 즉시 실행하지 않습니다. 미지원·native transaction 없음·scope 밖·닫힌 scope는 거부됩니다. |
+| `Transaction(accessor?, boundary?)` | 기존 connection accessor 뒤의 두 번째 인자가 Fluo `boundary`입니다. |
+
+경계 API의 `boundary?: TransactionBoundaryOptions`는 Fluo 전용이며 native Mongoose 옵션과 섞지 않습니다. `afterCommit` 자체에는 boundary 인자가 없습니다.
+
+Root `@fluojs/mongoose`의 추가 export:
+
+- `AfterCommitCallback`: `() => void | Promise<void>`.
+- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `AfterCommitCapabilityError`: 요청한 native commit capability가 없거나 미지원 경계에 hook을 등록할 때의 오류.
+- `AfterCommitError extends AggregateError`: `readonly committed = true`와 `results: readonly PromiseSettledResult<void>[]`로 모든 FIFO 결과를 제공하고 상속한 `errors`로 모든 실패를 제공합니다.
+- `AfterCommitCleanupError extends AggregateError`: hook 등록 또는 `requireAfterCommit: true` opt-in이 있는 수동 session 경계의 확인된 commit 이후 cleanup 실패를 보고하는 별도 클래스입니다. `readonly committed = true`, cleanup 실패인 `cause`, hook-only FIFO `results: readonly PromiseSettledResult<void>[]`, cleanup-first `errors`를 제공합니다. `AfterCommitError`의 하위 클래스가 아닙니다.
 
 - `MongooseConnection.saveDocument(document, options?)` — native save option과 document identity를 보존하면서 현재 트랜잭션 session으로 기존 문서를 명시적으로 저장합니다.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
@@ -244,6 +295,8 @@ await this.conn.transaction(async () => {
 - `@fluojs/prisma` / `@fluojs/drizzle`: 대안 데이터베이스 통합 모듈입니다.
 
 ## 예제 소스
+
+- `packages/mongoose/src/after-commit.test.ts`: attempt별 hook queue와 session 정리 이후 drain 검증 대상. 공통 동작 matrix는 `tooling/governance/after-commit-contract.test.ts`입니다. Native MongoDB manual/delegated 경로는 [공통 fixture 실행 안내](../prisma/fixtures/after-commit/README.ko.md#실행)를 따르며 실제 결과는 별도 검증 receipt로 확인하세요.
 
 - `packages/mongoose/src/vertical-slice.test.ts`
 - `packages/mongoose/src/module.test.ts`

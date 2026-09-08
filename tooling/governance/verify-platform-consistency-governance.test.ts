@@ -849,6 +849,27 @@ describe('isGovernedPackageSourcePath', () => {
     expect(isGovernedPackageSourcePath('packages/core/src/module.ts')).toBe(true);
   });
 
+  it('ignores installed fixture dependencies without exempting authored fixture source', () => {
+    const dependencies = [
+      'packages/prisma/node_modules/mongodb/src/client.ts',
+      'packages/prisma/fixtures/after-commit/node_modules/.pnpm/mongodb@7/node_modules/mongodb/src/client.ts',
+    ];
+    const authored = [
+      'packages/prisma/src/service.ts',
+      'packages/prisma/fixtures/after-commit/src/bootstrap.ts',
+      'packages/prisma/src/node_modules-helper.ts',
+    ];
+    const inspected: string[] = [];
+
+    const violations = collectDirectProcessEnvViolations([...dependencies, ...authored], (path) => {
+      inspected.push(path);
+      return 'export const value = process.env.VALUE;';
+    });
+
+    expect(inspected).toEqual(authored);
+    expect(violations.map((violation) => violation.path)).toEqual(authored);
+  });
+
   it('excludes documented exceptions and non-governed paths', () => {
     expect(isGovernedPackageSourcePath('packages/cli/src/cli.ts')).toBe(false);
     expect(isGovernedPackageSourcePath('packages/cli/src/new/scaffold.ts')).toBe(false);

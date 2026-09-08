@@ -14,6 +14,7 @@ fluo 애플리케이션을 위한 Node.js `>=24.0.0 <27` Prisma lifecycle 및 AL
   - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [여러 클라이언트를 위한 이름 있는 등록](#여러-클라이언트를-위한-이름-있는-등록)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
+  - [커밋 후 캐시 무효화](#커밋-후-캐시-무효화)
   - [종료와 status 계약](#종료와-status-계약)
   - [비동기 설정과 격리](#비동기-설정과-격리)
   - [수동 모듈 조합](#수동-모듈-조합)
@@ -195,7 +196,53 @@ await this.prisma.transaction(async () => {
 });
 ```
 
-이미 활성 트랜잭션 컨텍스트가 있는 상태에서 `transaction()`을 호출하면 `PrismaService`는 중첩 Prisma 트랜잭션을 새로 열지 않고 활성 트랜잭션 클라이언트를 재사용합니다. 중첩 호출에는 isolation level 같은 트랜잭션 옵션을 전달하면 안 됩니다. 활성 컨텍스트에서 옵션을 제공하면 ambient transaction을 재사용하는 동안 호출자의 의도를 조용히 버리지 않도록 예외로 거부합니다.
+이미 활성 트랜잭션 컨텍스트가 있는 상태에서 `transaction()`을 호출하면 `PrismaService`는 중첩 Prisma 트랜잭션을 새로 열지 않고 활성 트랜잭션 클라이언트를 재사용합니다. 중첩 호출에는 isolation level 같은 native 트랜잭션 옵션을 전달하면 안 됩니다. 활성 컨텍스트에서 native 옵션을 제공하면 ambient transaction을 재사용하는 동안 호출자의 의도를 조용히 버리지 않도록 예외로 거부합니다. 별도 `boundary`의 `requireAfterCommit`은 native 옵션이 아니라 현재 경계의 capability 요구입니다.
+
+### 커밋 후 캐시 무효화
+
+`PrismaService.afterCommit(...)`은 같은 wrapper가 소유하는 열린 native transaction에 작업을 등록합니다. 이 예제는 기존 Prisma `User` 모델(`id`, `name`), 등록된 `PrismaService<PrismaClient>`와 `CacheModule`의 `CacheService`를 사용하는 애플리케이션 함수입니다.
+
+```ts
+import type { PrismaClient } from '@prisma/client';
+import type { CacheService } from '@fluojs/cache-manager';
+import { PrismaService } from '@fluojs/prisma';
+
+async function renameUser(
+  prisma: PrismaService<PrismaClient>,
+  cache: CacheService,
+  id: string,
+  name: string,
+) {
+  return prisma.transaction(async () => {
+    const user = await prisma.current().user.update({ where: { id }, data: { name } });
+    prisma.afterCommit(async () => {
+      await cache.del(`user:${id}`);
+    });
+    return user;
+  }, undefined, { requireAfterCommit: true });
+}
+```
+
+`undefined`는 기존 native 옵션 자리를 보존합니다. `requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 생략하거나 `false`로 두어도 기존 `strictTransactions` 기본값과 fail-open fallback은 바뀌지 않지만, native transaction 없는 fallback에서는 hook을 등록할 수 없습니다. `@Transaction(undefined, { requireAfterCommit: true })` 또는 명시적 accessor를 첫 인자로 넘겨 같은 요구를 선언할 수 있습니다.
+
+Hook은 outer native commit 성공과 scope 종료 뒤, 종료된 ALS 밖에서 FIFO 순서로 하나씩 await됩니다. rollback·실패한 commit·폐기된 callback attempt에서는 실행하지 않습니다. 중첩 경계는 같은 queue를 공유하므로 savepoint 없이 잡힌 중첩 예외는 최종 outer commit/rollback 결과를 따릅니다. hook 안의 root read는 이전 transaction handle을 사용하지 않으며 새 transaction은 새 queue를 소유합니다. scope 밖·닫힌 scope·drain 중 늦은 등록은 거부되고 shutdown은 hook drain 후 disconnect합니다.
+
+하나의 hook이 실패해도 모두 실행한 뒤 `AfterCommitError`를 던집니다. DB는 이미 commit되었으므로 원래 write를 재시도하지 마세요. 다음은 위 함수를 호출하는 오류 처리 조각이며 `report`와 캐시 복구 정책은 애플리케이션이 소유합니다.
+
+```ts
+import { AfterCommitError } from '@fluojs/prisma';
+
+try {
+  await renameUser(prisma, cache, id, name);
+} catch (error) {
+  if (error instanceof AfterCommitError) {
+    report({ committed: error.committed, results: error.results, errors: error.errors });
+  }
+  throw error;
+}
+```
+
+`results`는 성공과 실패 전체를 등록 순서로, `errors`는 모든 실패 이유를 담습니다. DB transaction의 native retry/rollback으로 hook 실패를 처리하지 않습니다. 외부 raw-client transaction·다른 wrapper·다른 connection의 commit은 관찰하지 않습니다. Redis 자체는 지원 대상이 아니며 DB hook의 Redis 호출도 DB+Redis 원자성을 만들지 않습니다. in-process 성공 owner invocation만 다루며 crash/network exactly-once나 durable outbox를 보장하지 않습니다. 전체 순서와 한계는 [트랜잭션 문맥 계약](../../docs/architecture/transactions.ko.md#커밋-후-작업)을 따르세요.
 
 ### 종료와 status 계약
 
@@ -268,16 +315,32 @@ defineModule(ManualPrismaModule, {
 
 - `current(): TClient | PrismaTransactionClient<TClient>`
   - 현재 컨텍스트에 맞는 트랜잭션 클라이언트 또는 루트 클라이언트를 반환합니다.
-- `transaction(fn, options?): Promise<T>`
-  - 대화형 트랜잭션 내에서 함수를 실행합니다. 이미 트랜잭션 컨텍스트가 활성화되어 있으면 callback은 그 컨텍스트를 재사용하며, 새 Prisma 트랜잭션 경계가 열리지 않기 때문에 중첩 트랜잭션 옵션은 거부됩니다. shutdown이 시작된 뒤에는 새 outer transaction boundary를 거부합니다.
-- `requestTransaction(fn, signal?, options?): Promise<T>`
-  - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 옵션을 거부합니다.
+- `transaction(fn, nativeOptions?, boundary?): Promise<T>`
+  - 대화형 트랜잭션 내에서 함수를 실행합니다. 이미 트랜잭션 컨텍스트가 활성화되어 있으면 callback은 그 컨텍스트를 재사용하며, 새 Prisma 트랜잭션 경계가 열리지 않기 때문에 중첩 native 트랜잭션 옵션은 거부됩니다. shutdown이 시작된 뒤에는 새 outer transaction boundary를 거부합니다.
+- `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>`
+  - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 native 옵션을 거부합니다.
 
 Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 한다면 `PrismaService<TClient>`를 사용하세요. 생성된 Prisma Client delegate를 직접 호출하는 repository 주입에는 `PrismaServiceFacade<TClient>`를 사용하세요. 이 facade는 활성 트랜잭션이 있으면 해당 트랜잭션 client로, 없으면 root client로 호출을 전달합니다. `PrismaService.createFacade(...)`는 module-provider wiring을 위한 저수준 compatibility helper로 유지되며, 애플리케이션 코드는 `PrismaModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용해야 합니다.
 
+`boundary?: TransactionBoundaryOptions`는 기존 인자 **뒤**의 Fluo 전용 옵션이며 Prisma에 전달하는 native 옵션과 섞지 않습니다. `fn`은 기존 async callback이며 성공한 outer boundary는 commit과 등록 hook drain 뒤 원래 `T`를 반환합니다.
+
+- `afterCommit(callback: AfterCommitCallback): void`
+  - 열린 native transaction scope에 callback을 등록하며 직접 실행하지 않습니다. 미지원·native transaction 없음·scope 밖·닫힌 scope에서는 거부됩니다.
+
 ### `Transaction`
 
+- `Transaction(input?, boundary?)`: `input`은 기존 service accessor 또는 Prisma native transaction 옵션입니다. `boundary`는 두 번째 인자이며 생략하면 기존 동작을 유지합니다.
+
 - 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 Prisma service/facade 형태의 속성을 resolve하고, 이름 있는 client나 모호한 host에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
+
+### 커밋 후 작업 export
+
+모두 root `@fluojs/prisma`에서 import합니다.
+
+- `AfterCommitCallback`: `() => void | Promise<void>`.
+- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `AfterCommitCapabilityError`: 요청한 native commit capability가 없거나 미지원 경계에 hook을 등록할 때의 오류.
+- `AfterCommitError extends AggregateError`: `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]`로 모든 FIFO 결과를 제공하고 상속한 `errors`로 모든 실패를 제공합니다.
 
 ### `PrismaTransactionInterceptor` (deprecated 호환성)
 
@@ -327,6 +390,8 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `@fluojs/terminus`: Prisma를 위한 헬스 인디케이터를 제공합니다.
 
 ## 예제 소스
+
+- `packages/prisma/src/after-commit.test.ts`: 커밋 후 hook 계약 검증 대상. native 경계는 `packages/prisma/fixtures/after-commit/`, 공통 동작은 `tooling/governance/after-commit-contract.test.ts`에서 확인하며 실행 결과는 별도 검증 receipt가 필요합니다.
 
 - `packages/prisma/src/vertical-slice.test.ts`: 표준 DTO → 서비스 → 리포지토리 → Prisma 흐름 예제.
 - `packages/prisma/src/module.test.ts`: 모듈 라이프사이클, 이름 있는 클라이언트, async factory, strict transaction 동작, status snapshot 테스트.

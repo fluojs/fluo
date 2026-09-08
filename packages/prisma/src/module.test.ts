@@ -669,7 +669,11 @@ describe('@fluojs/prisma', () => {
   it('waits for delayed request transaction settlement before disconnecting on shutdown', async () => {
     const events: string[] = [];
     const transactionClient = {};
-    let releaseRollback!: () => void;
+    let notifyRollbackStarted = () => {};
+    const rollbackStarted = new Promise<void>((resolve) => {
+      notifyRollbackStarted = resolve;
+    });
+    let releaseRollback = () => {};
     const rollbackBarrier = new Promise<void>((resolve) => {
       releaseRollback = resolve;
     });
@@ -693,6 +697,7 @@ describe('@fluojs/prisma', () => {
           return await callback(transactionClient);
         } catch (error) {
           events.push('transaction:rollback:pending');
+          notifyRollbackStarted();
           await rollbackBarrier;
           events.push('transaction:rollback:done');
           throw error;
@@ -725,29 +730,31 @@ describe('@fluojs/prisma', () => {
       requestAbortController.signal,
     );
 
+    const rejected = expect(openTransaction).rejects.toThrow('request aborted');
     requestAbortController.abort(new Error('request aborted'));
-    await Promise.resolve();
-
     const shutdownPromise = app.close();
+    try {
+      await rollbackStarted;
+      expect(events).toContain('transaction:rollback:pending');
+      expect(events).not.toContain('disconnect');
 
-    await Promise.resolve();
-    expect(events).toContain('transaction:rollback:pending');
-    expect(events).not.toContain('disconnect');
+      releaseRollback();
+      await rejected;
+      await shutdownPromise;
 
-    releaseRollback();
-
-    await expect(openTransaction).rejects.toThrow();
-    await shutdownPromise;
-
-    expect(events).toEqual([
-      'connect',
-      'transaction:start',
-      'transaction:signal',
-      'transaction:rollback:pending',
-      'transaction:rollback:done',
-      'transaction:end',
-      'disconnect',
-    ]);
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'transaction:signal',
+        'transaction:rollback:pending',
+        'transaction:rollback:done',
+        'transaction:end',
+        'disconnect',
+      ]);
+    } finally {
+      releaseRollback();
+      await Promise.allSettled([openTransaction, shutdownPromise]);
+    }
   });
 
   it('runs nested request and service transactions through a single transaction boundary', async () => {

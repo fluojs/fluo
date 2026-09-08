@@ -199,6 +199,14 @@ class CheckoutController {
 
 ## 20.6 FluoShop Context: Relational Schema
 
+가격 변경 뒤 캐시를 지우려면 같은 `DrizzleDatabase`의 활성 경계에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록합니다. 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, 데코레이터는 `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`입니다. 기존 인수를 이동하지 않고 마지막 boundary에 `{ requireAfterCommit: true }`를 추가하면 네이티브 커밋 관찰 능력 부재를 콜백 전에 `AfterCommitCapabilityError`로 거부합니다. 기존 기본 옵션·fail-open은 유지하되 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부됩니다.
+
+중첩 경계는 큐를 공유하고 성공한 최종 바깥 네이티브 커밋 뒤에만 FIFO로 하나씩 await합니다. 롤백·커밋 실패에서는 실행하지 않고, 저장점 없는 중첩 예외를 잡으면 최종 바깥 결과를 따릅니다. 닫힌 트랜잭션 ALS 밖에서 훅을 실행하므로 새 `current()` 조회는 예전 핸들을 쓰지 않고 새 트랜잭션은 새 큐를 갖습니다. 종료는 실행 중 훅까지 기다리지만 늦은 등록은 허용하지 않습니다.
+
+훅 실패는 나머지 실행을 막지 않습니다. 모든 결과를 모은 뒤 `AggregateError`를 확장한 `AfterCommitError`가 `committed: true`, 모든 결과의 FIFO `results`, 모든 실패의 `errors`를 보고합니다. 이미 커밋한 DB 쓰기를 재시도하거나 롤백하지 말고 캐시 복구 정책을 따로 정하세요. `AfterCommitCallback`, `TransactionBoundaryOptions`와 두 오류는 `@fluojs/drizzle` 루트 export입니다. raw 외부 트랜잭션·다른 래퍼는 관찰하지 않으며 DB 훅의 Redis 호출도 DB+Redis 원자성·outbox·크래시·네트워크 exactly-once를 제공하지 않습니다.
+
+권위는 [공통 트랜잭션 계약](../../docs/architecture/transactions.ko.md)과 [Drizzle API](../../packages/drizzle/README.ko.md)에 있습니다. [after-commit 테스트](../../packages/drizzle/src/after-commit.test.ts)는 검증 대상이며, 현재 제품 비교는 [Prisma·Drizzle 실습](../02-fluoshop/ch25-drizzle-lab.ko.md)에서 이어집니다.
+
 FluoShop에서는 트랜잭션 무결성과 관계 제약 조건이 중요한 **주문 관리(Order Management)** 서비스에 Drizzle을 사용합니다. 테이블 정의는 중앙의 `schema.ts` 파일에서 관리합니다. Drizzle은 이 정의를 마이그레이션과 타입 생성에 함께 사용하므로, 데이터베이스 구조와 TypeScript 타입이 같은 출처를 공유합니다.
 
 ```typescript

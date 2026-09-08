@@ -8,6 +8,12 @@ import {
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
+import {
+  type AfterCommitCallback,
+  AfterCommitCapabilityError,
+  AfterCommitError,
+  type TransactionBoundaryOptions,
+} from './after-commit.js';
 import { createDrizzlePlatformStatusSnapshot } from './status.js';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
 import type {
@@ -23,6 +29,7 @@ const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Drizzle request transactions are 
 
 type ActiveRequestTransaction = {
   abort(reason?: unknown): void;
+  committed?: boolean;
   settled: Promise<void>;
 };
 
@@ -51,6 +58,9 @@ type DrizzleRuntimeOptions = {
 
 type TransactionBoundaryOwner = {
   closed: boolean;
+  requireAfterCommit: boolean;
+  // The native owner accumulates callbacks; fallback owners have no commit queue.
+  afterCommitCallbacks?: AfterCommitCallback[];
   readonly callbackSettlements: Set<Promise<void>>;
   readonly requestTransactionSettlements: Set<ActiveRequestTransactionHandle>;
 };
@@ -144,6 +154,7 @@ export class DrizzleDatabase<
 > implements DrizzleHandleProvider<TDatabase, TTransactionDatabase, TTransactionOptions>, OnApplicationShutdown
 {
   private readonly transactions = new AsyncLocalStorage<TransactionContext<TDatabase, TTransactionDatabase>>();
+  private readonly callbackScopes = new AsyncLocalStorage<{ closed: boolean }>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionScopes = new Set<ActiveTransactionScope>();
   private activeRequestTransactionStatusCount = 0;
@@ -203,13 +214,35 @@ export class DrizzleDatabase<
     return current.database;
   }
 
+  /**
+   * Registers work synchronously for FIFO execution after the outer native transaction commits.
+   *
+   * @param callback Work executed outside the ended transaction context.
+   * @throws {AfterCommitCapabilityError} When no open native callback owns the current scope.
+   * @remarks Hooks are awaited sequentially, including after another hook fails. Failures reject
+   * the outer boundary with `AfterCommitError` after draining, without rolling back the commit.
+   */
+  afterCommit(callback: AfterCommitCallback): void {
+    const owner = this.transactions.getStore()?.transactionBoundaryOwner;
+
+    if (!owner || owner.closed || this.callbackScopes.getStore()?.closed !== false || !owner.afterCommitCallbacks) {
+      throw new AfterCommitCapabilityError(
+        'Drizzle afterCommit requires an open native transaction callback; outside, closed, and fail-open scopes cannot register hooks.',
+      );
+    }
+
+    owner.afterCommitCallbacks.push(callback);
+  }
+
   /** Aborts active request transactions, waits for settlement, then runs the optional dispose hook. */
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
     const activeRequestTransactions = Array.from(this.activeRequestTransactions);
 
     for (const transaction of activeRequestTransactions) {
-      transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
+      if (!transaction.committed) {
+        transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
+      }
     }
 
     await Promise.allSettled([
@@ -246,10 +279,13 @@ export class DrizzleDatabase<
    *
    * @param fn Callback executed inside the transaction scope.
    * @param options Optional transaction options forwarded to `database.transaction(...)`.
-   * @returns The callback result after the transaction finishes or the direct-execution fallback completes.
+   * @param boundary Optional Fluo capability requirements checked before user work.
+   * @returns The callback result after commit and hooks, or after direct-execution fallback.
+   * @throws {AfterCommitError} If hooks fail after a confirmed commit.
+   * @throws {AfterCommitCapabilityError} If required native after-commit support is unavailable.
    */
-  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
-    return this.executeTransaction(fn, options, false);
+  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T> {
+    return this.executeTransaction(fn, options, false, undefined, boundary);
   }
 
   /**
@@ -263,10 +299,13 @@ export class DrizzleDatabase<
    * @param fn Callback executed inside the request transaction scope.
    * @param signal Optional abort signal linked to the request lifecycle.
    * @param options Optional transaction options forwarded to `database.transaction(...)`.
-   * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
+   * @param boundary Optional Fluo capability requirements checked before user work.
+   * @returns The callback result after commit and hooks, or after direct-execution fallback.
+   * @throws {AfterCommitError} If hooks fail after a confirmed commit.
+   * @throws {AfterCommitCapabilityError} If required native after-commit support is unavailable.
    */
-  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
-    return this.executeTransaction(fn, options, true, signal);
+  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T> {
+    return this.executeTransaction(fn, options, true, signal, boundary);
   }
 
   private async executeTransaction<T>(
@@ -274,13 +313,29 @@ export class DrizzleDatabase<
     options: TTransactionOptions | undefined,
     requestScoped: boolean,
     signal?: AbortSignal,
+    boundary?: TransactionBoundaryOptions,
   ): Promise<T> {
     const current = this.transactions.getStore();
+
+    if (boundary?.requireAfterCommit) {
+      const capable = current && !current.transactionBoundaryOwner.closed
+        ? current.transactionBoundaryOwner.afterCommitCallbacks !== undefined
+          && this.callbackScopes.getStore()?.closed === false
+        : typeof this.database.transaction === 'function';
+
+      if (!capable) {
+        throw new AfterCommitCapabilityError();
+      }
+
+      if (current && !current.transactionBoundaryOwner.closed) {
+        current.transactionBoundaryOwner.requireAfterCommit = true;
+      }
+    }
 
     if (current) {
       if (current.transactionBoundaryOwner.closed) {
         if (requestScoped) {
-          return this.executeInheritedRequestTransaction(current, fn, options, signal);
+          return this.executeInheritedRequestTransaction(current, fn, options, signal, boundary);
         }
 
         return this.executeManualRootTransaction(fn, options);
@@ -305,7 +360,7 @@ export class DrizzleDatabase<
       return this.executeManualRootTransaction(fn, options);
     }
 
-    return this.executeRequestRootTransaction(fn, options, signal);
+    return this.executeRequestRootTransaction(fn, options, signal, boundary);
   }
 
   private async executeManualRootTransaction<T>(
@@ -315,6 +370,7 @@ export class DrizzleDatabase<
     const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
     const fallbackTransactionOwner: TransactionBoundaryOwner = {
       closed: false,
+      requireAfterCommit: false,
       callbackSettlements: new Set(),
       requestTransactionSettlements: new Set(),
     };
@@ -338,7 +394,9 @@ export class DrizzleDatabase<
         }
       }
 
-      return await transactionRunner(
+      fallbackTransactionOwner.afterCommitCallbacks = [];
+
+      const result = await transactionRunner(
         async (transactionDatabase) => {
           try {
             return await this.transactions.run(
@@ -347,7 +405,7 @@ export class DrizzleDatabase<
                 deferredRequestTransactionSettlements,
                 transactionBoundaryOwner: fallbackTransactionOwner,
               },
-              fn,
+              () => this.runTransactionCallback(fn),
             );
           } finally {
             await this.closeTransactionBoundaryOwner(fallbackTransactionOwner);
@@ -355,7 +413,11 @@ export class DrizzleDatabase<
         },
         options,
       );
+
+      await this.drainAfterCommit(fallbackTransactionOwner.afterCommitCallbacks);
+      return result;
     } finally {
+      fallbackTransactionOwner.afterCommitCallbacks?.splice(0);
       await this.closeTransactionBoundaryOwner(fallbackTransactionOwner);
 
       for (const handle of fallbackTransactionOwner.requestTransactionSettlements) {
@@ -375,13 +437,17 @@ export class DrizzleDatabase<
     fn: () => Promise<T>,
     options: TTransactionOptions | undefined,
     signal?: AbortSignal,
+    boundary?: TransactionBoundaryOptions,
   ): Promise<T> {
     this.assertRequestTransactionsAvailable();
 
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
+    const afterCommitCallbacks: AfterCommitCallback[] = [];
     const transactionBoundaryOwner: TransactionBoundaryOwner = {
       closed: false,
+      requireAfterCommit: boundary?.requireAfterCommit ?? false,
+      afterCommitCallbacks,
       callbackSettlements: new Set(),
       requestTransactionSettlements: new Set(),
     };
@@ -397,7 +463,7 @@ export class DrizzleDatabase<
                 requestAbortSignal: abortContext.signal,
                 transactionBoundaryOwner,
               },
-              () => raceWithAbort(fn, abortContext.signal),
+              () => this.runTransactionCallback(() => raceWithAbort(fn, abortContext.signal)),
             );
           } finally {
             await this.closeTransactionBoundaryOwner(transactionBoundaryOwner);
@@ -406,10 +472,16 @@ export class DrizzleDatabase<
         options,
       );
 
-      this.throwIfRequestAborted(abortContext.signal);
+      if (!transactionBoundaryOwner.requireAfterCommit && afterCommitCallbacks.length === 0) {
+        this.throwIfRequestAborted(abortContext.signal);
+      }
+      active.active.committed = true;
+      abortContext.cleanup();
+      await this.drainAfterCommit(afterCommitCallbacks);
 
       return result;
     } finally {
+      afterCommitCallbacks.length = 0;
       transactionBoundaryOwner.closed = true;
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
@@ -420,6 +492,7 @@ export class DrizzleDatabase<
     fn: () => Promise<T>,
     options: TTransactionOptions | undefined,
     signal?: AbortSignal,
+    boundary?: TransactionBoundaryOptions,
   ): Promise<T> {
     const transactionRunner = this.resolveTransactionRunner();
 
@@ -427,7 +500,7 @@ export class DrizzleDatabase<
       return this.executeRequestFallback(fn, signal);
     }
 
-    return this.executeRequestTransaction(transactionRunner, fn, options, signal);
+    return this.executeRequestTransaction(transactionRunner, fn, options, signal, boundary);
   }
 
   private async executeInheritedRequestTransaction<T>(
@@ -435,18 +508,19 @@ export class DrizzleDatabase<
     fn: () => Promise<T>,
     options: TTransactionOptions | undefined,
     signal?: AbortSignal,
+    boundary?: TransactionBoundaryOptions,
   ): Promise<T> {
     const inheritedRequestAbortSignal = current.inheritedRequestAbortSignal ?? current.requestAbortSignal;
 
     if (!inheritedRequestAbortSignal) {
-      return this.executeRequestRootTransaction(fn, options, signal);
+      return this.executeRequestRootTransaction(fn, options, signal, boundary);
     }
 
     const abortSignalView = createRequestAbortSignalView(inheritedRequestAbortSignal, signal);
 
     try {
       this.throwIfRequestAborted(abortSignalView.signal);
-      return await this.executeRequestRootTransaction(fn, options, abortSignalView.signal);
+      return await this.executeRequestRootTransaction(fn, options, abortSignalView.signal, boundary);
     } finally {
       abortSignalView.cleanup();
     }
@@ -463,7 +537,7 @@ export class DrizzleDatabase<
       throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
     }
 
-    const callback = Promise.resolve().then(fn);
+    const callback = Promise.resolve().then(() => this.runTransactionCallback(fn));
     const removeSettlement = () => {
       owner.callbackSettlements.delete(settlement);
     };
@@ -495,7 +569,7 @@ export class DrizzleDatabase<
     }
 
     const runCallback = () => {
-      const callback = fn();
+      const callback = this.runTransactionCallback(fn);
       const transactionBoundaryOwner = current.transactionBoundaryOwner;
       const removeSettlement = () => {
         transactionBoundaryOwner.callbackSettlements.delete(settlement);
@@ -574,6 +648,7 @@ export class DrizzleDatabase<
     const active = this.trackActiveRequestTransaction(abortContext.controller);
     const fallbackTransactionOwner: TransactionBoundaryOwner = {
       closed: false,
+      requireAfterCommit: false,
       callbackSettlements: new Set(),
       requestTransactionSettlements: new Set(),
     };
@@ -614,12 +689,36 @@ export class DrizzleDatabase<
     }
   }
 
+  private async runTransactionCallback<T>(fn: () => Promise<T>): Promise<T> {
+    const scope = { closed: false };
+
+    try {
+      return await this.callbackScopes.run(scope, fn);
+    } finally {
+      scope.closed = true;
+    }
+  }
+
   private async closeTransactionBoundaryOwner(owner: TransactionBoundaryOwner): Promise<void> {
     while (owner.callbackSettlements.size > 0) {
       await Promise.all(owner.callbackSettlements);
     }
 
     owner.closed = true;
+  }
+
+  private async drainAfterCommit(callbacks: readonly AfterCommitCallback[]): Promise<void> {
+    await this.callbackScopes.exit(() => this.transactions.exit(async () => {
+      const results: PromiseSettledResult<void>[] = [];
+
+      for (const callback of callbacks) {
+        results.push(...await Promise.allSettled([Promise.resolve().then(callback)]));
+      }
+
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new AfterCommitError(results);
+      }
+    }));
   }
 
   private assertRequestTransactionsAvailable(): void {

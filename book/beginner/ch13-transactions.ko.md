@@ -121,10 +121,18 @@ export class UsersService {
 }
 ```
 
-블록 패턴은 특정 단계에서 발생하는 에러를 개별적으로 처리하고 싶거나, 데이터베이스 작업이 확실히 커밋된 후에만 부수 효과(로깅, 메트릭 등)를 수행하고 싶을 때 유용합니다.
+블록 패턴은 작업 경계를 명시할 때 유용합니다. 다만 위의 “커밋 후” 주석은 이 호출이 바깥 네이티브 트랜잭션을 소유할 때만 맞습니다. 중첩 `transaction()`의 반환은 최종 커밋이 아닙니다. 서비스 합성에서도 최종 커밋 뒤 실행해야 하는 캐시 삭제 등은 같은 `PrismaService`의 활성 콜백 안에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록하세요.
+
+Prisma의 boundary 옵션은 기존 인수 뒤에 추가합니다. 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, 데코레이터는 `@Transaction(input?, boundary?)`입니다. 마지막 인수의 `{ requireAfterCommit: true }`는 네이티브 커밋 관찰 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부합니다. 생략된 네이티브 옵션과 기본 fail-open은 유지되지만, 지원 없는 직접 실행 경로·경계 밖·닫힌 scope에서 훅 등록은 허용되지 않습니다.
 
 ### Nested Transactions and Reusability
 Fluo는 이미 활성화된 트랜잭션 클라이언트를 재사용함으로써 "중첩된" 트랜잭션을 처리합니다. `Service A`의 `@Transaction()` 메서드가 `Service B`의 `@Transaction()` 메서드를 호출하면, 두 메서드는 동일한 외부 트랜잭션을 공유하게 됩니다. 모든 작업은 하나의 응집력 있는 작업 단위로 취급됩니다.
+
+after-commit 큐도 공유합니다. 성공한 바깥 네이티브 커밋 뒤에만 FIFO로 하나씩 실행하고 각 Promise를 기다립니다. 롤백·커밋 실패에서는 실행하지 않으며, 저장점 없는 중첩 예외를 잡은 경우 최종 바깥 결과를 따릅니다. scope를 닫고 종료된 ALS를 벗어난 뒤 훅을 호출하므로 새로운 `current()` 조회는 예전 핸들을 사용하지 않고 새 트랜잭션은 새 큐를 갖습니다. 종료는 훅도 기다리지만 닫힌 큐에 늦게 등록할 수는 없습니다.
+
+모든 훅을 시도한 뒤 실패가 있으면 `AggregateError`를 확장한 `AfterCommitError`로 보고합니다. `readonly committed = true`는 DB가 이미 커밋됐다는 뜻이며, `results: readonly PromiseSettledResult<void>[]`에는 모든 성공·실패 결과가 FIFO로, `errors`에는 모든 실패가 담깁니다. DB 롤백이나 전체 트랜잭션 재시도 대상이 아닙니다. `AfterCommitCallback`, `TransactionBoundaryOptions`, `AfterCommitCapabilityError`, `AfterCommitError`는 `@fluojs/prisma` 루트 export입니다.
+
+원시 client의 외부 트랜잭션이나 다른 wrapper·connection은 관찰하지 않습니다. Redis에도 Fluo 소유 커밋 추적이 없으며 DB 훅에서 Redis를 호출해도 DB+Redis 원자성은 생기지 않습니다. 이 API는 성공한 프로세스 내부 소유 경계의 실행 순서만 다루고 outbox, 크래시 복구, 네트워크 exactly-once를 약속하지 않습니다. 공통 계약은 [Transaction Context](../../docs/architecture/transactions.ko.md), API는 [Prisma README](../../packages/prisma/README.ko.md), 검증 대상은 [after-commit 테스트](../../packages/prisma/src/after-commit.test.ts)입니다.
 
 ## 13.4 Advanced Patterns and Internals
 
@@ -259,7 +267,7 @@ Fluo와 Prisma를 사용하면 ACID 원칙을 진지하게 반영한 기반 위�
 기본적인 서비스 계층 및 요청 트랜잭션 패턴을 넘어, 애플리케이션 레벨에서 다음과 같은 더 고급 시나리오를 만날 수 있습니다.
 1. **병렬 트랜잭션 블록**: 서로 같은 리소스 의존성을 공유하지 않는 독립 `transaction(...)` 호출을 동시에 실행하는 방식입니다.
 2. **선택적 롤백 정책**: 트랜잭션 callback 안의 에러 처리를 명시적으로 유지하여, 블록이 예외를 던져 롤백되거나 의도한 결과를 반환하도록 하는 방식입니다.
-3. **커밋 이후 부수 효과**: 내장 transaction hook API를 찾는 대신, `transaction(...)` promise가 resolve된 뒤 캐시나 메시지 브로커 동기화를 실행하는 방식입니다.
+3. **커밋 이후 부수 효과**: 활성 Fluo 경계 안에서 `afterCommit(...)`으로 캐시 삭제 등을 등록하고 성공한 최종 바깥 커밋 뒤 실행하는 방식입니다. 영속 메시지 전달과 실패 후 재전달은 애플리케이션 소유 Outbox 같은 별도 정책이 필요합니다.
 
 이러한 패턴을 익히면 작은 프로젝트에서 쓰던 규칙을 더 까다로운 엔터프라이즈 요구 사항에도 일관되게 적용할 수 있습니다.
 

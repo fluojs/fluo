@@ -37,6 +37,10 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 <!-- fluo:docs-navigation:end -->
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## Persistence After-Commit Work
+
+Prisma, Drizzle, and Mongoose `afterCommit` ordering, native capability, nesting/retries, post-commit failures, and shutdown are owned by the [Transaction Context Contract](./architecture/transactions.md#after-commit-work). Read the [Prisma](../packages/prisma/README.md#cache-invalidation-after-commit), [Drizzle](../packages/drizzle/README.md#cache-invalidation-after-commit), and [Mongoose](../packages/mongoose/README.md#cache-invalidation-after-commit) READMEs for public arguments and cache invalidation usage. Books explain application of that contract. Verification targets are each package's `packages/*/src/after-commit.test.ts`, `tooling/governance/after-commit-contract.test.ts`, and native `packages/prisma/fixtures/after-commit/`; actual execution results require a separate receipt. Redis commit tracking, DB+Redis atomicity, and crash/network exactly-once guarantees are excluded.
+
 ## Decorator Default Audit
 
 [Public Decorator Defaults](./reference/decorator-defaults.md) reconciles all 165 owned public

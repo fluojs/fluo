@@ -13,6 +13,7 @@ Node.js-only Drizzle ORM integration for fluo with a transaction-aware database 
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Manual Transactions and current()](#manual-transactions-and-current)
+  - [Cache Invalidation After Commit](#cache-invalidation-after-commit)
   - [Request-Wide Controller Boundaries](#request-wide-controller-boundaries)
   - [Named clients](#named-clients)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
@@ -170,11 +171,45 @@ await this.db.transaction(async () => {
 });
 ```
 
-Nested calls reuse the active transaction boundary. If a nested call passes transaction options while a boundary is already active, the package rejects those nested options instead of silently changing the existing transaction.
+Nested calls reuse the active transaction boundary. If a nested call passes native transaction options while a boundary is already active, the package rejects those nested options instead of silently changing the existing transaction. `requireAfterCommit` in the separate `boundary` is a capability requirement on the current boundary, not a native option.
 
 When `database.transaction(...)` is unavailable and `strictTransactions` is `false` (the default), `transaction()` and `requestTransaction()` intentionally fail open (fail-open fallback) by running the callback directly against the root handle. This is useful for local fakes, read-only adapters, or gradual migrations, but it is not atomic and should not be treated as a real database transaction. Set `strictTransactions: true` in production paths that require rollback guarantees; startup and readiness diagnostics then surface missing `database.transaction(...)` support and transaction helpers throw instead of silently running without a transaction. Fail-open callbacks still run in a root-handle ALS context, so nested helpers reuse the fallback boundary, nested request work inherits the ambient request `AbortSignal`, and shutdown drains nested direct execution before disposal. This context preservation does not add rollback atomicity.
 
 Async work created inside a transaction can inherit its ALS context even when it runs after the owning transaction has committed, rolled back, or otherwise settled. A later `transaction(...)` or `requestTransaction(...)` call from that inherited continuation is treated as a fresh lifecycle-tracked root instead of reusing the closed transaction handle. Shutdown drains that fresh root before `dispose(database)`, while calls that begin before the owner settles continue to share the active boundary.
+
+### Cache Invalidation After Commit
+
+`DrizzleDatabase.afterCommit(...)` registers work on an open native transaction owned by the same wrapper. This application function assumes an existing `users` table (`id`, `name`) in `./schema`, a registered Node PostgreSQL Drizzle handle, and `CacheService` from a registered `CacheModule`.
+
+```ts
+import type { CacheService } from '@fluojs/cache-manager';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { eq } from 'drizzle-orm';
+import type { drizzle } from 'drizzle-orm/node-postgres';
+import { users } from './schema';
+
+async function renameUser(
+  db: DrizzleDatabase<ReturnType<typeof drizzle>>,
+  cache: CacheService,
+  id: string,
+  name: string,
+) {
+  return db.transaction(async () => {
+    await db.current().update(users).set({ name }).where(eq(users.id, id));
+    db.afterCommit(async () => {
+      await cache.del(`user:${id}`);
+    });
+  }, undefined, { requireAfterCommit: true });
+}
+```
+
+`undefined` preserves the existing native-options position. `requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Omitting it or passing `false` preserves existing `strictTransactions: false` and fail-open fallback, but hook registration is rejected in a fallback without a native transaction. The decorator takes the requirement as its final, third argument: `@Transaction(undefined, undefined, { requireAfterCommit: true })` or `@Transaction((self) => self.db, nativeOptions, { requireAfterCommit: true })`.
+
+After successful outer native commit and scope closure, hooks run sequentially in FIFO order outside the ended ALS context. Nested boundaries share the queue without a separate savepoint, so a caught nested exception follows the final outer outcome. Hooks from rollback, failed commit, and discarded callback attempts do not run. Root reads in hooks do not receive the ended handle; new transactions own fresh queues. Registration outside a scope, in a closed scope, or late during drain is rejected. Shutdown waits for hooks before calling `dispose(database)`.
+
+All remaining hooks run after a hook failure, then `AfterCommitError` is thrown. `committed` is `true`, `results` contains every fulfilled and rejected FIFO outcome, and inherited `errors` contains all failure reasons. Distinguish it with `error instanceof AfterCommitError` and do not repeat the already-committed DB write. Cache-only recovery and reconciliation are application policy; Fluo does not retry or roll back the native transaction because of a hook error.
+
+Commits from external raw-client transactions, other wrappers, or other connections are not observed. Redis has no supported Fluo-owned commit tracking, and calling Redis from a hook provides no DB+Redis atomicity. This covers successful in-process owner invocations, not a durable outbox or crash/network exactly-once. Follow the [Transaction Context Contract](../../docs/architecture/transactions.md#after-commit-work) for the full contract.
 
 ### Request-Wide Controller Boundaries
 
@@ -271,6 +306,28 @@ defineModule(ManualDrizzleModule, {
 
 ## Public API Overview
 
+### Transactions and After-Commit Work
+
+| API | Inputs and completion |
+| --- | --- |
+| `transaction(fn, nativeOptions?, boundary?): Promise<T>` | Appends `boundary` after the existing async `fn` and Drizzle options. The outer boundary returns the original result after native commit and hook drain. |
+| `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>` | Preserves the existing request `AbortSignal` and native-options positions, with `boundary` last. |
+| `afterCommit(callback: AfterCommitCallback): void` | Registers work in an open native scope without running it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration. |
+| `Transaction(accessorOrOptions?, nativeOptions?, boundary?)` | Preserves the existing interpretation of the first argument as an accessor or native options. The second native-options argument keeps its existing accessor-only role; Fluo `boundary` is always third. |
+
+Import these values and types from the root `@fluojs/drizzle` package.
+
+```ts
+import {
+  AfterCommitCapabilityError,
+  AfterCommitError,
+  type AfterCommitCallback,
+  type TransactionBoundaryOptions,
+} from '@fluojs/drizzle';
+```
+
+`AfterCommitCallback` is `() => void | Promise<void>` and `TransactionBoundaryOptions` is `{ readonly requireAfterCommit?: boolean }`. `AfterCommitCapabilityError` rejects missing required native commit capability or hook registration on an unsupported boundary. `AfterCommitError extends AggregateError` exposes `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]`, and all failures in inherited `errors`. `boundary` is Fluo-only; do not merge it into native options.
+
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
@@ -308,6 +365,8 @@ Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such
 - `@fluojs/prisma` and `@fluojs/mongoose`: alternate ORM/ODM integrations with the same fluo runtime model
 
 ## Example Sources
+
+- `packages/drizzle/src/after-commit.test.ts`: after-commit verification target. The common behavior matrix is `tooling/governance/after-commit-contract.test.ts` and the native commit fixture is `packages/prisma/fixtures/after-commit/`; the Prisma fixture does not verify every Drizzle driver. Execution results require a separate verification receipt.
 
 - `packages/drizzle/src/vertical-slice.test.ts`
 - `packages/drizzle/src/module.test.ts`

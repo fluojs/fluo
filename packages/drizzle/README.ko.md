@@ -13,6 +13,7 @@ Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dis
 - [주요 패턴](#주요-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
+  - [커밋 후 캐시 무효화](#커밋-후-캐시-무효화)
   - [요청 전체 컨트롤러 경계](#요청-전체-컨트롤러-경계)
   - [이름 있는 클라이언트](#이름-있는-클라이언트)
   - [종료와 상태 계약](#종료와-상태-계약)
@@ -170,11 +171,45 @@ await this.db.transaction(async () => {
 });
 ```
 
-중첩 호출은 활성 transaction boundary를 재사용합니다. 이미 boundary가 활성화되어 있는데 중첩 호출이 transaction option을 전달하면, 기존 transaction을 조용히 바꾸지 않고 해당 중첩 option을 거부합니다.
+중첩 호출은 활성 transaction boundary를 재사용합니다. 이미 boundary가 활성화되어 있는데 중첩 호출이 native transaction option을 전달하면, 기존 transaction을 조용히 바꾸지 않고 해당 중첩 option을 거부합니다. 별도 `boundary`의 `requireAfterCommit`은 native 옵션이 아니라 현재 경계의 capability 요구입니다.
 
 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`(기본값)이면 `transaction()`과 `requestTransaction()`은 의도적으로 fail-open(fail-open fallback)하여 callback을 root handle에서 직접 실행합니다. 이는 local fake, read-only adapter, 점진적 migration에는 유용하지만 원자적이지 않으므로 실제 데이터베이스 transaction으로 취급하면 안 됩니다. rollback 보장이 필요한 production 경로에서는 `strictTransactions: true`를 설정하세요. 그러면 startup 및 readiness 진단에서 누락된 `database.transaction(...)` 지원을 드러내고, transaction helper는 트랜잭션 없이 조용히 실행하는 대신 예외를 던집니다. Fail-open callback도 root-handle ALS context에서 실행되므로 중첩 helper는 fallback boundary를 재사용하고, 중첩 request 작업은 ambient request `AbortSignal`을 상속하며, shutdown은 dispose 전에 중첩 직접 실행을 drain합니다. 이 context 보존은 rollback 원자성을 추가하지 않습니다.
 
 Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, rollback 또는 다른 방식으로 settle된 뒤 실행되더라도 ALS context를 상속할 수 있습니다. 이렇게 상속된 continuation에서 나중에 호출하는 `transaction(...)` 또는 `requestTransaction(...)`은 닫힌 transaction handle을 재사용하지 않고 lifecycle tracking이 적용된 새 root로 처리됩니다. Shutdown은 `dispose(database)` 전에 이 새 root를 drain하며, owner가 settle되기 전에 시작한 호출은 계속 활성 boundary를 공유합니다.
+
+### 커밋 후 캐시 무효화
+
+`DrizzleDatabase.afterCommit(...)`은 같은 wrapper의 열린 native transaction에 작업을 등록합니다. 다음은 기존 `./schema`의 `users` 테이블(`id`, `name`), 등록된 Node PostgreSQL Drizzle handle과 `CacheModule`의 `CacheService`를 사용하는 애플리케이션 함수입니다.
+
+```ts
+import type { CacheService } from '@fluojs/cache-manager';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { eq } from 'drizzle-orm';
+import type { drizzle } from 'drizzle-orm/node-postgres';
+import { users } from './schema';
+
+async function renameUser(
+  db: DrizzleDatabase<ReturnType<typeof drizzle>>,
+  cache: CacheService,
+  id: string,
+  name: string,
+) {
+  return db.transaction(async () => {
+    await db.current().update(users).set({ name }).where(eq(users.id, id));
+    db.afterCommit(async () => {
+      await cache.del(`user:${id}`);
+    });
+  }, undefined, { requireAfterCommit: true });
+}
+```
+
+`undefined`는 기존 native 옵션 자리입니다. `requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 생략 또는 `false`는 기존 `strictTransactions: false`와 fail-open fallback을 바꾸지 않지만, native transaction 없는 fallback에서 hook 등록은 거부됩니다. decorator는 마지막 세 번째 인자에 요구를 둡니다: `@Transaction(undefined, undefined, { requireAfterCommit: true })` 또는 `@Transaction((self) => self.db, nativeOptions, { requireAfterCommit: true })`.
+
+성공한 outer native commit과 scope 종료 뒤, 종료된 ALS 밖에서 hook을 FIFO 순서로 하나씩 await합니다. 중첩 경계는 queue를 공유하며 별도 savepoint가 없으므로 잡힌 중첩 예외는 최종 outer 결과를 따릅니다. rollback·실패한 commit·폐기된 callback attempt의 hook은 실행하지 않습니다. hook의 root read는 종료된 handle을 받지 않고 새 transaction은 새 queue를 소유합니다. scope 밖·닫힌 scope·drain 중의 늦은 등록은 거부되며 shutdown은 hook까지 기다린 뒤 `dispose(database)`를 호출합니다.
+
+Hook 실패 후에도 나머지를 모두 실행하고 `AfterCommitError`를 던집니다. `committed`는 `true`, `results`는 성공과 실패 전체의 FIFO 결과, 상속한 `errors`는 모든 실패 이유입니다. `error instanceof AfterCommitError`로 구분하고 이미 commit된 DB write를 재실행하지 마세요. 캐시만 복구할지 재조정할지는 애플리케이션 정책이며 Fluo는 hook 오류로 native transaction을 재시도하거나 rollback하지 않습니다.
+
+Raw-client 외부 transaction·다른 wrapper·connection의 commit은 관찰하지 않습니다. Redis에는 지원되는 Fluo-owned commit tracking이 없으며 hook에서 Redis를 호출해도 DB+Redis 원자성은 없습니다. in-process 성공 owner invocation만 다루고 durable outbox·crash/network exactly-once는 보장하지 않습니다. 전체 계약은 [트랜잭션 문맥 계약](../../docs/architecture/transactions.ko.md#커밋-후-작업)을 따릅니다.
 
 ### 요청 전체 컨트롤러 경계
 
@@ -271,6 +306,28 @@ defineModule(ManualDrizzleModule, {
 
 ## 공개 API 개요
 
+### 트랜잭션과 커밋 후 작업
+
+| API | 입력과 완료 |
+| --- | --- |
+| `transaction(fn, nativeOptions?, boundary?): Promise<T>` | 기존 async `fn`과 Drizzle 옵션 뒤에 `boundary`를 추가합니다. outer boundary는 native commit과 hook drain 뒤 원래 결과를 반환합니다. |
+| `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>` | 기존 request `AbortSignal`과 native 옵션 자리를 유지하며 마지막에 `boundary`를 받습니다. |
+| `afterCommit(callback: AfterCommitCallback): void` | 열린 native scope에 등록합니다. 즉시 실행하지 않으며 미지원·native transaction 없음·scope 밖·닫힌 scope에서는 거부합니다. |
+| `Transaction(accessorOrOptions?, nativeOptions?, boundary?)` | 기존 첫 인자의 accessor 또는 native 옵션 해석을 보존합니다. 두 번째 native 옵션은 accessor 사용 시의 기존 자리이고, Fluo `boundary`는 항상 세 번째입니다. |
+
+다음 값과 타입은 root `@fluojs/drizzle`에서 import합니다.
+
+```ts
+import {
+  AfterCommitCapabilityError,
+  AfterCommitError,
+  type AfterCommitCallback,
+  type TransactionBoundaryOptions,
+} from '@fluojs/drizzle';
+```
+
+`AfterCommitCallback`은 `() => void | Promise<void>`, `TransactionBoundaryOptions`는 `{ readonly requireAfterCommit?: boolean }`입니다. `AfterCommitCapabilityError`는 요청한 native commit capability가 없거나 미지원 경계의 hook 등록을 거부합니다. `AfterCommitError extends AggregateError`는 `readonly committed = true`와 `results: readonly PromiseSettledResult<void>[]`를 제공하고 상속한 `errors`에 모든 실패를 담습니다. `boundary`는 Fluo 전용이며 native 옵션에 합치지 않습니다.
+
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
@@ -308,6 +365,8 @@ provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `@fluojs/prisma`, `@fluojs/mongoose`: 같은 런타임 모델 위에서 동작하는 다른 데이터 통합 패키지입니다.
 
 ## 예제 소스
+
+- `packages/drizzle/src/after-commit.test.ts`: 커밋 후 hook 검증 대상. 공통 동작 matrix는 `tooling/governance/after-commit-contract.test.ts`, native commit fixture는 `packages/prisma/fixtures/after-commit/`이며 Prisma fixture가 모든 Drizzle driver를 검증한다는 뜻은 아닙니다. 실행 결과는 별도 검증 receipt가 필요합니다.
 
 - `packages/drizzle/src/vertical-slice.test.ts`
 - `packages/drizzle/src/module.test.ts`

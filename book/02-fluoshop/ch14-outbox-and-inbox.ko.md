@@ -12,6 +12,10 @@
 
 우리 상점은 아직 같은 PostgreSQL을 사용하는 모듈형 모놀리스다. 이 조건을 이용해 주문과 ‘전달해야 할 사실’을 한 트랜잭션에 저장한다. 이것이 Outbox다. 받는 기능에는 ‘이 소비자가 이 사실을 받아서 어떤 후속 책임을 만들었다’를 기록하는 Inbox를 둔다. Fluo가 자동 생성하는 테이블이 아니며 `EventBusModule`이나 `PrismaModule` 등록만으로 생기는 기능도 아니다. 이 장은 애플리케이션 소유 테이블과 실제 트랜잭션 코드를 작성한다.
 
+`PrismaService.afterCommit()`은 이 Outbox를 대체하지 않는다. 같은 Fluo 경계 안에서 등록하면 중첩 호출도 성공한 최종 바깥 커밋 뒤까지 기다리게 할 수 있지만, 큐는 메모리에 있으므로 커밋 직후 프로세스가 죽으면 작업을 복구할 수 없다. Outbox 삽입은 계속 주문 변경과 같은 DB 트랜잭션 안에 둔다. 훅을 추가한다면 이미 저장된 의도를 찾는 relay를 깨우는 선택적 신호나 캐시 무효화에 사용하고, 신호 없이도 원장을 검색하는 경로를 남긴다. 아래 구현은 기존의 트랜잭션 밖 caller를 유지하며 그런 신호를 필수 의존성으로 추가하지 않는다.
+
+신호가 필수인 경계에서 `transaction(fn, nativeOptions, { requireAfterCommit: true })`를 선택하면 네이티브 커밋 관찰 능력의 부재를 콜백 실행 전에 거부한다. 이것은 영속 전달 능력 검사가 아니다. 훅 실패는 모든 훅을 순서대로 기다린 뒤 `AfterCommitError`로 보고되며 `committed: true`인 결제를 롤백하거나 다시 결제할 이유가 되지 않는다. 실패한 후속 의도를 재처리할지는 Outbox·소비자 멱등성·운영 정책이 결정한다. Redis에는 Fluo 소유 커밋 추적이 없고, DB 훅에서 Redis enqueue를 호출해도 두 저장소가 원자적으로 커밋되지 않는다. 네트워크 exactly-once 역시 보장하지 않는다.
+
 ## 전달과 업무 완료를 구별하는 스키마
 
 이 장의 소비자는 `notifications.receipt.v1` 하나다. ‘결제 완료 영수증을 준비해 달라’는 의도를 저장할 뿐 실제 메일이나 결제사 호출은 하지 않는다. 이름은 알림 기능의 논리적 소비자이며 서버 인스턴스 ID가 아니다. 서버를 두 대로 늘려도 같은 소비자로 중복을 판정해야 한다. 반대로 배송 준비 기능이 같은 이벤트를 소비한다면 다른 이름과 별도 처리 이력이 필요하다.
@@ -355,6 +359,7 @@ WHERE "orderId" = 'order-14';
 - [Prisma 공개 export](../../packages/prisma/src/index.ts), [트랜잭션 핸들 타입](../../packages/prisma/src/types.ts)
 - [ALS 컨텍스트와 current 구현](../../packages/prisma/src/service.ts)
 - [Prisma 모듈 및 트랜잭션 테스트](../../packages/prisma/src/module.test.ts)
+- [after-commit과 영속 전달의 경계](../../docs/architecture/transactions.ko.md), [after-commit 회귀 검증 대상](../../packages/prisma/src/after-commit.test.ts)
 - [event-bus의 성공 의미와 한계](../../packages/event-bus/README.ko.md)
 - [리스너 실패 격리 구현](../../packages/event-bus/src/service.ts), [관련 테스트](../../packages/event-bus/src/module.test.ts)
 - [결제 원장과 멱등한 수신](./ch10-payment-webhooks.ko.md), [재고 소비 경계](./ch07-inventory-concurrency.ko.md), [감사 전이 스키마](./ch06-order-state-machine.ko.md)

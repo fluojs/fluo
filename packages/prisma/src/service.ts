@@ -1,5 +1,11 @@
 import { Inject } from '@fluojs/core';
 import {
+  type AfterCommitCallback,
+  AfterCommitCapabilityError,
+  AfterCommitError,
+  type TransactionBoundaryOptions,
+} from './after-commit.js';
+import {
   type ActiveRequestTransaction,
   type ActiveRequestTransactionHandle,
   createAbortError,
@@ -45,6 +51,7 @@ type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
 type TransactionContext<TTransactionClient> = {
   client: TTransactionClient;
+  owner: { closed: boolean; hooks: AfterCommitCallback[] };
   deferredRequestTransactionHandles?: Set<ActiveRequestTransactionHandle>;
   requestAbortSignal?: AbortSignal;
 };
@@ -52,12 +59,12 @@ type TransactionContext<TTransactionClient> = {
 interface TransactionContextStore<TTransactionClient> {
   readonly kind: 'als' | 'unavailable';
   getStore(): TransactionContext<TTransactionClient> | undefined;
-  run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T;
+  run<T>(context: TransactionContext<TTransactionClient> | undefined, callback: () => T): T;
 }
 
 type AsyncContextStore<TContext> = {
   getStore(): TContext | undefined;
-  run<T>(context: TContext, callback: () => T): T;
+  run<T>(context: TContext | undefined, callback: () => T): T;
 };
 
 type AsyncLocalStorageConstructor = new <TContext>() => AsyncContextStore<TContext>;
@@ -103,7 +110,7 @@ class AsyncLocalStorageTransactionContextStore<TTransactionClient> implements Tr
     return this.storage.getStore();
   }
 
-  run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T {
+  run<T>(context: TransactionContext<TTransactionClient> | undefined, callback: () => T): T {
     return this.storage.run(context, callback);
   }
 }
@@ -115,7 +122,7 @@ class UnavailableTransactionContextStore<TTransactionClient> implements Transact
     return undefined;
   }
 
-  run<T>(_context: TransactionContext<TTransactionClient>, _callback: () => T): T {
+  run<T>(_context: TransactionContext<TTransactionClient> | undefined, _callback: () => T): T {
     throw new Error(TRANSACTION_CONTEXT_UNAVAILABLE_ERROR);
   }
 }
@@ -229,7 +236,52 @@ export class PrismaService<
    * @returns The request/transaction-scoped client when a transaction is active; otherwise the root client.
    */
   current(): TClient | TTransactionClient {
-    return this.transactions.getStore()?.client ?? this.client;
+    return this.activeContext()?.client ?? this.client;
+  }
+
+  /**
+   * Registers work to invoke after the active outer native transaction commits.
+   *
+   * @param callback Synchronous or asynchronous hook, awaited in FIFO order outside the ended transaction context.
+   * @throws {AfterCommitCapabilityError} When the client has no native commit boundary.
+   * @throws {Error} When called outside an active transaction callback or from an ended scope.
+   */
+  afterCommit(callback: AfterCommitCallback): void {
+    this.assertAfterCommitCapability();
+    const context = this.activeContext();
+    if (!context) {
+      throw new Error('afterCommit registration requires an active transaction callback.');
+    }
+    context.owner.hooks.push(callback);
+  }
+
+  private activeContext(): TransactionContext<TTransactionClient> | undefined {
+    const context = this.transactions.getStore();
+    return context?.owner.closed ? undefined : context;
+  }
+
+  private assertAfterCommitCapability(): void {
+    if (typeof this.client.$transaction !== 'function' || this.transactions.kind === 'unavailable') {
+      throw new AfterCommitCapabilityError();
+    }
+  }
+
+  private async drainAfterCommit(owner: TransactionContext<TTransactionClient>['owner']): Promise<void> {
+    const hooks = owner.hooks.splice(0);
+    await this.transactions.run(undefined, async () => {
+      const results: PromiseSettledResult<void>[] = [];
+      for (const hook of hooks) {
+        try {
+          await hook();
+          results.push({ status: 'fulfilled', value: undefined });
+        } catch (reason) {
+          results.push({ status: 'rejected', reason });
+        }
+      }
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new AfterCommitError(results);
+      }
+    });
   }
 
   private async runWithTransactionClient<T>(
@@ -239,8 +291,12 @@ export class PrismaService<
       options?: TTransactionOptions,
     ) => Promise<T>,
     options?: TTransactionOptions,
+    boundary?: TransactionBoundaryOptions,
   ): Promise<T> {
-    if (this.transactions.getStore()) {
+    if (boundary?.requireAfterCommit) {
+      this.assertAfterCommitCapability();
+    }
+    if (this.activeContext()) {
       if (options !== undefined) {
         throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
       }
@@ -264,14 +320,25 @@ export class PrismaService<
       this.assertTransactionContextAvailable();
 
       const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
+      const owner: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
 
       try {
-        return await run(
+        const result = await run(
           (transactionClient) =>
-            this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles }, fn),
+            this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles, owner }, async () => {
+              try {
+                return await fn();
+              } finally {
+                owner.closed = true;
+              }
+            }),
           options,
         );
+        await this.drainAfterCommit(owner);
+        return result;
       } finally {
+        owner.closed = true;
+        owner.hooks.length = 0;
         for (const handle of deferredRequestTransactionHandles) {
           this.untrackActiveRequestTransaction(handle);
         }
@@ -365,16 +432,18 @@ export class PrismaService<
    * @param fn Callback executed inside the transaction flow where `current()` resolves from ALS to the active transaction client,
    * or reuses the already-active context / direct-execution path when no new boundary is opened.
    * @param options Optional Prisma transaction options forwarded to `$transaction`.
+   * @param boundary Optional requirement for native afterCommit capability, checked before `fn`.
    * @returns The callback result, after commit when a new interactive transaction is opened, or from direct execution when
    * nested context reuse or non-strict `$transaction` fallback applies.
    * @throws {Error} When nested transaction options are provided while already inside an active transaction.
    * @throws {Error} When strict transaction mode is enabled and the Prisma client does not implement `$transaction`.
    */
-  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
+  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T> {
     return this.runWithTransactionClient(
       fn,
       (callback, transactionOptions) => this.client.$transaction!(callback, transactionOptions),
       options,
+      boundary,
     );
   }
 
@@ -390,6 +459,7 @@ export class PrismaService<
    * transaction client, or reuses the already-active context / direct-execution path when no new boundary is opened.
    * @param signal Optional abort signal propagated to request transaction handling.
    * @param options Optional Prisma transaction options forwarded to `$transaction`.
+   * @param boundary Optional requirement for native afterCommit capability, checked before `fn`.
    * @returns The callback result, after commit when a new interactive transaction is opened, or from direct execution when
    * nested context reuse or non-strict `$transaction` fallback applies.
    * @throws {Error} When nested transaction options are provided while already inside an active transaction.
@@ -397,8 +467,11 @@ export class PrismaService<
    * @throws {Error} Propagates an abort-related error when `signal` aborts before the transaction callback settles; concrete
    * error type/message depends on the runtime abort implementation.
    */
-  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
-    const current = this.transactions.getStore();
+  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T> {
+    if (boundary?.requireAfterCommit) {
+      this.assertAfterCommitCapability();
+    }
+    const current = this.activeContext();
 
     if (current) {
       if (options !== undefined) {
@@ -412,6 +485,7 @@ export class PrismaService<
 
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
+    const owner: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
 
     try {
       const result = await this.runWithRequestTransactionClient<T>(
@@ -420,12 +494,21 @@ export class PrismaService<
           this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
         options,
         abortContext.signal,
+        owner,
       );
 
-      this.throwIfRequestAborted(abortContext.signal);
+      // Opt-in hooks observe a confirmed commit, not cancellation arriving during post-commit work.
+      if (!boundary?.requireAfterCommit && owner.hooks.length === 0) {
+        this.throwIfRequestAborted(abortContext.signal);
+      }
+      if (typeof this.client.$transaction === 'function') {
+        await this.drainAfterCommit(owner);
+      }
 
       return result;
     } finally {
+      owner.closed = true;
+      owner.hooks.length = 0;
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
     }
@@ -439,6 +522,7 @@ export class PrismaService<
     ) => Promise<T>,
     options: TTransactionOptions | undefined,
     signal: AbortSignal,
+    owner: TransactionContext<TTransactionClient>['owner'],
   ): Promise<T> {
     if (typeof this.client.$transaction !== 'function') {
       if (this.serviceOptions.strictTransactions) {
@@ -451,7 +535,13 @@ export class PrismaService<
     this.assertTransactionContextAvailable();
 
     return run(
-      (transactionClient) => this.transactions.run({ client: transactionClient, requestAbortSignal: signal }, fn),
+      (transactionClient) => this.transactions.run({ client: transactionClient, requestAbortSignal: signal, owner }, async () => {
+        try {
+          return await fn();
+        } finally {
+          owner.closed = true;
+        }
+      }),
       options,
     );
   }
@@ -477,7 +567,7 @@ export class PrismaService<
 
     try {
       const result = await this.transactions.run(
-        { client: current.client, requestAbortSignal: abortContext.signal },
+        { ...current, requestAbortSignal: abortContext.signal },
         () => raceWithAbort(fn, abortContext.signal),
       );
 
