@@ -4,8 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import * as coreInternalApi from './internal.js';
-import * as coreRequestPipelineApi from './request-pipeline.js';
 import type {
   AsyncModuleOptions,
   Constructor,
@@ -41,6 +39,8 @@ import type {
   ValidationIssueMetadata,
   ValidationRuleResult,
 } from './internal.js';
+import * as coreInternalApi from './internal.js';
+import * as coreRequestPipelineApi from './request-pipeline.js';
 
 type RootBarrelTypeExports = {
   asyncModuleOptions: AsyncModuleOptions<unknown>;
@@ -90,6 +90,7 @@ const documentedRootRuntimeExports = [
   'formatTokenName',
   'ensureMetadataSymbol',
   'getModuleMetadata',
+  'publicToken',
 ] as const;
 
 const documentedInternalRuntimeExports = [

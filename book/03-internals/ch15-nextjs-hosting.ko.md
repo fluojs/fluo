@@ -186,6 +186,54 @@ export default function Home() {
 
 인쇄 링크는 Next layout 안에 HTML 문서를 끼워 넣는 컴포넌트 호출이 아니라 독립 HTTP 탐색이다. full-document 응답의 소유권을 분리했으므로 Next의 layout과 Fluo의 `<html>`이 중첩되지 않는다. 이 구분을 유지하면 기존 Fluo 페이지 일부를 남겨 놓는 점진적 이전도 설명할 수 있다.
 
+## RSC와 인증 경로에도 같은 application이 필요하다면
+
+앞의 facade별 lazy recipe는 그대로 유효하다. 소개 화면의 RSC와 인증 callback도
+같은 process의 글 서비스를 호출해야 한다면 각 bundle에 전역 Promise를 직접
+작성하는 대신 `defineNextApplication`을 선택할 수 있다. 다음은 앞에서 만든
+`src/backend.ts`를 load하는 완전한 `src/application.ts`다. 공유할 모든 소비자는
+직접 backend import 대신 이 함수를 사용한다.
+
+```typescript
+import { defineNextApplication } from '@fluojs/platform-nextjs';
+
+export const getApplication = defineNextApplication({
+  key: 'fluo-blog/application/v1',
+  load: () => import('./backend'),
+});
+```
+
+Route facade의 loader는
+`() => getApplication().then(({ nextAdapter }) => nextAdapter)`로 연결한다.
+RSC는 요청 처리 중 `await getApplication()`을 호출한다. 빌드 때 정적 렌더링으로
+backend를 실행하고 싶지 않다면 해당 Next 페이지를 동적 렌더링 경계로 구성한다.
+Definition 자체는 load하지 않지만 accessor 호출은 실제 bootstrap을 시작한다.
+
+클래스는 bundle에서 다시 평가되면 이름이 같아도 다른 constructor다.
+글 서비스의 공개 경계가 필요하면 별도 계약 파일에서
+`publicToken<PostsReader>('fluo-blog/posts/v1')`를 선언한다. 이때 `PostsReader`는
+type-only import로 사용하고, 실제 provider를 소유한 `PostsModule`에는
+`{ provide: POSTS, useExisting: PostsReader }`와 `exports: [PostsReader, POSTS]`를
+추가한다. 기존 class export를 유지하며 새 token만 추가하는 변경이다.
+소비 module은 여전히 `PostsModule`을 import해야 한다.
+RSC/auth용 작은 application 함수가
+`(await getApplication()).app.container.resolve(POSTS)`를 반환하면
+`Promise<PostsReader>` 추론을 유지하면서 반복 accessor 코드가 줄어든다.
+정확한 파일별 예제는 [Next README](../../packages/platform-nextjs/README.ko.md#process-local-application-accessor)에 있다.
+
+같은 key의 첫 호출이 loader를 소유하며 실패도 보존한다. HMR에서 코드를 바꾸어도
+사용 중 graph를 교체하지 않는다. 소비자를 drain하고 `app.close()`를 호출할 책임은
+application에 있고, 닫은 뒤 accessor를 호출해도 새 graph가 생기지 않는다.
+변경된 bootstrap은 host 재시작으로 적용한다. 다른 key나 process, worker,
+serverless instance까지 같은 singleton이라는 뜻은 아니다.
+인증된 actor와 session은 매 호출의 인자나 요청별 scope로 전달하며 이 전역
+Promise 안에 저장하지 않는다. 수동 `Symbol.for` + `useExisting` recipe도 유효하다.
+
+패키지의 실제 Next E2E는 세 경로가 초기화 중에 합류하도록 HTTP gate를 열기 전에
+구독하고, 별도 module 평가와 동일 instance, key/process 격리, 실패·close 보존을
+확인한다. 이 application accessor는 Next의 인증 구현이나 Flight protocol을
+제공하지 않는다.
+
 ## 동시에 들어온 첫 요청과 닫힌 뒤의 요청을 시험한다
 
 아래 완전한 `src/next-adapter.test.ts`는 앞의 `AppModule`과 현재 Fluo 표준 데코레이터 Vitest 구성을 전제로 한다. 테스트는 Next 서버를 열지 않고 adapter와 lazy facade의 공개 접점을 검증한다. `@fluojs/testing/vitest`의 decorator plugin을 사용하는 기존 테스트 설정이 필요하며 Next용 config helper가 Vitest의 변환을 대신하지는 않는다.
@@ -296,7 +344,7 @@ export const config = {
 
 Next adapter는 process signal handler를 등록하지 않는다. `app.close()` 뒤 같은 facade는 새 application을 자동 생성하지 않고 503을 유지한다. 14장의 성공한 Worker lazy close 뒤 재시작과 다르다. 종료 정책을 공통 helper 한 줄로 일반화하지 말고 호스트가 무엇을 소유하는지 문서에 남겨야 한다.
 
-App Router와 Pages Router bundle 사이의 singleton 공유도 보장하지 않는다. 테스트에서 같은 파일을 import했더니 같은 인스턴스였다는 사실을 배포 모델의 근거로 삼지 않는다. deterministic한 단일 backend instance 소유권이나 raw WebSocket upgrade가 필요하면 Fastify·Node adapter로 별도 backend를 유지하는 편이 명확하다. Next를 사용한다는 이유만으로 이미 작동하는 주문 서버까지 안으로 밀어 넣을 필요는 없다.
+App Router와 Pages Router bundle 사이의 singleton 공유도 기본으로 보장하지 않는다. 같은 JS global 안의 명시적 공유에는 앞의 accessor를 사용할 수 있지만, 여러 process를 아우르는 단일 instance는 아니다. 테스트에서 같은 파일을 import했더니 같은 인스턴스였다는 사실을 배포 모델의 근거로 삼지 않는다. deterministic한 단일 backend instance 소유권이나 raw WebSocket upgrade가 필요하면 Fastify·Node adapter로 별도 backend를 유지하는 편이 명확하다. Next를 사용한다는 이유만으로 이미 작동하는 주문 서버까지 안으로 밀어 넣을 필요는 없다.
 
 `@fluojs/react`도 마찬가지다. Next가 화면을 모두 소유한다면 Fluo는 JSON API만 제공해도 된다. 기존 Fluo HTML 페이지를 유지할 구체적인 이유가 있을 때만 renderer를 함께 등록한다. 이 장의 인쇄 문서는 안정 SSR 경로이며 실험적 RSC subpath를 Next의 Flight 구현과 혼합하지 않는다. 같은 React라는 이름보다 응답·자산·탐색의 소유권이 중요하다.
 

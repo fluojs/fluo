@@ -10,6 +10,7 @@ export {
   InvalidNextAdapterOptionError,
   NextHttpApplicationAdapter,
 } from './adapter.js';
+export { defineNextApplication, type NextApplicationOptions } from './application-accessor.js';
 export type { NextPagesRouterConfig } from './pages-router.js';
 export {
   createNextPagesRouterHandler,

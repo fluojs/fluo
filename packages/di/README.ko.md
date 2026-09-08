@@ -74,6 +74,38 @@ const service = await container.resolve(UserService);
 - **팩토리 provider**: `{ provide, useFactory, inject }`. 팩토리가 참조 클래스의 `@Scope(...)` 같은 DI metadata를 상속해야 하고 provider `scope`를 명시하지 않았다면 `resolverClass`를 함께 지정합니다.
 - **별칭(Alias) provider**: `{ provide: ILogger, useExisting: PinoLogger }`를 사용하여 하나의 토큰을 기존에 등록된 다른 provider로 매핑할 수 있습니다.
 
+### Typed public token resolve
+
+`@fluojs/core`의 `publicToken<T>()`로 만든 symbol은 `resolve()`의 반환형을
+추론합니다. 이름이나 metadata registry가 서로 다른 constructor를 합치는 기능은
+아닙니다. 명시적 alias가 기존 provider를 가리킵니다.
+
+```ts
+import { publicToken } from '@fluojs/core';
+import { Container } from '@fluojs/di';
+
+class PostsService { title() { return 'FluoBlog'; } }
+const POSTS = publicToken<PostsService>('my-blog/posts/v1');
+const container = new Container().register(
+  PostsService,
+  { provide: POSTS, useExisting: PostsService },
+);
+try {
+  const posts = await container.resolve(POSTS); // PostsService
+  posts.title();
+} finally {
+  await container.dispose();
+}
+```
+
+다른 module에서 주입하려면 alias를 소유 module의 `exports`에 포함하고 해당
+module을 import합니다. 원래 class를 export할 필요는 없지만 공개하려는
+token별 alias/exports는 필요합니다. 수동 `Symbol.for('my-blog/posts/v1')`와
+`resolve<PostsService>(token)`도 동일한 alias를 사용할 수 있습니다.
+Token은 scope를 바꾸지 않습니다. Request/actor/session provider는 요청별 child
+scope에 두고 `finally`에서 dispose하며 root singleton이나 전역 cache에 넣지 마세요.
+Multi-provider token의 T는 실제 반환 배열 타입으로 선언해야 합니다.
+
 ### scope-aware 수명 주기 관리
 
 - **singleton**: 루트 컨테이너에서 한 번 생성되어 공유됩니다.

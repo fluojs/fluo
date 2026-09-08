@@ -16,6 +16,7 @@ Fluo backend를 Next.js App Router Route Handlers와 Pages Router API Routes에
 - [Pipeline compatibility](#pipeline-compatibility)
 - [Decorator compiler 연결](#decorator-compiler-연결)
 - [Lifecycle](#lifecycle)
+- [Process-local application accessor](#process-local-application-accessor)
 - [Options](#options)
 - [Runtime contract](#runtime-contract)
 - [Public API](#public-api)
@@ -263,6 +264,104 @@ Process startup과 shutdown은 Next.js가 소유합니다. 이 package는 proces
 signal handler를 등록하거나 명시적 close 후 두 번째 application을
 자동으로 만들지 않습니다.
 
+## Process-local application accessor
+
+기존 lazy handler는 closure별 Promise를 유지합니다. RSC, auth callback,
+Route Handler가 같은 JS process의 `globalThis`에서 하나의 application을
+사용해야 할 때만 root export `defineNextApplication({ key, load })`를 선택하세요.
+Shared Setup의 Node/Next/runtime 및 decorator compiler 전제는 그대로입니다.
+
+| 항목 | 계약 |
+| --- | --- |
+| Input | Application이 소유한 고정 string `key`, 인자 없는 async `load` |
+| Default | Opt-in이며 기존 lazy helper는 변경하지 않음. 정의 시 load하지 않음 |
+| Output/order | 첫 accessor 호출이 key를 선점하고 load 실행 전에 Promise를 저장. 같은 key의 호출은 정확히 같은 Promise를 반환 |
+| Failures | Sync throw/async rejection도 보존. 다른 loader로 재정의해도 첫 결과를 유지하며 자동 retry하지 않음 |
+| Ownership | Caller가 bootstrap/listen 실패 cleanup, 소비자 drain, `app.close()` 또는 context/container dispose를 소유. Accessor는 signal handler를 등록하지 않음 |
+| Reload | HMR 재평가로 살아 있는 graph를 교체하지 않음. Close 후에도 닫힌 graph의 Promise를 반환. Reset/evict API 없음; 수정한 bootstrap은 host 재시작으로 적용 |
+| Isolation | 서로 다른 key, process, worker, serverless instance, 별도 JS global은 격리. 분산 singleton이나 연결 하나를 보장하지 않음 |
+| Data | Key와 load에 request/actor/session 정보를 캡처하지 않음. Global에는 application resource Promise만 저장하며 요청 데이터는 메서드 인자나 요청별 scope로 전달 |
+| Type/identity | 같은 key의 모든 loader는 같은 application 타입/계약을 제공해야 함. Runtime shape 검증이나 class 이름 기반 identity 추정은 없음 |
+
+다음 파일은 위 `src/backend.ts`를 그대로 사용하므로 bundle마다 전역 Promise를
+직접 작성할 필요가 없습니다. Backend 직접 import와 accessor를 섞지 말고
+공유할 모든 경로를 accessor로 연결하세요.
+
+```typescript
+// src/application.ts
+import { defineNextApplication } from '@fluojs/platform-nextjs';
+
+export const getApplication = defineNextApplication({
+  key: 'my-blog/application/v1',
+  load: () => import('./backend'),
+});
+```
+
+Route facade도 같은 graph에서 adapter를 가져옵니다.
+
+```typescript
+// app/api/[[...path]]/route.ts
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { getApplication } from '../../../src/application';
+
+export const { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } =
+  createNextAppRouterHandler(() => getApplication().then(({ nextAdapter }) => nextAdapter));
+```
+
+서비스 계약은 runtime class import와 분리합니다. 아래 module을 기존
+`AppModule`에서 import하세요. 소유 module에 provider와 alias를 한 번씩 등록하며
+다른 module에서 주입할 token은 export해야 합니다.
+
+```typescript
+// src/posts-contract.ts
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader { title(): string }
+export const POSTS = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+```typescript
+// src/posts.module.ts
+import { Module } from '@fluojs/core';
+import { POSTS, type PostsReader } from './posts-contract';
+
+class PostsService implements PostsReader {
+  title() { return 'FluoBlog'; }
+}
+
+@Module({
+  providers: [PostsService, { provide: POSTS, useExisting: PostsService }],
+  exports: [POSTS],
+})
+export class PostsModule {}
+```
+
+RSC 또는 auth callback이 이 application 함수를 사용하면 반복
+`container.resolve`와 runtime class import도 줄어듭니다.
+
+```typescript
+// src/posts.ts
+import { getApplication } from './application';
+import { POSTS } from './posts-contract';
+
+export async function getPosts() {
+  return (await getApplication()).app.container.resolve(POSTS); // Promise<PostsReader>
+}
+```
+
+필요한 alias/exports는 공개할 token의 범위에만 추가합니다. 기존 class token
+provider를 교체하거나 같은 이름의 별도 constructor를 병합하지 않습니다.
+`Symbol.for(...)` + `useExisting` + `resolve<PostsReader>(...)`는 유효한
+기본 수동 recipe이며 `publicToken`은 해당 symbol의 타입 추론 편의입니다.
+같은 namespace의 모든 선언은 동일한 서비스 계약을 사용해야 합니다.
+Accessor의 load 자체를 다시 await하는 순환 초기화는 지원하지 않습니다.
+
+`src/application-accessor.test.ts`는 동시성, failure, module 재평가,
+pending/failed/successful close를, `src/application-public-types.test.ts`는
+emitted public declarations를 검증합니다. `e2e/next.test.mjs`는 실제 Next
+production build의 별도 RSC/auth/route 평가, 겹치는 초기화, key/process 격리,
+요청 데이터 분리와 close/failure 보존을 검증합니다.
+
 ## Options
 
 ```typescript
@@ -297,7 +396,8 @@ await app.listen();
 - Raw WebSocket upgrade seam 없음
 - Custom server 또는 process signal ownership 없음
 - Catch-all bundle마다 하나의 lazy application을 사용하며 App Router와
-  Pages Router server bundle 사이에 singleton을 공유하지 않음
+  Pages Router server bundle 사이에 기본적으로 singleton을 공유하지 않음.
+  명시적 공유는 `defineNextApplication` opt-in 계약을 따름
 
 Application이 raw Node.js transport ownership, WebSocket upgrades, independently hosted backend를 요구하면 Fluo Node 또는 Fastify platform adapter를 사용하세요.
 
@@ -306,6 +406,8 @@ Application이 raw Node.js transport ownership, WebSocket upgrades, independentl
 - `createNextAdapter(options)`: `FluoFactory.create()`에 전달할 HTTP adapter 생성
 - `NextAdapterOptions`: adapter가 소유하는 request parsing options
 - `NextAdapterLoader`: dynamic canonical backend adapter loader
+- `defineNextApplication(options)`: 명시적 key의 process-local application Promise accessor
+- `NextApplicationOptions<T>`: application 소유 key와 async load 계약
 - `createNextAppRouterHandler(loadAdapter)`: 구조분해 export 가능한 method-keyed App Router handler export record 생성 (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`)
 - `NextHttpApplicationAdapter`: bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` handlers를 가진 `HttpApplicationAdapter`
 - `NextAppRouteHandler`: bound methods가 사용하는 Web request handler type

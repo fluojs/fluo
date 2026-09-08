@@ -106,7 +106,7 @@ async function prepare(app) {
       jsx: 'react-jsx',
       plugins: [{ name: 'next' }],
     },
-    include: ['next-env.d.ts', '**/*.ts', '.next/types/**/*.ts'],
+    include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
     exclude: ['node_modules'],
   }, null, 2));
   return versions;
@@ -275,6 +275,31 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
   await writeFile(sentinel, '');
   const children = [];
   const report = { node: process.version, commands: [], http: [], evidence };
+  const accessorEvents = [];
+  const joined = new Set();
+  const allJoined = Promise.withResolvers();
+  const heldLoads = [];
+  let holdSharedLoad = true;
+  const gate = http.createServer((request, response) => {
+    const url = new URL(request.url, 'http://fixture.test');
+    const event = Object.fromEntries(url.searchParams);
+    accessorEvents.push(event);
+    if (event.event.startsWith('joined:')) {
+      joined.add(event.event);
+      if (joined.size === 3) allJoined.resolve();
+    }
+    if (holdSharedLoad && event.event === 'load' && event.key === 'shared') {
+      heldLoads.push(response);
+    } else {
+      response.end('ok');
+    }
+  });
+  await new Promise((resolve, reject) => {
+    gate.once('error', reject);
+    gate.listen(0, '127.0.0.1', resolve);
+  });
+  const gateAddress = gate.address();
+  assert.ok(gateAddress && typeof gateAddress !== 'string');
   t.diagnostic(`Evidence: ${evidence}`);
   try {
     report.versions = await prepare(app);
@@ -285,6 +310,7 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
       NO_COLOR: '1',
       FLUO_E2E_WORKTREE: worktree,
       FLUO_E2E_BOOTSTRAP: sentinel,
+      FLUO_E2E_ACCESSOR_GATE: `http://127.0.0.1:${gateAddress.port}`,
     };
     delete env.FORCE_COLOR;
     delete env.NODE_OPTIONS;
@@ -330,6 +356,10 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
       const pagesPaths = await json(path.join(app, '.next/server/pages-manifest.json'));
       assert.ok(appPaths['/api/app/[[...path]]/route']);
       assert.ok(pagesPaths['/api/pages/[[...path]]']);
+      assert.ok(appPaths['/shared/page']);
+      assert.ok(appPaths['/api/shared/route']);
+      assert.ok(pagesPaths['/api/shared-auth']);
+      assert.equal(accessorEvents.length, 0, 'Build must not invoke application accessors');
     });
 
     // A failed subtest does not throw from t.test; do not start an unbuilt app.
@@ -475,6 +505,86 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
     }
     report.bootstrap = await records();
     assert.equal(report.bootstrap.length, 4, 'Exactly two lazy backend instances expected');
+
+    let sharedInstance;
+    await t.test('RSC, auth callback, and Route Handler join one pending application across bundles', async () => {
+      // Register the join signal before triggering any request. The loader stays
+      // blocked at the real HTTP gate until all three consumer paths have joined.
+      const joinedSignal = bounded(allJoined.promise, requestTimeout, 'Three accessor consumers');
+      const responses = Promise.all([
+        capture('/shared', { headers: { 'x-fixture-actor': 'rsc-reader' } }),
+        capture('/api/shared-auth', { headers: { 'x-fixture-actor': 'auth-reader' } }),
+        capture('/api/shared', { headers: { 'x-fixture-actor': 'route-reader' } }),
+      ]);
+      const releaseLoad = joinedSignal.then(() => {
+        holdSharedLoad = false;
+        for (const response of heldLoads.splice(0)) response.end('ok');
+      });
+      const [, [rsc, auth, route]] = await Promise.all([releaseLoad, responses]);
+      assert.equal(rsc.status, 200);
+      assert.equal(auth.status, 200);
+      assert.equal(route.status, 200);
+      const fromRsc = Object.fromEntries(
+        [...rsc.body.matchAll(/data-(instance|pid|evaluation|actor)="([^"]+)"/g)]
+          .map((match) => [match[1], match[2]]),
+      );
+      const fromAuth = JSON.parse(auth.body);
+      const fromRoute = JSON.parse(route.body);
+      sharedInstance = fromRoute.instance;
+      assert.ok(sharedInstance);
+      assert.equal(fromRsc.instance, sharedInstance);
+      assert.equal(fromAuth.instance, sharedInstance);
+      assert.equal(Number(fromRsc.pid), fromRoute.pid);
+      assert.equal(fromAuth.pid, fromRoute.pid);
+      assert.deepEqual([fromRsc.actor, fromAuth.actor, fromRoute.actor],
+        ['rsc-reader', 'auth-reader', 'route-reader']);
+      assert.ok(new Set([fromRsc.evaluation, fromAuth.evaluation, fromRoute.evaluation]).size >= 2,
+        'The fixture must observe distinct evaluations of the shared accessor source');
+      assert.equal(accessorEvents.filter((event) => event.event === 'load' && event.key === 'shared').length, 1);
+      const anonymous = await capture('/api/shared');
+      assert.equal(JSON.parse(anonymous.body).actor, 'anonymous');
+      report.sharedApplication = { rsc: fromRsc, auth: fromAuth, route: fromRoute };
+    });
+
+    await t.test('another application key and another Next process remain isolated', async () => {
+      const other = await capture('/api/shared-other');
+      assert.equal(other.status, 200);
+      assert.notEqual(JSON.parse(other.body).instance, sharedInstance);
+      const second = run(process.execPath,
+        [nextCli, 'start', '--hostname', '127.0.0.1', '--port', '0'],
+        app, { ...env, FLUO_E2E_PHASE: 'serve' },
+        path.join(evidence, 'second-process.log'), children, true);
+      try {
+        const secondBase = await second.ready();
+        const response = await request(secondBase, '/api/shared');
+        assert.equal(response.status, 200);
+        const value = JSON.parse(response.body);
+        assert.notEqual(value.instance, sharedInstance);
+        assert.notEqual(value.pid, report.sharedApplication.route.pid);
+        report.processIsolation = value;
+        assert.equal((await request(secondBase, '/api/shared-closed', { method: 'POST' })).status, 200);
+      } finally {
+        await stop(second);
+      }
+    });
+
+    await t.test('failed initialization stays failed and explicit close never reloads', async () => {
+      const failures = await Promise.all([
+        capture('/api/shared-failure'), capture('/api/shared-failure'),
+      ]);
+      failures.push(await capture('/api/shared-failure'));
+      for (const response of failures) {
+        assert.equal(response.status, 500);
+        assert.equal(JSON.parse(response.body).error, 'FLUO_E2E_SHARED_BOOTSTRAP_FAILURE');
+      }
+      assert.equal(accessorEvents.filter((event) => event.event === 'load' && event.key === 'failed').length, 1);
+      const before = accessorEvents.filter((event) => event.event === 'load').length;
+      assert.equal((await capture('/api/shared-closed', { method: 'POST' })).status, 200);
+      assert.equal((await capture('/api/shared-closed')).status, 503);
+      assert.equal((await capture('/api/shared-closed')).status, 503);
+      assert.equal(accessorEvents.filter((event) => event.event === 'load').length, before);
+    });
+
     await t.test('a lazy bootstrap failure still closes the production server after an assertion', async () => {
       await stop(server);
       const failing = run(process.execPath,
@@ -517,6 +627,11 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
         command: child.command, ...await child.exit,
       })));
     } finally {
+      holdSharedLoad = false;
+      for (const response of heldLoads.splice(0)) response.end('cleanup');
+      gate.closeAllConnections();
+      await new Promise((resolve, reject) => gate.close((error) => error ? reject(error) : resolve()));
+      report.accessorEvents = accessorEvents;
       await writeFile(path.join(evidence, 'report.json'), JSON.stringify(report, null, 2));
       await rm(app, { recursive: true, force: true });
     }

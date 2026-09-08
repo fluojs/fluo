@@ -14,6 +14,15 @@ description: HTTP semantics, platform adapters, and OpenAPI publication.
 | `@fluojs/platform-bun` | Bun-native HTTP/WebSocket behavior | `packages/platform-bun/README.md` |
 | `@fluojs/platform-deno` | Deno-native request dispatch | `packages/platform-deno/README.md` |
 | `@fluojs/platform-cloudflare-workers` | Edge Workers request/response APIs | `packages/platform-cloudflare-workers/README.md` |
+| `@fluojs/platform-nextjs` | Next App/Pages Router hosting and opt-in application accessors | `packages/platform-nextjs/README.md` |
 | `@fluojs/openapi` | OpenAPI 3.1 and Swagger UI | `packages/openapi/README.md` |
 
 Read [HTTP API](../guides/http-api) and [Runtime Adapters](../guides/runtime-adapters) for task-oriented guidance.
+
+Next's `defineNextApplication({ key, load })` optionally shares one application
+Promise across RSC/auth/route bundles in the same JS global. Failure is retained,
+with no HMR replacement or automatic retry; the application owner manages
+close/dispose. It is not process/worker/serverless sharing or a request-data cache.
+`publicToken<T>` from `@fluojs/core` enables `Container.resolve()` inference without
+replacing explicit `useExisting` aliases and module exports. Exact recipes and
+evidence live in the Next README above, `packages/core/README.md`, and `packages/di/README.md`.

@@ -118,6 +118,16 @@ Node.js `>=24.0.0 <27`의 Next.js 16.x App Router와 Pages Router에서 Fluo를
 [릴리스 배포 목록](./contracts/release-governance.ko.md#intended-publish-surface)에
 이 어댑터가 포함됩니다.
 
+Opt-in `defineNextApplication({ key, load })`는 같은 JS global에서 key별
+application Promise와 실패를 보존하며 HMR 교체나 자동 재시도를 하지 않습니다.
+Process/worker/serverless 사이의 공유가 아니며 request/actor/session은 전역
+cache에 넣지 않습니다. [`publicToken<T>`](../packages/core/README.ko.md)과
+명시적 `useExisting`/module exports는 [DI 계약](../packages/di/README.ko.md)을
+유지합니다. 공개 API 소유자는 위 Next README이며 실행 근거는
+`packages/platform-nextjs/src/application-accessor.test.ts`,
+`packages/platform-nextjs/src/application-public-types.test.ts`,
+`packages/platform-nextjs/e2e/next.test.mjs`입니다.
+
 ## 라이프사이클 및 multi-provider 순서
 
 [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.

@@ -167,6 +167,29 @@ class TransactionContext {}
 class Logger {}
 ```
 
+### Typed public token
+
+`publicToken<T>(namespace)` gives the exact `Symbol.for(namespace)` symbol the
+`PublicToken<T>` type. `container.resolve(token)` in `@fluojs/di` infers
+`Promise<T>` while existing string/symbol/class `Token<T>` values remain supported.
+
+```ts
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader { title(): string }
+export const POSTS = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+The application owns the namespace; every declaration must agree on the service
+contract. Use distinct namespaces for different applications and versions for
+incompatible contracts. This type is not runtime validation or provider
+registration. Declare `{ provide: POSTS, useExisting: PostsService }` in the
+owning module. Injection from another module still requires `exports: [POSTS]`
+and an import of the owning module. Re-evaluated classes remain distinct
+constructors even with identical names; they are never automatically unified.
+The existing `Symbol.for(...)` + `useExisting` + explicit `resolve<T>(...)`
+recipe remains valid.
+
 ## Troubleshooting
 
 ### Decorator metadata not found
@@ -186,6 +209,7 @@ Standard decorators cannot automatically infer types for abstract classes or int
 - **Decorators**: `Module`, `Global`, `Inject`, `Scope`
 - **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **Metadata runtime**: `ensureMetadataSymbol`, `getModuleMetadata`
+- **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`
 - **Types**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
 - **Request-pipeline integration seam**: DTO validation/binding metadata helpers plus standard decorator metadata-bag readers via `@fluojs/core/request-pipeline`
 - **Internal subpath**: broader metadata helpers, controller/route helpers, injection helpers, and clone utilities via `@fluojs/core/internal`
