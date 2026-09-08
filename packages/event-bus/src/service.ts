@@ -14,6 +14,13 @@ import {
 } from '@fluojs/runtime/internal';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
+import type {
+  EventBusWithResults,
+  EventDeliveryOutcome,
+  EventDeliveryStatus,
+  EventPublishResult,
+  EventPublishSettlement,
+} from './publish-result.js';
 import { createEventBusPlatformStatusSnapshot } from './status.js';
 import { EVENT_BUS_OPTIONS } from './tokens.js';
 import type {
@@ -33,6 +40,7 @@ interface DiscoveryCandidate {
 }
 
 interface ResolvedPublishOptions {
+  reportResults?: boolean;
   signal: AbortSignal | undefined;
   timeoutMs: number | undefined;
   waitForHandlers: boolean;
@@ -82,7 +90,7 @@ function hasEventHandlerMetadata(targetType: Function): boolean {
  * and can publish the same events to an external transport such as Redis Pub/Sub.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS)
-export class EventBusLifecycleService implements EventBus, OnApplicationBootstrap, OnApplicationShutdown {
+export class EventBusLifecycleService implements EventBus, EventBusWithResults, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
@@ -175,6 +183,32 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   /**
+   * Publishes with payload-free observations of local handlers and outbound transport channels.
+   *
+   * @param event Event instance to publish using the existing discovery and payload-isolation rules.
+   * @param options Publish bounds; background receipts observe actual settlement without timeout bounds.
+   * @returns Per-recipient outcomes, lifecycle refusal, or a background completion receipt.
+   * @remarks Timeout and cancellation do not terminate started work. Discovery and preparation errors reject.
+   * Transport success is not a remote delivery acknowledgement. Raw handler/transport errors are omitted from logs.
+   */
+  async publishWithResult(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
+    switch (this.lifecycleState) {
+      case 'failed':
+      case 'stopped':
+      case 'stopping':
+        this.logger.warn(
+          `EventBus.publishWithResult() was ignored because the event bus is ${this.lifecycleState}.`,
+          'EventBusLifecycleService',
+        );
+        return { status: 'rejected', reason: this.lifecycleState };
+      case 'created':
+      case 'discovering':
+      case 'ready':
+        return await this.trackActiveDispatchWork(this.executePublishWithResult(event, options));
+    }
+  }
+
+  /**
    * Caps this event bus shutdown drain at a deadline coordinated by an owning integration.
    *
    * @internal
@@ -219,6 +253,70 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return !['failed', 'stopped', 'stopping'].includes(this.lifecycleState);
   }
 
+  private async executePublishWithResult(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
+    await this.ensureDiscovered();
+    const descriptors = this.matchEventDescriptors(event);
+    const resolved = this.resolvePublishOptions(options);
+    const publishOptions = {
+      ...resolved,
+      reportResults: true,
+      timeoutMs: resolved.waitForHandlers ? resolved.timeoutMs : undefined,
+    };
+    const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
+    const localPayloads = descriptors.map((descriptor) => createIsolatedEvent(descriptor.eventType, event));
+    const transportTasks = this.createTransportPublishTasks(transportPayload, descriptors, publishOptions);
+    const handlerTasks = descriptors.map(async (descriptor, index): Promise<EventDeliveryOutcome> => ({
+      target: {
+        kind: 'handler',
+        index,
+        moduleName: descriptor.moduleName,
+        targetName: descriptor.targetName,
+        methodName: descriptor.methodName,
+      },
+      ...await this.invokeHandlerWithResult(descriptor, localPayloads[index], publishOptions),
+    }));
+    const completion = Promise.all([...handlerTasks, ...transportTasks]).then(
+      (outcomes): EventPublishSettlement => outcomes.length === 0
+        ? { status: 'no-recipients', outcomes: [] }
+        : { status: 'settled', outcomes },
+    );
+
+    if (!resolved.waitForHandlers) {
+      return { status: 'background', completion: this.trackActiveDispatchWork(completion) };
+    }
+
+    return await completion;
+  }
+
+  private async invokeHandlerWithResult(
+    descriptor: EventHandlerDescriptor,
+    event: object,
+    options: ResolvedPublishOptions,
+  ): Promise<EventDeliveryStatus> {
+    if (options.signal?.aborted) {
+      this.logPublishCancelledBeforeDispatch(descriptor);
+      return { status: 'cancelled', started: false };
+    }
+
+    const invocation = this.trackActiveDispatchWork(this.invokeHandler(descriptor, event, true));
+    try {
+      return options.waitForHandlers ? await this.awaitInvocationBounds(invocation, options) : await invocation;
+    } catch (error) {
+      this.logBoundedInvocationError(descriptor, error, true);
+      return this.deliveryFailure(error, 'handler');
+    }
+  }
+
+  private deliveryFailure(error: unknown, reason: 'handler' | 'transport'): EventDeliveryStatus {
+    if (error instanceof EventPublishTimeoutError) {
+      return { status: 'timed-out', timeoutMs: error.timeoutMs };
+    }
+    if (error instanceof EventPublishAbortError) {
+      return { status: 'cancelled', started: true };
+    }
+    return { status: 'failed', reason };
+  }
+
   private async drainActiveDispatches(): Promise<void> {
     const timeoutMs = this.resolveShutdownDrainTimeoutMs();
     const drained = await this.awaitShutdownDrain(timeoutMs);
@@ -242,7 +340,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
   }
 
-  private trackActiveDispatchWork(dispatchWork: Promise<void>): Promise<void> {
+  private trackActiveDispatchWork<T>(dispatchWork: Promise<T>): Promise<T> {
     const trackedWork = dispatchWork.then(
       () => undefined,
       () => undefined,
@@ -441,31 +539,44 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     descriptors: EventHandlerDescriptor[],
     publishOptions: ResolvedPublishOptions,
   ): Promise<void> {
-    if (!this.transport) {
-      return;
-    }
+    await Promise.allSettled(this.createTransportPublishTasks(event, descriptors, publishOptions));
+  }
 
+  private createTransportPublishTasks(
+    event: object,
+    descriptors: EventHandlerDescriptor[],
+    publishOptions: ResolvedPublishOptions,
+  ): Promise<EventDeliveryOutcome>[] {
+    const transport = this.transport;
+    if (!transport) {
+      return [];
+    }
     const channels = this.channelsForTransportPublish(event, descriptors);
 
-    const publishTasks = channels.map(async (channel) => {
+    return channels.map(async (channel): Promise<EventDeliveryOutcome> => {
+      const target = { kind: 'transport', channel } as const;
       const payload = createIsolatedEvent(event.constructor as EventType, event);
 
       if (publishOptions.signal?.aborted) {
         this.logTransportPublishCancelledBeforeDispatch(channel);
-        return;
+        return { target, status: 'cancelled', started: false };
       }
 
       try {
-        const publishWork = this.transport!.publish(channel, payload);
+        const publishWork = transport.publish(channel, payload);
         const trackedPublishWork = this.trackActiveDispatchWork(publishWork);
-        await this.awaitInvocationBounds(trackedPublishWork, publishOptions);
+        if (publishOptions.reportResults && !publishOptions.waitForHandlers) {
+          await trackedPublishWork;
+        } else {
+          await this.awaitInvocationBounds(trackedPublishWork, publishOptions);
+        }
+        return { target, status: 'succeeded' };
       } catch (error) {
         this.transportPublishFailures += 1;
-        this.logBoundedTransportPublishError(channel, error);
+        this.logBoundedTransportPublishError(channel, error, publishOptions.reportResults);
+        return { target, ...this.deliveryFailure(error, 'transport') };
       }
     });
-
-    await Promise.allSettled(publishTasks);
   }
 
   private logTransportPublishCancelledBeforeDispatch(channel: string): void {
@@ -475,7 +586,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     );
   }
 
-  private logBoundedTransportPublishError(channel: string, error: unknown): void {
+  private logBoundedTransportPublishError(channel: string, error: unknown, redactError = false): void {
     if (error instanceof EventPublishTimeoutError) {
       this.logger.warn(
         `EventBusTransport publish to channel "${channel}" exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
@@ -494,7 +605,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
     this.logger.error(
       `EventBusTransport failed to publish to channel "${channel}".`,
-      error,
+      redactError ? undefined : error,
       'EventBusLifecycleService',
     );
   }
@@ -647,7 +758,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     );
   }
 
-  private logBoundedInvocationError(descriptor: EventHandlerDescriptor, error: unknown): void {
+  private logBoundedInvocationError(descriptor: EventHandlerDescriptor, error: unknown, redactError = false): void {
     if (error instanceof EventPublishTimeoutError) {
       this.logger.warn(
         `Event handler ${descriptor.targetName}.${descriptor.methodName} exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
@@ -666,27 +777,26 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
     this.logger.error(
       `Event handler ${descriptor.targetName}.${descriptor.methodName} failed while applying publish bounds.`,
-      error,
+      redactError ? undefined : error,
       'EventBusLifecycleService',
     );
   }
 
-  private async awaitInvocationBounds(
-    invocation: Promise<void>,
+  private async awaitInvocationBounds<T>(
+    invocation: Promise<T>,
     publishOptions: ResolvedPublishOptions,
-  ): Promise<void> {
+  ): Promise<T> {
     const timeoutMs = publishOptions.timeoutMs;
     const signal = publishOptions.signal;
 
     if (timeoutMs === undefined && !signal) {
-      await invocation;
-      return;
+      return await invocation;
     }
 
     const bounds = this.createInvocationBounds(timeoutMs, signal);
 
     try {
-      await Promise.race([invocation, ...bounds.map((bound) => bound.promise)]);
+      return await Promise.race([invocation, ...bounds.map((bound) => bound.promise)]);
     } finally {
       for (const bound of bounds) {
         bound.cleanup();
@@ -698,6 +808,10 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined,
   ): InvocationBound[] {
+    if (signal?.aborted) {
+      throw new EventPublishAbortError();
+    }
+
     const bounds: InvocationBound[] = [];
 
     if (timeoutMs !== undefined) {
@@ -705,10 +819,6 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
 
     if (signal) {
-      if (signal.aborted) {
-        throw new EventPublishAbortError();
-      }
-
       bounds.push(this.createAbortBound(signal));
     }
 
@@ -936,7 +1046,11 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     };
   }
 
-  private async invokeHandler(descriptor: EventHandlerDescriptor, event: object): Promise<void> {
+  private async invokeHandler(
+    descriptor: EventHandlerDescriptor,
+    event: object,
+    redactError = false,
+  ): Promise<EventDeliveryStatus> {
     const instance = await this.resolveHandlerInstance(descriptor);
 
     const value = (instance as Record<MetadataPropertyKey, unknown>)[descriptor.methodKey];
@@ -946,17 +1060,19 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
         `Event handler ${descriptor.targetName}.${descriptor.methodName} is not callable and was skipped.`,
         'EventBusLifecycleService',
       );
-      return;
+      return { status: 'failed', reason: 'not-callable' };
     }
 
     try {
       await Promise.resolve((value as (this: unknown, event: object) => Promise<void>).call(instance, event));
+      return { status: 'succeeded' };
     } catch (error) {
       this.logger.error(
         `Event handler ${descriptor.targetName}.${descriptor.methodName} failed.`,
-        error,
+        redactError ? undefined : error,
         'EventBusLifecycleService',
       );
+      return { status: 'failed', reason: 'handler' };
     }
   }
 

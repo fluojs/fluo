@@ -284,6 +284,38 @@ test('distinguishes publication completion from reaction success', async () => {
 
 On the second publication, the failing handler's call count becomes 2. This demonstrates that the bus does not recognize the same `eventId` and prevent duplicate delivery. The preview value stays the same because of the store's version condition, not a delivery guarantee from the bus. `try/finally` closes the application lifecycle even when an assertion fails. The test's five-second limit is not a fixed wait; it is an upper bound that fails a stalled experiment.
 
+The experiment above remains valid: legacy `publish` passes a raw `Error` to the logger. Now compare opt-in `publishWithResult`. The following is an **additional fragment to insert after the second publication's assertions and before `finally` in the same test**. It does not replace the existing experiment or the policy in `OrderEventsPublisher.announce()`.
+
+```typescript
+failures.length = 0;
+const result = await bus.publishWithResult(event, { waitForHandlers: true });
+expect(result.status).toBe('settled');
+if (result.status !== 'settled') throw new Error('Expected local observations.');
+expect(result.outcomes.map(outcome => outcome.status)).toEqual(['failed', 'succeeded']);
+expect(result.outcomes[0]).toMatchObject({
+  target: {
+    kind: 'handler',
+    index: 0,
+    moduleName: 'ExperimentModule',
+    targetName: 'BrokenReceiptListener',
+    methodName: 'handle',
+  },
+  status: 'failed',
+  reason: 'handler',
+});
+expect(attempts.count).toBe(3);
+expect(store.find('order-13')?.orderVersion).toBe(1);
+expect(failures).toEqual([undefined]);
+```
+
+The expected result is a mixture of failure and success inside `settled`, with no raw `Error` in the error argument received by the logger. Existing safe target/status messages remain. Results also omit payloads, raw errors, and handler return values. This sanitization applies only to the new publication path, not to app logs written directly by handlers or transports. The `EVENT_BUS` runtime facade supports the same API through the additive `EventBusWithResults` type, leaving `EventBus` unchanged.
+
+The array follows discovery order for matching effective local handlers, not completion order; `index` is scoped to this publication. When a transport is configured, outbound outcomes follow in channel order. Remote handlers or subscribers are not enumerated, and an adapter success remains transport success even without subscribers. Only the absence of both local handlers and a configured transport produces `no-recipients` with an empty array. A caller checking required reactions must therefore check `status === 'settled'`, a nonempty result, and `succeeded` for every outcome, and separately verify the required handler registration.
+
+Failed outcomes carry `reason: 'handler' | 'transport' | 'not-callable'`; `timed-out` carries `timeoutMs`, and `cancelled` carries the `started` flag. Lifecycle `stopping`/`stopped`/`failed` states become a `rejected` reason, while discovery/preparation errors still reject. There is no API that automatically aggregates results into rejection. Awaited timeout/cancellation ends only observation; started work remains shutdown-tracked. `waitForHandlers: false` returns `background` with `completion: Promise<EventPublishSettlement>`, ignoring timeout and post-start cancellation while awaiting actual work. An already-aborted signal skips work that has not started. Completion can remain pending after bounded shutdown and be lost on process exit, so it cannot replace a persistent outbox.
+
+The [consumer examples in the messaging guide](../../apps/docs/content/docs/guides/messaging-workflows.mdx) compare best-effort `publish` for last-used bookkeeping after authentication has already succeeded, carrying only a token record ID, with checking reaction results before choosing the next step. They put no raw credential in the event and do not turn bookkeeping failure into authentication failure. Payment in this chapter is also an established fact, so a failed observation is not a payment rollback.
+
 Run the following command in your `fluo-blog`. This application test was not run during manuscript preparation; the results described here are expected results.
 
 ```bash
@@ -309,6 +341,10 @@ By the end of this chapter, we have a shared language in `OrderPaidEvent`, expli
 - [Cloning, invocation, and failure logging implementation](../../packages/event-bus/src/service.ts)
 - [Discovery, duplicate publication, and failure isolation tests](../../packages/event-bus/src/module.test.ts)
 - [Shutdown tracking tests for background work](../../packages/event-bus/src/shutdown-contract.test.ts)
+- [Executable result-aware publication example](../../packages/event-bus/examples/publish-results.ts), [result types](../../packages/event-bus/src/publish-result.ts)
+- [Result tests](../../packages/event-bus/src/publish-result.test.ts), [bound tests](../../packages/event-bus/src/publish-result-bounds.test.ts), [lifecycle tests](../../packages/event-bus/src/publish-result-lifecycle.test.ts)
 - [The original payment ledger's receiving boundary](./ch10-payment-webhooks.md), [the existing service that confirms inventory together with the order](./ch07-inventory-concurrency.md), [transition audit records](./ch06-order-state-machine.md)
+
+Package owners verify this evidence from the repository root with `pnpm --dir packages/event-bus test` and `pnpm --filter '@fluojs/event-bus...' build`. This does not replace tests in the reader's application or verification of the latest registry release.
 
 [Previous: Reconciling Orders That Stopped Halfway](./ch12-reconciliation.md) | [Volume 2 Contents](./toc.md) | [Next: What If the Save Succeeded but the Event Disappeared?](./ch14-outbox-and-inbox.md)

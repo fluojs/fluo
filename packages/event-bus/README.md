@@ -86,6 +86,62 @@ Handler failure isolation is narrower than publish completion. Matching local li
 
 **Migration note:** applications that use `waitForHandlers: false` should now budget for `app.close()` to wait up to `shutdown.drainTimeoutMs` for background handler and transport work before transport cleanup continues. Keep that work bounded or configure a drain budget appropriate for the application.
 
+### Publishing with Results
+
+`publish(...)` remains the existing best-effort API: its `Promise<void>` return type, failure isolation, and existing logging with raw errors do not change. Opt into `EventBusLifecycleService.publishWithResult(event, options?)` only when caller policy needs to evaluate reaction results. This API uses the same module registration, effective singleton handler discovery, and per-recipient payload cloning, and returns `Promise<EventPublishResult>`. The `EVENT_BUS` runtime facade supports it too. Consumers injecting the facade can use the additive `EventBusWithResults` type from the root `@fluojs/event-bus` package. The legacy `EventBus` interface gains no method, so existing implementations remain valid.
+
+The `EVENT_BUS` token carries `Token<EventBusWithResults>`, so `container.resolve(EVENT_BUS)` infers the result-aware facade. Existing consumers can still explicitly call `container.resolve<EventBus>(EVENT_BUS)`, which exposes only the legacy `publish` contract.
+
+| Inputs and defaults | Contract |
+| --- | --- |
+| `event` | An instance of an event class. Payload validation and excluding sensitive information belong to the application. |
+| `waitForHandlers` | Selected from the call options, then module `publish` defaults; the final default is `true`. |
+| `timeoutMs` | Selected in the same order; omitted means no bound. Positive finite values are floored to integer milliseconds; non-positive or non-finite values disable the bound. Ignored with `waitForHandlers: false`. |
+| `signal` | An optional per-call `AbortSignal`. An already-aborted signal skips work that has not started. |
+
+| Result `status` | Meaning |
+| --- | --- |
+| `settled` | `outcomes` contains observations of the selected local handlers and outbound transport channels. It does not mean every reaction succeeded. |
+| `no-recipients` | There are neither matching local handlers nor a configured transport; `outcomes` is an empty array. |
+| `rejected` | The lifecycle state refusing publication is returned as `reason: 'stopping' \| 'stopped' \| 'failed'`. |
+| `background` | Work was scheduled with `waitForHandlers: false`; `completion: Promise<EventPublishSettlement>` observes the actual work results. |
+
+`EventPublishSettlement` is either `settled` or `no-recipients`. Each `EventDeliveryOutcome` contains a `target` and one of the following statuses, without payloads, handler return values, or raw errors.
+
+| Outcome `status` | Additional fields |
+| --- | --- |
+| `succeeded` | None |
+| `failed` | `reason: 'handler' \| 'transport' \| 'not-callable'` |
+| `timed-out` | `timeoutMs` |
+| `cancelled` | `started`: `false` when skipped before starting, `true` when the wait was cancelled after starting |
+
+The result array is not in completion order. It lists matching effective local handlers in discovery order first, followed by outbound channels in channel order. A handler target has `kind: 'handler'`, a zero-based `index` scoped to this publication, `moduleName`, `targetName`, and `methodName`. That index is not a persistent ID. A transport target has `kind: 'transport'` and `channel`. Channels follow the event's concrete-to-base class lineage, then matching descriptor channels, retaining only the first occurrence of each channel. Array order does not guarantee serialized execution.
+
+A transport `succeeded` outcome means only that the adapter successfully published to that channel. It reports neither the presence nor processing results of remote handlers or subscribers, and implies no durability. An adapter success with zero subscribers remains a transport success; it does not become `no-recipients`.
+
+Awaited `timed-out`/`cancelled` outcomes are caller observations only. Started work can continue and remains tracked by shutdown drain. Background completion ignores timeout and post-start cancellation and waits for actual work to settle, so it can remain pending after bounded shutdown and be lost on process exit. Skipping work for a pre-start abort also applies in the background. The bus adds no persistence, retry, or remote acknowledgement.
+
+Discovery and payload preparation errors still reject the promise. There is no separate aggregate-reject API: the caller examines `status` and every outcome to choose a reaction-failure policy. The following is a **scoped consumer function** using an injected service in an application that has already registered `EventBusModule.forRoot()` and the required handlers. It treats the publication as successful only when at least one required reaction exists and all selected attempts succeeded.
+
+```typescript
+import { EventBusLifecycleService } from '@fluojs/event-bus';
+
+async function requireReactions(eventBus: EventBusLifecycleService, event: object): Promise<void> {
+  const result = await eventBus.publishWithResult(event, { waitForHandlers: true });
+  if (
+    result.status !== 'settled' ||
+    result.outcomes.length === 0 ||
+    !result.outcomes.every(outcome => outcome.status === 'succeeded')
+  ) {
+    throw new Error('Required event reactions did not succeed.');
+  }
+}
+```
+
+Even this policy cannot prove that a missing required handler was configured. Verify required local handler registration in application tests, and design a separate acknowledgement contract if remote processing completion is required. The [two consumer examples in the messaging guide](../../apps/docs/content/docs/guides/messaging-workflows.mdx) contrast legacy best-effort `publish` for last-used bookkeeping after successful authentication, carrying only a token record ID, with explicit checks for result-required reactions.
+
+Handler/transport failure logs reported by `publishWithResult` retain the existing safe target/status messages but do not pass the raw handler/transport error argument to the logger. This matches the result contract that excludes raw errors and handler return values. Logs written directly by application handlers or adapters remain the application's responsibility; this is not a global sanitization policy for legacy `publish` or inbound delivery logs.
+
 ## Common Patterns
 
 ### Distributed Fan-out (Redis)
@@ -167,7 +223,7 @@ Handlers are discovered from normalized effective singleton provider registratio
 
 ### Core
 - `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: Main entry point for event bus registration. `global` defaults to `true`; set `global: false` to keep event-bus providers visible only through the module that imports the event-bus module.
-- `EventBusLifecycleService`: Primary service for publishing events (`publish(event, options?)`) and creating platform status snapshots.
+- `EventBusLifecycleService`: Primary service for legacy `publish(event, options?)`, opt-in `publishWithResult(event, options?)`, and platform status snapshots.
 - `@OnEvent(EventClass)`: Decorator to mark a public instance method as an event handler.
 - `EVENT_BUS`: Compatibility injection token for the publish facade.
 - `createEventBusPlatformStatusSnapshot(...)`: Status snapshot helper used by diagnostics and health surfaces.
@@ -175,6 +231,7 @@ Handlers are discovered from normalized effective singleton provider registratio
 ### Interfaces
 - `EventBusTransport`: Contract for implementing external transport adapters.
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing, defaults, transports, and stable event keys.
+- `EventBusWithResults`: Result-aware facade contract extending the legacy `EventBus`. `EventDeliveryTarget`, `EventDeliveryStatus`, `EventDeliveryOutcome`, `EventPublishSettlement`, and `EventPublishResult` are also type-only root exports.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: Status snapshot contracts.
 
 Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. If a later transport subscription fails during bootstrap, the event bus closes the transport to roll back any channels that were already opened before rethrowing the subscription error. Inbound transport messages that arrive after shutdown starts are ignored before local handler dispatch.
@@ -194,8 +251,25 @@ Transport bootstrap subscribes once per unique event channel. `eventKey` control
 
 ## Example Sources
 
+- [Executable result-aware publication example](./examples/publish-results.ts): Comparing best-effort consumers with consumers that check results.
+- [Results and sanitized failure observation tests](./src/publish-result.test.ts), [timeout/cancellation tests](./src/publish-result-bounds.test.ts), [lifecycle/background completion tests](./src/publish-result-lifecycle.test.ts).
+- [Public result types](./src/publish-result.ts), [publication implementation](./src/service.ts), [facade wiring](./src/module.ts).
 - `packages/event-bus/src/module.test.ts`: Handler discovery and publish/subscribe tests.
 - `packages/event-bus/src/public-surface.test.ts`: Public API contract verification.
 - `packages/event-bus/src/status.test.ts`: Status snapshot semantics.
 - `packages/event-bus/src/shutdown-late-work.test.ts`: Late handler and transport registration shutdown races.
 - `packages/event-bus/src/transports/redis-transport.test.ts`: Redis transport behavior.
+
+Run the owner verification commands for this source evidence from the repository root. These examples target the workspace checkout, not verification of the latest registry release.
+
+```bash
+pnpm --dir packages/event-bus test
+pnpm --filter '@fluojs/event-bus...' build
+```
+
+After building, transform the example with the repository's Babel decorator configuration and run it on a supported Node.js version. Writing inside the Git-ignored `dist/` also allows self-package imports to resolve. The example starts neither an HTTP server nor Redis and prints `authenticated: true`, `projectionReady: false`, succeeded/failed outcomes, and background completion.
+
+```bash
+pnpm exec babel packages/event-bus/examples/publish-results.ts --out-file packages/event-bus/dist/publish-results.example.mjs --config-file ./tooling/babel/babel.config.cjs
+node packages/event-bus/dist/publish-results.example.mjs
+```
