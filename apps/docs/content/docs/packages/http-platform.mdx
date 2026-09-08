@@ -34,3 +34,11 @@ from `@fluojs/platform-nextjs/next-config`. Omitting options keeps existing
 behavior. The package README owns exact path conditions and Turbopack-only
 limitations; `packages/platform-nextjs/e2e/README.md` describes the real
 dev/build/start regressions.
+
+Next's `createNextAdapter({ bodyParser: 'text' })` opts into bounded text without
+changing Content-Type or reconstructing Requests. HTTP owns the policy, runtime
+implements Web reads, and Next exposes it. Parsing still precedes middleware and
+guards; authentication must be explicitly ordered before later application JSON
+interpretation. See `packages/http/README.md#bounded-body-parser-policy` for the
+adapter capability matrix and `packages/platform-nextjs/README.md#bounded-body-parsing`
+for per-path callbacks, default delegation, and wrapper migration.

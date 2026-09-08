@@ -72,3 +72,12 @@ failure timeouts and no sleeps or readiness polling. `report.json` and command
 logs remain after the temporary app and servers are cleaned up.
 Do not confuse these automated regressions with a separate manual
 browser/hydration demonstration.
+
+## Bounded parser regression
+
+The same fixture uses public `bodyParser` callbacks for text/custom routes and
+`context.parseDefault()` for existing JSON/DTO routes. App and Pages HTTP cases
+compare original MIME, exact raw bytes, empty/malformed/non-JSON bodies, UTF-8
+byte-limit 413, and explicitly authenticated handler-owned JSON interpretation.
+No request reconstruction or header rewrite is used. Existing HEAD, SSE, compiler,
+and lifecycle cases continue to run with this parser configuration.

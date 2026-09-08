@@ -121,3 +121,45 @@ it('rejects unsupported policy values at each published entry point', () => {
       : -1);
   expect(lines).toEqual(invalid.map((_, index) => imports.split('\n').length - 1 + index));
 });
+
+
+it('exports bounded parser contracts through cold HTTP, Web, and Next declarations', () => {
+  const diagnostics = compile(`${imports}
+import type { BodyParser, BodyParserContext } from '@fluojs/http';
+import type { BodyParser as PortableParser } from '@fluojs/http/portable';
+import {
+  createWebFrameworkRequest, createWebRequestResponseFactory, dispatchWebRequest,
+  type CreateWebRequestResponseFactoryOptions, type DispatchWebRequestOptions,
+} from '@fluojs/runtime/web';
+const parser: BodyParser = async (text, context: BodyParserContext) => ({
+  text, path: context.path, method: context.method,
+  mime: context.contentType, headers: context.headers, signal: context.signal,
+});
+const portable: PortableParser = parser;
+const next: NextAdapterOptions = { bodyParser: portable, headRouting: 'explicit-or-get' };
+const app: AppOptions = { bodyParser: 'text' };
+const factory: CreateWebRequestResponseFactoryOptions = { bodyParser: 'default' };
+const dispatch: DispatchWebRequestOptions = { bodyParser: parser, request: new Request('https://test/') };
+createNextAdapter(next);
+createNextAdapter(app);
+createWebRequestResponseFactory(factory);
+dispatchWebRequest(dispatch);
+createWebFrameworkRequest(dispatch.request, dispatch.request.signal, undefined, 100, true, parser);
+`);
+  expect(diagnostics.map((entry) => ts.flattenDiagnosticMessageText(entry.messageText, '\n'))).toEqual([]);
+});
+
+it('rejects invalid parser modes and callback signatures without type suppression', () => {
+  const diagnostics = compile(`${imports}
+import type { BodyParser } from '@fluojs/http';
+import type { BodyParser as PortableParser } from '@fluojs/http/portable';
+import { createWebRequestResponseFactory } from '@fluojs/runtime/web';
+createNextAdapter({ bodyParser: false });
+const app: AppOptions = { bodyParser: 'json-or-null' };
+const parser: BodyParser = (text: number) => text;
+const portable: PortableParser = true;
+createWebRequestResponseFactory({ bodyParser: 'unlimited' });
+`);
+  expect(diagnostics).toHaveLength(5);
+  expect(diagnostics.every((entry) => entry.file?.fileName === fixture && entry.code === 2322)).toBe(true);
+});

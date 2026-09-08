@@ -219,3 +219,26 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 
 - `packages/platform-cloudflare-workers/src/adapter.test.ts`
 - `packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts`
+
+## Bounded Body Parsing
+
+`CloudflareWorkerAdapterOptions` inherits the runtime Web factory's HTTP-owned
+`bodyParser` policy. Adapter and bootstrap helpers accept `'text'`, `'default'`,
+or a custom callback. Omission retains MIME-based parsing and existing limits.
+
+```typescript
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+
+const adapter = createCloudflareWorkerAdapter({
+  bodyParser: 'text', maxBodySize: 1_048_576, rawBody: true,
+});
+```
+
+Headers and native Request identity are preserved. The runtime clone path keeps
+the original body readable. Multipart remains independent. Parsing happens
+before HTTP middleware/guards, so text alone does not guarantee auth order.
+See the [HTTP contract and matrix](../http/README.md#bounded-body-parser-policy)
+for callback delegation, errors, empty bodies, and cancellation cooperation.
+`src/body-parser.test.ts` runs the actual adapter with the shared wire fixture
+and observes its `waitUntil` lifecycle. This is local Web conformance, not a
+claim of a deployed Cloudflare isolate test.

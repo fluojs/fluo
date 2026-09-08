@@ -512,3 +512,35 @@ phase를 명시적 retry 대상으로 남기며, bootstrap은 원래 failure를 
 - [examples/minimal](../../examples/minimal): 최소한의 부트스트랩 예제.
 - [examples/realworld-api](../../examples/realworld-api): 복잡한 모듈 연결이 포함된 전체 애플리케이션 예제.
 - [packages/runtime/src/bootstrap.test.ts](./src/bootstrap.test.ts): 부트스트랩 단계별 동작 테스트.
+
+## Bounded Body Parsing
+
+HTTP 소유 `BodyParser` 정책은 `@fluojs/runtime/web`의
+`CreateWebRequestResponseFactoryOptions`, `DispatchWebRequestOptions`에서
+`bodyParser`로, 그리고
+`createWebFrameworkRequest(request, signal, multipart, maxBodySize, rawBody, bodyParser)`의
+마지막 optional 인수로 제공합니다. Dispatch에 `factory`를 전달하면 해당 factory의
+파싱 설정이 우선합니다.
+
+```typescript
+import { createWebRequestResponseFactory } from '@fluojs/runtime/web';
+
+const factory = createWebRequestResponseFactory({
+  bodyParser: 'text',
+  maxBodySize: 1_048_576,
+  rawBody: true,
+});
+```
+
+기본값은 1 MiB 제한의 MIME 기반 파싱입니다. Factory는 저비용 metadata snapshot을
+생성하고 HTTP middleware/guard 이전 dispatch 경계에서 body를 한 번 materialize합니다.
+Text/custom 정책도 header 변경 없이 bounded UTF-8 decoding과 정확한 raw byte를
+유지하며 생성 시점의 Content-Length를 사용합니다. 기존 default 동작은 유지합니다.
+Web helper는 기본적으로 clone을 읽어 원본을 읽을 수 있게 남깁니다. Next는 의도적으로
+`consumeOriginalBody: true`를 사용하므로 Request 재구성이나 clone 우회가 필요 없습니다.
+다른 factory/adapter가 제공한 이미 파싱된 host body는 이 Web parser에 전달하지 않습니다.
+
+Callback/default 위임, 빈 body와 부재, abort 협력, 인증 순서, adapter capability는
+[HTTP parser 계약](../http/README.ko.md#bounded-body-parser-policy)을 참고하세요.
+근거: `src/web-body-parser.test.ts`, `src/web-body-limit.test.ts`,
+[Next production 예제](../platform-nextjs/e2e/fixture/backend.ts).

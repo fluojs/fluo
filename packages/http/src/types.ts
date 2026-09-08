@@ -7,6 +7,40 @@ export type { ValidationIssue, Validator } from '@fluojs/validation';
 /** Canonical uppercase HTTP method token or Fluo's reserved `ALL` wildcard sentinel. */
 export type HttpMethod = string;
 
+/** Creation-time request metadata and default parsing delegate for a bounded body parser. */
+export interface BodyParserContext {
+  /** Original Content-Type, without normalization or rewriting. */
+  readonly contentType: string | undefined;
+  /** Creation-time request headers; parsing never rewrites the native headers. */
+  readonly headers: FrameworkRequest['headers'];
+  /** Original HTTP method. */
+  readonly method: string;
+  /** URL pathname, usable for application-owned per-path parser selection. */
+  readonly path: string;
+  /** Framework cancellation signal; asynchronous parsers must cooperate with it. */
+  readonly signal: AbortSignal;
+  /**
+   * Apply the unchanged MIME-based parser to the already bounded bytes.
+   *
+   * @returns The default parsed value, without consuming the request again.
+   * @throws {BadRequestException} If the original MIME selects JSON and it is invalid.
+   */
+  parseDefault(): unknown;
+}
+
+/**
+ * Opt-in parsing policy for bounded, UTF-8 decoded non-multipart request bodies.
+ *
+ * @remarks
+ * Omission or `default` preserves MIME-based parsing. `text` preserves decoded text,
+ * including an empty stream as `''`; a missing body remains `undefined` without a
+ * callback. Custom parsers run once after byte limits and before HTTP middleware and
+ * guards, may return a promise, and own error classification (throw an HttpException
+ * for an HTTP error). This policy does not order authentication. Multipart and
+ * already host-parsed bodies remain owned by their adapter, not this callback.
+ */
+export type BodyParser = 'default' | 'text' | ((text: string, context: BodyParserContext) => MaybePromise<unknown>);
+
 /** Strategies that decide how versioned HTTP routes are selected for one request. */
 export enum VersioningType {
   URI = 'URI',

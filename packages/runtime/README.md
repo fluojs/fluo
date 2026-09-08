@@ -512,3 +512,36 @@ failure and reports cleanup failures through `ApplicationLogger`.
 - [examples/minimal](../../examples/minimal): Smallest possible bootstrap.
 - [examples/realworld-api](../../examples/realworld-api): Full application with complex module wiring.
 - [packages/runtime/src/bootstrap.test.ts](./src/bootstrap.test.ts): Behavioral tests for bootstrap phases.
+
+## Bounded Body Parsing
+
+The HTTP-owned `BodyParser` policy is available as `bodyParser` on
+`CreateWebRequestResponseFactoryOptions` and `DispatchWebRequestOptions` from
+`@fluojs/runtime/web`, and as the final optional argument of
+`createWebFrameworkRequest(request, signal, multipart, maxBodySize, rawBody, bodyParser)`.
+A supplied dispatch `factory` owns its parsing configuration and takes precedence.
+
+```typescript
+import { createWebRequestResponseFactory } from '@fluojs/runtime/web';
+
+const factory = createWebRequestResponseFactory({
+  bodyParser: 'text',
+  maxBodySize: 1_048_576,
+  rawBody: true,
+});
+```
+
+The default remains MIME-based parsing with a 1 MiB limit. The factory creates a
+cheap metadata snapshot and materializes the body once at dispatch, before HTTP
+middleware/guards. Text/custom policies retain bounded UTF-8 decoding and exact
+raw bytes without header changes; they use the creation-time Content-Length.
+Default behavior is unchanged. Web helpers read a clone by default, leaving the
+original readable; Next deliberately sets `consumeOriginalBody: true`, avoiding
+any Request reconstruction or clone workaround. Host-parsed bodies supplied by
+other factories/adapters are not routed through this Web parser.
+
+For callback/default delegation, empty/absent bodies, abort cooperation,
+authentication order, and adapter capabilities, see the
+[HTTP parser contract](../http/README.md#bounded-body-parser-policy).
+Evidence: `src/web-body-parser.test.ts`, `src/web-body-limit.test.ts`, and the
+[Next production example](../platform-nextjs/e2e/fixture/backend.ts).

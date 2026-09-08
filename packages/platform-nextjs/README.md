@@ -540,3 +540,53 @@ The unit suite includes shared Web portability checks and native Pages transport
 regressions. The E2E suite stages package distribution files, builds a real
 Next.js application through dev/build/start, and verifies both routers and client
 store SSR over HTTP without source aliases. See the [fixture guide](./e2e/README.md).
+
+## Bounded Body Parsing
+
+Set `NextAdapterOptions.bodyParser` at adapter construction. It accepts the
+HTTP-owned `BodyParser`: `'default'` (also the omitted default), `'text'`, or a
+synchronous/asynchronous callback. Application-wide text mode is
+`createNextAdapter({ bodyParser: 'text' })`. For path-specific policy, delegate
+unselected paths to the unchanged parser instead of reconstructing Requests:
+
+```typescript
+import { createNextAdapter } from '@fluojs/platform-nextjs';
+
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+  maxBodySize: 1_048_576,
+  rawBody: true,
+  bodyParser(text, context) {
+    if (context.path === '/api/posts/draft') return text;
+    return context.parseDefault();
+  },
+});
+```
+
+Pass this adapter to the existing `FluoFactory.create()` and keep the ordinary
+App/Pages facade. Paths are original URL pathnames before Fluo route matching;
+there are no matched params or route metadata at this stage. Multipart keeps its
+existing parser/limits and does not invoke the callback. The
+[HTTP contract and capability matrix](../http/README.md#bounded-body-parser-policy)
+own defaults, empty/absent bodies, raw bytes, errors, and abort cooperation.
+
+**Authentication boundary:** bounded reading and custom callbacks precede Fluo
+middleware, guards, and filters. To return 401 before malformed-JSON 400, receive
+text, authenticate explicitly in middleware/a guard, then parse JSON in the
+handler (or a later application stage), translating syntax errors to
+`BadRequestException`. Oversized input still returns 413 before authentication.
+Text mode does not authenticate, reorder the pipeline, or make invalid JSON null.
+
+**Migration:** remove the wrapper that changes Content-Type to `text/plain` and
+constructs a replacement Request. Keep original headers and pass the original
+Request to the standard facade. The adapter already consumes the original body
+without cloning; a proxied Request.clone failure in that removed wrapper is not
+a Next adapter defect. `rawBody: true` alone is not a JSON parsing bypass.
+Pages Router still exports Next `api: { bodyParser: false }` so Fluo owns the raw
+stream; an upstream parsed host body cannot recover original bytes.
+
+Evidence: `src/body-parser.test.ts`, the cold public declaration tests in
+`src/head-routing-public-types.test.ts`, and `e2e/fixture/backend.ts` plus
+`e2e/next.test.mjs`. The production fixture uses this public callback and no
+request/header rewriting for App and Pages routes, including default delegation,
+UTF-8 limits, raw bytes, empty/malformed/non-JSON inputs, and auth precedence.

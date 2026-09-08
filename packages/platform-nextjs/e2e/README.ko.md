@@ -70,3 +70,11 @@ Next 16.3.4의 legacy 모드는 의도적으로 실패합니다. Dev GET `/`가 
 실패를 제한합니다. Sleep이나 readiness polling은 사용하지 않습니다.
 `report.json`과 command log는 유지하고 임시 앱과 서버는 종료합니다.
 자동 회귀와 별도의 수동 브라우저/hydration 시연을 혼동하지 마세요.
+
+## Bounded parser regression
+
+같은 fixture는 text/custom route에 공개 `bodyParser` callback을, 기존 JSON/DTO route에는
+`context.parseDefault()`를 사용합니다. App/Pages HTTP case는 원래 MIME, 정확한 raw byte,
+빈/잘못된/비-JSON body, UTF-8 byte-limit 413, 명시적 인증 후 handler가 소유한 JSON 해석을
+비교합니다. Request 재구성이나 header 재작성은 사용하지 않습니다. 기존 HEAD, SSE,
+compiler, lifecycle case도 이 parser 설정에서 계속 실행합니다.

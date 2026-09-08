@@ -1,4 +1,5 @@
 import {
+  type BodyParser,
   createUnsupportedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type HttpApplicationAdapter,
@@ -29,6 +30,12 @@ const SHUTDOWN_PROBLEM = {
 
 /** Adapter-owned Web request parsing and opt-in HEAD routing options. */
 export interface NextAdapterOptions {
+  /**
+   * Bounded non-multipart parser, before HTTP middleware/guards. Omission keeps
+   * MIME-based parsing; text preserves the original Content-Type without JSON
+   * interpretation. Pages Router still requires Next's `bodyParser: false`.
+   */
+  readonly bodyParser?: BodyParser;
   /**
    * Select explicit HEAD, then ALL, then GET without changing the request method.
    * Omit to preserve ordinary routing. Opted-in HEAD responses are bodyless and
@@ -114,6 +121,7 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
     const headRouting = options.headRouting;
     this.headRouting = headRouting;
     const factory = createWebRequestResponseFactory({
+      bodyParser: options.bodyParser,
       consumeOriginalBody: true,
       maxBodySize: options.maxBodySize,
       rawBody: options.rawBody,

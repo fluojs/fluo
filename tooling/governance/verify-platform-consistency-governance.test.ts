@@ -227,6 +227,89 @@ describe('Next HEAD routing contract companions', () => {
   });
 });
 
+describe('Bounded body parser contract companions', () => {
+  const sources = [
+    'packages/http/src/types.ts',
+    'packages/runtime/src/web.ts',
+    'packages/platform-nextjs/src/adapter.ts',
+  ];
+  const evidence = [
+    'packages/runtime/src/web-body-parser.test.ts',
+    'packages/platform-nextjs/src/body-parser.test.ts',
+    'packages/platform-cloudflare-workers/src/body-parser.test.ts',
+    'packages/platform-nextjs/src/head-routing-public-types.test.ts',
+    'packages/platform-nextjs/e2e/next.test.mjs',
+    'tooling/testing/body-parser-cases.json',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'packages/runtime/README.md',
+    'packages/runtime/README.ko.md',
+    'packages/platform-nextjs/README.md',
+    'packages/platform-nextjs/README.ko.md',
+    'packages/platform-cloudflare-workers/README.md',
+    'packages/platform-cloudflare-workers/README.ko.md',
+  ];
+  const companions = [
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ...sources,
+    ...evidence,
+  ];
+
+  function expectParserFailure(run: () => void): void {
+    expect(run).toThrow(/Bounded body parser contract changes must include/u);
+  }
+
+  it('accepts complete parser-specific runtime, adapter, declaration, and bilingual evidence', () => {
+    expect(() => enforceContractCompanionUpdates(companions)).not.toThrow();
+  });
+
+  it.each(evidence)('rejects missing parser evidence %s', (missing) => {
+    const incomplete = companions.filter((path) => path !== missing);
+    expectParserFailure(() => enforceContractCompanionUpdates(incomplete));
+  });
+
+  it.each(sources)('retains generic lifecycle enforcement without source seam %s', (missing) => {
+    const incomplete = companions.filter((path) => path !== missing);
+    expect(() => enforceContractCompanionUpdates(incomplete)).toThrow(
+      /http-runtime-isolation\.test\.ts/u,
+    );
+  });
+
+  it.each([
+    ['comparison', 'bodyParserRegressionEvidence.every((path) => hasChanged(changedFiles, path))', 'true'],
+    ['branch', 'bodyParserRuntimeSourcePaths.every((path) => hasChanged(changedFiles, path))', 'false'],
+  ])('detects disabled parser %s enforcement', async (label, target, replacement) => {
+    const sourceUrl = new URL('./verify-platform-consistency-governance.mjs', import.meta.url);
+    const source = readFileSync(sourceUrl, 'utf8');
+    expect(source.split(target)).toHaveLength(2);
+    const mutated = source.replace(target, replacement)
+      .replace(/from '(\.[^']+)'/gu, (_match, specifier: string) =>
+        `from '${new URL(specifier, sourceUrl).href}'`)
+      .replaceAll('import.meta.url', JSON.stringify(sourceUrl.href));
+    const governance: Pick<typeof import('./verify-platform-consistency-governance.mjs'), 'enforceContractCompanionUpdates'> =
+      await import(`data:text/javascript;base64,${Buffer.from(mutated).toString('base64')}`);
+
+    for (const missing of evidence) {
+      const incomplete = companions.filter((path) => path !== missing);
+      const run = () => governance.enforceContractCompanionUpdates(
+        incomplete,
+        withUnchangedEmailMigrationSections(unchangedEmailMigrationGuideSnapshots),
+      );
+      if (label === 'branch') {
+        expect(run).toThrow(/http-runtime-isolation\.test\.ts/u);
+      } else {
+        expect(run).not.toThrow();
+      }
+      expect(() => expectParserFailure(run)).toThrowError(expect.objectContaining({ name: 'AssertionError' }));
+    }
+  });
+});
+
 describe('Fastify raw-context README companion classification', () => {
   const readmePaths = [
     'packages/platform-fastify/README.md',

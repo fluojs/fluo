@@ -4,6 +4,7 @@ import { appendFileSync } from 'node:fs';
 import { Module, Scope } from '@fluojs/core';
 import {
   All,
+  BadRequestException,
   Controller,
   Convert,
   createByteRangeResponse,
@@ -21,6 +22,7 @@ import {
   type RequestContext,
   RequestDto,
   Sse,
+  UnauthorizedException,
   UseGuards,
 } from '@fluojs/http';
 import { createNextAdapter } from '@fluojs/platform-nextjs';
@@ -83,6 +85,15 @@ function countHead(context: RequestContext, stage: string) {
   const count = (headCounts.get(key) ?? 0) + 1;
   headCounts.set(key, count);
   context.response.setHeader(`x-${stage}-count`, String(count));
+}
+
+class BodyAuthGuard {
+  canActivate({ requestContext }: GuardContext) {
+    if (requestContext.request.headers.authorization !== 'Bearer fixture') {
+      throw new UnauthorizedException();
+    }
+    return true;
+  }
 }
 
 class HeadGuard {
@@ -149,6 +160,29 @@ class BackendController {
   @Head('/health')
   healthHead() {
     return { status: 'ok', instance };
+  }
+
+  @Post('/bounded-text')
+  boundedText(_input: undefined, { request }: RequestContext) {
+    return {
+      body: request.body,
+      mime: request.headers['content-type'],
+      raw: Array.from(request.rawBody ?? []),
+      consumed: (request.raw as Request).bodyUsed,
+    };
+  }
+
+  @Post('/bounded-custom')
+  boundedCustom(_input: undefined, { request }: RequestContext) {
+    return { body: request.body };
+  }
+
+  @Post('/bounded-auth')
+  @UseGuards(BodyAuthGuard)
+  boundedAuth(_input: undefined, { request }: RequestContext) {
+    if (typeof request.body !== 'string') throw new BadRequestException();
+    try { return { body: JSON.parse(request.body) }; }
+    catch { throw new BadRequestException('Invalid post JSON'); }
   }
 
   @Post('/echo')
@@ -239,11 +273,21 @@ class HeadStreamController {
 
 @Module({
   controllers: [BackendController, HeadStreamController],
-  providers: [NumberConverter, SessionConverter, HeadGuard, HeadMiddleware],
+  providers: [NumberConverter, SessionConverter, HeadGuard, HeadMiddleware, BodyAuthGuard],
 })
 class BackendModule {}
 
-export const nextAdapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+// No Content-Type rewrite, Request reconstruction, or parser outside the adapter.
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+  maxBodySize: 128,
+  rawBody: true,
+  bodyParser(text, context) {
+    if (context.path.endsWith('/bounded-custom')) return { custom: text };
+    if (context.path.includes('/bounded-')) return text;
+    return context.parseDefault();
+  },
+});
 const app = await FluoFactory.create(BackendModule, {
   adapter: nextAdapter,
   middleware: [HeadMiddleware],

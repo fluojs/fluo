@@ -1,0 +1,22 @@
+[
+  [
+    "{",
+    "application/json"
+  ],
+  [
+    "{\"ok\":true}",
+    "application/problem+json"
+  ],
+  [
+    "hello",
+    "application/octet-stream"
+  ],
+  [
+    "  ",
+    "application/json"
+  ],
+  [
+    "",
+    "application/json"
+  ]
+]

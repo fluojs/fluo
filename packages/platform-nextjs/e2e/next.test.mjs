@@ -91,6 +91,7 @@ async function prepare(app) {
   assert.match(versions.next, /^16\./, 'This suite verifies Next 16');
   await writeFile(path.join(app, 'package.json'), JSON.stringify({
     name: 'fluo-next-production-e2e',
+    version: '0.0.0',
     private: true,
     type: 'module',
     dependencies: versions,
@@ -455,6 +456,41 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
         const response = await capture(`${prefix}/health`, { method: 'HEAD' });
         assert.equal(response.status, 200);
         assert.equal(response.body, '');
+      });
+      await t.test(`${facade}: bounded text keeps MIME, bytes, and native consumption`, async () => {
+        for (const [body, mime] of [
+          ['{', 'application/json'], ['', 'application/json'],
+          ['plain', 'application/octet-stream'], ['한', 'application/problem+json'],
+        ]) {
+          const response = await capture(`${prefix}/bounded-text`, {
+            method: 'POST', headers: { 'content-type': mime }, body,
+          });
+          assert.equal(response.status, 201);
+          assert.deepEqual(JSON.parse(response.body), {
+            body, mime, raw: Array.from(Buffer.from(body)), consumed: true,
+          });
+        }
+        const large = await capture(`${prefix}/bounded-text`, {
+          method: 'POST', headers: jsonHeaders, body: '한'.repeat(43),
+        });
+        assert.equal(large.status, 413);
+        const custom = await capture(`${prefix}/bounded-custom`, {
+          method: 'POST', headers: jsonHeaders, body: '{',
+        });
+        assert.equal(custom.status, 201);
+        assert.deepEqual(JSON.parse(custom.body), { body: { custom: '{' } });
+      });
+      await t.test(`${facade}: authentication precedes route-owned JSON interpretation, not byte limits`, async () => {
+        for (const [body, authorization, status] of [
+          ['{', undefined, 401], ['{', 'Bearer fixture', 400],
+          ['{"ok":true}', 'Bearer fixture', 201], ['x'.repeat(129), undefined, 413],
+        ]) {
+          const response = await capture(`${prefix}/bounded-auth`, {
+            method: 'POST', body,
+            headers: { ...jsonHeaders, ...(authorization ? { authorization } : {}) },
+          });
+          assert.equal(response.status, status);
+        }
       });
       await t.test(`${facade}: ordinary JSON POST`, async () => {
         const response = await capture(`${prefix}/echo`, {

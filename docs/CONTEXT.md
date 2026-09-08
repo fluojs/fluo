@@ -154,6 +154,19 @@ do not change existing defaults. Execution evidence is linked from the
 [helper regressions](../packages/platform-nextjs/src/next-config.test.ts) and
 [real Next fixture](../packages/platform-nextjs/e2e/README.md).
 
+## Bounded Body Parser Policy
+
+For text/custom parsing without Content-Type changes, start at the
+[HTTP policy and adapter matrix](../packages/http/README.md#bounded-body-parser-policy)
+and [HTTP materialization boundary](./architecture/http-runtime.md#body-parser-boundary).
+Runtime Web helpers implement the policy; Next and the Workers adapter expose it.
+The [Next usage guide](../packages/platform-nextjs/README.md#bounded-body-parsing)
+explains path-specific default delegation and removal of Request reconstruction.
+Reading and byte limits still precede middleware/guards; authenticate explicitly
+before later application-owned JSON interpretation. Evidence is in the runtime,
+Next, and Workers `body-parser.test.ts` suites (runtime uses
+`web-body-parser.test.ts`), the cold Next declaration test, and real Next E2E.
+
 ## Lifecycle & Multi-Provider Ordering
 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.md) is the source of truth for application and testing module bootstrap hooks. Eligible singleton `multi: true` contributions remain distinct lifecycle instances and run in declared provider order, including when they are interleaved with singleton providers. Framework integrations resolve each contribution through its owning DI container; the internal resolver registrar remains container-private.
