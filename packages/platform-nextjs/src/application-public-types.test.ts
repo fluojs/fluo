@@ -1,11 +1,21 @@
+import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { cp, mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const fixture = fileURLToPath(new URL('../public-consumer.mts', import.meta.url));
+import { resolveWorkspaceBuildOrder } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
+
+const execFileAsync = promisify(execFile);
+const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+let root: string;
+let fixture: string;
 const imports = `
 import { publicToken, type PublicToken, type Token } from '@fluojs/core';
 import { Container } from '@fluojs/di';
@@ -23,10 +33,6 @@ function compile(source: string): readonly ts.Diagnostic[] {
     strict: true,
     target: ts.ScriptTarget.ESNext,
     paths: {
-      ...Object.fromEntries(['core', 'di', 'platform-nextjs'].map((name) => [
-        `@fluojs/${name}`,
-        [fileURLToPath(new URL(`../../${name}/dist/index.d.ts`, import.meta.url))],
-      ])),
       // Next's sharp 0.35 dependency ships these declarations but omits its types
       // export condition. Check the real declarations, not an ambient stub or skipLibCheck.
       sharp: [resolve(dirname(createRequire(createRequire(import.meta.url).resolve('next')).resolve('sharp')), '../lib/index.d.ts')],
@@ -38,10 +44,57 @@ function compile(source: string): readonly ts.Diagnostic[] {
     path === fixture
       ? ts.createSourceFile(path, source, languageVersion, true)
       : getSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
-  return ts.getPreEmitDiagnostics(ts.createProgram([fixture], options, host));
+  const program = ts.createProgram([fixture], options, host);
+  const packageDeclarations = program.getSourceFiles().filter((file) =>
+    file.fileName.includes('/packages/') && file.fileName !== fixture,
+  );
+  expect(packageDeclarations.length).toBeGreaterThan(0);
+  for (const declaration of packageDeclarations) {
+    expect(declaration.fileName.startsWith(join(root, 'packages/'))).toBe(true);
+    expect(declaration.isDeclarationFile).toBe(true);
+  }
+  return ts.getPreEmitDiagnostics(program);
 }
 
 describe('emitted application accessor and public token declarations', () => {
+  afterAll(async () => {
+    if (root) await rm(root, { force: true, recursive: true });
+  });
+
+  beforeAll(async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'fluo-next-application-declarations-')));
+    fixture = join(root, 'consumer/public-consumer.mts');
+    const packages = resolveWorkspaceBuildOrder('@fluojs/platform-nextjs', repositoryRoot);
+    const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
+    for (const entry of [
+      'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+      'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+      'tooling/scripts/clean-dist.mjs', buildClosureScript,
+      'packages/testing/src/babel-decorators-plugin.ts',
+      ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+    ]) {
+      await cp(join(repositoryRoot, entry), join(root, entry), {
+        recursive: true,
+        // Relative workspace links resolve within the cold fixture, not the checkout.
+        verbatimSymlinks: true,
+        filter: (source) => !['dist', '.vite', '.vite-temp'].includes(basename(source)),
+      });
+    }
+    // The root has only external dependencies/build tools; workspace links were copied above.
+    await symlink(join(repositoryRoot, 'node_modules'), join(root, 'node_modules'), 'dir');
+    await mkdir(join(root, 'consumer/node_modules/@fluojs'), { recursive: true });
+    for (const name of packages) {
+      const packageRoot = join(root, 'packages', name.slice('@fluojs/'.length));
+      expect(existsSync(join(packageRoot, 'dist'))).toBe(false);
+      // Resolve through the copied real manifest/export map, without Fluo paths aliases.
+      await symlink(packageRoot, join(root, 'consumer/node_modules', name), 'dir');
+    }
+    await execFileAsync(process.execPath, [join(root, buildClosureScript), '@fluojs/platform-nextjs'], {
+      cwd: root,
+      env: process.env,
+    });
+  }, 300_000);
+
   it('infers services and application values while retaining existing tokens', () => {
     // Given
     const source = `${imports}
