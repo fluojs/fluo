@@ -17,3 +17,5 @@ Data package는 모든 데이터베이스를 하나의 추상화 뒤에 숨기�
 애플리케이션 기능의 storage path를 선택할 때는 [영속성](../guides/persistence)을 읽으세요.
 
 Queue 없는 캐시 증가 또는 순수 단일 key 갱신에는 `get`/`set` 쌍 대신 [`CacheService.update`](https://github.com/fluojs/fluo/blob/main/packages/cache-manager/README.ko.md#원자-갱신)를 사용하세요. Set/delete 결정, 고정 만료 TTL, retry/오류 계약, 선택적 store capability는 패키지 README가 소유합니다. Memory는 공유 store 인스턴스 하나를 조정하며 Redis에는 canonical RedisModule DI 경로의 명시적 cache 측 `redis.atomicUpdates: true`와 원본의 single-primary/namespace 전제가 필요합니다. RedisService API나 DB 트랜잭션을 추가하거나 `remember` loader 합치기를 바꾸는 기능이 아닙니다. Drain과 metadata 운영 조건은 [운영](../guides/operations#cache-update-drain)을 참고하세요.
+
+Prisma·Drizzle·Mongoose의 `afterCommit`으로 native commit 뒤 cache invalidation을 등록할 수 있습니다. [커밋 후 캐시 무효화](../guides/persistence#after-commit-cache-invalidation)는 `requireAfterCommit` 사전 검사와 이미 commit된 `AfterCommitError`를 설명합니다. 실행 계약은 `docs/architecture/transactions.ko.md`, 공개 API는 위 package README가 소유합니다. Redis commit tracking·DB+Redis 원자성·durable outbox·crash/network exactly-once 보장은 포함하지 않습니다.

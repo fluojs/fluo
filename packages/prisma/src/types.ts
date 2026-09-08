@@ -1,4 +1,5 @@
 import type { MaybePromise } from '@fluojs/core';
+import type { AfterCommitCallback, TransactionBoundaryOptions } from './after-commit.js';
 
 type PrismaTransactionCallback<TTransactionClient, TResult> = (client: TTransactionClient) => Promise<TResult>;
 
@@ -88,6 +89,12 @@ export interface PrismaHandleProvider<
   TTransactionClient = InferPrismaTransactionClient<TClient>,
   TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 > {
+  /**
+   * Registers a callback on the active native transaction owner.
+   *
+   * @param callback Hook awaited after the outer native commit, in registration order.
+   */
+  afterCommit(callback: AfterCommitCallback): void;
   /** Returns the ambient transaction client when present, or the root Prisma client otherwise. */
   current(): TClient | TTransactionClient;
   /**
@@ -96,15 +103,17 @@ export interface PrismaHandleProvider<
    * @param fn Callback executed within the request transaction scope.
    * @param signal Optional abort signal linked to the request lifecycle.
    * @param options Optional Prisma transaction options forwarded to `$transaction(...)`.
+   * @param boundary Optional Fluo-owned commit capability requirement.
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
    */
-  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T>;
+  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
   /**
    * Opens an interactive transaction boundary around `fn`.
    *
    * @param fn Callback executed within the transaction scope.
    * @param options Optional Prisma transaction options forwarded to `$transaction(...)`.
+   * @param boundary Optional Fluo-owned commit capability requirement.
    * @returns The callback result after the transaction finishes or the direct-execution fallback completes.
    */
-  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
 }

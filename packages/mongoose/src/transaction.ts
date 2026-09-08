@@ -1,11 +1,12 @@
 import { Inject } from '@fluojs/core';
 import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
 
+import { AfterCommitCapabilityError } from './after-commit.js';
 import { MongooseConnection } from './connection.js';
-import type { MongooseConnectionLike } from './types.js';
+import type { MongooseConnectionLike, TransactionBoundaryOptions } from './types.js';
 
 type TransactionConnection = {
-  transaction<T>(fn: () => Promise<T>): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions): Promise<T>;
 };
 
 type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
@@ -83,10 +84,13 @@ function resolveTransactionConnection<THost>(self: THost, accessor?: (self: THos
  * Nested decorated calls reuse the ambient Mongoose session through `MongooseConnection.transaction(...)`.
  *
  * @param accessor Optional connection resolver for the decorated service instance.
+ * @param boundary Optional package-owned capability requirements forwarded to the transaction boundary.
  * @returns A standard method decorator that executes the original method inside a Mongoose transaction.
+ * @throws {AfterCommitCapabilityError} When opted-in after-commit support is absent from the selected target.
  */
 export function Transaction<THost>(
   accessor?: (self: THost) => TransactionConnection,
+  boundary?: TransactionBoundaryOptions,
 ): <TArgs extends unknown[], TResult>(
   value: TransactionMethod<THost, TArgs, TResult>,
   context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
@@ -97,8 +101,13 @@ export function Transaction<THost>(
   ) {
     return async function transactionWrappedMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const connection = resolveTransactionConnection(this, accessor);
+      if (boundary?.requireAfterCommit && (
+        !('afterCommit' in connection) || typeof connection.afterCommit !== 'function'
+      )) {
+        throw new AfterCommitCapabilityError('Mongoose @Transaction() requires a target with afterCommit support.');
+      }
 
-      return connection.transaction(() => value.apply(this, args));
+      return connection.transaction(() => value.apply(this, args), boundary);
     };
   };
 }

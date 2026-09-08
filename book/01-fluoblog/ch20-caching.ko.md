@@ -221,6 +221,21 @@ RedisStore의 일반 `set`은 양의 소수 TTL을 허용하고 Redis에는 올�
 
 `CacheService.del()`과 `reset()`에는 같은 서비스 인스턴스에서 진행 중인 `remember()` loader의 재채우기를 막는 로직이 있다. 그 로직은 Redis를 사용하는 모든 프로세스의 진행 중인 작업을 알아내는 분산 장벽이 아니다. 발행본 자체를 불변으로 유지하는 정책이 상세 캐시를 크게 단순화한다. 제품이 나중에 개정판을 도입한다면 새 revision의 key와 현재 revision을 고르는 권위 있는 조회가 필요하다.
 
+애플리케이션이 직접 관리하는 캐시 key를 커밋 뒤 지우려면 11장의 `afterCommit`을 사용할 수 있다. 다음은 **소비자 호출 조각**이다. `prisma`는 기존 `BlogDatabaseModule`의 `PrismaService`, `cache`는 주입된 `CacheService`, `cacheKey`는 그 서비스의 쓰기·읽기가 공유하는 정확한 key다. `persist`는 같은 `prisma.current()`로 DB 변경만 수행하는 애플리케이션 콜백이며, 자체 네이티브 옵션을 가진 `PublishingService.publish()`를 중첩 호출하는 예제가 아니다.
+
+```ts
+await prisma.transaction(async () => {
+  await persist();
+  prisma.afterCommit(async () => {
+    await cache.del(cacheKey);
+  });
+}, undefined, { requireAfterCommit: true });
+```
+
+`undefined`는 기존 네이티브 옵션 자리를 보존한다. 능력이 없는 클라이언트에서는 `persist` 실행 전에 거부하므로 “저장은 했는데 훅을 등록할 수 없다”는 경로를 피한다. 롤백·커밋 실패에서는 삭제하지 않고, 성공한 바깥 커밋 뒤 삭제를 기다린다. 삭제가 실패하면 `AfterCommitError.committed`는 `true`이며 `results`에는 모든 훅의 결과가 남는다. 발행을 다시 시도하는 대신 DB의 확정 상태와 캐시 실패를 분리해서 기록하고, 캐시 복구·TTL·영속 재전달 중 필요한 정책을 애플리케이션이 선택한다.
+
+이 조각을 아래의 query별 HTTP 캐시 key에 대한 자동 무효화라고 읽지 않는다. 모든 query·principal 변형을 추적하는 caller는 추가하지 않았으며, 현재 목록은 계속 30초 TTL 정책을 사용한다. 다른 프로세스의 오래된 loader가 재채우는 경합도 훅으로 사라지지 않는다. Redis에는 Fluo 소유 커밋 추적이 없어 이 API를 적용할 수 없고, 향후 `MULTI/EXEC` 지원은 별도 검토 대상이다. DB 훅에서 Redis 캐시를 삭제해도 PostgreSQL+Redis 원자성이나 크래시·네트워크 exactly-once 전달은 생기지 않는다.
+
 ## 동시 miss를 소스 계약으로 실험하기
 
 앞의 fail-soft reader는 의도적으로 `get → DB → set`을 드러냈다. 단점은 cold key로 요청이 동시에 오면 같은 본문 조회를 중복 수행할 수 있다는 것이다. `CacheService.remember()`는 같은 서비스 인스턴스 안에서 동일 key의 동시 miss를 하나의 loader로 합친다. 이를 선택하면 코드가 짧아지지만 store 실패도 직접 API의 rejection으로 관찰하므로 원본 실패와 캐시 실패를 구분하는 정책까지 같이 설계해야 한다.
@@ -406,3 +421,4 @@ FluoBlog는 불변 공개 본문을 재사용하고, 동적으로 늘어나는 �
 - [캐시 계약 테스트](../../packages/cache-manager/src/cache-service.test.ts), [독립 key 동시 실행 테스트](../../packages/cache-manager/src/cache-service.concurrency.test.ts)
 - [모듈 설정과 client 해석](../../packages/cache-manager/src/module.ts), [HTTP 인터셉터 회귀 테스트](../../packages/cache-manager/src/interceptor.contract-regression.test.ts)
 - [Redis README: TTL 코덱과 연결 수명주기](../../packages/redis/README.ko.md), [Redis 공개 export](../../packages/redis/src/index.ts)
+- [커밋 후 실행의 공통 계약](../../docs/architecture/transactions.ko.md), [Prisma after-commit API](../../packages/prisma/README.ko.md), [회귀 검증 대상](../../packages/prisma/src/after-commit.test.ts)

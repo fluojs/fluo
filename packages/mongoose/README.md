@@ -16,6 +16,7 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
   - [Saving an Existing Document](#saving-an-existing-document)
   - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
   - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
+  - [Cache Invalidation After Commit](#cache-invalidation-after-commit)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -209,7 +210,57 @@ If the wrapped connection implements `connection.transaction(...)`, fluo treats 
 
 For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. `create(...)` injects the session only through Mongoose's array overload, `create([docs], options?)`. Positional `create(docA, docB)` arguments are forwarded unchanged—even when the last document contains option-like fields such as `timestamps`—and therefore do not receive automatic session injection. Use the array overload for transaction participation. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, including the third options argument of `findOne(filter, projection, options)`, fluo throws a session conflict error to prevent accidental transaction escapes. Pass a result-specialized `MongooseModelFacade` as the `model<TModel>(...)` type argument when repository code needs typed operation results.
 
+### Cache Invalidation After Commit
+
+`MongooseConnection.afterCommit(...)` registers work on an open native transaction owned by the same wrapper. This function uses an application-owned connection whose `User` model is already compiled, and `CacheService` from a registered `CacheModule`. The supported array `create` facade attaches the ambient session.
+
+```ts
+import type { CacheService } from '@fluojs/cache-manager';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type UserCreateModel = MongooseModelFacade<Promise<readonly { name: string }[]>>;
+
+async function createUser(conn: MongooseConnection, cache: CacheService, name: string) {
+  return conn.transaction(async () => {
+    const users = await conn.model<UserCreateModel>('User').create([{ name }]);
+    conn.afterCommit(async () => {
+      await cache.del('users:list');
+    });
+    return users;
+  }, { requireAfterCommit: true });
+}
+```
+
+`requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Existing `strictTransactions: false` and direct-execution fallback remain unchanged when the option is omitted or `false`, but hook registration is rejected in a fallback without a native transaction. Services can use `@Transaction(undefined, { requireAfterCommit: true })` or `@Transaction((self) => self.conn, { requireAfterCommit: true })`.
+
+When delegated `connection.transaction(...)` retries the callback, each attempt owns an isolated queue and only the final successful attempt drains. Hooks from discarded attempts, rollback, and failed commit do not run. A commit-only retry that does not rerun the callback does not register hooks again. Nested boundaries within the same attempt share the queue; when the outer callback catches a nested exception without a savepoint, the final outer commit/rollback outcome applies.
+
+When the user callback settles, the registration scope closes before native commit begins. After successful outer native commit and settlement of the owned session's `endSession()` cleanup attempt, hooks run sequentially in FIFO order outside the ended ALS context. A hook's `current()` returns the root connection and `currentSession()` does not expose the previous session. A new transaction admitted by the lifecycle owns a fresh queue. Registration outside a scope, in a closed scope, or late during drain is rejected. Shutdown waits for hook drain before calling the configured `dispose(connection)`.
+
+If session cleanup succeeds but a hook fails, all hooks still run before `AfterCommitError` is thrown. `committed` is `true`, `results` contains every fulfilled and rejected FIFO outcome, and inherited `errors` contains all hook failure reasons. Distinguish it with `error instanceof AfterCommitError` and do not repeat the DB write. Fluo does not retry or roll back the native transaction for hook failures; cache recovery and reconciliation belong to the application.
+
+If `endSession()` fails in the manual-session path **after commit is confirmed** for an owning boundary that registered hooks or opted into `requireAfterCommit: true` (including a nested `requestTransaction` requirement), every hook is still attempted outside the ended ALS context, and `AfterCommitCleanupError` is reported after drain. This class directly extends `AggregateError`, not `AfterCommitError`, so `instanceof AfterCommitError` alone does not catch it. Import `AfterCommitCleanupError` separately from the root package to distinguish it. `committed` is `true`, `cause` is the cleanup failure, and `results: readonly PromiseSettledResult<void>[]` contains **hook outcomes only**, in FIFO order. `errors` contains the cleanup failure first, followed by rejected hook reasons in registration order. Cleanup failure is still reported with no hooks when opted in, or when all registered hooks succeed; cleanup is not inserted as a synthetic hook in `results`. The DB write is already confirmed: do not run native retry, rollback, or abort because of this error. Legacy boundaries with no hooks and no `requireAfterCommit` requirement preserve the original cleanup error identity and no-hook request cancellation contract, including the original `AbortError`.
+
+Commits from external raw-client transactions, other wrappers, or other connections are not observed. Redis itself is unsupported because it has no Fluo-owned commit tracking, and Redis calls from DB hooks do not provide DB+Redis atomicity. This covers successful in-process owner invocations, not a durable outbox or crash/network exactly-once. Follow the [Transaction Context Contract](../../docs/architecture/transactions.md#after-commit-work) for the full contract.
+
 ## Public API
+
+| Transaction API | Inputs and completion |
+| --- | --- |
+| `transaction(fn, boundary?): Promise<T>` | Appends Fluo `boundary` after the existing async `fn`. The outer boundary returns the original result after commit and hook drain. |
+| `requestTransaction(fn, signal?, boundary?): Promise<T>` | Takes `boundary` after the existing request `AbortSignal`. |
+| `afterCommit(callback: AfterCommitCallback): void` | Registers work in an open native scope without running it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration. |
+| `Transaction(accessor?, boundary?)` | Fluo `boundary` is the second argument, after the existing connection accessor. |
+
+The boundary APIs take Fluo-only `boundary?: TransactionBoundaryOptions`; do not merge it into native Mongoose options. `afterCommit` itself does not take a boundary argument.
+
+Additional exports from the root `@fluojs/mongoose` package:
+
+- `AfterCommitCallback`: `() => void | Promise<void>`.
+- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `AfterCommitCapabilityError`: failure when required native commit capability is missing or a hook is registered on an unsupported boundary.
+- `AfterCommitError extends AggregateError`: exposes `readonly committed = true` and `results: readonly PromiseSettledResult<void>[]` for every FIFO outcome, with all failures in inherited `errors`.
+- `AfterCommitCleanupError extends AggregateError`: a separate class for manual-session cleanup failure after confirmed commit when hooks are registered or `requireAfterCommit: true` is required. Exposes `readonly committed = true`, cleanup failure as `cause`, hook-only FIFO `results: readonly PromiseSettledResult<void>[]`, and cleanup-first `errors`. It does not extend `AfterCommitError`.
 
 - `MongooseConnection.saveDocument(document, options?)` — explicitly saves an existing document with the current transaction session while preserving native save options and document identity.
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
@@ -241,6 +292,8 @@ For supported facade methods, fluo preserves existing Mongoose operation options
 - `@fluojs/prisma` and `@fluojs/drizzle`: alternate database integrations with different transaction models
 
 ## Example Sources
+
+- `packages/mongoose/src/after-commit.test.ts`: verification target for attempt-local hook queues and drain after session cleanup. The common behavior matrix is `tooling/governance/after-commit-contract.test.ts`. Follow the [shared fixture Run instructions](../prisma/fixtures/after-commit/README.md#run) for native MongoDB manual/delegated paths; actual results require a separate verification receipt.
 
 - `packages/mongoose/src/vertical-slice.test.ts`
 - `packages/mongoose/src/module.test.ts`

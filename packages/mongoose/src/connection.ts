@@ -7,13 +7,16 @@ import {
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
+import { AfterCommitCapabilityError, AfterCommitCleanupError, AfterCommitError } from './after-commit.js';
 import { createMongoosePlatformStatusSnapshot } from './status.js';
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
 import type {
+  AfterCommitCallback,
   MongooseConnectionLike,
   MongooseHandleProvider,
   MongooseModelFacade,
   MongooseSessionLike,
+  TransactionBoundaryOptions,
 } from './types.js';
 
 const TRANSACTIONS_NOT_SUPPORTED_ERROR = 'Transaction not supported: Mongoose connection does not implement startSession.';
@@ -42,6 +45,7 @@ type ActiveTransactionCallbackHandle = {
 };
 
 type ActiveSessionScopeHandle = {
+  confirmCommit(): void;
   retainRequestTransaction(handle: ActiveRequestTransactionHandle): void;
   settle(): void;
 };
@@ -49,6 +53,14 @@ type ActiveSessionScopeHandle = {
 type AmbientSessionScope = {
   activeSession: ActiveSessionScopeHandle;
   session: MongooseSessionLike;
+  readonly owner: TransactionOwner;
+};
+
+// Each native callback attempt owns a mutable registration queue and closes it before commit begins.
+type TransactionOwner = {
+  readonly callbacks: AfterCommitCallback[];
+  afterCommitEnabled: boolean;
+  open: boolean;
 };
 
 type MongooseRuntimeOptions = {
@@ -237,7 +249,28 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    * @returns The ambient session inside a transaction boundary, or `undefined` outside one.
    */
   currentSession(): MongooseSessionLike | undefined {
-    return this.sessions.getStore()?.session;
+    const scope = this.sessions.getStore();
+    return scope?.owner.open ? scope.session : undefined;
+  }
+
+  /**
+   * Registers work synchronously on the active native transaction callback.
+   *
+   * @remarks
+   * Nested calls share the owning callback queue. Only the final successful native attempt is drained,
+   * sequentially in registration order, after commit and outside the ended session context.
+   *
+   * @param callback Hook to run after the outer native transaction commits.
+   * @throws {AfterCommitCapabilityError} When called outside a native callback or after its scope closes.
+   */
+  afterCommit(callback: AfterCommitCallback): void {
+    const owner = this.sessions.getStore()?.owner;
+    if (!owner?.open) {
+      throw new AfterCommitCapabilityError();
+    }
+
+    owner.afterCommitEnabled = true;
+    owner.callbacks.push(callback);
   }
 
   /**
@@ -332,18 +365,24 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    * ```
    *
    * @param fn Callback executed within the transaction scope.
+   * @param boundary Optional native after-commit capability requirement, checked before invoking `fn`.
    * @returns The callback result after the session transaction finishes or the direct-execution fallback completes.
+   * @throws {AfterCommitError} After committed work when one or more hooks fail.
+   * @throws {AfterCommitCleanupError} After committed work and hook drain when manual session cleanup fails.
+   * @throws {AfterCommitCapabilityError} When required native support is unavailable.
    */
-  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+  async transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions): Promise<T> {
     this.assertTransactionsAvailable();
+    this.assertAfterCommitCapability(boundary);
 
     const currentSession = this.sessions.getStore();
-    if (currentSession) {
+    if (currentSession?.owner.open) {
+      currentSession.owner.afterCommitEnabled ||= boundary?.requireAfterCommit === true;
       return fn();
     }
 
     if (typeof this.connection.transaction === 'function') {
-      return this.runConnectionTransaction(fn);
+      return this.runConnectionTransaction(fn, undefined, boundary);
     }
 
     const activeCallback = this.trackActiveTransactionCallback();
@@ -360,7 +399,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return this.runDirectTransaction(fn, activeCallback);
     }
 
-    return this.runManualSessionTransaction(session, fn, activeCallback);
+    return this.runManualSessionTransaction(session, fn, activeCallback, undefined, boundary);
   }
 
   /**
@@ -373,12 +412,23 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    *
    * @param fn Callback executed within the request transaction scope.
    * @param signal Optional abort signal linked to the request lifecycle.
+   * @param boundary Optional native after-commit capability requirement, checked before invoking `fn`.
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
+   * @throws {AfterCommitError} After committed work when one or more hooks fail.
+   * @throws {AfterCommitCleanupError} After committed work and hook drain when manual session cleanup fails.
+   * @throws {AfterCommitCapabilityError} When required native support is unavailable.
    */
-  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async requestTransaction<T>(
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+    boundary?: TransactionBoundaryOptions,
+  ): Promise<T> {
+    this.assertRequestTransactionsAvailable();
+    this.assertAfterCommitCapability(boundary);
     const currentScope = this.sessions.getStore();
-    if (currentScope) {
+    if (currentScope?.owner.open) {
       this.assertRequestTransactionsAvailable();
+      currentScope.owner.afterCommitEnabled ||= boundary?.requireAfterCommit === true;
 
       const abortContext = createRequestAbortContext(signal);
       const active = this.trackActiveRequestTransaction(abortContext.controller);
@@ -396,6 +446,12 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
     let untrackActiveInFinally = true;
+    let committed = false;
+    const confirmCommit = () => {
+      committed = true;
+      abortContext.cleanup();
+      active.active.abort = () => {};
+    };
 
     try {
       if (typeof this.connection.transaction === 'function') {
@@ -403,13 +459,20 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         const delegatedTransaction = this.runConnectionTransaction(() => {
           delegatedCallbackStarted = true;
           return raceWithAbortAndDrainCallback(fn, abortContext.signal);
-        });
+        }, confirmCommit, boundary);
 
-        return await raceWithAbortAndDrainCallback(
-          () => delegatedTransaction,
-          abortContext.signal,
-          () => delegatedCallbackStarted,
-        );
+        try {
+          return await raceWithAbortAndDrainCallback(
+            () => delegatedTransaction,
+            abortContext.signal,
+            () => delegatedCallbackStarted,
+          );
+        } catch (error) {
+          if (committed) {
+            return await delegatedTransaction;
+          }
+          throw error;
+        }
       }
 
       const resolvedSession = await this.resolveSessionForRequest(abortContext.signal, active, () => {
@@ -421,6 +484,9 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
       return await this.runManualSessionTransaction(resolvedSession, () =>
         raceWithAbortAndDrainCallback(fn, abortContext.signal),
+        undefined,
+        confirmCommit,
+        boundary,
       );
     } finally {
       abortContext.cleanup();
@@ -428,6 +494,18 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       if (untrackActiveInFinally) {
         this.untrackActiveRequestTransaction(active);
       }
+    }
+  }
+
+  private assertAfterCommitCapability(boundary?: TransactionBoundaryOptions): void {
+    if (!boundary?.requireAfterCommit) {
+      return;
+    }
+
+    const scope = this.sessions.getStore();
+    if (!scope?.owner.open &&
+      typeof this.connection.transaction !== 'function' && typeof this.connection.startSession !== 'function') {
+      throw new AfterCommitCapabilityError('Mongoose transaction requires active native after-commit support.');
     }
   }
 
@@ -447,18 +525,46 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     session: MongooseSessionLike,
     fn: () => Promise<T>,
     activeCallback?: ActiveTransactionCallbackHandle,
+    confirmCommit?: () => void,
+    boundary?: TransactionBoundaryOptions,
   ): Promise<T> {
     const activeSession = this.trackActiveSession();
+    const owner: TransactionOwner = {
+      callbacks: [],
+      afterCommitEnabled: boundary?.requireAfterCommit === true,
+      open: true,
+    };
 
     try {
-      return await this.sessions.run({ activeSession, session }, () => executeSessionTransaction(session, fn));
-    } finally {
+      let result: T;
       try {
+        result = await this.sessions.run({ activeSession, session, owner }, () =>
+          executeSessionTransaction(session, () => this.runOwnerCallback(owner, fn)),
+        );
+      } catch (error) {
+        owner.callbacks.length = 0;
         await session.endSession();
-      } finally {
-        activeSession.settle();
-        activeCallback?.settle();
+        throw error;
       }
+
+      if (!owner.afterCommitEnabled) {
+        await session.endSession();
+        return result;
+      }
+
+      activeSession.confirmCommit();
+      confirmCommit?.();
+      const cleanupFailure = await Promise.resolve().then(() => session.endSession()).then(
+        () => undefined,
+        (reason: unknown) => ({ reason }),
+      );
+      await this.drainAfterCommit(owner, cleanupFailure);
+      return result;
+    } finally {
+      owner.open = false;
+      owner.callbacks.length = 0;
+      activeSession.settle();
+      activeCallback?.settle();
     }
   }
 
@@ -498,18 +604,77 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
-  private async runConnectionTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  private async runConnectionTransaction<T>(
+    fn: () => Promise<T>,
+    confirmCommit?: () => void,
+    boundary?: TransactionBoundaryOptions,
+  ): Promise<T> {
     const activeSession = this.trackActiveSession();
+    let owner: TransactionOwner | undefined;
 
     try {
       if (typeof this.connection.transaction !== 'function') {
         throw new Error('Mongoose connection transaction resolver initialization failed.');
       }
 
-      return await this.connection.transaction((session) => this.sessions.run({ activeSession, session }, fn));
+      const result = await this.connection.transaction((session) => {
+        if (owner) {
+          owner.callbacks.length = 0;
+        }
+        const attempt: TransactionOwner = {
+          callbacks: [],
+          afterCommitEnabled: boundary?.requireAfterCommit === true,
+          open: true,
+        };
+        owner = attempt;
+        return this.sessions.run({ activeSession, session, owner: attempt }, () => this.runOwnerCallback(attempt, fn));
+      });
+      if (owner?.afterCommitEnabled) {
+        activeSession.confirmCommit();
+        confirmCommit?.();
+        await this.drainAfterCommit(owner);
+      }
+      return result;
     } finally {
+      if (owner) {
+        owner.open = false;
+        owner.callbacks.length = 0;
+      }
       activeSession.settle();
     }
+  }
+
+  private async runOwnerCallback<T>(owner: TransactionOwner, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      owner.callbacks.length = 0;
+      throw error;
+    } finally {
+      owner.open = false;
+    }
+  }
+
+  private async drainAfterCommit(
+    owner: TransactionOwner,
+    cleanupFailure?: { readonly reason: unknown },
+  ): Promise<void> {
+    await this.sessions.exit(async () => {
+      const results: PromiseSettledResult<void>[] = [];
+      for (const callback of owner.callbacks) {
+        results.push(await Promise.resolve().then(callback).then(
+          () => ({ status: 'fulfilled', value: undefined } as const),
+          (reason: unknown) => ({ status: 'rejected', reason } as const),
+        ));
+      }
+      owner.callbacks.length = 0;
+      if (cleanupFailure) {
+        throw new AfterCommitCleanupError(cleanupFailure.reason, results);
+      }
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new AfterCommitError(results);
+      }
+    });
   }
 
   private trackActiveSession(): ActiveSessionScopeHandle {
@@ -524,6 +689,11 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     this.activeSessions.add(active);
 
     return {
+      confirmCommit: () => {
+        for (const handle of retainedRequestTransactions) {
+          handle.active.abort = () => {};
+        }
+      },
       retainRequestTransaction: (handle) => {
         retainedRequestTransactions.add(handle);
       },

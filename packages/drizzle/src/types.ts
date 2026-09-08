@@ -1,5 +1,6 @@
 import type { MaybePromise } from '@fluojs/core';
 import type { PersistencePlatformStatusSnapshot } from '@fluojs/runtime';
+import type { AfterCommitCallback, TransactionBoundaryOptions } from './after-commit.js';
 
 type DrizzleTransactionCallback<TTransactionDatabase, TResult> = (database: TTransactionDatabase) => Promise<TResult>;
 
@@ -57,6 +58,13 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
  * @typeParam TTransactionOptions Options forwarded to `database.transaction(...)`.
  */
 export interface DrizzleHandleProvider<TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>, TTransactionDatabase = TDatabase, TTransactionOptions = unknown> {
+  /**
+   * Registers work synchronously on the active native owner for execution after commit.
+   *
+   * @param callback Work attempted sequentially after the outer native transaction resolves.
+   * @throws {AfterCommitCapabilityError} Outside an open native callback or in fail-open fallback.
+   */
+  afterCommit(callback: AfterCommitCallback): void;
   /** Produces the platform diagnostics snapshot for health and readiness integrations. */
   createPlatformStatusSnapshot(): PersistencePlatformStatusSnapshot;
   /** Returns the ambient transaction database when present, or the root Drizzle handle otherwise. */
@@ -67,15 +75,17 @@ export interface DrizzleHandleProvider<TDatabase extends DrizzleDatabaseLike<TTr
    * @param fn Callback executed within the request transaction scope.
    * @param signal Optional abort signal linked to the request lifecycle.
    * @param options Optional transaction options forwarded to `database.transaction(...)`.
+   * @param boundary Optional Fluo capability requirements checked before user work.
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
    */
-  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T>;
+  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
   /**
    * Opens a Drizzle transaction boundary around `fn`.
    *
    * @param fn Callback executed within the transaction scope.
    * @param options Optional transaction options forwarded to `database.transaction(...)`.
+   * @param boundary Optional Fluo capability requirements checked before user work.
    * @returns The callback result after the transaction finishes or the direct-execution fallback completes.
    */
-  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
 }

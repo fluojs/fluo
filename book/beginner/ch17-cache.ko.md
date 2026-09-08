@@ -284,6 +284,12 @@ Live entry의 TTL 생략은 절대 만료를 보존하고 생성에만 module �
 ## 17.6 Cache Invalidation Strategies
 캐싱에서 가장 어려운 과제는 데이터의 최신성을 유지하는 것입니다. 사용자가 프로필을 업데이트하면 캐시된 버전은 즉시 제거되어야 합니다. 이를 **캐시 무효화(Cache Invalidation)**라고 합니다.
 
+DB 변경에 맞춘 삭제와 앞 절의 HTTP 응답 commit은 서로 다른 경계입니다. Prisma·Drizzle·Mongoose의 활성 Fluo 트랜잭션 안에서 `afterCommit(async () => { await cache.del(key); })`를 등록하면 성공한 최종 바깥 네이티브 커밋 뒤에 삭제를 기다릴 수 있습니다. 여기의 `cache`와 `key`는 애플리케이션이 주입받은 서비스와 실제 읽기 key를 뜻하는 소비자 조각입니다. `@CacheEvict`의 HTTP 의미를 변경하거나 query별 key를 자동 발견하지 않습니다.
+
+해당 DB 경계의 마지막 인수로 `{ requireAfterCommit: true }`를 전달하면 콜백 전에 네이티브 커밋 관찰 능력을 요구합니다. 롤백·커밋 실패에서는 훅을 실행하지 않으며, 훅 실패는 이미 커밋된 DB를 뜻하는 `AfterCommitError.committed: true`와 모든 훅의 결과로 보고됩니다. DB 쓰기 전체를 재시도하지 말고 캐시 복구·TTL·영속 재전달 정책을 별도로 정하세요. 같은 서비스의 `remember()` 무효화와 다른 프로세스 loader의 재채우기는 여전히 다른 문제입니다.
+
+Redis는 Fluo 소유 커밋 추적이 없어 이 API를 지원하지 않습니다. DB 훅이 Redis를 호출해도 DB+Redis 원자성, outbox, 크래시·네트워크 exactly-once는 생기지 않으며, 향후 `MULTI/EXEC`는 별도 검토가 필요합니다. 공통 의미는 [Transaction Context](../../docs/architecture/transactions.ko.md), 구체적인 소비자 적용은 [현재 FluoBlog 캐시 장](../01-fluoblog/ch20-caching.ko.md)을 따릅니다.
+
 - **시간 기반 무효화**: TTL에 의존하여 자동으로 데이터가 만료되게 합니다. 간단하지만 짧은 시간 동안 "오래된" 데이터를 보여줄 수 있습니다.
 - **이벤트 기반 무효화**: 기본 데이터가 변경될 때 특정 키를 수동으로 제거합니다.
 - **버전 기반 무효화**: 캐시 키에 버전 번호를 추가합니다(예: `user:1:v2`). 데이터가 변경되면 버전을 증가시킵니다.
@@ -299,7 +305,7 @@ Live entry의 TTL 생략은 절대 만료를 보존하고 생성에만 module �
 이를 완화하는 일반적인 기술은 **지터링(Jittering)**입니다. 모든 키에 정확히 3600초의 TTL을 부여하는 대신, 작은 랜덤 "지터"(예: 3600 ± 60초)를 추가합니다. 이를 통해 동시에 생성된 키들이 정확히 같은 순간에 만료되지 않도록 보장하여, 데이터베이스 갱신 부하를 시간에 따라 더 고르게 분산시킵니다. Fluo는 opt-in `CacheModule.forRoot({ ttlJitter: { ratio: 0.1 } })`로 이 정책을 중앙화합니다. `CacheService`는 per-call TTL override를 포함해 resolved TTL이 양수일 때 store handoff 전에 한 번 지터를 적용하고, `ttl: 0`과 invalid TTL 의미는 보존합니다. 기본 `symmetric` mode는 TTL을 줄이거나 늘릴 수 있고, `shorten`과 `lengthen`은 방향을 제한합니다. 이는 만료 시점만 분산하며 distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 17.6.3 Write-Through vs. Write-Back Caching: Choosing the Right Trade-off
-"Write-Through" 캐싱에서는 애플리케이션이 캐시와 데이터베이스에 동시에 씁니다. 이는 캐시가 항상 최신 상태임을 보장합니다. "Write-Back" 캐싱에서는 애플리케이션이 캐시에만 쓰고, 백그라운드 프로세스가 주기적으로 변경 사항을 데이터베이스에 반영합니다. "Write-Back"은 쓰기 작업이 많은 부하 상황에서 매우 빠르지만, 캐시 서버가 다운될 경우 데이터 손실 위험이 있습니다. Fluo는 애플리케이션의 신뢰성 요구 사항에 따라 두 전략 중 하나를 구현할 수 있게 해줍니다.
+"Write-Through" 캐싱은 쓰기 경로에서 데이터베이스와 캐시를 함께 갱신하는 애플리케이션 전략입니다. 두 저장소의 원자성이나 항상 최신인 읽기를 Fluo가 보장한다는 뜻은 아닙니다. 커밋 뒤 훅으로 순서를 정해도 캐시 실패와 동시 재채우기 정책은 남습니다. "Write-Back" 캐싱은 캐시에 먼저 쓰고 백그라운드 작업이 DB에 반영하는 별도 전략이며, 캐시 유실 시 데이터 손실 위험을 애플리케이션이 감당해야 합니다. 두 전략 모두 자동 제공되는 전달 보장이 아닙니다.
 
 대부분의 FluoBlog 기능에서 "Write-Through"가 가장 안전한 기본값입니다. 하지만 높은 쓰기 처리량을 얻는 대신 일부 업데이트 손실을 감수할 수 있는 "게시물 조회수"와 같은 기능의 경우 "Write-Back"도 선택지가 됩니다. 수천 개의 조회수 증가분을 메모리에 버퍼링하고 1분마다 단일 배치로 Prisma에 반영하면, 데이터베이스를 마비시킬 수 있는 바이럴 트래픽 수준을 더 안정적으로 처리할 수 있습니다.
 

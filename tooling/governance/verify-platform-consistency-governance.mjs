@@ -1177,6 +1177,10 @@ export function isGovernedPackageSourcePath(relativePath) {
     return false;
   }
 
+  if (relativePath.includes('/node_modules/')) {
+    return false;
+  }
+
   if (!relativePath.includes('/src/')) {
     return false;
   }

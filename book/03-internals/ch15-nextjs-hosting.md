@@ -25,10 +25,26 @@ First, the following is the complete `next.config.ts`. If you have an existing N
 ```typescript
 import { withFluoNextBackend } from '@fluojs/platform-nextjs/next-config';
 
-export default withFluoNextBackend({});
+export default withFluoNextBackend({}, {
+  include: 'src/**',
+  exclude: 'src/client/**',
+  preserveModulePaths: true,
+});
 ```
 
 The helper adds a packaged Turbopack decorator loader for the server application's `*.ts` files. Browser and dependency files are excluded. It uses the same TC39 `2023-11` transformation recipe, but does not plug a Vite plugin into Next. Do not arbitrarily add another Babel loader or enable legacy decorator flags. If a `*.ts` rule already exists, the helper adds the Fluo rule while preserving the rule configuration, rather than destructively modifying the configuration object.
+
+This chapter keeps backend declarations under `src/` and client stores under
+`src/client/`. `include` and `exclude` accept path globs relative to the Turbopack
+root, or a `RegExp`. Include all decorated declarations in `src/app.ts` and
+`src/posts/` below. Client component SSR is not excluded by the browser condition
+alone. An `@` in a comment or import can match the existing content condition,
+so an explicit boundary matters. `preserveModulePaths: true` avoids renaming
+Babel output to `.js`. The `store.ts.js` SSR import failure reproduced on
+Next 16.3.4 can be compared with the
+[real fixture](../../packages/platform-nextjs/e2e/README.md).
+Omitting the second argument preserves the broad selection and `.js` output
+rule. This opt-in does not add webpack or `.tsx` decorator support.
 
 Put decorated classes in `.ts` files. Expecting the loader to transform UI JSX files with a `.tsx` extension changes the build boundary. The following example writes the React page with `createElement()` specifically to honor this constraint. You can also move actual UI components into separate, undecorated `.tsx` files and call them from a `.ts` router.
 

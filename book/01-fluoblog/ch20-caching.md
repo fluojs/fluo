@@ -221,6 +221,21 @@ Deleting the cache before the database commit to make the list fresh immediately
 
 `CacheService.del()` and `reset()` contain logic to prevent an in-flight `remember()` loader in the same service instance from refilling the cache. That logic is not a distributed barrier aware of in-flight work in every process using Redis. Keeping published posts themselves immutable greatly simplifies the detail cache. If the product later introduces revisions, it will need keys for new revisions and an authoritative query to select the current revision.
 
+Use Chapter 11's `afterCommit` to delete an application-managed cache key after commit. The following is a **consumer call fragment**. `prisma` is the existing `BlogDatabaseModule`'s `PrismaService`, `cache` is the injected `CacheService`, and `cacheKey` is the exact key shared by that service's reads and writes. `persist` is an application callback that performs only database changes through the same `prisma.current()`; this is not an example of nesting `PublishingService.publish()`, which has its own native options.
+
+```ts
+await prisma.transaction(async () => {
+  await persist();
+  prisma.afterCommit(async () => {
+    await cache.del(cacheKey);
+  });
+}, undefined, { requireAfterCommit: true });
+```
+
+`undefined` preserves the existing native-options position. An incapable client is rejected before `persist` runs, avoiding a path that writes data and only then discovers that hooks cannot be registered. Rollback and failed commit do not delete the key; a successful outer commit is followed by awaiting deletion. If deletion fails, `AfterCommitError.committed` is `true` and `results` retains every hook outcome. Record the committed database state separately from the cache failure rather than retrying publication. The application chooses among cache recovery, TTL, and durable redelivery as needed.
+
+Do not read this fragment as automatic invalidation of the query-specific HTTP cache keys below. No caller tracking every query and principal variant has been added; the list still uses its 30-second TTL policy. Hooks also do not eliminate stale refills by loaders in other processes. Redis has no Fluo-owned commit tracking and cannot use this API; future `MULTI/EXEC` support requires separate review. Deleting a Redis cache from a database hook does not provide PostgreSQL+Redis atomicity or exactly-once delivery across crashes and networks.
+
 ## Experimenting With Concurrent Misses Through the Source Contract
 
 The fail-soft reader above deliberately exposes `get -> DB -> set`. Its drawback is that simultaneous requests to a cold key can perform duplicate body queries. Within the same service instance, `CacheService.remember()` combines concurrent misses for the same key into one loader. Choosing it shortens the code, but store failures are also observed as rejections from the direct API, so you must design the policy for distinguishing source failures from cache failures at the same time.
@@ -406,3 +421,4 @@ FluoBlog now reuses immutable public content and refreshes a dynamically growing
 - [Cache Contract Tests](../../packages/cache-manager/src/cache-service.test.ts), [Independent-Key Concurrency Tests](../../packages/cache-manager/src/cache-service.concurrency.test.ts)
 - [Module Configuration and Client Resolution](../../packages/cache-manager/src/module.ts), [HTTP Interceptor Regression Tests](../../packages/cache-manager/src/interceptor.contract-regression.test.ts)
 - [Redis README: TTL Codecs and Connection Lifecycle](../../packages/redis/README.md), [Redis Public Exports](../../packages/redis/src/index.ts)
+- [Shared post-commit execution contract](../../docs/architecture/transactions.md), [Prisma after-commit API](../../packages/prisma/README.md), [regression verification target](../../packages/prisma/src/after-commit.test.ts)

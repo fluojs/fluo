@@ -40,6 +40,10 @@ For atomic cache mutation, start at the [cache-manager API owner](../packages/ca
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## Persistence After-Commit Work
+
+Prisma, Drizzle, and Mongoose `afterCommit` ordering, native capability, nesting/retries, post-commit failures, and shutdown are owned by the [Transaction Context Contract](./architecture/transactions.md#after-commit-work). Read the [Prisma](../packages/prisma/README.md#cache-invalidation-after-commit), [Drizzle](../packages/drizzle/README.md#cache-invalidation-after-commit), and [Mongoose](../packages/mongoose/README.md#cache-invalidation-after-commit) READMEs for public arguments and cache invalidation usage. Books explain application of that contract. Verification targets are each package's `packages/*/src/after-commit.test.ts`, `tooling/governance/after-commit-contract.test.ts`, and native `packages/prisma/fixtures/after-commit/`; actual execution results require a separate receipt. Redis commit tracking, DB+Redis atomicity, and crash/network exactly-once guarantees are excluded.
+
 ## Decorator Default Audit
 
 [Public Decorator Defaults](./reference/decorator-defaults.md) reconciles all 165 owned public
@@ -120,6 +124,13 @@ Runtime, webpack integration, and raw WebSocket upgrades are not supported.
 The [package surface](./reference/package-surface.md) and
 [release publish list](./contracts/release-governance.md#intended-publish-surface)
 include this adapter.
+
+The opt-in compiler scope and SSR module path preservation contract belongs to
+the [Next package README](../packages/platform-nextjs/README.md#decorator-compiler-wiring).
+`withFluoNextBackend` options `include`/`exclude` and `preserveModulePaths`
+do not change existing defaults. Execution evidence is linked from the
+[helper regressions](../packages/platform-nextjs/src/next-config.test.ts) and
+[real Next fixture](../packages/platform-nextjs/e2e/README.md).
 
 ## Lifecycle & Multi-Provider Ordering
 
