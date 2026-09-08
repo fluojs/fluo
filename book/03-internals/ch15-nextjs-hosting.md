@@ -242,6 +242,47 @@ The [HEAD contract](../../packages/platform-nextjs/README.md#head-routing) and
 [Next production E2E](../../packages/platform-nextjs/e2e/next.test.mjs) provide
 evidence for auto-HEAD, direct HEAD, handler 404s, and stream cleanup.
 
+## Do Not Disguise the Draft Save Content-Type
+
+Showing 401 before 400 for malformed JSON from an unauthenticated editor is a
+blog policy, not automatic authentication supplied by a text parser. When adding
+a draft-save route to this chapter's app, use the adapter's per-path policy
+instead of a replacement Request with a changed Content-Type. This fragment
+assumes you add `/api/posts/draft`; it does not claim the earlier AppModule
+already provides that route.
+
+```typescript
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+  maxBodySize: 1_048_576,
+  bodyParser(text, context) {
+    if (context.path === '/api/posts/draft') return text;
+    return context.parseDefault();
+  },
+});
+```
+
+Check authentication in the guard, then interpret the string at
+`context.request.body` as JSON in the handler, translating syntax errors to
+`BadRequestException`. Other routes delegate to the original MIME parser through
+`parseDefault()` rather than duplicating JSON defaults. Body collection and byte
+limits still precede guards: oversized requests return 413 regardless of auth.
+JSON errors thrown inside a custom parser also precede guards.
+
+Remove the wrapper that changes Content-Type to `text/plain` and reconstructs
+the Request; pass the original Request to the standard facade. The Next adapter
+consumes that body once without cloning. `rawBody: true` preserves bytes; it is
+not a JSON interpretation bypass. Pages Router still needs Next
+`bodyParser: false` to preserve original stream ownership.
+
+Read the [parser contract and matrix](../../packages/http/README.md#bounded-body-parser-policy),
+[Next usage](../../packages/platform-nextjs/README.md#bounded-body-parsing), and
+[executable production fixture](../../packages/platform-nextjs/e2e/fixture/backend.ts).
+The fixture's `/api/app/bounded-auth` and `/api/pages/bounded-auth` compare
+unauthenticated 401 with authenticated 400 for small malformed JSON, and 413 for
+oversized input. This is a current-checkout reproduction, not verification of
+every Next version or deployment environment.
+
 ## Test Concurrent First Requests and Requests After Close
 
 The following complete `src/next-adapter.test.ts` assumes the earlier `AppModule` and the current Fluo standard-decorator Vitest configuration. It tests the public interfaces of the adapter and lazy facade without opening a Next server. An existing test configuration using the decorator plugin from `@fluojs/testing/vitest` is required; the Next config helper does not replace Vitest's transformation.

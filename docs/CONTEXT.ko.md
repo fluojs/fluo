@@ -141,6 +141,18 @@ Compiler scope와 SSR module path 보존의 opt-in 계약은
 [helper 회귀](../packages/platform-nextjs/src/next-config.test.ts)와
 [실제 Next fixture](../packages/platform-nextjs/e2e/README.ko.md)에서 확인하세요.
 
+## Bounded Body Parser Policy
+
+Content-Type 변경 없는 text/custom 파싱은
+[HTTP 정책과 adapter matrix](../packages/http/README.ko.md#bounded-body-parser-policy) 및
+[HTTP materialization 경계](./architecture/http-runtime.ko.md#body-parser-boundary)에서 시작하세요.
+Runtime Web helper가 정책을 구현하고 Next와 Workers adapter가 노출합니다.
+[Next 사용 안내](../packages/platform-nextjs/README.ko.md#bounded-body-parsing)는 경로별
+default 위임과 Request 재구성 제거를 설명합니다. 읽기와 byte limit은 여전히
+middleware/guard보다 먼저이며 이후 앱의 JSON 해석보다 인증을 우선하려면 명시적으로
+구성해야 합니다. 근거는 runtime, Next, Workers의 `body-parser.test.ts`
+(runtime은 `web-body-parser.test.ts`), cold Next declaration 테스트, 실제 Next E2E입니다.
+
 ## 라이프사이클 및 multi-provider 순서
 
 [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.

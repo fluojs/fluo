@@ -660,3 +660,54 @@ dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `
 - `examples/realworld-api/src/users/create-user.dto.ts`
 - `examples/auth-jwt-passport/src/auth/auth.controller.ts`
 - `packages/http/src/dispatch/dispatcher.test.ts`
+
+## Bounded Body Parser Policy
+
+`BodyParser`와 `BodyParserContext`는 `@fluojs/http` 및
+`@fluojs/http/portable`에서 export합니다. HTTP가 정책을 소유하고 runtime이
+Web 읽기를 구현하며 platform adapter가 지원 설정을 노출합니다. 생략 또는
+`'default'`는 기존 MIME 기반 파싱을 유지합니다. 잘못된 JSON은 HTTP 400,
+유효한 JSON `null`은 `null`, 비-JSON은 text이며 multipart는 기존 parser를 씁니다.
+
+`'text'`로 opt-in하면 Content-Type, header, native Request를 변경하지 않고
+UTF-8 decoded text를 받습니다. 빈 stream은 `''`, body 부재는 `undefined`입니다.
+사용자 `(text, context) => value | Promise<value>`는 생성 시점의 `contentType`,
+`headers`, `method`, `path`와 framework `signal`을 받습니다.
+`context.parseDefault()`는 이미 제한된 byte에 기존 MIME parser를 적용하며
+request를 다시 소비하지 않습니다. 경로별 정책에서 다른 경로를 위임할 때
+JSON/MIME 로직을 복제할 필요가 없습니다. Body 부재와 multipart에서는 callback을
+호출하지 않습니다. 잘못된 JavaScript option은 setup에서 `TypeError`로 실패하며
+TypeScript도 미지원 mode와 callback signature를 거부합니다.
+
+모든 mode는 decoding/callback 전에 byte limit을 유지합니다. Text/custom 파싱에서
+`rawBody: true`는 별개로 정확한 byte를 보존하며 빈 stream은 0 byte입니다.
+Multipart의 raw-body 제외는 유지합니다. Materialization은 dispatch까지 지연하고
+동시 호출과 실패에서도 memoize합니다. Opt-in stream 읽기는 cancellation을
+관찰하고 reader를 해제합니다. Async callback은 `context.signal`에 협력해야 하며
+abort된 callback 결과는 body에 할당하지 않습니다. 사용자 parser가 소비된 body를
+다시 읽을 수는 없습니다.
+
+**순서:** materialization과 parser 실패는 HTTP middleware, route matching,
+guard, DTO binding, exception filter보다 먼저입니다. Text mode만으로 인증 순서를
+보장하지 않습니다. 잘못된 JSON보다 인증을 우선하려면 middleware/guard에서
+명시적으로 인증하고 handler 또는 그 뒤의 application-owned 단계에서 text를
+해석하여 잘못된 JSON에 `BadRequestException`을 던지세요. Byte-limit 413과
+transport 실패는 여전히 인증보다 먼저입니다. 사용자 parser도 인증 전에 실행합니다.
+초기 HTTP 오류를 선택하려면 `HttpException`을 던지며 알 수 없는 예외는 500입니다.
+전역 malformed-JSON-to-null fallback은 설치하지 않습니다.
+
+### Adapter Capability Matrix
+
+| Surface | Parser policy | Ownership and evidence |
+| --- | --- | --- |
+| `@fluojs/runtime/web` | 지원 | Web factory, dispatch, standalone request helper; `packages/runtime/src/web-body-parser.test.ts` |
+| Next App Router 및 Pages Router | 지원 | `NextAdapterOptions.bodyParser`; Pages는 Next `bodyParser: false` 유지; `packages/platform-nextjs/src/body-parser.test.ts` 및 실제 Next E2E |
+| Cloudflare Workers | 지원 | Adapter/bootstrap이 Web factory option을 상속; `packages/platform-cloudflare-workers/src/body-parser.test.ts`는 실제 fetch adapter를 실행하며 deployed isolate 검증은 아님 |
+| Bun 및 Deno adapter/fetch helper | 미노출 | 기존 adapter option/default parsing 유지; 직접 runtime Web helper 사용은 별도 integration surface |
+| Node.js, Express, Fastify | 미노출 | 기존 host/parser 소유권 유지; Web 정책이 Fastify의 이미 파싱된 host body를 다시 소비하지 않음 |
+
+Runtime, Next, Workers 테스트는 `tooling/testing/body-parser-cases.json`의 동일한
+wire-case fixture를 소비합니다. 기존 Web portability와 Fastify native-body 테스트는
+default/raw-body/multipart 동작을 유지합니다. 공개 declaration 테스트는 cold isolated
+의존성 closure를 build하고 package export map으로 해석합니다.
+[Next 사용법과 migration](../platform-nextjs/README.ko.md#bounded-body-parsing)을 참고하세요.

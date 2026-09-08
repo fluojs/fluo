@@ -434,3 +434,50 @@ Unit suite에는 공통 Web portability 검사와 native Pages transport 회귀
 테스트가 포함됩니다. E2E suite는 package 배포 파일로 실제 Next.js application을
 dev/build/start를 거쳐 source alias 없이 두 router와 client store SSR을
 HTTP로 검증합니다. [Fixture 실행 안내](./e2e/README.ko.md)를 참조하세요.
+
+## Bounded Body Parsing
+
+Adapter 생성 시 `NextAdapterOptions.bodyParser`를 설정합니다. HTTP 소유
+`BodyParser`인 `'default'`(생략 시 기본값), `'text'`, 동기/비동기 callback을 받습니다.
+애플리케이션 전체 text mode는 `createNextAdapter({ bodyParser: 'text' })`입니다.
+경로별 정책은 Request 재구성 대신 선택하지 않은 경로를 기존 parser에 위임합니다.
+
+```typescript
+import { createNextAdapter } from '@fluojs/platform-nextjs';
+
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+  maxBodySize: 1_048_576,
+  rawBody: true,
+  bodyParser(text, context) {
+    if (context.path === '/api/posts/draft') return text;
+    return context.parseDefault();
+  },
+});
+```
+
+이 adapter를 기존 `FluoFactory.create()`에 전달하고 일반 App/Pages facade를
+유지하세요. Path는 Fluo route matching 이전의 원래 URL pathname이며 이 단계에는
+matched params나 route metadata가 없습니다. Multipart는 기존 parser/limit을 유지하고
+callback을 호출하지 않습니다. 기본값, 빈 body/부재, raw byte, 오류, abort 협력은
+[HTTP 계약과 capability matrix](../http/README.ko.md#bounded-body-parser-policy)가 소유합니다.
+
+**인증 경계:** bounded read와 사용자 callback은 Fluo middleware, guard, filter보다
+먼저입니다. 잘못된 JSON의 400보다 401을 우선하려면 text를 받고 middleware/guard에서
+명시적으로 인증한 다음 handler(또는 이후 application 단계)에서 JSON을 파싱하고
+syntax error를 `BadRequestException`으로 변환하세요. 크기 초과 입력은 여전히 인증
+전에 413입니다. Text mode는 인증하거나 pipeline 순서를 바꾸거나 잘못된 JSON을 null로
+만들지 않습니다.
+
+**Migration:** Content-Type을 `text/plain`으로 바꾸고 대체 Request를 만드는 wrapper를
+제거하세요. 원래 header를 유지하고 원래 Request를 표준 facade에 전달합니다.
+Adapter는 이미 clone 없이 원본 body를 소비합니다. 제거한 wrapper의 proxied
+Request.clone 실패는 Next adapter 결함이 아닙니다. `rawBody: true`만으로 JSON 파싱을
+우회할 수도 없습니다. Pages Router는 Fluo가 raw stream을 소유하도록 Next
+`api: { bodyParser: false }` export를 유지합니다. Upstream에서 파싱한 host body로 원래
+byte를 복구할 수는 없습니다.
+
+근거: `src/body-parser.test.ts`, `src/head-routing-public-types.test.ts`의 cold 공개
+declaration 테스트, `e2e/fixture/backend.ts`와 `e2e/next.test.mjs`. Production fixture는
+App/Pages route에서 request/header 재작성 없이 이 공개 callback을 사용하며 default
+위임, UTF-8 limit, raw byte, 빈/잘못된/비-JSON 입력, 인증 우선순위를 검증합니다.

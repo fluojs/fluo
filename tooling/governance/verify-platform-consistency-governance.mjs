@@ -55,6 +55,27 @@ const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
 const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
+const bodyParserRuntimeSourcePaths = [
+  'packages/http/src/types.ts',
+  'packages/runtime/src/web.ts',
+  'packages/platform-nextjs/src/adapter.ts',
+];
+const bodyParserRegressionEvidence = [
+  'packages/runtime/src/web-body-parser.test.ts',
+  'packages/platform-nextjs/src/body-parser.test.ts',
+  'packages/platform-cloudflare-workers/src/body-parser.test.ts',
+  'packages/platform-nextjs/src/head-routing-public-types.test.ts',
+  'packages/platform-nextjs/e2e/next.test.mjs',
+  'tooling/testing/body-parser-cases.json',
+  'packages/http/README.md',
+  'packages/http/README.ko.md',
+  'packages/runtime/README.md',
+  'packages/runtime/README.ko.md',
+  'packages/platform-nextjs/README.md',
+  'packages/platform-nextjs/README.ko.md',
+  'packages/platform-cloudflare-workers/README.md',
+  'packages/platform-cloudflare-workers/README.ko.md',
+];
 const nextHeadRoutingRegressionEvidence = [
   'packages/http/src/head-routing.test.ts',
   'packages/platform-nextjs/src/head-routing.test.ts',
@@ -1723,6 +1744,13 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       hasChanged(changedFiles, httpConnectionIdentityRegressionTest)
       || hasChanged(changedFiles, accessLogObserverLifecycleRegressionTest)
     ) {
+      return;
+    }
+    if (bodyParserRuntimeSourcePaths.every((path) => hasChanged(changedFiles, path))) {
+      assert(
+        bodyParserRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `Bounded body parser contract changes must include ${bodyParserRegressionEvidence.join(', ')}.`,
+      );
       return;
     }
     assert(

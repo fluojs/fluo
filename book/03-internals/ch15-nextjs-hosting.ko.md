@@ -239,6 +239,43 @@ curl -I http://127.0.0.1:3000/api/posts/999
 [Next production E2E](../../packages/platform-nextjs/e2e/next.test.mjs)가
 자동 HEAD, 직접 HEAD, handler 404, stream 정리의 근거다.
 
+## 초안 저장의 Content-Type을 위장하지 않는다
+
+로그인하지 않은 편집기의 잘못된 JSON에 400보다 401을 먼저 보여 주는 것은 블로그의
+정책이지 text parser의 자동 인증 기능이 아니다. 이 장의 앱에 초안 저장 route를
+추가할 때는 Content-Type을 바꾼 대체 Request 대신 adapter의 경로별 정책을 사용한다.
+다음은 `/api/posts/draft`를 추가하는 경우의 설정 조각이며 기존 장의 AppModule이 이미
+그 route를 제공한다는 뜻은 아니다.
+
+```typescript
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+  maxBodySize: 1_048_576,
+  bodyParser(text, context) {
+    if (context.path === '/api/posts/draft') return text;
+    return context.parseDefault();
+  },
+});
+```
+
+인증 guard에서 로그인 여부를 확인한 뒤 handler가 `context.request.body`의 string을
+JSON으로 해석하고 syntax error를 `BadRequestException`으로 바꾼다. 다른 route는
+`parseDefault()`로 기존 MIME parser에 위임하므로 JSON 기본 동작을 복제하지 않는다.
+Body 수집과 byte limit은 guard보다 먼저이며 너무 큰 요청은 인증 여부와 관계없이
+413이다. 사용자 parser 안에서 JSON을 해석하면 그 오류도 guard보다 먼저다.
+
+Content-Type을 `text/plain`으로 바꾸고 Request를 재구성하던 wrapper는 제거하고
+표준 facade에 원래 Request를 전달한다. Next adapter는 원본 body를 한 번 소비하며
+clone하지 않는다. `rawBody: true`는 byte 보존일 뿐 JSON 해석 우회가 아니다.
+Pages Router의 Next `bodyParser: false`는 원본 stream 소유권을 위해 계속 필요하다.
+
+[Parser 계약과 matrix](../../packages/http/README.ko.md#bounded-body-parser-policy),
+[Next 사용법](../../packages/platform-nextjs/README.ko.md#bounded-body-parsing),
+[실행 가능한 production fixture](../../packages/platform-nextjs/e2e/fixture/backend.ts)를
+함께 보자. Fixture의 `/api/app/bounded-auth`와 `/api/pages/bounded-auth`는 작은
+malformed JSON에서 미인증 401, 인증 후 400을, 큰 입력에서는 413을 비교한다.
+현재 checkout에서 재현하는 실험이며 모든 Next 버전이나 배포 환경을 검증했다는 뜻은 아니다.
+
 ## 동시에 들어온 첫 요청과 닫힌 뒤의 요청을 시험한다
 
 아래 완전한 `src/next-adapter.test.ts`는 앞의 `AppModule`과 현재 Fluo 표준 데코레이터 Vitest 구성을 전제로 한다. 테스트는 Next 서버를 열지 않고 adapter와 lazy facade의 공개 접점을 검증한다. `@fluojs/testing/vitest`의 decorator plugin을 사용하는 기존 테스트 설정이 필요하며 Next용 config helper가 Vitest의 변환을 대신하지는 않는다.

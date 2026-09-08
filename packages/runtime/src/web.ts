@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  type BodyParser,
+  type BodyParserContext,
   createErrorResponse,
   type Dispatcher,
   type FrameworkRequest,
@@ -34,6 +36,8 @@ const REQUEST_BODY_LIMIT_MESSAGE = 'Request body exceeds the size limit.';
  * Configures Web request parsing, multipart handling, and raw body preservation.
  */
 export interface CreateWebRequestResponseFactoryOptions {
+  /** HTTP-owned non-multipart parser policy. Omission preserves MIME-based parsing. */
+  bodyParser?: BodyParser;
   consumeOriginalBody?: boolean;
   maxBodySize?: number;
   multipart?: MultipartOptions;
@@ -54,7 +58,7 @@ export interface DispatchWebRequestOptions extends CreateWebRequestResponseFacto
   /**
    * Factory reused by adapters that share one stable Web parsing configuration across requests.
    *
-   * When provided, the factory owns parsing configuration and `maxBodySize`, `multipart`, and `rawBody` are ignored.
+   * When provided, the factory owns parsing configuration and `bodyParser`, `maxBodySize`, `multipart`, and `rawBody` are ignored.
    */
   factory?: RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse>;
   request: Request;
@@ -310,6 +314,7 @@ export function createWebRequestResponseFactory(
   options: CreateWebRequestResponseFactoryOptions = {},
 ): RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse> {
   const maxBodySize = resolveWebMaxBodySize(options.maxBodySize);
+  const bodyParser = resolveWebBodyParser(options.bodyParser);
 
   return {
     async createRequest(request: Request, signal: AbortSignal) {
@@ -320,6 +325,7 @@ export function createWebRequestResponseFactory(
         maxBodySize,
         options.rawBody ?? false,
         options.consumeOriginalBody ?? false,
+        bodyParser,
       );
     },
     materializeRequest(request) {
@@ -406,6 +412,7 @@ export function startWebRequestDispatch({
  * @param multipartOptions - Multipart parser options applied to multipart requests.
  * @param maxBodySize - Maximum allowed non-multipart body size in bytes.
  * @param preserveRawBody - Whether to retain the raw request body bytes.
+ * @param bodyParser - Bounded non-multipart parsing policy; defaults to MIME-based parsing.
  * @returns The normalized framework request used by the dispatcher.
  */
 export async function createWebFrameworkRequest(
@@ -414,6 +421,7 @@ export async function createWebFrameworkRequest(
   multipartOptions?: MultipartOptions,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
+  bodyParser: BodyParser = 'default',
 ): Promise<FrameworkRequest> {
   const resolvedMaxBodySize = resolveWebMaxBodySize(maxBodySize);
   const frameworkRequest = createDeferredWebFrameworkRequest(
@@ -422,6 +430,8 @@ export async function createWebFrameworkRequest(
     multipartOptions,
     resolvedMaxBodySize,
     preserveRawBody,
+    false,
+    resolveWebBodyParser(bodyParser),
   );
   await materializeWebFrameworkRequestBody(frameworkRequest);
 
@@ -445,6 +455,7 @@ function createDeferredWebFrameworkRequest(
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
   consumeOriginalBody = false,
+  bodyParser: BodyParser = 'default',
 ): FrameworkRequest {
   const url = new URL(request.url);
   const requestHeaders = new Headers(request.headers);
@@ -486,7 +497,10 @@ function createDeferredWebFrameworkRequest(
       return;
     }
 
-    validateWebRequestContentLength(request, maxBodySize);
+    validateWebRequestContentLength(bodyParser === 'default' ? request : { headers: requestHeaders }, maxBodySize);
+    if (bodyParser !== 'default') {
+      signal.throwIfAborted();
+    }
 
     if (!request.body) {
       frameworkRequest.body = undefined;
@@ -499,6 +513,8 @@ function createDeferredWebFrameworkRequest(
       contentType,
       maxBodySize,
       preserveRawBody,
+      bodyParser,
+      { contentType, get headers() { return headers(); }, method, path: url.pathname, signal },
     );
     frameworkRequest.body = bodyResult.body;
 
@@ -558,7 +574,7 @@ function createRequestWithSnapshotMetadata(
   return new Request(url, init);
 }
 
-function validateWebRequestContentLength(request: Request, maxBodySize: number): void {
+function validateWebRequestContentLength(request: Pick<Request, 'headers'>, maxBodySize: number): void {
   const contentLength = request.headers.get('content-length');
 
   if (contentLength === null) {
@@ -570,6 +586,14 @@ function validateWebRequestContentLength(request: Request, maxBodySize: number):
   if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
     throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
   }
+}
+
+function resolveWebBodyParser(value: BodyParser | undefined): BodyParser {
+  if (value === undefined) return 'default';
+  if (value !== 'default' && value !== 'text' && typeof value !== 'function') {
+    throw new TypeError('bodyParser must be default, text, or a parser function.');
+  }
+  return value;
 }
 
 function resolveWebMaxBodySize(value: number | undefined): number {
@@ -723,15 +747,35 @@ async function readWebRequestBody(
   request: Request,
   contentType: string | undefined,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
-  preserveRawBody = false,
+  preserveRawBody: boolean,
+  bodyParser: BodyParser,
+  context: Omit<BodyParserContext, 'parseDefault'>,
 ): Promise<{ body: unknown; rawBody?: Uint8Array }> {
-  validateWebRequestContentLength(request, maxBodySize);
+  if (bodyParser === 'default') {
+    validateWebRequestContentLength(request, maxBodySize);
+  }
 
   if (!request.body) {
     return { body: undefined };
   }
 
-  return parseWebRequestRawBody(await readByteLimitedStream(request.body, maxBodySize), contentType, preserveRawBody);
+  const rawBody = await readByteLimitedStream(
+    request.body, maxBodySize, bodyParser === 'default' ? undefined : context.signal,
+  );
+  if (bodyParser === 'default') {
+    return parseWebRequestRawBody(rawBody, contentType, preserveRawBody);
+  }
+  const text = TEXT_DECODER.decode(rawBody);
+  const body = bodyParser === 'text' ? text : await bodyParser(text, {
+    contentType: context.contentType,
+    get headers() { return context.headers; },
+    method: context.method,
+    path: context.path,
+    signal: context.signal,
+    parseDefault: () => parseWebRequestRawBody(rawBody, contentType, false).body,
+  });
+  context.signal.throwIfAborted();
+  return { body, rawBody: preserveRawBody ? rawBody : undefined };
 }
 
 function parseWebRequestRawBody(
@@ -769,14 +813,22 @@ function parseWebRequestRawBody(
 async function readByteLimitedStream(
   stream: ReadableStream<Uint8Array>,
   maxBodySize: number,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let totalSize = 0;
+  const onAbort = () => {
+    // Cancellation must not delay settlement or replace the original failure.
+    void Promise.allSettled([reader.cancel(signal?.reason)]);
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
 
   try {
     while (true) {
       const { done, value } = await reader.read();
+      signal?.throwIfAborted();
 
       if (done) {
         break;
@@ -795,6 +847,7 @@ async function readByteLimitedStream(
       chunks.push(value);
     }
   } finally {
+    signal?.removeEventListener('abort', onAbort);
     reader.releaseLock();
   }
 

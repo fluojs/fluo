@@ -35,6 +35,21 @@ opt-in transport API, body suppression, stream cleanup, wrapper migration을
 `packages/platform-nextjs/src/head-routing.test.ts`,
 실제 Next `packages/platform-nextjs/e2e/next.test.mjs`.
 
+## Body Parser Boundary
+
+HTTP가 `BodyParser`와 `BodyParserContext`를 소유하고 runtime이 bounded Web
+materialization을 구현하며 adapter가 지원 option을 노출합니다. Materialization은
+아래 dispatcher lifecycle 이전에 유지됩니다. Opt-in text/custom 파싱은 원래 header를
+보존하며 인증을 읽기나 byte limit 앞으로 옮기지 않습니다. 애플리케이션은 이후 자신의
+JSON 해석보다 먼저 인증할 수 있지만 사용자 parser callback 자체는 여전히
+middleware/guard보다 먼저 실행합니다. 이미 파싱된 host body는 기존 adapter가
+소유하며 이 Web 경로가 다시 소비하지 않습니다.
+[HTTP README](../../packages/http/README.ko.md#bounded-body-parser-policy)가 정책과
+adapter matrix를, [Next README](../../packages/platform-nextjs/README.ko.md#bounded-body-parsing)가
+설정과 wrapper migration을 소유합니다. 회귀 근거는
+`packages/runtime/src/web-body-parser.test.ts`,
+`packages/platform-nextjs/src/body-parser.test.ts`, 실제 Next production E2E입니다.
+
 ## Request Lifecycle
 
 1. 어댑터는 정규화된 `FrameworkRequest`와 `FrameworkResponse`를 `Dispatcher.dispatch(...)`에 전달하며, host가 요청 취소를 노출한다면 `signal` 또는 `isAborted()`를 포함한다.

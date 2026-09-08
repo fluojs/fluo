@@ -219,3 +219,25 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 
 - `packages/platform-cloudflare-workers/src/adapter.test.ts`
 - `packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts`
+
+## Bounded Body Parsing
+
+`CloudflareWorkerAdapterOptions`는 runtime Web factory의 HTTP 소유 `bodyParser`
+정책을 상속합니다. Adapter와 bootstrap helper는 `'text'`, `'default'`, 사용자
+callback을 받으며 생략하면 기존 MIME 기반 파싱과 limit을 유지합니다.
+
+```typescript
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+
+const adapter = createCloudflareWorkerAdapter({
+  bodyParser: 'text', maxBodySize: 1_048_576, rawBody: true,
+});
+```
+
+Header와 native Request identity를 보존하고 runtime clone 경로는 원본 body를 읽을
+수 있게 남깁니다. Multipart는 독립적으로 유지합니다. 파싱은 HTTP middleware/guard보다
+먼저이므로 text만으로 인증 순서를 보장하지 않습니다. Callback 위임, 오류, 빈 body,
+cancellation 협력은 [HTTP 계약과 matrix](../http/README.ko.md#bounded-body-parser-policy)를
+참고하세요. `src/body-parser.test.ts`는 공통 wire fixture로 실제 adapter를 실행하고
+`waitUntil` lifecycle을 관찰합니다. 로컬 Web conformance이며 deployed Cloudflare isolate
+테스트를 했다는 주장은 아닙니다.

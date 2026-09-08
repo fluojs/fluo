@@ -35,6 +35,22 @@ migration. Path wildcards remain deferred. Evidence:
 `packages/platform-nextjs/src/head-routing.test.ts`, and the real Next
 `packages/platform-nextjs/e2e/next.test.mjs`.
 
+## Body Parser Boundary
+
+HTTP owns `BodyParser` and `BodyParserContext`; runtime owns bounded Web
+materialization, and adapters expose supported options. Materialization remains
+before the dispatcher lifecycle below. Opt-in text/custom parsing preserves
+original headers and does not move authentication ahead of reading or byte limits.
+An application can authenticate before its own later JSON interpretation; custom
+parser callbacks themselves still run before middleware/guards. Host-parsed
+bodies remain with their existing adapter and are not consumed by this Web path.
+The [HTTP README](../../packages/http/README.md#bounded-body-parser-policy) owns
+the policy and adapter matrix; the
+[Next README](../../packages/platform-nextjs/README.md#bounded-body-parsing) owns
+configuration and wrapper migration. Regression evidence is in
+`packages/runtime/src/web-body-parser.test.ts`,
+`packages/platform-nextjs/src/body-parser.test.ts`, and the real Next production E2E.
+
 ## Request Lifecycle
 
 1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`, including `signal` or `isAborted()` when the host exposes request cancellation.

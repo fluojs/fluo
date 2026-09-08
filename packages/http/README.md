@@ -668,3 +668,55 @@ The dispatcher evaluates normal conditional requests first. `If-Range` then perm
 - `examples/realworld-api/src/users/create-user.dto.ts`
 - `examples/auth-jwt-passport/src/auth/auth.controller.ts`
 - `packages/http/src/dispatch/dispatcher.test.ts`
+
+## Bounded Body Parser Policy
+
+`BodyParser` and `BodyParserContext` are exported from `@fluojs/http` and
+`@fluojs/http/portable`. HTTP owns this policy; runtime implements Web reads;
+platform adapters expose the supported configuration. Omission or `'default'`
+keeps existing MIME-based parsing, including malformed JSON as HTTP 400, valid
+JSON `null` as `null`, and non-JSON text. Multipart uses its existing parser.
+
+Opt in with `'text'` to receive UTF-8 decoded text without changing Content-Type,
+headers, or the native Request. An empty stream produces `''`; an absent body
+remains `undefined`. A custom `(text, context) => value | Promise<value>` receives
+creation-time `contentType`, `headers`, `method`, `path`, and the framework `signal`.
+`context.parseDefault()` applies the existing MIME parser to the bounded bytes,
+without consuming the request again, so a per-path policy can delegate other
+paths without duplicating JSON/MIME logic. Custom callbacks are not invoked for
+absent or multipart bodies. Invalid JavaScript option values fail setup with
+`TypeError`; TypeScript rejects unsupported modes and callback signatures.
+
+All modes retain byte limits before decoding or callbacks. With text/custom
+parsing, `rawBody: true` retains exact bytes independently, including zero bytes
+for an empty stream; multipart raw-body exclusion is unchanged. Materialization
+is deferred until dispatch and memoized across concurrent calls and failures.
+Opt-in stream reads observe cancellation and release the reader; async callbacks
+must cooperate with `context.signal`, and an aborted callback result is never
+assigned. A custom parser cannot re-read the consumed body.
+
+**Ordering:** materialization and parser failures precede HTTP middleware,
+route matching, guards, DTO binding, and exception filters. Text mode alone
+never guarantees authentication order. To give authentication precedence over
+malformed JSON, explicitly authenticate in middleware/guards, then interpret
+text in the handler or a later application-owned stage and throw
+`BadRequestException` for invalid JSON. Byte-limit 413 and transport failures
+still precede authentication. A custom parser runs before authentication too;
+throw an `HttpException` to select its early HTTP error, while unknown exceptions
+remain 500. No global malformed-JSON-to-null fallback is installed.
+
+### Adapter Capability Matrix
+
+| Surface | Parser policy | Ownership and evidence |
+| --- | --- | --- |
+| `@fluojs/runtime/web` | Supported | Web factory, dispatch, and standalone request helper; `packages/runtime/src/web-body-parser.test.ts` |
+| Next App Router and Pages Router | Supported | `NextAdapterOptions.bodyParser`; Pages still requires Next `bodyParser: false`; `packages/platform-nextjs/src/body-parser.test.ts` and real Next E2E |
+| Cloudflare Workers | Supported | Inherited Web factory option on adapter/bootstrap; `packages/platform-cloudflare-workers/src/body-parser.test.ts` exercises the actual fetch adapter, not a deployed isolate |
+| Bun and Deno adapter/fetch helpers | Not exposed | Keep existing adapter options/default parsing; direct runtime Web helpers are a separate integration surface |
+| Node.js, Express, Fastify | Not exposed | Their existing host/parser ownership remains unchanged; Fastify's already parsed host body is not re-consumed by the Web policy |
+
+The runtime, Next, and Workers tests consume the same wire-case fixture at
+`tooling/testing/body-parser-cases.json`. Existing Web portability and Fastify
+native-body tests retain default/raw-body/multipart behavior. Public declaration
+tests build a cold isolated dependency closure and resolve package export maps.
+See the [Next usage and migration](../platform-nextjs/README.md#bounded-body-parsing).

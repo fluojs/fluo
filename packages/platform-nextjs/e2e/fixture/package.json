@@ -1,0 +1,6 @@
+{
+  "name": "@fluo-fixtures/next-production",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module"
+}
