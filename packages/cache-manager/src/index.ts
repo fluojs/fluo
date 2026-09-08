@@ -1,3 +1,13 @@
+export type {
+  CacheAtomicUpdate,
+  CacheStoreUpdateOptions,
+  CacheUpdate,
+  CacheUpdateContext,
+  CacheUpdateErrorCode,
+  CacheUpdateOptions,
+  CacheUpdateReducer,
+} from './atomic-update.js';
+export { CacheUpdateError } from './atomic-update.js';
 export {
   CacheEvict,
   CacheKey,
@@ -39,6 +49,8 @@ export type {
   NormalizedCacheModuleOptions,
   NormalizedCacheTtlJitterOptions,
   PrincipalScopeResolver,
+  RedisAtomicClient,
+  RedisAtomicTransaction,
   RedisCacheOptions,
   RedisCompatibleClient,
 } from './types.js';

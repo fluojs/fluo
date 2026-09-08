@@ -13,6 +13,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Application-Level Caching](#application-level-caching)
 - [Common Patterns](#common-patterns)
   - [Redis Storage](#redis-storage)
+  - [Atomic Updates](#atomic-updates)
   - [TTL Jitter](#ttl-jitter)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
@@ -164,14 +165,107 @@ class AppModule {}
 
 The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache values therefore need to be JSON-compatible: plain objects, arrays, strings, numbers, booleans, and `null` round-trip cleanly, while values such as `Date` come back as JSON output (for example ISO strings), functions/`undefined`/symbols do not survive, and non-serializable values like `bigint` or cyclic graphs should be normalized before caching.
 
-Positive Redis TTL values are accepted in seconds and may be fractional. Redis expiry is rounded up to the next whole second because Redis `EX` uses integer seconds, while fluo also records the millisecond-precision expiry timestamp in the stored entry and treats the value as expired once that timestamp is reached. Use `ttl: 0` when you intentionally want no Redis expiry.
+For ordinary `set` writes, positive Redis TTL values are accepted in seconds and may be fractional. Redis expiry is rounded up to the next whole second because Redis `EX` uses integer seconds, while fluo also records the millisecond-precision expiry timestamp in the stored entry and treats the value as expired once that timestamp is reached. Use `ttl: 0` when you intentionally want no Redis expiry. Atomic updates use absolute `PXAT` expiry instead, as described below.
 Exceptionally large finite TTL values are capped at the largest safe JavaScript expiry timestamp by both built-in stores, so Redis JSON metadata remains finite and aligns with the memory path.
 
 Redis reset ownership is scoped by the top-level `keyPrefix` option, which defaults to `fluo:cache:` and is passed through to the built-in `RedisStore` namespace. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. Redis glob metacharacters in a non-empty prefix (`*`, `?`, `[`, `]`, and `\`) are escaped before `SCAN`, so the configured prefix remains a literal namespace instead of broadening reset ownership. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
 
+### Atomic Updates
+
+This section owns the additive `CacheService.update` contract. Use it to replace application-owned per-key promise queues around cache read/modify/write, not to perform database transactions, origin loading, or domain-policy enforcement. `remember()` remains the read-through loader API; its miss coalescing is not an atomic mutation.
+
+| Field | Contract |
+| --- | --- |
+| Input | `cache.update<T>(key, reducer, { signal?, maxAttempts? })`. The reducer receives a detached `T` snapshot, or `undefined` for a missing/expired entry, and `{ attempt, signal }`. `attempt` is one-based; `signal` combines caller cancellation with invalidation/shutdown. |
+| Decision | Return `{ action: 'set', value, ttlSeconds? }` or `{ action: 'delete' }`, synchronously or asynchronously. Deletion is explicit; do not use an undefined value or invalid TTL as a deletion request. Values must satisfy the selected store's serialization contract. |
+| Default | `maxAttempts` is `16`, including the first attempt, and must be a positive safe integer. The module TTL applies only when creating a missing/expired entry: by default `300` seconds for memory, `0` for Redis/custom stores. |
+| Output | `Promise<T \| undefined>` resolves with the committed value or `undefined` after explicit deletion, not merely after the reducer returns. |
+| Capability | `CacheStore.atomicUpdate` is optional. Legacy stores still support their existing operations; an absent capability rejects with `CacheUpdateError` code `unsupported`, with no non-atomic `get`/`set` fallback. |
+| Scope and order | Both built-in stores admit updates FIFO per key within one store instance; independent keys run concurrently. Memory's `atomicUpdate.scope === 'local-process'` covers one `MemoryStore` shared across facades, not separate store instances. Opt-in Redis uses server-side transactions across participating clients, not a global FIFO across processes. |
+
+The reducer must be pure: ordinary competing writes can cause it to run again with a fresh snapshot. Do not perform I/O, send messages, or apply external side effects inside it. Do not nest a same-key update, or await `cache.reset()` / `cache.close()` from the reducer: the queue or lifecycle drain would wait on that same reducer and deadlock.
+
+This standalone consumer uses public imports and a registered application context; no application key queue is needed. The arithmetic is example application logic, not a framework rate-limit or lockout policy.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { CacheModule, CacheService } from '@fluojs/cache-manager';
+
+@Inject(CacheService)
+class Counters {
+  constructor(private readonly cache: CacheService) {}
+
+  increment(key: string) {
+    return this.cache.update<number>(key, (value) => ({
+      action: 'set',
+      value: (value ?? 0) + 1,
+    }));
+  }
+}
+
+class AppModule {}
+defineModule(AppModule, {
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
+  providers: [Counters],
+});
+
+const app = await FluoFactory.createApplicationContext(AppModule);
+try {
+  const counters = await app.get(Counters);
+  const values = await Promise.all([
+    counters.increment('example:counter'),
+    counters.increment('example:counter'),
+  ]);
+  console.log(values); // [1, 2]
+} finally {
+  await app.close();
+}
+```
+
+**TTL:** All update TTLs are seconds. Omitting `ttlSeconds` on a live entry preserves its absolute expiry, including persistence; it does not restart a sliding window. On creation, omission uses the module default. An explicit positive TTL uses `ceil(seconds * 1000)`, at least one millisecond, capped at `Number.MAX_SAFE_INTEGER` for the absolute expiry timestamp. `0` means persistent; `{ action: 'delete' }` deletes. Negative or non-finite TTLs reject with `RangeError`. Update TTLs intentionally bypass `ttlJitter` so retry decisions remain pure and deterministic and a fixed expiry is not extended. The existing invalid-TTL no-op for `set` / `remember` writes is unchanged.
+
+**Failures:** Import `CacheUpdateError` from `@fluojs/cache-manager` and branch on `error.code`: `unsupported` (no capability), `invalidated` (deletion/reset/expiry invalidates the snapshot), `closed` (service shutdown), `cancelled` (caller abort), or `conflict` (attempt budget exhausted). An invalid attempt limit also rejects with `RangeError`. Reducer, store, and serialization failures propagate unchanged; they are not retried as conflicts or wrapped in `CacheUpdateError`.
+
+**Cancellation and drain:** The service tracks all admitted updates, including queued work. `del`, `reset`, and `close` cancel affected late reducers. Reset and close wait for full reducer/queued-update settlement and isolated connection cleanup, not just store calls. Cancellation is cooperative: a reducer that ignores its signal and never settles can hold drain indefinitely; there is no forced termination. Updates started during reset may reject as `invalidated`; await reset before starting fresh work. An abort before commit dispatch prevents the commit. Once Redis `EXEC` has been dispatched, cancellation cannot undo a committed transaction: await its completion rather than assuming rollback. `del` still orders server-side invalidation safely.
+
+**Redis opt-in and ownership:** Prefer the named `RedisModule` DI registration in [Redis Storage](#redis-storage), then explicitly enable the capability:
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  keyPrefix: 'myapp:cache:',
+  redis: { clientName: 'cache', atomicUpdates: true },
+});
+```
+
+Direct `RedisStore` composition uses `RedisStoreOptions.atomicUpdates: true`. A compatible client must support `duplicate({ lazyConnect: false, retryStrategy: () => null, reconnectOnError: () => false })`, returning the exported structural `RedisAtomicClient` seam (`watch`, `get`, `multi`, `disconnect`); `multi()` returns `RedisAtomicTransaction` (`set`, `del`, `exec`). These optional types belong to `@fluojs/cache-manager`. The full raw ioredis client already exposed by [`@fluojs/redis`](../redis/README.md#raw-client-access) supplies this seam; no RedisService runtime API is added. Each atomic operation owns its isolated duplicate and disconnects it in `finally`, releasing WATCH even on failure. The injected/shared client remains owned by its Redis module or application and is not closed by the cache. Operation-owned connections disable reconnection: connection loss propagates the client error instead of committing on a replacement connection without WATCH. The shared client retains its reconnection policy.
+
+The new `RedisAtomicClient` seam is compatible with actual ioredis, but that is not a claim that a raw ioredis instance is structurally assignable to the older, full `RedisCompatibleClient` type. Its existing `scan(cursor, ...args: Array<string | number>)` signature differs from ioredis's overloads. That public contract is unchanged; use the canonical RedisModule DI path for the example and native fixture rather than casting away this mismatch.
+
+Use Redis **6.2 or newer** for `PXAT`, standalone/single-primary transactions, and a nonempty application-specific prefix. An empty prefix rejects with `RangeError`; a client without `duplicate` rejects as `unsupported`. Redis Cluster support is not claimed: data, epoch, and marker keys would cross slots unless the entire namespace prefix used the same hash tag, and that condition alone is not a Cluster support guarantee.
+
+Every participant in a namespace must opt in for invalidation-identity guarantees. WATCH covers the data key, a namespace epoch, and a per-key invalidation identity. Ordinary concurrent updates/writes can retry a fresh pure reducer; deletion, reset, and expiry invalidate stale work instead of retrying it. Both `del` and an `{ action: 'delete' }` update transactionally SETs a fresh UUID generation and DELetes the data even when that key was absent, detecting delete/recreate races. Reset replaces the namespace epoch and SCANs other namespace keys, including per-key markers, while retaining the epoch.
+
+The reserved logical keys are exactly `'\0atomic-update-epoch'` and every key starting with `'\0atomic-update-key:'`; `\0` denotes a NUL character. They are not application data. Budget for one persistent epoch key after reset and one persistent marker per distinct deleted key until reset. Do not externally edit or evict this metadata. There is no failover durability promise. SCAN-based reset is not a distributed global snapshot: updates admitted after a remote reset begins are not globally fenced.
+
+**Custom capability implementers:** Exported `CacheAtomicUpdate`, `CacheStoreUpdateOptions`, `CacheUpdateReducer`, `CacheUpdateContext`, `CacheUpdate`, and `CacheUpdateOptions` describe the handoff. Register invalidation synchronously when `atomicUpdate.update` is called, then await optional `options.admission` before any I/O or reducer execution. Honor cancellation and the attempt bound; apply `defaultTtlSeconds` only to new entries, with an omitted direct-store default meaning persistence. A distributed capability requires a real server atomic primitive. The built-in MemoryStore also invalidates updates on direct-store `del` / `reset`, not just facade calls.
+
+**Observation and evidence:** `update` emits no existing `CacheObservation` events; the observer taxonomy remains unchanged. See [the shared caching architecture](../../docs/architecture/caching.md), [update types and TTL logic](./src/atomic-update.ts), [service admission/drain](./src/service.ts), [memory implementation](./src/stores/memory-store.ts), [Redis implementation](./src/stores/redis-store.ts), and [public exports](./src/index.ts). Evidence targets are [unit/lifecycle tests](./src/cache-update.test.ts), [the queue-free application consumer](./src/cache-update.consumer.test.ts), and [native Redis tests](./test/redis-update.native.test.ts).
+
+From an already installed repository workspace, build the package and its dependency closure to emit the modules required by the tests, then run the focused files and native suite:
+
+```bash
+pnpm --filter '@fluojs/cache-manager...' build
+pnpm --dir packages/cache-manager exec vitest run -c vitest.config.ts src/cache-update.test.ts src/cache-update.consumer.test.ts
+pnpm --filter @fluojs/cache-manager test:redis
+```
+
+The native suite needs Docker and `redis:7.4-alpine`; it creates an isolated container with an ephemeral local port and fails rather than skipping when the fixture is unavailable.
+
 ### TTL Jitter
 
-Popular keys written together can otherwise expire together and synchronize origin load. Opt in to centralized positive-TTL jitter with `ttlJitter`; `CacheService` calculates the effective TTL once before handing the write to memory, Redis, or a custom store.
+Popular keys written together can otherwise expire together and synchronize origin load. Opt in to centralized positive-TTL jitter with `ttlJitter`; `CacheService` calculates the effective TTL once before handing a `set` / `remember` write to memory, Redis, or a custom store. `update` intentionally does not apply jitter.
 
 ```typescript
 CacheModule.forRoot({
@@ -274,7 +368,7 @@ CacheModule.forRoot({
 The contract is intentionally narrow:
 
 - **Privacy**: an observation carries only `operation`, `outcome`, and `durationMs`. Cache keys, cached values, loader results, and error objects are never passed to the observer, so instrumentation cannot leak application data.
-- **Operation taxonomy**: `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` is reported once per call; its internal read is not reported as a separate `get`.
+- **Operation taxonomy**: `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` is reported once per call; its internal read is not reported as a separate `get`. `update` does not emit these observations.
 - **Outcomes**: `CacheObservation` is a discriminated union: read operations (`get`, `remember`) can report only `hit`, `miss`, or `error`, while write, invalidation, and lifecycle operations can report only `success` or `error`. A `remember` call that joins an in-flight load for the same key reports `miss`, because that call did not read a cached value.
 - **Timing**: `durationMs` measures the full `CacheService` operation, including store-queue serialization, with the runtime's monotonic `performance.now()` clock.
 - **Failure containment**: observer errors are swallowed. A thrown error or a rejected promise never changes the value the caller receives and never surfaces as an unhandled rejection. Observer work is not awaited by the cache operation.
@@ -418,7 +512,8 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized module configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services
-- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()` and shares the first teardown completion across concurrent or repeated callers.
+- `CacheService`: Main API for manual cache operations (`get`, `set`, `update`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()` and shares the first teardown completion across concurrent or repeated callers.
+- `CacheUpdateError`: Error with the stable `CacheUpdateErrorCode` categories described in [Atomic Updates](#atomic-updates); related reducer, capability, and Redis structural types are exported from the same package root.
 
 ### Decorators
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.

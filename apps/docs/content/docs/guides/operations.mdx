@@ -173,6 +173,14 @@ pnpm exec fluo-studio-viewer
 
 Open the printed `http://127.0.0.1:<port>/` URL and drag a snapshot file into the viewer; do not open `dist/index.html` directly. `@fluojs/studio/viewer` remains available for integrations that resolve the packaged HTML entry. Studio owns snapshot parsing, filtering, and Mermaid rendering through `parseStudioPayload(...)`, `applyFilters(...)`, and `renderMermaid(...)`.
 
+## Cache update drain
+
+For atomic cache mutation, follow the [cache-manager API owner](https://github.com/fluojs/fluo/blob/main/packages/cache-manager/README.md#atomic-updates). `CacheService.update` runs a pure single-key reducer, not an origin loader or domain policy. `update` emits no existing `CacheObservation` events, so existing hit/miss metrics do not measure these mutations.
+
+Reset/close cancel and drain admitted reducers and queued updates, including isolated Redis connection cleanup. A reducer that ignores its signal can hold drain indefinitely; do not await reset/close or a nested same-key update from inside it. Await reset before starting fresh updates. Cancellation before commit dispatch prevents commit; after Redis EXEC dispatch it cannot undo a committed transaction. Prefer RedisModule DI for the opt-in Redis path. Its shared client is not closed by cache operations.
+
+Redis atomic mode requires Redis >=6.2 standalone/single-primary, explicit opt-in by every namespace participant, and a nonempty application prefix. Account for persistent epoch/key markers, never externally edit or evict that metadata, and do not treat SCAN reset as a distributed global snapshot or a failover durability guarantee. The owner links unit/application evidence, the required dependency closure build, and the native `pnpm --filter @fluojs/cache-manager test:redis` command, which requires an isolated Docker `redis:7.4-alpine` fixture and fails when it is unavailable.
+
 ## Runnable operations example
 
 `examples/ops-metrics-terminus` demonstrates:

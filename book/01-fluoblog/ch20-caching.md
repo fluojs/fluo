@@ -213,9 +213,9 @@ If configuration must be resolved asynchronously, `CacheModule.forRootAsync({ in
 
 CacheService measures TTL in seconds. `set(key, value, 300)` does not mean 300 milliseconds. Adding jitter to positive values can reduce the tendency of keys populated at the same time to all expire at once. The `shorten` setting above keeps 300 seconds as the maximum while reducing the TTL to roughly 270 to 300 seconds. We choose the shortening direction so the allowed delay is not exceeded.
 
-`ttl: 0` means no expiration. A negative or non-finite TTL skips the cache write. Mistaking 0 for "disable the cache" creates long-lived keys. RedisService's direct `set()` has a different contract: a nonpositive or non-finite TTL means persistent storage. Be sure to check this difference when switching facades. Do not mix a service that handles plain Redis values with cache-manager's storage envelope.
+`ttl: 0` means no expiration. `set` / `remember` writes skip negative or non-finite TTLs. Mistaking 0 for "disable the cache" creates long-lived keys. RedisService's direct `set()` has a different contract: a nonpositive or non-finite TTL means persistent storage. Be sure to check this difference when switching facades. Do not mix a service that handles plain Redis values with cache-manager's storage envelope.
 
-RedisStore allows positive fractional TTLs. It passes an expiration rounded up to integer seconds to Redis while also recording an internal timestamp. A Redis key still existing therefore does not mean CacheService considers it a hit. In tests, check the actual `CacheService.get()` result, not only Redis's `TTL` value.
+Ordinary RedisStore `set` allows positive fractional TTLs. It passes an expiration rounded up to integer seconds to Redis while also recording an internal timestamp. A Redis key still existing therefore does not mean CacheService considers it a hit. In tests, check the actual `CacheService.get()` result, not only Redis's `TTL` value. Atomic updates below use absolute millisecond `PXAT` to preserve fixed expiry.
 
 Deleting the cache before the database commit to make the list fresh immediately after publication is risky. Another request can read the still-uncommitted list and refill it. Even deleting after commit cannot prevent a loader already running in another process from storing an older result afterward. For this chapter's list, we apply a short TTL and accept the maximum visibility delay. This is not a guarantee of immediate freshness. A writer's confirmation screen that must show the new post immediately should query the source.
 
@@ -312,6 +312,63 @@ pnpm exec vitest run src/posts/cache-contract.test.ts
 
 Jitter spreads expiration across different keys; it does not combine concurrent misses for one popular key. Coalescing in `remember()` is also per process, so ten app instances reading a cold key simultaneously can still produce multiple source queries. You can decide whether to prewarm popular published posts after deployment or limit the source's concurrency budget. Do not rush to add a distributed lock requiring correctness guarantees merely for one cache optimization.
 
+## Updating One Cache Value Without a Key Queue
+
+If two requests read the same number, each adds 1, and each calls `set()`, one increment can be lost. Instead of wrapping this in an application per-key promise queue, use [the cache-manager README's atomic update contract](../../packages/cache-manager/README.md#atomic-updates). This experiment shows cache arithmetic only. It adds no view-count persistence, authentication failure count, lockout duration, or inventory policy, and does not change the immutable body reader above.
+
+The following is a standalone file that can be placed at `src/posts/cache-update.experiment.ts`. It does not replace the existing app module. It goes through module registration and public DI, with no application pending map or key queue.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { CacheModule, CacheService } from '@fluojs/cache-manager';
+
+@Inject(CacheService)
+class Counters {
+  constructor(private readonly cache: CacheService) {}
+
+  increment(key: string) {
+    return this.cache.update<number>(key, (value) => ({
+      action: 'set',
+      value: (value ?? 0) + 1,
+    }));
+  }
+}
+
+class AppModule {}
+defineModule(AppModule, {
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
+  providers: [Counters],
+});
+
+const app = await FluoFactory.createApplicationContext(AppModule);
+try {
+  const counters = await app.get(Counters);
+  console.log(await Promise.all([
+    counters.increment('example:counter'),
+    counters.increment('example:counter'),
+  ])); // [1, 2]
+} finally {
+  await app.close();
+}
+```
+
+Both calls follow the same-key FIFO of one store; other keys proceed independently. Memory's `local-process` scope includes facades sharing that `MemoryStore`, not separate store instances. The reducer receives `undefined` for a missing/expired entry and returns an explicit set/delete decision. Omitting TTL uses the configured 60 seconds on creation without extending the absolute expiry on the next increment. Explicit `0` means persistent, invalid TTL rejects with `RangeError`, and update has no jitter. The result is the committed value or `undefined` after explicit deletion.
+
+Ordinary write conflicts can rerun the reducer, so do not call the database, email, or payment systems inside it. The attempt in `{ attempt, signal }` starts at 1, with a default total attempt limit of 16. Nesting a same-key update or awaiting reset/close inside a reducer creates a self-drain deadlock. `del`/`reset`/`close` cancel late reducers; reset/close wait for queued updates, reducers, and isolated connection cleanup. They do not forcibly terminate a reducer that ignores its signal and never settles. A call during reset can reject as `invalidated`; await reset before starting new work. The README owns error categories and propagation of original failures.
+
+Across processes, keep the named RedisModule DI above and apply `redis: { clientName: 'posts-cache', atomicUpdates: true }` to **every participating cache registration**. This requires Redis >=6.2 standalone/single-primary and a nonempty application-specific prefix; Cluster support is not claimed. WATCH checks data and namespace/key invalidation identities, and each operation closes only its isolated duplicate. Ownership of the shared Redis client stays the same. Cancellation before EXEC dispatch prevents commit; cancellation afterward does not undo an already committed result.
+
+This opt-in does not turn `remember()` into a distributed loader. The namespace retains one epoch after reset and a marker for each distinct deleted key until reset. Follow the README's reserved keys and metadata budget; do not externally edit or evict metadata. Reset still uses SCAN and promises neither a snapshot globally fencing new updates after a remote reset begins nor failover durability.
+
+The commands below exercise the same public consumer boundary from an already installed repository workspace. First build the package and its dependency closure to emit the required modules, then run the focused files. The final command uses an isolated Docker `redis:7.4-alpine` container and ephemeral port, failing rather than skipping when the environment is unavailable.
+
+```bash
+pnpm --filter '@fluojs/cache-manager...' build
+pnpm --dir packages/cache-manager exec vitest run -c vitest.config.ts src/cache-update.test.ts src/cache-update.consumer.test.ts
+pnpm --filter @fluojs/cache-manager test:redis
+```
+
 ## How the Questions Change With HTTP Caching
 
 Apply caching to the public JSON list as well. Add the import below to `src/posts/posts.controller.ts`, and **be sure to apply the following change fragment to the existing GET list method**. Retain Chapter 12's `ListPostsDto -> PostFeed.list(input)` and `{ items, nextCursor }` response, along with Chapter 15's separation of the public controller. `Get` and `UseInterceptors` are already imported, so do not declare them again. `PostsModule` imports `ReadingCacheModule` from the previous section, and its global cache registration supplies the actual interceptor token.
@@ -356,6 +413,9 @@ FluoBlog now reuses immutable public content and refreshes a dynamically growing
 
 ## Implementation References
 
+- [Atomic Update API Owner](../../packages/cache-manager/README.md#atomic-updates), [Pure Reducer and TTL](../../packages/cache-manager/src/atomic-update.ts)
+- [Atomic Update Regressions](../../packages/cache-manager/src/cache-update.test.ts), [Queue-free Application Consumer](../../packages/cache-manager/src/cache-update.consumer.test.ts), [Real Redis Fixture](../../packages/cache-manager/test/redis-update.native.test.ts)
+- `update` emits no existing `CacheObservation` events. Do not interpret the observer evidence below as update instrumentation.
 - [Cache-manager README: TTL, Keys, Failures, and Observers](../../packages/cache-manager/README.md), [Public Exports](../../packages/cache-manager/src/index.ts)
 - [CacheService remember, del, and reset](../../packages/cache-manager/src/service.ts), [Memory Retention and Expiration Implementation](../../packages/cache-manager/src/stores/memory-store.ts)
 - [Cache Contract Tests](../../packages/cache-manager/src/cache-service.test.ts), [Independent-Key Concurrency Tests](../../packages/cache-manager/src/cache-service.concurrency.test.ts)

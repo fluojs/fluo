@@ -220,6 +220,8 @@ export async function cacheRaceExperiment(): Promise<void> {
 
 ## 재고는 원자적 쓰기에서 결정한다
 
+[`CacheService.update`](../../packages/cache-manager/README.ko.md#원자-갱신)는 캐시 값 하나를 순수 reducer로 원자 갱신하므로 앱의 key queue를 대체할 수 있다. 그러나 상품 카드 조회의 DB I/O를 reducer 안으로 옮기면 안 된다. 경합 시 재실행되는 reducer는 원본 조회나 주문 부수 효과를 소유하지 않으며 PostgreSQL 커밋과 캐시 commit을 하나로 묶지도 않는다. Redis의 명시적 atomic opt-in은 `remember`를 분산 loader로 바꾸거나 위의 늦은 `set`을 자동 차단하지 않는다. [1권의 queue 없는 실험](../01-fluoblog/ch20-caching.ko.md#key-queue-없이-캐시-값-하나를-갱신하기)은 cache-only 산술이고, 이 장의 재고 예약은 계속 아래 DB 트랜잭션의 책임이다.
+
 상품 화면에 “재고 있음”을 표시하더라도 그것은 안내다. 마지막 구매 권한은 기존 `InventoryModule`의 조건부 갱신이 결정한다. 다음 SQL은 **기존 Stock 모델을 사용하는 PostgreSQL 트랜잭션의 핵심 문장**이다. `Stock.available`은 예약 가능한 수량이고, 별도의 `reserved` 합계 열이나 두 번째 재고 테이블을 만들지 않는다. `$1`은 검증한 양의 정수 수량, `$2`는 서버가 확정한 SKU다.
 
 ```sql

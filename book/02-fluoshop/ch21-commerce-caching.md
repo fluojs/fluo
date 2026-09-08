@@ -220,6 +220,8 @@ If even product descriptions must update immediately, you can combine immutable 
 
 ## Decide Inventory Through an Atomic Write
 
+[`CacheService.update`](../../packages/cache-manager/README.md#atomic-updates) atomically mutates one cache value with a pure reducer, replacing an application's key queue. However, do not move the product-card query's database I/O into that reducer. A reducer that can rerun on conflict owns neither origin loading nor order side effects, and does not combine a PostgreSQL commit with a cache commit. Explicit Redis atomic opt-in does not make `remember` a distributed loader or automatically fence the late `set` above. [Volume 1's queue-free experiment](../01-fluoblog/ch20-caching.md#updating-one-cache-value-without-a-key-queue) is cache-only arithmetic; inventory reservation in this chapter remains the responsibility of the database transaction below.
+
 Even when a product page says "in stock," that is guidance. The conditional update in the existing `InventoryModule` grants the final right to purchase. The following SQL is the **core statement of a PostgreSQL transaction using the existing Stock model**. `Stock.available` is the quantity available for reservation; we do not introduce a separate `reserved` total column or a second inventory table. `$1` is the validated positive integer quantity, and `$2` is the SKU confirmed by the server.
 
 ```sql

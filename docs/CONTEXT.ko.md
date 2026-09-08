@@ -35,6 +35,9 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층입니다. 
 Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응 → 인계 순서를 따르세요. 최초 집필은 한국어 전체를 먼저 확정합니다. 기존 Book 정정은 의존 장을 포함한 영향받는 한국어 묶음 전체를 동결한 뒤 영어로 옮기며, 병합 가능한 각 증분에는 양언어 대응이 모두 있어야 합니다. 충돌은 기존 계약·구현·테스트로 판정하고 구현에 맞춰 보장을 조용히 낮추지 않습니다. 아직 이전하지 않은 아래 계약 절, 안정 링크와 machine sentinel은 그대로 유효하며, 이 안내는 전체 패키지·장 이전 완료를 뜻하지 않습니다.
 
 <!-- fluo:docs-navigation:end -->
+
+원자 캐시 갱신은 [cache-manager API 원본](../packages/cache-manager/README.ko.md#원자-갱신)에서 시작해 [캐시 아키텍처](./architecture/caching.ko.md#원자-갱신-조정), [update 타입](../packages/cache-manager/src/atomic-update.ts), [service admission/drain](../packages/cache-manager/src/service.ts)을 읽으세요. `update`는 고정 만료를 보존하는 순수 단일 key reducer이며 `remember` loader 합치기나 앱 도메인 정책이 아닙니다. Memory는 공유 store 인스턴스 하나를 조정하고 Redis는 cache 측 명시적 opt-in과 기존 [raw client seam](../packages/redis/README.ko.md#원시-클라이언트-접근-raw-client-access)을 통한 격리 WATCH 트랜잭션이 필요합니다. TTL/오류/metadata/취소 한계와 Docker native suite를 포함한 테스트 명령은 README가 소유하며 소스 링크는 실행 검증을 뜻하지 않습니다. 사람을 위한 적용은 [FluoBlog 캐싱](../book/01-fluoblog/ch20-caching.ko.md)과 [FluoShop 캐싱](../book/02-fluoshop/ch21-commerce-caching.ko.md)에서 설명합니다.
+
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
 
 ## Persistence After-Commit Work
