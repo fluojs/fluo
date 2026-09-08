@@ -2,9 +2,11 @@
 
 ## Confirmed direction
 
-Korean is the source language of this book. Complete and review all 72 Korean chapters before translating them into English. Do not draft the English manuscript alongside unfinished Korean writing. The fixed table of contents and file identifiers are in [series.json](./series.json). Volume 1 has 24 chapters, volume 2 has 28, and volume 3 has 20.
+Korean is the source language of this book. Initial authoring completes and reviews all 72 Korean chapters before English translation. Corrections to an existing Book review, finalize, and freeze the whole affected Korean set, including dependent chapters, before English translation. Do not draft the English manuscript alongside unfinished Korean writing. The fixed table of contents and file identifiers are in [series.json](./series.json). Volume 1 has 24 chapters, volume 2 has 28, and volume 3 has 20.
 
 The Book is the primary learning path. The site's short FluoBlog exercise is an executable companion for the initial HTTP/DI lessons. Place the new manuscripts in book/01-fluoblog, book/02-fluoshop, and book/03-internals. Preserve the existing beginner/intermediate/advanced files as stable links and contract evidence for the previous edition. The new text does not inherit that edition's project-state or chapter-snapshot claims.
+
+The normative source for framework facts is the Docs layer defined by the [Docs authority policy](../docs/contracts/documentation-authority.md), with package READMEs as its delegated package API owners. The Book explains those same contracts for people through product requirements, design reasons, execution, and failure scenarios. Follow Docs contract establishment -> evidence verification -> Korean Book application -> English alignment -> handoff. Resolve contract, implementation, and test conflicts in the owning Docs first, distinguishing documentation errors from implementation regressions without silently reducing existing guarantees to match implementation.
 
 ## Narrative and product continuity
 
@@ -15,6 +17,8 @@ Volume 2 starts with the same application, user IDs, authentication, configurati
 Volume 3 traces the same post and order requests through real Fluo source. Connect questions, small executable experiments, implementation evidence, failure conditions, and extension techniques instead of listing packages or stale line numbers.
 
 ## Shared names and data contracts
+
+This section's product models, KRW choice, post/order states, and app addresses are application-owned policies. Do not describe them as framework guarantees automatically provided by Fluo. Framework defaults, order, failures, and resource ownership follow the owning Docs contracts; distinguish intentionally failing intermediate implementations and comparison experiments from the final recommended implementation.
 
 - The application directory is the CLI-generated fluo-blog, with source paths src/app.ts, src/main.ts, and `src/<feature>/...`. Do not confuse existing example-repository paths with files the reader creates.
 - Feature modules are AccountsModule, PostsModule, CatalogModule, InventoryModule, OrdersModule, PaymentsModule, and FulfillmentModule. An interface name alone does not enable DI. Show class-level @Inject, actual tokens, and imports/providers/exports registration.
@@ -52,7 +56,7 @@ Chapter titles follow the fixed table of contents. The body must be a complete m
 5. Topic-specific failures such as contention, duplication, partial failure, and shutdown, not only a happy path.
 6. Meaningful tests or executable experiments and expected results. Do not claim that an unrun command passed.
 7. When not to use the pattern, the cost of alternatives, and the state passed to the next chapter.
-8. Clickable evidence links to the owning package README, source, and tests.
+8. Clickable evidence links to the owning Docs contracts and delegated package READMEs, source, and tests.
 
 Avoid padding and repeated sentences. In particular, do not reduce a complex consistency chapter to a short checklist or a few design tips. Develop the explanation, the reasons behind the code, and the failure scenarios in connected paragraphs. Do not delegate a chapter's essential steps to external documents. Long code blocks without explanation are not a completed manuscript either.
 
@@ -68,10 +72,14 @@ The supported Node.js range is >=24.0.0 <27; the book uses Node24 and pnpm10. Vo
 
 ## Sources and links
 
+Find owner pairs for shared contracts in the [Docs hub ownership table](../docs/README.md#source-ownership). Compare chapter claims with the owning Docs scope, prerequisites, public imports, inputs, defaults, outputs, order, failures, ownership, and limitations, keeping source and tests as additional evidence. Record chapters affected by a Docs change, or explain in the handoff why no Book edit is needed when meaning is unchanged. Owner links do not replace essential chapter explanations or execution steps.
+
 Check each chapter's API claims against the owning `packages/<name>/README.md` and current public src/ exports. Links from a chapter to repository-root documents use ../../packages/... or ../../docs/.... Internal series links use the fixed slugs. Every chapter except the last includes previous, next, and volume-contents links. Volume boundaries connect to the first chapter of the next volume.
 
 Place an identifier such as `<!-- book:volume=01-fluoblog;chapter=01 -->` near the top of each chapter. Package assignments live in series.json. Preserve code and commands exactly in English translation. Do not pin natural-language explanations in tests. Automate only structure, links, code-block equality, and explicit executable examples.
 
 ## Translation after Korean approval
 
-Review all three Korean volumes for technical and narrative continuity first. Then create English .md files from that approved source, without omitting chapter/section order, examples, commands, limitations, or failure conditions. Translation is neither an abridgement nor a new manuscript. Keep comments inside code blocks identical initially so executable examples do not diverge. Use idempotency, reconciliation, compensation, visibility, and disposal consistently for their Korean counterparts.
+Review and freeze all three Korean volumes for initial authoring, or the whole affected Korean set for corrections, for technical and narrative continuity first. Then create English .md files from that approved source, without omitting chapter/section order, examples, commands, results, defaults, limitations, or failure conditions. Translation is neither an abridgement nor a new manuscript. Keep comments inside code blocks identical initially so executable examples do not diverge. Use idempotency, reconciliation, compensation, visibility, and disposal consistently for their Korean counterparts.
+
+Temporary locale incompleteness is allowed during Korean authoring, but each mergeable increment includes finalized Korean text and its English companions. Group dependent chapters into jointly verifiable increments without mixing in untranslated drafts. Use `pnpm book:check:ko` during authoring and `pnpm book:check` for bilingual increments. Passing existing structure, link, and code checks does not automatically prove translation meaning or Docs alignment across all 72 chapters. Record actual check commands, results, and unverified scope in a receipt.

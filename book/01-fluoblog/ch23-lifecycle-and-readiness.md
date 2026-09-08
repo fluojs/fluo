@@ -14,15 +14,21 @@ This chapter targets a Node.js 24 process in which Fastify owns the listener. Sc
 
 The ability to run an event loop does not mean a process can safely save posts. It can produce HTTP responses even when the database is disconnected or the required schema does not match the code. Conversely, it may still serve already published posts while a subscription email provider is temporarily slow. Decide feature by feature whether a failure in one dependency should stop all traffic.
 
-In `@fluojs/terminus`, `/health` aggregates diagnostics. When an indicator or platform diagnostic is unhealthy, it returns 503 and a report that includes the cause. `/ready` answers whether to accept traffic: 200 admits traffic, while 503 removes the instance from rotation. The body contains one of `ready`, `starting`, or `unavailable`, but the deployment layer's admission decision is binary. This is not a separate severity response that says, "partly ready, so send a little traffic."
+In `@fluojs/terminus`, `/health` aggregates diagnostics. When an indicator or platform diagnostic is unhealthy, it returns 503 and a report that includes the cause. `/ready` answers whether to accept traffic. When the deployment layer is configured to probe this endpoint, 200 admits traffic and 503 removes the instance from rotation. Terminus does not control the load balancer directly. The response body's `status` is one of `ready`, `starting`, or `unavailable`, but the deployment layer's admission decision is binary. This is not a separate severity response that says, "partly ready, so send a little traffic."
+
+When the runtime marker is starting, `/ready` returns 503 with `{ status: 'starting' }`. Even with a ready marker, an additional condition returning `false`, a failing readiness-participating indicator, or failing platform readiness produces 503 with `{ status: 'unavailable' }`. Only when all pass does it return 200 with `{ status: 'ready' }`. A custom readiness callback that throws or rejects propagates through HTTP error handling rather than becoming this boolean rejection, so return `false` for an expected inability to accept traffic. The code below uses `path: '/internal'`, making the actual request paths `/internal/health` and `/internal/ready`.
 
 Terminus does not create a `/live` endpoint that checks only process liveness by default. Using a database-inclusive `/health` response directly as the condition for process restarts can create a cycle of restarting every app during a shared database outage. Deployment environments that need a narrow liveness check must define a separate application or host boundary. Do not mistake the two endpoints created in this chapter for three kinds of probes.
 
 By default, an indicator participates in both health and readiness. `readiness: false` retains its diagnostics but prevents that indicator alone from blocking traffic. This may be appropriate, for example, if the application can fall back to a basic post list without a separate external search service. But if the cache and subscription queue share Redis and actual requests depend on successful queue writes, do not exclude Redis merely because "the cache is optional." Classify a dependency as optional only when behavior during its failure has been implemented.
 
+This opt-out excludes only that indicator's probe from readiness. If the same dependency is registered as a separate platform component and lowers readiness, admission is still blocked. HTTP readiness requires platform status to be exactly `ready`, so even `degraded` with `critical: false` does not pass. Application `readinessChecks` also add conditions rather than replacing the indicator and platform checks.
+
 ## Where You Import a Module Changes Readiness
 
 Even a correct SQL probe cannot run if Terminus cannot find the database connection. Ordinary non-global sibling modules cannot see one another's providers, so dependencies must be explicit in Terminus's `imports`. This book's Chapter 10 registration, however, is intentionally global. The root imports `BlogDatabaseModule` from `src/database/blog-database.module.ts` once, and its `PrismaModule.forRootAsync` owns a client per container using `global: true` and `inject: [AppSettings]`. Terminus also receives this global `PrismaService` through injection.
+
+Chapter 1's generated basic registration is the runtime's `HealthModule.forRoot()`, not Terminus. To extend the same default health/readiness paths with Terminus, replace that basic registration and transfer relevant `path` and `endpointMiddleware` settings. Terminus supplies a health module internally, so do not register both at the same paths. If Terminus is already present, extend the existing registration. Preserve config, greeting, lifecycle scripts, and application settings. The code below configures operations at separate `/internal` paths; it is not presented as code that moves the starter's default paths.
 
 The following is the **complete `src/operations/operations.module.ts`**. `serviceToken: PrismaService` resolves only the existing lifecycle-aware service. Do not create a new database module or module-scope `client`. Because `TrafficModule` is not global, list it in Terminus's imports as well. Chapter 22's `operationsConfig` is the validated snapshot of operational tokens.
 
@@ -90,9 +96,13 @@ Verify these paths first on a local loopback listener. Without `HEALTH_TOKEN`, b
 
 After building the module graph and DI container, the runtime resolves the instances that participate in the lifecycle. It then executes their `onModuleInit()` hooks, followed by `onApplicationBootstrap()`. The readiness marker changes to ready only after platform startup succeeds. The HTTP dispatcher and listener are boundaries distinct from this preparation process.
 
-`bootstrapFastifyApplication` composes the app but does not own automatic signal registration. `runFastifyApplication` completes listen, installs shutdown registration, and returns the running app. After using the latter, there is no need to call `app.listen()` again. Conversely, using the low-level factory does not automatically give you Node signal handling.
+`bootstrapFastifyApplication` initializes the app but does not listen or register Node signals automatically. The default execution path, `runFastifyApplication`, returns after listen and default shutdown registration, so there is no need to call `app.listen()` again. However, `shutdownSignals: false` below disables that registration and leaves it to this entrypoint. Explicitly composing `FluoFactory.create()` and an adapter makes you responsible not only for listen and signals, but also for the helper's middleware, logger, and post-creation failure cleanup policies. `fluoFactory` is an alias of the same Factory.
+
+The public `app.state` values `bootstrapped`, `ready`, and `closed` form a different model from the three HTTP body states. `app.ready()` checks critical platform readiness without opening a listener or changing state to `ready`. After that check, `app.listen()` awaits adapter activation and changes state to `ready` only if shutdown has not started. This startup check does not run Terminus indicators or custom HTTP readiness callbacks, so it is not evidence that `/ready` returns 200. In host-owned request paths such as Workers and Next.js, adapter activation may connect a dispatcher rather than bind a new socket.
 
 A failed startup may still have partially succeeded. A database connection might open before later initialization fails. In that case the runtime invokes disposal hooks with the signal value `bootstrap-failed` and attempts container disposal. Application disposal code must release only resources it actually acquired, without assuming it is called only after startup completes successfully. Catching an initialization failure and opening the service with an empty repository is a change to the data contract, not recovery.
+
+Runtime bootstrap failure does not guarantee that the HTTP adapter is always closed. After receiving an app, the run helper additionally attempts `app.close('bootstrap-failed')` if listen, startup logging, or signal registration fails, preserving the original failure. Do not give cleanup of resources acquired during initialization the same scope as the helper's post-creation cleanup.
 
 Also avoid large data migrations in startup hooks. Two instances starting together can race on the same change, and work that takes minutes can dominate listener readiness time. Own schema changes and data transformations as separate deployment steps, limiting application startup to checking whether required dependencies are usable. Catch up on overdue scheduled publications through normal small batches rather than processing the entire backlog indefinitely in a startup hook.
 
@@ -100,7 +110,9 @@ Also avoid large data migrations in startup hooks. Two instances starting togeth
 
 A readiness change to 503 does not make the load balancer stop every request immediately. Connected clients and requests already in transit remain. More importantly, Fluo's shutdown hooks run before adapter close. Treating `onModuleDestroy` as "the place called after all HTTP connections are closed" produces the wrong order.
 
-As soon as the runtime's `Application.close()` begins, it closes admission for new direct dispatch and resolution operations and lowers readiness. That gate does not cancel dispatch already admitted. Do not expand this into a guarantee that every request through the listener automatically drains to the desired unit of business work. This chapter builds a small application-owned traffic gate that waits for ordinary HTTP requests before calling `app.close()`.
+As soon as the runtime's `Application.close()` begins, it closes admission for operations such as new `Application.dispatch()`, provider resolution, and listen. After pending listen and connected microservice shutdown, parent teardown resets the readiness marker to starting, then proceeds through runtime cleanup, reverse destroy hooks, reverse application shutdown hooks, adapter close, and container disposal. The admission gate does not cancel dispatch already admitted. Nor is every direct adapter or public dispatcher path guaranteed to pass through this wrapper. Do not expand this into a guarantee that every listener request automatically drains to the desired unit of business work. This chapter uses a small application-owned traffic gate to wait for ordinary HTTP requests before calling `app.close()`.
+
+While teardown is pending or after it fails, public `app.state` retains its previous value; only success changes it to `closed`. Runtime admission does not reopen even if state still appears `ready`. An explicit close retry skips completed runtime phases and follows each stage's retry contract: it is cleanup, not a restart. A starting response may be observable while an HTTP probe can still reach a connected adapter, but a closed listener is not guaranteed to send a 503 response.
 
 `src/operations/traffic.ts` is a **complete file**. The gate owns neither the database nor external connections. It tracks whether to accept new requests and how many are executing within the middleware boundary. Internal diagnostic requests are excluded from draining so the reason for shutdown remains queryable while waiting.
 
@@ -361,6 +373,15 @@ If normal traffic is infrequent and a single instance is operated manually, usin
 FluoBlog now distinguishes successful startup from listener opening, reflects both database state and application admission state in readiness, and waits a bounded time for ordinary HTTP work before shutdown. Published content remains immutable, and scheduled drafts recover from persistent times. Operational handling does not become an exception that relaxes domain rules.
 
 The next chapter combines these features into evidence for the first release. We need a stronger criterion than "the server started," but we do not need to implement every possible future feature. We check whether readers can read posts, authors can safely publish drafts, and failures can be explained and recovered from through a bounded procedure.
+
+## Canonical Docs
+
+This chapter's startup, readiness, and shutdown explanations follow these Docs. TrafficGate, the preliminary drain budget, and operational tokens are application policies applied to the same FluoBlog, not automatic framework guarantees of uninterrupted service.
+
+- [Documentation authority and the Book's role](../../docs/contracts/documentation-authority.md)
+- [Default helpers, explicit composition, and host-owned paths](../../docs/getting-started/bootstrap-paths.md)
+- [Lifecycle, terminal admission, and shutdown order](../../docs/architecture/lifecycle-and-shutdown.md)
+- [Health registration, HTTP readiness bodies, and binary admission](../../docs/contracts/health-and-readiness.md)
 
 ## Implementation References
 

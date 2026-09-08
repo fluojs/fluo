@@ -88,6 +88,8 @@ export function blogConfigOptions(
 
 Restricting the port input to a string of decimal digits rejects empty strings, negative numbers, fractions, and `3000oops`. A range check after conversion is also necessary. The all-digit string `"999999"` must not be accepted as a valid TCP port. The public URL normalizes the trailing `/` but rejects deployment paths such as `/blog`, because FluoBlog at this stage is intended to be deployed at the site root. If you begin deploying under a subpath, do not just relax this condition: change routing and link generation together.
 
+This `1..65535` range and string validation are FluoBlog policy. The schema does not reproduce the CLI-generated `Number.parseInt(..., 10)` and its `3000` fallback for a non-finite result. Fastify's numeric option also accepts port `0`, but this app does not use it. We are moving Chapter 1's small `readPort` into the configuration schema, not changing the CLI or adapter input contract.
+
 The absence of a default for `DATABASE_URL` is deliberate as well. When the connection destination is unclear, stopping startup makes the cause easier to find than connecting to a development database. Even a URL accepted by the schema can have an incorrect password or an unavailable network. Syntactic validity, connectivity, and permission to perform the intended operations are separate checks.
 
 The schema input for `PORT` is a string, and its output is a number. The type passed to `ConfigService<BlogConfig>` describes this output, not the input. Supplying a type argument does not create runtime validation. Here, the registration schema and the consumer's type come from the same definition so they stay aligned.
@@ -156,7 +158,9 @@ Here, we expose the application's single configuration globally. `ConfigModule` 
 
 This time, we need the port before creating the adapter, so we validate once with `loadConfig` and register the result. The public return type of `loadConfig` is a general configuration dictionary. The `as BlogConfig` here does not replace input validation; it expresses the correspondence between the output of the `BlogConfigSchema` just executed and its type. Do not apply the same assertion to raw environment variables. We freeze the result, whose fields are all primitive values, and pass only this snapshot to DI so the files are not read twice. Nor do we apply a string-input schema again to a port that is already a number.
 
-Import `AppSettingsModule` into the existing `AppModule` in `src/app.ts` and add it to `imports`. The following shows composition with the existing modules, not a file that replaces all HTTP configuration. `PostsModule` is the `src/posts/posts.module.ts` built in the previous chapters.
+Registration and validation happen at different times. `ConfigModule.forRoot(...)` registers providers synchronously; in an ordinary schema registration, bootstrap loads configuration when resolving `ConfigService` and validates it synchronously before listen. Here, explicit `loadConfig(...)` runs while this module evaluates, so validation happens earlier. A schema failure is `INVALID_CONFIG`: the dynamic import below fails before reaching `runFastifyApplication`. Do not confuse this flow, which registers an already validated snapshot, with a claim that calling `forRoot` alone finishes file loading.
+
+Import `AppSettingsModule` into the existing `AppModule` in `src/app.ts` and add it to `imports`. The following shows composition with the existing modules, not a file that replaces all HTTP configuration. `PostsModule` is the `src/posts/posts.module.ts` built in the previous chapters. Keep the generated greeting and health registrations and existing features, and compose the original config registration into this snapshot path rather than leaving a second configuration source that reads the same keys again.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -169,7 +173,7 @@ import { PostsModule } from './posts/posts.module.js';
 export class AppModule {}
 ```
 
-Now connect the actual startup port. The following is a minimal, complete `src/main.ts` using this configuration. If you added middleware or request handling options in earlier chapters, retain them in the same helper's options. The decorated application graph is imported dynamically after preparing the metadata symbol, so preparation does not happen too late for the response model decorators.
+Now connect the actual startup port. The following is a minimal, complete `src/main.ts` using this configuration. If you added middleware or request handling options in earlier chapters, retain them in the same helper's options. The decorated application graph is imported dynamically after preparing the metadata symbol, so preparation does not happen too late for the response model decorators. Merely placing a static import below `ensureMetadataSymbol()` cannot establish this order: that import evaluates before the entrypoint body.
 
 ```ts
 import { ensureMetadataSymbol } from '@fluojs/core';
@@ -186,6 +190,8 @@ await runFastifyApplication(AppModule, {
 ```
 
 `runFastifyApplication` returns after creating and initializing the adapter, starting to listen for requests, and registering shutdown signals. You therefore need to pass the previously determined `blogConfig.PORT` as an option. The `AppSettings.port` read by services comes from the same snapshot. If configuration validation fails, startup stops before this helper is called. There is no operation that starts listening and then moves the port based on injected configuration.
+
+Reading configuration through DI is not a reason to replace this code with `FluoFactory.create()` and `listen()`. With explicit composition, you also own listen, signals, and the helper's middleware, logger, and post-creation failure cleanup policies. The book keeps the default run helper together with the validated snapshot. The next chapter's `BlogDatabaseModule` uses the same `AppSettings.databaseUrl`, and later authentication settings extend this validation path. This is not a new starting point that rereads the environment separately for database and authentication settings or discards accumulated middleware and upload limits.
 
 ## Removing Environment Dependencies from Public Links
 
@@ -306,6 +312,14 @@ The package also supports reload and watch, but we do not enable them at this st
 If you later want to refresh only UI feature flags, design reload by separating values that may change from values fixed at startup. A contract that restores the snapshot when a configuration listener fails does not guarantee that external work already performed is undone. There is also no registration API called `ConfigModule.forRootAsync()`. If you need an asynchronous secrets service, resolve it first in application-owned startup processing and pass the result to synchronous registration.
 
 FluoBlog has now separated development and production addresses from source code. The next problem is that even in the correct environment, restarting still loses all posts. In the next chapter, we use `AppSettings.databaseUrl` to register a single PostgreSQL connection and persist the posts currently held in memory. The input boundary defined here will continue to apply when we later add merchandise features to this same blog.
+
+## Canonical Docs
+
+This chapter explains the Docs configuration and startup order through a single FluoBlog snapshot. Allowed URLs, strict ports, and env file selection are application policy, distinct from the registration API's defaults.
+
+- [Documentation authority and the Book's role](../../docs/contracts/documentation-authority.md)
+- [Configuration loading, precedence, and validation contracts](../../docs/architecture/config-and-environments.md)
+- [Configuration validation, metadata preparation, and bootstrap boundaries](../../docs/getting-started/bootstrap-paths.md)
 
 ## Supporting Implementations and Contracts
 

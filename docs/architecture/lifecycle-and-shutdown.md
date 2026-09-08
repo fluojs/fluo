@@ -2,6 +2,32 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./lifecycle-and-shutdown.ko.md"><kbd>한국어</kbd></a></p>
 
+## Scope and Prerequisites
+
+This EN/KO pair owns the runtime lifecycle, shutdown admission, and cleanup retry contracts under the [documentation authority policy](../contracts/documentation-authority.md). Books and CONTEXT explain and link to this owner. It covers the current checkout's `@fluojs/runtime`, DI, Node/Fastify, and host-owned adapter boundaries, not verification of every published version. Terminus HTTP health/readiness decisions belong to the separate [health contract](../contracts/health-and-readiness.md).
+
+| Field | Prerequisite and public surface |
+| --- | --- |
+| Environment | The verification commands below use a repository checkout with installed dependencies, Node `>=24 <27`, and `pnpm@10.4.1`. Generated apps retain registry dependencies and generated scripts; repository examples such as `examples/fluo-blog` follow workspace dependencies and their own build prerequisites. This is not a recipe for overwriting one app directory with the other. |
+| Modules and DI | Use `defineModule`, `FluoFactory`, `fluoFactory`, and `bootstrapApplication` from `@fluojs/runtime`. Register the root module and providers, and expose cross-module dependencies through imports/exports. Constructor dependencies need `Inject` from `@fluojs/core` or an explicit provider `inject` list. Decorator code requires `Symbol.metadata` preparation before module evaluation and standard decorator transformation; follow the [metadata contract](./decorators-and-metadata.md). |
+| Lifecycle API | Import the types `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, and `ApplicationContext` from `@fluojs/runtime`. Hooks return synchronous `void` or `Promise<void>`. Declaring an interface does not register a provider. Hook-bearing `useValue` and eligible singleton class/factory providers participate; `useExisting` aliases and request/transient providers are not independently root-resolved for startup hooks. |
+| HTTP paths | Public APIs are `runFastifyApplication`, `bootstrapFastifyApplication`, and `createFastifyAdapter` from `@fluojs/platform-fastify`; and `runNodeApplication`, `bootstrapNodeApplication`, and `createNodeHttpAdapter` from `@fluojs/platform-nodejs`. Custom adapters implement `HttpApplicationAdapter` from `@fluojs/http/portable`. The `src/` paths in this document are implementation evidence, not consumer imports. |
+| External resources | The DI-only example needs no server, environment file, or external service. Adding databases, queues, sockets, or background jobs also requires assigning connection configuration, error handling, drain, and close ownership to the application or the relevant package. |
+
+## Inputs, Defaults, and Completion
+
+| API or input | Default, output, and boundary |
+| --- | --- |
+| `FluoFactory.create(RootModule, options = {})` | Returns `Promise<Application>` after bootstrap and HTTP dispatcher creation, initially in `bootstrapped` state. It does not listen or register signals automatically. An adapterless shell can be created, but `listen()` rejects with `InvariantError`. `fluoFactory` is an alias of the same `FluoFactory`. |
+| `bootstrapApplication({ rootModule, ...options })` | Uses the same HTTP shell creation path and accepts `logger` directly. `rootModule` is required. Graph/visibility/injection validation, provider resolution, or startup hook failures reject bootstrap. |
+| `FluoFactory.createApplicationContext(RootModule, options = {})` | Returns `Promise<ApplicationContext>` after DI and lifecycle initialization. There is no HTTP adapter/dispatcher/listener or public `state`, `ready()`, or `listen()`. Use `get(token): Promise<T>` and `close(signal?): Promise<void>`. |
+| Bootstrap options | Omitted `providers` adds no registrations. `duplicateProviderPolicy` defaults to `warn` and also accepts `throw`/`ignore`. `moduleGraphCache` and `diagnostics.timing` default off. Timing enables `bootstrapTiming`; contexts omit the `create_dispatcher` phase. |
+| `app.ready()` | Returns `Promise<void>` for a critical platform readiness check only; it does not activate the adapter, set `state` to `ready`, or create HTTP health routes. It rejects after successful close. Neither this method nor `state` replaces the shutdown operation gate below. |
+| `app.listen()` | Takes no arguments and uses adapter configuration. It awaits `ready()` then `adapter.listen(dispatcher)` and sets `state = 'ready'` only if shutdown has not started. Overlapping calls share startup work; an already-ready application does not start again. Readiness/adapter failure alone does not close the app: before close starts, the caller may retry listen subject to the adapter's contract. |
+| `bootstrapFastifyApplication(RootModule, options)` | Returns a bootstrapped app with default middleware assembled, without listen or Node signal registration. `runFastifyApplication` additionally completes listen, startup logging, and signal registration before returning. Manual Factory assembly is not automatically equivalent to these middleware, logger, failure cleanup, or signal policies. See [bootstrap paths](../getting-started/bootstrap-paths.md). |
+| Node/Fastify shutdown options | Run helpers default `shutdownSignals` to `['SIGINT', 'SIGTERM']`; use `false` to disable or supply a supported signal list. `forceExitTimeoutMs = 30_000` marks signal shutdown failure and is separate from adapter `shutdownTimeoutMs = 10_000`. Fastify validates its shutdown limit as a non-negative safe integer during setup. |
+| `close(signal?)` | Omitted signal is `undefined`; the runtime does not invent `SIGTERM`. Calls share active teardown, and close after success is a no-op. Explicit retry after failure follows the phase ownership below. |
+
 ## Startup Phases
 
 | Order | Phase | Runtime fact | Source anchor |
@@ -15,19 +41,21 @@
 
 Bootstrap timing diagnostics expose the phase names `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, and `create_dispatcher` when `diagnostics.timing` is enabled.
 
-If any bootstrap step fails, the runtime runs failure cleanup with signal value `bootstrap-failed`, disposes the container, and does not leave the application in a ready state.
+On bootstrap failure, the runtime runs failure cleanup on acquired lifecycle instances with signal value `bootstrap-failed`, attempts disposal of the acquired container, and does not return a ready application. Independent provider resolutions may run concurrently, but hooks execute in declaration order after all resolutions settle. Startup hooks are awaited sequentially; a failure stops subsequent startup hooks.
+
+`platformShell.stop()` is installed as `onModuleDestroy()` on a prepended lifecycle instance. It therefore runs after the reverse user-instance destroy pass and before the `onApplicationShutdown()` pass. Contexts follow the same bootstrap lifecycle without creating an HTTP dispatcher.
 
 ## Health Signaling
 
 | Signal or state | Guarantee | Source anchor |
 | --- | --- | --- |
 | Module readiness markers | During bootstrap, compiled modules that expose `markStarting()` and `markReady()` are set to starting before lifecycle hooks run, then switched to ready only after `platformShell.start()` succeeds. Shutdown resets those markers to starting before cleanup callbacks and lifecycle shutdown hooks run. | `packages/runtime/src/bootstrap.ts:resetReadinessState()`, `packages/runtime/src/bootstrap.ts:markReadinessState()`, `packages/runtime/src/bootstrap.ts:runBootstrapLifecycle()`, `packages/runtime/src/bootstrap.ts:closeRuntimeResources()` |
-| Application state model | Public runtime state is `bootstrapped`, `ready`, or `closed`. | `packages/runtime/src/types.ts:91-92` |
-| Readiness gate before listen | `Application.listen()` calls `ready()`, and `ready()` delegates to `platformShell.assertCriticalReadiness()`. The adapter is not asked to bind until that check passes. | `packages/runtime/src/bootstrap.ts:437-489` |
-| Ready transition | `Application.listen()` sets the application state to `ready` only after `adapter.listen(this.dispatcher)` resolves successfully. | `packages/runtime/src/bootstrap.ts:481-490` |
+| Application state model | Public runtime state is `bootstrapped`, `ready`, or `closed`. | `packages/runtime/src/types.ts:ApplicationState` |
+| Readiness gate before listen | `Application.listen()` calls `ready()`, and `ready()` delegates to `platformShell.assertCriticalReadiness()`. The adapter's listen is not called until that check passes. | `packages/runtime/src/bootstrap.ts:FluoApplication.startListening()` |
+| Ready transition | `Application.listen()` sets the application state to `ready` only after `adapter.listen(this.dispatcher)` resolves successfully and shutdown has not started. | `packages/runtime/src/bootstrap.ts:FluoApplication.startListening()` |
 | Closed transition | `Application.close()` preserves the existing public state while teardown is pending and sets `closed` only after teardown completes successfully. Shutdown admission is tracked separately from the public state. | `packages/runtime/src/application.test.ts` (`keeps failed shutdown terminal while retrying only incomplete cleanup`) |
 
-These guarantees separate bootstrap completion from listener binding. A compiled application can exist in `bootstrapped` state before it begins accepting traffic.
+These guarantees distinguish bootstrap completion, readiness checks, adapter activation, and ingress. Node/Fastify create a server object during adapter construction and bind during listen. Listen on host-owned paths such as Next.js/Workers attaches a dispatcher, not a new socket. `Application.dispatch()` does not require listen before shutdown; the public `app.dispatcher` and direct adapter entry points do not pass through that wrapper. Their ingress/drain policies belong to the adapter and host.
 
 ## Shutdown Guarantees
 
@@ -58,6 +86,107 @@ bootstrap-failure cleanup execute registrations in order and await every callbac
 cleanup phase. A failure does not skip later registrations: close aggregates failures and leaves
 only its incomplete cleanup phase retryable, while bootstrap keeps the original bootstrap error and
 reports cleanup failures through `ApplicationLogger`.
+
+## Failures, Retries, and Resource Ownership
+
+1. `Application.close()` closes the terminal gate before its first await, then waits for active listen to settle. A late listen completion cannot restore ready state. Connected microservices close in reverse connection order, followed by parent readiness reset → runtime cleanup → destroy hooks → application shutdown hooks → adapter close → container dispose. Contexts have no child HTTP adapter to close.
+2. `Application.get()`, `ApplicationContext.get()`, `Application.listen()`, `Application.dispatch()`, `Application.connectMicroservice()`, and `Application.startAllMicroservices()` reject once shutdown starts. Provider/runtime resolution checks admission both before and after awaiting, so a racing result is neither returned nor attached as a child. The public state remains unchanged while close is pending or failed; this does not mean the app is usable. Provider lookups after successful close also fail through the disposed container.
+3. Individual runtime cleanup and shutdown hook failures do not skip later callbacks/hooks or adapter/container cleanup. Close rejects with an error for one failure or `AggregateError` for multiple failures. Retry skips completed phases. **A failed runtime cleanup phase replays all registered callbacks; a failed lifecycle hook phase replays both complete hook passes.** Hooks must therefore tolerate re-entry into previously successful work. This differs from retrying only failed container `onDestroy()` hooks. If readiness reset itself throws, that attempt does not proceed to later phases.
+4. DI disposal cleans materialized container-managed instances and owned child scopes, without repeating successful `onDestroy()` hooks. Register/override/resolve/createRequestScope remain terminal after failure. A directly disposed child's caller owns later retries; a parent-started failed child disposal remains owned by the parent hierarchy. Lifecycle `onModuleDestroy()`/`onApplicationShutdown()` and DI `onDestroy()` are separate contracts, not one combined hook.
+5. Adapters own their retries. The runtime calls `close(signal)` again for an incomplete adapter phase; it does not restart all adapters or guarantee identical drain behavior. `MicroserviceApplication.close()` caches its terminal success/failure result, so parent close retries do not repeat child transport teardown. A failed `startAllMicroservices()` rolls back only previously started children in reverse order and preserves the original startup error.
+6. Bootstrap failure attempts readiness reset, registered runtime cleanup, shutdown hooks on acquired instances, and acquired container disposal, logs cleanup failures, then rethrows the original startup error. This path does not call HTTP adapter close. After an app has been obtained, run-helper listen/startup-log/signal-registration failures attempt `app.close('bootstrap-failed')` and preserve the original error. Callers own manual Factory startup failure cleanup and resources they created before bootstrap.
+7. Node run helpers register signal handlers after listen. Manual close attempts unregistration once before runtime close; unregistration failure still permits runtime close, and simultaneous failures aggregate. Signal timeout/close failure logs and sets `process.exitCode = 1`, but does not call `process.exit()` or cancel cleanup. Successful shutdown before timeout sets exit code `0`. The host owns final process termination.
+8. The Node adapter owns server drain and remaining-connection termination after its timeout. Fastify waits for `app.close()` settlement; exceeding the close wait limit rejects while underlying close continues. The `Application.dispatch()` gate merely avoids cancelling already-admitted requests: it is not a universal drain guarantee for every request, database operation, or background job. Use run-helper `shutdownSignals: false` when the application supplies custom drain and host signal handling to avoid duplicate ownership.
+
+## Scoped Example
+
+This TypeScript fragment demonstrates only registered provider hook order and adapterless context shutdown. It defines the empty root module locally and needs no separate app files or decorator transformation. It is not an HTTP request or signal handler example.
+
+```ts
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@fluojs/runtime';
+
+const events: string[] = [];
+class Resource implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown {
+  onModuleInit() { events.push('init'); }
+  onApplicationBootstrap() { events.push('bootstrap'); }
+  onModuleDestroy() { events.push('destroy'); }
+  onApplicationShutdown(signal?: string) { events.push(`shutdown:${signal ?? 'none'}`); }
+}
+class RootModule {}
+defineModule(RootModule, { providers: [Resource] });
+const context = await FluoFactory.createApplicationContext(RootModule);
+try {
+  await context.get(Resource);
+} finally {
+  await context.close('manual');
+}
+// events: ['init', 'bootstrap', 'destroy', 'shutdown:manual']
+```
+
+Choose `runFastifyApplication` for default Node/Fastify execution, `bootstrapFastifyApplication` for configuration before activation, or Factory for explicit adapter composition. Host-owned requests follow the corresponding adapter attachment recipe. Human-oriented applications appear in Book volume 1 chapter 23, `ch23-lifecycle-and-readiness`, and legacy `book/advanced/ch09-app-context`.
+
+## Machine Contract and Execution Evidence
+
+Only the JSON below is consumed as machine fields by `tooling/governance/runtime-shutdown-terminality.test.ts`. `shutdownOrder` lists parent runtime phases after child close. Natural-language sentences, Book narrative, and CONTEXT summaries are not checker keys. Sentinel checks detect deletion, duplication, and field drift but do not alone prove meaning or runtime behavior. Legacy Book runtime source excerpt equality remains a separate consumer check.
+
+<!-- fluo:lifecycle-shutdown:start -->
+```json
+{
+  "schemaVersion": 1,
+  "states": ["bootstrapped", "ready", "closed"],
+  "admissionCloses": "close-start",
+  "blockedOperations": [
+    "Application.get()",
+    "ApplicationContext.get()",
+    "Application.listen()",
+    "Application.dispatch()",
+    "Application.connectMicroservice()",
+    "Application.startAllMicroservices()"
+  ],
+  "stateDuringCloseOrFailure": "unchanged",
+  "closedAfter": "successful-teardown",
+  "admittedDispatch": "not-cancelled-by-gate",
+  "shutdownOrder": [
+    "readiness-reset",
+    "runtime-cleanup",
+    "onModuleDestroy:reverse",
+    "onApplicationShutdown:reverse",
+    "adapter.close",
+    "container.dispose"
+  ],
+  "retry": {
+    "runtimeCleanup": "incomplete-phase-all-registrations",
+    "lifecycleHooks": "incomplete-phase-all-hooks",
+    "adapter": "adapter-owned",
+    "container": "failed-onDestroy-only",
+    "microservice": "cached-terminal-result",
+    "admissionReopens": false
+  },
+  "nodeSignals": {
+    "defaults": ["SIGINT", "SIGTERM"],
+    "forceExitTimeoutMs": 30000,
+    "callsProcessExit": false
+  },
+  "nodeAdapterShutdownTimeoutMs": 10000
+}
+```
+<!-- fluo:lifecycle-shutdown:end -->
+
+| Evidence | Verified boundary |
+| --- | --- |
+| `packages/runtime/src/index.ts`, `types.ts`, `bootstrap.ts`, `retryable-shutdown.ts`, `platform-shell.ts` | Public exports, states, lifecycle order, gate, completed phases, and failures |
+| `packages/runtime/src/application.test.ts`, `bootstrap.test.ts` | Pending/failed/successful close, provider/child resolution races, dispatch admission, hook replay, DI failed-hook retry, bootstrap cleanup, real Node HTTP, and signal timeout |
+| `packages/runtime/src/http-adapter-shared.ts`, `http-adapter-shared.test.ts` | Helper startup/registration failure cleanup, original error preservation, and signal unregistration |
+| `packages/di/src/container.ts`, `container-disposal-retry.test.ts` | Terminal disposal, attempts for all materialized hooks, and explicit retry of failed hooks only |
+| `packages/platform-nodejs/src/node/internal-node.ts`, `internal-node-shutdown.ts`; `packages/platform-fastify/src/adapter.ts`, `adapter.test.ts` | Server construction versus listen, defaults, signal/close ownership, and real HTTP |
+| `packages/platform-nextjs/src/adapter.ts`, `index.test.ts`; `packages/platform-cloudflare-workers/src/adapter.ts`, `adapter-lifecycle.test.ts` | Host-owned dispatcher attachment and shutdown boundaries |
+
+Run from the repository root. The packages project's global setup builds required emitted dependencies. These commands do not verify external databases/brokers or actual Next.js/Workers deployments.
+
+```bash
+pnpm exec vitest run tooling/governance/runtime-shutdown-terminality.test.ts packages/runtime/src/application.test.ts packages/runtime/src/bootstrap.test.ts packages/runtime/src/http-adapter-shared.test.ts packages/di/src/container-disposal-retry.test.ts packages/platform-fastify/src/adapter.test.ts packages/platform-nextjs/src/index.test.ts packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts --maxWorkers=1
+```
 
 ## Related Docs
 

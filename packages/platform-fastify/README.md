@@ -38,6 +38,19 @@ Use this package when you need a high-performance HTTP adapter for your fluo app
 
 ## Quick Start
 
+For the default CLI Node/Fastify application, use the run helper. This entrypoint fragment assumes the generated `AppModule` in `src/app.ts`, its config/greeting/health registrations and tests, installed dependencies, and the generated standard decorator tooling:
+
+```typescript
+import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { AppModule } from './app';
+
+await runFastifyApplication(AppModule, { port: 3000 });
+```
+
+The helper resolves after initialization, listen, and shutdown registration; do not call `listen()` again. The generated CLI entrypoint additionally applies its `PORT` parseInt/fallback policy. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) owns that recipe, environment distinctions, metadata evaluation order, and config validation timing.
+
+The existing example below is **explicit low-level composition**, with an application-owned module at `./app.module`. `fluoFactory` is an alias of `FluoFactory`. This path shares runtime initialization and its failure cleanup, but does not automatically reproduce the helpers' middleware or Node logger selection, run-helper post-creation failure cleanup, or signal registration:
+
 ```typescript
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { fluoFactory } from '@fluojs/runtime';
@@ -53,6 +66,10 @@ await app.listen();
 `createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` starts Fastify close immediately. The zero value bounds only the wait: if close has not settled, the wait may time out on the next timer turn while the underlying Fastify close and cleanup continue.
 
 ## Common Patterns
+
+`bootstrapFastifyApplication(AppModule, options)` returns an initialized app without automatic listen or Node signal registration. The bootstrap-only snippets below configure that app; their caller owns later activation and shutdown. Both Fastify helpers enable security headers unless `securityHeaders: false`, add CORS/global-prefix middleware only when configured, and select the Node framework console logger unless `logger` is provided. Their middleware order is configured CORS, configured prefix, security headers, then caller middleware.
+
+`runFastifyApplication` registers `SIGINT`/`SIGTERM` by default (`shutdownSignals: false` opts out). A listen or shutdown-registration failure triggers an `app.close('bootstrap-failed')` attempt and preserves the original failure; cleanup errors are logged. The returned close wrapper unregisters signals once before runtime close, still closes if unregistering fails, and aggregates concurrent unregister/close errors. These are additional guarantees beyond shared initialization-failure cleanup; see [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.md).
 
 ### Early Hints
 
@@ -231,7 +248,7 @@ The same file also covers Fastify-specific native route registration with wildca
 ## Public API Overview
 
 - `createFastifyAdapter(options, multipartOptions?)`: Recommended factory for the Fastify adapter. `options` includes transport startup knobs such as `host`, `port`, and Node.js `https` server options. The optional second argument configures multipart limits such as `maxFileSize`, `maxFiles`, and `maxTotalSize` for direct adapter construction.
-- `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening; accepts the same Fastify startup options, including `https`, when the host wants to construct the app before binding it.
+- `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening or Node signal registration; accepts the same Fastify startup options, including `https`, when the host wants to construct the app before binding it.
 - `runFastifyApplication(module, options)`: Bootstraps the application, starts listening, installs shutdown registration, and returns the running shell with the same `https` startup surface. On signal-driven shutdown timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `isFastifyMultipartTooLargeError(error)`: Detects multipart limit errors across Fastify error shapes.
 - `FastifyHttpApplicationAdapter`: The core adapter implementation.

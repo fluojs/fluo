@@ -24,7 +24,15 @@
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
 <!-- fluo:docs-navigation:start -->
-학습의 중심은 [제품·패턴 중심 3권 시리즈](../book/README.ko.md)입니다. FluoBlog를 만들고 같은 서비스에 머천다이즈 숍을 추가한 뒤 Fluo 내부 구조를 살펴봅니다. [짧은 HTTP 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [초기 실행 체크포인트](../examples/fluo-blog/README.ko.md)는 보조 자료입니다. 전체 책은 한국어 원고를 먼저 확정한 뒤 영어로 번역하며, [문서 지도](./README.ko.md#원본-책임)에서 사실별 담당 원본을 확인하세요.
+[지식 색인](./knowledge-index.json)에서 contract ID에 대응하는 EN/KO 담당 문서와 실제 source/test 파일을 찾으세요. `operations.health-readiness`는 health와 트래픽 수용 계약을, `runtime.lifecycle-and-shutdown`은 runtime lifecycle과 cleanup을 소유합니다.
+
+[Health and Readiness Contract](./contracts/health-and-readiness.ko.md)가 아래 health 규범 계약을 소유하며, [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)이 시작, terminal admission, cleanup, host 종료 경계를 소유합니다. 이 CONTEXT와 연결된 legacy Book은 요약이며 독립적인 권위 문서가 아닙니다.
+
+Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층입니다. 이 CONTEXT에서 제약을 확인한 다음 [문서 지도](./README.ko.md#원본-책임)와 [패키지 선택기](./reference/package-chooser.ko.md)로 담당 Docs 또는 위임된 패키지 README를 찾고, 그 계약과 구현·테스트·실행 근거를 읽으세요. 패키지 README는 설치·공개 API·기본값·제약의 원본으로 유지하며 `docs/`에 복제하지 않습니다. [문서 권위 정책](./contracts/documentation-authority.ko.md)은 적용 범위, 입력·출력·기본값, 순서·실패·자원 소유권, 제약·공개 import·전제·근거를 간결한 Markdown으로 기록하는 형식을 정의합니다.
+
+사람의 중심 학습 경로는 [제품·패턴 중심 3권 시리즈](../book/README.ko.md)입니다. FluoBlog를 만들고 같은 서비스에 머천다이즈 숍을 추가한 뒤 Fluo 내부 구조를 살펴봅니다. Book은 같은 Docs 계약을 제품 서사로 설명하며, 앱 도메인 정책은 프레임워크 보장이 아닙니다. AI가 계약을 확인하기 위해 Book을 먼저 읽을 필요는 없습니다. [짧은 HTTP 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [초기 실행 체크포인트](../examples/fluo-blog/README.ko.md)는 보조 자료입니다.
+
+Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응 → 인계 순서를 따르세요. 최초 집필은 한국어 전체를 먼저 확정합니다. 기존 Book 정정은 의존 장을 포함한 영향받는 한국어 묶음 전체를 동결한 뒤 영어로 옮기며, 병합 가능한 각 증분에는 양언어 대응이 모두 있어야 합니다. 충돌은 기존 계약·구현·테스트로 판정하고 구현에 맞춰 보장을 조용히 낮추지 않습니다. 아직 이전하지 않은 아래 계약 절, 안정 링크와 machine sentinel은 그대로 유효하며, 이 안내는 전체 패키지·장 이전 완료를 뜻하지 않습니다.
 
 <!-- fluo:docs-navigation:end -->
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.

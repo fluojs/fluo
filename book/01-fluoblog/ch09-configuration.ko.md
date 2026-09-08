@@ -88,6 +88,8 @@ export function blogConfigOptions(
 
 포트 입력을 십진 숫자의 문자열로 제한했으므로 빈 문자열, 음수, 소수, `3000oops`는 통과하지 못한다. 변환 후의 범위 검사도 필요하다. 숫자로만 이루어진 `"999999"`를 올바른 TCP 포트로 받아들여서는 안 된다. 공개 URL은 마지막 `/`를 정규화하는 한편, `/blog`와 같은 배치 경로를 거부한다. 이 단계의 FluoBlog는 사이트 루트에 배치하는 계약이기 때문이다. 하위 경로 배포를 시작한다면 이 조건만 풀지 말고 라우팅과 링크 생성을 함께 바꿔야 한다.
 
+이 `1..65535` 범위와 문자열 검증은 FluoBlog의 정책이다. CLI가 생성하는 `Number.parseInt(..., 10)`와 유한하지 않은 결과의 `3000` fallback을 재현하는 스키마가 아니다. Fastify의 숫자 옵션은 포트 `0`도 허용하지만 이 앱은 사용하지 않는다. 1장의 작은 `readPort`를 이번 설정 스키마로 옮기는 것이며, CLI나 어댑터의 입력 계약을 바꾸는 작업은 아니다.
+
 `DATABASE_URL`에 기본값을 두지 않은 점도 중요하다. 연결할 곳이 불분명할 때 개발 DB로 연결하는 것보다 시작을 중단하는 편이 원인을 찾기 쉽다. 스키마가 받아들인 URL이어도 비밀번호가 틀리거나 네트워크가 끊어질 수 있다. 문법의 정확성, 연결 가능성, 수행할 작업에 대한 권한은 별도의 검사다.
 
 `PORT`의 스키마 입력은 문자열이고 출력은 숫자다. `ConfigService<BlogConfig>`에 전달하는 타입은 입력이 아니라 이 출력이다. 타입 인수를 쓴다고 실행 시 검증이 생기는 것은 아니다. 여기서는 등록에 쓰는 스키마와 소비하는 타입을 같은 정의에서 만들어 대응을 유지한다.
@@ -156,7 +158,9 @@ export class AppSettingsModule {}
 
 이번에는 어댑터 생성 전에 포트를 알아야 하므로 `loadConfig`로 한 번 검증하고 그 결과를 등록한다. `loadConfig`의 공개 반환 타입은 일반 설정 딕셔너리다. 여기의 `as BlogConfig`는 입력 검증을 대신하는 단언이 아니라, 바로 앞에서 실행한 `BlogConfigSchema`의 출력과 타입 사이의 대응을 나타낸다. 원시 환경 변수에 같은 단언을 붙여서는 안 된다. 모든 필드가 원시값인 결과를 동결하고, DI에는 이 스냅샷만 넘겨 파일을 두 번 읽지 않는다. 이미 숫자가 된 포트에 문자열 입력용 스키마를 다시 적용하지도 않는다.
 
-`src/app.ts`의 기존 `AppModule`에는 `AppSettingsModule`을 가져와 `imports`에 추가한다. 다음은 기존 모듈과의 합성 부분이며 HTTP 설정을 모두 대체하는 파일은 아니다. `PostsModule`은 앞 장까지의 `src/posts/posts.module.ts`다.
+등록과 검증의 시점은 다르다. `ConfigModule.forRoot(...)`는 동기적으로 provider를 등록하며, 일반적인 schema 등록에서는 bootstrap이 `ConfigService`를 해석할 때 설정을 로드하고 listen 전에 동기 검증한다. 여기서는 명시적 `loadConfig(...)`가 이 모듈을 평가하는 도중 실행되므로 그보다 먼저 검증한다. 스키마 실패는 `INVALID_CONFIG`이며, 아래 dynamic import가 실패해 `runFastifyApplication`까지 도달하지 않는다. 이미 검증한 snapshot을 다시 등록하는 이 흐름을 “`forRoot` 호출만으로 파일 로드가 끝났다”는 설명과 혼동하지 않는다.
+
+`src/app.ts`의 기존 `AppModule`에는 `AppSettingsModule`을 가져와 `imports`에 추가한다. 다음은 기존 모듈과의 합성 부분이며 HTTP 설정을 모두 대체하는 파일은 아니다. `PostsModule`은 앞 장까지의 `src/posts/posts.module.ts`다. 생성된 greeting·health와 기존 기능 등록은 유지하며, 생성 때의 config 등록도 같은 키를 다시 읽는 두 번째 설정 원본으로 남기지 않고 이 snapshot 경로로 합성한다.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -169,7 +173,7 @@ import { PostsModule } from './posts/posts.module.js';
 export class AppModule {}
 ```
 
-이제 실제 시작 포트도 연결한다. 아래는 이 설정을 사용하는 `src/main.ts`의 최소 완전한 파일이다. 앞 장에서 추가한 미들웨어나 요청 처리 옵션이 있다면 같은 helper의 옵션에 유지한다. 메타데이터 심벌을 준비한 뒤 장식된 앱 그래프를 동적으로 가져오므로 응답 모델의 데코레이터보다 준비가 늦어지지 않는다.
+이제 실제 시작 포트도 연결한다. 아래는 이 설정을 사용하는 `src/main.ts`의 최소 완전한 파일이다. 앞 장에서 추가한 미들웨어나 요청 처리 옵션이 있다면 같은 helper의 옵션에 유지한다. 메타데이터 심벌을 준비한 뒤 장식된 앱 그래프를 동적으로 가져오므로 응답 모델의 데코레이터보다 준비가 늦어지지 않는다. `ensureMetadataSymbol()` 아래에 static import를 놓는 것만으로는 이 순서를 만들 수 없다. 그 import는 진입점 본문보다 먼저 평가된다.
 
 ```ts
 import { ensureMetadataSymbol } from '@fluojs/core';
@@ -186,6 +190,8 @@ await runFastifyApplication(AppModule, {
 ```
 
 `runFastifyApplication`은 어댑터 생성, 초기화, 요청 수신, 종료 시그널 등록까지 마치고 반환한다. 따라서 시작 전에 결정한 `blogConfig.PORT`를 옵션으로 전달해야 한다. 서비스에서 읽는 `AppSettings.port`도 같은 스냅샷의 값이다. 설정 검증이 실패하면 이 helper를 부르기 전에 멈추고, 수신을 시작한 뒤 주입된 설정으로 포트를 옮기는 동작은 없다.
+
+설정을 DI에서 읽는다는 이유로 이 코드를 `FluoFactory.create()`와 `listen()`으로 바꿀 필요는 없다. 직접 조립을 선택하면 listen과 signal, helper의 미들웨어·logger·생성 이후 실패 정리 정책도 직접 책임져야 한다. 이 책은 기본 실행 helper와 검증된 snapshot을 함께 유지한다. 다음 장의 `BlogDatabaseModule`은 같은 `AppSettings.databaseUrl`을 사용하고, 뒤에서 인증 설정을 확장할 때도 이 검증 경로를 이어 간다. DB·인증을 위해 환경을 다시 읽는 별도 설정 원본을 만들거나 누적한 middleware·업로드 제한을 버리는 출발점이 아니다.
 
 ## 공개 링크에서 환경 의존 제거하기
 
@@ -306,6 +312,14 @@ pnpm exec vitest run test/config.test.ts
 나중에 화면의 기능 플래그만 갱신하고 싶어진다면 변경 가능한 값과 시작 시 고정하는 값을 나누어 reload를 설계한다. 설정 listener가 실패했을 때 스냅샷을 복구한다는 계약은 이미 수행한 외부 작업까지 되돌린다는 보장이 아니다. 또한 `ConfigModule.forRootAsync()`라는 등록 API는 없다. 비동기 비밀 관리 서비스가 필요하다면 애플리케이션 소유 시작 처리에서 먼저 해결하고 그 결과를 동기 등록으로 전달한다.
 
 FluoBlog는 이제 개발용과 운영용 주소를 소스 코드에서 분리했다. 다음 문제는 올바른 환경에서 실행해도 재시작하면 게시글이 사라진다는 점이다. 다음 장에서는 `AppSettings.databaseUrl`을 사용해 PostgreSQL 연결을 하나 등록하고 메모리의 게시글을 영속화한다. 여기서 정한 입력 경계는 나중에 같은 블로그에 상품 기능을 추가할 때도 이어 간다.
+
+## 기준 Docs
+
+이 장은 Docs의 설정·시작 순서를 하나의 FluoBlog snapshot으로 설명한다. 허용 URL과 엄격한 포트, env 파일 선택은 앱의 정책이며, 등록 API 자체의 기본값과 구별한다.
+
+- [문서 권위와 Book의 역할](../../docs/contracts/documentation-authority.ko.md)
+- [설정 로드, 우선순위와 검증 계약](../../docs/architecture/config-and-environments.ko.md)
+- [설정 검증·metadata 준비와 bootstrap 경계](../../docs/getting-started/bootstrap-paths.ko.md)
 
 ## 근거가 되는 구현과 계약
 

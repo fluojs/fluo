@@ -18,6 +18,10 @@ const {
 } = (await import('./verify-platform-consistency-governance.mjs')) as unknown as TerminusContractGuard;
 const contractSentinel =
   'fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive';
+const contractOwners = [
+  'docs/contracts/health-and-readiness.md',
+  'docs/contracts/health-and-readiness.ko.md',
+] as const;
 const governedSurfaces = [
   'packages/terminus/README.md',
   'packages/terminus/README.ko.md',
@@ -30,6 +34,37 @@ const governedSurfaces = [
 ] as const;
 
 describe('Terminus runtime health contract governance', () => {
+  it.each(contractOwners)('requires the canonical Docs sentinel in %s', (owner) => {
+    const readText = (path: string): string => {
+      if (path === owner) return '';
+      if (contractOwners.some((candidate) => candidate === path)) return contractSentinel;
+      return readFileSync(join(repoRoot, path), 'utf8');
+    };
+
+    expect(() => enforceTerminusRuntimeHealthContract(readText)).toThrow(
+      `${owner} must preserve the Terminus runtime health contract sentinel.`,
+    );
+  });
+
+  it.each(contractOwners)('requires the other canonical owner when %s changes', (owner) => {
+    const companion = contractOwners.find((candidate) => candidate !== owner);
+
+    expect(() => enforceTerminusRuntimeHealthContractCompanions([owner])).toThrow(
+      `Terminus runtime health contract updates must include ${companion}.`,
+    );
+  });
+
+  it.each([
+    'book/beginner/ch18-health.md',
+    'book/beginner/ch18-health.ko.md',
+  ])('does not promote a changed legacy Book summary into an owner: %s', (path) => {
+    expect(() => enforceTerminusRuntimeHealthContractCompanions([path])).not.toThrow();
+  });
+
+  it('accepts Docs owner updates without meaningless source or guard companion churn', () => {
+    expect(() => enforceTerminusRuntimeHealthContractCompanions(contractOwners)).not.toThrow();
+  });
+
   it('governs every Terminus contract surface and invokes the central guard', () => {
     expect(() => enforceTerminusRuntimeHealthContract()).not.toThrow();
     expect(
@@ -184,7 +219,7 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
         ].join('\n'),
       ),
     ).toThrow(
-      'Terminus runtime health contract updates must include packages/terminus/README.md, packages/terminus/README.ko.md, docs/getting-started/migrate-from-nestjs.md, docs/getting-started/migrate-from-nestjs.ko.md, docs/CONTEXT.ko.md, book/beginner/ch18-health.md, book/beginner/ch18-health.ko.md, tooling/governance/terminus-runtime-health-contract.mjs, tooling/governance/terminus-runtime-health-source-contract.mjs, tooling/governance/terminus-runtime-health-contract.test.ts.',
+      'Terminus runtime health contract updates must include docs/contracts/health-and-readiness.md, docs/contracts/health-and-readiness.ko.md.',
     );
   });
 
@@ -205,26 +240,44 @@ function unusedHealthResponse(reportWithPlatform: { status: string }) {
     ).toThrow('Terminus runtime health contract updates must include');
   });
 
-  it('requires all governed documents and focused guard files as companions', () => {
-    const completeCompanions = [
-      ...governedSurfaces,
-      'tooling/governance/terminus-runtime-health-contract.mjs',
-      'tooling/governance/terminus-runtime-health-source-contract.mjs',
-      'tooling/governance/terminus-runtime-health-contract.test.ts',
-    ];
-
+  it('requires Docs rather than legacy consumers when a package summary changes', () => {
     expect(() => enforceTerminusRuntimeHealthContractCompanions([
       'packages/terminus/README.md',
     ])).toThrow('Terminus runtime health contract updates must include');
-    expect(() => enforceTerminusRuntimeHealthContractCompanions(completeCompanions)).not.toThrow();
+    expect(() => enforceTerminusRuntimeHealthContractCompanions([
+      'packages/terminus/README.md',
+      ...contractOwners,
+    ])).not.toThrow();
+  });
+
+  it('requires actual runtime regression evidence when the Terminus module changes', () => {
+    expect(() => enforceTerminusRuntimeHealthContractCompanions([
+      'packages/terminus/src/module.ts',
+      ...contractOwners,
+    ])).toThrow('packages/terminus/src/module.test.ts');
+    expect(() => enforceTerminusRuntimeHealthContractCompanions([
+      'packages/terminus/src/module.ts',
+      'packages/terminus/src/module.test.ts',
+      ...contractOwners,
+    ])).not.toThrow();
+  });
+
+  it.each([
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('accepts shared health updates backed by the Docs owner pair in %s', (path) => {
+    expect(() => enforceTerminusRuntimeHealthContractCompanions(
+      [path, ...contractOwners],
+      () => '- /health status=200\n+ /health status=503',
+    )).not.toThrow();
   });
 
   it('does not read shared-document patches after an authoritative path triggers companion enforcement', () => {
     const completeCompanions = [
+      ...contractOwners,
       ...governedSurfaces,
-      'tooling/governance/terminus-runtime-health-contract.mjs',
-      'tooling/governance/terminus-runtime-health-source-contract.mjs',
-      'tooling/governance/terminus-runtime-health-contract.test.ts',
     ];
 
     expect(() =>

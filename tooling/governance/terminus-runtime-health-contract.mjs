@@ -8,7 +8,12 @@ import { enforceTerminusRuntimeSourceContract } from './terminus-runtime-health-
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const contractSentinel =
   'fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive';
+const contractOwners = [
+  'docs/contracts/health-and-readiness.md',
+  'docs/contracts/health-and-readiness.ko.md',
+];
 const contractDocuments = [
+  ...contractOwners,
   'packages/terminus/README.md',
   'packages/terminus/README.ko.md',
   'docs/getting-started/migrate-from-nestjs.md',
@@ -18,18 +23,11 @@ const contractDocuments = [
   'book/beginner/ch18-health.md',
   'book/beginner/ch18-health.ko.md',
 ];
-const contractCompanions = [
-  ...contractDocuments,
-  'tooling/governance/terminus-runtime-health-contract.mjs',
-  'tooling/governance/terminus-runtime-health-source-contract.mjs',
-  'tooling/governance/terminus-runtime-health-contract.test.ts',
-];
 const authoritativePaths = new Set([
+  ...contractOwners,
   'packages/terminus/src/module.ts',
   'packages/terminus/README.md',
   'packages/terminus/README.ko.md',
-  'book/beginner/ch18-health.md',
-  'book/beginner/ch18-health.ko.md',
 ]);
 const sharedPaths = new Set([
   'docs/CONTEXT.md',
@@ -129,7 +127,12 @@ export function enforceTerminusRuntimeHealthContractCompanions(
     return;
   }
 
-  const missingCompanions = contractCompanions.filter((path) => !changedFiles.includes(path));
+  // Docs owns the contract; summaries and unchanged source guards remain checked
+  // without requiring file churn. Source changes still need runtime regression evidence.
+  const companions = changedFiles.includes('packages/terminus/src/module.ts')
+    ? [...contractOwners, 'packages/terminus/src/module.test.ts']
+    : contractOwners;
+  const missingCompanions = companions.filter((path) => !changedFiles.includes(path));
   assertContract(
     missingCompanions.length === 0,
     `Terminus runtime health contract updates must include ${missingCompanions.join(', ')}.`,

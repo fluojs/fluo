@@ -63,9 +63,11 @@ examples/fluo-blog/
 | `vite.config.ts` | 선택한 체크포인트를 `fluoDecoratorsPlugin()`과 `node24` 대상으로 빌드합니다. |
 | `vitest.config.ts` | `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`으로 테스트를 실행합니다. |
 
-`AppModule`은 `src/app.module.ts`가 아니라 **`src/app.ts`**에 있습니다. 루트 모듈은 애플리케이션을 조합하는 경계이며 `GET /` 라우트를 자동으로 만들지는 않습니다.
+`AppModule`은 `src/app.module.ts`가 아니라 <strong><code>src/app.ts</code></strong>에 있습니다. 루트 모듈은 애플리케이션을 조합하는 경계이며 `GET /` 라우트를 자동으로 만들지는 않습니다.
 
 기본 health 라우트는 `AppModule.imports`의 `HealthModule.forRoot()`가 제공합니다. 과정 전체에서 이 import를 유지하세요. `/health`를 위한 컨트롤러를 중복으로 만들지 않습니다.
+
+이 `repository-example`은 `examples/minimal`의 저수준 Factory recipe가 아니라 기본 CLI Node/Fastify 경로와 같은 `runFastifyApplication` helper를 사용합니다. Listen과 shutdown signal 등록 뒤 반환하므로 listen을 다시 호출하지 않습니다. [Bootstrap 담당 문서](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.ko.md)가 helper 기본값, 실패, cleanup, 호스트 소유권을 구분합니다. Decorated declaration 평가 전에 metadata가 준비되도록 공통 표준 decorator build/test 설정을 유지합니다.
 
 ## 3. Fastify 시작하기
 
@@ -96,6 +98,8 @@ curl -i http://127.0.0.1:3000/ready
 기본 엔드포인트는 이 작은 앱이 살아 있고 요청을 받을 준비가 되었음을 보여줍니다. 예제에 존재하지 않는 데이터베이스의 상태까지 확인하지는 않습니다.
 
 수정한 코드를 다시 빌드하기 전에 Ctrl+C로 프로세스를 종료하세요. `start:00`은 빌드된 `dist/00-start/main.js`를 실행하며 소스 변경을 감시하지 않습니다. 수정 후에는 종료, 재빌드, 재시작해야 합니다. 진입점에서 `PORT`로 `3000`을 변경할 수 있지만 과정의 모든 명령은 `3000`을 사용합니다. 단순히 `build`나 `start`를 사용하지 마세요. 그 package 별칭은 학습 앱이 아니라 완성 스냅샷을 실행합니다.
+
+Checkpoint의 `PORT` 변환은 `Number(process.env.PORT ?? '3000')`이며 CLI의 `parseInt`/non-finite fallback은 없습니다. Fastify는 결과 숫자를 검증하고 정수 port `0..65535`를 허용합니다. Book의 더 엄격한 10진수 `1..65535` parser는 애플리케이션 정책이며 이 수정하지 않은 checkpoint의 동작이 아닙니다.
 
 저장소 루트에서 초기 health 테스트를 실행합니다.
 

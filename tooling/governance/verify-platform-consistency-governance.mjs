@@ -1379,6 +1379,10 @@ const bootstrapMigrationImplementationEvidence = [
 ];
 const bootstrapMigrationBoundaryMarker =
   '<!-- fluo-cli-bootstrap-automation-boundary: explicit-platform-express, numeric-literal-single-argument-listen, manual-host-callback-string-env-multiple-listen -->';
+const fastifyReadmePaths = [
+  'packages/platform-fastify/README.md',
+  'packages/platform-fastify/README.ko.md',
+];
 const fastifyRawContextTokens = [
   'context.request.raw',
   'context.response.raw',
@@ -1449,6 +1453,66 @@ function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
   });
 }
 
+function hasFastifyRawContextReadmeUpdate(changedFiles, documentSnapshots) {
+  return fastifyReadmePaths.some((path) => {
+    if (!hasChanged(changedFiles, path)) {
+      return false;
+    }
+
+    const snapshot = documentSnapshots?.[path];
+    if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') {
+      return true;
+    }
+
+    // Compare the whole heading-bounded contract, including token-free guidance.
+    // Missing anchors or competing raw-context sections cannot prove an unrelated edit.
+    const [baseSection, headSection] = [snapshot.base, snapshot.head].map((documentation) => {
+      // A heading inside a code fence makes this limited heading extractor ambiguous.
+      // Keep the companion gate closed rather than treating code as a section boundary.
+      let fence;
+      for (const line of documentation.split('\n')) {
+        if (fence && /^ {0,3}#{1,6}(?:[ \t]|$)/u.test(line)) {
+          return undefined;
+        }
+        const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
+        if (marker) {
+          if (!fence) {
+            fence = marker[1];
+          } else if (
+            marker[1][0] === fence[0]
+            && marker[1].length >= fence.length
+            && marker[2].trim() === ''
+          ) {
+            fence = undefined;
+          }
+        }
+      }
+      if (fence) {
+        return undefined;
+      }
+
+      const sections = documentation.split(/(?=^#{1,6}\s)/mu);
+      const rawSections = sections.filter((section) =>
+        fastifyRawContextTokens.some((token) => section.includes(token)));
+      const level = /^(#{1,6})\s/u.exec(rawSections[0] ?? '')?.[1].length;
+      if (
+        rawSections.length !== 1
+        || !level
+        || !fastifyRawContextTokens.every((token) => rawSections[0].includes(token))
+      ) {
+        return undefined;
+      }
+
+      const start = sections.indexOf(rawSections[0]);
+      const end = sections.findIndex((section, index) =>
+        index > start && /^(#{1,6})\s/u.exec(section)[1].length <= level);
+      return sections.slice(start, end === -1 ? sections.length : end).join('');
+    });
+
+    return baseSection === undefined || headSection === undefined || baseSection !== headSection;
+  });
+}
+
 function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
   const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
   const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
@@ -1475,7 +1539,7 @@ function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
 
 export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
   return documentSnapshotsFromGit(
-    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool],
+    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool, ...fastifyReadmePaths],
     runCommand,
     env,
   );
@@ -1574,15 +1638,12 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   );
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
   const fastifyRawContextDocumentation = [
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    'packages/platform-fastify/README.md',
-    'packages/platform-fastify/README.ko.md',
+    ...nestMigrationGuidePaths,
+    ...fastifyReadmePaths,
   ];
-  const touchedFastifyRawContextDocumentation = [
-    'packages/platform-fastify/README.md',
-    'packages/platform-fastify/README.ko.md',
-  ].some((path) => hasChanged(changedFiles, path)) || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
+  const touchedFastifyRawContextDocumentation =
+    hasFastifyRawContextReadmeUpdate(changedFiles, migrationGuideSnapshots)
+    || hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots);
 
   if (touchedEmailMigrationDocumentation) {
     enforceEmailMigrationCompanions(changedFiles);

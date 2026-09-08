@@ -2,34 +2,245 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { InvariantError } from '../../packages/core/src/index.js';
+import { defineModule, FluoFactory } from '../../packages/runtime/src/bootstrap.js';
+
 const repoRoot = join(import.meta.dirname, '../..');
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
-function section(content: string, startHeading: string, endHeading: string): string {
-  const start = content.indexOf(startHeading);
-  const end = content.indexOf(endHeading, start + startHeading.length);
+function createDeferred(): { readonly promise: Promise<void>; resolve(): void } {
+  let resolve: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
 
-  if (start < 0 || end < 0) {
-    throw new Error(`Missing governed section from ${startHeading} to ${endHeading}.`);
-  }
-
-  return content.slice(start, end);
+  return { promise, resolve: () => resolve() };
 }
 
-function paragraph(content: string, prefix: string): string {
-  const match = content
-    .split(/\n\s*\n/u)
-    .find((candidate) => candidate.startsWith(prefix));
+const lifecycleOwners = [
+  'docs/architecture/lifecycle-and-shutdown.md',
+  'docs/architecture/lifecycle-and-shutdown.ko.md',
+] as const;
+const contractStart = '<!-- fluo:lifecycle-shutdown:start -->';
+const contractEnd = '<!-- fluo:lifecycle-shutdown:end -->';
+const expectedContract = {
+  schemaVersion: 1,
+  states: ['bootstrapped', 'ready', 'closed'],
+  admissionCloses: 'close-start',
+  blockedOperations: [
+    'Application.get()',
+    'ApplicationContext.get()',
+    'Application.listen()',
+    'Application.dispatch()',
+    'Application.connectMicroservice()',
+    'Application.startAllMicroservices()',
+  ],
+  stateDuringCloseOrFailure: 'unchanged',
+  closedAfter: 'successful-teardown',
+  admittedDispatch: 'not-cancelled-by-gate',
+  shutdownOrder: [
+    'readiness-reset',
+    'runtime-cleanup',
+    'onModuleDestroy:reverse',
+    'onApplicationShutdown:reverse',
+    'adapter.close',
+    'container.dispose',
+  ],
+  retry: {
+    runtimeCleanup: 'incomplete-phase-all-registrations',
+    lifecycleHooks: 'incomplete-phase-all-hooks',
+    adapter: 'adapter-owned',
+    container: 'failed-onDestroy-only',
+    microservice: 'cached-terminal-result',
+    admissionReopens: false,
+  },
+  nodeSignals: {
+    defaults: ['SIGINT', 'SIGTERM'],
+    forceExitTimeoutMs: 30_000,
+    callsProcessExit: false,
+  },
+  nodeAdapterShutdownTimeoutMs: 10_000,
+};
 
-  if (!match) {
-    throw new Error(`Missing governed paragraph starting with ${prefix}.`);
+function readLifecycleContract(content: string): unknown {
+  const parts = content.split(contractStart);
+  const endings = parts[1]?.split(contractEnd);
+  const block = endings?.[0]?.trim();
+
+  if (parts.length !== 2 || endings?.length !== 2 || !block?.startsWith('```json\n') || !block.endsWith('\n```')) {
+    throw new Error('Expected one lifecycle contract JSON sentinel block.');
   }
 
-  return match;
+  return JSON.parse(block.slice('```json\n'.length, -'\n```'.length));
 }
+
+function expectLifecycleContract(content: string): void {
+  expect(readLifecycleContract(content)).toEqual(expectedContract);
+}
+
+function contractDocument(value: unknown): string {
+  return `${contractStart}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\`\n${contractEnd}`;
+}
+
+describe('lifecycle Docs contract ownership', () => {
+  it.each(lifecycleOwners)('requires machine-consumed lifecycle fields in %s', (relativePath) => {
+    expectLifecycleContract(read(relativePath));
+  });
+
+  it('ignores surrounding navigation and explanatory prose', () => {
+    expectLifecycleContract(`# Reworded introduction\n\n${contractDocument(expectedContract)}\n\nChanged explanation.`);
+  });
+
+  it.each([
+    '',
+    contractDocument(expectedContract).replace(contractStart, ''),
+    contractDocument(expectedContract).replace(contractEnd, ''),
+    contractDocument(expectedContract).repeat(2),
+    contractDocument(expectedContract).replace('"schemaVersion":1', '"schemaVersion":'),
+  ])('rejects missing, duplicate, or malformed owner sentinels (%#)', (content) => {
+    expect(() => expectLifecycleContract(content)).toThrow();
+  });
+
+  it.each([
+    ...Object.keys(expectedContract).map((key) =>
+      Object.fromEntries(Object.entries(expectedContract).filter(([field]) => field !== key))),
+    { ...expectedContract, states: ['bootstrapped', 'ready', 'closing', 'closed'] },
+    { ...expectedContract, admissionCloses: 'container-disposal' },
+    ...expectedContract.blockedOperations.map((operation) => ({
+      ...expectedContract,
+      blockedOperations: expectedContract.blockedOperations.filter((candidate) => candidate !== operation),
+    })),
+    { ...expectedContract, stateDuringCloseOrFailure: 'closed' },
+    { ...expectedContract, closedAfter: 'close-start' },
+    { ...expectedContract, admittedDispatch: 'cancelled' },
+    { ...expectedContract, shutdownOrder: [...expectedContract.shutdownOrder].reverse() },
+    ...Object.keys(expectedContract.retry).map((key) => ({
+      ...expectedContract,
+      retry: { ...expectedContract.retry, [key]: 'all-work-restarts' },
+    })),
+    { ...expectedContract, retry: { ...expectedContract.retry, admissionReopens: true } },
+    { ...expectedContract, nodeSignals: { ...expectedContract.nodeSignals, defaults: ['SIGTERM'] } },
+    { ...expectedContract, nodeSignals: { ...expectedContract.nodeSignals, callsProcessExit: true } },
+    { ...expectedContract, nodeSignals: { ...expectedContract.nodeSignals, forceExitTimeoutMs: 10_000 } },
+    { ...expectedContract, nodeAdapterShutdownTimeoutMs: 30_000 },
+  ])('rejects lifecycle contract loss or mutation (%#)', (contract) => {
+    expect(() => expectLifecycleContract(contractDocument(contract))).toThrow();
+  });
+
+  it.each(lifecycleOwners)('compares %s states with real terminal shutdown and failed DI retry', async (relativePath) => {
+    // Given: a real runtime/DI application with a controlled adapter-close boundary.
+    const releaseClose = createDeferred();
+    const closeStarted = createDeferred();
+    const failure = new Error('owned disposal failed');
+    let adapterCloses = 0;
+    let failingDisposals = 0;
+    let successfulDisposals = 0;
+    let shutdownHooks = 0;
+    class FailingResource {
+      onDestroy() {
+        failingDisposals += 1;
+        if (failingDisposals === 1) {
+          throw failure;
+        }
+      }
+      onApplicationShutdown() {
+        shutdownHooks += 1;
+      }
+    }
+    class SuccessfulResource {
+      onDestroy() {
+        successfulDisposals += 1;
+      }
+    }
+    class RootModule {}
+    defineModule(RootModule, { providers: [FailingResource, SuccessfulResource] });
+    const app = await FluoFactory.create(RootModule, {
+      adapter: {
+        async listen() {},
+        async close() {
+          adapterCloses += 1;
+          closeStarted.resolve();
+          await releaseClose.promise;
+        },
+      },
+    });
+    const states = [app.state];
+
+    // When: shutdown is pending and then fails in container-owned disposal.
+    await app.listen();
+    states.push(app.state);
+    const closing = app.close('SIGTERM');
+    const concurrent = app.close('SIGTERM');
+    const results = Promise.allSettled([closing, concurrent]);
+    try {
+      await closeStarted.promise;
+      expect(app.state).toBe('ready');
+      await expect(app.get(FailingResource)).rejects.toBeInstanceOf(InvariantError);
+      await expect(app.listen()).rejects.toBeInstanceOf(InvariantError);
+      await expect(app.connectMicroservice()).rejects.toBeInstanceOf(InvariantError);
+      await expect(app.startAllMicroservices()).rejects.toBeInstanceOf(InvariantError);
+    } finally {
+      releaseClose.resolve();
+      await results;
+    }
+
+    // Then: failure is shared, use stays terminal, and retry owns failed disposal only.
+    expect(await results).toEqual([
+      { status: 'rejected', reason: failure },
+      { status: 'rejected', reason: failure },
+    ]);
+    expect(app.state).toBe('ready');
+    await expect(app.get(FailingResource)).rejects.toBeInstanceOf(InvariantError);
+    await expect(app.listen()).rejects.toBeInstanceOf(InvariantError);
+    await app.close();
+    states.push(app.state);
+    await app.close();
+    await expect(app.get(FailingResource)).rejects.toThrow();
+    expect({ adapterCloses, failingDisposals, successfulDisposals, shutdownHooks }).toEqual({
+      adapterCloses: 1,
+      failingDisposals: 2,
+      successfulDisposals: 1,
+      shutdownHooks: 1,
+    });
+    expect(readLifecycleContract(read(relativePath))).toMatchObject({ states });
+  });
+
+  it('replays an incomplete context hook phase without replaying successful DI disposal', async () => {
+    // Given: a context hook that fails only its first shutdown attempt.
+    const events: string[] = [];
+    const failure = new Error('context shutdown failed');
+    let attempts = 0;
+    class Resource {
+      onModuleDestroy() { events.push('module:destroy'); }
+      onApplicationShutdown() {
+        events.push('application:shutdown');
+        attempts += 1;
+        if (attempts === 1) {
+          throw failure;
+        }
+      }
+      onDestroy() { events.push('container:dispose'); }
+    }
+    class RootModule {}
+    defineModule(RootModule, { providers: [Resource] });
+    const context = await FluoFactory.createApplicationContext(RootModule);
+
+    // When: the hook phase fails but container disposal succeeds.
+    await expect(context.close()).rejects.toBe(failure);
+
+    // Then: provider lookup stays terminal and retry replays both hook passes only.
+    await expect(context.get(Resource)).rejects.toBeInstanceOf(InvariantError);
+    await context.close();
+    await context.close();
+    expect(events).toEqual([
+      'module:destroy', 'application:shutdown', 'container:dispose',
+      'module:destroy', 'application:shutdown',
+    ]);
+  });
+});
 
 function sourceExample(content: string, sourceMarker: string): string {
   const sourceStart = content.indexOf(sourceMarker);
@@ -66,76 +277,7 @@ function expectSourceExampleToMatchRuntime(
   expect(sourceExample(content, sourceMarker)).toBe(expected);
 }
 
-function expectLifecycleStateAndOperationGate(content: string): void {
-  expect(content).toContain('bootstrapped');
-  expect(content).toContain('ready');
-  expect(content).toContain('closed');
-  expect(content).toContain('Application.get()');
-  expect(content).toContain('ApplicationContext.get()');
-  expect(content).toContain('Application.listen()');
-  expect(content).toContain('connectMicroservice()');
-  expect(content).toContain('startAllMicroservices()');
-}
-
-describe('runtime shutdown terminality documentation', () => {
-  it.each([
-    'packages/runtime/README.md',
-    'packages/runtime/README.ko.md',
-    'docs/architecture/lifecycle-and-shutdown.md',
-    'docs/architecture/lifecycle-and-shutdown.ko.md',
-  ])('preserves lifecycle states while documenting the shutdown operation gate in %s', (relativePath) => {
-    expectLifecycleStateAndOperationGate(read(relativePath));
-  });
-
-  it.each([
-    ['docs/CONTEXT.md', 'Application shutdown terminality is synchronized'],
-    ['docs/CONTEXT.ko.md', 'Application shutdown terminality는'],
-  ])('keeps the public states and operation gate coupled in the discoverability paragraph for %s', (relativePath, prefix) => {
-    expectLifecycleStateAndOperationGate(paragraph(read(relativePath), prefix));
-  });
-
-  it.each([
-    'book/advanced/ch09-app-context.md',
-    'book/advanced/ch09-app-context.ko.md',
-  ])('couples terminal operations and retry semantics to executable evidence in %s', (relativePath) => {
-    const content = section(
-      read(relativePath),
-      '## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts',
-      '## 9.5 The platform shell and adapter seams define what the runtime may assume about the host',
-    );
-
-    expectLifecycleStateAndOperationGate(content);
-    expect(content).toContain('keeps failed shutdown terminal while retrying only incomplete cleanup');
-    expect(content).toContain(
-      'rejects Application.get() as soon as shutdown starts while teardown is pending',
-    );
-    expect(content).toContain(
-      'rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending',
-    );
-    expect(content).toContain('rejects Application.get() when shutdown starts during provider resolution');
-    expect(content).toContain('rejects ApplicationContext.get() when shutdown starts during provider resolution');
-    expect(content).toContain('rejects connect and start operations while application close is pending');
-    expect(content).toContain('rejects connectMicroservice() when shutdown starts during runtime resolution');
-    expect(content).toContain('retries only incomplete application context shutdown phases');
-  });
-
-  it.each([
-    ['packages/runtime/README.md', 'failed hooks are retried by a later explicit'],
-    ['packages/runtime/README.ko.md', '실패한 hook만 이후 명시적'],
-    ['docs/architecture/lifecycle-and-shutdown.md', 'retains only failed hooks for a later explicit'],
-    ['docs/architecture/lifecycle-and-shutdown.ko.md', '실패한 hook만 이후 명시적'],
-    ['docs/CONTEXT.md', 'failed hooks are retried by a later explicit'],
-    ['docs/CONTEXT.ko.md', '실패한 hook만 이후 명시적'],
-    ['book/advanced/ch09-app-context.md', 'retries those failed hooks on a later explicit'],
-    ['book/advanced/ch09-app-context.ko.md', '이후 명시적 application 또는 context close에서 실패한 hook만 재시도합니다'],
-  ])('guards terminal best-effort failed-hook retry ownership in %s', (relativePath, retryContract) => {
-    const content = read(relativePath);
-
-    expect(content).toContain('onDestroy()');
-    expect(content).toContain('terminal best-effort');
-    expect(content).toContain(retryContract);
-  });
-
+describe('legacy Book runtime source consumers', () => {
   it.each([
     'book/advanced/ch09-app-context.md',
     'book/advanced/ch09-app-context.ko.md',
@@ -166,28 +308,18 @@ describe('runtime shutdown terminality documentation', () => {
     expect(applicationListen).not.toContain("if (this.applicationState === 'closed')");
   });
 
-  it('requires the runtime regressions behind the documented terminal and retry concepts', () => {
-    const applicationTests = read('packages/runtime/src/application.test.ts');
-    const bootstrapTests = read('packages/runtime/src/bootstrap.test.ts');
+  it.each([
+    'book/advanced/ch09-app-context.md',
+    'book/advanced/ch09-app-context.ko.md',
+  ])('rejects a changed source excerpt without governing narrative in %s', (relativePath) => {
+    const content = read(relativePath);
+    const marker = 'path:packages/runtime/src/bootstrap.ts:860-900';
+    const excerpt = sourceExample(content, marker);
+    const changed = content.replace(excerpt, `${excerpt}\n// source drift`);
 
-    expect(applicationTests).toContain('keeps failed shutdown terminal while retrying only incomplete cleanup');
-    expect(applicationTests).toContain(
-      'rejects Application.get() as soon as shutdown starts while teardown is pending',
-    );
-    expect(applicationTests).toContain('rejects Application.get() when shutdown starts during provider resolution');
-    expect(bootstrapTests).toContain(
-      'rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending',
-    );
-    expect(bootstrapTests).toContain(
-      'rejects ApplicationContext.get() when shutdown starts during provider resolution',
-    );
-    expect(bootstrapTests).toContain('rejects connect and start operations while application close is pending');
-    expect(bootstrapTests).toContain(
-      'rejects connectMicroservice() when shutdown starts during runtime resolution',
-    );
-    expect(bootstrapTests).toContain('retries only incomplete application context shutdown phases');
-    expect(bootstrapTests).toContain(
-      'retries only failed container-managed onDestroy hooks on a second application context close',
-    );
+    expect(changed).not.toBe(content);
+    expect(() => expectSourceExampleToMatchRuntime(
+      changed, read('packages/runtime/src/bootstrap.ts'), marker,
+    )).toThrow();
   });
 });
