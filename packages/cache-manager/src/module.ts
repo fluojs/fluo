@@ -152,6 +152,7 @@ async function createStore(options: NormalizedCacheModuleOptions, container: Con
 
   if (options.store === 'redis') {
     return new RedisStore(await resolveRedisClient(options, container), {
+      atomicUpdates: options.redis?.atomicUpdates,
       keyPrefix: options.keyPrefix,
       scanCount: options.redis?.scanCount,
     });

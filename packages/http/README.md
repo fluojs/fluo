@@ -594,6 +594,27 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: Typed request-local response finalization seam. Finalizers compose in registration order, each receives the prior resolved value, and the dispatcher awaits them so throws and rejections follow its normal error policy.
 
+## Opt-in HEAD Selection
+
+`FrameworkRequest.headRouting?: 'explicit-or-get'` is an adapter-owned input to
+the shared `createHandlerMapping(...)` matcher. Omission retains ordinary method
+matching. For HEAD only, opt-in selects an eligible explicit HEAD route, then
+the `ALL` method wildcard, then GET, before dispatching a single pipeline.
+Each method group retains its existing static/parameter and version rules.
+Version extraction runs once against the original HEAD request, and neither
+the native request nor the method seen by middleware, guards, and handlers is
+rewritten. Handler results, including 404, never re-enter route selection.
+
+This field does not add path wildcards or change other adapters' defaults.
+Custom `HandlerMapping` implementations own their matching policy; native route
+handoffs remain preselected routes and do not invoke this shared matcher.
+The field selects a route, not a transport response writer: existing custom
+writers still own HEAD body emission. The
+[Next adapter option](../platform-nextjs/README.md#head-routing) adds transport
+body suppression and stream cleanup for Next consumers.
+Regression evidence is in [`head-routing.test.ts`](./src/head-routing.test.ts)
+and the [Next pipeline tests](../platform-nextjs/src/head-routing.test.ts).
+
 ## Conditional Requests
 
 Configure `conditionalRequest` during runtime bootstrap to resolve representation existence separately from optional validators:

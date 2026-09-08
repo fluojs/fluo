@@ -190,6 +190,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
     },
     body: request.body,
     connection: request.connection,
+    headRouting: request.headRouting,
     method: request.method,
     params: { ...request.params },
     path: request.path,

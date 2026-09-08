@@ -193,6 +193,33 @@ await this.conn.transaction(async () => {
 
 fluo merges the ambient session only through the supported `MongooseConnection.model(...)` facade methods. It does not rewrite operation options on raw models returned by `current().model(...)`; those calls must pass `currentSession()` explicitly when they participate in the transaction.
 
+## After-commit cache invalidation
+
+Use `afterCommit(...)` on Prisma, Drizzle, or Mongoose wrappers to invalidate caches after the DB write actually commits. `docs/architecture/transactions.md` is the normative owner; each of `packages/prisma/README.md`, `packages/drizzle/README.md`, and `packages/mongoose/README.md` owns its public arguments and imports. This guide explains application of that contract.
+
+This fragment belongs inside a service injected with the `PrismaService` registered above and `CacheService` from a registered `CacheModule`. The application defines `id`, `name`, and the Prisma `User` model.
+
+```ts
+await this.prisma.transaction(async () => {
+  await this.prisma.current().user.update({ where: { id }, data: { name } });
+  this.prisma.afterCommit(async () => {
+    await this.cache.del(`user:${id}`);
+  });
+}, undefined, { requireAfterCommit: true });
+```
+
+`undefined` preserves Prisma/Drizzle's existing native-options position. Their request boundary is `requestTransaction(fn, signal?, nativeOptions?, boundary?)`; Mongoose uses `transaction(fn, boundary?)` and `requestTransaction(fn, signal?, boundary?)`. Decorator boundary options follow all existing arguments: Prisma `Transaction(input?, boundary?)`, Drizzle `Transaction(accessorOrOptions?, nativeOptions?, boundary?)`, and Mongoose `Transaction(accessor?, boundary?)`.
+
+`requireAfterCommit: true` checks native capability **before** the user callback and rejects missing support with the package's `AfterCommitCapabilityError`. Existing native defaults and fail-open behavior remain unchanged, but fallback, unsupported, missing, and closed scopes reject hook registration. `AfterCommitCallback` and `TransactionBoundaryOptions` are also root exports of each package.
+
+When the user callback settles, registration scope closes before native commit begins. After successful outer native commit and settlement of Mongoose session cleanup, hooks then run sequentially in FIFO order outside the ended ALS context. Nested boundaries share a queue, and a caught nested exception without a savepoint follows the final outer outcome. Hooks do not run on rollback, failed commit, or discarded attempts. Mongoose delegated callback retries own attempt-local queues and drain only the final successful attempt; commit-only retries do not register hooks again.
+
+If one hook fails, all still run before the package's `AfterCommitError extends AggregateError` is thrown. `committed: true` means the DB write already completed, `results` holds all fulfilled/rejected FIFO outcomes, and `errors` holds all hook failures. If Mongoose's manual-session `endSession()` fails after confirmed commit for an owning boundary that registered hooks or opted into `requireAfterCommit: true` (including a nested `requestTransaction` requirement), all hooks are attempted outside the ended ALS context after the cleanup attempt settles, then the separate root-exported `AfterCommitCleanupError` is thrown. It directly extends `AggregateError`, not `AfterCommitError`. It exposes `committed: true`, cleanup failure as `cause`, hook-only FIFO `results`, and `errors` ordered as cleanup failure followed by rejected hook reasons. Distinguish both errors separately and do not retry the original write. Legacy boundaries with no hooks and no `requireAfterCommit` requirement preserve the original cleanup error identity and no-hook request cancellation contract, including the original `AbortError`. Fluo does not retry or roll back the native transaction for these post-commit failures. Cache recovery and reconciliation belong to the application.
+
+Root reads in hooks do not use the previous transaction handle/session, and new transactions own fresh queues. Shutdown waits for hook drain and does not accept late registrations. External raw-client transactions, other wrappers, and other connections are not observed. This does not eliminate the observation window before cache deletion or stale refill, nor provide a durable outbox or crash/network exactly-once.
+
+Redis has no Fluo-owned commit tracking and does not support this API. Future `MULTI/EXEC` support requires separate review; deleting Redis-backed cache from the DB hook above does not create DB+Redis atomicity.
+
 ## Redis
 
 Use Redis when multiple packages need shared ephemeral state: cache storage, queues, throttling, fan-out, or custom key-value operations.

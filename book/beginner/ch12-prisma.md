@@ -190,7 +190,11 @@ You still use `forRoot` for the default application-wide Prisma client in `AppMo
 
 ## 12.6 Using PrismaService
 
-After registration, you need to decide how application code will talk to the database. The `@fluojs/prisma` package provides two related injection shapes. `PrismaService<TClient>` is the lifecycle and transaction wrapper for `current()`, `transaction(...)`, and `requestTransaction(...)`. `PrismaServiceFacade<TClient>` is the repository-facing proxy that also forwards generated Prisma Client delegates to the current root or transaction client.
+After registration, you need to decide how application code will talk to the database. The `@fluojs/prisma` package provides two related injection shapes. `PrismaService<TClient>` is the lifecycle and transaction wrapper for `current()`, `transaction(...)`, `requestTransaction(...)`, and `afterCommit(...)`. `PrismaServiceFacade<TClient>` is the repository-facing proxy that also forwards generated Prisma Client delegates to the current root or transaction client.
+
+`afterCommit(callback: () => void | Promise<void>): void` is not a connection-start or disconnect hook. It registers work after a successful outer native commit of an active transaction owned by the same service. Registration is rejected outside a boundary, in a closed boundary, or on a direct-execution path without native support. Passing `{ requireAfterCommit: true }` as the final argument to `transaction(fn, nativeOptions?, boundary?)` or `requestTransaction(fn, signal?, nativeOptions?, boundary?)` requires commit observation before invoking the callback. Existing options and default fail-open behavior remain unchanged.
+
+Follow the [transaction chapter](./ch13-transactions.md) for details and [Transaction Context](../../docs/architecture/transactions.md) and the [Prisma README](../../packages/prisma/README.md) for the authoritative contracts. A hook failure has `AfterCommitError.committed` set to `true`; do not retry the entire write as if it were an ordinary database failure. This feature can order cache deletion but provides no outbox or exactly-once behavior across crashes and networks. The [after-commit test](../../packages/prisma/src/after-commit.test.ts) is a verification target, not a passing result established by this chapter's CRUD examples.
 
 ### Data Access Object (DAO) Pattern
 It is best to separate database logic from business logic. Let's create `PostsRepository`.

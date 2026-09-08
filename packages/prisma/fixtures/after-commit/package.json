@@ -1,0 +1,31 @@
+{
+  "name": "fluo-after-commit-native-acceptance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <27"
+  },
+  "scripts": {
+    "generate": "prisma generate --schema schema.prisma",
+    "typecheck": "tsc --noEmit",
+    "test": "node run.mjs"
+  },
+  "dependencies": {
+    "@fluojs/drizzle": "link:../../../drizzle",
+    "@fluojs/mongoose": "link:../../../mongoose",
+    "@fluojs/prisma": "link:../..",
+    "@prisma/adapter-pg": "7.5.0",
+    "@prisma/client": "7.5.0",
+    "@prisma/client-runtime-utils": "7.5.0",
+    "drizzle-orm": "0.45.2",
+    "mongoose": "9.7.2",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/pg": "8.15.6",
+    "prisma": "7.5.0",
+    "typescript": "6.0.2"
+  }
+}

@@ -140,6 +140,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app';
 
 export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   rawBody: true,
 });
@@ -253,6 +254,45 @@ The package's real Next E2E subscribes before releasing an HTTP gate so all thre
 paths join during initialization. It checks separate module evaluations, the same
 instance, key/process isolation, and retained failure/close. The application
 accessor does not implement Next authentication or the Flight protocol.
+
+## Do Not Disguise the Blog Link Checker's HEAD as GET
+
+The blog link checker sends HEAD to inspect a post's status and headers without
+downloading its body. Next calls the `GET` export when no `HEAD` export exists,
+but preserves the HEAD request method. The backend's
+`headRouting: 'explicit-or-get'` explicitly connects this request to Fluo's
+GET-only `/api/posts/:id`. Omitting the option retains generic routing, where
+GET-only routes do not automatically match HEAD.
+
+This policy first looks for an explicit `@Head`, then `@All`, then `@Get`.
+A selected handler's missing-post 404 does not execute GET again. There is no
+need for a wrapper that repeats the authorization guard, lookup, or audit
+middleware. `ALL` is a method wildcard; Next's filesystem catch-all does not
+introduce Fluo path wildcard grammar.
+
+If the existing application reconstructed HEAD as GET and discarded its body,
+remove that wrapper and use the standard facade above. Guards and handlers
+now observe the original HEAD. Update GET-only read branches to recognize
+HEAD as a read request without skipping authorization or published-post checks.
+Whether both `GET` and `HEAD` are exported or only `GET` is exported for Next
+auto-HEAD, status and relevant headers are preserved and the response body is
+empty.
+
+Open response streams are cancelled, and iterator cleanup and request-scope
+disposal are awaited. The framework cannot force an iterator's non-settling
+`return()` to complete. Pass a stream factory to `createByteRangeResponse(...)`
+to avoid opening a file stream when HEAD needs no body.
+These commands compare the running application; they are reproduction steps,
+not a record of completed execution:
+
+```bash
+curl -I http://127.0.0.1:3000/api/posts/1
+curl -I http://127.0.0.1:3000/api/posts/999
+```
+
+The [HEAD contract](../../packages/platform-nextjs/README.md#head-routing) and
+[Next production E2E](../../packages/platform-nextjs/e2e/next.test.mjs) provide
+evidence for auto-HEAD, direct HEAD, handler 404s, and stream cleanup.
 
 ## Test Concurrent First Requests and Requests After Close
 

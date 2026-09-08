@@ -153,6 +153,12 @@ TTL은 초 단위다. `30`에 단축 방향 지터를 적용하므로 쓰기별 
 
 관리자가 상품 가격을 변경하면 DB 트랜잭션을 먼저 커밋하고 `invalidate(sku)`를 호출한다. 순서를 뒤집으면 다른 요청이 아직 예전 DB 값을 읽어 방금 지운 키를 다시 채운다. 그렇다고 커밋 뒤 삭제만으로 모든 경합이 사라지는 것도 아니다. 서버 A가 이전 값을 읽은 채 잠시 멈추고, 서버 B가 새 가격을 커밋하고 삭제한 다음, A가 이전 값을 저장할 수 있다.
 
+이 순서를 서비스 합성에서도 지키려면 실제 가격 변경을 소유한 `PrismaService`의 활성 콜백 안에서 `db.afterCommit(() => cards.invalidate(sku))`를 등록한다. 여기의 `db`는 기존 DB 서비스, `cards`는 위 `ProductCards`, `sku`는 변경에 성공한 SKU다. 이 한 줄은 **가격 변경 콜백에 넣는 소비자 조각**이며 별도의 상품 쓰기 구현이나 모든 조회 key의 자동 발견 기능이 아니다. 등록하지 않은 바깥 caller의 책임을 자동으로 바꾸지도 않는다. 네이티브 옵션 뒤의 boundary 인수로 `transaction(fn, nativeOptions, { requireAfterCommit: true })`를 사용하면 콜백 전에 커밋 관찰 능력을 요구할 수 있다.
+
+중첩 트랜잭션은 같은 큐를 공유하고 성공한 최종 바깥 커밋 뒤에만 FIFO로 순차 실행한다. 롤백·커밋 실패에서는 삭제하지 않는다. `ProductCards.invalidate()`는 현재 캐시 삭제 실패를 계수로 기록하고 정상 반환하는 **애플리케이션 fail-soft 정책**이다. 따라서 그 실패는 훅 오류로 전파되지 않는다. 반대로 직접 `CacheService.del()`의 rejection을 전달하는 훅이면 DB 커밋 뒤 `AfterCommitError`가 발생할 수 있다. `committed: true`와 모든 훅의 `results`를 보고 가격 변경 재시도와 캐시 복구를 구별한다. 어떤 정책이든 삭제 재시도나 영속 재전달은 애플리케이션 책임이다.
+
+Redis 자체에는 Fluo 소유 커밋 추적이 없어 `afterCommit`을 지원하지 않으며, 향후 `MULTI/EXEC`는 별도 계약 검토가 필요하다. DB 훅이 Redis를 호출하는 것은 PostgreSQL+Redis 원자성, 분산 무효화 장벽, 크래시 복구나 네트워크 exactly-once를 제공하지 않는다. 재시작 뒤에도 무효화 의도를 찾아야 한다면 14장의 영속 Outbox 같은 별도 전달 정책이 필요하다.
+
 `CacheService`는 같은 인스턴스에서 `del()`이나 `reset()`이 진행 중 `remember()` 로더를 무효화하는 장치를 갖는다. 그 메모리 상태는 다른 서버와 공유되지 않는다. 더구나 위의 명시적 `get()`·`set()` 쌍은 그 로더 추적에 참여하지 않는다. 상품 카드의 지연 갱신을 수용할 수 있는지 제품 약속으로 결정해야 한다. 늦게 끝난 원본 조회가 있으면 오래된 값의 노출은 DB 변경 시점부터 정확히 30초가 아니라 **그 값이 마지막으로 채워진 시점부터 TTL만큼** 이어질 수 있다.
 
 다음은 `src/catalog/cache-race.experiment.ts`로 옮길 수 있는 **완전한 소스 실험 파일**이다. 같은 저장소를 두 `CacheService`가 공유하게 하여 프로세스별 상태와 저장소 상태를 분리한다. 메모리 저장소를 이용하므로 Redis 네트워크나 TTL 정밀도 검증은 아니다. 로더가 시작했다는 신호를 기다린 뒤 삭제하므로 임의의 sleep이 필요 없다.
@@ -214,6 +220,8 @@ export async function cacheRaceExperiment(): Promise<void> {
 
 ## 재고는 원자적 쓰기에서 결정한다
 
+[`CacheService.update`](../../packages/cache-manager/README.ko.md#원자-갱신)는 캐시 값 하나를 순수 reducer로 원자 갱신하므로 앱의 key queue를 대체할 수 있다. 그러나 상품 카드 조회의 DB I/O를 reducer 안으로 옮기면 안 된다. 경합 시 재실행되는 reducer는 원본 조회나 주문 부수 효과를 소유하지 않으며 PostgreSQL 커밋과 캐시 commit을 하나로 묶지도 않는다. Redis의 명시적 atomic opt-in은 `remember`를 분산 loader로 바꾸거나 위의 늦은 `set`을 자동 차단하지 않는다. [1권의 queue 없는 실험](../01-fluoblog/ch20-caching.ko.md#key-queue-없이-캐시-값-하나를-갱신하기)은 cache-only 산술이고, 이 장의 재고 예약은 계속 아래 DB 트랜잭션의 책임이다.
+
 상품 화면에 “재고 있음”을 표시하더라도 그것은 안내다. 마지막 구매 권한은 기존 `InventoryModule`의 조건부 갱신이 결정한다. 다음 SQL은 **기존 Stock 모델을 사용하는 PostgreSQL 트랜잭션의 핵심 문장**이다. `Stock.available`은 예약 가능한 수량이고, 별도의 `reserved` 합계 열이나 두 번째 재고 테이블을 만들지 않는다. `$1`은 검증한 양의 정수 수량, `$2`는 서버가 확정한 SKU다.
 
 ```sql
@@ -249,5 +257,6 @@ RETURNING "sku", "available";
 - [Redis README: named 등록과 lifecycle](../../packages/redis/README.ko.md)
 - [RedisService: 코덱과 초 단위 TTL](../../packages/redis/src/redis-service.ts)
 - [Redis 모듈 등록 테스트](../../packages/redis/src/module.test.ts)
+- [커밋 후 작업의 공통 계약](../../docs/architecture/transactions.ko.md), [Prisma API](../../packages/prisma/README.ko.md), [after-commit 회귀 검증 대상](../../packages/prisma/src/after-commit.test.ts)
 
 [이전 장](./ch20-graphql-dashboard.ko.md) · [2권 목차](./toc.ko.md) · [다음 장](./ch22-international-commerce.ko.md)

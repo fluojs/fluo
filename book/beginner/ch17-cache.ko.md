@@ -246,10 +246,10 @@ export class WeatherService {
 ### 17.5.2 Atomic Operations and Concurrency
 트래픽이 많은 환경에서 수동 캐시 관리를 사용할 때는 경쟁 상태(race condition)를 주의해야 합니다. 누락된 키에 대해 두 개의 요청이 동시에 들어오면 둘 다 고비용의 데이터베이스 쿼리를 실행할 수 있습니다. 내장 `CacheService.remember(...)`는 현재 `CacheService` 인스턴스 하나 안에서만 같은 키의 동시 miss를 합쳐 주므로, 단일 프로세스 내부 중복 완화에는 도움이 됩니다. 하지만 이것이 분산 락이나 다중 인스턴스 스탬피드 방지 기능을 의미하지는 않습니다. 여러 노드가 있는 배포에서는 선택한 저장소의 원자적 연산이나 별도 조정 전략을 함께 검토해야 합니다.
 
-"반짝 세일" 상품의 재고가 캐싱된 시나리오를 생각해 보십시오. 원자적 연산이 없다면 여러 서버 노드가 동시에 재고를 감소시키려 하여 "초과 판매" 오류가 발생할 수 있습니다. 이런 경우에는 Redis 같은 저장소가 제공하는 원자적 기능이나 분산 락을 조합해 전체 인프라에서 캐시 수정이 일관되게 유지되도록 설계해야 합니다. 이러한 수준의 신뢰성은 단순한 취미용 앱과 실제 상용 수준의 시스템을 가르는 차이점입니다.
+캐시 값 하나의 read/modify/write에는 선택적 store capability를 사용하는 `CacheService.update(...)`가 있습니다. 이것은 순수 reducer의 원자 갱신이지 원본 DB 작업의 중복 제거가 아닙니다. 재고 예약을 예로 들면 캐시 산술이 성공해도 DB의 주문과 예약이 함께 커밋되는 것은 아닙니다. 권위 있는 예약은 DB의 조건부 갱신과 트랜잭션에 남기고, cache-only 갱신과 구분하세요.
 
 ### 17.5.3 Partial Cache Updates: Granularity and Performance
-어떤 시나리오에서는 전체 객체를 교체하지 않고 캐시된 객체의 일부만 업데이트하고 싶을 수 있습니다. 단순한 키-값 저장소는 이를 직접 지원하지 않지만, 데이터를 더 작고 관련된 키들로 쪼개어 이를 달성할 수 있습니다. 예를 들어 전체 `User` 객체를 캐싱하는 대신 `user:1:profile`과 `user:1:settings`를 별도로 캐싱하는 식입니다. 이를 통해 변경된 부분만 무효화할 수 있어 데이터베이스에서 다시 가져와야 하는 데이터 양을 줄일 수 있습니다.
+캐시 객체의 일부 필드를 바꿀 때 `update` reducer에서 새 객체를 구성해 반환할 수 있습니다. Store에는 해당 key의 전체 값이 교체되므로 Redis hash field 갱신과 같지는 않습니다. 데이터를 `user:1:profile`과 `user:1:settings`처럼 더 작은 key로 나누면 변경된 부분만 무효화할 수 있지만 여러 key를 하나의 원자 트랜잭션으로 묶지는 않습니다.
 
 부분 업데이트를 구현할 때 저장소 공급자(예: Redis)가 지원하는 경우 **비트필드(Bitfields)나 해시(Hashes)**를 사용할 수도 있습니다. 이를 통해 서버 측에서 원자적으로 복잡한 객체 내의 단일 필드만 수정할 수 있습니다. 이러한 세밀한 제어는 여러 프로세스가 동일한 엔터티의 서로 다른 부분을 동시에 업데이트할 수 있는 고가용성 시스템에서 필수적입니다. 저장소 공급자의 네이티브 기능을 활용함으로써 매 업데이트마다 전체 객체를 직렬화하는 오버헤드 없이 높은 성능과 데이터 무결성을 유지할 수 있습니다.
 
@@ -275,12 +275,20 @@ export class PostsController {
 이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 
 ### 17.5.4 Advanced Manual Patterns: Coordinating Concurrent Writers
-`CacheService`의 애플리케이션 공개 표면은 `get`, `set`, `remember`, `del`, `reset`, 그리고 `close()`를 노출하는 store로 shutdown을 전달하는 `close()` teardown 경계에 집중되어 있습니다. 따라서 카운터 증가나 분산 락 같은 저장소 전용 원자 연산이 필요할 때는, 그것을 `CacheService`의 내장 애플리케이션 API로 가정하기보다 선택한 저장소의 별도 기능이나 애플리케이션 전용 조정 계층으로 다루는 편이 안전합니다.
+`CacheService.update<T>(key, reducer, options?)`는 기존 `get`, `set`, `remember`, `del`, `reset`, `close`에 추가된 API입니다. [cache-manager README](../../packages/cache-manager/README.ko.md#원자-갱신)가 입력·TTL·오류·소유권을 소유하며 [FluoBlog의 독립 consumer](../01-fluoblog/ch20-caching.ko.md#key-queue-없이-캐시-값-하나를-갱신하기)는 앱의 key queue 없이 증가시키는 실제 module 조합을 보여 줍니다.
 
-실무에서는 이 경계를 명확히 나누는 것이 중요합니다. 캐시 계층이 자동으로 모든 동기화 문제를 해결해 준다고 기대하지 말고, 필요한 락 전략이나 원자 갱신 전략을 저장소 특성에 맞게 명시적으로 설계하십시오. 이렇게 하면 문서화된 캐시 계약을 벗어나지 않으면서도 트래픽이 높은 환경의 경쟁 상태를 별도 설계로 관리할 수 있습니다.
+Reducer는 분리된 값 또는 누락/만료 시 `undefined`에서 명시적 set/delete를 결정하며 경합 시 다시 실행될 수 있으므로 I/O를 넣지 않습니다. 기본 최대 시도는 16입니다. Memory는 facade들이 공유하는 store 인스턴스 하나에서 key별 FIFO이고 별도 store는 조정하지 않습니다. Redis는 RedisModule DI와 cache 측 `redis.atomicUpdates: true`, Redis >=6.2 single-primary, 앱 전용 비어 있지 않은 prefix가 필요하며 Cluster 지원을 가정하지 않습니다. Capability 없는 custom store에는 비원자 fallback 없이 `unsupported`가 반환됩니다.
+
+Live entry의 TTL 생략은 절대 만료를 보존하고 생성에만 module 기본값을 사용합니다. Update는 invalid TTL을 `RangeError`로 거부하고 jitter 및 기존 `CacheObservation`을 적용하지 않습니다. 이는 기존 set/remember의 invalid-TTL no-op, 지터, 관찰 계약을 바꾸지 않습니다. 삭제/reset/close는 늦은 reducer를 취소하며 reset/close는 queued update와 reducer, 격리 연결 정리까지 기다립니다. 취소를 무시하는 reducer는 drain을 무기한 붙잡을 수 있고 same-key 중첩 update나 reducer 안의 reset/close await는 교착을 만듭니다. Redis EXEC dispatch 뒤의 취소는 커밋을 되돌리지 않습니다. 예약 metadata, 모든 namespace 참여자의 opt-in, SCAN reset의 전역 snapshot 부재와 failover durability 한계는 README의 운영 조건을 따르세요.
 
 ## 17.6 Cache Invalidation Strategies
 캐싱에서 가장 어려운 과제는 데이터의 최신성을 유지하는 것입니다. 사용자가 프로필을 업데이트하면 캐시된 버전은 즉시 제거되어야 합니다. 이를 **캐시 무효화(Cache Invalidation)**라고 합니다.
+
+DB 변경에 맞춘 삭제와 앞 절의 HTTP 응답 commit은 서로 다른 경계입니다. Prisma·Drizzle·Mongoose의 활성 Fluo 트랜잭션 안에서 `afterCommit(async () => { await cache.del(key); })`를 등록하면 성공한 최종 바깥 네이티브 커밋 뒤에 삭제를 기다릴 수 있습니다. 여기의 `cache`와 `key`는 애플리케이션이 주입받은 서비스와 실제 읽기 key를 뜻하는 소비자 조각입니다. `@CacheEvict`의 HTTP 의미를 변경하거나 query별 key를 자동 발견하지 않습니다.
+
+해당 DB 경계의 마지막 인수로 `{ requireAfterCommit: true }`를 전달하면 콜백 전에 네이티브 커밋 관찰 능력을 요구합니다. 롤백·커밋 실패에서는 훅을 실행하지 않으며, 훅 실패는 이미 커밋된 DB를 뜻하는 `AfterCommitError.committed: true`와 모든 훅의 결과로 보고됩니다. DB 쓰기 전체를 재시도하지 말고 캐시 복구·TTL·영속 재전달 정책을 별도로 정하세요. 같은 서비스의 `remember()` 무효화와 다른 프로세스 loader의 재채우기는 여전히 다른 문제입니다.
+
+Redis는 Fluo 소유 커밋 추적이 없어 이 API를 지원하지 않습니다. DB 훅이 Redis를 호출해도 DB+Redis 원자성, outbox, 크래시·네트워크 exactly-once는 생기지 않으며, 향후 `MULTI/EXEC`는 별도 검토가 필요합니다. 공통 의미는 [Transaction Context](../../docs/architecture/transactions.ko.md), 구체적인 소비자 적용은 [현재 FluoBlog 캐시 장](../01-fluoblog/ch20-caching.ko.md)을 따릅니다.
 
 - **시간 기반 무효화**: TTL에 의존하여 자동으로 데이터가 만료되게 합니다. 간단하지만 짧은 시간 동안 "오래된" 데이터를 보여줄 수 있습니다.
 - **이벤트 기반 무효화**: 기본 데이터가 변경될 때 특정 키를 수동으로 제거합니다.
@@ -297,7 +305,7 @@ export class PostsController {
 이를 완화하는 일반적인 기술은 **지터링(Jittering)**입니다. 모든 키에 정확히 3600초의 TTL을 부여하는 대신, 작은 랜덤 "지터"(예: 3600 ± 60초)를 추가합니다. 이를 통해 동시에 생성된 키들이 정확히 같은 순간에 만료되지 않도록 보장하여, 데이터베이스 갱신 부하를 시간에 따라 더 고르게 분산시킵니다. Fluo는 opt-in `CacheModule.forRoot({ ttlJitter: { ratio: 0.1 } })`로 이 정책을 중앙화합니다. `CacheService`는 per-call TTL override를 포함해 resolved TTL이 양수일 때 store handoff 전에 한 번 지터를 적용하고, `ttl: 0`과 invalid TTL 의미는 보존합니다. 기본 `symmetric` mode는 TTL을 줄이거나 늘릴 수 있고, `shorten`과 `lengthen`은 방향을 제한합니다. 이는 만료 시점만 분산하며 distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 17.6.3 Write-Through vs. Write-Back Caching: Choosing the Right Trade-off
-"Write-Through" 캐싱에서는 애플리케이션이 캐시와 데이터베이스에 동시에 씁니다. 이는 캐시가 항상 최신 상태임을 보장합니다. "Write-Back" 캐싱에서는 애플리케이션이 캐시에만 쓰고, 백그라운드 프로세스가 주기적으로 변경 사항을 데이터베이스에 반영합니다. "Write-Back"은 쓰기 작업이 많은 부하 상황에서 매우 빠르지만, 캐시 서버가 다운될 경우 데이터 손실 위험이 있습니다. Fluo는 애플리케이션의 신뢰성 요구 사항에 따라 두 전략 중 하나를 구현할 수 있게 해줍니다.
+"Write-Through" 캐싱은 쓰기 경로에서 데이터베이스와 캐시를 함께 갱신하는 애플리케이션 전략입니다. 두 저장소의 원자성이나 항상 최신인 읽기를 Fluo가 보장한다는 뜻은 아닙니다. 커밋 뒤 훅으로 순서를 정해도 캐시 실패와 동시 재채우기 정책은 남습니다. "Write-Back" 캐싱은 캐시에 먼저 쓰고 백그라운드 작업이 DB에 반영하는 별도 전략이며, 캐시 유실 시 데이터 손실 위험을 애플리케이션이 감당해야 합니다. 두 전략 모두 자동 제공되는 전달 보장이 아닙니다.
 
 대부분의 FluoBlog 기능에서 "Write-Through"가 가장 안전한 기본값입니다. 하지만 높은 쓰기 처리량을 얻는 대신 일부 업데이트 손실을 감수할 수 있는 "게시물 조회수"와 같은 기능의 경우 "Write-Back"도 선택지가 됩니다. 수천 개의 조회수 증가분을 메모리에 버퍼링하고 1분마다 단일 배치로 Prisma에 반영하면, 데이터베이스를 마비시킬 수 있는 바이럴 트래픽 수준을 더 안정적으로 처리할 수 있습니다.
 

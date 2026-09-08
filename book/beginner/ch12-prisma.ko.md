@@ -190,7 +190,11 @@ export class AppModule {}
 
 ## 12.6 Using PrismaService
 
-등록이 끝난 뒤에는 애플리케이션 코드가 데이터베이스와 어떻게 대화할지 정해야 합니다. `@fluojs/prisma` 패키지는 서로 연관된 두 가지 주입 형태를 제공합니다. `PrismaService<TClient>`는 `current()`, `transaction(...)`, `requestTransaction(...)`을 제공하는 lifecycle/transaction wrapper이고, `PrismaServiceFacade<TClient>`는 생성된 Prisma Client delegate 호출까지 현재 root 또는 transaction client로 전달하는 repository-facing proxy입니다.
+등록이 끝난 뒤에는 애플리케이션 코드가 데이터베이스와 어떻게 대화할지 정해야 합니다. `@fluojs/prisma` 패키지는 서로 연관된 두 가지 주입 형태를 제공합니다. `PrismaService<TClient>`는 `current()`, `transaction(...)`, `requestTransaction(...)`, `afterCommit(...)`을 제공하는 lifecycle/transaction wrapper이고, `PrismaServiceFacade<TClient>`는 생성된 Prisma Client delegate 호출까지 현재 root 또는 transaction client로 전달하는 repository-facing proxy입니다.
+
+`afterCommit(callback: () => void | Promise<void>): void`는 연결 시작·해제 훅이 아니라 같은 서비스가 소유한 활성 트랜잭션의 성공한 바깥 네이티브 커밋 뒤 작업을 등록하는 API입니다. 경계 밖·닫힌 경계·네이티브 지원 없는 직접 실행 경로에서는 등록할 수 없습니다. `transaction(fn, nativeOptions?, boundary?)`나 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`의 마지막 인수에 `{ requireAfterCommit: true }`를 주면 콜백 실행 전에 커밋 관찰 능력을 요구합니다. 기존 옵션과 기본 fail-open 동작은 유지됩니다.
+
+상세 의미는 [트랜잭션 장](./ch13-transactions.ko.md), 권위 있는 계약은 [Transaction Context](../../docs/architecture/transactions.ko.md)와 [Prisma README](../../packages/prisma/README.ko.md)를 따릅니다. 훅 실패의 `AfterCommitError.committed`는 `true`이므로 일반 DB 실패처럼 전체 쓰기를 재시도하지 않습니다. 이 기능은 캐시 삭제 순서를 정할 수 있지만 outbox나 크래시·네트워크 exactly-once를 제공하지 않습니다. [after-commit 테스트](../../packages/prisma/src/after-commit.test.ts)는 검증 대상이며, 이 장의 CRUD 예제로 그 통과를 주장하지 않습니다.
 
 ### Data Access Object (DAO) Pattern
 데이터베이스 로직을 비즈니스 로직과 분리하는 것이 좋습니다. `PostsRepository`를 만들어 보겠습니다.

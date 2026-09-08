@@ -11,6 +11,7 @@ dependency injection.
 - [Installation](#installation)
 - [Shared Setup](#shared-setup)
 - [App Router](#app-router)
+- [HEAD Routing](#head-routing)
 - [Pages Router](#pages-router)
 - [FluoFactory Integration](#fluofactory-integration)
 - [Pipeline Compatibility](#pipeline-compatibility)
@@ -133,6 +134,62 @@ route matching, module bootstrap, dependency injection, request scope, body
 parsing, errors, and controller dispatch behind that facade. Route Handlers
 default to the Node.js runtime that Fluo backends require, so no `runtime`
 override is needed.
+
+## HEAD Routing
+
+Opt in at adapter construction when a GET-only Fluo route should answer Next's
+automatic HEAD as well as an explicit `HEAD` export:
+
+```typescript
+import { createNextAdapter } from '@fluojs/platform-nextjs';
+
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+});
+```
+
+Omission preserves existing method matching: a GET-only Fluo route does not
+implicitly match HEAD. With this option, the shared HTTP matcher selects one
+eligible explicit `@Head` route, otherwise `@All`, otherwise `@Get`. Method
+priority precedes path specificity across those groups; normal static/parameter
+and version rules apply within each group. `ALL` is a method wildcard, not a
+path wildcard: Fluo catch-all path grammar remains unsupported.
+
+Selection happens once before module middleware, guards, and the controller.
+A route miss returns 404. A selected handler's 404 is final and never triggers
+another dispatch. Application middleware, module middleware, guards, and
+controller each run at most once, subject to normal short-circuit behavior.
+
+The normalized request and native `Request` retain **HEAD**, including inside
+middleware, guards, version extraction, conditional resolvers, and handlers.
+The selected descriptor still identifies its declared method, such as GET.
+Existing conditional-request and byte-range status/header rules therefore
+remain active. The adapter returns a null body for every opted-in HEAD response,
+including direct sends, route misses, errors, and unavailable/closed 503s,
+preserving status, status text, representation headers, and independent cookies.
+It does not invent a content length when the selected response did not supply one.
+
+Active response streams are cancelled, then the dispatch lifecycle, iterator
+cleanup, and request-scope disposal are awaited. Stream sources must cooperate
+with cancellation and settle their iterator `return()`; cleanup failures retain
+the dispatcher's observer/logging policy without a GET retry or replacement of
+already committed metadata. Application-owned resources that never enter a
+response stream remain application-owned. Prefer a `createByteRangeResponse`
+stream factory when HEAD must avoid opening a byte source altogether.
+
+**Migration:** remove the application wrapper that reconstructs a HEAD request
+as GET and discards its body. Keep the standard
+`createNextAppRouterHandler(loadAdapter)` facade. Export only `GET` to let Next
+auto-HEAD call it, or export both `GET` and `HEAD`; both use the same policy.
+Pages Router uses the same adapter option. Update method-based application
+branches that previously observed GET to recognize the original HEAD. No
+configuration or behavior change is required for consumers that leave this
+option unset.
+
+Evidence: [`head-routing.test.ts`](./src/head-routing.test.ts),
+[`head-routing-public-types.test.ts`](./src/head-routing-public-types.test.ts),
+and the packaged [Next 16 production E2E](./e2e/next.test.mjs), which compares
+auto-HEAD, direct App Router HEAD, and Pages Router HEAD over real HTTP.
 
 ## Pages Router
 
@@ -425,6 +482,7 @@ await app.listen();
 
 - `maxBodySize`: non-negative maximum request body size in bytes
 - `rawBody`: preserve parsed request bytes on `context.request.rawBody`
+- `headRouting`: optional `'explicit-or-get'` selection and bodyless HEAD lifecycle; see [HEAD Routing](#head-routing)
 - Fluo runtime options remain ordinary `FluoFactory.create()` options
 
 ## Runtime Contract
@@ -453,7 +511,7 @@ Use a Fluo Node or Fastify platform adapter when the application requires raw No
 ## Public API
 
 - `createNextAdapter(options)`: creates the HTTP adapter passed to `FluoFactory.create()`
-- `NextAdapterOptions`: adapter-owned request parsing options
+- `NextAdapterOptions`: adapter-owned request parsing and opt-in HEAD routing options
 - `NextAdapterLoader`: dynamic canonical backend adapter loader
 - `defineNextApplication(options)`: process-local application Promise accessor for an explicit key
 - `NextApplicationOptions<T>`: application-owned key and async load contract

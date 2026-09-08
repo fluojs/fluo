@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["node"],
+    "skipLibCheck": false
+  },
+  "include": ["publish-results.ts"]
+}

@@ -131,6 +131,16 @@ export class CheckoutService {
 
 `publish(...)` completion은 dispatch completion boundary입니다. 일치하는 local listener 실패는 log되고 격리되며, 다른 matching listener는 계속 실행됩니다. Local listener 실패만으로 `publish(...)`를 reject하지 않습니다. Inbound transport listener에는 같은 isolation 규칙이 적용되므로 inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않습니다. Publisher completion은 모든 listener가 성공했음을 증명하지 않습니다. Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있습니다. 해당 실패는 각각 별도로 문서화된 동작을 유지합니다.
 
+필수 reaction의 결과를 판단해야 할 때는 기존 `publish`를 바꾸지 않고 `EventBusLifecycleService.publishWithResult(event, options?)`를 선택합니다. 기존 `publish`의 raw error 로깅도 유지됩니다. `EVENT_BUS`는 `Token<EventBusWithResults>`이므로 `container.resolve(EVENT_BUS)`가 additive 결과형 facade를 추론하며, 기존 `EventBus`와 명시적 `container.resolve<EventBus>(EVENT_BUS)`는 그대로 유효합니다. 정확한 API 소유자는 [패키지 README](../../packages/event-bus/README.ko.md)입니다.
+
+`settled` 결과에는 성공과 실패가 함께 있을 수 있습니다. 호출자는 `status`, 결과가 비어 있지 않은지, 모든 outcome이 `succeeded`인지 검사해야 합니다. 실패는 `reason: 'handler' | 'transport' | 'not-callable'`, timeout은 `timed-out`과 `timeoutMs`, cancellation은 `cancelled`와 `started`로 나타납니다. 로컬 핸들러도 구성된 transport도 없으면 `no-recipients`이며, lifecycle의 `stopping`/`stopped`/`failed`는 `rejected` reason으로 반환됩니다. Discovery/preparation 오류는 여전히 reject하고 aggregate-reject API는 없습니다.
+
+Outcome은 일치하는 effective 로컬 핸들러의 discovery 순서로 발행별 `index`, `moduleName`, `targetName`, `methodName`을 담고, 그 뒤에 channel 순서의 outbound transport를 나열합니다. Raw error와 핸들러 반환값은 결과에 없으며 새 발행 경로의 버스 로그에도 raw handler/transport error 없이 기존의 안전한 target/status 메시지만 남습니다. App-owned 로그는 앱 책임입니다. 원격 핸들러/subscriber는 결과에 포함되지 않으며 subscriber가 0인 adapter 성공도 transport 성공입니다. 이 관측은 durability나 필수 핸들러 등록의 증명이 아닙니다.
+
+Awaited timeout/cancellation 뒤에도 시작된 작업은 shutdown 추적 대상입니다. `waitForHandlers: false`는 `background`와 `completion: Promise<EventPublishSettlement>`를 반환하며 timeout과 시작 후 cancellation을 무시하고 실제 작업 결과를 관찰합니다. 이미 abort된 signal은 시작 전 작업을 건너뛰지만 completion은 bounded shutdown 뒤에도 pending일 수 있고 process exit 때 사라질 수 있습니다.
+
+[인증 후 bookkeeping과 필수 결과 검사 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)는 token record ID만 발행하고 credential은 제외하며, last-used 실패가 이미 성공한 인증을 뒤집지 않는 best-effort 정책을 비교합니다. [현재 Book의 실패 실험](../02-fluoshop/ch13-domain-events.ko.md)은 기존 raw `Error` 관측을 보존하면서 새 API를 나란히 설명합니다. [실행 예제](../../packages/event-bus/examples/publish-results.ts), [결과 테스트](../../packages/event-bus/src/publish-result.test.ts), [bound 테스트](../../packages/event-bus/src/publish-result-bounds.test.ts), [lifecycle 테스트](../../packages/event-bus/src/publish-result-lifecycle.test.ts)가 구현 근거이며, 소유자 명령은 `pnpm --dir packages/event-bus test`와 `pnpm --filter '@fluojs/event-bus...' build`입니다.
+
 ### 9.3.2 Why this is better than chained service calls
 
 이벤트가 없다면 Checkout는 Notifications를 직접 호출할 수 있습니다. 그다음 Analytics를 호출하고, 다시 Audit를 호출할 수 있습니다. 새로운 관심사가 추가될 때마다 write path는 더 길어집니다. 각 의존성은 실패 처리와 테스트를 더 복잡하게 만듭니다. 이벤트를 쓰면 Checkout는 하나의 사실만 진술하고 나머지 시스템은 독립적으로 반응합니다. intent를 숨기지 않으면서 coupling을 낮추는 방식입니다.

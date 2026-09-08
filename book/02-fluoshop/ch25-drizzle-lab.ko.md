@@ -266,6 +266,14 @@ export class DrizzlePriceStore implements PriceStore {
 
 두 구현 모두 이력 삽입 실패를 잡아 성공으로 반환하지 않는다. 예외가 바깥 트랜잭션까지 전달되어야 가격 갱신도 롤백된다. `Promise.all()`로 가격과 이력을 동시에 쓰지도 않는다. 감사 기록은 가격 갱신의 성공을 전제로 하며, 한 트랜잭션의 같은 연결에서 병렬화할 이익도 없다.
 
+비교 범위를 가격 카드 무효화로 넓힌다면 두 래퍼 모두 `afterCommit(callback: () => void | Promise<void>): void`를 제공한다. 성공한 가격·이력 쓰기 뒤, 아직 활성 콜백 안에서 같은 래퍼에 캐시 삭제를 등록한다. `conflict` 분기에서는 등록하지 않는다. 훅은 성공한 최종 바깥 네이티브 커밋 뒤 등록 순서대로 하나씩 await되므로, 내부 `change()`가 반환됐다고 외부 트랜잭션까지 커밋됐다고 추측하지 않는다. 두 래퍼의 큐는 서로 공유되지 않으며 raw client가 직접 연 트랜잭션도 관찰하지 않는다.
+
+두 패키지의 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`다. 기존 옵션·신호를 옮기지 않고 마지막 boundary에 `{ requireAfterCommit: true }`를 추가한다. 데코레이터는 Prisma의 `@Transaction(input?, boundary?)`와 Drizzle의 `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`를 구별한다. 생략 시 네이티브 기본 옵션과 fail-open 계약은 유지된다. opt-in은 커밋 관찰 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부하고, opt-in 없이도 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부된다.
+
+중첩 호출은 같은 큐를 쓰며 롤백·커밋 실패 때 큐를 폐기한다. 저장점 없는 중첩 예외를 잡으면 큐의 운명은 최종 바깥 결과를 따른다. 훅은 닫힌 트랜잭션 ALS 밖에서 실행되므로 새 `current()` 조회는 예전 핸들을 재사용하지 않고, 새 트랜잭션은 독립 큐를 갖는다. 종료는 실행 중 훅도 기다리지만 늦은 등록을 허용하지 않는다. 모든 훅이 끝난 뒤 실패가 있으면 `AfterCommitError`가 `committed: true`, 모든 결과의 FIFO `results`, 모든 실패의 `errors`를 보고한다. 이미 커밋한 가격 변경을 그 오류 때문에 롤백하거나 다시 실행하지 않는다.
+
+`AfterCommitCallback`, `TransactionBoundaryOptions`, `AfterCommitCapabilityError`, `AfterCommitError`는 각 패키지의 루트 export다. 상세 API는 패키지 README, 공통 의미는 [Transaction Context](../../docs/architecture/transactions.ko.md)가 소유한다. 이것은 프로세스 내부 소유 경계의 실행 순서 계약이며 outbox·크래시 복구·네트워크 exactly-once가 아니다. Redis 캐시를 훅에서 삭제해도 DB+Redis 원자성이나 다른 프로세스 loader의 재채우기 방지는 생기지 않는다. 기존 `PriceStore` 실험은 DB 변경만 비교하므로 이러한 훅 검증까지 통과한 것으로 읽지 않는다.
+
 ## 교체 지점은 타입이 아니라 모듈 등록이다
 
 `PriceStore` 인터페이스는 런타임에 사라진다. 아래 완전한 파일 `src/catalog/price-lab/price-editor.ts`는 실제 토큰을 class-level `@Inject`에 전달한다. 기존 운영자 인가 경계를 통과한 명령을 받아 결과를 돌려주는 작은 애플리케이션 서비스다. 이 파일에는 ORM import가 없다.
@@ -418,5 +426,6 @@ Prisma 구현은 생성된 모델 delegate와 변경 개수를 읽는 방식이 
 - [Prisma 등록·트랜잭션·종료 계약](../../packages/prisma/README.ko.md), [공개 export](../../packages/prisma/src/index.ts), [모듈과 토큰 연결](../../packages/prisma/src/module.ts), [트랜잭션 서비스](../../packages/prisma/src/service.ts)
 - [Drizzle 등록·드라이버 소유권 계약](../../packages/drizzle/README.ko.md), [공개 export](../../packages/drizzle/src/index.ts), [공개 타입](../../packages/drizzle/src/types.ts), [트랜잭션 래퍼](../../packages/drizzle/src/database.ts)
 - [Prisma 서비스 경계 실험](../../packages/prisma/src/vertical-slice.test.ts), [Drizzle 서비스 경계 실험](../../packages/drizzle/src/vertical-slice.test.ts), [Drizzle 경합 경계 회귀 테스트](../../packages/drizzle/src/concurrent-boundaries.test.ts)
+- [Prisma after-commit 검증 대상](../../packages/prisma/src/after-commit.test.ts), [Drizzle after-commit 검증 대상](../../packages/drizzle/src/after-commit.test.ts), [공통 동작 행렬 검증 대상](../../tooling/governance/after-commit-contract.test.ts)
 
 [이전](./ch24-transport-lab.ko.md) · [목차](./toc.ko.md) · [다음](./ch26-mongoose-lab.ko.md)

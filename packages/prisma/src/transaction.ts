@@ -1,5 +1,6 @@
 import { Inject } from '@fluojs/core';
 import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 
 import { isPrismaServiceHandle } from './prisma-service-brand.js';
 import { PrismaService } from './service.js';
@@ -8,7 +9,7 @@ import type { PrismaClientLike } from './types.js';
 type TransactionalPrismaService<TOptions = unknown> = {
   createPlatformStatusSnapshot(): unknown;
   current(): unknown;
-  transaction<T>(fn: () => Promise<T>, options?: TOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
 };
 
 type TransactionAccessor<THost, TOptions> = (self: THost) => TransactionalPrismaService<TOptions>;
@@ -99,10 +100,12 @@ function resolveTransactionInput<THost, TOptions>(
  * silently ignored.
  *
  * @param input Optional service accessor or Prisma interactive transaction options.
+ * @param boundary Optional Fluo-owned commit capability requirement.
  * @returns A standard method decorator that runs the original method inside a Prisma transaction boundary.
  */
 export function Transaction<THost, TOptions = unknown>(
   input?: TransactionAccessor<THost, TOptions> | TOptions,
+  boundary?: TransactionBoundaryOptions,
 ): <TArgs extends unknown[], TResult>(
   value: TransactionMethod<THost, TArgs, TResult>,
   context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
@@ -120,7 +123,13 @@ export function Transaction<THost, TOptions = unknown>(
     return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const prisma = accessor?.(this) ?? resolveDefaultPrismaService(this);
 
-      return prisma.transaction(() => value.apply(this, args), options);
+      if (boundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {
+        throw new AfterCommitCapabilityError();
+      }
+
+      return boundary === undefined
+        ? prisma.transaction(() => value.apply(this, args), options)
+        : prisma.transaction(() => value.apply(this, args), options, boundary);
     };
   };
 }

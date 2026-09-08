@@ -501,70 +501,86 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
   const descriptors = freezeDescriptorSnapshot(buildDescriptorList(sources, versioning));
   const descriptorIndex = buildDescriptorIndex(descriptors);
 
+  const matchMethod = (
+    method: string,
+    requestVersion: string | undefined,
+    normalizedPath: string,
+    includeAll: boolean,
+  ): HandlerMatch | undefined => {
+    const methodStaticDescriptors = descriptorIndex.static.get(method)?.get(normalizedPath);
+    const allStaticDescriptors = includeAll ? descriptorIndex.static.get('ALL')?.get(normalizedPath) : undefined;
+    const directStaticMatch = findStaticMatch(
+      [methodStaticDescriptors, allStaticDescriptors],
+      requestVersion,
+      versioning,
+    );
+
+    if (directStaticMatch) {
+      return directStaticMatch;
+    }
+
+    const incomingSegments = normalizedPath.split('/').filter(Boolean);
+    const candidates = [
+      ...(descriptorIndex.param.get(method)?.get(incomingSegments.length) ?? []),
+      ...(includeAll ? descriptorIndex.param.get('ALL')?.get(incomingSegments.length) ?? [] : []),
+    ];
+    let firstUnversionedMatch: HandlerMatch | undefined;
+
+    for (const candidate of candidates) {
+      const params = matchParameterizedRoute(candidate, incomingSegments);
+
+      if (!params) {
+        continue;
+      }
+
+      if (versioning.type === VersioningType.URI) {
+        return {
+          descriptor: candidate.descriptor,
+          params,
+        };
+      }
+
+      if (matchesRouteVersion(candidate.descriptor, requestVersion)) {
+        return {
+          descriptor: candidate.descriptor,
+          params,
+        };
+      }
+
+      if (candidate.descriptor.route.version === undefined && !firstUnversionedMatch) {
+        firstUnversionedMatch = {
+          descriptor: candidate.descriptor,
+          params,
+        };
+      }
+    }
+
+    if (versioning.type !== VersioningType.URI) {
+      if (firstUnversionedMatch) {
+        return {
+          descriptor: firstUnversionedMatch.descriptor,
+          params: firstUnversionedMatch.params,
+        };
+      }
+    }
+
+    return undefined;
+  };
+
   const mapping = {
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase();
       const requestVersion = versioning.type === VersioningType.URI ? undefined : resolveRequestVersion(request, versioning);
       const normalizedPath = normalizeRoutePath(request.path);
-      const methodStaticDescriptors = descriptorIndex.static.get(method)?.get(normalizedPath);
-      const allStaticDescriptors = descriptorIndex.static.get('ALL')?.get(normalizedPath);
-      const directStaticMatch = findStaticMatch(
-        [methodStaticDescriptors, allStaticDescriptors],
-        requestVersion,
-        versioning,
-      );
 
-      if (directStaticMatch) {
-        return directStaticMatch;
+      if (method === 'HEAD' && request.headRouting === 'explicit-or-get') {
+        return matchMethod('HEAD', requestVersion, normalizedPath, false)
+          ?? matchMethod('ALL', requestVersion, normalizedPath, false)
+          ?? matchMethod('GET', requestVersion, normalizedPath, false);
       }
 
-      const incomingSegments = normalizedPath.split('/').filter(Boolean);
-      const candidates = [
-        ...(descriptorIndex.param.get(method)?.get(incomingSegments.length) ?? []),
-        ...(descriptorIndex.param.get('ALL')?.get(incomingSegments.length) ?? []),
-      ];
-      let firstUnversionedMatch: HandlerMatch | undefined;
-
-      for (const candidate of candidates) {
-        const params = matchParameterizedRoute(candidate, incomingSegments);
-
-        if (!params) {
-          continue;
-        }
-
-        if (versioning.type === VersioningType.URI) {
-          return {
-            descriptor: candidate.descriptor,
-            params,
-          };
-        }
-
-        if (matchesRouteVersion(candidate.descriptor, requestVersion)) {
-          return {
-            descriptor: candidate.descriptor,
-            params,
-          };
-        }
-
-        if (candidate.descriptor.route.version === undefined && !firstUnversionedMatch) {
-          firstUnversionedMatch = {
-            descriptor: candidate.descriptor,
-            params,
-          };
-        }
-      }
-
-      if (versioning.type !== VersioningType.URI) {
-        if (firstUnversionedMatch) {
-          return {
-            descriptor: firstUnversionedMatch.descriptor,
-            params: firstUnversionedMatch.params,
-          };
-        }
-      }
-
-      return undefined;
+      return matchMethod(method, requestVersion, normalizedPath, true);
     },
   };
 

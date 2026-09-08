@@ -26,6 +26,7 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Boo
 | 초기 HTTP 실습 지침 | `apps/docs/content/docs/tutorial/` | 첫 라우트·DI·검증을 직접 확인하는 보조 과정이며 책 전체를 대체하지 않습니다. |
 | 튜토리얼 단계별 동작 | `examples/fluo-blog/` 소스와 테스트 | 같은 파일과 관찰 가능한 결과를 EN/KO 실습에서 설명합니다. |
 | 패키지 API와 패키지별 제약 | 담당 `packages/*/README.md`와 한국어 문서 | 가이드는 한 사용 사례를 설명하고 전체 계약으로 연결합니다. |
+| Persistence 커밋 후 작업 | [트랜잭션 문맥 계약](./architecture/transactions.ko.md#커밋-후-작업); API는 [Prisma](../packages/prisma/README.ko.md), [Drizzle](../packages/drizzle/README.ko.md), [Mongoose](../packages/mongoose/README.ko.md) | Book과 웹사이트는 cache invalidation과 실패 복구를 설명합니다. Redis commit tracking·DB+Redis 원자성·durable delivery를 추가 보장하지 않습니다. |
 | 패키지를 아우르는 런타임·아키텍처 약속 | 해당 `docs/contracts/` 또는 `docs/architecture/` 문서 쌍 | 패키지 README와 Book은 적용 방법을 설명하며 계약을 다시 정의하지 않습니다. |
 | 런타임 범위와 도구 지원 | `docs/reference/package-surface.ko.md`와 `toolchain-contract-matrix.ko.md` | 별도 목록을 관리하지 않고 기준 표로 연결합니다. |
 | AI 문서 탐색 | `docs/CONTEXT.md`와 한국어 문서 | 담당 문서로 가는 안내이며 두 번째 튜토리얼이 아닙니다. |

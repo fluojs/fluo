@@ -213,13 +213,28 @@ export function createPostsPagesModule() {
 
 CacheService의 TTL 단위는 초다. `set(key, value, 300)`은 300밀리초가 아니다. 양수에 jitter를 주면 같은 시각에 채운 키가 모두 같은 시각에 만료되는 현상을 완화할 수 있다. 위 `shorten` 설정은 300초를 최대값으로 유지하면서 약 270~300초 범위로 줄인다. 허용 지연을 넘지 않도록 줄이는 방향을 선택한 것이다.
 
-`ttl: 0`은 만료 없음이다. 음수 또는 유한하지 않은 TTL은 캐시 쓰기를 건너뛴다. 0을 “캐시를 끄는 옵션”으로 오해하면 오래 남는 키를 만든다. RedisService의 직접 `set()`에서는 0 이하나 유한하지 않은 TTL이 persistent 저장이라는 다른 계약이 있으므로 facade를 바꿀 때 이 차이를 반드시 확인한다. 단순 Redis 값을 다루는 서비스와 cache-manager의 저장 envelope를 섞지 않는다.
+`ttl: 0`은 만료 없음이다. `set` / `remember` 쓰기는 음수 또는 유한하지 않은 TTL을 건너뛴다. 0을 “캐시를 끄는 옵션”으로 오해하면 오래 남는 키를 만든다. RedisService의 직접 `set()`에서는 0 이하나 유한하지 않은 TTL이 persistent 저장이라는 다른 계약이 있으므로 facade를 바꿀 때 이 차이를 반드시 확인한다. 단순 Redis 값을 다루는 서비스와 cache-manager의 저장 envelope를 섞지 않는다.
 
-RedisStore는 양의 소수 TTL을 허용하고 Redis에는 올림한 정수 초 만료를 전달하면서 내부 timestamp도 기록한다. 따라서 Redis key가 아직 존재한다고 CacheService에서도 hit라는 뜻은 아니다. 테스트에서는 Redis의 `TTL` 값만 보지 말고 실제 `CacheService.get()` 결과를 확인한다.
+RedisStore의 일반 `set`은 양의 소수 TTL을 허용하고 Redis에는 올림한 정수 초 만료를 전달하면서 내부 timestamp도 기록한다. 따라서 Redis key가 아직 존재한다고 CacheService에서도 hit라는 뜻은 아니다. 테스트에서는 Redis의 `TTL` 값만 보지 말고 실제 `CacheService.get()` 결과를 확인한다. 아래 원자 갱신은 고정 만료를 보존하기 위해 절대 밀리초 `PXAT`를 사용한다.
 
 발행 직후 목록을 최신으로 보이고 싶어서 DB 커밋 전에 캐시를 지우는 방법은 위험하다. 다른 요청이 아직 커밋 전 목록을 읽어 다시 채울 수 있다. 커밋 후 삭제해도 다른 프로세스에서 진행 중인 loader가 이전 결과를 나중에 저장할 수 있다. 이 장의 목록에는 짧은 TTL을 적용해 최대 노출 지연을 받아들인다. 이것은 즉시 최신성의 보장이 아니다. 반드시 즉시 새 글을 보여야 하는 작성자 확인 화면은 원본 조회로 보낸다.
 
 `CacheService.del()`과 `reset()`에는 같은 서비스 인스턴스에서 진행 중인 `remember()` loader의 재채우기를 막는 로직이 있다. 그 로직은 Redis를 사용하는 모든 프로세스의 진행 중인 작업을 알아내는 분산 장벽이 아니다. 발행본 자체를 불변으로 유지하는 정책이 상세 캐시를 크게 단순화한다. 제품이 나중에 개정판을 도입한다면 새 revision의 key와 현재 revision을 고르는 권위 있는 조회가 필요하다.
+
+애플리케이션이 직접 관리하는 캐시 key를 커밋 뒤 지우려면 11장의 `afterCommit`을 사용할 수 있다. 다음은 **소비자 호출 조각**이다. `prisma`는 기존 `BlogDatabaseModule`의 `PrismaService`, `cache`는 주입된 `CacheService`, `cacheKey`는 그 서비스의 쓰기·읽기가 공유하는 정확한 key다. `persist`는 같은 `prisma.current()`로 DB 변경만 수행하는 애플리케이션 콜백이며, 자체 네이티브 옵션을 가진 `PublishingService.publish()`를 중첩 호출하는 예제가 아니다.
+
+```ts
+await prisma.transaction(async () => {
+  await persist();
+  prisma.afterCommit(async () => {
+    await cache.del(cacheKey);
+  });
+}, undefined, { requireAfterCommit: true });
+```
+
+`undefined`는 기존 네이티브 옵션 자리를 보존한다. 능력이 없는 클라이언트에서는 `persist` 실행 전에 거부하므로 “저장은 했는데 훅을 등록할 수 없다”는 경로를 피한다. 롤백·커밋 실패에서는 삭제하지 않고, 성공한 바깥 커밋 뒤 삭제를 기다린다. 삭제가 실패하면 `AfterCommitError.committed`는 `true`이며 `results`에는 모든 훅의 결과가 남는다. 발행을 다시 시도하는 대신 DB의 확정 상태와 캐시 실패를 분리해서 기록하고, 캐시 복구·TTL·영속 재전달 중 필요한 정책을 애플리케이션이 선택한다.
+
+이 조각을 아래의 query별 HTTP 캐시 key에 대한 자동 무효화라고 읽지 않는다. 모든 query·principal 변형을 추적하는 caller는 추가하지 않았으며, 현재 목록은 계속 30초 TTL 정책을 사용한다. 다른 프로세스의 오래된 loader가 재채우는 경합도 훅으로 사라지지 않는다. Redis에는 Fluo 소유 커밋 추적이 없어 이 API를 적용할 수 없고, 향후 `MULTI/EXEC` 지원은 별도 검토 대상이다. DB 훅에서 Redis 캐시를 삭제해도 PostgreSQL+Redis 원자성이나 크래시·네트워크 exactly-once 전달은 생기지 않는다.
 
 ## 동시 miss를 소스 계약으로 실험하기
 
@@ -297,6 +312,63 @@ pnpm exec vitest run src/posts/cache-contract.test.ts
 
 jitter는 서로 다른 키의 만료를 분산할 뿐 단일 인기 키의 동시 miss를 합치지 않는다. `remember()`의 합치기도 프로세스당 한 번이므로 앱 10개가 동시에 cold key를 읽으면 원본 조회는 여러 번 발생할 수 있다. 인기 발행본을 배포 후 미리 채우거나 원본의 동시 실행 예산을 제한할지 결정할 수 있다. 정확성이 필요한 분산 락을 캐시 최적화 하나 때문에 섣불리 추가하지 않는다.
 
+## key queue 없이 캐시 값 하나를 갱신하기
+
+같은 숫자를 두 요청이 읽고 각각 1을 더해 `set()`하면 한 번의 증가가 사라질 수 있다. 앱의 key별 promise queue로 이를 감싸기보다 [cache-manager README의 원자 갱신 계약](../../packages/cache-manager/README.ko.md#원자-갱신)을 사용한다. 이 실험은 캐시 산술만 보여 준다. 조회수 영속화, 인증 실패 횟수, 차단 시간, 재고 정책을 추가하지 않으며 앞의 불변 본문 reader도 바꾸지 않는다.
+
+다음은 `src/posts/cache-update.experiment.ts`로 옮길 수 있는 독립 실행 파일이다. 기존 앱 모듈을 교체하는 코드가 아니다. Module 등록과 공개 DI를 거치며, 앱에는 pending map이나 key queue가 없다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { CacheModule, CacheService } from '@fluojs/cache-manager';
+
+@Inject(CacheService)
+class Counters {
+  constructor(private readonly cache: CacheService) {}
+
+  increment(key: string) {
+    return this.cache.update<number>(key, (value) => ({
+      action: 'set',
+      value: (value ?? 0) + 1,
+    }));
+  }
+}
+
+class AppModule {}
+defineModule(AppModule, {
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
+  providers: [Counters],
+});
+
+const app = await FluoFactory.createApplicationContext(AppModule);
+try {
+  const counters = await app.get(Counters);
+  console.log(await Promise.all([
+    counters.increment('example:counter'),
+    counters.increment('example:counter'),
+  ])); // [1, 2]
+} finally {
+  await app.close();
+}
+```
+
+두 호출은 store 하나의 동일 key FIFO를 따르고 다른 key는 독립적으로 진행한다. Memory의 `local-process`는 같은 `MemoryStore`를 공유하는 facade까지 포함하지만 별도 store 인스턴스는 포함하지 않는다. Reducer는 누락/만료를 `undefined`로 받고 명시적 set/delete 결정을 반환한다. TTL 생략은 처음 생성할 때 위의 60초를 쓰며 다음 증가에서 절대 만료를 연장하지 않는다. 명시적 `0`은 persistent이고 invalid TTL은 `RangeError`이며 update에는 jitter가 없다. 결과는 커밋한 값 또는 명시적 삭제 후 `undefined`다.
+
+일반 쓰기 경합으로 reducer가 다시 실행될 수 있으므로 안에서 DB, 이메일, 결제를 호출하지 않는다. `{ attempt, signal }`의 attempt는 1부터 시작하고 기본 총 시도 한도는 16이다. 같은 key update를 중첩하거나 reducer 안에서 reset/close를 await하면 자기 자신을 기다리는 교착이 생긴다. `del`/`reset`/`close`는 늦은 reducer를 취소하며 reset/close는 queued update, reducer, 격리 연결 정리까지 기다린다. Signal을 무시하고 끝나지 않는 reducer를 강제로 끊지는 않는다. Reset 중 호출은 `invalidated`로 거부될 수 있으므로 reset을 await한 뒤 새 작업을 시작한다. 오류 분류와 원본 실패 전파는 README가 소유한다.
+
+여러 프로세스에서는 앞의 named RedisModule DI를 유지하면서 **참여하는 모든 cache 등록**에 `redis: { clientName: 'posts-cache', atomicUpdates: true }`를 적용해야 한다. Redis >=6.2 standalone/single-primary와 비어 있지 않은 앱 전용 prefix가 필요하며 Cluster 지원은 주장하지 않는다. WATCH는 data와 namespace/key 무효화 identity를 함께 확인하고, 각 작업의 격리 duplicate만 닫는다. 공유 Redis client의 소유자는 그대로다. EXEC dispatch 전 취소는 commit을 막지만 dispatch 후 취소가 이미 커밋한 결과를 되돌리지는 않는다.
+
+이 opt-in은 `remember()`를 분산 loader로 바꾸지 않는다. Namespace에는 reset 후 epoch 하나와 reset 전까지 삭제한 서로 다른 key별 marker가 남는다. 예약 key와 metadata 비용은 README를 따르고 외부에서 metadata를 수정하거나 eviction하지 않는다. Reset은 여전히 SCAN이며 원격 reset 시작 후의 새 update를 전역 차단하는 snapshot이나 failover durability를 보장하지 않는다.
+
+의존성이 이미 설치된 repository workspace에서 같은 공개 consumer 경계를 확인할 명령은 다음과 같다. 먼저 패키지와 dependency closure를 build하여 필요한 모듈을 emit한 뒤 지정 파일을 실행한다. 마지막 명령은 Docker `redis:7.4-alpine` 격리 container와 임시 port를 사용하며 환경이 없으면 skip하지 않고 실패한다.
+
+```bash
+pnpm --filter '@fluojs/cache-manager...' build
+pnpm --dir packages/cache-manager exec vitest run -c vitest.config.ts src/cache-update.test.ts src/cache-update.consumer.test.ts
+pnpm --filter @fluojs/cache-manager test:redis
+```
+
 ## HTTP 캐시를 붙일 때 바뀌는 질문
 
 공개 JSON 목록에도 캐시를 적용한다. 아래 import를 `src/posts/posts.controller.ts`에 추가하고 이어지는 **변경 조각을 기존 GET 목록 메서드에 반드시 적용한다**. 12장의 `ListPostsDto → PostFeed.list(input)`과 `{ items, nextCursor }` 응답, 15장의 공개 컨트롤러 분리를 그대로 유지한다. `Get`, `UseInterceptors`는 기존 import에 있으므로 중복 선언하지 않는다. `PostsModule`은 앞 절의 `ReadingCacheModule`을 가져오고 그 안의 전역 cache 등록이 실제 interceptor 토큰을 제공한다.
@@ -341,8 +413,12 @@ FluoBlog는 불변 공개 본문을 재사용하고, 동적으로 늘어나는 �
 
 ## 구현 근거
 
+- [원자 갱신 API 원본](../../packages/cache-manager/README.ko.md#원자-갱신), [순수 reducer와 TTL](../../packages/cache-manager/src/atomic-update.ts)
+- [원자 갱신 회귀](../../packages/cache-manager/src/cache-update.test.ts), [queue 없는 앱 consumer](../../packages/cache-manager/src/cache-update.consumer.test.ts), [실제 Redis fixture](../../packages/cache-manager/test/redis-update.native.test.ts)
+- `update`는 기존 `CacheObservation` event를 내보내지 않는다. 아래 observer 근거를 update 계측으로 해석하지 않는다.
 - [Cache-manager README: TTL·키·실패·observer](../../packages/cache-manager/README.ko.md), [공개 export](../../packages/cache-manager/src/index.ts)
 - [CacheService의 remember·del·reset](../../packages/cache-manager/src/service.ts), [메모리 보관과 만료 구현](../../packages/cache-manager/src/stores/memory-store.ts)
 - [캐시 계약 테스트](../../packages/cache-manager/src/cache-service.test.ts), [독립 key 동시 실행 테스트](../../packages/cache-manager/src/cache-service.concurrency.test.ts)
 - [모듈 설정과 client 해석](../../packages/cache-manager/src/module.ts), [HTTP 인터셉터 회귀 테스트](../../packages/cache-manager/src/interceptor.contract-regression.test.ts)
 - [Redis README: TTL 코덱과 연결 수명주기](../../packages/redis/README.ko.md), [Redis 공개 export](../../packages/redis/src/index.ts)
+- [커밋 후 실행의 공통 계약](../../docs/architecture/transactions.ko.md), [Prisma after-commit API](../../packages/prisma/README.ko.md), [회귀 검증 대상](../../packages/prisma/src/after-commit.test.ts)

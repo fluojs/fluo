@@ -15,4 +15,8 @@ Realtime and messaging packages help you build flows that are not just synchrono
 | `@fluojs/graphql` | GraphQL resolvers, schemas, DataLoaders | `packages/graphql/README.md` |
 | `@fluojs/cron` | Cron, interval, timeout triggers | `packages/cron/README.md` |
 
+`@fluojs/event-bus` offers opt-in result observation through `EventBusLifecycleService.publishWithResult` while preserving legacy best-effort `publish` and raw error logging. The result-aware type for the `EVENT_BUS` runtime facade is the additive `EventBusWithResults`, leaving `EventBus` unchanged. Check `settled` and every outcome together; `no-recipients` or an empty result is not success for a required reaction. Observation covers only matching local handlers and outbound transport channels. An adapter success with zero subscribers is still transport success, not evidence of remote processing or durability.
+
+Results and bus logs on the new path omit raw handler/transport errors and handler return values, but app-owned logs remain the application's responsibility. Awaited timeout/cancellation does not terminate started work. Background completion awaits actual work and ignores timeout and post-start cancellation, so it can remain pending after bounded shutdown and be lost on process exit. Follow the [package README](https://github.com/fluojs/fluo/blob/main/packages/event-bus/README.md) for the full contract and the [messaging guide](../guides/messaging-workflows#best-effort-versus-required-results) for the comparison between post-authentication best-effort bookkeeping and required-result checks.
+
 Read [Realtime](../guides/realtime) or [Messaging & Workflows](../guides/messaging-workflows) based on whether the client connection or the backend workflow is the main concern.

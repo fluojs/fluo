@@ -122,10 +122,18 @@ export class UsersService {
 }
 ```
 
-The block pattern is useful when you want to catch errors from specific steps or perform side effects (like logging or metrics) only after you are certain the database work has successfully committed.
+The block pattern is useful for making the work boundary explicit. However, the "after commit" comment above is accurate only when this call owns the outer native transaction. A nested `transaction()` returning is not the final commit. For cache deletion or other work that must follow the final commit even when services are composed, register `afterCommit(callback: () => void | Promise<void>): void` inside the active callback of the same `PrismaService`.
+
+Append Prisma's boundary options after existing arguments. Manual calls use `transaction(fn, nativeOptions?, boundary?)`, request calls use `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, and decorators use `@Transaction(input?, boundary?)`. The final `{ requireAfterCommit: true }` argument rejects with `AfterCommitCapabilityError` before invoking the callback if native commit observation is unavailable. Omitted native options and the default fail-open behavior remain, but hook registration on unsupported direct-execution paths, outside a boundary, or in a closed scope is not allowed.
 
 ### Nested Transactions and Reusability
 Fluo handles "nested" transactions by reusing the already-active transaction client. If `Service A` has a `@Transaction()` method that calls `Service B`'s `@Transaction()` method, they both share the same outer transaction. Everything is treated as part of one cohesive unit of work.
+
+The after-commit queue is shared too. It runs one callback at a time in FIFO order, awaiting each Promise, only after a successful outer native commit. Rollback and failed commit do not run it; a caught nested exception without a savepoint follows the final outer outcome. Hooks run after closing the scope and leaving its ended ALS context, so a fresh `current()` read does not use the old handle and a new transaction gets a fresh queue. Shutdown waits for hooks too, but late registration into the closed queue is rejected.
+
+If any hooks fail, the failure is reported after attempting every hook as `AfterCommitError`, which extends `AggregateError`. `readonly committed = true` means the database is already committed; `results: readonly PromiseSettledResult<void>[]` contains all successes and failures in FIFO order, and `errors` contains every failure. This is not a database rollback or a reason to retry the entire transaction. `AfterCommitCallback`, `TransactionBoundaryOptions`, `AfterCommitCapabilityError`, and `AfterCommitError` are root exports of `@fluojs/prisma`.
+
+External transactions opened by raw clients and other wrappers or connections are not observed. Redis has no Fluo-owned commit tracking either; calling Redis from a database hook does not provide DB+Redis atomicity. This API covers only execution order within a successful in-process owning boundary, not an outbox, crash recovery, or network exactly-once delivery. See [Transaction Context](../../docs/architecture/transactions.md) for shared semantics, the [Prisma README](../../packages/prisma/README.md) for the API, and the [after-commit test](../../packages/prisma/src/after-commit.test.ts) as a verification target.
 
 ## 13.4 Advanced Patterns and Internals
 
@@ -260,7 +268,7 @@ You should also think about how transaction integrity affects system scalability
 Beyond the basic service-layer and request-transaction patterns, you may encounter more advanced application-level scenarios:
 1. **Parallel transaction blocks**: Running independent `transaction(...)` calls concurrently when they do not share the same resource dependencies.
 2. **Selective rollback policy**: Keeping error handling inside the transaction callback explicit so the block either throws and rolls back or returns a deliberate result.
-3. **Post-commit side effects**: Running cache or message-broker synchronization after the `transaction(...)` promise resolves, rather than looking for built-in transaction hook APIs.
+3. **Post-commit side effects**: Registering cache deletion or similar work with `afterCommit(...)` inside an active Fluo boundary for execution after the successful final outer commit. Durable message delivery and redelivery after failure require a separate policy such as an application-owned Outbox.
 
 Once you master these patterns, you can apply the same rules you used in small projects consistently to more demanding enterprise requirements.
 

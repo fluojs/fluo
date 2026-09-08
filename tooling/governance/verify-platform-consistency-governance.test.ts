@@ -145,6 +145,88 @@ function enforceContractCompanionUpdates(
   );
 }
 
+describe('Next HEAD routing contract companions', () => {
+  const companions = [
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+    'packages/http/src/mapping.ts',
+    'packages/platform-nextjs/src/adapter.ts',
+    'packages/http/src/head-routing.test.ts',
+    'packages/platform-nextjs/src/head-routing.test.ts',
+    'packages/platform-nextjs/src/head-routing-public-types.test.ts',
+    'packages/platform-nextjs/e2e/next.test.mjs',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'packages/platform-nextjs/README.md',
+    'packages/platform-nextjs/README.ko.md',
+  ];
+
+  function expectHeadFailure(run: () => void): void {
+    expect(run).toThrow(/Next HEAD routing contract changes must include/u);
+  }
+
+  it('accepts HEAD selection with its matcher, transport, declarations, native and bilingual evidence', () => {
+    // Given the complete HEAD-specific changed-file evidence.
+    // When the HTTP contract companion gate classifies the change.
+    // Then it uses the focused HEAD regressions rather than unrelated lifecycle tests.
+    expect(() => enforceContractCompanionUpdates(companions)).not.toThrow();
+  });
+
+  it.each(companions.slice(8))('rejects missing HEAD evidence %s', (missing) => {
+    // Given an otherwise complete HEAD contract change.
+    const incomplete = companions.filter((path) => path !== missing);
+    // When one required evidence file is absent.
+    // Then the changed-file gate rejects the incomplete contract.
+    expectHeadFailure(() => enforceContractCompanionUpdates(incomplete));
+  });
+
+  it.each([
+    ['comparison', 'nextHeadRoutingRegressionEvidence.every((path) => hasChanged(changedFiles, path))', 'true'],
+    ['branch', "hasChanged(changedFiles, 'packages/platform-nextjs/src/adapter.ts')", 'false'],
+  ])('rejects a disabled HEAD %s even with generic lifecycle enforcement intact', async (label, target, replacement) => {
+    // Given the real verifier with only the HEAD comparison or branch disabled.
+    const sourceUrl = new URL('./verify-platform-consistency-governance.mjs', import.meta.url);
+    const source = readFileSync(sourceUrl, 'utf8');
+    expect(source.split(target)).toHaveLength(2);
+    const mutated = source.replace(target, replacement)
+      .replace(/from '(\.[^']+)'/gu, (_match, specifier: string) =>
+        `from '${new URL(specifier, sourceUrl).href}'`)
+      .replaceAll('import.meta.url', JSON.stringify(sourceUrl.href));
+    const governance: Pick<typeof import('./verify-platform-consistency-governance.mjs'), 'enforceContractCompanionUpdates'> =
+      await import(`data:text/javascript;base64,${Buffer.from(mutated).toString('base64')}`);
+
+    // When each missing-companion regression evaluates the mutated verifier.
+    // Then the same negative assertion must fail, not accept another guard's error.
+    for (const missing of companions.slice(8)) {
+      const incomplete = companions.filter((path) => path !== missing);
+      const run = () => governance.enforceContractCompanionUpdates(
+        incomplete,
+        withUnchangedEmailMigrationSections(unchangedEmailMigrationGuideSnapshots),
+      );
+      if (label === 'branch') {
+        expect(run).toThrow(/http-runtime-isolation\.test\.ts/u);
+      } else {
+        expect(run).not.toThrow();
+      }
+      expect(() => expectHeadFailure(run)).toThrowError(expect.objectContaining({ name: 'AssertionError' }));
+    }
+  });
+
+  it('does not replace generic HTTP lifecycle evidence without both HEAD source seams', () => {
+    // Given HEAD evidence without the Next adapter change.
+    const incomplete = companions.filter((path) => path !== 'packages/platform-nextjs/src/adapter.ts');
+    // When classifying an ordinary HTTP contract change.
+    // Then the existing lifecycle companion requirement still applies.
+    expect(() => enforceContractCompanionUpdates(incomplete)).toThrow(
+      /http-runtime-isolation\.test\.ts/,
+    );
+  });
+});
+
 describe('Fastify raw-context README companion classification', () => {
   const readmePaths = [
     'packages/platform-fastify/README.md',
@@ -847,6 +929,27 @@ function hasDirectMainCall(sourceText: string, calleeName: string): boolean {
 describe('isGovernedPackageSourcePath', () => {
   it('includes ordinary package source files', () => {
     expect(isGovernedPackageSourcePath('packages/core/src/module.ts')).toBe(true);
+  });
+
+  it('ignores installed fixture dependencies without exempting authored fixture source', () => {
+    const dependencies = [
+      'packages/prisma/node_modules/mongodb/src/client.ts',
+      'packages/prisma/fixtures/after-commit/node_modules/.pnpm/mongodb@7/node_modules/mongodb/src/client.ts',
+    ];
+    const authored = [
+      'packages/prisma/src/service.ts',
+      'packages/prisma/fixtures/after-commit/src/bootstrap.ts',
+      'packages/prisma/src/node_modules-helper.ts',
+    ];
+    const inspected: string[] = [];
+
+    const violations = collectDirectProcessEnvViolations([...dependencies, ...authored], (path) => {
+      inspected.push(path);
+      return 'export const value = process.env.VALUE;';
+    });
+
+    expect(inspected).toEqual(authored);
+    expect(violations.map((violation) => violation.path)).toEqual(authored);
   });
 
   it('excludes documented exceptions and non-governed paths', () => {

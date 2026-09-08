@@ -35,7 +35,14 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층입니다. 
 Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응 → 인계 순서를 따르세요. 최초 집필은 한국어 전체를 먼저 확정합니다. 기존 Book 정정은 의존 장을 포함한 영향받는 한국어 묶음 전체를 동결한 뒤 영어로 옮기며, 병합 가능한 각 증분에는 양언어 대응이 모두 있어야 합니다. 충돌은 기존 계약·구현·테스트로 판정하고 구현에 맞춰 보장을 조용히 낮추지 않습니다. 아직 이전하지 않은 아래 계약 절, 안정 링크와 machine sentinel은 그대로 유효하며, 이 안내는 전체 패키지·장 이전 완료를 뜻하지 않습니다.
 
 <!-- fluo:docs-navigation:end -->
+
+원자 캐시 갱신은 [cache-manager API 원본](../packages/cache-manager/README.ko.md#원자-갱신)에서 시작해 [캐시 아키텍처](./architecture/caching.ko.md#원자-갱신-조정), [update 타입](../packages/cache-manager/src/atomic-update.ts), [service admission/drain](../packages/cache-manager/src/service.ts)을 읽으세요. `update`는 고정 만료를 보존하는 순수 단일 key reducer이며 `remember` loader 합치기나 앱 도메인 정책이 아닙니다. Memory는 공유 store 인스턴스 하나를 조정하고 Redis는 cache 측 명시적 opt-in과 기존 [raw client seam](../packages/redis/README.ko.md#원시-클라이언트-접근-raw-client-access)을 통한 격리 WATCH 트랜잭션이 필요합니다. TTL/오류/metadata/취소 한계와 Docker native suite를 포함한 테스트 명령은 README가 소유하며 소스 링크는 실행 검증을 뜻하지 않습니다. 사람을 위한 적용은 [FluoBlog 캐싱](../book/01-fluoblog/ch20-caching.ko.md)과 [FluoShop 캐싱](../book/02-fluoshop/ch21-commerce-caching.ko.md)에서 설명합니다.
+
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
+
+## Persistence After-Commit Work
+
+Prisma·Drizzle·Mongoose의 `afterCommit`은 [트랜잭션 문맥 계약](./architecture/transactions.ko.md#커밋-후-작업)이 실행 순서·native capability·중첩/재시도·post-commit 실패·shutdown을 소유합니다. 공개 인자와 cache invalidation 사용법은 [Prisma](../packages/prisma/README.ko.md#커밋-후-캐시-무효화), [Drizzle](../packages/drizzle/README.ko.md#커밋-후-캐시-무효화), [Mongoose](../packages/mongoose/README.ko.md#커밋-후-캐시-무효화) README를 읽으세요. Book은 이 계약의 적용 설명입니다. 검증 대상은 각 `packages/*/src/after-commit.test.ts`, `tooling/governance/after-commit-contract.test.ts`, native `packages/prisma/fixtures/after-commit/`이며 실제 실행 결과는 별도 receipt로 확인합니다. Redis의 commit tracking이나 DB+Redis 원자성, crash/network exactly-once 보장은 포함하지 않습니다.
 
 ## Decorator Default Audit
 
@@ -127,6 +134,18 @@ cache에 넣지 않습니다. [`publicToken<T>`](../packages/core/README.ko.md)�
 `packages/platform-nextjs/src/application-accessor.test.ts`,
 `packages/platform-nextjs/src/application-public-types.test.ts`,
 `packages/platform-nextjs/e2e/next.test.mjs`입니다.
+
+GET-only Fluo route에서 application wrapper 없이 Next auto-HEAD와 직접 HEAD를
+지원하려면 [`headRouting: 'explicit-or-get'`](../packages/platform-nextjs/README.ko.md#head-routing)을
+명시적으로 선택합니다.
+[공통 HTTP 매칭 계약](./architecture/http-runtime.ko.md#opt-in-head-route-selection)은
+HEAD method를 유지하며 handler가 반환한 404를 재시도하지 않습니다.
+Opt-in HEAD는 활성 response stream을 취소한 뒤 dispatch lifecycle, iterator cleanup,
+request-scope disposal을 기다립니다. Stream source는 cancellation에 협력하고
+iterator `return()`을 완료해야 합니다.
+검증 근거는 `packages/http/src/head-routing.test.ts`,
+`packages/platform-nextjs/src/head-routing.test.ts`, packaged
+`packages/platform-nextjs/e2e/next.test.mjs`에 있습니다.
 
 Compiler scope와 SSR module path 보존의 opt-in 계약은
 [Next package README](../packages/platform-nextjs/README.ko.md#decorator-compiler-연결)가
@@ -251,6 +270,12 @@ Microservices transport safety guidance는 `packages/microservices/README.ko.md`
 Microservices handler migration discoverability는 [microservices introduction](../book/intermediate/ch01-microservices-intro.ko.md)에도 반영된다. `@MessagePattern`과 `@EventPattern`은 NestJS provider metadata, `reflect-metadata`, `experimentalDecorators`, `emitDecoratorMetadata` 없이 TC39 표준 method-decorator context를 사용하고, 소유 class는 compiled module의 `providers` 또는 `controllers`에 명시적으로 등록해야 하며, discovery는 private 또는 static target이 아닌 decorated public instance method를 호출한다.
 
 Event-bus package-surface discoverability는 `packages/event-bus/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`docs/reference/package-chooser.ko.md`](./reference/package-chooser.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/intermediate/ch09-event-bus.ko.md`](../book/intermediate/ch09-event-bus.ko.md)로 나뉜다. `EventBusModule.forRoot({ global? })`는 event-bus provider를 기본적으로 global로 노출하고 `global: false`를 module-local opt-out으로 제공하며, optional `@fluojs/event-bus/redis` 서브패스는 Redis Pub/Sub fan-out을 담당하고 애플리케이션이 `ioredis` peer를 설치하도록 요구하며, caller는 transport 전용 `publishClient`와 `subscribeClient`를 서로 다른 instance로 제공하고 transport teardown 후에도 소유한다. 직접 선언한 `static eventKey` 값은 distributed routing을 안정적으로 유지한다. Shutdown은 transport를 닫기 전 또는 구성된 drain timeout까지 하나의 absolute deadline 아래에서 awaited 작업과 `waitForHandlers: false` background handler/transport 작업을 live-set quiescence까지 drain한다. Listener failure isolation은 publisher completion보다 좁은 계약이다. 일치하는 local listener 실패는 log되고 격리되며, 다른 matching listener는 계속 실행된다. Local listener 실패만으로 `publish(...)`를 reject하지 않는다. Inbound transport listener에는 같은 isolation 규칙이 적용되므로 inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않는다. Publisher completion은 모든 listener가 성공했음을 증명하지 않는다. Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있다. 해당 실패는 각각 별도로 문서화된 동작을 유지한다. Regression coverage는 Redis peer/client guidance, per-call publish timeout, shared explicit `eventKey` subscription dedupe, late background/inbound shutdown drain path, app teardown, handler failure isolation을 실행 가능한 테스트로 유지해야 한다.
+
+Event-bus 결과형 발행의 소유자는 [패키지 README](../packages/event-bus/README.ko.md)다. `EventBusLifecycleService.publishWithResult`는 additive API이며 기존 `publish`와 raw error 로깅을 바꾸지 않는다. `EVENT_BUS: Token<EventBusWithResults>`는 `container.resolve(EVENT_BUS)`에서 결과형 facade를 추론하고, 기존 `EventBus` 및 명시적 `container.resolve<EventBus>(EVENT_BUS)`도 유효하다. `settled`의 모든 outcome을 검사하고 빈 결과나 `no-recipients`를 필수 반응의 성공으로 보지 않는다. `no-recipients`는 일치하는 로컬 핸들러와 구성된 transport가 모두 없는 경우다. Lifecycle 거부는 `rejected`와 `stopping`/`stopped`/`failed` reason으로 반환되지만 discovery/preparation 오류는 여전히 reject하며 aggregate-reject API는 없다.
+
+결과는 일치하는 effective 로컬 핸들러의 discovery 순서로 발행별 `index`, `moduleName`, `targetName`, `methodName`을 담은 뒤 channel 순서의 outbound transport를 나열한다. Outcome은 `succeeded`, `failed`(`handler`/`transport`/`not-callable` reason), `timed-out`(`timeoutMs`), `cancelled`(`started`)이다. Remote handler/subscriber나 durability는 관측하지 않으며 subscriber가 0이어도 adapter 성공은 transport 성공이다. 결과와 새 발행 경로의 버스 로그는 raw handler/transport error와 핸들러 반환값을 제외하고 기존의 안전한 target/status 메시지를 유지한다. App-owned 로그는 앱 책임이다. Awaited timeout/cancellation은 관측만 끝내며 시작된 작업은 shutdown 추적에 남는다. `background.completion: Promise<EventPublishSettlement>`는 timeout과 시작 후 cancellation을 무시하고 실제 작업을 기다리므로 bounded shutdown 뒤에도 pending일 수 있고 process exit 때 사라질 수 있다. 이미 abort된 signal은 시작 전 작업을 건너뛴다.
+
+소비자 정책은 [인증 후 last-used bookkeeping과 필수 결과 검사](../apps/docs/content/docs/guides/messaging-workflows.ko.mdx), 현재 학습 적용은 [FluoShop 도메인 이벤트](../book/02-fluoshop/ch13-domain-events.ko.md), 실행 근거는 [publish-results 예제](../packages/event-bus/examples/publish-results.ts)와 [결과](../packages/event-bus/src/publish-result.test.ts)·[bound](../packages/event-bus/src/publish-result-bounds.test.ts)·[lifecycle](../packages/event-bus/src/publish-result-lifecycle.test.ts) 테스트를 따른다. 인증은 이미 성공한 상태이며 이벤트에는 credential이 아닌 token record ID만 담는다. 소유자 검증 명령은 `pnpm --dir packages/event-bus test`와 `pnpm --filter '@fluojs/event-bus...' build`다.
 
 Event-bus runtime compatibility에는 패키지 자체의 지원 계약으로 Node.js `>=24.0.0 <27`이 필요하다. Handler discovery는 normalized effective singleton registration을 읽으므로 duplicate loser를 발견하지 않고 factory-provider scope도 DI normalization을 따른다. `@OnEvent(...)`는 public instance 메서드만 받을 수 있으며, transport와 handler 실패는 log되는 fail-soft publish outcome으로 유지되지만 transport close 실패는 shutdown을 reject하여 runtime이 retry ownership을 유지한다.
 

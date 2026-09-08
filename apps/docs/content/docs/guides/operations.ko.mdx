@@ -173,6 +173,14 @@ pnpm exec fluo-studio-viewer
 
 출력된 `http://127.0.0.1:<port>/` URL을 열고 snapshot file을 viewer에 drag-and-drop하세요. `dist/index.html`을 직접 열지 마세요. 패키징된 HTML entry를 resolve하는 integration을 위해 `@fluojs/studio/viewer`는 계속 사용할 수 있습니다. Studio는 `parseStudioPayload(...)`, `applyFilters(...)`, `renderMermaid(...)`를 통해 snapshot parsing, filtering, Mermaid rendering을 소유합니다.
 
+## Cache update drain
+
+원자 캐시 갱신은 [cache-manager API 원본](https://github.com/fluojs/fluo/blob/main/packages/cache-manager/README.ko.md#원자-갱신)을 따르세요. `CacheService.update`는 순수 단일 key reducer를 실행하며 원본 loader나 도메인 정책이 아닙니다. `update`는 기존 `CacheObservation` event를 내보내지 않으므로 기존 hit/miss metric으로 이 갱신을 측정할 수 없습니다.
+
+Reset/close는 수용된 reducer와 queued update를 취소하고 격리 Redis 연결 정리까지 drain합니다. Signal을 무시하는 reducer는 drain을 무기한 붙잡을 수 있으므로 그 안에서 reset/close나 중첩 same-key update를 await하지 마세요. Reset을 await한 뒤 새 update를 시작하세요. Commit dispatch 전 취소는 commit을 막지만 Redis EXEC dispatch 후에는 커밋된 트랜잭션을 되돌릴 수 없습니다. Opt-in Redis 경로는 RedisModule DI를 우선 사용하며 cache operation이 공유 client를 닫지는 않습니다.
+
+Redis atomic mode에는 Redis >=6.2 standalone/single-primary, namespace의 모든 참여자의 명시적 opt-in, 비어 있지 않은 앱 prefix가 필요합니다. Persistent epoch/key marker 비용을 고려하고 외부에서 metadata를 수정하거나 eviction하지 마세요. SCAN reset을 분산 전역 snapshot이나 failover durability 보장으로 해석하지 마세요. 원본은 단위/앱 근거, 필수 dependency closure build, native `pnpm --filter @fluojs/cache-manager test:redis` 명령을 연결합니다. 이 명령은 격리 Docker `redis:7.4-alpine` fixture가 필요하며 사용할 수 없으면 실패합니다.
+
 ## Runnable operations example
 
 `examples/ops-metrics-terminus`는 다음을 보여 줍니다.

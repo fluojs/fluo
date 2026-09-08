@@ -1,5 +1,11 @@
 import { Inject } from '@fluojs/core';
 
+import {
+  CacheUpdateError,
+  type CacheUpdateErrorCode,
+  type CacheUpdateOptions,
+  type CacheUpdateReducer,
+} from './atomic-update.js';
 import { CacheOperationObserver } from './operation-observer.js';
 import { StoreOperationScheduler } from './store-operation-scheduler.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
@@ -32,6 +38,7 @@ export class CacheService {
   private closePromise: Promise<void> | undefined;
   private resetVersion = 0;
   private readonly storeOperations = new StoreOperationScheduler();
+  private readonly updates = new Map<string, Set<AbortController>>();
 
   private beginPendingLoad(key: string, generation: number): void {
     const generations = this.pendingLoads.get(key) ?? new Map<number, number>();
@@ -132,6 +139,53 @@ export class CacheService {
 
       await this.store.set<T>(key, value, effectiveTtl);
     });
+  }
+
+  /**
+   * Atomically reduce one key using the store's explicit capability.
+   *
+   * @param key Cache entry key.
+   * @param reducer Pure reducer; repeated attempts must not perform external side effects.
+   * @param options Optional caller cancellation and total attempt limit (default 16).
+   * @returns The committed value, or `undefined` after explicit deletion.
+   * @throws CacheUpdateError for unsupported stores, invalidation, cancellation, close, or exhausted conflicts.
+   * @remarks Omitted decision TTL preserves live expiry; missing entries use the module TTL.
+   * Update TTLs are not jittered. Shutdown drains reducers even when they ignore cancellation.
+   */
+  async update<T>(key: string, reducer: CacheUpdateReducer<T>, options: CacheUpdateOptions = {}): Promise<T | undefined> {
+    if (this.closed) return Promise.reject(new CacheUpdateError('closed'));
+    const capability = this.store.atomicUpdate;
+    if (!capability) return Promise.reject(new CacheUpdateError('unsupported'));
+    const controller = new AbortController();
+    const controllers = this.updates.get(key) ?? new Set<AbortController>();
+    controllers.add(controller);
+    this.updates.set(key, controllers);
+    const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
+    try {
+      let admit: (() => void) | undefined;
+      const admission = new Promise<void>((resolve) => { admit = resolve; });
+      // The store registers synchronously, even while this facade waits behind an exclusive boundary.
+      const pending = capability.update(key, reducer, {
+        ...options, signal, admission, defaultTtlSeconds: this.options.ttl,
+      });
+      const tracked = this.storeOperations.run(() => {
+        admit?.();
+        return pending;
+      });
+      // Observe an early capability rejection even while the scheduler is behind a reset.
+      const [value] = await Promise.all([pending, tracked]);
+      return value;
+    } finally {
+      controllers.delete(controller);
+      if (controllers.size === 0) this.updates.delete(key);
+    }
+  }
+
+  private invalidateUpdates(key?: string, code: CacheUpdateErrorCode = 'invalidated'): void {
+    for (const [activeKey, controllers] of this.updates) {
+      if (key !== undefined && key !== activeKey) continue;
+      for (const controller of controllers) controller.abort(new CacheUpdateError(code));
+    }
   }
 
   /**
@@ -241,6 +295,7 @@ export class CacheService {
       return;
     }
 
+    this.invalidateUpdates(key);
     const entry = this.inflight.get(key);
 
     if (entry) {
@@ -268,6 +323,7 @@ export class CacheService {
       return;
     }
 
+    this.invalidateUpdates();
     this.resetVersion += 1;
     this.inflight.clear();
     this.pendingLoads.clear();
@@ -301,6 +357,7 @@ export class CacheService {
 
   private closeStore(): Promise<void> {
     this.closed = true;
+    this.invalidateUpdates(undefined, 'closed');
     this.resetVersion += 1;
     this.inflight.clear();
     this.pendingLoads.clear();

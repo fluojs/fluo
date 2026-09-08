@@ -154,6 +154,8 @@ export class AnalyticsStore {
 
 이미 `RedisService`를 주입받았다면 `redis.getRawClient()`로 같은 underlying `ioredis` instance에 접근할 수 있습니다.
 
+Raw client는 `duplicate`, `watch`, `multi`를 포함한 full ioredis API를 유지합니다. [`@fluojs/cache-manager` 원자 갱신](../cache-manager/README.ko.md#원자-갱신)은 이 기존 seam을 사용하며, `RedisService`에 `update` 메서드나 Redis module option에 `atomicUpdates`가 추가되는 것은 아닙니다. Cache 등록에서 `redis: { atomicUpdates: true }`로 opt-in하세요. Export된 선택적 `RedisAtomicClient` / `RedisAtomicTransaction` 구조적 타입과 격리 `duplicate(...)` 연결의 소유자는 cache-manager이며, 각 연결을 `finally`에서 disconnect합니다. 공유 주입 raw client는 닫지 않습니다. 이는 lifecycle을 애플리케이션이 소유하는 앱 생성 duplicate와 별개입니다. Redis topology, namespace metadata, TTL, retry, 취소 요건은 연결된 cache API 원본이 소유합니다. 작업 전용 연결은 재접속하지 않으며, 연결이 끊기면 WATCH 없는 새 연결에서 commit하지 않고 원래 client 오류를 전파합니다. 공유 client의 재접속 정책은 유지됩니다.
+
 Redis Pub/Sub은 일반적인 shared-client 재사용의 예외입니다. Redis는 구독한 연결을 subscribe mode로 전환하므로, lifecycle-managed `REDIS_CLIENT`나 `RedisService.getRawClient()` 결과를 publisher와 subscriber로 동시에 사용하지 마세요. `client.duplicate()`로 전용 subscriber 연결을 만들거나 명시적인 `RedisModule.forRoot({ name: 'subscriber', ... })` 등록을 사용하고, 그 연결도 별도 lifecycle owner를 갖게 하세요.
 
 `client.duplicate()`를 사용한다면 그 duplicate는 애플리케이션이 소유합니다. 직접 연결하고, subscribe에 사용하며, 자체 shutdown 경로에서 닫아야 합니다. Subscriber 시작/종료 timeout을 fluo가 소유하게 하려면 named registration을 선호하고 `getRedisClientToken(name)`으로 주입하세요.
