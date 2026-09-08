@@ -182,6 +182,13 @@ await this.conn.transaction(async () => {
 
 ## 19.6 FluoShop Context: Product Catalog Persistence
 
+반환값 기반 거절은 [Mongoose의 타입 지정 예제](../../packages/mongoose/README.ko.md#반환값으로-롤백-선택)처럼 기존 Fluo boundary의 `shouldRollback`으로 opt-in합니다. 전역 Result 형태나 새 native 옵션은 없습니다. 루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환합니다. 중첩 실패는 원래 값을 반환하되 owner를 sticky rollback-only로 만들고, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 담은 `TransactionRollbackOnlyError`로 끝납니다. 미지원 경계의 `TransactionRollbackCapabilityError`는 callback 전에 발생하며 native 오류를 가리지 않습니다.
+
+잡힌 일반 중첩 예외는 기존 commit/hook 동작을 유지하지만 opt-in rollback은 모든 hook을 버립니다. native callback retry는 새 owner로 시작하므로 이전 실패값·rollback-only를 넘기지 않습니다. post-commit 오류와의 구분 및 raw 외부 transaction·Redis `MULTI/EXEC`·savepoint·durability 한계는 [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
+
 커밋 뒤 캐시 삭제가 필요하면 같은 연결의 활성 경계 안에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록합니다. `transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, `@Transaction(accessor?, boundary?)`의 마지막 boundary에 `{ requireAfterCommit: true }`를 주면 콜백 실행 전에 네이티브 커밋 관찰 능력을 요구합니다. 없으면 `AfterCommitCapabilityError`로 거부하며 기본 fail-open은 변경하지 않습니다. 옵션을 생략해도 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부합니다.
 
 위임된 Mongoose 콜백 재시도는 시도마다 독립 큐를 갖고 최종 성공한 시도만 실행합니다. 폐기된 시도·롤백·커밋 실패의 훅은 실행하지 않으며, 커밋만 재시도할 때 재등록하지 않습니다. 같은 시도의 중첩 경계는 큐를 공유하고, 저장점 없는 중첩 예외를 잡으면 최종 바깥 결과를 따릅니다. 사용자 callback scope는 native commit 시작 전에 닫습니다. commit 성공과 `endSession` 정리 시도 settlement 뒤 종료된 ALS 밖에서 FIFO로 하나씩 await하므로 새 조회는 예전 세션을 쓰지 않고 새 트랜잭션은 새 큐를 갖습니다. 종료는 훅도 기다리되 늦은 등록은 받지 않습니다.

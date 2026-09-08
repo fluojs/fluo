@@ -276,6 +276,12 @@ Nested calls use the same queue, discarded on rollback or failed commit. A caugh
 
 ## The replacement point is module registration, not a type
 
+The current `conflict` return means the conditional update changed no rows, so this experiment retains its exception-based boundary. If an expected rejection must also undo earlier writes, explicitly set `shouldRollback` in the final Fluo boundary for [Prisma](../../packages/prisma/README.md#choosing-rollback-from-a-result) or [Drizzle](../../packages/drizzle/README.md#choosing-rollback-from-a-result). The application defines the failure shape of `Result` or `ChangeResult`; native options remain unchanged.
+
+A root failure returns the same value after native rollback and cleanup succeed. A nested predicate failure returns its original value while marking the shared owner sticky rollback-only; unless the root also rejects its own result, the boundary throws `TransactionRollbackOnlyError` with the first nested failure. Unsupported targets reject before callbacks with `TransactionRollbackCapabilityError`, and native errors are not converted into domain values. Ordinary caught nested exceptions retain existing commit/hooks, but opted-in rollback discards all hooks. Native callback retries use fresh owners. External raw transactions, Redis `MULTI/EXEC`, savepoints, and additional durability guarantees are unsupported. Follow the [shared-owner contract](../../docs/architecture/transactions.md#result-based-rollback); the existing database comparison tests are not verification of this alternative.
+
+Result rollback also requires a registered `rollbackObserver` backed by native evidence. A sentinel or local session state is not proof of rollback. Missing capability rejects before the callback; missing or failed confirmation rejects with a native error or `TransactionRollbackUnconfirmedError`, never a normal Result. The shared contract above specifies registration helpers and supported configurations.
+
 The `PriceStore` interface disappears at runtime. The complete file `src/catalog/price-lab/price-editor.ts` below passes an actual token to class-level `@Inject`. This small application service accepts commands that have passed the existing operator authorization boundary and returns their results. It has no ORM imports.
 
 ```ts

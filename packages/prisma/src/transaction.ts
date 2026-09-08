@@ -3,13 +3,14 @@ import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http'
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 
 import { isPrismaServiceHandle } from './prisma-service-brand.js';
+import { TransactionRollbackCapabilityError } from './result-rollback.js';
 import { PrismaService } from './service.js';
 import type { PrismaClientLike } from './types.js';
 
 type TransactionalPrismaService<TOptions = unknown> = {
   createPlatformStatusSnapshot(): unknown;
   current(): unknown;
-  transaction<T>(fn: () => Promise<T>, options?: TOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
 };
 
 type TransactionAccessor<THost, TOptions> = (self: THost) => TransactionalPrismaService<TOptions>;
@@ -100,29 +101,32 @@ function resolveTransactionInput<THost, TOptions>(
  * silently ignored.
  *
  * @param input Optional service accessor or Prisma interactive transaction options.
- * @param boundary Optional Fluo-owned commit capability requirement.
+ * @param boundary Optional Fluo-owned capability requirement and typed Result rollback predicate.
  * @returns A standard method decorator that runs the original method inside a Prisma transaction boundary.
  */
-export function Transaction<THost, TOptions = unknown>(
+export function Transaction<THost, TOptions = unknown, TResult = unknown>(
   input?: TransactionAccessor<THost, TOptions> | TOptions,
-  boundary?: TransactionBoundaryOptions,
-): <TArgs extends unknown[], TResult>(
-  value: TransactionMethod<THost, TArgs, TResult>,
-  context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
-) => TransactionMethod<THost, TArgs, TResult> {
+  boundary?: TransactionBoundaryOptions<TResult>,
+): <TArgs extends unknown[], TReturn extends TResult>(
+  value: TransactionMethod<THost, TArgs, TReturn>,
+  context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TReturn>>,
+) => TransactionMethod<THost, TArgs, TReturn> {
   const { accessor, options } = resolveTransactionInput(input);
 
-  return function transactionDecorator<TArgs extends unknown[], TResult>(
-    value: TransactionMethod<THost, TArgs, TResult>,
-    context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
+  return function transactionDecorator<TArgs extends unknown[], TReturn extends TResult>(
+    value: TransactionMethod<THost, TArgs, TReturn>,
+    context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TReturn>>,
   ) {
     if (context.kind !== 'method') {
       throw new Error('@Transaction() can only decorate methods.');
     }
 
-    return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TResult> {
+    return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TReturn> {
       const prisma = accessor?.(this) ?? resolveDefaultPrismaService(this);
 
+      if (boundary?.shouldRollback && !(prisma instanceof PrismaService)) {
+        throw new TransactionRollbackCapabilityError();
+      }
       if (boundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {
         throw new AfterCommitCapabilityError();
       }

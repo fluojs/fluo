@@ -199,6 +199,13 @@ class CheckoutController {
 
 ## 20.6 FluoShop Context: Relational Schema
 
+반환값으로 예상된 실패를 나타내려면 [Drizzle의 타입 지정 예제](../../packages/drizzle/README.ko.md#반환값으로-롤백-선택)처럼 마지막 Fluo boundary의 `shouldRollback`으로 opt-in합니다. native 옵션 자리는 그대로이며 전역 Result 형태는 없습니다. 루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환합니다. 중첩 실패는 원래 값을 반환하면서 owner를 sticky rollback-only로 만들고, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 담은 `TransactionRollbackOnlyError`로 끝납니다.
+
+미지원 경계는 callback 전에 `TransactionRollbackCapabilityError`로 거부하며 native 오류는 그대로 전파합니다. 잡힌 일반 중첩 예외는 기존 commit/hook을 유지하지만 opt-in rollback은 모든 hook을 버리고 native callback retry는 새 owner를 사용합니다. post-commit 오류와의 구분 및 raw 외부 transaction·Redis `MULTI/EXEC`·savepoint·durability 한계는 [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
+
 가격 변경 뒤 캐시를 지우려면 같은 `DrizzleDatabase`의 활성 경계에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록합니다. 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, 데코레이터는 `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`입니다. 기존 인수를 이동하지 않고 마지막 boundary에 `{ requireAfterCommit: true }`를 추가하면 네이티브 커밋 관찰 능력 부재를 콜백 전에 `AfterCommitCapabilityError`로 거부합니다. 기존 기본 옵션·fail-open은 유지하되 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부됩니다.
 
 중첩 경계는 큐를 공유하고 성공한 최종 바깥 네이티브 커밋 뒤에만 FIFO로 하나씩 await합니다. 롤백·커밋 실패에서는 실행하지 않고, 저장점 없는 중첩 예외를 잡으면 최종 바깥 결과를 따릅니다. 닫힌 트랜잭션 ALS 밖에서 훅을 실행하므로 새 `current()` 조회는 예전 핸들을 쓰지 않고 새 트랜잭션은 새 큐를 갖습니다. 종료는 실행 중 훅까지 기다리지만 늦은 등록은 허용하지 않습니다.

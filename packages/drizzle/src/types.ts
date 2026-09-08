@@ -1,3 +1,4 @@
+import type { TransactionRollbackObserver } from './result-rollback.js';
 import type { MaybePromise } from '@fluojs/core';
 import type { PersistencePlatformStatusSnapshot } from '@fluojs/runtime';
 import type { AfterCommitCallback, TransactionBoundaryOptions } from './after-commit.js';
@@ -48,6 +49,8 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
    * Leave this disabled when transaction helpers should fall back to direct execution.
    */
   strictTransactions?: boolean;
+  /** Public native observation capability required for opt-in Result rollback; never forwarded as native options. */
+  rollbackObserver?: TransactionRollbackObserver;
 }
 
 /**
@@ -78,7 +81,7 @@ export interface DrizzleHandleProvider<TDatabase extends DrizzleDatabaseLike<TTr
    * @param boundary Optional Fluo capability requirements checked before user work.
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
    */
-  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
+  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
   /**
    * Opens a Drizzle transaction boundary around `fn`.
    *
@@ -87,5 +90,5 @@ export interface DrizzleHandleProvider<TDatabase extends DrizzleDatabaseLike<TTr
    * @param boundary Optional Fluo capability requirements checked before user work.
    * @returns The callback result after the transaction finishes or the direct-execution fallback completes.
    */
-  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions): Promise<T>;
+  transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T>;
 }

@@ -673,7 +673,10 @@ describe('Mongoose afterCommit ownership and public API', () => {
 
   it('exports package-owned callback, boundary, error, and provider types', () => {
     expectTypeOf<AfterCommitCallback>().toEqualTypeOf<() => void | Promise<void>>();
-    expectTypeOf<TransactionBoundaryOptions>().toEqualTypeOf<{ readonly requireAfterCommit?: boolean }>();
+    expectTypeOf<TransactionBoundaryOptions>().toEqualTypeOf<{
+      readonly requireAfterCommit?: boolean;
+      readonly shouldRollback?: (value: unknown) => boolean;
+    }>();
     expectTypeOf<MongooseHandleProvider['afterCommit']>().toEqualTypeOf<(callback: AfterCommitCallback) => void>();
     expectTypeOf<AfterCommitError['committed']>().toEqualTypeOf<true>();
     expectTypeOf<AfterCommitError['results']>().toEqualTypeOf<readonly PromiseSettledResult<void>[]>();

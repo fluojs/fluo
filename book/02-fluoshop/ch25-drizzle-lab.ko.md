@@ -276,6 +276,13 @@ export class DrizzlePriceStore implements PriceStore {
 
 ## 교체 지점은 타입이 아니라 모듈 등록이다
 
+현재 `conflict` 반환은 조건부 갱신이 아무 행도 바꾸지 않은 경우이므로, 이 실험은 예외 기반 경계를 유지한다. 앞으로 이미 수행한 write까지 되돌려야 하는 예상된 거절을 값으로 반환한다면, [Prisma](../../packages/prisma/README.ko.md#반환값으로-롤백-선택)와 [Drizzle](../../packages/drizzle/README.ko.md#반환값으로-롤백-선택)의 마지막 Fluo boundary에 `shouldRollback`을 명시한다. `Result` 또는 `ChangeResult`의 실패 형태는 애플리케이션이 정하며 native 옵션은 바꾸지 않는다.
+
+루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환한다. 중첩 predicate의 실패는 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만들고, 루트가 자기 결과도 거부하지 않으면 첫 중첩 실패값을 담은 `TransactionRollbackOnlyError`를 던진다. 미지원 target은 callback 전에 `TransactionRollbackCapabilityError`로 거부하며 native 오류를 domain 값으로 바꾸지 않는다. 잡힌 일반 중첩 예외는 기존 commit/hook을 유지하지만 opt-in rollback은 모든 hook을 버린다. native callback retry는 새 owner를 사용한다. 외부 raw transaction·Redis `MULTI/EXEC`·savepoint·durability 확장은 제공하지 않는다. [공유 owner 계약](../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따르며 기존 DB 비교 테스트를 이 대안의 검증으로 간주하지 않는다.
+
+Result rollback에는 native 증거에 기반한 `rollbackObserver` 등록도 필요합니다. Sentinel이나 local session 상태는 rollback 성공 증거가 아닙니다. Capability가 없으면 callback 전에 거부하고, 확인이 누락되거나 실패하면 native 오류 또는 `TransactionRollbackUnconfirmedError`를 던지며 정상 Result로 바꾸지 않습니다. 구체적인 등록 helper와 지원 범위는 위 공유 계약을 따릅니다.
+
+
 `PriceStore` 인터페이스는 런타임에 사라진다. 아래 완전한 파일 `src/catalog/price-lab/price-editor.ts`는 실제 토큰을 class-level `@Inject`에 전달한다. 기존 운영자 인가 경계를 통과한 명령을 받아 결과를 돌려주는 작은 애플리케이션 서비스다. 이 파일에는 ORM import가 없다.
 
 ```ts

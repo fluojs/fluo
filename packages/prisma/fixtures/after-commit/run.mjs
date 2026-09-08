@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url';
 
 const fixture = fileURLToPath(new URL('.', import.meta.url));
 const worktree = fileURLToPath(new URL('../../../../', import.meta.url));
-const receiptsRoot = join(worktree, '.omo/issue-3717-native');
+const receiptsRoot = join(worktree, '.omo/issue-3718-native');
 await mkdir(receiptsRoot, { recursive: true });
 const receipts = await mkdtemp(join(receiptsRoot, 'run-'));
 const suffix = randomUUID().replaceAll('-', '');
-const postgres = `fluo-3717-pg-${suffix}`;
-const mongo = `fluo-3717-mongo-${suffix}`;
+const postgres = `fluo-3718-pg-${suffix}`;
+const mongo = `fluo-3718-mongo-${suffix}`;
 const database = `acceptance_${suffix}`;
 const images = {
   postgres: 'postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685',

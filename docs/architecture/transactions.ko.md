@@ -63,6 +63,28 @@ Drizzle fail-open fallback은 등록된 database handle이 `database.transaction
 
 Mongoose connection ownership은 애플리케이션에 남아 있습니다. `MongooseModule.forRoot(...)`와 `forRootAsync(...)`는 concrete connection handle을 요구하며, 애플리케이션이 `dispose(connection)`을 제공하지 않는 한 raw Mongoose connection을 생성하거나, model을 compile하거나, 닫지 않습니다. Mongoose fail-open fallback은 등록된 connection에 `connection.transaction(...)`과 `startSession()`이 모두 없고 `strictTransactions`가 `false`일 때만 적용됩니다. 이 모드에서 `transaction(...)`과 `requestTransaction(...)`은 rollback 원자성 없이 callback을 직접 실행합니다. 열려 있는 fail-open 수동 `transaction(...)` callback은 종료 중에도 tracking되므로 `dispose(connection)`은 직접 실행이 settle될 때까지 기다립니다. MongoDB transaction 보장이 필요한 production 흐름에서는 `strictTransactions: true`를 설정하세요. 그러면 두 transaction API를 모두 사용할 수 없을 때 readiness가 `not-ready`가 되고 helper가 예외를 던집니다. `MongooseConnection.createPlatformStatusSnapshot()`은 health/readiness surface를 위해 export된 `createMongoosePlatformStatusSnapshot(...)` helper와 같은 진단을 노출합니다.
 
+## 반환값 기반 롤백
+
+이 절은 세 wrapper의 opt-in `shouldRollback`과 공유 transaction owner의 rollback-only 계약을 소유합니다. 공개 import, 정확한 인자 위치와 타입이 지정된 소비자 예제는 [Prisma](../../packages/prisma/README.ko.md#반환값으로-롤백-선택), [Drizzle](../../packages/drizzle/README.ko.md#반환값으로-롤백-선택), [Mongoose](../../packages/mongoose/README.ko.md#반환값으로-롤백-선택) README가 소유합니다.
+
+| 계약 필드 | 동작 |
+| --- | --- |
+| 범위와 전제 | 지원되는 Node.js `>=24.0.0 <27`에서 같은 Fluo wrapper가 직접 소유하는 native transaction에 적용됩니다. Prisma interactive `$transaction`, Drizzle `database.transaction`, Mongoose delegated transaction 또는 rollback 가능한 native session 경로가 필요합니다. |
+| 입력과 기본값 | `TransactionBoundaryOptions<T = unknown>`의 `readonly shouldRollback?: (value: T) => boolean`은 해당 callback이 정상 반환한 값을 동기적으로 판정합니다. 생략하면 기존 예외 기반 동작을 유지합니다. Fluo는 전역 `Result` 타입이나 `ok`, `success`, `error` 필드 규칙을 도입하지 않습니다. 결과 형태와 실패 판정은 소비자가 정합니다. |
+| 사전 capability 검사 | `shouldRollback`을 제공했지만 native rollback을 소유할 수 없는 fallback 또는 legacy decorator target이면 사용자 callback **전에** `TransactionRollbackCapabilityError`로 거부합니다. `strictTransactions: false`여도 opt-in을 직접 실행으로 흘려보내지 않습니다. |
+| 루트 반환 | 루트 predicate가 `true`이면 native rollback을 수행하고, rollback과 필요한 cleanup이 성공한 뒤 **같은 루트 반환값**을 돌려줍니다. 객체를 복사하거나 내부 제어 예외로 바꾸어 노출하지 않습니다. predicate가 `false`이고 owner가 rollback-only가 아니면 기존 commit과 hook drain 뒤 반환합니다. |
+| 중첩 반환과 owner | 같은 wrapper의 중첩 경계는 native transaction, hook queue, rollback-only 상태를 공유합니다. 중첩 predicate가 `true`이면 그 중첩 호출은 원래 값을 반환하되 owner를 해제할 수 없는 rollback-only로 표시하고 **첫 중첩 실패값**을 보존합니다. 이후 성공값이나 잡힌 예외로 이 상태를 지울 수 없습니다. 별도 savepoint나 부분 rollback은 아닙니다. |
+| 루트의 최종 판정 | 중첩 실패로 rollback-only인 owner는 루트가 끝나면 rollback합니다. 루트 predicate도 루트 반환값을 거부하면 같은 **루트 실패값**을 반환합니다. 그렇지 않으면, 루트 predicate가 생략된 경우를 포함하여, rollback 뒤 `TransactionRollbackOnlyError`를 던집니다. `readonly result: unknown`은 첫 중첩 실패값이며 소비자가 사용 전에 타입을 좁힙니다. |
+| 실패 구분 | native runner가 보고한 commit, rollback, cleanup 오류는 그대로 전파되며 domain 결과나 `TransactionRollbackOnlyError`로 가리지 않습니다. callback 또는 predicate의 예외가 outer native 경계까지 전파되면 예외 기반 rollback 경로를 따릅니다. `TransactionRollbackOnlyError`는 이미 commit된 작업의 hook 실패를 나타내는 `AfterCommitError`나 Mongoose `AfterCommitCleanupError`와 다릅니다. |
+| Hook과 재시도 | rollback은 owner의 모든 hook을 폐기합니다. native runner가 callback을 재시도하면 attempt마다 새 owner와 queue를 사용하므로 폐기된 attempt의 실패값·rollback-only·hook이 다음 attempt로 넘어가지 않습니다. Fluo가 별도 재시도 정책을 추가하지 않으며 commit-only retry는 callback을 다시 실행하지 않습니다. |
+| 제한과 대안 | raw client가 외부에서 연 transaction, 다른 wrapper·connection, Redis `MULTI/EXEC`는 지원하지 않습니다. savepoint, DB+Redis 원자성, durability, durable outbox, crash recovery 또는 network exactly-once 보장을 추가하지 않습니다. 영속 전달은 애플리케이션 Outbox 등 별도 설계가 필요합니다. |
+
+**엄격한 native 확인:** `rollbackObserver`를 Fluo module/service 런타임 옵션에 등록해야 Result rollback을 선택할 수 있습니다. Native 옵션이나 `TransactionBoundaryOptions<T>`에 넣지 않습니다. Prisma 7.5는 rollback rejection을 숨기므로 `createPrismaRollbackObserver(new PrismaPg(...))`의 반환 adapter로 client를 생성하고 짝이 맞는 observer를 등록합니다. 이 helper는 public adapter factory를 감싸 attempt마다 SQL `ROLLBACK` 실행 성공과 adapter cleanup 성공을 **모두** 확인합니다. 이미 생성된 opaque client를 소급 지원하지 않습니다. `createDrizzleRollbackObserver(poolOrClient)`는 반환 proxy로 node-postgres Drizzle을 생성하고 SQL rollback 및 pool client release를 확인합니다. 다른 driver는 검증된 별도 public observation capability가 없으면 지원하지 않습니다. `createMongooseRollbackObserver(connection.getClient())`는 connection 생성 시 `monitorCommands: true`가 필요하며 session, transaction number, request와 connection/service ID로 attempt의 command 시작과 완료를 연관시킵니다. MongoDB 7.2의 숨겨진 abort 오류도 관찰하고 `writeConcernError`가 있는 성공 이벤트, 누락된 이벤트, 미완료 요청, local `TRANSACTION_ABORTED` 상태를 성공으로 해석하지 않습니다. Capability 부재/불일치는 사용자 callback 전에 `TransactionRollbackCapabilityError`로 거부합니다. 확인 가능한 오류는 전파하고 양의 확인을 얻지 못하면 `TransactionRollbackUnconfirmedError`를 던지며, 원래 실패 Result나 성공값을 정상 반환하지 않습니다. SQL rollback 없이 cleanup만 성공한 경우도 확인 실패입니다. Mongo에서 실제 transaction command가 없었던 경계도 abort 이벤트 부재를 성공으로 간주하지 않으므로 확인 불가 오류가 날 수 있습니다. 수동 Mongoose에서 callback과 abort/cleanup이 함께 실패하면 `AggregateError.errors`에 원래 오류를 보존하고 `cause`는 앞선 실패입니다. 기본 예외 기반 호출은 observer 없이 기존대로 동작합니다. 공개 helper의 타입과 완전한 등록 예제는 package README가 소유하며 [native fixture](../../packages/prisma/fixtures/after-commit/README.ko.md#수용-검증-항목)가 실제 SQL/cleanup 및 Mongo command 관찰을 검증합니다. Private driver 메서드는 패치하지 않습니다.
+
+**기존 예외와의 차이:** `shouldRollback`이 표시한 중첩 실패와 달리, 평범한 중첩 callback 예외를 outer callback이 잡았다는 사실만으로 rollback-only가 되지는 않습니다. opt-in 실패가 없는 owner가 최종 commit하면 그 중첩 호출의 write와 등록 hook도 기존대로 유지됩니다. 반대로 중첩 predicate가 실패값을 이미 표시했다면 호출자가 그 값을 무시하고 성공을 반환해도 commit할 수 없습니다.
+
+검증은 이 절의 계약과 각 wrapper의 구현·package regression, [native fixture](../../packages/prisma/fixtures/after-commit/README.ko.md#실행)를 함께 대조해야 합니다. #3718의 문서나 검증 대상 목록 자체는 native 실행 통과 증거가 아니며, 실제 명령·종료 코드·DB 관측은 별도 verification receipt에 기록합니다.
+
 ## 커밋 후 작업
 
 이 절은 세 wrapper의 `afterCommit` 실행 순서·실패·수명 계약의 규범 원본입니다. 각 패키지 README는 공개 import, 호출 인자, decorator overload와 캐시 무효화 예제를 소유하며, Book과 웹사이트는 이 계약에서 파생됩니다.
@@ -134,4 +156,4 @@ NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할
 - 트랜잭션 관리의 기본 경로는 `@Transaction()`을 통한 서비스 계층입니다.
 - `MongooseConnection.saveDocument(...)`는 opt-in이며 활성 ambient session이 필요합니다. 트랜잭션 밖에서는 fail-closed하고 충돌하는 명시적 `session`을 거부하며 native `doc.save()`는 수정하지 않습니다.
 - 지원되는 Mongoose facade 작업은 자동으로 ambient 트랜잭션 세션에 참여합니다. 해당 표준 흐름에서는 명시적인 세션 전달이 권장되지 않으며, 지원되지 않는 model 메서드에는 여전히 명시적인 세션 전달이 필요합니다.
-- 롤백은 commit 전 예외 기반입니다. `@Transaction()`의 callback에서 outer native boundary까지 전파된 예외는 트랜잭션을 중단합니다. 이미 commit한 뒤의 `AfterCommitError`나 Mongoose `AfterCommitCleanupError`는 rollback을 뜻하지 않습니다.
+- 롤백은 기본적으로 commit 전 예외 기반입니다. `@Transaction()`의 callback에서 outer native boundary까지 전파된 예외는 트랜잭션을 중단합니다. 별도 Fluo `boundary.shouldRollback`은 정상 반환값에 대한 opt-in이며 [반환값 기반 롤백](#반환값-기반-롤백)의 공유 owner 규칙을 따릅니다. 이미 commit한 뒤의 `AfterCommitError`나 Mongoose `AfterCommitCleanupError`는 rollback을 뜻하지 않습니다.

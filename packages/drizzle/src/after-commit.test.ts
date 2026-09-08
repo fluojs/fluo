@@ -507,7 +507,10 @@ describe('Drizzle afterCommit', { timeout: 2_000 }, () => {
     const results: readonly PromiseSettledResult<void>[] = [{ status: 'fulfilled', value: undefined }];
     expectTypeOf(provider.afterCommit).toEqualTypeOf<(callback: AfterCommitCallback) => void>();
     expectTypeOf<AfterCommitCallback>().toEqualTypeOf<() => void | Promise<void>>();
-    expectTypeOf<TransactionBoundaryOptions>().toEqualTypeOf<{ readonly requireAfterCommit?: boolean }>();
+    expectTypeOf<TransactionBoundaryOptions>().toEqualTypeOf<{
+      readonly requireAfterCommit?: boolean;
+      readonly shouldRollback?: (value: unknown) => boolean;
+    }>();
     expectTypeOf(AfterCommitError).constructorParameters.toEqualTypeOf<[results: readonly PromiseSettledResult<void>[]]>();
     expectTypeOf(new AfterCommitError(results).results).toEqualTypeOf<readonly PromiseSettledResult<void>[]>();
     expectTypeOf(new AfterCommitError(results).committed).toEqualTypeOf<true>();

@@ -199,6 +199,58 @@ await this.prisma.transaction(async () => {
 
 When `transaction()` is called while a transaction context is already active, `PrismaService` reuses the active transaction client instead of opening a nested Prisma transaction. Nested calls must not pass native transaction options such as isolation levels; providing native options in an active context is rejected so the package does not silently drop caller intent while reusing the ambient transaction. `requireAfterCommit` in the separate `boundary` is a capability requirement on the current boundary, not a native option.
 
+### Choosing Rollback from a Result
+
+First register native rollback confirmation. Include the module returned by this complete helper in application imports. A `forRootAsync` factory can return the same `rollbackObserver`; directly constructed wrappers/facades accept it in their existing runtime-options object too. It is not a native driver option.
+
+```ts
+import { createPrismaRollbackObserver, PrismaModule } from '@fluojs/prisma';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
+
+export function resultTransactions(databaseUrl: string) {
+  const observed = createPrismaRollbackObserver(new PrismaPg({ connectionString: databaseUrl }));
+  return PrismaModule.forRoot({
+    client: new PrismaClient({ adapter: observed.adapter }),
+    rollbackObserver: observed.rollbackObserver,
+  });
+}
+```
+
+Use the `shouldRollback` example below with this configuration. Existing wrappers without an observer still support ordinary transactions, but Result opt-in rejects before callbacks.
+
+
+`shouldRollback` is an opt-in synchronous predicate for a callback's normal return value. The following complete consumer helper accepts a registered `PrismaService<PrismaClient>`. `persist` is an application callback that performs DB work through that same wrapper's `current()` or facade; `Result` is also application-owned. Fluo neither recognizes this shape automatically nor provides a global `Result`.
+
+```ts
+import type { PrismaClient } from '@prisma/client';
+import type { PrismaService, TransactionBoundaryOptions } from '@fluojs/prisma';
+
+type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
+export function persistWithResult<T>(
+  prisma: PrismaService<PrismaClient>,
+  persist: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const boundary: TransactionBoundaryOptions<Result<T>> = {
+    shouldRollback: (value) => !value.ok,
+  };
+  return prisma.transaction(persist, undefined, boundary);
+}
+```
+
+`undefined` preserves the native-options position. Request boundaries use `requestTransaction(fn, signal?, nativeOptions?, boundary?)` and decorators use `@Transaction(input?, boundary?)`, for example `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. Do not merge this into native options; nested native options remain prohibited.
+
+Returning `{ ok: false, error: 'CONFLICT' }` at the root returns the **same object** after native rollback and required cleanup succeed. Without the option, the value alone does not trigger rollback. A nested predicate selecting failure returns the nested call's original value but marks the shared owner sticky rollback-only. If the root predicate also rejects its own result, that root value is returned; otherwise, `TransactionRollbackOnlyError` is thrown after rollback with the first nested failure in `readonly result: unknown`.
+
+`TransactionRollbackCapabilityError` occurs before the callback on a fallback or legacy target that cannot own rollback. Both errors are root exports of `@fluojs/prisma`; distinguish them with `instanceof`. Native commit, rollback, and cleanup errors propagate rather than becoming domain results. Do not confuse them with `AfterCommitError`, which follows an already-completed commit.
+
+Rollback discards all hooks. An ordinary caught nested exception does not mark rollback-only, so a final commit retains existing writes and hooks. Native callback retries receive fresh owners. External raw transactions and Redis `MULTI/EXEC` are unsupported; this adds no savepoint or durability guarantee. Follow the [shared-owner contract](../../docs/architecture/transactions.md#result-based-rollback) for complete nesting, retry, and failure rules.
+
+Result rollback also requires a registered `rollbackObserver` backed by native evidence. A sentinel or local session state is not proof of rollback. Missing capability rejects before the callback; missing or failed confirmation rejects with a native error or `TransactionRollbackUnconfirmedError`, never a normal Result. The shared contract above specifies registration helpers and supported configurations.
+
 ### Cache Invalidation After Commit
 
 `PrismaService.afterCommit(...)` registers work on an open native transaction owned by the same wrapper. This application function assumes an existing Prisma `User` model (`id`, `name`), a registered `PrismaService<PrismaClient>`, and `CacheService` from a registered `CacheModule`.
@@ -323,7 +375,7 @@ defineModule(ManualPrismaModule, {
 
 Use `PrismaService<TClient>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `PrismaServiceFacade<TClient>` for repository injections that call generated Prisma Client delegates directly; the facade forwards those calls to the active transaction client when one exists and to the root client otherwise. `PrismaService.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `PrismaModule.forRoot(...)` / `forRootAsync(...)`.
 
-`boundary?: TransactionBoundaryOptions` is a Fluo-only option **after** the existing arguments; do not merge it into Prisma native options. `fn` remains the existing async callback, and a successful outer boundary returns its original `T` after commit and registered-hook drain.
+`boundary?: TransactionBoundaryOptions<T>` is a Fluo-only option **after** the existing arguments; do not merge it into Prisma native options. `fn` remains the existing async callback. The commit path returns its original `T` after registered-hook drain; the opt-in rollback path follows the return and error rules in [Choosing Rollback from a Result](#choosing-rollback-from-a-result).
 
 - `afterCommit(callback: AfterCommitCallback): void`
   - Registers a callback in an open native transaction scope without executing it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration.
@@ -339,7 +391,13 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 Import all of these from the root `@fluojs/prisma` package.
 
 - `AfterCommitCallback`: `() => void | Promise<void>`.
-- `TransactionBoundaryOptions`: `{ readonly requireAfterCommit?: boolean }`.
+- `TransactionBoundaryOptions<T = unknown>`: `{ readonly requireAfterCommit?: boolean; readonly shouldRollback?: (value: T) => boolean }`.
+- `createPrismaRollbackObserver(...)`: the public native observation helper above.
+- `TransactionRollbackObserver`: advanced capability contract whose `run<T>(callback): Promise<T>` opens an owner observation scope and whose `beginAttempt(transaction)` binds a native attempt.
+- `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>` returns only independently confirmed rollback success and reports failure/uncertainty by throwing. Do not implement it using sentinel identity or a no-op.
+- `TransactionRollbackUnconfirmedError`: positive native rollback confirmation is absent, so a normal Result cannot be returned.
+- `TransactionRollbackCapabilityError`: raised before the callback on a boundary that cannot support opt-in rollback.
+- `TransactionRollbackOnlyError`: raised when an owner marked rollback-only by a nested opt-in failure cannot return a root failure value; `readonly result: unknown` contains the first nested failure value.
 - `AfterCommitCapabilityError`: failure when required native commit capability is missing or a hook is registered on an unsupported boundary.
 - `AfterCommitError extends AggregateError`: exposes `readonly committed = true` and `results: readonly PromiseSettledResult<void>[]` for every FIFO outcome, with all failures in inherited `errors`.
 

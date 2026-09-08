@@ -193,6 +193,18 @@ await this.conn.transaction(async () => {
 
 fluo merges the ambient session only through the supported `MongooseConnection.model(...)` facade methods. It does not rewrite operation options on raw models returned by `current().model(...)`; those calls must pass `currentSession()` explicitly when they participate in the transaction.
 
+## Result-based rollback
+
+Services returning expected failures as values must explicitly set `shouldRollback` in the existing Fluo boundary to select rollback from those values. `TransactionBoundaryOptions<T = unknown>` accepts `readonly shouldRollback?: (value: T) => boolean`; Fluo defines no global `Result` shape. See the [Prisma README](https://github.com/fluojs/fluo/blob/main/packages/prisma/README.md#choosing-rollback-from-a-result) for a typed consumer example.
+
+If the root predicate selects failure, the same root value is returned after native rollback and cleanup succeed. A nested failure value returns unchanged to the inner caller but marks the shared owner sticky rollback-only. If the root also rejects its own result, its root failure value is returned; otherwise, `TransactionRollbackOnlyError` reports the first nested failure in `readonly result: unknown`. Ordinary caught nested exceptions do not set this flag, retaining existing final commit and hook behavior.
+
+Each package's `TransactionRollbackCapabilityError` occurs before the callback on unsupported fallback/legacy targets. Native commit, rollback, and cleanup errors propagate; distinguish them from `AfterCommitError` or Mongoose's `AfterCommitCleanupError` after commit. Rollback discards hooks and native callback retries use fresh owners. External raw transactions and Redis `MULTI/EXEC` are unsupported, with no added savepoint or durability guarantee. The [shared-owner contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.md#result-based-rollback) owns the detailed semantics.
+
+Result rollback also requires a registered `rollbackObserver` backed by native evidence. A sentinel or local session state is not proof of rollback. Missing capability rejects before the callback; missing or failed confirmation rejects with a native error or `TransactionRollbackUnconfirmedError`, never a normal Result. The shared contract above specifies registration helpers and supported configurations.
+
+Option positions are the same as in the after-commit explanation below. Keep Prisma/Drizzle native options and signals in place and use the final Fluo boundary; do not add a native-options argument to Mongoose.
+
 ## After-commit cache invalidation
 
 Use `afterCommit(...)` on Prisma, Drizzle, or Mongoose wrappers to invalidate caches after the DB write actually commits. `docs/architecture/transactions.md` is the normative owner; each of `packages/prisma/README.md`, `packages/drizzle/README.md`, and `packages/mongoose/README.md` owns its public arguments and imports. This guide explains application of that contract.

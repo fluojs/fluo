@@ -48,6 +48,29 @@ the connection. The delegated path uses the native `connection.transaction`.
 
 ## Acceptance assertions
 
+The #3718 result-based rollback acceptance criteria use the same native boundaries.
+The [shared-owner contract](../../../../docs/architecture/transactions.md#result-based-rollback)
+owns their meaning, and the three package READMEs own exact APIs and consumer types.
+Documenting these criteria is not a claim of passing execution; inspect the current
+fixture's actual TAP and receipt.
+
+- Omitting the predicate preserves commit even for a failure-shaped return value.
+- An explicit root failure must roll back writes and hooks and return the same
+  object after successful native rollback and cleanup.
+- A nested opted-in failure must return its original value and mark the owner
+  sticky rollback-only. If the root also selects failure, return its same root
+  failure value; otherwise, `TransactionRollbackOnlyError.result` must contain the
+  first nested failure.
+- Ordinary caught nested exceptions must retain existing commit/hooks. Native
+  callback retries must use fresh owners without leaking discarded attempts'
+  hooks, failure values, or rollback-only state.
+- Native commit, rollback, and cleanup errors must not be hidden by domain results
+  or rollback-only errors. Callback preflight with `TransactionRollbackCapabilityError`
+  for fallback/legacy targets is a separate unit-boundary verification target.
+
+External raw transactions and Redis `MULTI/EXEC` are out of scope; these criteria
+do not establish savepoints, durability, DB+Redis atomicity, or durable delivery.
+
 Each of Prisma, Drizzle, Mongoose manual, and Mongoose delegated covers:
 
 - Uncommitted rows are invisible to root reads. Hooks see durable rows after
@@ -77,9 +100,11 @@ its failpoint in `finally`, without sleeps or driver replacements.
 The deterministic unit suites own the broader concurrency, lifecycle, retry, and
 error matrix. This fixture is specifically the real-driver/native-commit seam.
 
+The fixture covers Result root/nested success and failure, ignored failure, arbitrary default values, caught throws, and native commit errors through all three public entry points, plus independent-owner concurrency on real databases. Prisma uses its public adapter-factory observer to confirm both SQL rollback and cleanup; PostgreSQL backend termination verifies that a rollback error hidden by the native runner propagates instead of a normal Result. Drizzle also verifies an actual SQL rollback rejection. Mongo confirms successful abort through correlated session/transaction/request/connection command events and verifies that a one-shot server abort error cannot become a normal Result even when hidden inside the driver. Unsupported configurations and insufficient evidence are not counted as successful native rollback. Follow the [strict shared contract](../../../../docs/architecture/transactions.md#result-based-rollback).
+
 ## Evidence and cleanup
 
-`pnpm test` prints a unique `.omo/issue-3717-native/run-*` receipt path, actual
+`pnpm test` prints a unique `.omo/issue-3718-native/run-*` receipt path, actual
 ports/database, public import paths, and Node TAP results. `commands.json` records
 each command, output, and exit code; container logs and `result.json` preserve
 readiness, image identities, and cleanup outcomes. Success requires the test

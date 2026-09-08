@@ -2,9 +2,15 @@
 export type AfterCommitCallback = () => void | Promise<void>;
 
 /** Opt-in requirements for a Fluo transaction boundary, separate from native options. */
-export interface TransactionBoundaryOptions {
+export interface TransactionBoundaryOptions<T = unknown> {
   /** Reject unsupported native commit tracking before invoking the transaction callback. */
   readonly requireAfterCommit?: boolean;
+  /**
+   * Marks the shared owner rollback-only when the application predicate accepts a resolved value.
+   * @param value Original callback result; no Result convention is inferred.
+   * @returns Whether this value requires native rollback instead of commit.
+   */
+  readonly shouldRollback?: (value: T) => boolean;
 }
 
 /** Reports that a Fluo-owned native commit boundary is unavailable. */
