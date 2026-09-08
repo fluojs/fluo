@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## 3.1.0
+
+### Minor Changes
+
+- [#3725](https://github.com/fluojs/fluo/pull/3725) [`b90fba6`](https://github.com/fluojs/fluo/commit/b90fba6836b64160c9c903500a9b5832f7c0427d) Thanks [@ayden94](https://github.com/ayden94)! - Add opt-in `defineNextApplication({ key, load })` for sharing one lazy application
+  Promise across Next server bundles in the same JavaScript global. Initialization
+  success and failure remain cached; the caller owns shutdown and host restart,
+  without automatic retries, HMR replacement, or cross-process sharing.
+
+  Add `publicToken<T>(namespace)` and `PublicToken<T>` in core, with inferred
+  `Container.resolve()` results in DI. Tokens retain `Symbol.for` identity and
+  existing explicit `useExisting`, module visibility, scope, and class-token
+  contracts. Existing lazy handlers keep their per-closure behavior.
+
+### Patch Changes
+
+- Updated dependencies [[`b90fba6`](https://github.com/fluojs/fluo/commit/b90fba6836b64160c9c903500a9b5832f7c0427d)]:
+  - @fluojs/core@2.1.0
+
 ## 3.0.0
 
 ### Major Changes

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 3.1.0
+
+### Minor Changes
+
+- [#3726](https://github.com/fluojs/fluo/pull/3726) [`8ef2390`](https://github.com/fluojs/fluo/commit/8ef2390e3ac434c5f9e87c7347303bb304a83832) Thanks [@ayden94](https://github.com/ayden94)! - Add opt-in `publishWithResult()` to observe local handler and outbound transport-channel outcomes, distinguish lifecycle refusal and missing recipients, and retain a completion receipt for background publication. Existing best-effort `publish()`, payload isolation, handler discovery, and bounded shutdown drain remain unchanged. Result-aware publication omits payloads, handler return values, and raw handler/transport errors from its outcomes and logs; timeout and cancellation do not forcibly stop work or acknowledge remote delivery.
+
+### Patch Changes
+
+- Updated dependencies [[`e65604b`](https://github.com/fluojs/fluo/commit/e65604be0e7c1f13f9193761e2196eda8756bf90), [`493b3da`](https://github.com/fluojs/fluo/commit/493b3dacafc247a81193ecfb6bf23387f71358d1), [`b90fba6`](https://github.com/fluojs/fluo/commit/b90fba6836b64160c9c903500a9b5832f7c0427d)]:
+  - @fluojs/runtime@3.1.0
+  - @fluojs/core@2.1.0
+  - @fluojs/di@3.1.0
+
 ## 3.0.0
 
 ### Major Changes
