@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 3.0.1
+
+### Patch Changes
+
+- [#3722](https://github.com/fluojs/fluo/pull/3722) [`3f5afea`](https://github.com/fluojs/fluo/commit/3f5afea7763009df75082a5a07b70ee821ab718e) Thanks [@ayden94](https://github.com/ayden94)! - Correct generated HTTP starter README CORS documentation for Workers, Deno, run helpers, and explicit Factory composition. Clarify opt-in helper configuration and the public HTTP middleware API for direct Factory composition instead of a nonexistent cors option. Runtime behavior and generated application code are unchanged.
+
 ## 3.0.0
 
 ### Major Changes

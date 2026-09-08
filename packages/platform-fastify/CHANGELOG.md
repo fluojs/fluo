@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3722](https://github.com/fluojs/fluo/pull/3722) [`3f5afea`](https://github.com/fluojs/fluo/commit/3f5afea7763009df75082a5a07b70ee821ab718e) Thanks [@ayden94](https://github.com/ayden94)! - Clarify the default Node/Fastify run helper in the English and Korean README, distinguishing bootstrap-only and explicit Factory composition, middleware and logger defaults, and startup cleanup and signal ownership. Runtime behavior is unchanged.
+
+- Updated dependencies [[`e65604b`](https://github.com/fluojs/fluo/commit/e65604be0e7c1f13f9193761e2196eda8756bf90), [`493b3da`](https://github.com/fluojs/fluo/commit/493b3dacafc247a81193ecfb6bf23387f71358d1), [`3c715d4`](https://github.com/fluojs/fluo/commit/3c715d467b9c587839c863a98a46b8d7b09318bb)]:
+  - @fluojs/http@3.1.0
+  - @fluojs/runtime@3.1.0
+
 ## 2.0.0
 
 ### Major Changes

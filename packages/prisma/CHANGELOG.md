@@ -2,6 +2,80 @@
 
 ## [Unreleased]
 
+## 2.1.0
+
+### Minor Changes
+
+- [#3728](https://github.com/fluojs/fluo/pull/3728) [`083858d`](https://github.com/fluojs/fluo/commit/083858dd458827b28f43e73d31fa8b1cc1bafbe6) Thanks [@ayden94](https://github.com/ayden94)! - Add `afterCommit(callback)` to the Prisma, Drizzle, and Mongoose wrappers for
+  cache invalidation and other in-process work after a successful native commit.
+  Export `AfterCommitCallback`, `TransactionBoundaryOptions`,
+  `AfterCommitCapabilityError`, and `AfterCommitError`. Transaction and request
+  boundaries and their decorators accept Fluo boundary options after their existing
+  arguments. Opt into `{ requireAfterCommit: true }` to reject unsupported native
+  commit capability before the user callback without changing legacy native options,
+  transaction defaults, or fail-open fallback.
+
+  Callback registration scopes close before native commit begins. Hooks drain
+  sequentially in registration order outside the ended transaction
+  context, with nested boundaries sharing the owning queue and Mongoose callback
+  retries retaining only the final successful attempt's queue. Shutdown awaits
+  drain. Registration without an open supported native scope is rejected.
+  All hooks settle even after failures; `AfterCommitError` reports
+  `committed: true`, every FIFO result, and all failure reasons. Do not retry the
+  already-committed database write after this error.
+
+  Mongoose also exports `AfterCommitCleanupError`, a separate direct subclass of
+  `AggregateError`, for manual `endSession()` failure after confirmed commit when
+  hooks are registered or `requireAfterCommit: true` is required by a root or nested
+  boundary. It still attempts all hooks outside the ended context, reports `committed: true`
+  and the cleanup failure as `cause`, keeps `results` limited to FIFO hook outcomes,
+  and orders `errors` as the cleanup failure followed by rejected hook reasons.
+  Handle it separately from `AfterCommitError` without retrying the database write.
+  Legacy boundaries with no hooks and no opt-in preserve raw cleanup error identity
+  and the existing request cancellation `AbortError`.
+
+  Document bilingual consumer examples and the shared transaction contract.
+  This does not track external raw-client transactions or Redis commits, provide
+  DB+Redis atomicity, or guarantee durable outbox delivery or crash/network
+  exactly-once execution.
+
+- [#3731](https://github.com/fluojs/fluo/pull/3731) [`f4e5710`](https://github.com/fluojs/fluo/commit/f4e571025f92e0940394a01a6f62a9858e4e52e4) Thanks [@ayden94](https://github.com/ayden94)! - Add a typed `shouldRollback(value)` predicate to the existing, separate
+  `TransactionBoundaryOptions<T>` for Prisma, Drizzle, and Mongoose transactions,
+  request transactions, and service decorators. Without this explicit opt-in,
+  arbitrary resolved values and caught nested exceptions keep their existing
+  behavior.
+
+  A root value rejected by its predicate is returned unchanged only after the
+  native rollback is positively confirmed. Register the paired `rollbackObserver`
+  from `createPrismaRollbackObserver`, `createDrizzleRollbackObserver`, or
+  `createMongooseRollbackObserver` in Fluo runtime/module options. These public
+  driver capabilities observe Prisma adapter-pg SQL rollback plus cleanup,
+  node-postgres rollback plus pooled release, and correlated Mongo abort command
+  acknowledgements. Missing capability rejects before callbacks; insufficient
+  evidence throws `TransactionRollbackUnconfirmedError`, never a normal Result.
+  Driver-hidden rollback errors, commit errors, and observed cleanup failures are
+  not converted into normal Results. Opaque preconstructed Prisma clients, other
+  drivers without verified observation, and monitoring-disabled Mongo clients do
+  not implicitly acquire this capability. An opted-in nested failure marks
+  the shared owner rollback-only. If the outer callback ignores it or returns
+  success, the boundary rejects with the new `TransactionRollbackOnlyError`, whose
+  `result` identifies the first rejected nested value. An outer predicate that
+  rejects its own result instead returns that original outer failure after rollback.
+
+  Rollback discards all afterCommit hooks, and native callback retries isolate
+  policy state and hooks by attempt. Unsupported fail-open boundaries and legacy
+  decorator targets reject with `TransactionRollbackCapabilityError` before user
+  work. Native transaction options remain separate, and Mongoose gains no native
+  options overload. External raw transactions, Redis MULTI/EXEC, savepoints, and
+  distributed atomicity remain outside this API.
+
+### Patch Changes
+
+- Updated dependencies [[`e65604b`](https://github.com/fluojs/fluo/commit/e65604be0e7c1f13f9193761e2196eda8756bf90), [`493b3da`](https://github.com/fluojs/fluo/commit/493b3dacafc247a81193ecfb6bf23387f71358d1), [`3c715d4`](https://github.com/fluojs/fluo/commit/3c715d467b9c587839c863a98a46b8d7b09318bb), [`b90fba6`](https://github.com/fluojs/fluo/commit/b90fba6836b64160c9c903500a9b5832f7c0427d)]:
+  - @fluojs/http@3.1.0
+  - @fluojs/core@2.1.0
+  - @fluojs/di@3.1.0
+
 ## 2.0.0
 
 ### Major Changes

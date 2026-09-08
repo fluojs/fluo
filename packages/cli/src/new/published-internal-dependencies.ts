@@ -2,19 +2,19 @@
 /** Per-package release ranges for all published starter dependencies except the generator CLI itself. */
 export const PUBLISHED_INTERNAL_DEPENDENCIES = {
   "@fluojs/config": "^2.0.0",
-  "@fluojs/core": "^2.0.0",
-  "@fluojs/di": "^3.0.0",
-  "@fluojs/http": "^3.0.0",
+  "@fluojs/core": "^2.1.0",
+  "@fluojs/di": "^3.1.0",
+  "@fluojs/http": "^3.1.0",
   "@fluojs/microservices": "^2.0.0",
   "@fluojs/platform-bun": "^3.0.0",
-  "@fluojs/platform-cloudflare-workers": "^2.0.0",
+  "@fluojs/platform-cloudflare-workers": "^2.1.0",
   "@fluojs/platform-deno": "^2.0.0",
   "@fluojs/platform-express": "^2.0.0",
-  "@fluojs/platform-fastify": "^2.0.0",
+  "@fluojs/platform-fastify": "^2.0.1",
   "@fluojs/platform-nodejs": "^2.0.0",
   "@fluojs/react": "^0.2.0",
-  "@fluojs/runtime": "^3.0.0",
-  "@fluojs/testing": "^3.0.0",
-  "@fluojs/validation": "^2.0.0",
+  "@fluojs/runtime": "^3.1.0",
+  "@fluojs/testing": "^3.0.1",
+  "@fluojs/validation": "^2.1.0",
   "@fluojs/vite": "^2.0.0"
 } as const;

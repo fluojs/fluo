@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3729](https://github.com/fluojs/fluo/pull/3729) [`dd3f092`](https://github.com/fluojs/fluo/commit/dd3f092e1776fdc3fcb7b22cd180bd3562f0c5a8) Thanks [@ayden94](https://github.com/ayden94)! - Add `CacheService.update` for pure, retryable single-key cache mutations with explicit set/delete decisions, fixed-expiry TTL preservation, cancellation, and lifecycle drain.
+
+  Provide store-instance-local FIFO updates in MemoryStore and opt-in Redis WATCH transactions using isolated connections, namespace epochs, and per-key invalidation identities. Export the optional custom-store capability and Redis atomic client/transaction seams without requiring changes to legacy stores or the `@fluojs/redis` runtime API.
+
+  Document API usage, Redis deployment and metadata requirements, cancellation limits, and queue-free application composition in English and Korean.
+
+  The `@fluojs/redis` change is documentation-only: its shipped English and Korean READMEs explain how cache-manager atomic updates use the existing raw Redis client seam, without changing Redis runtime behavior or API.
+
+  Disable reconnection only for operation-owned Redis connections so connection loss cannot commit stale work without WATCH. Advance per-key invalidation identity atomically for explicit update deletions, including missing keys, so delete/recreate rejects suspended reducers instead of retrying them.
+
+- Updated dependencies [[`e65604b`](https://github.com/fluojs/fluo/commit/e65604be0e7c1f13f9193761e2196eda8756bf90), [`493b3da`](https://github.com/fluojs/fluo/commit/493b3dacafc247a81193ecfb6bf23387f71358d1), [`b90fba6`](https://github.com/fluojs/fluo/commit/b90fba6836b64160c9c903500a9b5832f7c0427d)]:
+  - @fluojs/runtime@3.1.0
+  - @fluojs/core@2.1.0
+  - @fluojs/di@3.1.0
+
 ## 2.0.0
 
 ### Major Changes

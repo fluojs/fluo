@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## 2.1.0
+
+### Minor Changes
+
+- [#3730](https://github.com/fluojs/fluo/pull/3730) [`e65604b`](https://github.com/fluojs/fluo/commit/e65604be0e7c1f13f9193761e2196eda8756bf90) Thanks [@ayden94](https://github.com/ayden94)! - Add opt-in bounded text and custom body parsing without rewriting Content-Type
+  or reconstructing Requests. HTTP owns BodyParser and BodyParserContext; runtime
+  Web helpers implement byte-limited materialization, and Next plus the existing
+  Workers Web option inheritance expose it. Custom parsers may delegate unchanged
+  MIME behavior with context.parseDefault(). Existing default JSON/multipart and
+  HEAD policies remain unchanged. Text mode does not guarantee authentication
+  order: authenticate explicitly before application-owned JSON interpretation.
+
+### Patch Changes
+
+- Updated dependencies [[`e65604b`](https://github.com/fluojs/fluo/commit/e65604be0e7c1f13f9193761e2196eda8756bf90), [`493b3da`](https://github.com/fluojs/fluo/commit/493b3dacafc247a81193ecfb6bf23387f71358d1), [`3c715d4`](https://github.com/fluojs/fluo/commit/3c715d467b9c587839c863a98a46b8d7b09318bb)]:
+  - @fluojs/http@3.1.0
+  - @fluojs/runtime@3.1.0
+
 ## 2.0.0
 
 ### Major Changes
