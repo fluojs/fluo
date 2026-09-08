@@ -592,7 +592,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       try {
         if (owner.resultRollbackEnabled) assertRollbackSessionCapability(session);
         result = await observeRollback(this.connectionOptions.rollbackObserver, () => {
-          owner.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session);
+          owner.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session, this.connection);
           return this.sessions.run({ activeSession, session, owner }, () =>
             executeSessionTransaction(session, () => this.runOwnerCallback(owner, fn, resultBoundary), owner),
           );
@@ -695,7 +695,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
             open: true,
           };
           owner = attempt;
-          attempt.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session);
+          attempt.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session, this.connection);
           const attemptBoundary = new ResultBoundary(attempt, boundary?.shouldRollback);
           resultBoundary = attemptBoundary;
           if (attempt.resultRollbackEnabled) assertRollbackSessionCapability(session);

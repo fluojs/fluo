@@ -8,8 +8,11 @@ export interface TransactionRollbackObservation {
 export interface TransactionRollbackObserver {
   /** Opens an isolated observation scope around one owning native invocation, including retries and cleanup. */
   run<T>(callback: () => Promise<T>): Promise<T>;
-  /** Binds positive rollback evidence to this exact native callback attempt, before application work. */
-  beginAttempt(transaction: unknown): TransactionRollbackObservation;
+  /**
+   * Binds positive rollback evidence to this exact native callback attempt, before application work.
+   * The optional connection supplies the public ownership context for the native session.
+   */
+  beginAttempt(transaction: unknown, connection?: unknown): TransactionRollbackObservation;
 }
 
 /** Reports that native rollback could not be positively confirmed; never a normal domain Result. */

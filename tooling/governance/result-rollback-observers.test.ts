@@ -154,6 +154,99 @@ describe('public rollback observation capabilities', () => {
     },
   );
 
+  describe.each(['manual', 'delegated'] as const)('Mongo owning-client admission (%s)', (mode) => {
+    for (const entry of ['transaction', 'requestTransaction'] as const) {
+      for (const accepted of [true, false]) {
+        it.each(['same', 'foreign', 'missing'] as const)(
+          `%s client binding for ${entry} with accepted=${accepted}`, async (binding) => {
+            const observedClient = Object.assign(new EventEmitter(), { options: { monitorCommands: true } });
+            const otherClient = Object.assign(new EventEmitter(), { options: { monitorCommands: true } });
+            const sessionClient = binding === 'foreign' ? otherClient : observedClient;
+            const observer = createMongooseRollbackObserver(observedClient);
+            let callbacks = 0;
+            let predicates = 0;
+            let commits = 0;
+            let cleanups = 0;
+            const id = { id: 'owned-session' };
+            const acknowledge = (commandName: string, requestId: number, first = false) => {
+              const event = { commandName, requestId, connectionId: 'server:27017' };
+              sessionClient.emit('commandStarted', {
+                ...event,
+                command: {
+                  lsid: id, txnNumber: 1, autocommit: false,
+                  ...(first && { startTransaction: true }),
+                },
+              });
+              sessionClient.emit('commandSucceeded', { ...event, reply: { ok: 1 } });
+            };
+            const session = {
+              id,
+              startTransaction() {},
+              commitTransaction() { commits++; acknowledge('commitTransaction', 2); },
+              abortTransaction() { acknowledge('abortTransaction', 2); },
+              endSession() { cleanups++; },
+            };
+            const native = {
+              ...(binding !== 'missing' && { getClient: () => sessionClient }),
+              startSession: async () => session,
+              ...(mode === 'delegated' && {
+                async transaction<T>(fn: (handle: typeof session) => Promise<T>) {
+                  session.startTransaction();
+                  try {
+                    const result = await fn(session);
+                    session.commitTransaction();
+                    return result;
+                  } catch (error) {
+                    session.abortTransaction();
+                    throw error;
+                  } finally {
+                    session.endSession();
+                  }
+                },
+              }),
+            };
+            const wrapper = new MongooseConnection(native, undefined, {
+              strictTransactions: true, rollbackObserver: observer,
+            });
+            const value = { accepted };
+            const callback = async () => {
+              callbacks++;
+              acknowledge('insert', 1, true);
+              return value;
+            };
+            const policy = {
+              shouldRollback(result: typeof value) { predicates++; return !result.accepted; },
+            };
+            const pending = entry === 'transaction'
+              ? wrapper.transaction(callback, policy)
+              : wrapper.requestTransaction(callback, undefined, policy);
+            const outcome = await pending.then(
+              (result) => ({ result, error: undefined }),
+              (error: unknown) => ({ result: undefined, error }),
+            );
+            if (binding === 'same') {
+              expect(outcome.error).toBeUndefined();
+              expect(outcome.result).toBe(value);
+              expect(callbacks).toBe(1);
+              expect(predicates).toBe(1);
+            } else {
+              expect.soft(callbacks).toBe(0);
+              expect.soft(predicates).toBe(0);
+              expect.soft(outcome.error).toBeInstanceOf(MongooseCapabilityError);
+              expect.soft(outcome.result).toBeUndefined();
+            }
+            expect(commits).toBe(binding === 'same' && accepted ? 1 : 0);
+            expect(cleanups).toBe(1);
+            expect(wrapper.currentSession()).toBeUndefined();
+            expect(observedClient.eventNames()).toEqual([]);
+            expect(otherClient.eventNames()).toEqual([]);
+            await wrapper.onApplicationShutdown();
+          },
+        );
+      }
+    }
+  });
+
   it.each(['confirmed', 'absent', 'session', 'transaction', 'request', 'connection', 'write-concern', 'failure', 'pending'] as const)(
     'Mongo requires correlated, complete acknowledgement: %s', async (mode) => {
       const client = Object.assign(new EventEmitter(), { options: { monitorCommands: true } });
@@ -168,7 +261,7 @@ describe('public rollback observation capabilities', () => {
         commandName, requestId, connectionId, reply,
       });
       await observer.run(async () => {
-        confirmation = observer.beginAttempt(session);
+        confirmation = observer.beginAttempt(session, { getClient: () => client });
         if (mode === 'absent') return;
         const command = { lsid: session.id, txnNumber: 4, autocommit: false };
         started('insert', 1, { ...command, startTransaction: true });
@@ -207,7 +300,7 @@ describe('public rollback observation capabilities', () => {
     let count = 0;
     const pending = Array.from({ length: 12 }, (_, index) => observer.run(async () => {
       const session = { id: { id: `session-${index}` } };
-      const observation = observer.beginAttempt(session);
+      const observation = observer.beginAttempt(session, { getClient: () => client });
       if (++count === 12) signalEntered();
       await release;
       const command = { lsid: session.id, txnNumber: index + 1, autocommit: false };

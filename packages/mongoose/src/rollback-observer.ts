@@ -33,7 +33,8 @@ function requestKey(event: RecordValue): string | undefined {
  * Requires positive, correlated MongoDB abort command acknowledgement for Result rollback.
  *
  * @remarks Create the MongoClient with `monitorCommands: true` before connecting and pass the
- * public `connection.getClient()` result. No command event, local session state, and replies
+ * public `connection.getClient()` result. Manual connection adapters must forward `getClient()`
+ * from the session-owning connection. No command event, local session state, and replies
  * containing writeConcernError are not rollback confirmation. No driver methods are patched.
  * @param client Public MongoClient owning the connection's sessions and command events.
  * @returns A capability for the Fluo module/connection `rollbackObserver` option.
@@ -119,7 +120,11 @@ export function createMongooseRollbackObserver(client: object): TransactionRollb
         }
       }
     },
-    beginAttempt(session) {
+    beginAttempt(session, connection) {
+      const getClient = record(connection)?.getClient;
+      if (typeof getClient !== 'function' || Reflect.apply(getClient, connection, []) !== client) {
+        throw new TransactionRollbackCapabilityError();
+      }
       const scope = scopes.getStore();
       const value = record(session);
       const key = sessionKey(value?.id);

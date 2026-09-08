@@ -65,8 +65,9 @@ const Receipt = connection.model('Receipt', new mongoose.Schema({ _id: String })
 const mongooseObservation = createMongooseRollbackObserver(connection.getClient());
 const delegated = new MongooseConnection(connection, undefined, { strictTransactions: true, rollbackObserver: mongooseObservation });
 // Select the public manual-session seam without mutating the native connection.
-// Both methods are bound to the real Mongoose connection; there is no fake session.
+// All methods are bound to the real Mongoose connection; there is no fake session.
 const manualConnection = {
+  getClient: connection.getClient.bind(connection),
   startSession: connection.startSession.bind(connection),
   model: connection.model.bind(connection),
 };
@@ -243,6 +244,57 @@ it('loads the public consumer exports from this worktree dist', async () => {
     assert.ok(ErrorType.prototype instanceof Error, 'Result errors must be public runtime exports.');
   }
 });
+
+for (const mode of ['manual', 'delegated'] as const) {
+  for (const entry of ['transaction', 'requestTransaction'] as const) {
+    for (const accepted of [true, false]) {
+      it(`Mongoose ${mode} ${entry} rejects a foreign observer before accepted=${accepted} work`, async () => {
+        const foreignConnection = mongoose.createConnection(mongoUrl, {
+          serverSelectionTimeoutMS: 20_000,
+          monitorCommands: true,
+        });
+        const native = mode === 'manual'
+          ? {
+            getClient: foreignConnection.getClient.bind(foreignConnection),
+            startSession: foreignConnection.startSession.bind(foreignConnection),
+          }
+          : foreignConnection;
+        const wrapper = new MongooseConnection(native, undefined, {
+          strictTransactions: true, rollbackObserver: mongooseObservation,
+        });
+        try {
+          await foreignConnection.asPromise();
+          assert.notEqual(foreignConnection.getClient(), connection.getClient());
+          let callbacks = 0;
+          let predicates = 0;
+          const value: Outcome = { accepted, detail: 'foreign-client-admission' };
+          const callback = async () => { callbacks++; return value; };
+          const policy = {
+            shouldRollback(result: Outcome) { predicates++; return !result.accepted; },
+          };
+          const pending = entry === 'transaction'
+            ? wrapper.transaction(callback, policy)
+            : wrapper.requestTransaction(callback, undefined, policy);
+          const outcome = await pending.then(
+            (result) => ({ result, error: undefined }),
+            (error: unknown) => ({ result: undefined, error }),
+          );
+          assert.equal(callbacks, 0);
+          assert.equal(predicates, 0);
+          assert.ok(outcome.error instanceof MongooseRollbackCapabilityError);
+          assert.equal(outcome.result, undefined);
+          assert.equal(wrapper.currentSession(), undefined);
+        } finally {
+          try {
+            await wrapper.onApplicationShutdown();
+          } finally {
+            await foreignConnection.close();
+          }
+        }
+      });
+    }
+  }
+}
 
 for (const adapter of adapters) {
   const surfaces: readonly {
