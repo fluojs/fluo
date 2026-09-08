@@ -31,10 +31,14 @@ export interface CacheStore {
 export interface RedisCompatibleClient {
   /**
    * Create an isolated connection for opt-in atomic updates.
-   * @param options Connect immediately so WATCH does not reuse shared connection state.
-   * @returns An operation-owned connection, disconnected after success or failure.
+   * @param options Connect immediately and disable reconnection to preserve connection-bound WATCH state.
+   * @returns An operation-owned connection that fails terminally on connection loss and is disconnected after use.
    */
-  duplicate?(options: { lazyConnect: boolean }): RedisAtomicClient;
+  duplicate?(options: {
+    lazyConnect: boolean;
+    retryStrategy: () => null;
+    reconnectOnError: () => false;
+  }): RedisAtomicClient;
   del(key: string, ...keys: string[]): Promise<number> | number;
   get(key: string): Promise<string | null> | string | null;
   scan(cursor: string, ...args: Array<string | number>): Promise<[string | number, string[]]> | [string | number, string[]];

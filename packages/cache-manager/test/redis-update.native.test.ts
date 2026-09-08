@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { promisify } from 'node:util';
 
 import { REDIS_CLIENT, RedisModule } from '@fluojs/redis';
@@ -8,7 +9,7 @@ import type { Redis } from 'ioredis';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CACHE_STORE, CacheModule, CacheService } from '../src/index.js';
-import type { CacheStore, RedisAtomicClient } from '../src/index.js';
+import type { CacheStore, RedisAtomicClient, RedisCompatibleClient } from '../src/index.js';
 
 function deferred() {
   let resolveSignal: (() => void) | undefined;
@@ -47,7 +48,7 @@ async function createApp(keyPrefix: string) {
   class AppModule {}
   defineModule(AppModule, {
     imports: [
-      RedisModule.forRoot({ host: '127.0.0.1', port, retryStrategy: () => null }),
+      RedisModule.forRoot({ host: '127.0.0.1', port }),
       CacheModule.forRoot({ store: 'redis', keyPrefix, ttl: 60, redis: { atomicUpdates: true } }),
     ],
   });
@@ -98,6 +99,121 @@ afterAll(async () => {
 });
 
 describe('Redis WATCH atomic updates against a native server', () => {
+  it.each(['increment', 'delete'] as const)(
+    'rejects stale work after WATCH connection loss and a competing %s with reconnect-capable registration',
+    async (operation) => {
+      // Given: capture the real operation connection without replacing its transport or commands.
+      const duplicates: Redis[] = [];
+      const duplicate = firstClient.duplicate.bind(firstClient);
+      vi.spyOn(firstClient, 'duplicate').mockImplementation((options) => {
+        const client = duplicate(options);
+        duplicates.push(client);
+        return client;
+      });
+      await first.set('key', 1);
+      const entered = deferred();
+      const release = deferred();
+      let attempts = 0;
+      const update = first.update<number>('key', async (value) => {
+        attempts += 1;
+        entered.resolve();
+        await release.promise;
+        return { action: 'set', value: (value ?? 0) + 1 };
+      });
+      const settled = update.then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason: unknown) => ({ status: 'rejected' as const, reason }),
+      );
+      const events = new AbortController();
+      const signal = AbortSignal.any([events.signal, AbortSignal.timeout(5_000)]);
+      try {
+        await entered.promise;
+        const watched = duplicates[0];
+        if (!watched) throw new Error('The update did not create an isolated connection.');
+        const id = await watched.call('CLIENT', 'ID');
+        if (typeof id !== 'number') throw new Error('Redis did not return a connection ID.');
+        const closed = once(watched, 'close', { signal });
+        // The old implementation reconnects; a safe connection instead ends terminally.
+        const replacedOrEnded = Promise.race([
+          once(watched, 'ready', { signal }),
+          once(watched, 'end', { signal }),
+        ]);
+
+        // When: lose WATCH, let the transport settle, then commit through the other app.
+        await secondClient.call('CLIENT', 'KILL', 'ID', id);
+        await closed;
+        await replacedOrEnded;
+        if (operation === 'increment') {
+          await second.update<number>('key', (value) => ({ action: 'set', value: (value ?? 0) + 10 }));
+        } else {
+          await second.del('key');
+        }
+        release.resolve();
+
+        // Then: no stale commit or retry, and the shared client's reconnection still works.
+        const outcome = await settled;
+        const stored = await second.get('key');
+        expect({ outcome, stored, attempts }).toMatchObject({
+          outcome: { status: 'rejected', reason: expect.any(Error) },
+          stored: operation === 'increment' ? 11 : undefined,
+          attempts: 1,
+        });
+        expect(watched.status).toBe('end');
+        const sharedId = await firstClient.call('CLIENT', 'ID');
+        if (typeof sharedId !== 'number') throw new Error('Redis did not return the shared connection ID.');
+        const sharedReady = once(firstClient, 'ready', { signal });
+        await secondClient.call('CLIENT', 'KILL', 'ID', sharedId);
+        await sharedReady;
+        await expect(firstClient.ping()).resolves.toBe('PONG');
+      } finally {
+        release.resolve();
+        await settled;
+        events.abort();
+      }
+    },
+  );
+
+  it.each(['existing', 'missing'] as const)(
+    'invalidates a suspended reducer after explicit update deletion and recreation of an %s key',
+    async (initial) => {
+      // Given
+      if (initial === 'existing') await first.set('key', 1);
+      const entered = deferred();
+      const release = deferred();
+      let attempts = 0;
+      const update = first.update<number>('key', async (value) => {
+        attempts += 1;
+        entered.resolve();
+        await release.promise;
+        return { action: 'set', value: (value ?? 0) + 1 };
+      });
+      const settled = update.then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason: unknown) => ({ status: 'rejected' as const, reason }),
+      );
+      try {
+        await entered.promise;
+
+        // When
+        await second.update('key', () => ({ action: 'delete' }));
+        await second.set('key', 100);
+        release.resolve();
+
+        // Then
+        const outcome = await settled;
+        const stored = await first.get('key');
+        expect({ outcome, stored, attempts }).toMatchObject({
+          outcome: { status: 'rejected', reason: { code: 'invalidated' } },
+          stored: 100,
+          attempts: 1,
+        });
+      } finally {
+        release.resolve();
+        await settled;
+      }
+    },
+  );
+
   it('retries a conflicting reducer from the other connection rather than losing an increment', async () => {
     // Given
     const entered = deferred();
@@ -357,7 +473,9 @@ describe('Redis WATCH atomic updates against a native server', () => {
   it('accepts the actual ioredis atomic seam and resolves the distributed capability through DI', async () => {
     // Given / When / Then
     const compatible: RedisAtomicClient = firstClient;
+    const duplicate: NonNullable<RedisCompatibleClient['duplicate']> = firstClient.duplicate.bind(firstClient);
     expect(compatible).toBe(firstClient);
+    expect(duplicate).toBeTypeOf('function');
     const store = await firstApp.get<CacheStore>(CACHE_STORE);
     expect(store.atomicUpdate?.scope).toBe('distributed');
   });

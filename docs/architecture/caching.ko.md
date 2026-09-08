@@ -48,7 +48,7 @@
 
 `update`는 순수한 단일 key 갱신이며 원본 load 합치기, 도메인 트랜잭션, 분산 락이 아닙니다. 두 내장 store 모두 store별 key별 FIFO로 update를 대기시키며 독립 key는 동시에 진행합니다. Memory의 `local-process` 범위는 facade들이 공유하는 하나의 store 인스턴스이며 프로세스의 모든 store가 아닙니다. 선택적 `atomicUpdate`가 없는 custom store도 유효하지만 이 API는 `unsupported`로 거부하며 read/modify/write fallback을 추론하지 않습니다.
 
-Redis에는 cache 측의 명시적 `redis.atomicUpdates: true`(또는 `RedisStoreOptions.atomicUpdates`), compatible raw client의 격리 `duplicate({ lazyConnect: false })`, Redis >=6.2, 비어 있지 않은 앱 namespace가 필요합니다. Standalone/single-primary 트랜잭션이 지원 범위이며 Cluster 지원은 주장하지 않습니다. WATCH는 data, namespace epoch, key 무효화 identity를 관찰합니다. 일반 쓰기 경합은 reducer를 재실행할 수 있지만 삭제/reset/만료는 오래된 작업을 거부합니다. Namespace의 모든 참여자가 opt-in해야 합니다. `del`은 key가 없어도 한 트랜잭션에서 UUID marker를 쓰고 data를 삭제합니다. Reset은 epoch 하나를 보존하고 marker를 포함한 다른 namespace key를 SCAN합니다.
+Redis에는 cache 측의 명시적 `redis.atomicUpdates: true`(또는 `RedisStoreOptions.atomicUpdates`), compatible raw client의 격리 `duplicate(...)`, Redis >=6.2, 비어 있지 않은 앱 namespace가 필요합니다. Standalone/single-primary 트랜잭션이 지원 범위이며 Cluster 지원은 주장하지 않습니다. WATCH는 data, namespace epoch, key 무효화 identity를 관찰합니다. 일반 쓰기 경합은 reducer를 재실행할 수 있지만 삭제/reset/만료는 오래된 작업을 거부합니다. Namespace의 모든 참여자가 opt-in해야 합니다. `del`과 `{ action: 'delete' }` update는 key가 없어도 한 트랜잭션에서 UUID marker를 쓰고 data를 삭제합니다. Reset은 epoch 하나를 보존하고 marker를 포함한 다른 namespace key를 SCAN합니다. 작업 전용 연결은 재접속하지 않으며, 연결이 끊기면 WATCH 없는 새 연결에서 commit하지 않고 원래 client 오류를 전파합니다. 공유 client의 재접속 정책은 유지됩니다.
 
 API 원본에 NUL로 시작하는 예약 metadata key와 persistent 비용이 정의되어 있습니다. Reset 후 epoch 하나, reset 전까지 서로 다른 삭제 key마다 marker 하나가 남습니다. Metadata를 외부에서 수정하거나 eviction하면 안 되며 failover durability는 보장하지 않습니다. SCAN reset은 분산 전역 snapshot이 아니고 원격 reset 시작 후 시작한 update를 전역으로 차단하지 않습니다.
 

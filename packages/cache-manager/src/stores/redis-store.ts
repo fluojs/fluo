@@ -117,7 +117,12 @@ export class RedisStore implements CacheStore {
 
   private createUpdateClient(): RedisAtomicClient {
     if (!this.client.duplicate) throw new CacheUpdateError('unsupported');
-    return this.client.duplicate({ lazyConnect: false });
+    // WATCH belongs to one socket; a replacement connection must never commit stale work.
+    return this.client.duplicate({
+      lazyConnect: false,
+      retryStrategy: () => null,
+      reconnectOnError: () => false,
+    });
   }
 
   private async updateWatched<T>(
@@ -158,7 +163,7 @@ export class RedisStore implements CacheStore {
         let result: T | undefined;
         switch (decision.action) {
           case 'delete':
-            transaction.del(redisKey);
+            transaction.set(invalidationKey, globalThis.crypto.randomUUID()).del(redisKey);
             break;
           case 'set': {
             const expiresAt = resolveUpdateExpiry(

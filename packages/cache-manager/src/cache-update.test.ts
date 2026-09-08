@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
-import type { CacheAtomicUpdate, CacheStore, CacheUpdate, CacheUpdateContext, CacheUpdateOptions } from './index.js';
+import type { CacheAtomicUpdate, CacheStore, CacheUpdate, CacheUpdateContext, CacheUpdateOptions, RedisCompatibleClient } from './index.js';
 import { CacheService, CacheUpdateError, MemoryStore, RedisStore } from './index.js';
 import type { NormalizedCacheModuleOptions } from './types.js';
 
@@ -408,5 +408,10 @@ describe('atomic cache update', () => {
     expectTypeOf<CacheUpdateContext['attempt']>().toEqualTypeOf<number>();
     expectTypeOf<CacheAtomicUpdate['scope']>().toEqualTypeOf<'local-process' | 'distributed'>();
     expectTypeOf<CacheStore['atomicUpdate']>().toEqualTypeOf<CacheAtomicUpdate | undefined>();
+    expectTypeOf<Parameters<NonNullable<RedisCompatibleClient['duplicate']>>[0]>().toEqualTypeOf<{
+      lazyConnect: boolean;
+      retryStrategy: () => null;
+      reconnectOnError: () => false;
+    }>();
   });
 });

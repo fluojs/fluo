@@ -10,3 +10,5 @@ Provide store-instance-local FIFO updates in MemoryStore and opt-in Redis WATCH 
 Document API usage, Redis deployment and metadata requirements, cancellation limits, and queue-free application composition in English and Korean.
 
 The `@fluojs/redis` change is documentation-only: its shipped English and Korean READMEs explain how cache-manager atomic updates use the existing raw Redis client seam, without changing Redis runtime behavior or API.
+
+Disable reconnection only for operation-owned Redis connections so connection loss cannot commit stale work without WATCH. Advance per-key invalidation identity atomically for explicit update deletions, including missing keys, so delete/recreate rejects suspended reducers instead of retrying them.
