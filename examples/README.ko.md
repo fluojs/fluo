@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 디렉터리는 fluo의 공식 실행 예제를 모아 둔 곳입니다. 연속 학습은 [FluoBlog 튜토리얼](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [단계별 완성 코드](./fluo-blog/README.ko.md)에서 시작하세요. 다른 예제는 독립적인 기능 참고자료이며 해당 프로젝트의 후속 장이 아닙니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
+이 디렉터리는 fluo의 공식 실행 예제를 모아 둔 곳입니다. 제품·패턴 중심의 전체 학습은 [3권 Book](../book/README.ko.md)에서 시작하세요. [짧은 FluoBlog 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [단계별 완성 코드](./fluo-blog/README.ko.md)는 초기 HTTP·DI 경로의 보조 자료입니다. 다른 예제는 독립적인 기능 참고자료이며 해당 프로젝트의 후속 장이 아닙니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
 
 이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 유지합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
 
@@ -22,7 +22,7 @@
 
 ## 권장 읽기 순서
 
-fluo를 처음 배운다면 [FluoBlog 튜토리얼](../apps/docs/content/docs/tutorial/index.ko.mdx)을 먼저 완성하세요. 그다음 필요한 기능에 따라 독립적인 예제를 고르세요.
+전체 학습은 [Book](../book/README.ko.md)을 따르고, 초기 HTTP 동작을 빠르게 확인하려면 [FluoBlog 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)을 사용하세요. 아래 예제는 필요한 기능에 따라 독립적으로 고릅니다.
 
 1. `./minimal/README.ko.md` — 가장 작은 bootstrap과 request path
 2. `./realworld-api/README.ko.md` — 첫 실제 도메인 모듈과 DTO 경계
@@ -33,7 +33,7 @@ fluo를 처음 배운다면 [FluoBlog 튜토리얼](../apps/docs/content/docs/tu
 7. `./react-stable-ssr/README.ko.md` — HTTP-owned handler로서의 안정 React SSR page
 8. `./react-vite-ssr/README.ko.md` — SSR baseline 위에 Vite build manifest와 hydration 추가
 
-[Book](../book/README.ko.md)은 개념과 내부 구조를 다루는 보충 자료입니다. 기존 장의 project-state 표기는 이 디렉터리의 스냅샷을 가리키지 않습니다.
+[Book](../book/README.ko.md)은 FluoBlog에서 상점과 내부 구조로 이어지는 중심 학습 경로입니다. 이전 판 장의 project-state 표기는 이 디렉터리의 스냅샷을 가리키지 않습니다.
 
 ## 예제가 문서에서 맡는 역할
 

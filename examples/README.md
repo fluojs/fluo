@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-This directory contains the official runnable example applications for fluo. Start with the [FluoBlog tutorial](../apps/docs/content/docs/tutorial/index.mdx) and its [complete checkpoints](./fluo-blog/README.md) for a cumulative learning path. Other examples are independent capability references, not later chapters of that project. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
+This directory contains the official runnable example applications for fluo. Start with the [three-volume Book](../book/README.md) for the complete product and pattern learning path. The [short FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) and its [complete checkpoints](./fluo-blog/README.md) are companions for the initial HTTP/DI path. Other examples are independent capability references, not later chapters of that project. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
 
 These examples intentionally stay on the HTTP side of the published `fluo new` v2 matrix so the generated scaffold and the runnable examples keep matching. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
 
@@ -22,7 +22,7 @@ These examples intentionally stay on the HTTP side of the published `fluo new` v
 
 ## recommended reading order
 
-If you are new to fluo, finish the [FluoBlog tutorial](../apps/docs/content/docs/tutorial/index.mdx) first. Then choose a standalone example by the capability you need:
+Follow the [Book](../book/README.md) for the complete learning path, or use the [FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) to check the initial HTTP behavior quickly. Choose the standalone examples below by the capability you need:
 
 1. `./minimal/README.md` — smallest bootstrap and request path
 2. `./realworld-api/README.md` — first real domain module and DTO boundary
@@ -33,7 +33,7 @@ If you are new to fluo, finish the [FluoBlog tutorial](../apps/docs/content/docs
 7. `./react-stable-ssr/README.md` — stable React SSR pages as HTTP-owned handlers
 8. `./react-vite-ssr/README.md` — Vite build manifest and hydration layered onto the SSR baseline
 
-The [Book](../book/README.md) provides supplementary concepts and internals. Its older project-state labels do not identify snapshots in this directory.
+The [Book](../book/README.md) is the primary learning path from FluoBlog through commerce and framework internals. Previous-edition project-state labels do not identify snapshots in this directory.
 
 ## how these examples fit the docs
 
