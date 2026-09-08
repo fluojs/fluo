@@ -1,13 +1,17 @@
-import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { resolveWorkspaceBuildOrder } from '../scripts/run-workspace-build-closure.mjs';
 
-// The package closure must be built first. Resolve the real export map rather than source aliases.
-const fixture = fileURLToPath(new URL(
-  `../../packages/event-bus/examples/result-contract-${randomUUID()}.mts`,
-  import.meta.url,
-));
+const execFileAsync = promisify(execFile);
+const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
+let root: string;
+let fixture: string;
 const imports = [
   "import { EVENT_BUS, EventBusLifecycleService } from '@fluojs/event-bus';",
   "import type { EventBus, EventBusWithResults, EventDeliveryOutcome, EventDeliveryStatus, EventPublishResult, EventPublishSettlement } from '@fluojs/event-bus';",
@@ -34,6 +38,41 @@ function compile(source: string): readonly ts.Diagnostic[] {
 }
 
 describe('event-bus emitted result declarations', () => {
+  afterAll(async () => {
+    if (root) await rm(root, { force: true, recursive: true });
+  });
+
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'fluo-event-bus-declarations-'));
+    // Match the copied build CLI argv path to Node's canonical import.meta URL.
+    root = await realpath(root);
+    fixture = join(root, 'packages/event-bus/examples/result-contract.mts');
+    const packages = resolveWorkspaceBuildOrder('@fluojs/event-bus', repositoryRoot);
+    const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
+    for (const entry of [
+      'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+      'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+      'tooling/scripts/clean-dist.mjs', buildClosureScript,
+      'packages/testing/src/babel-decorators-plugin.ts',
+      ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+    ]) {
+      await cp(join(repositoryRoot, entry), join(root, entry), {
+        recursive: true,
+        // Relative workspace links must resolve inside the copied closure.
+        verbatimSymlinks: true,
+        filter: (source) => !['dist', '.vite', '.vite-temp'].includes(basename(source)),
+      });
+    }
+    // Share external tools only; each package's workspace links were copied above.
+    await symlink(join(repositoryRoot, 'node_modules'), join(root, 'node_modules'), 'dir');
+    // Always build cold declarations, then let NodeNext resolve the real export maps.
+    await execFileAsync(process.execPath, [join(root, buildClosureScript), '@fluojs/event-bus'], {
+      cwd: root,
+      env: process.env,
+      timeout: 240_000,
+    });
+  }, 300_000);
+
   it('preserves legacy implementations and exposes typed service and token results', () => {
     // Given
     const consumer = `${imports}
