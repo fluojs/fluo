@@ -11,6 +11,7 @@ Fluo backend를 Next.js App Router Route Handlers와 Pages Router API Routes에
 - [설치](#설치)
 - [공통 설정](#공통-설정)
 - [App Router](#app-router)
+- [HEAD Routing](#head-routing)
 - [Pages Router](#pages-router)
 - [FluoFactory 연결](#fluofactory-연결)
 - [Pipeline compatibility](#pipeline-compatibility)
@@ -133,6 +134,61 @@ Fluo가 decorator metadata, route matching, module bootstrap, dependency
 injection, request scope, body parsing, error, controller dispatch를
 담당합니다. Route Handler는 Fluo backend가 요구하는 Node.js runtime을
 기본으로 사용하므로 `runtime` override는 필요하지 않습니다.
+
+## HEAD Routing
+
+GET-only Fluo route가 Next의 자동 HEAD와 명시적인 `HEAD` export 모두에
+응답해야 한다면 adapter 생성 시 opt-in합니다.
+
+```typescript
+import { createNextAdapter } from '@fluojs/platform-nextjs';
+
+export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
+});
+```
+
+생략하면 기존 method matching을 유지하므로 GET-only Fluo route는 HEAD에
+암묵적으로 매칭되지 않습니다. 이 option에서는 공통 HTTP matcher가 유효한
+명시적 `@Head`, 없으면 `@All`, 없으면 `@Get` route 하나를 선택합니다.
+그룹 간에는 method 우선순위가 path specificity보다 앞서고, 각 그룹 안에서는
+기존 static/parameter 및 version 규칙을 적용합니다. `ALL`은 method wildcard이지
+path wildcard가 아니므로 Fluo catch-all path grammar는 계속 지원하지 않습니다.
+
+선택은 module middleware, guard, controller 이전에 한 번 결정합니다.
+Route miss는 404를 반환합니다. 선택한 handler가 반환한 404는 최종 결과이며
+다시 dispatch하지 않습니다. 기존 short-circuit 동작에 따라 application middleware,
+module middleware, guard, controller는 각각 최대 한 번 실행합니다.
+
+정규화된 request와 native `Request`는 middleware, guard, version extractor,
+conditional resolver, handler 안에서도 원래 **HEAD**를 유지합니다. 선택한
+descriptor에는 GET 등 선언한 method가 그대로 남습니다. 따라서 기존
+conditional-request 및 byte-range status/header 규칙을 유지합니다.
+Adapter는 direct send, route miss, error, 미준비/종료 후 503을 포함한
+모든 opted-in HEAD 응답을 null body로 반환하면서 status, status text,
+representation header, 독립적인 cookie를 보존합니다. 선택된 응답에 없는
+content length를 임의로 만들지는 않습니다.
+
+활성 response stream을 취소한 뒤 dispatch lifecycle, iterator cleanup,
+request-scope disposal 완료를 기다립니다. Stream source는 cancellation에 협력하고
+iterator `return()`을 완료해야 합니다. Cleanup failure는 기존 dispatcher의
+observer/logging 정책으로 처리하며 GET 재시도나 이미 commit한 metadata 교체를
+하지 않습니다. Response stream에 들어오지 않은 application-owned resource는
+계속 application이 소유합니다. HEAD에서 byte source 자체를 열지 않으려면
+`createByteRangeResponse`에 stream factory를 전달하세요.
+
+**Migration:** HEAD request를 GET으로 재구성하고 body를 버리는 application
+wrapper를 제거하고 표준 `createNextAppRouterHandler(loadAdapter)` facade를
+사용합니다. `GET`만 export하여 Next가 auto-HEAD로 호출하게 하거나 `GET`과
+`HEAD`를 함께 export해도 같은 정책을 적용합니다. Pages Router도 같은 adapter
+option을 사용합니다. 기존 wrapper 때문에 GET을 관찰하던 method 기반 application
+분기는 원래 HEAD를 인식하도록 수정하세요. Option을 생략하는 기존 소비자는
+configuration이나 동작을 변경할 필요가 없습니다.
+
+검증 근거: [`head-routing.test.ts`](./src/head-routing.test.ts),
+[`head-routing-public-types.test.ts`](./src/head-routing-public-types.test.ts),
+실제 HTTP로 auto-HEAD, 직접 App Router HEAD, Pages Router HEAD를 비교하는
+packaged [Next 16 production E2E](./e2e/next.test.mjs).
 
 ## Pages Router
 
@@ -279,6 +335,7 @@ await app.listen();
 
 - `maxBodySize`: bytes 단위의 non-negative maximum request body size
 - `rawBody`: parsed request bytes를 `context.request.rawBody`에 보존
+- `headRouting`: 선택적인 `'explicit-or-get'` 라우팅과 body 없는 HEAD lifecycle; [HEAD Routing](#head-routing) 참조
 - Fluo runtime options는 일반 `FluoFactory.create()` options에 유지
 
 ## Runtime contract
@@ -304,7 +361,7 @@ Application이 raw Node.js transport ownership, WebSocket upgrades, independentl
 ## Public API
 
 - `createNextAdapter(options)`: `FluoFactory.create()`에 전달할 HTTP adapter 생성
-- `NextAdapterOptions`: adapter가 소유하는 request parsing options
+- `NextAdapterOptions`: adapter가 소유하는 request parsing 및 opt-in HEAD routing options
 - `NextAdapterLoader`: dynamic canonical backend adapter loader
 - `createNextAppRouterHandler(loadAdapter)`: 구조분해 export 가능한 method-keyed App Router handler export record 생성 (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`)
 - `NextHttpApplicationAdapter`: bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` handlers를 가진 `HttpApplicationAdapter`

@@ -145,6 +145,52 @@ function enforceContractCompanionUpdates(
   );
 }
 
+describe('Next HEAD routing contract companions', () => {
+  const companions = [
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+    'packages/http/src/mapping.ts',
+    'packages/platform-nextjs/src/adapter.ts',
+    'packages/http/src/head-routing.test.ts',
+    'packages/platform-nextjs/src/head-routing.test.ts',
+    'packages/platform-nextjs/src/head-routing-public-types.test.ts',
+    'packages/platform-nextjs/e2e/next.test.mjs',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'packages/platform-nextjs/README.md',
+    'packages/platform-nextjs/README.ko.md',
+  ];
+
+  it('accepts HEAD selection with its matcher, transport, declarations, native and bilingual evidence', () => {
+    // Given the complete HEAD-specific changed-file evidence.
+    // When the HTTP contract companion gate classifies the change.
+    // Then it uses the focused HEAD regressions rather than unrelated lifecycle tests.
+    expect(() => enforceContractCompanionUpdates(companions)).not.toThrow();
+  });
+
+  it.each(companions.slice(8))('rejects missing HEAD evidence %s', (missing) => {
+    // Given an otherwise complete HEAD contract change.
+    const incomplete = companions.filter((path) => path !== missing);
+    // When one required evidence file is absent.
+    // Then the changed-file gate rejects the incomplete contract.
+    expect(() => enforceContractCompanionUpdates(incomplete)).toThrow();
+  });
+
+  it('does not replace generic HTTP lifecycle evidence without both HEAD source seams', () => {
+    // Given HEAD evidence without the Next adapter change.
+    const incomplete = companions.filter((path) => path !== 'packages/platform-nextjs/src/adapter.ts');
+    // When classifying an ordinary HTTP contract change.
+    // Then the existing lifecycle companion requirement still applies.
+    expect(() => enforceContractCompanionUpdates(incomplete)).toThrow(
+      /http-runtime-isolation\.test\.ts/,
+    );
+  });
+});
+
 describe('Fastify raw-context README companion classification', () => {
   const readmePaths = [
     'packages/platform-fastify/README.md',

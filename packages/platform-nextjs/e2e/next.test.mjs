@@ -329,6 +329,7 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
       const appPaths = await json(path.join(app, '.next/server/app-paths-manifest.json'));
       const pagesPaths = await json(path.join(app, '.next/server/pages-manifest.json'));
       assert.ok(appPaths['/api/app/[[...path]]/route']);
+      assert.ok(appPaths['/api/auto/[[...path]]/route']);
       assert.ok(pagesPaths['/api/pages/[[...path]]']);
     });
 
@@ -471,6 +472,58 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
           method: 'GET', route, status: stream.snapshot().status,
           closedBeforeRelease: true,
         });
+      });
+    }
+    for (const facade of ['auto', 'app', 'pages']) {
+      for (const [route, status, selected] of [
+        ['head-get', 200, 'get'],
+        ['head-explicit', 202, 'head'],
+        ['head-all', 203, 'all'],
+        ['head-get-404', 404, 'get-404'],
+        ['head-explicit-404', 404, 'head-404'],
+        ['head-missing', 404, undefined],
+      ]) {
+        await t.test(`${facade}: HEAD selects ${route} exactly once with no body`, async () => {
+          const response = await capture(`/api/${facade}/${route}`, {
+            method: 'HEAD', headers: { 'x-head-id': randomUUID() },
+          });
+          assert.equal(response.status, status);
+          assert.equal(response.body, '');
+          assert.equal(response.headers['x-middleware-count'], '1');
+          assert.equal(response.headers['x-selected'], selected);
+          assert.equal(response.headers['x-controller-count'], selected ? '1' : undefined);
+          assert.equal(response.headers['x-guard-count'], selected ? '1' : undefined);
+          if (selected) {
+            assert.equal(response.headers['x-guard-method'], 'HEAD');
+            assert.equal(response.headers['x-handler-method'], 'HEAD');
+            assert.deepEqual(response.headers['set-cookie'], [
+              'head-first=1; Path=/', 'head-second=2; Path=/',
+            ]);
+          }
+        });
+      }
+      await t.test(`${facade}: HEAD preserves byte-range metadata`, async () => {
+        const response = await capture(`/api/${facade}/head-bytes`, {
+          method: 'HEAD', headers: { range: 'bytes=1-3' },
+        });
+        assert.equal(response.status, 206);
+        assert.equal(response.headers['content-range'], 'bytes 1-3/5');
+        assert.equal(response.headers['content-length'], '3');
+        assert.equal(response.body, '');
+      });
+      await t.test(`${facade}: HEAD cancels the stream and disposes its request scope`, async () => {
+        const id = randomUUID();
+        // Subscribe to actual server cleanup before triggering HEAD.
+        const returned = server.onLine((line) => line === `FLUO_E2E_HEAD_STREAM_RETURN ${id}`);
+        const disposed = server.onLine((line) => line === `FLUO_E2E_HEAD_SCOPE_DISPOSED ${id}`);
+        const [response] = await Promise.all([
+          capture(`/api/${facade}/head-stream/${id}`, { method: 'HEAD' }),
+          returned,
+          disposed,
+        ]);
+        assert.equal(response.status, 200);
+        assert.equal(response.body, '');
+        assert.match(response.headers['content-type'], /^text\/event-stream/);
       });
     }
     report.bootstrap = await records();

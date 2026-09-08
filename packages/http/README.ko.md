@@ -585,6 +585,28 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: first-party response integration을 위한 typed response-entry branding seam.
 - `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: typed request-local response finalization seam. Finalizer는 registration 순서대로 compose되고 각각 이전에 resolve된 값을 받으며, dispatcher가 await하므로 throw와 rejection은 기존 error policy를 따릅니다.
 
+## Opt-in HEAD Selection
+
+`FrameworkRequest.headRouting?: 'explicit-or-get'`은 공통
+`createHandlerMapping(...)` matcher에 전달하는 adapter-owned 입력입니다.
+생략하면 기존 method matching을 유지합니다. HEAD에만 opt-in을 적용해 유효한
+명시적 HEAD route, `ALL` method wildcard, GET 순서로 하나를 선택한 뒤
+pipeline을 한 번 dispatch합니다. 각 method 그룹은 기존 static/parameter 및
+version 규칙을 유지합니다. Version extraction은 원래 HEAD request에서 한 번
+실행하며 native request나 middleware, guard, handler가 관찰하는 method를
+재작성하지 않습니다. 404를 포함한 handler 결과는 route selection을 다시
+실행하지 않습니다.
+
+이 field는 path wildcard를 추가하거나 다른 adapter의 기본값을 바꾸지 않습니다.
+Custom `HandlerMapping` 구현은 자신의 matching 정책을 소유합니다. Native route
+handoff는 이미 선택한 route를 사용하므로 이 공통 matcher를 호출하지 않습니다.
+이 field는 route를 선택할 뿐 transport response writer가 아니며 기존 custom
+writer는 계속 HEAD body emission을 소유합니다.
+[Next adapter option](../platform-nextjs/README.ko.md#head-routing)은 Next 소비자에게
+transport body suppression과 stream cleanup을 추가합니다.
+회귀 근거는 [`head-routing.test.ts`](./src/head-routing.test.ts)와
+[Next pipeline tests](../platform-nextjs/src/head-routing.test.ts)에 있습니다.
+
 ## Conditional Requests
 
 runtime bootstrap에서 `conditionalRequest`를 구성해 representation 존재 여부와 optional validator를 분리하여 해석합니다.

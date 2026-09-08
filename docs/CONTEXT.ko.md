@@ -118,6 +118,15 @@ Node.js `>=24.0.0 <27`의 Next.js 16.x App Router와 Pages Router에서 Fluo를
 [릴리스 배포 목록](./contracts/release-governance.ko.md#intended-publish-surface)에
 이 어댑터가 포함됩니다.
 
+GET-only Fluo route에서 application wrapper 없이 Next auto-HEAD와 직접 HEAD를
+지원하려면 [`headRouting: 'explicit-or-get'`](../packages/platform-nextjs/README.ko.md#head-routing)을
+명시적으로 선택합니다.
+[공통 HTTP 매칭 계약](./architecture/http-runtime.ko.md#opt-in-head-route-selection)은
+HEAD method를 유지하며 handler가 반환한 404를 재시도하지 않습니다.
+검증 근거는 `packages/http/src/head-routing.test.ts`,
+`packages/platform-nextjs/src/head-routing.test.ts`, packaged
+`packages/platform-nextjs/e2e/next.test.mjs`에 있습니다.
+
 ## 라이프사이클 및 multi-provider 순서
 
 [라이프사이클 및 종료 보장](./architecture/lifecycle-and-shutdown.ko.md)은 application 및 testing module bootstrap hook의 SSOT입니다. 적격 singleton `multi: true` contribution은 별도 lifecycle instance로 남으며 singleton provider와 interleave해도 declared provider order로 실행됩니다. Framework integration은 owning DI container를 통해 각 contribution을 resolve하며 internal resolver registrar는 container-private으로 남습니다.

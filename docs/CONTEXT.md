@@ -118,6 +118,15 @@ The [package surface](./reference/package-surface.md) and
 [release publish list](./contracts/release-governance.md#intended-publish-surface)
 include this adapter.
 
+For GET-only Fluo routes, explicitly select
+[`headRouting: 'explicit-or-get'`](../packages/platform-nextjs/README.md#head-routing)
+to support Next auto-HEAD and direct HEAD without an application wrapper.
+The [shared HTTP matching contract](./architecture/http-runtime.md#opt-in-head-route-selection)
+keeps HEAD visible and never retries a handler-produced 404.
+Evidence lives in `packages/http/src/head-routing.test.ts`,
+`packages/platform-nextjs/src/head-routing.test.ts`, and the packaged
+`packages/platform-nextjs/e2e/next.test.mjs`.
+
 ## Lifecycle & Multi-Provider Ordering
 
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.md) is the source of truth for application and testing module bootstrap hooks. Eligible singleton `multi: true` contributions remain distinct lifecycle instances and run in declared provider order, including when they are interleaved with singleton providers. Framework integrations resolve each contribution through its owning DI container; the internal resolver registrar remains container-private.

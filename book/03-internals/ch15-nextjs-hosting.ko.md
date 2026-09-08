@@ -124,6 +124,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app';
 
 export const nextAdapter = createNextAdapter({
+  headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   rawBody: true,
 });
@@ -185,6 +186,43 @@ export default function Home() {
 ```
 
 인쇄 링크는 Next layout 안에 HTML 문서를 끼워 넣는 컴포넌트 호출이 아니라 독립 HTTP 탐색이다. full-document 응답의 소유권을 분리했으므로 Next의 layout과 Fluo의 `<html>`이 중첩되지 않는다. 이 구분을 유지하면 기존 Fluo 페이지 일부를 남겨 놓는 점진적 이전도 설명할 수 있다.
+
+## 블로그 링크 검사기의 HEAD를 GET으로 위장하지 않는다
+
+블로그의 링크 검사기는 본문을 내려받지 않고 글의 상태와 header만 확인하려고
+HEAD를 보낸다. Next는 `HEAD` export가 없으면 `GET` export를 호출하지만
+request method는 HEAD로 유지한다. 위 backend의 `headRouting: 'explicit-or-get'`은
+이 요청을 Fluo의 GET-only `/api/posts/:id`에 연결하는 명시적 선택이다.
+Option을 빼면 기존 generic routing을 유지하므로 GET-only route는 HEAD에
+자동으로 매칭되지 않는다.
+
+이 정책은 명시적 `@Head`를 가장 먼저 찾고, 없으면 `@All`, 그다음 `@Get`을
+선택한다. 선택한 handler가 글 없음으로 404를 반환해도 GET을 다시 실행하지
+않는다. 따라서 인증 guard, 조회, audit middleware를 두 번 실행하는 우회
+wrapper가 필요 없다. `ALL`은 method wildcard이며 Next의 파일 catch-all이
+Fluo의 path wildcard 문법을 추가하는 것은 아니다.
+
+기존 앱에서 HEAD request를 GET으로 재구성한 뒤 body를 버리고 있었다면 그
+wrapper를 제거하고 위 표준 facade를 사용한다. Guard와 handler가 관찰하는
+method는 이제 원래 HEAD다. GET만 허용하던 읽기 분기가 있다면 HEAD도 읽기
+요청으로 다루되, 인증이나 공개 글 판정 자체를 생략하지 않는다.
+`GET`과 `HEAD`를 모두 export하든 `GET`만 export해 Next auto-HEAD를 사용하든
+상태와 관련 header는 보존되고 response body는 비어 있다.
+
+열린 response stream은 취소하고 iterator cleanup과 request scope 정리가
+끝나기를 기다린다. 끝나지 않는 iterator `return()`을 framework가 강제로
+완료해 주지는 않는다. 파일 본문이 필요 없는 HEAD에서 파일 stream 자체를
+열지 않으려면 `createByteRangeResponse(...)`에 stream factory를 전달한다.
+다음은 앱을 실행한 뒤 비교하는 재현 명령이지 실행 완료 기록이 아니다.
+
+```bash
+curl -I http://127.0.0.1:3000/api/posts/1
+curl -I http://127.0.0.1:3000/api/posts/999
+```
+
+[HEAD 계약](../../packages/platform-nextjs/README.ko.md#head-routing)과
+[Next production E2E](../../packages/platform-nextjs/e2e/next.test.mjs)가
+자동 HEAD, 직접 HEAD, handler 404, stream 정리의 근거다.
 
 ## 동시에 들어온 첫 요청과 닫힌 뒤의 요청을 시험한다
 

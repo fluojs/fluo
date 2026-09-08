@@ -16,6 +16,25 @@ After conditional-request evaluation permits handler execution, the response pol
 
 `createByteRangeResponse(...)` accepts application-owned bytes or a stream factory with an exact representation size. It never opens, stats, seeks, sizes, or owns filesystem resources: the application supplies the exact size and source. Multi-range response construction is intentionally unsupported.
 
+## Opt-in HEAD Route Selection
+
+The shared matcher accepts adapter-owned `FrameworkRequest.headRouting:
+'explicit-or-get'`. Only HEAD requests use the explicit HEAD → ALL → GET
+selection order; omission keeps generic matching unchanged. Version extraction
+uses the original HEAD request once, and the existing path/version rules apply
+within each method group. The selected descriptor enters one dispatch lifecycle,
+not a response-based retry. Missing routes and handler-produced 404s remain
+distinct outcomes. Middleware and guards still observe HEAD, so conditional
+requests and byte-range metadata retain their current policy.
+
+The [HTTP README](../../packages/http/README.md#opt-in-head-selection) owns the
+matching seam; the [Next README](../../packages/platform-nextjs/README.md#head-routing)
+owns its opt-in transport API, body suppression, stream cleanup, and wrapper
+migration. Path wildcards remain deferred. Evidence:
+`packages/http/src/head-routing.test.ts`,
+`packages/platform-nextjs/src/head-routing.test.ts`, and the real Next
+`packages/platform-nextjs/e2e/next.test.mjs`.
+
 ## Request Lifecycle
 
 1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`, including `signal` or `isAborted()` when the host exposes request cancellation.

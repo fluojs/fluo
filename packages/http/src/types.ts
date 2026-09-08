@@ -24,6 +24,12 @@ export enum VersioningType {
  */
 export interface FrameworkRequest {
   method: HttpMethod | string;
+  /**
+   * Opt-in route selection for HEAD: explicit HEAD, then ALL, then GET.
+   * Only matching changes; middleware, guards, handlers, and response policies
+   * retain the original method. Omission preserves ordinary method matching.
+   */
+  readonly headRouting?: 'explicit-or-get';
   path: string;
   url: string;
   headers: Readonly<Record<string, string | string[] | undefined>>;
