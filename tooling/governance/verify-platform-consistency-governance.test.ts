@@ -165,6 +165,10 @@ describe('Next HEAD routing contract companions', () => {
     'packages/platform-nextjs/README.ko.md',
   ];
 
+  function expectHeadFailure(run: () => void): void {
+    expect(run).toThrow(/Next HEAD routing contract changes must include/u);
+  }
+
   it('accepts HEAD selection with its matcher, transport, declarations, native and bilingual evidence', () => {
     // Given the complete HEAD-specific changed-file evidence.
     // When the HTTP contract companion gate classifies the change.
@@ -177,7 +181,39 @@ describe('Next HEAD routing contract companions', () => {
     const incomplete = companions.filter((path) => path !== missing);
     // When one required evidence file is absent.
     // Then the changed-file gate rejects the incomplete contract.
-    expect(() => enforceContractCompanionUpdates(incomplete)).toThrow();
+    expectHeadFailure(() => enforceContractCompanionUpdates(incomplete));
+  });
+
+  it.each([
+    ['comparison', 'nextHeadRoutingRegressionEvidence.every((path) => hasChanged(changedFiles, path))', 'true'],
+    ['branch', "hasChanged(changedFiles, 'packages/platform-nextjs/src/adapter.ts')", 'false'],
+  ])('rejects a disabled HEAD %s even with generic lifecycle enforcement intact', async (label, target, replacement) => {
+    // Given the real verifier with only the HEAD comparison or branch disabled.
+    const sourceUrl = new URL('./verify-platform-consistency-governance.mjs', import.meta.url);
+    const source = readFileSync(sourceUrl, 'utf8');
+    expect(source.split(target)).toHaveLength(2);
+    const mutated = source.replace(target, replacement)
+      .replace(/from '(\.[^']+)'/gu, (_match, specifier: string) =>
+        `from '${new URL(specifier, sourceUrl).href}'`)
+      .replaceAll('import.meta.url', JSON.stringify(sourceUrl.href));
+    const governance: Pick<typeof import('./verify-platform-consistency-governance.mjs'), 'enforceContractCompanionUpdates'> =
+      await import(`data:text/javascript;base64,${Buffer.from(mutated).toString('base64')}`);
+
+    // When each missing-companion regression evaluates the mutated verifier.
+    // Then the same negative assertion must fail, not accept another guard's error.
+    for (const missing of companions.slice(8)) {
+      const incomplete = companions.filter((path) => path !== missing);
+      const run = () => governance.enforceContractCompanionUpdates(
+        incomplete,
+        withUnchangedEmailMigrationSections(unchangedEmailMigrationGuideSnapshots),
+      );
+      if (label === 'branch') {
+        expect(run).toThrow(/http-runtime-isolation\.test\.ts/u);
+      } else {
+        expect(run).not.toThrow();
+      }
+      expect(() => expectHeadFailure(run)).toThrowError(expect.objectContaining({ name: 'AssertionError' }));
+    }
   });
 
   it('does not replace generic HTTP lifecycle evidence without both HEAD source seams', () => {
