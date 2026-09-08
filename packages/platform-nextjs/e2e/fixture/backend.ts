@@ -1,21 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 
-import { Module } from '@fluojs/core';
+import { Module, Scope } from '@fluojs/core';
 import {
+  All,
   Controller,
   Convert,
+  createByteRangeResponse,
   FromBody,
   FromCookie,
   FromPath,
   FromQuery,
   Get,
+  type GuardContext,
   Head,
   HttpCode,
+  type MiddlewareContext,
+  type Next,
   Post,
   type RequestContext,
   RequestDto,
   Sse,
+  UseGuards,
 } from '@fluojs/http';
 import { createNextAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
@@ -68,9 +74,73 @@ class BoundRequest {
 }
 
 const streams = new Map<string, () => void>();
+const headCounts = new Map<string, number>();
+
+function countHead(context: RequestContext, stage: string) {
+  const id = context.request.headers['x-head-id'];
+  if (typeof id !== 'string') return;
+  const key = `${id}:${stage}`;
+  const count = (headCounts.get(key) ?? 0) + 1;
+  headCounts.set(key, count);
+  context.response.setHeader(`x-${stage}-count`, String(count));
+}
+
+class HeadGuard {
+  canActivate({ requestContext }: GuardContext) {
+    countHead(requestContext, 'guard');
+    requestContext.response.setHeader('x-guard-method', requestContext.request.method);
+    return true;
+  }
+}
+
+class HeadMiddleware {
+  async handle({ requestContext }: MiddlewareContext, next: Next) {
+    countHead(requestContext, 'middleware');
+    await next();
+  }
+}
+
+function headResult(context: RequestContext, selected: string, status = 200) {
+  countHead(context, 'controller');
+  context.response.setHeader('x-selected', selected);
+  context.response.setHeader('x-handler-method', context.request.method);
+  context.response.setHeader('set-cookie', ['head-first=1; Path=/', 'head-second=2; Path=/']);
+  context.response.setStatus(status);
+  return { selected };
+}
 
 @Controller('/api/:facade')
+@UseGuards(HeadGuard)
 class BackendController {
+  @Get('/head-get')
+  headGet(_input: undefined, context: RequestContext) { return headResult(context, 'get'); }
+
+  @Get('/head-explicit')
+  explicitGet(_input: undefined, context: RequestContext) { return headResult(context, 'wrong-get'); }
+
+  @Head('/head-explicit')
+  explicitHead(_input: undefined, context: RequestContext) { return headResult(context, 'head', 202); }
+
+  @Get('/head-all')
+  allGet(_input: undefined, context: RequestContext) { return headResult(context, 'wrong-all-get'); }
+
+  @All('/head-all')
+  allHead(_input: undefined, context: RequestContext) { return headResult(context, 'all', 203); }
+
+  @Get('/head-get-404')
+  get404(_input: undefined, context: RequestContext) { return headResult(context, 'get-404', 404); }
+
+  @Get('/head-explicit-404')
+  wrongRetry(_input: undefined, context: RequestContext) { return headResult(context, 'wrong-retry'); }
+
+  @Head('/head-explicit-404')
+  explicit404(_input: undefined, context: RequestContext) { return headResult(context, 'head-404', 404); }
+
+  @Get('/head-bytes')
+  bytes() {
+    return createByteRangeResponse(new TextEncoder().encode('hello'), { contentType: 'text/plain' });
+  }
+
   @Get('/health')
   health() {
     return { status: 'ok', instance };
@@ -140,13 +210,43 @@ class BackendController {
   }
 }
 
+@Scope('request')
+@Controller('/api/:facade')
+class HeadStreamController {
+  private id = '';
+
+  @Sse('/head-stream/:id')
+  stream(_input: undefined, context: RequestContext): AsyncIterable<string> {
+    this.id = context.request.params.id;
+    const id = this.id;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => new Promise<IteratorResult<string>>(() => undefined),
+          async return() {
+            console.log(`FLUO_E2E_HEAD_STREAM_RETURN ${id}`);
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  }
+
+  onDestroy() {
+    console.log(`FLUO_E2E_HEAD_SCOPE_DISPOSED ${this.id}`);
+  }
+}
+
 @Module({
-  controllers: [BackendController],
-  providers: [NumberConverter, SessionConverter],
+  controllers: [BackendController, HeadStreamController],
+  providers: [NumberConverter, SessionConverter, HeadGuard, HeadMiddleware],
 })
 class BackendModule {}
 
-export const nextAdapter = createNextAdapter();
-const app = await FluoFactory.create(BackendModule, { adapter: nextAdapter });
+export const nextAdapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+const app = await FluoFactory.create(BackendModule, {
+  adapter: nextAdapter,
+  middleware: [HeadMiddleware],
+});
 await app.listen();
 record('ready');

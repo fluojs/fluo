@@ -55,6 +55,16 @@ const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
 const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
+const nextHeadRoutingRegressionEvidence = [
+  'packages/http/src/head-routing.test.ts',
+  'packages/platform-nextjs/src/head-routing.test.ts',
+  'packages/platform-nextjs/src/head-routing-public-types.test.ts',
+  'packages/platform-nextjs/e2e/next.test.mjs',
+  'packages/http/README.md',
+  'packages/http/README.ko.md',
+  'packages/platform-nextjs/README.md',
+  'packages/platform-nextjs/README.ko.md',
+];
 const httpByteRangeRuntimeSourcePaths = new Set([
   'packages/http/src/byte-range-response.ts',
   'packages/http/src/dispatch/byte-range-response.ts',
@@ -1696,6 +1706,16 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       assert(
         httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
         `HTTP byte-range runtime contract changes must include ${httpByteRangeRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
+    if (
+      hasChanged(changedFiles, 'packages/http/src/mapping.ts')
+      && hasChanged(changedFiles, 'packages/platform-nextjs/src/adapter.ts')
+    ) {
+      assert(
+        nextHeadRoutingRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `Next HEAD routing contract changes must include ${nextHeadRoutingRegressionEvidence.join(', ')}.`,
       );
       return;
     }

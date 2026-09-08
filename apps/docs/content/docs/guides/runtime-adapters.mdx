@@ -51,6 +51,31 @@ Across adapters, fluo preserves the same framework-owned semantics:
 
 Adapters may optimize host-level route matching, but matched requests still hand back to the shared fluo dispatcher so application behavior stays portable.
 
+## Next.js HEAD routing
+
+On a Next.js 16.x Node.js host, use the adapter's opt-in to connect HEAD to
+GET-only Fluo routes:
+
+```ts
+import { createNextAdapter } from '@fluojs/platform-nextjs';
+
+const nextAdapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+```
+
+Export only `GET` from the standard lazy `createNextAppRouterHandler(...)`
+facade for Next auto-HEAD, or also export `HEAD` for direct invocation. Both
+select a route once in explicit HEAD, ALL method wildcard, then GET order;
+handler-produced 404s are never retried. Status and headers are preserved while
+the body is removed and stream cancellation and request cleanup are awaited.
+Pages Router uses the same adapter option.
+
+Remove the wrapper that reconstructed HEAD as GET. Guards and handlers now
+observe the original HEAD, so update method-based application branches too.
+Omitting the option preserves generic HTTP routing and existing adapter
+defaults. This does not add path wildcard support.
+The [Next package README](https://github.com/fluojs/fluo/blob/main/packages/platform-nextjs/README.md#head-routing)
+owns defaults, resource ownership, migration, and actual Next E2E evidence.
+
 ## Fastify
 
 Fastify is the recommended high-throughput Node.js adapter.

@@ -16,6 +16,25 @@ conditional-request 평가가 handler 실행을 허용한 뒤 response policy는
 
 `createByteRangeResponse(...)`는 application-owned byte 또는 정확한 representation size를 가진 stream factory를 받는다. 이 API는 filesystem resource를 열거나, stat, seek, size 계산, 소유하지 않는다. application이 정확한 size와 source를 제공하며 multi-range response construction은 의도적으로 지원하지 않는다.
 
+## Opt-in HEAD Route Selection
+
+공통 matcher는 adapter-owned `FrameworkRequest.headRouting:
+'explicit-or-get'`을 받습니다. HEAD request만 명시적 HEAD → ALL → GET 순서로
+선택하며 생략하면 generic matching을 변경하지 않습니다. Version extraction은
+원래 HEAD request에서 한 번 실행하고 각 method 그룹 안에서는 기존 path/version
+규칙을 유지합니다. 선택한 descriptor는 response 기반 재시도가 아닌 하나의
+dispatch lifecycle에 진입합니다. 없는 route와 handler가 반환한 404는 서로
+다른 결과로 유지됩니다. Middleware와 guard도 HEAD를 관찰하므로 conditional
+request 및 byte-range metadata의 기존 정책을 보존합니다.
+
+[HTTP README](../../packages/http/README.ko.md#opt-in-head-selection)가 matching
+seam을 소유하고 [Next README](../../packages/platform-nextjs/README.ko.md#head-routing)가
+opt-in transport API, body suppression, stream cleanup, wrapper migration을
+소유합니다. Path wildcard는 계속 보류 상태입니다. 검증 근거:
+`packages/http/src/head-routing.test.ts`,
+`packages/platform-nextjs/src/head-routing.test.ts`,
+실제 Next `packages/platform-nextjs/e2e/next.test.mjs`.
+
 ## Request Lifecycle
 
 1. 어댑터는 정규화된 `FrameworkRequest`와 `FrameworkResponse`를 `Dispatcher.dispatch(...)`에 전달하며, host가 요청 취소를 노출한다면 `signal` 또는 `isAborted()`를 포함한다.

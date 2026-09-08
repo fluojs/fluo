@@ -6,6 +6,7 @@ import {
 import {
   createWebRequestResponseFactory,
   dispatchWebRequest,
+  startWebRequestDispatch,
 } from '@fluojs/runtime/web';
 
 import {
@@ -26,8 +27,14 @@ const SHUTDOWN_PROBLEM = {
   type: 'https://fluo.dev/problems/next-backend-adapter-closed',
 } as const;
 
-/** Adapter-owned Web request parsing options. */
+/** Adapter-owned Web request parsing and opt-in HEAD routing options. */
 export interface NextAdapterOptions {
+  /**
+   * Select explicit HEAD, then ALL, then GET without changing the request method.
+   * Omit to preserve ordinary routing. Opted-in HEAD responses are bodyless and
+   * active streams are cancelled before request lifecycle completion is awaited.
+   */
+  readonly headRouting?: 'explicit-or-get';
   readonly maxBodySize?: number;
   readonly rawBody?: boolean;
 }
@@ -78,8 +85,11 @@ function validateMaxBodySize(maxBodySize: number | undefined): void {
   }
 }
 
-function createProblemResponse(problem: typeof NOT_READY_PROBLEM | typeof SHUTDOWN_PROBLEM) {
-  return Response.json(problem, {
+function createProblemResponse(
+  problem: typeof NOT_READY_PROBLEM | typeof SHUTDOWN_PROBLEM,
+  bodyless = false,
+) {
+  return new Response(bodyless ? null : JSON.stringify(problem), {
     headers: { 'content-type': 'application/problem+json' },
     status: problem.status,
   });
@@ -91,20 +101,30 @@ function createProblemResponse(problem: typeof NOT_READY_PROBLEM | typeof SHUTDO
 export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
   private closed = false;
   private dispatcher?: Dispatcher;
+  private readonly headRouting;
   private readonly requestResponseFactory;
 
   /**
    * Create a Next-hosted Fluo adapter.
    *
-   * @param options Web request parsing options.
+   * @param options Web request parsing and opt-in HEAD routing options.
    */
   constructor(options: NextAdapterOptions = {}) {
     validateMaxBodySize(options.maxBodySize);
-    this.requestResponseFactory = createWebRequestResponseFactory({
+    const headRouting = options.headRouting;
+    this.headRouting = headRouting;
+    const factory = createWebRequestResponseFactory({
       consumeOriginalBody: true,
       maxBodySize: options.maxBodySize,
       rawBody: options.rawBody,
     });
+    this.requestResponseFactory = {
+      ...factory,
+      async createRequest(request: Request, signal: AbortSignal) {
+        const normalized = await factory.createRequest(request, signal);
+        return Object.assign(normalized, { headRouting });
+      },
+    };
   }
 
   /**
@@ -122,11 +142,27 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
    * @returns Native Web response produced by the Fluo dispatcher.
    */
   readonly fetch: NextAppRouteHandler = async (request) => {
+    const isHead = request.method === 'HEAD' && this.headRouting === 'explicit-or-get';
     if (this.closed) {
-      return createProblemResponse(SHUTDOWN_PROBLEM);
+      return createProblemResponse(SHUTDOWN_PROBLEM, isHead);
     }
     if (!this.dispatcher) {
-      return createProblemResponse(NOT_READY_PROBLEM);
+      return createProblemResponse(NOT_READY_PROBLEM, isHead);
+    }
+
+    if (isHead) {
+      const dispatch = startWebRequestDispatch({
+        dispatcher: this.dispatcher,
+        factory: this.requestResponseFactory,
+        request,
+      });
+      try {
+        const response = await dispatch.response;
+        await response.body?.cancel();
+        return new Response(null, response);
+      } finally {
+        await dispatch.completion;
+      }
     }
 
     return dispatchWebRequest({
@@ -177,7 +213,7 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
 /**
  * Create a Next-hosted Fluo HTTP adapter.
  *
- * @param options Web request parsing options.
+ * @param options Web request parsing and opt-in HEAD routing options.
  * @returns A new adapter instance.
  */
 export function createNextAdapter(
