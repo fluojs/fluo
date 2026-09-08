@@ -107,4 +107,10 @@ dependency graph를 평가합니다.
 
 ## 관련 참조
 
+Next compiler의 opt-in `include`/`exclude`와 `preserveModulePaths` 계약은
+[package README](../../packages/platform-nextjs/README.ko.md#decorator-compiler-연결)가
+소유합니다. 기존 기본값을 유지하며 버전별 `type` 옵션을 강제하지 않습니다.
+[실제 fixture](../../packages/platform-nextjs/e2e/README.ko.md)는 server DTO와
+client store SSR을 함께 dev/build/start로 검증합니다.
+
 - [package-surface.ko.md](./package-surface.ko.md)
