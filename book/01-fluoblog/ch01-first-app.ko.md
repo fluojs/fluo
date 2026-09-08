@@ -14,6 +14,8 @@
 
 이 책의 코드는 독자가 생성한 프로젝트에 적용하는 구현이다. 저장소의 `examples/fluo-blog`를 복사해서 이미 완성된 72장짜리 앱을 얻는다는 뜻이 아니다. 그 예제는 초기 HTTP와 DI 경로를 확인하는 별도의 실행 근거다. 본문의 명령과 실험은 재현 절차와 기대 결과이며, 이 원고를 집필하는 동안 독자의 새 프로젝트에서 실행해 통과시킨 기록은 아니다.
 
+Docs의 구분으로 이 책의 작업 디렉터리는 registry 의존성과 생성된 `fluo dev`·`fluo build`·`fluo start` 스크립트를 쓰는 `generated-app`이다. 반면 `examples/fluo-blog/00-start`는 workspace 의존성, 저장소 패키지 빌드와 번호별 checkpoint 스크립트가 필요한 `repository-example`이다. 실행 근거를 비교하더라도 예제 파일로 생성 프로젝트 전체를 덮어쓰지는 않는다.
+
 ## 실행 환경도 코드의 입력이다
 
 본문의 기준은 Node.js 24와 pnpm 10이다. 현재 Node 지향 Fluo 패키지와 CLI의 지원 범위는 `>=24.0.0 <27`이다. 지원 범위와 책에서 실제로 선택한 기준 버전은 구별해야 한다. “Node를 설치했다”는 사실만으로 버전 조건을 충족하지는 않는다. 먼저 프로젝트를 만들 터미널에서 다음을 확인한다.
@@ -96,11 +98,17 @@ await runFastifyApplication(AppModule, {
 
 이 검사는 외부 문자열을 옵션으로 바꾸는 애플리케이션 경계에 있다. 숫자로 바꾼 뒤 유한한지만 확인하면 빈 문자열이나 지수 표기 같은 입력까지 의도치 않게 받아들일 수 있다. 정규식으로 허용할 표기를 정하고 정수 범위를 다시 검사하면 입력 정책이 명확하다. 포트 `0`을 거부하는 것은 책의 로컬 실행 정책이다. 어댑터 자체는 운영체제가 빈 포트를 정하도록 `0`을 허용한다. 프레임워크가 금지하는 값과 애플리케이션이 선택하지 않은 값을 혼동하지 않는다.
 
+이 파일은 CLI의 포트 파서를 설명한 것이 아니라 FluoBlog의 입력 정책을 더 엄격하게 만든 것이다. 생성 starter는 `Number.parseInt(..., 10)`의 결과가 유한하지 않으면 `3000`으로 돌아가며, `3000oops`는 `3000`으로 읽는다. 저장소의 초기 checkpoint는 fallback 없이 `Number(...)`를 사용하므로 같은 입력이 `NaN`이 된다. Fastify는 전달받은 숫자 옵션을 검사할 뿐 `PORT`를 직접 읽지 않는다. 아래 실패 실험은 이 장의 `readPort`를 적용한 앱을 대상으로 한다.
+
 `host: '127.0.0.1'`은 실습 서버를 자신의 컴퓨터에서만 접근하는 주소에 바인딩한다. 다른 기기나 컨테이너에서 접근하려면 해당 실행 환경의 호스트 정책을 별도로 정해야 한다. 여기서 무조건 `0.0.0.0`으로 바꾸는 것은 “주소 오류 수정”이 아니라 접근 범위를 바꾸는 선택이다.
 
 `retryLimit: 0`은 포트 충돌을 즉시 드러내기 위한 실습 설정이다. 개발자가 오래된 프로세스를 남겼을 때 재시도 동안 멈춘 것처럼 보이지 않게 한다. 재시도는 순간적인 충돌을 완화할 수 있지만 이미 점유된 포트의 소유권 문제를 해결하지는 않는다. 문제를 재현하는 초기 단계에서는 빠른 실패가 더 유용하다.
 
-이 helper가 반환될 때는 listening이 시작되었고 종료 시그널 등록도 끝난 상태다. 반환값에 다시 `listen()`을 호출할 필요가 없다. 반대로 `bootstrapFastifyApplication()`은 자동으로 listening을 시작하지 않는 구성 경계다. 이름이 비슷하다고 서로 바꿔 쓰면 프로세스는 만들어졌는데 요청을 받지 않는 상황이 생긴다.
+`runFastifyApplication()`은 기본 Node/Fastify 실행 경로다. 이 helper가 반환될 때는 초기화, listening, 기본 `SIGINT`·`SIGTERM` 등록이 끝난 상태이므로 다시 `listen()`을 호출할 필요가 없다. 반대로 `bootstrapFastifyApplication()`은 초기화된 앱만 반환하고 listen과 Node signal 등록은 호출자에게 남기는 구성 경계다. 이름이 비슷하다고 서로 바꿔 쓰면 프로세스는 만들어졌는데 요청을 받지 않는 상황이 생긴다.
+
+직접 `FluoFactory.create()`에 `createFastifyAdapter()`를 전달하고 `app.listen()`을 기다리는 방법도 있다. 저장소의 `examples/minimal`이 이 명시적 조립 경로다. 공통 초기화는 같지만 helper가 제공하는 미들웨어 조립, logger 선택, 생성 이후 시작 실패의 close 시도와 signal 등록까지 자동으로 같아지지는 않는다. 두 Fastify helper는 설정된 CORS, 설정된 global prefix, 기본 security headers, 호출자 middleware 순으로 조립한다. `securityHeaders: false`가 아니면 security headers가 켜지지만 CORS와 prefix는 생략하면 켜지지 않는다. 뒤 장에서 옵션을 누적할 때도 이 실행 경로를 이름만 바꿔 교체하지 않는다.
+
+여기서는 Node/Fastify가 socket listener를 소유한다. Workers나 Next.js에 붙이는 앱은 호스트가 요청 전달과 종료를 소유하며, 그 경로의 활성화가 새 socket을 연다는 뜻은 아니다. 같은 `listen`이라는 이름을 모든 환경의 포트·signal 요구사항으로 확대하지 않는다. 아래 컨텍스트 실험의 `fluoFactory`도 `FluoFactory`의 alias이지 또 다른 런타임 모델이 아니다.
 
 ## HTTP를 열지 않고 조립만 확인하는 실험
 
@@ -194,6 +202,8 @@ export default defineConfig({
 
 `fluoDecoratorsPlugin()`은 애플리케이션의 데코레이터를 Babel로 먼저 변환한다. 현재 생성 도구의 Vite 8 파이프라인에서 Rolldown/Oxc가 처리하기 전에 이 단계가 필요하다. `target: 'node24'`는 빌드 대상이지 실행 중인 Node 버전을 바꾸는 명령이 아니다. `server.port: 5173` 역시 Vite 설정이며 `src/main.ts`에서 선택한 Fastify의 `3000`과 같은 포트를 두 번 설정하는 것이 아니다.
 
+변환 설정과 metadata 준비 시점도 구별한다. 데코레이터가 붙은 선언을 평가하기 전에 `Symbol.metadata`가 준비되어 있어야 한다. 호스트나 변환 경로가 이를 제공하지 않는 custom bootstrap에서는 `@fluojs/core`의 `ensureMetadataSymbol()`로 먼저 준비한 뒤 decorated module을 로드한다. static import는 진입점 본문보다 먼저 평가되므로 그 import 아래에 준비 호출만 추가해서는 순서가 바뀌지 않는다. 생성된 변환 경로를 유지하고, 9장에서 설정과 앱 그래프를 직접 조립할 때는 준비 이후의 dynamic import로 이 경계를 명시한다.
+
 테스트 파일은 별도 경계다. 애플리케이션용 플러그인이 `*.test.ts`를 처리할 것이라고 가정하지 않는다. starter의 `vitest.config.ts`는 `@fluojs/testing/vitest`의 플러그인을 사용한다. 4장에서 테스트를 추가할 때 이 분리를 그대로 유지한다. 개발은 성공하는데 테스트의 데코레이터에서 구문 오류가 나면 비즈니스 코드를 고치기 전에 어느 변환 경로가 그 파일을 처리했는지 확인한다.
 
 ## 성공한 시작만큼 중요한 종료
@@ -219,6 +229,15 @@ PORT=70000 node dist/main.js
 `runFastifyApplication()`은 시그널 기반 종료를 등록하지만 모든 실패를 성공으로 바꾸지는 않는다. 종료 시간 초과나 실패는 로그와 `process.exitCode`로 보고하며 프로세스의 최종 종료는 주변 호스트가 소유한다. 애플리케이션이 직접 수명을 관리하는 실험에서는 `finally`에서 `close()`를 기다린다. 즉시 `process.exit()`로 끝내는 습관은 아직 끝나지 않은 정리를 관찰할 기회부터 없애 버린다.
 
 첫 실행을 마친 상태는 작다. `src/main.ts`에는 실행 환경과 서버 시작만 있고, `src/app.ts`에는 starter의 모듈 구성이 있으며, `/greeting`이 응답한다. 이 정도 목적에는 프레임워크 없이 Node의 HTTP 서버 하나를 쓰는 선택도 가능하다. Fluo의 조립 비용이 의미를 갖는 시점은 요청 처리와 테스트, 데이터 접근처럼 서로 다른 책임을 같은 규칙으로 연결해야 할 때다. 다음 장에서는 그 첫 제품 요구로 `/posts`와 `/posts/1`을 만들고, 실행 성공을 독자가 볼 수 있는 게시글로 바꾼다.
+
+## 기준 Docs
+
+이 장의 실행·실패 설명은 다음 Docs를 FluoBlog에 적용한 것이다. 엄격한 포트와 loopback 주소는 앱의 선택이며, 아래 소스·테스트는 계약을 대조하는 추가 근거다.
+
+- [문서 권위와 Book의 역할](../../docs/contracts/documentation-authority.ko.md)
+- [기본 실행, 명시적 조립과 호스트별 시작 경로](../../docs/getting-started/bootstrap-paths.ko.md)
+- [초기화 완료와 signal·종료 소유권](../../docs/architecture/lifecycle-and-shutdown.ko.md)
+- [표준 데코레이터와 metadata 준비](../../docs/architecture/decorators-and-metadata.ko.md)
 
 ## 근거와 더 읽기
 

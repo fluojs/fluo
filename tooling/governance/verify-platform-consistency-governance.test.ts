@@ -43,6 +43,7 @@ import {
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
   mandatoryProductionImporterPackageNamesForLockfileChange,
+  migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
@@ -143,6 +144,267 @@ function enforceContractCompanionUpdates(
     withUnchangedEmailMigrationSections(migrationGuideSnapshots),
   );
 }
+
+describe('Fastify raw-context README companion classification', () => {
+  const readmePaths = [
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+  ];
+  const migrationPaths = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ];
+  const documentationPaths = [...readmePaths, ...migrationPaths];
+  const adapterRegression = 'packages/platform-fastify/src/adapter.test.ts';
+  const genericCompanions = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+  ];
+  const changedFiles = [...documentationPaths, ...genericCompanions];
+  const rawContextSection = [
+    '### Raw context',
+    '`context.request.raw`: `IncomingMessage`; excluded=`FastifyRequest`',
+    '`context.response.raw`: `FastifyReply`; excluded=`ServerResponse`',
+    'native-accessor=unsupported',
+  ].join('\n');
+  const readme = [
+    '## Bootstrap',
+    '`createFastifyAdapter`',
+    rawContextSection,
+    '### Next',
+    'next=unchanged',
+  ].join('\n');
+  const bootstrapHead = readme.replace('`createFastifyAdapter`', '`runFastifyApplication`');
+
+  function unrelatedSnapshots() {
+    return withUnchangedEmailMigrationSections({
+      ...Object.fromEntries(readmePaths.map((path) => [
+        path, { base: readme, head: bootstrapHead },
+      ])),
+      ...Object.fromEntries(migrationPaths.map((path) => [
+        path,
+        {
+          base: `${rawContextSection}\n## Terminus\n[owner](../../packages/terminus/README.md)`,
+          head: `${rawContextSection}\n## Terminus\n[owner](../contracts/health-and-readiness.md)`,
+        },
+      ])),
+    });
+  }
+
+  it('allows bootstrap README and Terminus owner-link edits without an adapter change', () => {
+    // Given: both doc pairs change, but their raw request/reply contract is identical.
+    const snapshots = unrelatedSnapshots();
+
+    // When / Then: the unrelated edits do not demand a meaningless adapter test edit.
+    expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).not.toThrow();
+  });
+
+  it.each(readmePaths)('allows an isolated bootstrap edit in %s', (path) => {
+    // Given: the other README and migration guides are not changed.
+    const snapshots = unrelatedSnapshots();
+
+    // When / Then: fresh unchanged raw-context evidence suffices for the touched README.
+    expect(() => enforceContractCompanionUpdatesFromSources(
+      [path, ...genericCompanions], snapshots,
+    )).not.toThrow();
+  });
+
+  const relevantHeads = [
+    ['request type', bootstrapHead.replace('`IncomingMessage`', '`FastifyRequest`')],
+    ['reply type', bootstrapHead.replace('`FastifyReply`', '`ServerResponse`')],
+    ['token-free contract line', bootstrapHead.replace('native-accessor=unsupported', 'native-accessor=supported')],
+    ['section deletion', bootstrapHead.replace(rawContextSection, '')],
+    ['section duplication', `${bootstrapHead}\n${rawContextSection}`],
+    ['new external raw claim', `${bootstrapHead}\n## Additional\n\`context.response.raw\`: \`ServerResponse\``],
+    ['new token-free subsection', bootstrapHead.replace(
+      '### Next', '#### Native accessor\nnative-accessor=supported\n### Next',
+    )],
+    ['contract line order', bootstrapHead.replace(
+      rawContextSection, rawContextSection.split('\n').reverse().join('\n'),
+    )],
+  ];
+
+  for (const path of readmePaths) {
+    it.each(relevantHeads)(`requires the adapter for mixed bootstrap and %s drift in ${path}`, (_label, head) => {
+      // Given: unrelated edits coexist with a relevant raw-context change in one locale.
+      const snapshots = { ...unrelatedSnapshots(), [path]: { base: readme, head } };
+
+      // When / Then: complete docs alone do not waive the runtime regression.
+      expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).toThrow(
+        /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+      );
+    });
+
+    it.each(relevantHeads)(`accepts complete companions for %s drift in ${path}`, (_label, head) => {
+      // Given: even deleted or ambiguous raw-context sections retain the full companion gate.
+      const snapshots = { ...unrelatedSnapshots(), [path]: { base: readme, head } };
+
+      // When / Then: all four docs and the adapter regression satisfy that gate.
+      expect(() => enforceContractCompanionUpdatesFromSources(
+        [...changedFiles, adapterRegression], snapshots,
+      )).not.toThrow();
+    });
+  }
+
+  for (const path of readmePaths) {
+    const nestedReadme = readme.replace(
+      '### Next', '#### Native accessor\naccessor-ownership=adapter\n### Next',
+    );
+
+    it(`requires the adapter for token-free guidance drift below a subordinate heading in ${path}`, () => {
+      // Given: all six raw tokens stay unchanged above an existing child heading.
+      const snapshots = {
+        ...unrelatedSnapshots(),
+        [path]: {
+          base: nestedReadme,
+          head: nestedReadme.replace('accessor-ownership=adapter', 'accessor-ownership=application'),
+        },
+      };
+
+      // When / Then: the child guidance belongs to the raw-context contract.
+      expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).toThrow(
+        /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+      );
+    });
+
+    it(`allows unrelated edits after the peer heading of a nested raw contract in ${path}`, () => {
+      // Given: the complete raw contract, including its child heading, is unchanged.
+      const snapshots = {
+        ...unrelatedSnapshots(),
+        [path]: {
+          base: nestedReadme,
+          head: nestedReadme.replace('next=unchanged', 'next=updated'),
+        },
+      };
+
+      // When / Then: the next peer heading bounds the contract rather than the whole README.
+      expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).not.toThrow();
+    });
+
+    it.each(['```', '~~~'])(`requires the adapter past a heading-shaped line inside a %s fence in ${path}`, (fence) => {
+      // Given: a code example contains a peer-shaped heading before token-free contract guidance.
+      const base = readme.replace('### Next', [
+        `${fence}text`,
+        '### Example',
+        'example=unchanged',
+        fence,
+        'accessor-ownership=adapter',
+        '### Next',
+      ].join('\n'));
+      const snapshots = {
+        ...unrelatedSnapshots(),
+        [path]: {
+          base,
+          head: base.replace('accessor-ownership=adapter', 'accessor-ownership=application'),
+        },
+      };
+
+      // When / Then: code cannot terminate the surrounding raw-context contract.
+      expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).toThrow(
+        /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+      );
+    });
+  }
+
+  it.each(documentationPaths)('rejects relevant drift when the %s companion is missing', (missingPath) => {
+    // Given: both README contracts change, but one of the four governed docs is absent.
+    const snapshots = {
+      ...unrelatedSnapshots(),
+      ...Object.fromEntries(readmePaths.map((path) => [
+        path, { base: readme, head: bootstrapHead.replace('native-accessor=unsupported', 'native-accessor=supported') },
+      ])),
+    };
+
+    // When / Then: the adapter alone cannot replace the missing bilingual document.
+    expect(() => enforceContractCompanionUpdatesFromSources(
+      [...changedFiles.filter((path) => path !== missingPath), adapterRegression], snapshots,
+    )).toThrow(/all governed Fastify documentation/u);
+  });
+
+  const invalidSnapshots = [
+    ['missing base', { base: undefined, head: bootstrapHead }],
+    ['missing head', { base: readme, head: undefined }],
+    ['non-string base', { base: 0, head: bootstrapHead }],
+    ['non-string head', { base: readme, head: {} }],
+    ['empty documents', { base: '', head: '' }],
+    ['missing contract anchor', { base: '## Bootstrap', head: '## Bootstrap\n`runFastifyApplication`' }],
+    ['ambiguous contract sections', {
+      base: `${readme}\n${rawContextSection}`,
+      head: `${bootstrapHead}\n${rawContextSection}`,
+    }],
+  ] as const;
+
+  for (const path of readmePaths) {
+    it.each(invalidSnapshots)(`fails closed for %s in ${path}`, (_label, snapshot) => {
+      // Given: the supplied README evidence cannot prove a single unchanged raw contract.
+      const snapshots = { ...unrelatedSnapshots(), [path]: snapshot };
+
+      // When / Then: uncertain evidence never grants the unrelated-edit exemption.
+      expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).toThrow(
+        /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+      );
+    });
+
+    it(`fails closed when the snapshot entry is missing for ${path}`, () => {
+      // Given: one touched README lacks a snapshot, despite valid evidence for its peer.
+      const snapshots = Object.fromEntries(
+        Object.entries(unrelatedSnapshots()).filter(([key]) => key !== path),
+      );
+
+      // When / Then: the missing snapshot preserves the adapter requirement.
+      expect(() => enforceContractCompanionUpdatesFromSources(changedFiles, snapshots)).toThrow(
+        /packages\/platform-fastify\/src\/adapter\.test\.ts/u,
+      );
+    });
+  }
+
+  it.each(migrationPaths)('preserves migration-guide raw drift detection in %s', (path) => {
+    // Given: README edits are unrelated, but a migration guide changes the raw response type.
+    const snapshots = {
+      ...unrelatedSnapshots(),
+      [path]: { base: rawContextSection, head: rawContextSection.replace('`FastifyReply`', '`ServerResponse`') },
+    };
+
+    // When / Then: narrowing the README trigger must not narrow migration-guide enforcement.
+    expect(() => enforceContractCompanionUpdates(
+      changedFiles, snapshots,
+    )).toThrow(/packages\/platform-fastify\/src\/adapter\.test\.ts/u);
+  });
+
+  it('collects both README bases from git and heads from the current worktree', () => {
+    // Given: git base content differs from the on-disk heads, and the base branch is explicit.
+    const calls: string[][] = [];
+    const runCommand: RunCommand = (_command, args) => {
+      calls.push(args);
+      return { status: 0, stdout: args[0] === 'merge-base' ? 'base-sha\n' : `base:${args[1]}` };
+    };
+
+    // When: the actual CLI snapshot acquisition seam runs.
+    const snapshots = migrationGuideSnapshotsFromGit(runCommand, { GITHUB_BASE_REF: 'main' });
+
+    // Then: neither locale can silently reuse HEAD or omit the README evidence.
+    expect(calls[0]).toEqual(['merge-base', 'HEAD', 'origin/main']);
+    for (const path of readmePaths) {
+      expect(calls).toContainEqual(['show', `base-sha:${path}`]);
+      expect(snapshots?.[path]).toEqual({
+        base: `base:base-sha:${path}`,
+        head: readFileSync(join(repoRoot, path), 'utf8'),
+      });
+    }
+  });
+
+  it.each(readmePaths)('does not return partial snapshots when git cannot read %s', (path) => {
+    // Given: a requested README base cannot be acquired.
+    const runCommand: RunCommand = (_command, args) => ({
+      status: args[1] === `base-sha:${path}` ? 1 : 0,
+      stdout: args[0] === 'merge-base' ? 'base-sha\n' : '',
+    });
+
+    // When / Then: callers receive no evidence rather than a misleading partial snapshot.
+    expect(migrationGuideSnapshotsFromGit(runCommand, {})).toBeUndefined();
+  });
+});
 
 describe('FluoBlog tutorial source copies', () => {
   const sourceLessons = [

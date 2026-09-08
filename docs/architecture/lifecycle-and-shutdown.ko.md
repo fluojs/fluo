@@ -2,6 +2,32 @@
 
 <p><a href="./lifecycle-and-shutdown.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+## 범위와 사전 조건
+
+이 EN/KO 문서 쌍은 [문서 권위 정책](../contracts/documentation-authority.ko.md)에 따른 runtime lifecycle, 종료 admission, cleanup 재시도의 기준 Docs입니다. Book과 CONTEXT는 이 계약을 설명하고 연결하는 소비자입니다. 현재 checkout의 `@fluojs/runtime`과 DI, Node/Fastify 및 host-owned adapter 경계를 다룹니다. 배포된 모든 버전에서 검증했다는 뜻은 아닙니다. Terminus HTTP health/readiness 판정은 별도 [health 계약](../contracts/health-and-readiness.ko.md)의 범위입니다.
+
+| 항목 | 전제와 공개 표면 |
+| --- | --- |
+| 실행 환경 | 아래 검증 명령은 의존성을 설치한 repository checkout에서 Node `>=24 <27`, `pnpm@10.4.1`을 사용합니다. 생성 앱은 registry 의존성과 생성된 scripts를 유지하고, `examples/fluo-blog` 같은 repository example은 workspace 의존성과 자체 빌드 전제를 따릅니다. 이 문서는 두 앱 디렉터리를 서로 덮어쓰는 recipe가 아닙니다. |
+| 모듈과 DI | `@fluojs/runtime`의 `defineModule`, `FluoFactory`, `fluoFactory`, `bootstrapApplication`을 사용합니다. Root module과 provider를 등록하고, 모듈 간 의존성은 imports/exports로 공개해야 합니다. 생성자 의존성에는 `@fluojs/core`의 `Inject` 또는 provider의 명시적 `inject` 목록이 필요합니다. Decorator를 쓰면 module 평가 전에 `Symbol.metadata` 준비와 표준 decorator 변환이 필요합니다. [metadata 계약](./decorators-and-metadata.ko.md)을 따릅니다. |
+| Lifecycle API | `@fluojs/runtime`에서 type으로 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, `ApplicationContext`를 import합니다. 훅은 동기 `void` 또는 `Promise<void>`를 반환합니다. Interface 선언만으로 등록되지는 않습니다. Hook-bearing `useValue` 또는 적격 singleton class/factory provider가 lifecycle 대상이며, `useExisting` alias와 request/transient provider는 독립 startup hook 대상으로 root-resolve하지 않습니다. |
+| HTTP 경로 | `@fluojs/platform-fastify`의 `runFastifyApplication`, `bootstrapFastifyApplication`, `createFastifyAdapter`; `@fluojs/platform-nodejs`의 `runNodeApplication`, `bootstrapNodeApplication`, `createNodeHttpAdapter`가 공개 API입니다. 직접 adapter를 구현할 때는 `@fluojs/http/portable`의 `HttpApplicationAdapter` 계약을 따릅니다. 이 문서의 `src/` 경로는 구현 근거이지 consumer import 경로가 아닙니다. |
+| 외부 자원 | 순수 DI 예제에는 서버, 환경 파일, 외부 서비스가 필요하지 않습니다. DB·queue·socket·background job을 추가하면 해당 자원의 연결 설정, 오류 처리, drain, close 소유권도 애플리케이션이나 해당 package에 지정해야 합니다. |
+
+## 입력, 기본값과 완료 시점
+
+| API 또는 입력 | 기본값, 반환과 경계 |
+| --- | --- |
+| `FluoFactory.create(RootModule, options = {})` | Bootstrap과 HTTP dispatcher 생성을 await한 `Promise<Application>`이며 초기 `state`는 `bootstrapped`입니다. 자동 listen과 signal 등록은 없습니다. Adapter 없이 shell을 만들 수 있지만 `listen()`은 `InvariantError`로 reject합니다. `fluoFactory`는 같은 `FluoFactory`의 alias입니다. |
+| `bootstrapApplication({ rootModule, ...options })` | 같은 HTTP shell 생성 경로이며 `logger`를 직접 받을 수 있습니다. `rootModule`은 필수입니다. Graph/visibility/injection validation과 provider resolution 또는 startup hook 실패는 bootstrap을 reject합니다. |
+| `FluoFactory.createApplicationContext(RootModule, options = {})` | DI와 lifecycle 초기화가 끝난 `Promise<ApplicationContext>`입니다. HTTP adapter/dispatcher/listener 및 공개 `state`, `ready()`, `listen()`은 없습니다. `get(token): Promise<T>`, `close(signal?): Promise<void>`를 사용합니다. |
+| Bootstrap 옵션 | `providers`는 생략 시 추가 등록 없음, `duplicateProviderPolicy`는 `warn`이며 `throw`/`ignore`도 받습니다. `moduleGraphCache`와 `diagnostics.timing`은 기본 off입니다. Timing을 켜면 `bootstrapTiming`을 제공하며 context에는 `create_dispatcher` phase가 없습니다. |
+| `app.ready()` | `Promise<void>`로 critical platform readiness를 검사할 뿐 adapter를 활성화하거나 `state`를 `ready`로 바꾸지 않습니다. HTTP health route를 자동 생성하지도 않습니다. 성공한 close 뒤에는 reject합니다. 종료 admission 판정에는 이 메서드나 `state` 대신 아래 operation gate 계약을 적용합니다. |
+| `app.listen()` | 인수 없이 adapter 설정을 사용합니다. `ready()` 다음 `adapter.listen(dispatcher)`를 await하고, shutdown이 시작되지 않았을 때만 `state = 'ready'`로 전환합니다. 겹친 호출은 진행 중인 시작 작업을 공유하고 이미 ready이면 다시 시작하지 않습니다. Readiness/adapter 실패만으로 close하지 않으며, close가 시작되지 않았다면 caller가 adapter 계약에 따라 listen을 재시도할 수 있습니다. |
+| `bootstrapFastifyApplication(RootModule, options)` | 기본 미들웨어를 조립한 bootstrapped 앱을 반환하지만 listen과 Node signal 등록은 하지 않습니다. `runFastifyApplication`은 이어서 listen, 시작 로그, signal 등록까지 성공한 뒤 반환합니다. 직접 Factory 조립은 이 helper의 미들웨어·logger·실패 정리·signal 정책과 자동으로 동등하지 않습니다. [시작 경로](../getting-started/bootstrap-paths.ko.md)를 참고합니다. |
+| Node/Fastify 종료 설정 | `shutdownSignals`는 run helper에서 기본 `['SIGINT', 'SIGTERM']`, `false`로 비활성화하거나 지원 신호 목록으로 지정합니다. `forceExitTimeoutMs = 30_000`은 signal 종료 실패를 표시하는 시간이며, adapter의 `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify의 종료 제한은 non-negative safe integer로 setup에서 검증됩니다. |
+| `close(signal?)` | 생략한 signal은 `undefined`이며 runtime이 임의로 `SIGTERM`을 붙이지 않습니다. 진행 중 teardown을 공유하고 성공 뒤 반복 close는 no-op입니다. 실패 후 명시적 재시도는 아래 phase별 소유권을 따릅니다. |
+
 ## 시작 단계
 
 | 순서 | 단계 | 런타임 사실 | 근거 소스 |
@@ -15,19 +41,21 @@
 
 타이밍 진단을 `diagnostics.timing`으로 활성화하면 부트스트랩 phase 이름은 `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, `create_dispatcher`로 고정됩니다.
 
-어느 부트스트랩 단계에서든 실패가 발생하면 런타임은 `bootstrap-failed` 신호 값으로 실패 정리를 수행하고 컨테이너를 해제하며, 애플리케이션을 ready 상태로 남기지 않습니다.
+Bootstrap 실패 시 런타임은 확보한 lifecycle instance에 `bootstrap-failed` 신호로 실패 정리를 수행하고, 확보한 container의 해제를 시도하며, ready 애플리케이션을 반환하지 않습니다. 독립 provider 해석은 동시에 진행할 수 있지만 모두 settle된 뒤 선언 순서에 따라 훅을 실행합니다. 초기화 훅은 순차 await하며 실패하면 이후 startup 훅으로 진행하지 않습니다.
+
+`platformShell.stop()`은 앞에 추가된 lifecycle instance의 `onModuleDestroy()`에 들어 있습니다. 따라서 사용자 instance의 역순 destroy 다음, `onApplicationShutdown()` pass 전에 실행됩니다. Context도 같은 bootstrap lifecycle을 따르지만 HTTP dispatcher 생성은 하지 않습니다.
 
 ## 상태 신호
 
 | 신호 또는 상태 | 보장 | 근거 소스 |
 | --- | --- | --- |
 | 모듈 readiness 표시 | 부트스트랩 중 `markStarting()`과 `markReady()`를 노출하는 compiled module은 라이프사이클 훅 전에 starting으로 설정되고, `platformShell.start()`가 성공한 뒤에만 ready로 전환됩니다. shutdown은 cleanup callback과 lifecycle shutdown hook 실행 전에 이 표시를 starting으로 되돌립니다. | `packages/runtime/src/bootstrap.ts:resetReadinessState()`, `packages/runtime/src/bootstrap.ts:markReadinessState()`, `packages/runtime/src/bootstrap.ts:runBootstrapLifecycle()`, `packages/runtime/src/bootstrap.ts:closeRuntimeResources()` |
-| 애플리케이션 상태 모델 | 공개 런타임 상태는 `bootstrapped`, `ready`, `closed`입니다. | `packages/runtime/src/types.ts:91-92` |
-| listen 이전 readiness 게이트 | `Application.listen()`은 `ready()`를 호출하고, `ready()`는 `platformShell.assertCriticalReadiness()`에 위임합니다. 이 검사가 통과하기 전에는 어댑터 bind가 시작되지 않습니다. | `packages/runtime/src/bootstrap.ts:437-489` |
-| ready 전이 | `Application.listen()`은 `adapter.listen(this.dispatcher)`가 성공적으로 끝난 뒤에만 애플리케이션 상태를 `ready`로 설정합니다. | `packages/runtime/src/bootstrap.ts:481-490` |
+| 애플리케이션 상태 모델 | 공개 런타임 상태는 `bootstrapped`, `ready`, `closed`입니다. | `packages/runtime/src/types.ts:ApplicationState` |
+| listen 이전 readiness 게이트 | `Application.listen()`은 `ready()`를 호출하고, `ready()`는 `platformShell.assertCriticalReadiness()`에 위임합니다. 이 검사가 통과하기 전에는 adapter의 listen을 호출하지 않습니다. | `packages/runtime/src/bootstrap.ts:FluoApplication.startListening()` |
+| ready 전이 | `Application.listen()`은 `adapter.listen(this.dispatcher)`가 성공적으로 끝나고 shutdown이 시작되지 않았을 때만 애플리케이션 상태를 `ready`로 설정합니다. | `packages/runtime/src/bootstrap.ts:FluoApplication.startListening()` |
 | closed 전이 | `Application.close()`는 teardown이 pending인 동안 기존 공개 상태를 유지하고 teardown이 성공적으로 완료된 뒤에만 `closed`로 설정합니다. Shutdown admission은 공개 상태와 별도로 추적합니다. | `packages/runtime/src/application.test.ts` (`keeps failed shutdown terminal while retrying only incomplete cleanup`) |
 
-이 보장들은 부트스트랩 완료와 리스너 바인딩을 분리합니다. 컴파일된 애플리케이션은 트래픽을 받기 전에 `bootstrapped` 상태로 존재할 수 있습니다.
+이 보장들은 bootstrap 완료, readiness 검사, adapter 활성화와 ingress를 구분합니다. Node/Fastify는 adapter 생성 시 server 객체를 만들고 listen 때 binding을 수행합니다. Next.js/Workers 같은 host-owned 경로의 listen은 dispatcher 연결이며 별도 socket 생성을 뜻하지 않습니다. `Application.dispatch()`는 shutdown 전에는 listen을 요구하지 않고, 공개 `app.dispatcher`와 adapter의 직접 진입점은 `Application.dispatch()` wrapper를 거치지 않습니다. 이들의 ingress/drain 정책은 각 adapter와 host가 소유합니다.
 
 ## 종료 보장
 
@@ -58,6 +86,107 @@ bootstrap-failure cleanup은 등록 순서대로 callback을 실행하고 다음
 await합니다. 실패해도 이후 registration은 건너뛰지 않습니다. close는 failure를 aggregate하고
 완료되지 않은 cleanup phase만 retry 가능하게 남기며, bootstrap은 원래 bootstrap error를 보존하고
 cleanup failure를 `ApplicationLogger`로 보고합니다.
+
+## 실패, 재시도와 자원 소유권
+
+1. `Application.close()`는 첫 await 전에 terminal gate를 닫고 진행 중 listen의 settlement를 기다립니다. 늦게 완료된 listen은 ready로 돌아가지 않습니다. 연결된 microservice를 연결 역순으로 닫은 뒤 부모의 readiness reset → runtime cleanup → destroy hooks → application shutdown hooks → adapter close → container dispose 순서로 진행합니다. Context에는 child HTTP adapter 종료가 없습니다.
+2. `Application.get()`, `ApplicationContext.get()`, `Application.listen()`, `Application.dispatch()`, `Application.connectMicroservice()`, `Application.startAllMicroservices()`는 shutdown 시작 후 거부됩니다. Provider/runtime resolution 전후 모두 gate를 검사하므로 close와 겹친 비동기 해석 결과도 반환하거나 child로 연결하지 않습니다. Pending/실패 중 기존 공개 state는 유지되지만 사용 가능하다는 뜻은 아닙니다. 성공한 close 뒤 provider lookup도 disposed container에서 실패합니다.
+3. Runtime cleanup과 shutdown hook의 개별 실패는 나머지 callback/hook과 이후 adapter/container 정리를 건너뛰지 않습니다. 단일 실패는 error로, 여러 실패는 `AggregateError`로 reject합니다. 완료된 phase는 재시도에서 건너뜁니다. **Runtime cleanup phase가 실패하면 등록된 callback 전체를, lifecycle hook phase가 실패하면 두 hook pass 전체를 다시 실행**하므로 이 훅들은 성공했던 작업의 재진입도 처리해야 합니다. 이는 container의 실패한 `onDestroy()`만 재시도하는 정책과 다릅니다. Readiness reset 자체가 throw하면 그 시도의 이후 phase로 진행하지 않습니다.
+4. DI disposal은 materialize된 container-managed instance와 소유한 child scope를 정리하며 성공한 `onDestroy()`는 다시 호출하지 않습니다. 실패 뒤에도 container의 register/override/resolve/createRequestScope는 terminal입니다. 직접 dispose한 child의 후속 재시도는 그 caller가, parent가 시작한 실패한 child disposal은 parent hierarchy가 소유합니다. Lifecycle `onModuleDestroy()`/`onApplicationShutdown()`와 DI `onDestroy()`는 별도 계약이며 하나의 hook으로 합쳐지지 않습니다.
+5. Adapter retry는 adapter 소유입니다. Runtime은 incomplete adapter phase에서 `close(signal)`을 다시 호출할 뿐 모든 adapter를 재시작하거나 같은 drain을 보장하지 않습니다. `MicroserviceApplication.close()`는 성공/실패 결과를 terminal하게 보존하므로 부모 close 재시도가 child transport teardown을 재실행하지 않습니다. `startAllMicroservices()` 실패는 먼저 시작된 child만 역순 rollback하며 원래 시작 오류를 유지합니다.
+6. Bootstrap 자체의 실패 경로는 readiness reset, 등록된 runtime cleanup, 확보한 instance의 shutdown hooks, 확보한 container disposal을 시도하고 정리 오류를 logger로 보고한 뒤 원래 startup 오류를 rethrow합니다. 이 경로는 HTTP adapter close를 호출하지 않습니다. 이미 앱을 반환받은 run helper의 listen/시작 로그/signal 등록 실패는 `app.close('bootstrap-failed')`를 시도하고 원래 오류를 유지합니다. 수동 Factory 경로의 시작 실패 및 bootstrap 이전 caller-created 자원은 caller가 정리 정책을 소유합니다.
+7. Node run helper는 listen 뒤 signal handler를 등록하고 수동 close에서도 등록 해제를 한 번 시도한 뒤 runtime close를 수행합니다. 등록 해제가 실패해도 runtime close를 시도하며 둘 다 실패하면 aggregate합니다. Signal timeout/close 실패는 로그와 `process.exitCode = 1`로 표시할 뿐 `process.exit()`를 호출하거나 cleanup을 취소하지 않습니다. Timeout 전에 정상 종료하면 exit code는 `0`입니다. 최종 프로세스 종료는 host 소유입니다.
+8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 run helper의 `shutdownSignals: false`로 이중 소유권을 피합니다.
+
+## 범위를 명시한 예제
+
+다음은 등록된 provider의 훅 순서와 adapter 없는 context 종료만 보여주는 TypeScript fragment입니다. 빈 root module을 이 코드 안에서 정의하므로 별도 앱 파일이나 decorator 변환은 필요하지 않습니다. HTTP 요청이나 signal handler 예제는 아닙니다.
+
+```ts
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@fluojs/runtime';
+
+const events: string[] = [];
+class Resource implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown {
+  onModuleInit() { events.push('init'); }
+  onApplicationBootstrap() { events.push('bootstrap'); }
+  onModuleDestroy() { events.push('destroy'); }
+  onApplicationShutdown(signal?: string) { events.push(`shutdown:${signal ?? 'none'}`); }
+}
+class RootModule {}
+defineModule(RootModule, { providers: [Resource] });
+const context = await FluoFactory.createApplicationContext(RootModule);
+try {
+  await context.get(Resource);
+} finally {
+  await context.close('manual');
+}
+// events: ['init', 'bootstrap', 'destroy', 'shutdown:manual']
+```
+
+기본 Node/Fastify 실행은 `runFastifyApplication`, 활성화 전 구성이 필요하면 `bootstrapFastifyApplication`, adapter를 명시적으로 조립하면 Factory 경로를 선택합니다. Host-owned 요청은 해당 adapter의 연결 recipe를 따릅니다. 사람을 위한 적용 설명은 Book 1권 23장 `ch23-lifecycle-and-readiness`, legacy `book/advanced/ch09-app-context`에 있습니다.
+
+## 기계 소비 계약과 실행 근거
+
+아래 JSON만 `tooling/governance/runtime-shutdown-terminality.test.ts`가 기계 필드로 소비합니다. `shutdownOrder`는 child close 이후 부모 runtime phase 순서입니다. 자연어 문장, Book 서사, CONTEXT 요약은 검증 key가 아닙니다. Sentinel 검사는 삭제·중복·필드 변경을 검출하지만 의미나 runtime 동작을 단독으로 증명하지 않습니다. Legacy Book의 실제 runtime source excerpt 일치 검사는 별도 consumer 검사로 유지합니다.
+
+<!-- fluo:lifecycle-shutdown:start -->
+```json
+{
+  "schemaVersion": 1,
+  "states": ["bootstrapped", "ready", "closed"],
+  "admissionCloses": "close-start",
+  "blockedOperations": [
+    "Application.get()",
+    "ApplicationContext.get()",
+    "Application.listen()",
+    "Application.dispatch()",
+    "Application.connectMicroservice()",
+    "Application.startAllMicroservices()"
+  ],
+  "stateDuringCloseOrFailure": "unchanged",
+  "closedAfter": "successful-teardown",
+  "admittedDispatch": "not-cancelled-by-gate",
+  "shutdownOrder": [
+    "readiness-reset",
+    "runtime-cleanup",
+    "onModuleDestroy:reverse",
+    "onApplicationShutdown:reverse",
+    "adapter.close",
+    "container.dispose"
+  ],
+  "retry": {
+    "runtimeCleanup": "incomplete-phase-all-registrations",
+    "lifecycleHooks": "incomplete-phase-all-hooks",
+    "adapter": "adapter-owned",
+    "container": "failed-onDestroy-only",
+    "microservice": "cached-terminal-result",
+    "admissionReopens": false
+  },
+  "nodeSignals": {
+    "defaults": ["SIGINT", "SIGTERM"],
+    "forceExitTimeoutMs": 30000,
+    "callsProcessExit": false
+  },
+  "nodeAdapterShutdownTimeoutMs": 10000
+}
+```
+<!-- fluo:lifecycle-shutdown:end -->
+
+| 근거 | 검증하는 경계 |
+| --- | --- |
+| `packages/runtime/src/index.ts`, `types.ts`, `bootstrap.ts`, `retryable-shutdown.ts`, `platform-shell.ts` | 공개 export, 상태, lifecycle 순서, gate, 완료 phase와 실패 경로 |
+| `packages/runtime/src/application.test.ts`, `bootstrap.test.ts` | Pending/실패/성공 종료, provider·child resolution 경쟁, dispatch admission, hook 재실행, DI 실패 hook 재시도, bootstrap 정리, 실제 Node HTTP 및 signal timeout |
+| `packages/runtime/src/http-adapter-shared.ts`, `http-adapter-shared.test.ts` | Helper 시작/등록 실패 정리, 원래 오류 유지, signal 등록 해제 |
+| `packages/di/src/container.ts`, `container-disposal-retry.test.ts` | Terminal disposal, 모든 materialized hook 시도, 실패 hook만 명시적 재시도 |
+| `packages/platform-nodejs/src/node/internal-node.ts`, `internal-node-shutdown.ts`; `packages/platform-fastify/src/adapter.ts`, `adapter.test.ts` | Server 생성과 listen 구분, 기본값, signal/close 소유권 및 실제 HTTP |
+| `packages/platform-nextjs/src/adapter.ts`, `index.test.ts`; `packages/platform-cloudflare-workers/src/adapter.ts`, `adapter-lifecycle.test.ts` | Host-owned dispatcher 연결과 종료 경계 |
+
+Repository root에서 실행합니다. Packages project의 global setup은 필요한 emitted dependency를 빌드합니다. 외부 DB/broker나 실제 Next.js/Workers 배포를 검증하는 명령은 아닙니다.
+
+```bash
+pnpm exec vitest run tooling/governance/runtime-shutdown-terminality.test.ts packages/runtime/src/application.test.ts packages/runtime/src/bootstrap.test.ts packages/runtime/src/http-adapter-shared.test.ts packages/di/src/container-disposal-retry.test.ts packages/platform-fastify/src/adapter.test.ts packages/platform-nextjs/src/index.test.ts packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts --maxWorkers=1
+```
 
 ## 관련 문서
 

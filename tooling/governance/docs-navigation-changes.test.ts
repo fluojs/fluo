@@ -66,7 +66,7 @@ describe('documentation navigation changed-file classification', () => {
     ['line ending edit', head.replaceAll('\n', '\r\n')],
     ['unmarked prose addition', `${head}A new claim.\n`],
     ['wrapping existing claims', `${prefix}${start}\n${contract}${end}\n`],
-  ])('retains companion enforcement for %s beside navigation', (_name, changedHead) => {
+  ])('retains non-navigation classification for %s in a legacy consumer', (_name, changedHead) => {
     // Given: a behavioral document also changed outside the new navigation block.
     const documents = snapshots(base, changedHead);
 
@@ -75,9 +75,8 @@ describe('documentation navigation changed-file classification', () => {
 
     // Then: matching code fences alone cannot exempt prose, anchors, or markers.
     expect(changed).toEqual(paths);
-    expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).toThrow(
-      'Terminus runtime health contract updates must include',
-    );
+    // Book content remains visible to consumer checks, but is no longer a contract owner.
+    expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).not.toThrow();
   });
 
   it.each([
@@ -91,11 +90,9 @@ describe('documentation navigation changed-file classification', () => {
       // Given / When: snapshots cannot prove a strictly additive change.
       const changed = behavioralChangedFiles(paths, documents);
 
-      // Then: existing enforcement still sees both documents.
+      // Then: consumer enforcement still sees both documents without promoting either to owner.
       expect(changed).toEqual(paths);
-      expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).toThrow(
-        'Terminus runtime health contract updates must include',
-      );
+      expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).not.toThrow();
     },
   );
 
@@ -163,9 +160,46 @@ describe('documentation navigation changed-file classification', () => {
     // When: the navigation-only locale is classified separately.
     const changed = behavioralChangedFiles(paths, documents);
 
-    // Then: the changed claim still requires all companions, including the other locale.
+    // Then: the changed consumer remains classified without regaining normative ownership.
     expect(changed).toEqual([koreanPath]);
-    expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).toThrow(englishPath);
+    expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).not.toThrow();
+  });
+
+  it.each([
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+  ])('requires Docs owners for genuine health drift beside navigation in %s', (path) => {
+    // Given: a shared health sentinel changes in addition to navigation.
+    const changedHead = head.replace('unhealthy-status=503', 'unhealthy-status=200');
+    const documents = { [path]: { base, head: changedHead } };
+    const patch = '- <!-- fluo-terminus-contract: unhealthy-status=503 -->\n'
+      + '+ <!-- fluo-terminus-contract: unhealthy-status=200 -->';
+
+    // When: classification feeds the real Terminus companion gate with that patch.
+    const changed = behavioralChangedFiles([path], documents);
+
+    // Then: retained health drift requires the canonical EN/KO owner, not a Book edit.
+    expect(changed).toEqual([path]);
+    expect(() => enforceTerminusRuntimeHealthContractCompanions(changed, () => patch)).toThrow(
+      'docs/contracts/health-and-readiness.md, docs/contracts/health-and-readiness.ko.md',
+    );
+    expect(() => enforceTerminusRuntimeHealthContractCompanions([
+      ...changed,
+      'docs/contracts/health-and-readiness.md',
+      'docs/contracts/health-and-readiness.ko.md',
+    ], () => patch)).not.toThrow();
+  });
+
+  it.each([
+    ['docs/contracts/health-and-readiness.md', 'docs/contracts/health-and-readiness.ko.md'],
+    ['docs/contracts/health-and-readiness.ko.md', 'docs/contracts/health-and-readiness.md'],
+  ])('cannot exempt canonical owner %s with navigation markers', (owner, counterpart) => {
+    // Given / When: an owner attempts the same additive-navigation exemption.
+    const changed = behavioralChangedFiles([owner], { [owner]: { base, head } });
+
+    // Then: Docs owners remain authoritative even for a marked insertion.
+    expect(changed).toEqual([owner]);
+    expect(() => enforceTerminusRuntimeHealthContractCompanions(changed)).toThrow(counterpart);
   });
 
   it.each([

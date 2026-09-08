@@ -67,6 +67,8 @@ examples/fluo-blog/
 
 The standard health routes come from `HealthModule.forRoot()` in `AppModule.imports`. Keep that import throughout the course. Do not create a second controller for `/health`.
 
+This `repository-example` uses the same `runFastifyApplication` helper as the default CLI Node/Fastify path, not the low-level Factory recipe in `examples/minimal`. It returns after listen and shutdown signal registration; do not listen again. The [bootstrap owner](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.md) distinguishes helper defaults, failures, cleanup, and host ownership. Keep the shared standard decorator build/test configuration so metadata is ready before decorated declarations evaluate.
+
 ## 3. Start Fastify
 
 From the repository root:
@@ -96,6 +98,8 @@ After startup, both responses have status `200`. Their JSON bodies are:
 These default endpoints show that this small app is alive and ready; they do not check a database that the example does not have.
 
 Stop the process with Ctrl+C before rebuilding your changes. `start:00` runs the built `dist/00-start/main.js`; it does not watch source files. After editing, stop, rebuild, and start again. `PORT` can override `3000` in the entrypoint, but this course's commands all use `3000`. Do not use plain `build` or `start`: those package aliases run the finished snapshot rather than your learning app.
+
+The checkpoint's `PORT` conversion is `Number(process.env.PORT ?? '3000')`; it has no CLI `parseInt`/non-finite fallback. Fastify validates the resulting number, allowing integer ports `0..65535`. The Book's stricter decimal `1..65535` parser is an application policy, not the behavior of this unchanged checkpoint.
 
 Run your initial health tests from the repository root:
 

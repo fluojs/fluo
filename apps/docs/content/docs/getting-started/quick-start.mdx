@@ -44,6 +44,12 @@ The generated project gives you:
 - health/readiness routes in the starter shape,
 - TypeScript settings that do not rely on legacy decorator metadata.
 
+This is a `generated-app` with registry dependencies, not the repository's `examples/fluo-blog` workspace. `src/app.ts` registers `ConfigModule`, `GreetingModule`, and `HealthModule.forRoot()`; preserve those imports and their tests when adding a feature. Keep the generated application and test decorator transforms, including metadata preparation before decorated declarations evaluate.
+
+The default `src/main.ts` imports `runFastifyApplication` from `@fluojs/platform-fastify` and `AppModule` from `./app`. The helper resolves after listen and shutdown signal registration; do not call `listen()` again. `bootstrapFastifyApplication` does neither automatically, and Factory + adapter + listen is explicit composition with different middleware, logger, and post-creation cleanup/signal responsibilities. The [bootstrap owner](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.md) defines these boundaries and config validation timing.
+
+The generated `PORT` parser uses `Number.parseInt(..., 10)` with a `3000` fallback for non-finite results. It is not the repository checkpoint's `Number(...)` conversion or the Book's strict decimal port policy.
+
 ## 3. Run the dev server
 
 ```bash

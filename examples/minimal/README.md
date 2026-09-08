@@ -2,11 +2,11 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The smallest runnable fluo application. This example follows the same adapter-first bootstrap path as the default and explicit HTTP v2 starter for `fluo new` Node.js + Fastify, stripped down to a smaller `/hello` route and a compact test set.
+A small fluo repository example of explicit low-level Node.js + Fastify composition: `FluoFactory.create(...)` with `createFastifyAdapter(...)`, followed by `app.listen()`. It is not the generated starter. The default and explicit HTTP v2 starter for Node.js + Fastify uses `runFastifyApplication(...)`, whose middleware defaults, logger, post-creation failure cleanup, and signal registration are not automatically reproduced by this composition. Factory still shares runtime initialization-failure cleanup. See the [bootstrap recipe](../../docs/getting-started/bootstrap-paths.md).
 
 ## what this example demonstrates
 
-- Adapter-first Fastify bootstrap via `fluoFactory.create(..., { adapter: createFastifyAdapter(...) })`
+- Explicit Fastify bootstrap via `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })` (`fluoFactory` is the same factory's alias)
 - Standard decorator DI with `@Module`, `@Inject`, `@Controller`, `@Get`
 - Built-in `/health` and `/ready` endpoints from `HealthModule.forRoot(...)`
 - A single starter controller at `/hello`
@@ -21,11 +21,13 @@ This example lives inside the fluo monorepo and uses workspace-linked packages. 
 pnpm install
 ```
 
-The example does not start a network listener by default — it is validated through tests. To verify:
+The package has no dev/start script. Its `src/main.ts` would start a network listener when built and executed; the repository test command below instead validates the request pipeline without running that entrypoint:
 
 ```sh
 pnpm vitest run examples/minimal
 ```
+
+Use Node.js `>=24.0.0 <27` and the repository's standard decorator test configuration. Preserve metadata preparation before decorated declarations evaluate; do not enable legacy decorator flags to run this example. Its entrypoint passes numeric port `3000` directly and has no `PORT` parser or automatic Node signal registration.
 
 ## project structure
 
@@ -42,6 +44,8 @@ examples/minimal/
 ```
 
 ## relationship to the starter scaffold
+
+This is a `repository-example` with `workspace:*` dependencies, not a registry-based `generated-app`. The generated `src/app.ts` keeps `ConfigModule`, `GreetingModule`, and `HealthModule.forRoot()`; do not overwrite it with this example's root module while retaining tests that expect greeting. Generated lifecycle scripts use `fluo dev`, `fluo build`, and `fluo start`, not scripts supplied by this example.
 
 This example is intentionally smaller than the full `fluo new` HTTP starter output. The CLI starter now emits a `src/greeting/` feature slice with controller/service/repository files, unit tests, slice tests, `src/app.test.ts`, `test/app.e2e.test.ts`, and build/test tooling config. If you want that complete starter experience, run either the default command or the explicit Node.js + Fastify HTTP contract:
 

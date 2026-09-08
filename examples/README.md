@@ -4,12 +4,12 @@
 
 This directory contains the official runnable example applications for fluo. Start with the [three-volume Book](../book/README.md) for the complete product and pattern learning path. The [short FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) and its [complete checkpoints](./fluo-blog/README.md) are companions for the initial HTTP/DI path. Other examples are independent capability references, not later chapters of that project. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
 
-These examples intentionally stay on the HTTP side of the published `fluo new` v2 matrix so the generated scaffold and the runnable examples keep matching. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
+These examples cover the HTTP side of the published `fluo new` v2 matrix through shared public framework APIs, not identical scaffolds or bootstrap policies. They are `repository-example` workspaces; generated applications use registry dependencies and their own CLI lifecycle scripts. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
 
 ## current official examples
 
 - [`./fluo-blog/`](./fluo-blog/README.md) — cumulative tutorial checkpoints for posts, explicit DI, validation, errors, and tests
-- `./minimal/` — the smallest runnable fluo app, matching the default and explicit HTTP starter path
+- `./minimal/` — explicit low-level Fastify composition, not the default generated starter
 - `./realworld-api/` — a more realistic multi-module HTTP API with config, DTO validation, explicit DI, and CRUD
 - `./auth-jwt-passport/` — bearer-token auth example with JWT issuance and protected routes via passport core
 - `./ops-metrics-terminus/` — operations example centered on `/metrics`, `/health`, and `/ready`
@@ -37,7 +37,7 @@ The [Book](../book/README.md) is the primary learning path from FluoBlog through
 
 ## how these examples fit the docs
 
-- `minimal` proves the canonical `fluo new` HTTP starter shape on both the default and explicit flags-first path
+- `minimal` demonstrates Factory + adapter + listen; the default CLI Node/Fastify starter instead uses `runFastifyApplication` with helper-owned middleware, logging, startup cleanup, and signals
 - `realworld-api` proves the first practical module/DTO/test path beyond that HTTP starter baseline
 - `auth-jwt-passport` proves the current official bearer-token auth path
 - `ops-metrics-terminus` proves the current markdown-first observability/health path
@@ -54,6 +54,8 @@ The [Book](../book/README.md) is the primary learning path from FluoBlog through
   without claiming SPA document swapping, file-based routing, or compiled actions
 
 The examples also anchor the canonical fluo TDD ladder from `../docs/contracts/testing-guide.md`: write fast unit tests near `src/**`, add slice/module tests with `createTestingModule({ rootModule })` when DI wiring or provider overrides matter, and use `createTestApp({ rootModule })` with `app.request(...).send()` for app-level e2e-style request-pipeline checks. Existing files such as `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, and `ops-metrics-terminus/src/app.test.ts` show the app-level end of that ladder.
+
+The [bootstrap owner](../docs/getting-started/bootstrap-paths.md) distinguishes shared initialization cleanup from run-helper cleanup and signal handling. FluoBlog uses that run helper but retains workspace package builds and numbered checkpoint scripts; it does not supply the generated app's config/greeting registrations. Preserve those registrations and tests when extending a generated app rather than copying a repository root module over it.
 
 For the other v2 starter contracts, see the CLI README for commands and the contract matrix for the full specification:
 

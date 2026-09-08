@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "id": "documentation.authority",
+      "kind": "contract",
+      "owner": {
+        "en": "docs/contracts/documentation-authority.md",
+        "ko": "docs/contracts/documentation-authority.ko.md"
+      },
+      "packages": [],
+      "sourcePaths": [
+        "tooling/docs/verify-docs-knowledge.mjs"
+      ],
+      "testPaths": [
+        "tooling/docs/verify-docs-knowledge.test.ts"
+      ]
+    },
+    {
+      "id": "bootstrap.node-fastify.run",
+      "kind": "recipe",
+      "owner": {
+        "en": "docs/getting-started/bootstrap-paths.md",
+        "ko": "docs/getting-started/bootstrap-paths.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime",
+        "@fluojs/platform-fastify"
+      ],
+      "sourcePaths": [
+        "packages/platform-fastify/src/adapter.ts",
+        "packages/runtime/src/http-adapter-shared.ts"
+      ],
+      "testPaths": [
+        "packages/runtime/src/http-adapter-shared.test.ts",
+        "packages/platform-fastify/src/adapter.test.ts"
+      ]
+    },
+    {
+      "id": "bootstrap.explicit-adapter",
+      "kind": "recipe",
+      "owner": {
+        "en": "docs/getting-started/bootstrap-paths.md",
+        "ko": "docs/getting-started/bootstrap-paths.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime",
+        "@fluojs/platform-fastify"
+      ],
+      "sourcePaths": [
+        "packages/runtime/src/bootstrap.ts",
+        "packages/platform-fastify/src/adapter.ts"
+      ],
+      "testPaths": [
+        "packages/runtime/src/bootstrap.test.ts",
+        "packages/platform-fastify/src/adapter.test.ts"
+      ]
+    },
+    {
+      "id": "runtime.lifecycle-and-shutdown",
+      "kind": "contract",
+      "owner": {
+        "en": "docs/architecture/lifecycle-and-shutdown.md",
+        "ko": "docs/architecture/lifecycle-and-shutdown.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime"
+      ],
+      "sourcePaths": [
+        "packages/runtime/src/bootstrap.ts"
+      ],
+      "testPaths": [
+        "packages/runtime/src/bootstrap.test.ts",
+        "packages/runtime/src/application.test.ts"
+      ]
+    },
+    {
+      "id": "operations.health-readiness",
+      "kind": "contract",
+      "owner": {
+        "en": "docs/contracts/health-and-readiness.md",
+        "ko": "docs/contracts/health-and-readiness.ko.md"
+      },
+      "packages": [
+        "@fluojs/terminus",
+        "@fluojs/runtime"
+      ],
+      "sourcePaths": [
+        "packages/terminus/src/module.ts",
+        "packages/terminus/src/health-check.ts",
+        "packages/runtime/src/health/health.ts"
+      ],
+      "testPaths": [
+        "packages/terminus/src/module.test.ts",
+        "packages/terminus/src/health-check.test.ts",
+        "packages/runtime/src/health/health.test.ts",
+        "tooling/governance/terminus-runtime-health-contract.test.ts"
+      ]
+    }
+  ]
+}

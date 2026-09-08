@@ -41,8 +41,16 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
 ): void;
 export function enforceContractCompanionUpdates(
   changedFiles: readonly string[],
-  migrationGuideSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
+  migrationGuideSnapshots?: Readonly<Record<string, { base: unknown; head: unknown }>>,
 ): void;
+export function migrationGuideSnapshotsFromGit(
+  runCommand?: (
+    command: string,
+    args: string[],
+    options?: { allowFailure?: boolean },
+  ) => { status: number; stdout: string },
+  env?: { GITHUB_BASE_REF?: string },
+): Record<string, { base: string; head: string }> | undefined;
 export function enforceEmailMigrationCompanions(changedFiles: readonly string[]): void;
 export function enforceTerminusRuntimeHealthContractCompanions(
   changedFiles: readonly string[],

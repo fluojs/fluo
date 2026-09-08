@@ -27,6 +27,8 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다. Terminus는 작성한 module에서 `TerminusModule.forRoot(...)`로 indicator를 구성하세요. `/health`는 집계 진단을 반환하고, `/ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결정을 내리면서 body에는 `ready`, `starting`, `unavailable` 중 하나를 보고합니다. Indicator는 기본적으로 readiness를 차단하며, `/health`에는 보이되 트래픽을 차단하지 않아야 하면 해당 indicator에 `readiness: false`를 설정하세요. `readinessChecks`는 application-owned readiness 조건을 추가하며 indicator를 제외하지 않습니다. 기본 liveness route는 없고 runtime-owned route는 controller `@UseGuards()` metadata를 거부하므로 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary를 사용하세요.
 
+위 Terminus 요약의 canonical owner는 [Health와 Readiness](../contracts/health-and-readiness.ko.md)입니다. Probe를 이전할 때 [package API와 DI 구성](../../packages/terminus/README.ko.md)을 함께 확인하세요. [이전 판 health 장](../../book/beginner/ch18-health.ko.md)은 학습 참고 자료로 유지되며 별도 계약 owner가 아닙니다.
+
 ## GraphQL 비동기 등록 마이그레이션
 
 NestJS application에서 GraphQL option을 비동기로 해석했다면 `GraphqlModule.forRootAsync({ inject, useFactory })`를 사용하세요. Injected token은 기존 fluo application graph에서 해석되고, factory는 endpoint wiring 전에 application context마다 한 번 해석됩니다.

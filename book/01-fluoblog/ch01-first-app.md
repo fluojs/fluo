@@ -14,6 +14,8 @@ Throughout the book, the application directory is `fluo-blog`. Even when readers
 
 The code in this book is implementation work to apply to the project you generate. Copying the repository's `examples/fluo-blog` does not give you an already completed application spanning 72 chapters. That example provides separate executable evidence for the early HTTP and DI paths. The commands and experiments in the text are reproduction procedures with expected results, not records of runs that passed in your new project while this manuscript was being written.
 
+In the Docs terminology, this book's working directory is a `generated-app`, using registry dependencies and the generated `fluo dev`, `fluo build`, and `fluo start` scripts. By contrast, `examples/fluo-blog/00-start` is a `repository-example` requiring workspace dependencies, repository package builds, and numbered checkpoint scripts. Comparing executable evidence does not mean overwriting the generated project with example files.
+
 ## The Execution Environment Is an Input to the Code
 
 The book uses Node.js 24 and pnpm 10 as its baseline. The current Node-oriented Fluo packages and CLI support `>=24.0.0 <27`. Distinguish the supported range from the specific baseline version chosen for the book. Having Node installed does not by itself satisfy the version requirement. First, check the following in the terminal where you will create the project.
@@ -96,11 +98,17 @@ await runFastifyApplication(AppModule, {
 
 This check belongs at the application boundary where an external string becomes an option. Converting to a number and checking only whether it is finite can unintentionally accept inputs such as an empty string or exponential notation. Defining the permitted notation with a regular expression and then checking the integer range makes the input policy explicit. Rejecting port `0` is the book's local execution policy. The adapter itself allows `0` so that the operating system can choose an available port. Do not confuse values the framework forbids with values the application chooses not to use.
 
+This file makes FluoBlog's input policy stricter; it does not describe the CLI's port parser. The generated starter falls back to `3000` when the result of `Number.parseInt(..., 10)` is not finite, and reads `3000oops` as `3000`. The repository's initial checkpoint uses `Number(...)` without a fallback, so the same input becomes `NaN`. Fastify checks the numeric option it receives rather than reading `PORT` itself. The failure experiments below target the app after applying this chapter's `readPort`.
+
 `host: '127.0.0.1'` binds the practice server to an address accessible only from your own computer. To access it from another device or container, define the host policy for that execution environment separately. Changing it unconditionally to `0.0.0.0` is a choice to widen access, not a fix for an address error.
 
 `retryLimit: 0` is an exercise setting that exposes port conflicts immediately. It avoids the appearance of a hang during retries when a developer has left an old process running. Retries can ease a transient conflict, but they do not resolve ownership of an occupied port. While initially reproducing a problem, failing fast is more useful.
 
-By the time this helper returns, listening has started and shutdown signal registration is complete. There is no need to call `listen()` again on the return value. In contrast, `bootstrapFastifyApplication()` is a configuration boundary that does not start listening automatically. Treating the two as interchangeable because their names are similar can leave you with a process that exists but does not accept requests.
+`runFastifyApplication()` is the default Node/Fastify execution path. By the time it returns, initialization, listening, and default `SIGINT` and `SIGTERM` registration are complete, so there is no need to call `listen()` again. In contrast, `bootstrapFastifyApplication()` returns only the initialized app, leaving listen and Node signal registration to the caller. Treating the two as interchangeable because their names are similar can leave you with a process that exists but does not accept requests.
+
+You can also pass `createFastifyAdapter()` to `FluoFactory.create()` and await `app.listen()` yourself. The repository's `examples/minimal` uses this explicit composition path. It shares initialization, but does not automatically reproduce the helper's middleware composition, logger choice, close attempt after post-creation startup failure, or signal registration. Both Fastify helpers compose configured CORS, a configured global prefix, default security headers, and caller middleware in that order. Security headers are enabled unless `securityHeaders: false`, while CORS and a prefix are not enabled when omitted. As later chapters accumulate options, do not replace this execution path merely by changing API names.
+
+Here, Node/Fastify owns the socket listener. In apps attached to Workers or Next.js, the host owns request forwarding and shutdown, and activation does not necessarily open a new socket. Do not turn the shared name `listen` into a port or signal requirement for every environment. The context experiment's `fluoFactory` below is also an alias of `FluoFactory`, not another runtime model.
 
 ## An Experiment That Checks Assembly Without Opening HTTP
 
@@ -194,6 +202,8 @@ export default defineConfig({
 
 `fluoDecoratorsPlugin()` first transforms application decorators through Babel. This step is required before Rolldown/Oxc processes them in the current generator's Vite 8 pipeline. `target: 'node24'` is the build target, not a command that changes the running Node version. Likewise, `server.port: 5173` is a Vite setting, not a second setting for the same port as Fastify's `3000` selected in `src/main.ts`.
 
+Distinguish transform configuration from metadata preparation timing as well. `Symbol.metadata` must be ready before decorated declarations evaluate. In a custom bootstrap where the host or transform does not provide it, prepare it with `ensureMetadataSymbol()` from `@fluojs/core` before loading decorated modules. Static imports evaluate before the entrypoint body, so adding a preparation call below such an import does not change the order. Keep the generated transform path; when Chapter 9 explicitly composes configuration and the application graph, dynamic imports after preparation make this boundary explicit.
+
 Test files are a separate boundary. Do not assume the application plugin processes `*.test.ts`. The starter's `vitest.config.ts` uses the plugin from `@fluojs/testing/vitest`. We will preserve this separation when adding tests in Chapter 4. If development works but decorators in tests produce syntax errors, check which transformation path processed the file before changing business code.
 
 ## Shutdown Matters as Much as Successful Startup
@@ -219,6 +229,15 @@ Both runs should exit with the `readPort` error before listening succeeds. If a 
 `runFastifyApplication()` registers signal-based shutdown, but it does not turn every failure into success. Shutdown timeouts and failures are reported through logs and `process.exitCode`, while the surrounding host owns final process termination. In experiments where the application manages its own lifetime, await `close()` in `finally`. Habitually calling `process.exit()` immediately removes the chance to observe disposal that has not yet finished.
 
 The state after this first run is small. `src/main.ts` contains only the execution environment and server startup, `src/app.ts` holds the starter's module configuration, and `/greeting` responds. For a goal this modest, using a single Node HTTP server without a framework is also a valid choice. Fluo's assembly cost becomes worthwhile when different responsibilities, such as request handling, testing, and data access, need to be connected under the same rules. In the next chapter, we will address the first product requirement by creating `/posts` and `/posts/1`, turning a successful run into a post readers can see.
+
+## Canonical Docs
+
+This chapter applies the following Docs to FluoBlog's execution and failures. Strict ports and the loopback address are application choices; the source and tests below provide additional evidence for checking the contracts.
+
+- [Documentation authority and the Book's role](../../docs/contracts/documentation-authority.md)
+- [Default execution, explicit composition, and host-specific bootstrap paths](../../docs/getting-started/bootstrap-paths.md)
+- [Initialization completion and signal and shutdown ownership](../../docs/architecture/lifecycle-and-shutdown.md)
+- [Standard decorators and metadata preparation](../../docs/architecture/decorators-and-metadata.md)
 
 ## Evidence and Further Reading
 

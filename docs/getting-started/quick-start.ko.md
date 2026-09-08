@@ -6,10 +6,12 @@
 
 이 문서는 CLI 설정 명령 레퍼런스입니다. 첫 앱을 순서대로 만들려면 [FluoBlog 튜토리얼](../../apps/docs/content/docs/tutorial/create-app.ko.mdx)을 이용하세요.
 
-- 호스트 시스템에 Node.js 런타임이 있어야 합니다.
+- 호스트 시스템에 Node.js `>=24.0.0 <27`이 있어야 합니다.
 - 호스트 시스템에 `pnpm`이 있어야 합니다.
 - 전역 패키지 설치 또는 `pnpm dlx` 실행 권한이 있는 셸 세션이 필요합니다.
 - 기본 생성 경로는 Node.js runtime, HTTP transport, Fastify platform입니다.
+
+이 문서는 `generated-app` 경로입니다. 명령은 registry 의존성을 사용하는 별도의 생성 프로젝트에서 실행합니다. 저장소 예제는 workspace 의존성과 자체 script를 사용하므로 FluoBlog checkpoint 명령을 이 스타터에 적용하거나 checkpoint의 `app.ts` 전체를 복사하지 않습니다.
 
 ## Installation
 
@@ -110,6 +112,10 @@ my-fluo-app/
 위 트리는 명시된 pnpm dependency 설치가 완료된 기본 Node.js + Fastify 애플리케이션 스타터 기준입니다. 이 설치가 `pnpm-lock.yaml`을 생성하며, `fluo new ... --no-install`을 사용하면 생성 프로젝트에서 `pnpm install`을 실행할 때까지 이 파일이 없습니다. 다른 package manager를 선택하면 설치 시 `pnpm-lock.yaml` 대신 해당 manager의 lockfile이 생성됩니다. `vite.config.ts` artifact는 애플리케이션 파일 데코레이터 변환을 위해 `@fluojs/vite`의 `fluoDecoratorsPlugin()`을 import하고, `vitest.config.ts`는 생성된 테스트 파일이 testing-specific transform 경로를 유지하도록 `@fluojs/testing/vitest`를 import합니다. 다른 shipped starter recipe는 의도적으로 다릅니다. Deno는 Node/Vite/Babel/Vitest 설정 파일을 생성하지 않고 Deno-native `src/app.test.ts`를 유지하며, Cloudflare Workers는 `src/worker.ts`와 `wrangler.jsonc`를 사용하고, gRPC microservice는 `proto/math.proto`를 추가하며, microservice 또는 mixed starter는 HTTP 전용 greeting tree만이 아니라 `src/math/*` transport handler도 생성합니다.
 
 기준 스타터 매트릭스: [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md).
+
+기본 `src/main.ts`는 `@fluojs/platform-fastify`의 `runFastifyApplication`과 `./app`의 `AppModule`을 import합니다. Helper를 한 번 await하며 반환된 애플리케이션은 이미 listen과 shutdown signal 등록을 완료한 상태입니다. `src/app.ts`의 `ConfigModule.forRoot({ envFile: '.env', processEnv: process.env })`, `GreetingModule`, `HealthModule.forRoot()`와 starter 테스트를 유지합니다. 루트 모듈을 교체하는 대신 이 import 목록에 기능을 추가합니다.
+
+Helper 기본값, cleanup, signal, metadata 준비와 config 검증 시점은 [bootstrap recipe](./bootstrap-paths.ko.md)가 소유합니다. 생성 진입점은 `PORT`를 `Number.parseInt(..., 10)`로 파싱하고 결과가 유한하지 않을 때만 `3000`으로 fallback합니다. 이는 Book의 엄격한 10진수 port 정책이 아닙니다. 생성된 표준 decorator application/test transform을 보존하세요. Custom host에 `ensureMetadataSymbol()`이 필요하면 static import 평가가 끝난 뒤가 아니라 decorated module 평가 전에 준비합니다.
 
 interactive terminal에서 `fluo new` wizard를 실행할 경우, 파일을 쓰기 전에 동일한 유지보수 대상 스타터 매트릭스를 기준으로 선택지가 해석됩니다.
 

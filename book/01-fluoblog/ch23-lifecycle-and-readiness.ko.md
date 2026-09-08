@@ -14,15 +14,21 @@ FluoBlog의 수명은 “서버 실행 중”이라는 한 상태로 끝나지 �
 
 프로세스가 이벤트 루프를 실행할 수 있다는 사실은 게시글을 안전하게 저장할 수 있다는 뜻이 아니다. DB가 끊겼거나 필수 스키마와 코드가 맞지 않아도 HTTP 응답은 만들 수 있다. 반대로 구독 메일 공급자가 일시적으로 느려도 이미 발행된 글을 읽는 기능은 제공할 수 있다. 의존성 하나의 장애를 모든 트래픽 중단으로 연결할지 제품의 기능별로 판단해야 한다.
 
-`@fluojs/terminus`의 `/health`는 진단 집계다. indicator나 플랫폼 진단이 나쁘면 원인을 포함한 보고서와 503을 반환한다. `/ready`는 트래픽 수용 여부다. 200이면 수용하고 503이면 rotation에서 제외한다. 본문의 상태는 `ready`, `starting`, `unavailable` 중 하나지만, 배포 계층의 수용 결정은 이진적이다. “조금 준비됐으니 조금만 트래픽을 보내라”라는 별도 severity 응답이 아니다.
+`@fluojs/terminus`의 `/health`는 진단 집계다. indicator나 플랫폼 진단이 나쁘면 원인을 포함한 보고서와 503을 반환한다. `/ready`는 트래픽 수용 여부다. 배포 계층이 이 endpoint를 probe하도록 설정했을 때 200이면 수용하고 503이면 rotation에서 제외한다. Terminus가 로드밸런서를 직접 제어하지는 않는다. 응답 body의 `status`는 `ready`, `starting`, `unavailable` 중 하나지만, 배포 계층의 수용 결정은 이진적이다. “조금 준비됐으니 조금만 트래픽을 보내라”라는 별도 severity 응답이 아니다.
+
+Runtime marker가 starting이면 `/ready`는 503과 `{ status: 'starting' }`을 반환한다. Marker가 ready여도 추가 조건이 `false`이거나 readiness 참여 indicator 또는 platform readiness가 실패하면 503과 `{ status: 'unavailable' }`이며, 모두 통과해야 200과 `{ status: 'ready' }`다. Custom readiness callback이 throw/reject하면 이 boolean 거부로 바뀌지 않고 HTTP 오류 처리로 전파되므로 예상한 수용 불가 조건은 `false`로 반환한다. 아래에서는 `path: '/internal'`을 사용하므로 실제 요청 경로는 `/internal/health`와 `/internal/ready`다.
 
 Terminus는 프로세스 생존만 확인하는 `/live`를 기본으로 생성하지 않는다. DB를 포함한 `/health`를 그대로 프로세스 재시작 조건으로 쓰면 공통 DB 장애 때 모든 앱을 재시작하는 악순환이 생길 수 있다. 좁은 생존 검사가 필요한 배포 환경은 별도의 애플리케이션 또는 호스트 경계를 정의해야 한다. 이 장에서 만드는 두 endpoint를 세 종류의 probe로 오해하지 않는다.
 
 기본적으로 indicator는 health와 readiness에 모두 참여한다. `readiness: false`는 진단은 남기되 그 indicator 하나 때문에 트래픽을 차단하지 않겠다는 뜻이다. 예를 들어 독립된 외부 검색이 없어도 기본 글 목록으로 기능을 축소할 수 있다면 검토할 수 있다. 그러나 캐시와 구독 큐가 같은 Redis를 사용하고 실제 요청이 큐 기록 성공에 의존한다면 “캐시는 선택 사항”이라는 이름만 보고 제외해서는 안 된다. 장애 시 동작이 구현돼 있을 때만 선택적 의존성으로 분류한다.
 
+이 opt-out은 해당 indicator의 probe만 readiness에서 제외한다. 같은 의존성이 별도 platform component로 등록되어 준비 상태를 낮추면 여전히 차단된다. HTTP readiness는 platform status가 정확히 `ready`여야 하므로 `critical: false`인 `degraded`도 통과하지 못한다. 앱의 `readinessChecks`도 indicator·platform 검사를 대체하지 않고 조건을 추가한다.
+
 ## 모듈을 import한 위치가 준비 상태를 바꾼다
 
 Terminus가 DB 연결을 찾지 못하면 올바른 SQL probe도 실행할 수 없다. 일반적인 비전역 형제 모듈은 서로의 provider를 볼 수 없어 Terminus의 `imports`에 의존성을 명시해야 한다. 하지만 이 책의 10장 등록은 의도적으로 전역이다. 루트가 `src/database/blog-database.module.ts`의 `BlogDatabaseModule`을 한 번 import하고, 그 모듈의 `PrismaModule.forRootAsync`가 `global: true`, `inject: [AppSettings]`로 컨테이너별 클라이언트를 소유한다. Terminus도 이 전역 `PrismaService`를 주입받는다.
+
+1장에서 생성한 기본 등록은 Terminus가 아니라 runtime의 `HealthModule.forRoot()`다. 같은 기본 health/readiness 경로를 Terminus로 확장하려면 그 기본 등록을 교체하고 관련 `path`·`endpointMiddleware` 설정을 옮겨야 한다. Terminus가 내부에서 health module을 제공하므로 같은 경로에 둘을 중복 등록하지 않는다. 이미 Terminus가 있다면 기존 등록을 확장한다. 이때 config·greeting·lifecycle 스크립트와 앱 설정은 보존한다. 아래 코드는 별도 `/internal` 경로의 운영 구성이며, starter의 기본 경로를 옮기는 코드로 제시하는 것은 아니다.
 
 다음은 `src/operations/operations.module.ts`의 **완전한 파일**이다. `serviceToken: PrismaService`로 기존 lifecycle-aware 서비스만 해석한다. 새 DB 모듈이나 module-scope `client`를 만들지 않는다. `TrafficModule`은 비전역이므로 Terminus의 imports에도 명시한다. 22장의 `operationsConfig`는 운영 토큰의 검증된 스냅샷이다.
 
@@ -90,9 +96,13 @@ export const OperationsModule = createOperationsModule(
 
 Runtime은 모듈 그래프와 DI 컨테이너를 구성한 뒤 lifecycle 대상 인스턴스를 해석한다. 그다음 대상들의 `onModuleInit()`을 실행하고, 이어 `onApplicationBootstrap()`을 실행한다. 플랫폼 시작이 성공해야 readiness marker가 ready로 바뀐다. HTTP dispatcher와 listener는 이 준비 과정과 구분되는 경계다.
 
-`bootstrapFastifyApplication`은 앱을 구성하지만 자동 signal 등록을 소유하지 않는다. `runFastifyApplication`은 listen을 완료하고 shutdown 등록을 설치한 뒤 실행 중인 앱을 반환한다. 따라서 후자를 사용한 뒤 다시 `app.listen()`을 호출할 필요는 없다. 반대로 저수준 factory를 썼다고 Node signal 처리가 자동으로 생긴다고 생각하지 않는다.
+`bootstrapFastifyApplication`은 앱을 초기화하지만 자동 listen이나 Node signal 등록은 하지 않는다. 기본 실행 경로인 `runFastifyApplication`은 listen과 기본 shutdown 등록까지 마친 뒤 앱을 반환하므로 다시 `app.listen()`을 호출할 필요가 없다. 다만 아래의 `shutdownSignals: false`는 그 등록을 끄고 이 진입점에 맡긴다. 직접 `FluoFactory.create()`와 adapter를 조립하면 listen·signal뿐 아니라 helper의 미들웨어·logger·생성 이후 실패 정리 정책도 직접 소유한다. `fluoFactory`는 같은 Factory의 alias다.
+
+공개 `app.state`의 `bootstrapped`, `ready`, `closed`는 HTTP body의 세 상태와 다른 모델이다. `app.ready()`는 critical platform readiness를 검사할 뿐 listener를 열거나 state를 `ready`로 바꾸지 않는다. `app.listen()`은 그 검사 뒤 adapter 활성화를 기다리고 shutdown이 시작되지 않았을 때 state를 `ready`로 바꾼다. 이 시작 검사는 Terminus indicator나 custom HTTP readiness callback을 실행하지 않으므로 `/ready`가 200이라는 증거는 아니다. Workers·Next.js처럼 호스트가 요청을 소유하는 경로에서는 adapter 활성화도 새 socket bind가 아니라 dispatcher 연결일 수 있다.
 
 시작 실패도 부분적으로 성공한 실행이다. DB 연결은 열렸는데 나중의 초기화가 실패할 수 있다. Runtime은 이때 `bootstrap-failed`라는 signal 값으로 정리 hook을 실행하고 컨테이너 정리를 시도한다. 애플리케이션의 정리 코드는 “정상 시작을 끝낸 경우에만 호출된다”는 가정 없이 자신이 실제로 얻은 자원만 해제해야 한다. 초기화 실패를 catch해 빈 저장소로 서비스를 열어 버리는 것은 복구가 아니라 데이터 계약의 변경이다.
+
+Runtime bootstrap 자체가 실패하는 경로에서 HTTP adapter까지 항상 닫는다는 보장은 없다. 이미 앱을 반환받은 run helper가 listen·시작 로그·signal 등록에서 실패하면 `app.close('bootstrap-failed')`를 추가로 시도하고 원래 실패를 유지한다. 초기화 중 확보한 자원 정리와 생성 이후 helper의 정리를 같은 범위로 설명하지 않는다.
 
 시작 hook에 대규모 데이터 마이그레이션을 넣는 것도 피한다. 인스턴스 두 대가 함께 시작하면 같은 변경을 경쟁할 수 있고, 수 분 걸리는 작업이 listener 준비 시간을 지배한다. 스키마 변경과 데이터 변환은 배포 절차의 별도 단계로 소유하고, 앱의 시작은 필요한 의존성을 사용할 수 있는지 확인하는 정도로 제한한다. 예약 발행의 밀린 작업은 시작 hook에서 무한히 모두 처리하지 않고 정상적인 작은 배치로 따라잡는다.
 
@@ -100,7 +110,9 @@ Runtime은 모듈 그래프와 DI 컨테이너를 구성한 뒤 lifecycle 대상
 
 readiness가 503으로 바뀌어도 로드밸런서가 즉시 모든 요청을 멈추지는 않는다. 이미 연결된 클라이언트와 전달 중인 요청이 남는다. 더욱 중요한 점은 Fluo의 종료 hook이 adapter close보다 먼저 실행된다는 사실이다. `onModuleDestroy`를 “HTTP 연결이 전부 닫힌 뒤 호출되는 곳”으로 사용하면 잘못된 순서를 만든다.
 
-Runtime의 `Application.close()`는 시작 즉시 새 직접 dispatch와 해석 작업의 진입을 닫고 readiness를 낮춘다. 하지만 이미 수용한 dispatch를 그 gate가 취소하는 것은 아니다. listener를 통한 모든 요청이 저절로 원하는 업무 단위까지 drain된다는 보장으로 확대하지 않는다. 이 장에서는 앱 소유의 작은 트래픽 gate를 만들어 `app.close()` 전에 보통 HTTP 요청을 먼저 기다린다.
+Runtime의 `Application.close()`는 시작 즉시 새 `Application.dispatch()`·provider 해석·listen 등 작업의 진입을 닫는다. 진행 중 listen과 연결된 microservice 종료 뒤 부모 teardown에서 readiness marker를 starting으로 되돌리고, runtime cleanup, 역순 destroy hook, 역순 application shutdown hook, adapter close, container dispose로 진행한다. 이미 수용한 dispatch를 진입 gate가 취소하는 것은 아니다. adapter나 공개 dispatcher의 직접 경로가 모두 이 wrapper를 거친다는 보장도 없다. 따라서 listener의 모든 요청이 원하는 업무 단위까지 저절로 drain된다고 확대하지 않는다. 이 장에서는 앱 소유의 작은 트래픽 gate로 `app.close()` 전에 보통 HTTP 요청을 먼저 기다린다.
+
+Teardown이 진행 중이거나 실패하면 공개 `app.state`는 기존 값을 유지하고, 성공해야 `closed`가 된다. 그동안 state가 `ready`로 보이더라도 runtime 진입은 다시 열리지 않는다. 명시적 close 재시도는 완료한 runtime phase를 건너뛰고 각 단계의 재시도 계약을 따르는 정리이지 재시작이 아니다. HTTP probe가 여전히 연결된 adapter를 통해 도달할 수 있을 때 starting 응답을 관찰할 수 있지만, 닫힌 listener가 503을 보내 준다는 보장은 없다.
 
 `src/operations/traffic.ts`는 **완전한 파일**이다. Gate는 DB나 외부 연결을 소유하지 않는다. 새 요청을 받을지와 몇 개가 middleware 경계를 실행 중인지 기록한다. 내부 진단 요청은 drain 대상에서 제외해 종료 대기 중에도 이유를 조회할 수 있게 한다.
 
@@ -361,6 +373,15 @@ Probe가 멈추는 실패도 구분한다. Terminus의 `indicatorTimeoutMs`는 �
 FluoBlog는 이제 시작 성공과 listener 개방을 구분하고, DB와 앱의 수용 상태를 readiness에 반영하며, 종료 전에 보통 HTTP 작업을 제한된 시간 동안 기다린다. 발행된 본문은 여전히 불변이고 예약 초안은 영속 시각에서 복구한다. 운영 처리가 도메인 규칙을 느슨하게 만드는 예외가 되지 않는다.
 
 다음 장에서는 이 기능들을 첫 출시의 증거로 묶는다. “서버가 켜졌다”보다 강한 기준이 필요하지만, 모든 가능한 미래 기능을 구현할 필요는 없다. 독자가 글을 읽고 작성자가 초안을 안전하게 발행하며, 장애가 생겼을 때 원인을 설명하고 제한된 절차로 복구할 수 있는지 확인한다.
+
+## 기준 Docs
+
+이 장의 시작·readiness·종료 설명은 다음 Docs를 따른다. TrafficGate, 사전 drain 예산과 운영 토큰은 같은 FluoBlog에 적용한 앱 정책이며, 프레임워크의 자동 무중단 보장이 아니다.
+
+- [문서 권위와 Book의 역할](../../docs/contracts/documentation-authority.ko.md)
+- [기본 helper, 명시적 조립과 host-owned 경로](../../docs/getting-started/bootstrap-paths.ko.md)
+- [라이프사이클, terminal admission과 종료 순서](../../docs/architecture/lifecycle-and-shutdown.ko.md)
+- [Health 등록, HTTP readiness body와 binary admission](../../docs/contracts/health-and-readiness.ko.md)
 
 ## 구현 근거
 

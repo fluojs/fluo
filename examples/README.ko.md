@@ -4,12 +4,12 @@
 
 이 디렉터리는 fluo의 공식 실행 예제를 모아 둔 곳입니다. 제품·패턴 중심의 전체 학습은 [3권 Book](../book/README.ko.md)에서 시작하세요. [짧은 FluoBlog 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [단계별 완성 코드](./fluo-blog/README.ko.md)는 초기 HTTP·DI 경로의 보조 자료입니다. 다른 예제는 독립적인 기능 참고자료이며 해당 프로젝트의 후속 장이 아닙니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
 
-이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 유지합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
+이 예제들은 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 공통 공개 프레임워크 API로 보여주지만 동일한 scaffold나 bootstrap 정책을 사용하지는 않습니다. 예제는 `repository-example` workspace이며 생성 애플리케이션은 registry 의존성과 자신의 CLI lifecycle script를 사용합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
 
 ## 현재 공식 예제
 
 - [`./fluo-blog/`](./fluo-blog/README.ko.md) — 게시글, 명시적 DI, 검증, 오류, 테스트를 위한 연속 튜토리얼의 단계별 코드
-- `./minimal/` — 기본/명시적 HTTP 스타터 경로와 같은 가장 작은 실행 가능 앱
+- `./minimal/` — 기본 생성 스타터가 아닌 명시적 저수준 Fastify 조립
 - `./realworld-api/` — config, DTO validation, explicit DI, CRUD를 포함한 보다 현실적인 다중 모듈 HTTP API
 - `./auth-jwt-passport/` — JWT 발급과 passport core 기반 보호 라우트를 보여주는 bearer-token auth 예제
 - `./ops-metrics-terminus/` — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
@@ -37,7 +37,7 @@
 
 ## 예제가 문서에서 맡는 역할
 
-- `minimal`은 기본 경로와 flags-first 명시 경로 모두에서 `fluo new` HTTP 스타터 shape를 증명합니다
+- `minimal`은 Factory + adapter + listen을 보여주며, 기본 CLI Node/Fastify 스타터는 helper가 middleware, logging, startup cleanup, signal을 소유하는 `runFastifyApplication`을 사용합니다
 - `realworld-api`는 그 HTTP 스타터 기준선 이후 첫 실전 module/DTO/test 경로를 보여줍니다
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다
@@ -54,6 +54,8 @@
   guarded/intercepted `POST`, validation, mutation, `303` redirect boundary를 통과합니다.
 
 예제는 `../docs/contracts/testing-guide.ko.md`의 canonical fluo TDD ladder도 고정합니다. 빠른 unit 테스트는 `src/**` 가까이에 작성하고, DI wiring이나 provider override가 중요할 때는 `createTestingModule({ rootModule })` 기반 slice/module 테스트를 추가하며, app-level e2e 스타일 request-pipeline 점검에는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용합니다. `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, `ops-metrics-terminus/src/app.test.ts` 같은 기존 파일은 그 ladder의 app-level 끝단을 보여줍니다.
+
+[Bootstrap 담당 문서](../docs/getting-started/bootstrap-paths.ko.md)는 공통 초기화 정리와 run-helper cleanup/signal 처리를 구분합니다. FluoBlog는 해당 run helper를 사용하지만 workspace 패키지 빌드와 번호별 checkpoint script를 유지하며 생성 앱의 config/greeting 등록을 제공하지 않습니다. 생성 앱을 확장할 때는 저장소 루트 모듈을 덮어쓰지 말고 그 등록과 테스트를 보존합니다.
 
 다른 v2 스타터 계약은 CLI README에서 명령을 확인하고, 전체 계약 명세는 매트릭스 문서를 참고하세요.
 

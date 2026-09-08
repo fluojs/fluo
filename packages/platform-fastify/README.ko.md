@@ -38,6 +38,19 @@ fluo 애플리케이션을 위한 고성능 HTTP 어댑터가 필요한 경우 �
 
 ## 빠른 시작
 
+기본 CLI Node/Fastify 애플리케이션에는 run helper를 사용합니다. 이 진입점 부분 코드는 생성된 `src/app.ts`의 `AppModule`, config/greeting/health 등록과 테스트, 설치된 의존성, 생성된 표준 decorator 도구 설정을 전제로 합니다.
+
+```typescript
+import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { AppModule } from './app';
+
+await runFastifyApplication(AppModule, { port: 3000 });
+```
+
+Helper는 초기화, listen, shutdown 등록 뒤 resolve되므로 `listen()`을 다시 호출하지 않습니다. 생성 CLI 진입점은 여기에 자신의 `PORT` parseInt/fallback 정책을 적용합니다. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)이 해당 recipe, 환경 구분, metadata 평가 순서, config 검증 시점을 소유합니다.
+
+아래 기존 예제는 애플리케이션이 소유하는 `./app.module` 모듈을 사용하는 **명시적 저수준 조립**입니다. `fluoFactory`는 `FluoFactory`의 alias입니다. 이 경로도 런타임 초기화와 초기화 실패 정리를 공유하지만 helper의 middleware나 Node logger 선택, run-helper의 생성 이후 실패 정리, signal 등록까지 자동으로 재현하지는 않습니다.
+
 ```typescript
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { fluoFactory } from '@fluojs/runtime';
@@ -53,6 +66,10 @@ await app.listen();
 `createFastifyAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작합니다. `0`은 대기 시간만 제한하므로 close가 아직 settle되지 않았다면 대기는 다음 timer turn에 timeout될 수 있지만, 기반 Fastify close와 cleanup은 계속 진행됩니다.
 
 ## 주요 패턴
+
+`bootstrapFastifyApplication(AppModule, options)`는 자동 listen이나 Node signal 등록 없이 초기화된 앱을 반환합니다. 아래 bootstrap-only snippet은 앱을 구성하며 이후 활성화와 shutdown은 호출자가 소유합니다. 두 Fastify helper는 `securityHeaders: false`가 아니면 security headers를 활성화하고, CORS/global-prefix middleware는 설정된 경우에만 추가하며, `logger`를 전달하지 않으면 Node framework console logger를 선택합니다. Middleware 순서는 설정된 CORS, 설정된 prefix, security headers, 호출자 middleware입니다.
+
+`runFastifyApplication`은 기본적으로 `SIGINT`/`SIGTERM`을 등록합니다(`shutdownSignals: false`로 해제). Listen 또는 shutdown 등록 실패 시 `app.close('bootstrap-failed')`를 시도하고 원래 실패를 보존하며 cleanup 오류는 로그에 남깁니다. 반환된 close wrapper는 runtime close 전에 signal을 한 번 해제하고, 해제가 실패해도 close하며, unregister/close 오류가 함께 발생하면 집계합니다. 이는 공통 초기화 실패 정리에 추가되는 보장입니다. [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.ko.md)를 참고하세요.
 
 ### Early Hints
 
@@ -231,7 +248,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 ## 공개 API 개요
 
 - `createFastifyAdapter(options, multipartOptions?)`: Fastify 어댑터를 위한 권장 팩토리입니다. `options`에는 `host`, `port`, Node.js `https` server option 같은 transport startup knob이 포함됩니다. 선택적 두 번째 인자는 직접 어댑터를 생성할 때 `maxFileSize`, `maxFiles`, `maxTotalSize` 같은 multipart 제한을 설정합니다.
-- `bootstrapFastifyApplication(module, options)`: 암시적 리스닝 없이 수행하는 고급 부트스트랩입니다. Host가 bind 전에 앱을 구성해야 할 때 `https`를 포함한 같은 Fastify startup option을 받습니다.
+- `bootstrapFastifyApplication(module, options)`: 암시적 리스닝이나 Node signal 등록 없이 수행하는 고급 부트스트랩입니다. Host가 bind 전에 앱을 구성해야 할 때 `https`를 포함한 같은 Fastify startup option을 받습니다.
 - `runFastifyApplication(module, options)`: Application을 bootstrap하고 listening을 시작한 뒤 shutdown registration을 설치하며, 같은 `https` startup surface를 사용하는 실행 중인 shell을 반환합니다. Signal 기반 shutdown timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `isFastifyMultipartTooLargeError(error)`: Fastify error shape 전반에서 multipart limit error를 감지합니다.
 - `FastifyHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
