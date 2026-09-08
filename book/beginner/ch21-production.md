@@ -3,7 +3,13 @@
 
 # Chapter 21. Production Readiness
 
-This chapter summarizes the security, performance, and deployment items you should check before deploying FluoBlog to a real production environment. Chapter 20 verified quality through testing. This chapter uses those results to complete the final preparation for production.
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
+This chapter is an operations reference using the FluoBlog scenario to organize security, performance, and deployment reviews. Reading Chapter 20 does not verify your app, and this chapter does not certify deployment readiness. Test your actual application and confirm requirements in its target environment.
 
 ## Learning Objectives
 - Review FluoBlog's final architecture.
@@ -18,7 +24,7 @@ This chapter summarizes the security, performance, and deployment items you shou
 - Basic understanding of environment variables, secret management, and operations checklists.
 
 ## 21.1 FluoBlog: The Journey So Far
-Over the past 20 chapters, FluoBlog has grown from scratch into a blog engine designed with operations in mind. Along the way, we covered the full lifecycle of a modern backend application:
+Earlier chapters used FluoBlog to explain the following concerns. This does not mean that one completed app is supplied or has been verified cumulatively:
 
 1.  **Core Foundation**: Modules, Dependency Injection (DI), and standard Decorators.
 2.  **API Development**: Controllers, services, and routing.
@@ -27,7 +33,7 @@ Over the past 20 chapters, FluoBlog has grown from scratch into a blog engine de
 5.  **Operations**: Caching, health checks, metrics, and observability.
 6.  **Quality Assurance**: Unit tests and integration tests.
 
-FluoBlog is no longer a simple "Hello World" app. It is a system with structure and operational mechanisms that should be checked before handling real traffic. It shows how to use standard TypeScript to reduce legacy compromises and build explicit software.
+These structures and operational mechanisms are design items to implement for your app and check before serving real traffic. Verify beginner practice in the [current tutorial’s testing step](../../apps/docs/content/docs/tutorial/testing.mdx); that alone does not guarantee production suitability.
 
 ## 21.2 Production Checklist: Security
 Before exposing an application to the internet, make sure the following security measures are in place. Production security is not only a code concern. It is also a matter of defensive configuration and operational procedure.

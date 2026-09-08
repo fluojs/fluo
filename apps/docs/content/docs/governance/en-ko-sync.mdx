@@ -15,3 +15,21 @@ English and Korean docs are first-class surfaces.
 ## Verification
 
 `pnpm docs:sync-check` walks `apps/docs/content/docs` and fails when an English page or navigation metadata file has no Korean counterpart, or when a Korean page has no English counterpart.
+
+It checks file pairs, not the contents of navigation metadata or the meaning of a translation. The separate platform governance gate checks selected contract heading structures and contract-specific evidence. Review commands, defaults, limitations, and expected responses in both languages even when these gates pass.
+
+## Tutorial source ownership
+
+The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the source for the complete product and pattern learning path. The [short FluoBlog exercise](/en/docs/tutorial) is a companion for checking the initial HTTP path. Review the entire Korean manuscript first, then translate it into English while preserving chapter/section structure and every code and command block.
+
+Complete source examples use a `fluo-tutorial-source` MDX comment followed by a code fence. The marker names the file under `examples/fluo-blog/`; both locales must print that tested file unchanged. Short explanatory excerpts do not carry this marker.
+
+From the repository root:
+
+```bash
+pnpm vitest run examples/fluo-blog tooling/governance/verify-platform-consistency-governance.test.ts
+pnpm book:check
+pnpm verify:docs
+```
+
+The source-copy test checks shipped code equality, not prose. The example tests check the checkpoints' behavior. Also follow a changed lesson from its stated starting point: these checks cannot prove that an instruction tells a beginner where to put a file.

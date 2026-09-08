@@ -3,9 +3,15 @@
 
 # Introduction: Peering into the Engine Room
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 fluo 시리즈의 세 번째 권은 프레임워크를 사용하는 단계를 넘어, 프레임워크가 *왜* 그렇게 작동하는지 확인하는 책입니다. 성능이 어디서 나오고, 의존성 주입과 런타임 추상이 소스 코드 안에서 어떤 형태로 드러나는지 직접 추적합니다.
 
-이 책은 다릅니다. 초급편과 중급편이 프로젝트 구축과 패턴 숙달에 집중했다면, 이 "고급" 편은 fluo의 내부 아키텍처를 깊이 있게 파고듭니다. 우리는 "방법(how-to)"에서 벗어나 "실체(how-it-is)"를 수용합니다.
+고수편은 프레임워크와 기여자 관점의 심화 자료입니다. 첫 애플리케이션 실습은 [현재 튜토리얼](../../apps/docs/content/docs/tutorial/index.ko.mdx)을 따르고, 여기서는 필요한 내부 구성 요소를 선택해 소스와 계약을 함께 읽습니다. 초보편·중수편을 모두 이수할 필요는 없습니다.
 
 ## The Source-Analysis Posture
 
@@ -65,7 +71,7 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 
 ## What This Volume Covers
 
-이 책은 6개의 주요 파트로 구성되어 있으며, 각 파트는 프레임워크의 계층을 하나씩 벗겨냅니다.
+이 권은 여섯 가지 내부 구조 주제를 모읍니다. [주제별 목차](./toc.ko.md)에서 메타데이터, DI, 런타임, HTTP, 진단, 확장·기여 중 작업에 필요한 영역을 선택하세요.
 
 1.  **데코레이터와 메타데이터**: 언어의 가장 최전선인 TC39 Stage 3 표준 데코레이터부터 시작합니다. `path:packages/core/src/metadata/shared.ts:9-34`에 정의된 `Symbol.metadata`를 활용하여 fluo가 레거시 `reflect-metadata` 함정을 피하기 위해 이 새로운 표준을 어떻게 활용하는지 탐구합니다.
 2.  **DI 컨테이너 내부**: fluo의 심장부입니다. `path:packages/di/src/container.ts:389-402`에 있는 해석 알고리즘, 스코프 관리(Singleton, Request, Transient), 그리고 복잡한 순환 의존성 감지의 과정을 해부합니다.
@@ -83,7 +89,7 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 -   `path:`는 모노레포 내의 직접적인 파일 경로를 나타냅니다.
 -   `packages/core`는 `@fluojs/core` 패키지를 참조합니다.
 -   `src/decorators.ts`는 해당 패키지 루트에서의 상대 파일 경로입니다.
--   `19-23`은 소스 코드의 현재 버전에서 정확한 라인을 가리킵니다.
+-   `19-23`은 발췌 당시 소스의 줄 범위입니다. 현재 checkout에서는 심벌과 주변 구현을 함께 확인하세요.
 
 읽는 동안 IDE에 fluo 저장소를 열어두는 편이 좋습니다. 텍스트와 코드는 같은 설명의 두 면입니다. 라인 범위를 인용할 때는 특정 로직 분기나 정리를 처리하는 `finally` 블록을 가리키는 경우가 많습니다. 이런 세부 사항은 놓치기 쉽지만 성능을 이해하는 데 중요합니다.
 
@@ -114,7 +120,7 @@ export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecora
 
 이 발췌는 고급 독자가 타입 레벨 제약과 실제 저장 형태를 같이 보게 해줍니다. `path:packages/core/src/decorators.ts:11`의 짧은 참조는 위 overload에서 `TupleOnly<TTokens>`가 어떻게 쓰이는지로 보강됩니다.
 
--   **fluo 기초**: 초급/중급 편을 읽었거나 프로덕션 fluo 앱을 구축한 상당한 경험이 있어야 합니다. 모듈, 서비스, 컨트롤러가 무엇인지 알고 있어야 합니다.
+-   **fluo 기초**: 현재 튜토리얼을 완료했거나 그에 준하는 경험이 있으면 출발할 수 있습니다. 모듈, 서비스, 컨트롤러를 이해하고, 선택한 내부 주제의 배경 지식을 확인하세요.
 -   **JavaScript 내부**: 이벤트 루프, 프로미스, 그리고 JS에서 클래스가 내부적으로 어떻게 작동하는지에 대한 기본 지식이 매우 도움이 될 것입니다.
 -   **마법은 없다는 마음가짐**: 프레임워크가 무엇을 해야 할지 "그냥 알고 있다"는 생각을 버려야 합니다. 모든 동작은 코드이며, 이 책은 그 코드를 보기 위해 존재합니다.
 
@@ -161,7 +167,7 @@ fluo 개발의 가이드 원칙은 **행동 계약(Behavioral Contract)**입니�
 
 ## A Note on Versions
 
-이 책에서 분석된 코드는 프로젝트의 `advanced-v0` 상태에 해당합니다. 프레임워크가 진화함에 따라 특정 라인 번호는 변경될 수 있지만, 여기에 설명된 아키텍처 원칙은 fluo의 기초적인 기둥입니다.
+`advanced-v0`와 `project-state`는 기존 서술을 식별하는 표시이지 릴리스나 검증된 checkout을 뜻하지 않습니다. 소스 발췌와 KSR은 근거를 찾는 출발점으로 보존합니다. 현재 동작은 패키지 README, [행동 계약](../../docs/contracts/behavioral-contract-policy.ko.md), 해당 소스와 테스트를 함께 확인하세요.
 
 ## Ready to Begin?
 
@@ -281,7 +287,7 @@ it('collects parent and child multi providers without overriding parent registra
 
 ## Beyond the Basics: Why "Advanced"?
 
-이 책 시리즈의 "고급(Advanced)"이라는 라벨은 단순히 "어렵다"는 뜻이 아니라 "아키텍처적이다"라는 뜻입니다. 초급편에서는 차를 운전하는 법을 배웠고, 중급편에서는 고속도로를 주행하고 교통 흐름을 처리하는 법을 배웠습니다. 이제 고급편에서는 엔진을 하나씩 분해하여 연료 분사가 어떻게 작동하고 피스톤의 타이밍이 어떻게 맞는지 살펴봅니다. 이 지식은 매뉴얼에 설명되어 있지 않은 방식으로 차가 고장 났을 때 원인을 좁히고, 공장 설정을 넘어서는 성능 요구를 다룰 수 있게 합니다.
+고수편의 "Advanced"는 애플리케이션 기능을 더 많이 설치한다는 뜻이 아니라 아키텍처를 분석한다는 뜻입니다. DI 해석 문제를 좁히거나 어댑터 경계를 이해하거나 패키지를 확장할 때 필요한 장을 읽습니다.
 
 ## The Standard-First Manifesto
 
@@ -367,7 +373,7 @@ fluo의 가장 신선한 점 중 하나는 마법이 없다는 것입니다. 모
 
 ## Your Roadmap to Mastery
 
-이 책은 순차적으로 읽도록 설계되었지만, 포괄적인 참조 가이드 역할도 합니다. 특정 내부 구성 요소에 대한 정보를 찾고 있다면 자유롭게 특정 장으로 건너뛰어도 좋습니다.
+이 권은 내부 구성 요소별 참고 자료입니다. 장 순서대로 읽는 것은 선택 사항이며, [목차](./toc.ko.md)에서 현재 분석하거나 수정하는 영역으로 바로 이동하세요.
 - **파트 1**은 기초를 다집니다(데코레이터 & 메타데이터).
 - **파트 2 & 3**은 코어를 구축합니다(DI & 런타임).
 - **파트 4**는 외부 표면을 탐구합니다(HTTP & 커넥터).

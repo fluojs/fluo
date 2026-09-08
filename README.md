@@ -77,7 +77,7 @@ pnpm dev
 
 Generated Node.js starter lifecycle scripts delegate to `fluo dev`, `fluo build`, and `fluo start`, so the CLI selects runtime-specific commands and applies sensible `NODE_ENV` defaults when unset. Bun, Deno, and Cloudflare Workers starters keep the same `fluo dev` abstraction while defaulting to runtime-owned watch loops, expose `fluo dev --runner fluo` when you need the CLI restart supervisor, and use runtime-native production or deployment scripts.
 
-The starter template gives you a production-ready setup with Fastify, built-in health checks, and an organized directory structure designed to scale.
+The starter gives you Fastify, health checks, and a working application structure. Continue with the [FluoBlog tutorial](./apps/docs/content/docs/tutorial/index.mdx) to build and test your first feature. Authentication, persistent storage, and deployment configuration are application decisions, not guarantees supplied by scaffolding.
 
 ## A Modular Ecosystem
 
@@ -95,8 +95,11 @@ fluo isn't a monolith. It's a collection of precision-engineered modules:
 ## Where to Go Next?
 
 - [HTTP Dependency Security Update](./docs/reference/dependency-security-update.md): Published Fastify/Express dependency paths and consumer lockfile updates for the public upstream advisories.
-- 📖 **[Documentation Hub](./book/README.md)**: Deep dives into architecture, DI, and patterns.
-- 🚀 **[Getting Started](./book/beginner/ch02-cli-setup.md)**: Your first 15 minutes with fluo.
+- **[Three volumes of backend design through product development](./book/README.md)**: The primary learning path, growing FluoBlog into a merchandise shop while learning code patterns, consistency, and Fluo internals.
+- **[Short HTTP exercise](./apps/docs/content/docs/tutorial/index.mdx)**: An executable companion for the first route, DI, request validation, and tests.
+- **[Task guides](./apps/docs/content/docs/guides/index.mdx)**: Add a capability to an existing application.
+- **[Documentation map](./docs/README.md)**: Find the authoritative guide, contract, or package reference for a question.
+- **[Start with volume 1](./book/01-fluoblog/toc.md)**: Twenty-four chapters that develop a small feature into an operable blog.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.md)**: The source of truth for official runtime/package coverage.
 - 💡 **[Example Apps](./examples/README.md)**: From minimal setups to complex RealWorld APIs.
 - 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `fluo` command for rapid development.

@@ -3,6 +3,12 @@
 
 # Chapter 11. Request Pipeline Anatomy — HTTP 요청의 일생
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 Fluo HTTP 디스패처가 요청을 받아 응답을 돌려주기까지 어떤 내부 단계를 거치는지 살펴봅니다. Chapter 10이 호스트 분기와 어댑터 seam을 다뤘다면, 이 장은 그 위에서 실제 요청 처리 파이프라인이 어떻게 작동하는지 집중해서 보여 줍니다.
 
 ## Learning Objectives

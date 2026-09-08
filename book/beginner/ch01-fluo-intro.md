@@ -3,6 +3,12 @@
 
 # Chapter 1. Introduction to fluo and Design Philosophy
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter builds the baseline model you will use for everything that follows. Before you scaffold FluoBlog or add your first feature, you need to understand which problems fluo tries to reduce, which framework tradeoffs it rejects, and how those choices change real application code.
 
 ## Learning Objectives
@@ -332,7 +338,7 @@ This flow also resembles how healthy production systems grow. They solve one cle
 
 The final step in this introduction is connecting the concepts you have seen to the project we will build together.
 
-Throughout this book, we will build a blog API called **FluoBlog**. The project grows a little in each chapter.
+The older Book uses a blog API called **FluoBlog** as a design example. Chapters connect concepts, but are not cumulatively verified runnable stages of one project.
 
 We chose this example because it is familiar. A blog includes posts, categories, authors, authentication, validation rules, and operational concerns such as caching or observability. It can show a realistic structure without making you learn an unfamiliar business domain first.
 
@@ -368,10 +374,10 @@ The following advanced topics are deferred.
 
 This delay is intentional. Architecture is easier to understand when it expands in meaningful layers.
 
-Each chapter begins with a `project-state` comment. That comment acts like a small navigation marker and tells you which point in the FluoBlog timeline the current examples assume.
+Each chapter's `project-state` comment is navigation metadata identifying a point in the older FluoBlog narrative. It does not map to a runnable checkpoint in the new tutorial or a published version.
 
 - It tells you which FluoBlog version the chapter assumes.
-- It reminds you that this book is cumulative.
+- It marks narrative order, not a guarantee of cumulative execution verification.
 - It helps keep examples aligned with the chapter timeline.
 
 Choosing a framework is not just choosing a tool. It is choosing a foundation for future work.
@@ -395,4 +401,4 @@ By the end of this chapter, you don't need to memorize every API. It is enough t
 
 ## Next Chapter Preview
 
-In the next chapter, we move from philosophy to hands-on work. You will install the fluo CLI, scaffold the first version of FluoBlog, inspect the generated files, and run the app locally so the abstract ideas from this chapter become real directories and commands.
+For your first run, continue with [Create an app](../../apps/docs/content/docs/tutorial/create-app.mdx) in the current tutorial. The older [CLI chapter](./ch02-cli-setup.md) is supplementary reading about generated structure and tooling.

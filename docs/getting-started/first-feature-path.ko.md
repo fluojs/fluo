@@ -4,6 +4,8 @@
 
 이 문서는 fluo 애플리케이션에서 사용하는 최소 기능 슬라이스 구조를 정의한다. 이 저장소의 기준 예시는 `examples/minimal/src/hello.*` 및 `examples/realworld-api/src/users/*`이다.
 
+단계별 실습은 [FluoBlog 튜토리얼](../../apps/docs/content/docs/tutorial/index.ko.mdx)을 이용하세요. 이 페이지는 기존 애플리케이션을 위한 구조 레퍼런스로 유지합니다.
+
 ## Required Files
 
 가장 작은 HTTP 기능 슬라이스는 보통 `src/users/` 또는 `src/catalog/` 같은 전용 디렉터리 아래에 다음 파일을 둔다.

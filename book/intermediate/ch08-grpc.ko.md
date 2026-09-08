@@ -3,6 +3,12 @@
 
 # Chapter 8. gRPC
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 Part 1의 transport 선택을 gRPC까지 확장하고, FluoShop에 schema-first RPC와 스트리밍 계약을 도입하는 기준을 정리합니다. Chapter 7이 physical edge 입력을 다뤘다면, 여기서는 명시적 proto 계약과 저지연 스트리밍이 필요한 서비스 경계로 초점을 옮깁니다.
 
 Server ownership, signal-compatible facade shutdown, AbortSignal listener cleanup을 포함한 패키지 수준 gRPC transport 계약은 [`packages/microservices/README.ko.md`](../../packages/microservices/README.ko.md)에 정식으로 기록되어 있습니다.

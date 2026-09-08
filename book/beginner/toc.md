@@ -1,5 +1,20 @@
 # Table of Contents
 
+**Start the current learning path with the [product and pattern three-volume series](../README.md).** The contents below preserve previous-edition references and stable links. Use the new volume contents for the current sequence and chapter numbers.
+
+[Volume introduction](./ch00-introduction.md) · [Book hub](../README.md)
+
+**Choose a topic**
+
+- [Getting Started](ch01-fluo-intro.md) — Select the chapter you need in this group below.
+- [Building HTTP APIs](ch05-routing-controllers.md) — Select the chapter you need in this group below.
+- [Configuration and Data](ch11-config.md) — Select the chapter you need in this group below.
+- [Authentication and Security](ch14-jwt.md) — Select the chapter you need in this group below.
+- [Caching and Operations](ch17-cache.md) — Select the chapter you need in this group below.
+- [Testing](ch20-testing.md) — Select the chapter you need in this group below.
+
+**Browse existing chapters and sections**
+
 - [Chapter 0. Welcome to fluo: A Standard-First Framework](ch00-introduction.md)
   - [What is fluo?](ch00-introduction.md#what-is-fluo)
   - [Why this book?](ch00-introduction.md#why-this-book)
@@ -13,6 +28,8 @@
   - [Let's Begin](ch00-introduction.md#lets-begin)
 
 ## Part 0. Getting Started
+
+Foundations reference: philosophy, CLI structure, modules/providers, and Standard Decorators. Use the current tutorial for first-run setup.
 
 - [Chapter 1. Introducing fluo and Its Design Philosophy](ch01-fluo-intro.md)
   - [Learning Objectives](ch01-fluo-intro.md#learning-objectives)
@@ -60,6 +77,8 @@
   - [Next Part Preview](ch04-decorators-intro.md#next-part-preview)
 
 ## Part 1. Building HTTP APIs
+
+HTTP reference: select routing, validation, serialization, exception handling, guards/interceptors, or OpenAPI as needed.
 
 - [Chapter 5. Routing and Controllers](ch05-routing-controllers.md)
   - [Learning Objectives](ch05-routing-controllers.md#learning-objectives)
@@ -129,6 +148,8 @@
 
 ## Part 2. Configuration and Data
 
+Optional configuration and persistence: choose these topics when your app needs a database or transactional work.
+
 - [Chapter 11. Configuration Management](ch11-config.md)
   - [Learning Objectives](ch11-config.md#learning-objectives)
   - [11.1 The Need for Explicit Configuration](ch11-config.md#111-the-need-for-explicit-configuration)
@@ -160,6 +181,8 @@
   - [13.7 Summary](ch13-transactions.md#137-summary)
 
 ## Part 3. Authentication and Security
+
+Optional authentication and access controls: apply the mechanisms your security policy requires.
 
 - [Chapter 14. JWT Authentication](ch14-jwt.md)
   - [Learning Objectives](ch14-jwt.md#learning-objectives)
@@ -207,6 +230,8 @@
 
 ## Part 4. Caching and Operations
 
+Operations reference: caching, health checks, and metrics are application choices, not tutorial completion requirements.
+
 - [Chapter 17. Caching for High Performance](ch17-cache.md)
   - [Learning Objectives](ch17-cache.md#learning-objectives)
   - [17.1 The Need for Speed: Why Caching Matters](ch17-cache.md#171-the-need-for-speed-why-caching-matters)
@@ -239,6 +264,8 @@
   - [19.9 Summary](ch19-metrics.md#199-summary)
 
 ## Part 5. Testing
+
+Testing and deployment reference: use tests throughout development, not only after all other Book chapters.
 
 - [Chapter 20. Testing](ch20-testing.md)
   - [Learning Objectives](ch20-testing.md#learning-objectives)

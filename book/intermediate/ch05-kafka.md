@@ -3,6 +3,12 @@
 
 # Chapter 5. Kafka
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter introduces Kafka to add durable shared history to FluoShop, then clarifies where a work queue and an event log become different choices. Chapter 4 covered ownership of fulfillment work. Here, the focus shifts to designing an order timeline that needs replay and multiple consumer groups.
 
 Package-level Kafka transport contracts, including completion boundaries and caller-owned collaborator shutdown, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).

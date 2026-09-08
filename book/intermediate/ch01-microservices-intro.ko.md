@@ -3,6 +3,12 @@
 
 # Chapter 1. Microservice Architecture and fluo Strategy
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 intermediate 볼륨 전체의 기준선이 되는 FluoShop 아키텍처와 fluo의 마이크로서비스 전략을 정리합니다. Beginner 볼륨에서 다룬 단일 애플리케이션 모델을 바탕으로, 이제 서비스 경계와 트랜스포트 선택이 시스템 품질에 어떤 영향을 주는지까지 범위를 넓힙니다.
 
 ## Learning Objectives
@@ -139,7 +145,7 @@ export class AppModule {}
 
 전통적인 프레임워크는 프로토콜 세부 사항을 비즈니스 로직에 노출하는 경우가 많습니다. REST로 시작했다가 나중에 브로커가 필요해지면 핸들러를 다시 써야 할 수 있습니다. fluo는 트랜스포트를 교체 가능한 드라이버로 다루어 이 마찰을 줄입니다.
 
-멱등성, 전달 의미론, 관측 가능성 같은 운영상의 트레이드오프는 여전히 고려해야 하지만, 인프라가 바뀌었다고 해서 핸들러 시그니처를 다시 설계할 필요는 없습니다. FluoShop에서는 이 덕분에 학습 경로가 누적형이 됩니다. 2장은 TCP를, 3장은 Redis를 다루며 각 장은 이전 장의 기초 위에 쌓입니다.
+멱등성, 전달 의미론, 관측 가능성 같은 운영상의 트레이드오프는 여전히 고려해야 하지만, 인프라가 바뀌었다고 해서 핸들러 시그니처를 다시 설계할 필요는 없습니다. 이 공통 모델을 바탕으로 TCP(2장), Redis(3장), 다른 트랜스포트를 비교할 수 있습니다. 각 장은 선택 참고 자료이며 이전 트랜스포트를 먼저 구현할 필요는 없습니다.
 
 ## 1.7 Summary
 

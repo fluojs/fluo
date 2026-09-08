@@ -4,15 +4,21 @@
 
 # Introduction: Scaling Beyond the Monolith
 
-The intermediate volume of the fluo series begins at the boundary where a single application starts becoming a distributed system.
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
 
-The beginner volume focused on building a solid single-instance application. Using the Standard-First Decorator model, Dependency Injection (DI), and the basic HTTP layer, we clarified service boundaries and built the first version of FluoShop as a modular monolith while preserving strict type safety.
+<!-- fluo:docs-navigation:end -->
+The Intermediate volume is supplementary reading for capabilities and architecture you need after the tutorial. It is not a required course in adopting microservices or adding every feature.
+
+Build your first app in the [current FluoBlog tutorial](../../apps/docs/content/docs/tutorial/index.mdx). Once you understand modules, explicit DI, and the basic HTTP flow, jump to the chapter you need. You do not need to finish the Beginner Book or bring an existing FluoShop app.
 
 The intermediate volume moves beyond web server basics and focuses on the cost and responsibility of system design. Data Locality, network partitions, and Service Discovery are no longer side topics. In a monolith, a single database and local transactions provide much of the consistency story. In a distributed system, local function calls must be treated as network messages, and Eventual Consistency must become an explicit design condition.
 
 ## The Intermediate Journey
 
-This book shows, in concrete terms, how to use fluo to move from a modular monolith to a scalable, resilient microservices architecture. It does not stop at theory. Step by step, we refactor FluoShop into a distributed system that spans multiple services, protocols, and runtimes.
+This volume compares optional capabilities rather than refactoring one runnable application across every chapter. FluoShop connects the examples as a design scenario, not a cumulative project.
 
 We focus on four main themes.
 
@@ -26,7 +32,7 @@ We focus on four main themes.
 
 ## The Evolution of FluoShop
 
-In this book, FluoShop grows from a simple shop application into a distributed system. The system is split into services by responsibility.
+FluoShop is a shop scenario for comparing responsibility boundaries. The following services illustrate a design; they are neither an app completed in the Beginner volume nor a deployable deliverable supplied by this volume.
 
 - **API Gateway**: The entry point that handles data aggregation and cross-cutting concerns.
 - **Catalog Service**: Manages products and inventory on high-performance read paths.
@@ -46,17 +52,18 @@ In fluo, everything is an explicit Provider. The dependency graph is auditable, 
 
 ## How to Navigate This Book
 
-This book is organized in the order you typically encounter concerns when introducing distributed systems. Each part adds the next operational problem on top of the previous decision, so readers can follow why FluoShop adopts a new transport or pattern at that point in the journey.
+Select your current problem in the [topic index](./toc.md). For transports, begin with the [capability chooser](./ch01-microservices-intro.md#123-transport-capability-chooser) and [package capability matrix](../../packages/microservices/README.md#transport-capability-matrix). Part and chapter numbers preserve existing links, not a mandatory sequence.
 
-- **Part 0. Preparing for microservices**: Define the strategy and learn TCP as the first transport.
-- **Part 1. Message brokers**: Integrate RabbitMQ, Kafka, NATS, MQTT, and gRPC, then evaluate the tradeoffs of each one.
-- **Part 2. Event-driven architecture**: Implement an event bus, CQRS, the Saga pattern, and distributed locks.
-- **Part 3. Realtime communication**: Scale WebSocket gateways and Socket.IO in a multi-service environment.
-- **Part 4. Notification system**: Orchestrate notifications across email, Slack, and Discord.
-- **Part 5. API expansion**: Explore GraphQL and modern ORMs such as Drizzle and Mongoose.
-- **Part 6. Platform portability**: Deploy the same business logic to Bun, Deno, and Cloudflare Workers.
+- **Communication boundaries and transport choices (Parts 0–1, Chapters 1–8)**: Decide whether separation is needed, then compare TCP, Redis, RabbitMQ, Kafka, NATS, MQTT, and gRPC.
+- **Events and background work (Part 2, Chapters 9–12)**: Choose among event bus, CQRS/Saga, queues, scheduling, and distributed locks.
+- **Realtime connections (Part 3, Chapters 13–14)**: Compare WebSockets and Socket.IO.
+- **Notification channels (Part 4, Chapters 15–17)**: Select notification orchestration, email, or Slack/Discord integrations.
+- **API and storage choices (Part 5, Chapters 18–20)**: Assess GraphQL, Mongoose, and Drizzle for their respective needs.
+- **Runtime and operations review (Part 6, Chapters 21–25)**: Read the adapter and operational boundaries for your target host. Chapter 25 is a scenario recap, not a verified checkpoint for a completed app.
 
 ## Setting Expectations
+
+Older versions and `project-state` labels distinguish the narrative. Do not assume `examples/` provides completed snapshots for every chapter; check each example's scope in the [example catalog](../../examples/README.md). Package READMEs and behavioral contracts define supported capabilities and limitations.
 
 Microservices are not a cure-all. They introduce new costs, including network latency, partial failure, data consistency, and operational overhead. This book does not hide those costs. It also explains when you should *not* use microservices, the trap of the Distributed Monolith, and the fact that architecture is a series of intentional tradeoffs.
 
@@ -78,9 +85,9 @@ fluo was designed to make this transition explicit. Chapter 1 starts by clarifyi
 
 These terms form the shared language for describing the fluo microservices ecosystem. Now we will start with architectural boundaries.
 
-FluoShop will evolve naturally from a single application into a distributed system. We will keep the strengths of the modular monolith while drawing clearer service boundaries. The intermediate volume does not force microservices from the start. It first explains why separation becomes necessary. Each chapter connects architectural decisions to real changes in FluoShop. Service decomposition starts with responsibility boundaries, not with moving code. Catalog, order, payment, and notification are domains with different failure models. We will learn not to mistake network calls for function calls.
+The FluoShop scenario compares choices involved in moving from a single application to a distributed system. We will keep the strengths of the modular monolith while drawing clearer service boundaries. The intermediate volume does not force microservices from the start. It first explains why separation becomes necessary. Each chapter connects architectural decisions to hypothetical design changes in FluoShop. Service decomposition starts with responsibility boundaries, not with moving code. Catalog, order, payment, and notification are domains with different failure models. We will learn not to mistake network calls for function calls.
 
-Data Locality and service ownership are central to distributed system design. Eventual Consistency is closer to a design choice than a surrender. FluoShop's evolution is a journey from v0.0 toward larger operational realities. The API Gateway is the entry point, but it does not own every business rule. The Catalog Service will show a model suited to read-heavy workloads. The Order Service will own most long-running flows and state transitions. The Payment Service exposes the tension between external system integration and failure recovery. The Notification Service shows the value of a reactive consumer model.
+Data Locality and service ownership are central to distributed system design. Eventual Consistency is closer to a design choice than a surrender. Labels such as FluoShop v0.0 distinguish scenarios rather than runnable releases. The API Gateway is the entry point, but it does not own every business rule. The Catalog Service will show a model suited to read-heavy workloads. The Order Service will own most long-running flows and state transitions. The Payment Service exposes the tension between external system integration and failure recovery. The Notification Service shows the value of a reactive consumer model.
 
 TCP is the simplest starting point, and it reveals the core nature of service-to-service messaging. Redis lets us compare fast event delivery with stream-based durability. RabbitMQ makes queue topology and routing strategy explicit. Kafka introduces operational concepts such as replay, partitioning, and consumer groups. NATS shows where low latency and a simple operational model matter most. MQTT lets us cover telemetry and device-friendly messaging scenarios. gRPC gives us a good opportunity to examine explicit contracts and streaming models. We will compare how the same business flow looks on top of different transports.
 
@@ -104,6 +111,6 @@ Technology choices should follow problem fit rather than trends. Using Kafka doe
 
 CQRS and event models make search, analytics, and dashboard experiences more flexible. Understanding Saga helps us design payment failure and inventory recovery flows more calmly. Well-defined domain events make conversations between teams more precise. A GraphQL layer is useful for gathering data from several services and refining the read experience. Comparing Mongoose and Drizzle also reveals differences in data modeling philosophy. Runtime portability is insurance against future changes in deployment strategy. Running the same core logic on multiple adapters builds confidence. By the end of the intermediate volume, you will be comfortable with the language of distributed applications.
 
-You will read transports, events, queues, and realtime connections as parts of one system. You will be able to explain why FluoShop's next change is necessary. It is fine if difficult concepts do not become clear all at once. What matters is widening your systems thinking a little in each chapter. When questions come up, there is a community, code to experiment with, and examples to reread. You already built the foundation in the beginner volume. Now you are entering a wider design space. Distributed systems are hard, but they can be learned, and fluo is designed to support that learning.
+You will read transports, events, queues, and realtime connections as parts of one system. You will be able to explain why FluoShop's next change is necessary. It is fine if difficult concepts do not become clear all at once. What matters is widening your systems thinking a little in each chapter. When questions come up, there is a community, code to experiment with, and examples to reread. Use the foundations from the current tutorial to explore the design space you need. Distributed systems are hard, but they can be learned, and fluo is designed to support that learning.
 
-Now it is time to move to the next step with FluoShop.
+Choose a capability from the [topic index](./toc.md), or return to the [current tutorial’s next steps](../../apps/docs/content/docs/tutorial/next-steps.mdx).

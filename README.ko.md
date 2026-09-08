@@ -77,7 +77,7 @@ pnpm dev
 
 생성된 Node.js 스타터 lifecycle script는 `fluo dev`, `fluo build`, `fluo start`로 위임하므로, CLI가 런타임별 명령을 선택하고 `NODE_ENV`가 없으면 적절한 기본값을 사용합니다. Bun, Deno, Cloudflare Workers 스타터는 같은 `fluo dev` 추상성을 유지하면서 runtime-owned watch loop를 기본값으로 사용하고, CLI restart supervisor가 필요하면 `fluo dev --runner fluo`를 제공하며, production 또는 deployment script는 각 런타임의 native 명령을 사용합니다.
 
-생성된 스타터 템플릿에는 바로 프로덕션에 투입 가능한 Fastify 설정, 내장된 헬스 체크, 그리고 확장이 용이한 디렉터리 구조가 포함되어 있습니다.
+스타터는 Fastify, 헬스 체크, 실행 가능한 애플리케이션 구조를 제공합니다. [FluoBlog 튜토리얼](./apps/docs/content/docs/tutorial/index.ko.mdx)에서 첫 기능을 만들고 테스트하세요. 인증, 영속 저장소, 배포 설정은 애플리케이션에서 결정할 사항이며 스캐폴딩만으로 갖춰지지 않습니다.
 
 ## 모듈형 생태계
 
@@ -95,8 +95,11 @@ fluo는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된 �
 ## 이어서 읽기
 
 - [HTTP 의존성 보안 업데이트](./docs/reference/dependency-security-update.ko.md): 공개 upstream advisory에 대한 published Fastify/Express dependency 경로와 consumer lockfile 갱신 안내.
-- 📖 **[문서 포털](./book/README.ko.md)**: 아키텍처, DI, 패턴에 대한 심층 문서.
-- 🚀 **[시작하기](./book/beginner/ch02-cli-setup.ko.md)**: fluo와 함께하는 첫 15분.
+- **[제품을 만들며 배우는 백엔드 설계 3권](./book/README.ko.md)**: FluoBlog에서 머천다이즈 숍으로 성장하며 코드 패턴·정합성·Fluo 내부 구조를 배우는 중심 학습 경로.
+- **[짧은 HTTP 실습](./apps/docs/content/docs/tutorial/index.ko.mdx)**: 첫 라우트, DI, 요청 검증과 테스트를 확인하는 실행 가능한 보조 과정.
+- **[작업별 가이드](./apps/docs/content/docs/guides/index.ko.mdx)**: 기존 애플리케이션에 필요한 기능 추가하기.
+- **[문서 지도](./docs/README.ko.md)**: 질문에 맞는 기준 가이드, 계약, 패키지 레퍼런스 찾기.
+- **[1권부터 시작하기](./book/01-fluoblog/toc.ko.md)**: 작은 기능을 운영 가능한 블로그로 발전시키는 24장.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md)**: 공식 런타임/패키지 범위를 보여주는 기준 문서.
 - 💡 **[예제 앱](./examples/README.ko.md)**: 최소 설정부터 복잡한 RealWorld API까지.
 - 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `fluo` 명령어 마스터하기.

@@ -1,0 +1,81 @@
+---
+title: Next steps
+description: Verify the completed FluoBlog app and connect its learning boundaries to persistence, auth, and operations.
+---
+
+## Goal and prior checkpoint
+
+Start after [Testing the whole feature](/en/docs/tutorial/testing). Your editable app is still `examples/fluo-blog/00-start`; its application source now matches the `03-validation-errors` recovery snapshot.
+
+This lesson adds or replaces **no files**. Your goal is to verify the final state, understand what it does not provide, and choose the next guide without mistaking the tutorial for a production application.
+
+## Verify your own app, not the reference snapshot
+
+Stop the earlier server with Ctrl+C. From the repository root:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+pnpm --filter @fluojs/example-fluo-blog typecheck
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+The tests and typecheck must pass, and the build must succeed before the server starts. Keep using the explicit `:00` scripts: the package's plain `build` and `start` aliases run the completed reference snapshot.
+
+In the second terminal:
+
+```bash
+curl -i http://127.0.0.1:3000/health
+curl -i http://127.0.0.1:3000/ready
+curl -i http://127.0.0.1:3000/posts
+curl -i http://127.0.0.1:3000/posts/2
+```
+
+On this freshly started process:
+
+| Request | Status | Body |
+| --- | --- | --- |
+| `/health` | `200` | `{"status":"ok"}` |
+| `/ready` | `200` | `{"status":"ready"}` |
+| `/posts` | `200` | `[{"id":"1","title":"Hello, Fluo!","content":"My first post."}]` |
+| `/posts/2` | `404` | `{"error":{"code":"NOT_FOUND","message":"Post 2 was not found.","status":404}}` |
+
+The error may also include `requestId`. Post `2` from the previous lesson is gone because you restarted the process. The tests did not populate this server either: each test application owns separate state.
+
+## What you have learned
+
+You built a controller, registered it first in `AppModule` and then in `PostsModule`, supplied a service through class-level `@Inject`, bound URL and body fields with DTOs, and verified HTTP status/body contracts through the request pipeline.
+
+The completed app supports `GET /posts`, `GET /posts/:id`, and `POST /posts`, plus the preserved health/readiness routes. It does not provide update or delete routes, a browser UI, users, durable storage, or a deployment.
+
+## Make posts survive a restart
+
+Continue with [Persistence](/en/docs/guides/persistence). Keep the controller and request tests as your public behavior contract while moving storage out of the service's array. The persistence guide describes the package-specific database and connection-lifecycle contracts.
+
+Your next acceptance check is concrete: create a post, restart the process, and retrieve it successfully. Database schema, migrations, ID generation, connection disposal, and transaction boundaries belong to that next implementation. The in-memory array and sequential ID in this course do not solve them.
+
+## Decide who may create a post
+
+Continue with [Auth](/en/docs/guides/auth). At present, anyone who can reach the server can create posts. DTO validation checks input shape; it does not authenticate a caller or authorize an action.
+
+Define who owns a post, protect creation with the appropriate guard/strategy, and add request tests for anonymous, authenticated, and forbidden requests. Follow the auth guide for the actual JWT and Passport contracts instead of treating an incoming user ID as proof of identity.
+
+## Replace the starter's operational assumptions
+
+Continue with [Operations](/en/docs/guides/operations) and the [Production checklist](/en/docs/operations/production-checklist).
+
+The current `/health` and `/ready` routes do not probe a database or an external service. When those dependencies are introduced, design readiness checks, shutdown behavior, configuration, logging, metrics, and resource limits for that application. If replacing the starter health module with another health provider, avoid registering competing routes at the same paths.
+
+Passing this course's tests shows the tutorial contract works. It is not evidence that the app is ready for a public production deployment.
+
+## Keep extending the same testing habits
+
+Use [Testing](/en/docs/guides/testing) for provider overrides and broader request coverage, [HTTP API](/en/docs/guides/http-api) for route and pipeline features, and [Validation and serialization](/en/docs/guides/validation-serialization) for larger input and output boundaries.
+
+Keep one failing behavioral test before each new behavior, then make the smallest change that passes it. Retain the real request path for DTO and error tests, and keep cleanup in `finally`.
+
+## Recovery and course completion
+
+Compare the files in your `00-start/src` with [the final application source](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/03-validation-errors/src) and your request suite with [the complete tests](https://github.com/fluojs/fluo/blob/main/examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts). Copy a needed file's contents into its matching path in `00-start`; do not replace the shared package configuration or change the script target to hide a missing lesson step.
+
+Previous: [Testing the whole feature](/en/docs/tutorial/testing). Next: [Persistence](/en/docs/guides/persistence). Return to [the course overview](/en/docs/tutorial).

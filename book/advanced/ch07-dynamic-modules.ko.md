@@ -3,6 +3,12 @@
 
 # Chapter 7. Dynamic Modules and Factory Providers
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 Fluo의 동적 모듈이 별도의 특수 객체가 아니라, 코드가 만들어 내는 일반적인 모듈 타입이라는 사실을 설명합니다. Chapter 6이 순환 의존성과 DI 제약을 정리했다면, 이 장은 그 위에서 구성 가능한 모듈 등록과 팩토리 기반 프로바이더 설계로 넘어갑니다.
 
 ## Learning Objectives

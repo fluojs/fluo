@@ -3,6 +3,12 @@
 
 # Chapter 2. Creating Your First Project with the CLI
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 In Chapter 1, you saw the ideas behind fluo. Now it is time to turn that philosophy into real directories and commands. By the end of this chapter, you will have a runnable FluoBlog starter, and you will understand why the generated files are placed where they are. Before building more architecture on top, you will secure a stable baseline that already works.
 
 ## Learning Objectives

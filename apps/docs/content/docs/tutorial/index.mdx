@@ -1,0 +1,52 @@
+---
+title: Build FluoBlog
+description: Build and test one posts API, from a running starter to explicit dependency injection and validated requests.
+---
+
+Build **FluoBlog**, a small API for listing, creating, and reading blog posts. You need basic TypeScript knowledge, but no previous Fluo experience. Each lesson extends the same application and checks a visible result before moving on.
+
+This is a short companion exercise for the initial HTTP, DI, and validation path. For a continuous treatment of product development, good code patterns, commerce consistency, and framework internals, read the [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md). These checkpoints do not provide completed applications for the entire book.
+
+## Your destination
+
+By the end, you will send real HTTP requests to a Node.js and Fastify server, see invalid input rejected, and run request-level tests against your application module. You will understand which file starts the server, which module registers a feature, and how a controller receives its service.
+
+| Lesson | Observable result |
+| --- | --- |
+| [Create the app](/en/docs/tutorial/create-app) | The starter answers `GET /health` with `200` and `{"status":"ok"}`. |
+| [Your first route](/en/docs/tutorial/first-route) | `GET /posts` returns the first post, and a request test checks it. |
+| [Dependency injection](/en/docs/tutorial/dependency-injection) | The same route gets its data from an explicitly registered service. |
+| [Validation and errors](/en/docs/tutorial/validation-errors) | Valid input creates a post; invalid input returns `400`; an unknown post returns `404`. |
+| [Testing the whole feature](/en/docs/tutorial/testing) | A request suite checks creation, reads, errors, and isolated application state. |
+| [Next steps](/en/docs/tutorial/next-steps) | You verify what you built and identify the persistence, auth, and operations work still needed. |
+
+## One environment, one application
+
+Use Node.js `>=24.0.0 <27`, pnpm **10**, TypeScript, and the Fastify HTTP adapter throughout. From your terminal:
+
+```bash
+node --version
+pnpm --version
+```
+
+The first command must print a supported Node version, and the second a `10.x` version. Install these prerequisites before the next lesson.
+
+This introduction has no prior checkpoint and requires no source edits. [Create the app](/en/docs/tutorial/create-app) establishes the working directory and exact setup commands. Keep that directory for subsequent lessons; do not create a new application at each page.
+
+## How to follow the code
+
+You edit **one application**, `examples/fluo-blog/00-start`, throughout the course. Paths such as `src/app.ts` are relative to that directory; code titles show the `00-start/` destination. **`src/app.ts` owns `AppModule`**; there is no need to invent `src/app.module.ts`. `src/main.ts` starts Fastify with that module.
+
+The learning app starts with only health routes. Preserve `/health` and `/ready` while adding posts. Unlike the external CLI starter, this focused learning app has no greeting feature. `GET /` is not the health endpoint.
+
+Run requests in a second terminal while the server runs in the first. After edits, stop the server, rebuild with `build:00`, and restart with `start:00`. The posts collection is stored **in memory**, not a database. A process restart loses newly created posts and restores the initial post.
+
+## Checkpoints and recovery
+
+The complete source belongs to [`examples/fluo-blog`](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog). `00-start` is your editable app. Keep `01-first-route`, `02-dependency-injection`, and `03-validation-errors` unchanged as complete comparison and recovery snapshots. You do not switch apps to complete a lesson: you add or replace the named files in `00-start` until its behavior matches the next snapshot.
+
+Repository checkpoint commands run inside a clone of the Fluo repository and use its workspace dependencies. They are not commands for an arbitrary app created by a globally installed CLI. The next lesson makes this distinction explicit rather than assuming an unpublished package release is available.
+
+If a result differs, compare the exact files and root module imports with that lesson's checkpoint before moving on. Do not enable `experimentalDecorators` or `emitDecoratorMetadata` to fix a setup error; this course uses Fluo's standard decorator toolchain.
+
+Previous: [Documentation home](/en/docs). Next: [Create the app](/en/docs/tutorial/create-app).

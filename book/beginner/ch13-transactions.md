@@ -3,6 +3,12 @@
 
 # Chapter 13. Transactions and Data Access Patterns
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains the transaction patterns that group multiple FluoBlog data changes into one safe unit of work. In Chapter 12, you gained persistence with Prisma. Now you'll learn how to keep those writes consistent.
 
 ## Learning Objectives

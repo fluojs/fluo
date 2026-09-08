@@ -1,55 +1,30 @@
 ---
 title: First Feature
-description: Build a small feature slice with a module, service, controller, DTO, and test path.
+description: Find the guided first-feature lesson or the reference for an existing application.
 ---
 
-A feature slice is the smallest useful unit of a fluo application. It gives one domain concept a module boundary, a provider for business logic, a controller for HTTP behavior, DTOs for the public contract, and tests that prove the behavior.
+The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the primary learning path. The [FluoBlog tutorial](/en/docs/tutorial) is a short companion exercise for the initial HTTP, DI, and validation flow. It builds one posts API through complete, executable checkpoints instead of leaving module registration, validation, or tests for you to fill in.
 
-This walkthrough uses a `users` feature. Treat the code as a shape to copy into a generated app, then adjust names for your domain.
+## Build your first feature
 
-## 1. Create the module boundary
+Start with [Create an application](/en/docs/tutorial/create-app), then continue in order:
 
-```ts
-import { Module } from '@fluojs/core';
+1. [Return your first posts response](/en/docs/tutorial/first-route).
+2. [Connect a module and service with explicit DI](/en/docs/tutorial/dependency-injection).
+3. [Validate input and handle errors](/en/docs/tutorial/validation-errors).
+4. [Prove the request behavior with tests](/en/docs/tutorial/testing).
 
-import { UsersController } from './users.controller';
-import { UsersService } from './users.service';
+Use the same FluoBlog project throughout. Each lesson states the required starting state, exact file changes, expected responses, and a recovery checkpoint.
 
-@Module({
-  controllers: [UsersController],
-  providers: [UsersService],
-})
-export class UsersModule {}
-```
+## Add a feature to an existing application
 
-The module is the review boundary: it shows which controller and provider belong together.
+If your app already runs, use the [feature structure reference](https://github.com/fluojs/fluo/blob/main/docs/getting-started/first-feature-path.md) to check module registration and file responsibilities. Use [HTTP API](/en/docs/guides/http-api), [Validation & Serialization](/en/docs/guides/validation-serialization), and [Testing](/en/docs/guides/testing) for the specific capability you are adding.
 
-## 2. Add the provider
+### HTTP and DI wiring
 
-```ts
-export interface UserSummary {
-  id: string;
-  name: string;
-}
+The following `users` code is a structural reference for connecting a controller, service, and request DTOs in an existing application. It is neither the next FluoBlog exercise checkpoint nor a standalone application. It assumes a `UsersService` in `users.service.ts` in the same directory, with `create(name: string)` to create a user and `findById(id: string)` to return a user or `undefined`.
 
-export class UsersService {
-  private readonly users = new Map<string, UserSummary>();
-
-  create(name: string): UserSummary {
-    const user = { id: crypto.randomUUID(), name };
-    this.users.set(user.id, user);
-    return user;
-  }
-
-  findById(id: string): UserSummary | undefined {
-    return this.users.get(id);
-  }
-}
-```
-
-Providers should own business behavior. Controllers should only translate transport input into provider calls.
-
-## 3. Define the HTTP boundary
+Register `UsersController` in the feature module's `controllers` and `UsersService` in its `providers`, then import that feature module from the application's root module. This is the complete `users.controller.ts`:
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -59,12 +34,12 @@ import { UsersService } from './users.service';
 
 class CreateUserDto {
   @FromBody()
-  name!: string;
+  name = '';
 }
 
 class FindUserParamsDto {
   @FromPath('id')
-  id!: string;
+  id = '';
 }
 
 @Controller('/users')
@@ -86,46 +61,21 @@ export class UsersController {
 }
 ```
 
-The controller owns route shape and request binding. It should not hide package or persistence decisions.
+`@Inject(UsersService)` explicitly declares the constructor token on the class. `@RequestDto(...)` specifies the DTO received as each handler's first argument. `POST /users` receives the body's `name` through `@FromBody()`, while `GET /users/:id` receives the path's `id` through `@FromPath('id')`. The controller owns this transport wiring; the service owns business behavior.
 
-## 4. Add validation when input becomes untrusted
+### Extracting the DTO and defining the validation scope
 
-Use `@fluojs/validation` once the route accepts real external input. Keep DTO validation at the edge and pass validated values inward.
+To manage the request contract in a separate file, move `CreateUserDto` above into `create-user.dto.ts`. The following is the complete file. Remove the existing class declaration from the controller and replace it with `import { CreateUserDto } from './create-user.dto';`. This is not a second DTO to declare alongside the first or an additional route.
 
 ```ts
 import { FromBody } from '@fluojs/http';
 
 export class CreateUserDto {
   @FromBody()
-  name!: string;
+  name = '';
 }
 ```
 
-Then wire the DTO through the validation pattern used by your app. The package reference for `@fluojs/validation` explains `validate()` and `materialize()` tradeoffs.
+Field initializers make these declarations compatible with Fluo's standard decorator toolchain. `@FromBody()` identifies the input source; it does not validate that `name` is a string or non-empty. This structural example does not implement value validation, persistence, or a `404` response for a missing user. Before accepting real external input, follow the `@fluojs/validation` wiring in [Validation & Serialization](/en/docs/guides/validation-serialization) and the [validation and error handling exercise](/en/docs/tutorial/validation-errors), then prove the behavior with [request tests](/en/docs/tutorial/testing).
 
-## 5. Verify the feature
-
-Run the generated app and exercise the route:
-
-```bash
-pnpm dev
-curl -X POST http://localhost:3000/users \
-  -H 'content-type: application/json' \
-  -d '{"name":"Ada"}'
-```
-
-Then add a test with `@fluojs/testing` so the behavior is not only documented by prose.
-
-## Review checklist
-
-- Does the module show the feature boundary?
-- Does the provider own logic instead of the controller?
-- Does the controller only expose transport behavior?
-- Are untrusted inputs validated before business logic?
-- Is there a request-level or app-level test proving the route?
-
-## Read next
-
-- [HTTP API](./http-api) for deeper routing and platform adapter details.
-- [Validation & Serialization](./validation-serialization) for DTO input/output contracts.
-- [Testing](./testing) for the app test ladder.
+The [RealWorld API example](/en/docs/examples/realworld-api) is a separate reference application, not the next state of the tutorial project.

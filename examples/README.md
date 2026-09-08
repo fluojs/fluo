@@ -2,12 +2,13 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-This directory contains the official runnable example applications for fluo. Each example has its own README and works best when read alongside the learning path in `../book/`. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
+This directory contains the official runnable example applications for fluo. Start with the [three-volume Book](../book/README.md) for the complete product and pattern learning path. The [short FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) and its [complete checkpoints](./fluo-blog/README.md) are companions for the initial HTTP/DI path. Other examples are independent capability references, not later chapters of that project. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
 
 These examples intentionally stay on the HTTP side of the published `fluo new` v2 matrix so the generated scaffold and the runnable examples keep matching. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
 
 ## current official examples
 
+- [`./fluo-blog/`](./fluo-blog/README.md) — cumulative tutorial checkpoints for posts, explicit DI, validation, errors, and tests
 - `./minimal/` — the smallest runnable fluo app, matching the default and explicit HTTP starter path
 - `./realworld-api/` — a more realistic multi-module HTTP API with config, DTO validation, explicit DI, and CRUD
 - `./auth-jwt-passport/` — bearer-token auth example with JWT issuance and protected routes via passport core
@@ -21,7 +22,7 @@ These examples intentionally stay on the HTTP side of the published `fluo new` v
 
 ## recommended reading order
 
-If you are new to the repo, follow this order:
+Follow the [Book](../book/README.md) for the complete learning path, or use the [FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) to check the initial HTTP behavior quickly. Choose the standalone examples below by the capability you need:
 
 1. `./minimal/README.md` — smallest bootstrap and request path
 2. `./realworld-api/README.md` — first real domain module and DTO boundary
@@ -31,8 +32,8 @@ If you are new to the repo, follow this order:
 6. `./graphql/README.md` — code-first GraphQL query, DataLoader, and SSE subscription flow
 7. `./react-stable-ssr/README.md` — stable React SSR pages as HTTP-owned handlers
 8. `./react-vite-ssr/README.md` — Vite build manifest and hydration layered onto the SSR baseline
-9. `../book/beginner/ch02-cli-setup.md` — first local project setup through the CLI
-10. `../book/beginner/ch03-modules-providers.md` — first module/provider wiring and package mental model
+
+The [Book](../book/README.md) is the primary learning path from FluoBlog through commerce and framework internals. Previous-edition project-state labels do not identify snapshots in this directory.
 
 ## how these examples fit the docs
 
@@ -65,6 +66,7 @@ These examples are intentionally small enough to read in one sitting. They are n
 
 ```bash
 pnpm install
+pnpm vitest run examples/fluo-blog
 pnpm vitest run examples/minimal
 pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport

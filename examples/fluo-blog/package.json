@@ -1,0 +1,42 @@
+{
+  "name": "@fluojs/example-fluo-blog",
+  "description": "One mutable learning app and three cumulative FluoBlog tutorial snapshots.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <27"
+  },
+  "scripts": {
+    "build": "pnpm build:03",
+    "build:00": "vite build --mode 00-start",
+    "build:01": "vite build --mode 01-first-route",
+    "build:02": "vite build --mode 02-dependency-injection",
+    "build:03": "vite build --mode 03-validation-errors",
+    "start": "pnpm start:03",
+    "start:00": "node dist/00-start/main.js",
+    "start:01": "node dist/01-first-route/main.js",
+    "start:02": "node dist/02-dependency-injection/main.js",
+    "start:03": "node dist/03-validation-errors/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "@fluojs/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/plugin-proposal-decorators": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "@fluojs/testing": "workspace:*",
+    "@fluojs/vite": "workspace:*",
+    "@types/node": "^22.13.10",
+    "typescript": "^6.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

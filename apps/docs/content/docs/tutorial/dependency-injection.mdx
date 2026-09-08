@@ -1,0 +1,255 @@
+---
+title: Dependency injection
+description: Move post storage into a registered service while preserving the first route.
+---
+
+## Goal and prior checkpoint
+
+Start with the working [first route](/en/docs/tutorial/first-route). You have proved the shape of `GET /posts`. Now keep that response unchanged, move its data into `PostsService`, and add `GET /posts/:id`.
+
+Work in `examples/fluo-blog/00-start`. Keep your terminal at the repository root. Your app currently matches checkpoint 01. Apply the following edits to this same app; keep the completed snapshots unchanged.
+
+Keep `src/post.ts` and `src/main.ts` identical to checkpoint 01. They still define the same response type and start Fastify with the local `AppModule`. Add `src/posts.service.ts`, `src/post-params.dto.ts`, and `src/posts.module.ts`; replace `src/posts.controller.ts` and `src/app.ts`.
+
+## 1. Give the service ownership of posts
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/posts.service.ts */}
+```ts title="00-start/src/posts.service.ts"
+import { NotFoundException } from '@fluojs/http';
+
+import type { Post } from './post';
+
+export class PostsService {
+  private readonly posts: Post[] = [
+    { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+  ];
+
+  list(): readonly Post[] {
+    return [...this.posts];
+  }
+
+  get(id: string): Post {
+    const post = this.posts.find((candidate) => candidate.id === id);
+    if (!post) {
+      throw new NotFoundException(`Post ${id} was not found.`);
+    }
+    return post;
+  }
+}
+```
+
+The service owns the collection and the lookup rule. Its `NotFoundException` becomes a `404` response through Fluo's HTTP error handling. This collection is still memory, not persistence.
+
+## 2. Bind the route parameter explicitly
+
+Add the DTO that reads `:id` from the URL:
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/post-params.dto.ts */}
+```ts title="00-start/src/post-params.dto.ts"
+import { FromPath } from '@fluojs/http';
+
+export class PostParamsDto {
+  @FromPath('id')
+  id = '';
+}
+```
+
+`@FromPath('id')` names the request source. The string stays a string; nothing here asks Fluo to convert it to a number.
+
+## 3. Inject the service into the controller
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/posts.controller.ts */}
+```ts title="00-start/src/posts.controller.ts"
+import { Inject } from '@fluojs/core';
+import { Controller, Get, RequestDto } from '@fluojs/http';
+
+import type { Post } from './post';
+import { PostParamsDto } from './post-params.dto';
+import { PostsService } from './posts.service';
+
+@Inject(PostsService)
+@Controller('/posts')
+export class PostsController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Get()
+  list(): readonly Post[] {
+    return this.posts.list();
+  }
+
+  @Get('/:id')
+  @RequestDto(PostParamsDto)
+  get(input: PostParamsDto): Post {
+    return this.posts.get(input.id);
+  }
+}
+```
+
+`@Inject(PostsService)` is a **class decorator**. It supplies the runtime token for the first constructor dependency. The TypeScript annotation alone is not DI metadata, and this code does not use a parameter decorator or `emitDecoratorMetadata`.
+
+`@RequestDto(PostParamsDto)` tells the HTTP pipeline which class to bind before calling `get`. The `list` endpoint still delegates to a method returning exactly the original array.
+
+## 4. Register the feature, then import it into the app
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/posts.module.ts */}
+```ts title="00-start/src/posts.module.ts"
+import { Module } from '@fluojs/core';
+
+import { PostsController } from './posts.controller';
+import { PostsService } from './posts.service';
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService],
+})
+export class PostsModule {}
+```
+
+The provider registration lets the container construct `PostsService` for the controller. No other feature needs to resolve the service directly, so this module does not export it.
+
+Replace the root composition in `src/app.ts`:
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/src/app.ts */}
+```ts title="00-start/src/app.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsModule } from './posts.module';
+
+@Module({
+  imports: [HealthModule.forRoot(), PostsModule],
+})
+export class AppModule {}
+```
+
+`PostsController` now belongs to `PostsModule`, so do not also register it directly in `AppModule.controllers`.
+
+## 5. Verify module wiring through requests
+
+Replace `00-start/test/app.e2e.test.ts` with this complete file. It retains the first lesson's health/readiness and list checks, and adds lookup and missing-resource checks.
+
+{/* fluo-tutorial-source: examples/fluo-blog/02-dependency-injection/test/app.e2e.test.ts */}
+```ts title="00-start/test/app.e2e.test.ts"
+import { createTestApp } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+describe('FluoBlog module and DI checkpoint', () => {
+  it.each([
+    ['/health', 'ok'],
+    ['/ready', 'ready'],
+  ])('preserves the starter endpoint when %s is requested', async (path, status) => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', path).send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ status });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves the list when the controller delegates to its provider', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('finds a post when its ID is bound from the path', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts/1').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        id: '1', title: 'Hello, Fluo!', content: 'My first post.',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns a resource error when the post ID is unknown', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts/999').send();
+
+      // Then
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({
+        error: { code: 'NOT_FOUND', status: 404 },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+```
+
+These tests construct the real `AppModule`, so a missing provider registration or dependency token can fail them. They also exercise URL binding and error responses.
+
+From the repository root:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+```
+
+All request tests must pass, including the original health and list checks.
+
+## 6. Exercise the same API
+
+Stop your running server. Rebuild and restart the same learning app:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+In the second terminal:
+
+```bash
+curl -i http://127.0.0.1:3000/posts
+curl -i http://127.0.0.1:3000/posts/1
+curl -i http://127.0.0.1:3000/posts/999
+curl -i http://127.0.0.1:3000/health
+```
+
+| Request | Status | Body |
+| --- | --- | --- |
+| `/posts` | `200` | `[{"id":"1","title":"Hello, Fluo!","content":"My first post."}]` |
+| `/posts/1` | `200` | `{"id":"1","title":"Hello, Fluo!","content":"My first post."}` |
+| `/posts/999` | `404` | Error envelope below. |
+| `/health` | `200` | `{"status":"ok"}` |
+
+```json
+{"error":{"code":"NOT_FOUND","message":"Post 999 was not found.","status":404}}
+```
+
+The framework may also include `error.requestId`. Here the route exists but the requested resource does not; the service deliberately selects the error.
+
+## Recovery
+
+Use the [complete DI checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/02-dependency-injection). If bootstrap cannot resolve `PostsService`, check both `@Inject(PostsService)` and `PostsModule.providers`. If every posts request is `404`, check that the root `AppModule` imports `PostsModule` and that `start:00` is the process you are running.
+
+Previous: [Your first route](/en/docs/tutorial/first-route). Next: [Validation and errors](/en/docs/tutorial/validation-errors).

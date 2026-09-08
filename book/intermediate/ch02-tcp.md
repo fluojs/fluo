@@ -3,6 +3,12 @@
 
 # Chapter 2. TCP Transport
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains how to set up and operate the TCP transport for FluoShop's first real service connection. Chapter 1 gave us the architecture map. Now we implement that boundary as the simplest request/response link, giving us a baseline to compare against the broker-based chapters that follow.
 
 ## Learning Objectives

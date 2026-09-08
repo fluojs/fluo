@@ -3,6 +3,12 @@
 
 # Chapter 16. Email Systems
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 FluoShop의 알림 흐름에 이메일 채널을 안정적으로 연결하는 방식을 다룹니다. Chapter 15에서 채널 오케스트레이션의 뼈대를 세웠다면, 여기서는 트랜잭션 메일 전송, 트랜스포트 경계, 운영 점검 지점을 구체화합니다.
 
 ## Learning Objectives

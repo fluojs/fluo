@@ -1,0 +1,128 @@
+---
+title: Create the app
+description: Prepare the repository-backed FluoBlog workspace and verify its Fastify health endpoint.
+---
+
+## Goal and starting point
+
+Start after the [course introduction](/en/docs/tutorial). You need Git, Node.js `>=24.0.0 <27`, and pnpm 10. No earlier application checkpoint is required.
+
+Your goal is to build and start the health-only learning app and receive `200` with `{"status":"ok"}` from `/health`. This course uses **the example inside the Fluo repository** so lesson source, dependencies, and recovery snapshots come from the same checkout. You will edit `examples/fluo-blog/00-start` for every lesson.
+
+## 1. Prepare one workspace
+
+In a directory where you want to keep the project:
+
+```bash
+git clone https://github.com/fluojs/fluo.git
+cd fluo
+node --version
+pnpm --version
+pnpm install
+pnpm build
+```
+
+Check that Node is in the supported range and pnpm prints `10.x` before installing. `pnpm build` here builds the repository's framework packages. These are needed by the example's `workspace:*` dependencies; a successful dependency install alone does not replace that build.
+
+**Keep this terminal at the repository root for all course commands.** The application you are studying lives at `examples/fluo-blog/`.
+
+This lesson adds no source files manually. The clone already contains the exact files used in the remaining lessons:
+
+```text
+examples/fluo-blog/
+  package.json
+  tsconfig.json
+  vite.config.ts
+  vitest.config.ts
+  00-start/
+    src/
+      app.ts
+      main.ts
+    test/
+      app.e2e.test.ts
+  01-first-route/
+    src/
+    test/
+  02-dependency-injection/
+    src/
+    test/
+  03-validation-errors/
+    src/
+    test/
+```
+
+`00-start` is the only directory you modify. It begins with health routes and their tests, with no posts feature. The other three directories are complete recovery snapshots; keep them unchanged. All four share the package and tool configuration. Subsequent lessons add source and tests to `00-start`, so your own app grows cumulatively.
+
+## 2. Know what starts the application
+
+| File | Responsibility |
+| --- | --- |
+| `00-start/src/app.ts` | Exports `AppModule` and retains the starter health routes. |
+| `00-start/src/main.ts` | Calls `runFastifyApplication(AppModule, ...)` to start Fastify. |
+| `00-start/test/app.e2e.test.ts` | Checks `/health` and `/ready` through the request pipeline. |
+| `vite.config.ts` | Builds the chosen checkpoint through `fluoDecoratorsPlugin()` with the `node24` target. |
+| `vitest.config.ts` | Runs tests with `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest`. |
+
+`AppModule` belongs in **`src/app.ts`**, not `src/app.module.ts`. A root module is a composition boundary; it does not automatically create a route at `GET /`.
+
+The standard health routes come from `HealthModule.forRoot()` in `AppModule.imports`. Keep that import throughout the course. Do not create a second controller for `/health`.
+
+## 3. Start Fastify
+
+From the repository root:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+The build must finish successfully before starting. The server listens at `http://127.0.0.1:3000`. Keep it running and open a second terminal:
+
+```bash
+curl -i http://127.0.0.1:3000/health
+curl -i http://127.0.0.1:3000/ready
+```
+
+After startup, both responses have status `200`. Their JSON bodies are:
+
+```json title="GET /health"
+{"status":"ok"}
+```
+
+```json title="GET /ready"
+{"status":"ready"}
+```
+
+These default endpoints show that this small app is alive and ready; they do not check a database that the example does not have.
+
+Stop the process with Ctrl+C before rebuilding your changes. `start:00` runs the built `dist/00-start/main.js`; it does not watch source files. After editing, stop, rebuild, and start again. `PORT` can override `3000` in the entrypoint, but this course's commands all use `3000`. Do not use plain `build` or `start`: those package aliases run the finished snapshot rather than your learning app.
+
+Run your initial health tests from the repository root:
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+```
+
+Both health/readiness cases must pass. The next lesson extends this same test file rather than removing those checks.
+
+## Why these are not external CLI app commands
+
+The published CLI's standard Node/Fastify starter is a different setup. Its generated `src/app.ts` includes `ConfigModule`, `GreetingModule`, and `HealthModule.forRoot()`, and it has greeting tests under `src/` plus `test/app.e2e.test.ts`. This repository example uses the same public module/bootstrap model but intentionally contains only posts and health, without the greeting feature.
+
+Do **not** paste this example's whole `app.ts` over a generated app and leave the starter tests behind: that removes the greeting registration while its tests still expect it. In a generated app, a posts feature must be added to the existing `AppModule`, preserving its config, greeting, health imports, and tests. This course's complete-file replacements target only `examples/fluo-blog/00-start`.
+
+The workspace filter, numbered build scripts, `workspace:*` dependency versions, and mode-based Vite configuration are repository-specific. A generated external app uses its own package scripts and registry dependencies. This course does not assume that the repository's upcoming package versions have already been published. For creating a separate app after the course, use [Quick Start](/en/docs/getting-started/quick-start) and its published-CLI instructions; do not mix that working directory with this one.
+
+## Recovery
+
+Use the [complete starting app](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/00-start) and the [shared example configuration](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog). Later recovery snapshots are references for replacing the corresponding files inside `00-start`, not instructions to change the running app.
+
+| Symptom | Action |
+| --- | --- |
+| Workspace filter finds no package | Run the command at the cloned repository root and check that this checkout contains `examples/fluo-blog/package.json`. |
+| A framework package's built entry is missing | Complete root `pnpm install` and `pnpm build` before the checkpoint build. |
+| Connection refused | Keep `start:00` running, wait for startup, and use `127.0.0.1:3000`. |
+| Port already in use | Stop the earlier course server before restarting your learning app. |
+| `/health` returns `404` | Compare `src/app.ts` with the checkpoint and keep `HealthModule.forRoot()` registered. |
+
+Previous: [Build FluoBlog](/en/docs/tutorial). Next: [Your first route](/en/docs/tutorial/first-route).

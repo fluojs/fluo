@@ -1,5 +1,23 @@
 # Table of Contents
 
+**Start the current learning path with the [product and pattern three-volume series](../README.md).** The contents below preserve previous-edition references and stable links. Use the new volume contents for the current sequence and chapter numbers.
+
+[Volume introduction](./ch00-introduction.md) · [Book hub](../README.md)
+
+**Choose a topic**
+
+Compare transports first in the [capability chooser](./ch01-microservices-intro.md#123-transport-capability-chooser) and [package capability matrix](../../packages/microservices/README.md#transport-capability-matrix).
+
+- [Preparing for Microservices](ch01-microservices-intro.md) — Select the chapter you need in this group below.
+- [Message Brokers](ch04-rabbitmq.md) — Select the chapter you need in this group below.
+- [Event-Driven Architecture](ch09-event-bus.md) — Select the chapter you need in this group below.
+- [Realtime Communication](ch13-websockets.md) — Select the chapter you need in this group below.
+- [Notification Systems](ch15-notifications.md) — Select the chapter you need in this group below.
+- [API Expansion](ch18-graphql.md) — Select the chapter you need in this group below.
+- [Platform Portability and Operational Transition](ch21-express-node.md) — Select the chapter you need in this group below.
+
+**Browse existing chapters and sections**
+
 - [Introduction: Scaling Beyond the Monolith](ch00-introduction.md)
   - [The Intermediate Journey](ch00-introduction.md#the-intermediate-journey)
   - [The Evolution of FluoShop](ch00-introduction.md#the-evolution-of-fluoshop)
@@ -10,6 +28,8 @@
   - [Glossary](ch00-introduction.md#glossary)
 
 ## Part 0. Preparing for Microservices
+
+Communication boundaries and transport selection: start with the capability chooser below. TCP and Redis are options to compare, not required precursors to every broker.
 
 - [1. Microservice Architecture and the fluo Strategy](ch01-microservices-intro.md)
   - [1.1 The FluoShop Topology](ch01-microservices-intro.md#11-the-fluoshop-topology)
@@ -42,6 +62,8 @@
   - [3.9 Next Part Preview](ch03-redis-transport.md#39-next-part-preview)
 
 ## Part 1. Message Brokers
+
+Alternative transport capabilities: choose a broker or gRPC based on delivery, request/reply, streaming, replay, and ownership requirements. You do not need every transport.
 
 - [4. RabbitMQ](ch04-rabbitmq.md)
   - [4.1 Why Use RabbitMQ in FluoShop](ch04-rabbitmq.md#41-why-rabbitmq-in-fluoshop)
@@ -87,6 +109,8 @@
   - [8.7 Summary](ch08-grpc.md#87-summary)
 
 ## Part 2. Event-Driven Architecture
+
+Optional event and background-work models: compare event handlers, CQRS/Sagas, queues, scheduling, and locks according to the work boundary.
 
 - [9. Event Bus and Domain Events](ch09-event-bus.md)
   - [9.1 Why the Event Bus Matters After Part 1](ch09-event-bus.md#91-why-the-event-bus-matters-after-part-1)
@@ -138,6 +162,8 @@
 
 ## Part 3. Realtime Communication
 
+Optional realtime connection models: compare WebSockets and Socket.IO for your client and host requirements.
+
 - [13. WebSocket Gateways](ch13-websockets.md)
   - [13.1 The Shift to Realtime](ch13-websockets.md#131-the-shift-to-real-time)
   - [13.2 WebSocket Module Wiring](ch13-websockets.md#132-websocket-module-wiring)
@@ -164,6 +190,8 @@
   - [14.11 Summary](ch14-socketio.md#1411-summary)
 
 ## Part 4. Notification Systems
+
+Optional notification channels: select orchestration and the delivery providers your application actually uses.
 
 - [15. Notification Orchestration](ch15-notifications.md)
   - [15.1 The Orchestration Pattern](ch15-notifications.md#151-the-orchestration-pattern)
@@ -202,6 +230,8 @@
 
 ## Part 5. API Expansion
 
+Independent API and storage choices: GraphQL is an API topic; Mongoose and Drizzle are persistence alternatives, not consecutive migrations.
+
 - [18. GraphQL API](ch18-graphql.md)
   - [18.1 Why Use GraphQL in fluo?](ch18-graphql.md#181-why-graphql-in-fluo)
   - [18.2 Installation and Setup](ch18-graphql.md#182-installation-and-setup)
@@ -231,6 +261,8 @@
   - [20.8 Conclusion](ch20-drizzle.md#208-conclusion)
 
 ## Part 6. Platform Portability and Operational Transition
+
+Runtime choices and operational review: select your target host. The final FluoShop chapter is a scenario recap, not a runnable cumulative checkpoint.
 
 - [21. Express and Node.js Adapters](ch21-express-node.md)
   - [21.1 The Express Adapter](ch21-express-node.md#211-the-express-adapter)

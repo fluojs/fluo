@@ -3,6 +3,12 @@
 
 # Chapter 15. Notification Orchestration
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains how to build a channel-independent notification orchestration layer on top of FluoShop's events and workflows. Chapter 14 covered realtime interaction. Now we'll bind follow-up delivery channels such as email, Slack, and Discord behind one explicit dispatch boundary that matches the current `@fluojs/notifications` public API.
 
 ## Learning Objectives

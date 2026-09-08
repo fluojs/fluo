@@ -3,7 +3,13 @@
 
 # Chapter 25. FluoShop Completed — Service Mesh Strategy
 
-이 장은 Intermediate 볼륨 전체에서 확장해 온 FluoShop 아키텍처를 마무리하며 서비스 메시 전략까지 한 번에 정리합니다. Chapter 24가 엣지 배포까지 이식성을 밀어붙였다면, 이 장은 여러 런타임과 서비스를 함께 운영하는 최종 그림을 회고하고 다음 단계로 연결합니다.
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
+이 장은 선택 기능들을 FluoShop이라는 설계 사례로 모아 보고 서비스 메시 전략을 검토합니다. 제목의 "Completed"와 버전 표시는 사례의 마무리를 뜻하며, 완성된 실행 프로젝트나 검증된 멀티 런타임 배포 결과를 뜻하지 않습니다. 모든 장의 기능을 하나의 앱에 도입할 필요는 없습니다.
 
 ## Learning Objectives
 - FluoShop의 최종 멀티 런타임 아키텍처를 서비스별로 설명합니다.
@@ -20,7 +26,7 @@
 
 ## 25.1 The Final FluoShop Architecture
 
-완성된 FluoShop 시스템은 각 도메인의 요구에 맞는 런타임에서 실행되는 서비스들의 집합입니다. 중요한 기준은 유행하는 플랫폼을 고르는 것이 아니라, 서비스 책임과 운영 제약을 맞추는 것입니다.
+FluoShop 설계 예시는 각 도메인의 요구에 맞는 런타임에 서비스를 배치하는 구성을 보여줍니다. 중요한 기준은 유행하는 플랫폼을 고르는 것이 아니라, 서비스 책임과 운영 제약을 맞추는 것입니다.
 
 - **Core API Gateway**: **Cloudflare Workers**에서 edge HTTP ingress를 처리하고 GraphQL 요청을 Node.js `>=24.0.0 <27` API service로 라우팅합니다. Worker 자체는 `@fluojs/graphql`을 호스팅하지 않습니다.
 - **Product Service**: MongoDB를 사용하여 카탈로그 데이터를 관리하고 WebSockets를 통해 실시간 업데이트를 제공합니다. 고성능 데이터 서빙과 네이티브 WebSocket 지원을 위해 **Bun**에서 실행됩니다.
@@ -159,7 +165,7 @@ fluoshop-workspace/
 
 ## 25.11 Key Takeaways
 
-- FluoShop은 이제 Node, Bun, Workers의 강점을 활용하는 완성된 분산 멀티 런타임 시스템입니다.
+- FluoShop은 Node, Bun, Workers를 조합하는 설계 사례이며 검증된 완성 시스템이 아닙니다.
 - 서비스 메시 전략(Istio/Linkerd)은 서비스 디스커버리와 보안의 인프라 수준 복잡성을 처리합니다.
 - 사이드카 프록시(Envoy)는 네트워크 "배관"을 관리하고 fluo는 애플리케이션 "로직"을 관리합니다.
 - OpenTelemetry 같은 분산 추적은 서로 다른 런타임을 지나는 요청을 이해하는 데 필요합니다.
@@ -178,7 +184,7 @@ FluoShop을 실제 서비스로 운영하기 전에 다음 운영 기반을 확�
 3. **Failover**: 주문 서비스의 일시적인 중단 시 API 게이트웨이가 어떻게 처리하는지 테스트해 보셨습니까?
 4. **CI/CD**: 변경된 서비스만 배포되도록 모노레포가 구성되어 있습니까?
 
-이 체크리스트를 완료하면 FluoShop은 예제 프로젝트에서 운영 가능한 서비스 구조로 한 단계 올라갑니다. 각 항목을 실제 환경에서 반복 확인하면 런타임이 섞인 분산 시스템도 더 예측 가능하게 운영할 수 있습니다.
+이 체크리스트는 운영 검증을 계획하기 위한 출발점이며, 완료 표시만으로 서비스가 배포 가능한 상태임을 보장하지 않습니다. 실제 구현과 각 대상 런타임에서 항목별 근거를 확보하세요.
 
 ## 25.13 A Final Message to the Reader
 

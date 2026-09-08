@@ -1,0 +1,166 @@
+---
+title: 첫 번째 라우트
+description: AppModule에 posts 컨트롤러를 등록하고 첫 HTTP 응답을 확인합니다.
+---
+
+## 목표와 시작 지점
+
+[앱 만들기](/ko/docs/tutorial/create-app)를 마쳐 의존성을 설치하고 터미널을 Fluo 저장소 루트에 둔 상태에서 시작합니다. 작업 대상은 `examples/fluo-blog/00-start`입니다. 첫 기능 체크포인트의 목표는 `GET /posts`가 `200`과 게시글 `1`을 담은 배열을 반환하는 것입니다.
+
+이전 수업에서 실행한 같은 학습 앱을 확장합니다. 완성본 `01-first-route`는 수정하지 않고 비교에만 사용합니다. 아래 파일은 모두 `00-start`에 작성합니다.
+
+## 1. 결과를 먼저 테스트로 정의하기
+
+`00-start/test/app.e2e.test.ts`를 아래 전체 파일로 교체합니다. 기존 health/readiness 검증을 유지하고 아직 없는 `/posts` 검증을 추가합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/test/app.e2e.test.ts */}
+```ts title="00-start/test/app.e2e.test.ts"
+import { createTestApp } from '@fluojs/testing';
+import { expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+it.each([
+  ['/health', 'ok'],
+  ['/ready', 'ready'],
+])('preserves the starter endpoint when %s is requested', async (path, status) => {
+  // Given
+  const app = await createTestApp({ rootModule: AppModule });
+  try {
+    // When
+    const response = await app.request('GET', path).send();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status });
+  } finally {
+    await app.close();
+  }
+});
+
+it('lists the initial post when the first route is requested', async () => {
+  // Given
+  const app = await createTestApp({ rootModule: AppModule });
+  try {
+    // When
+    const response = await app.request('GET', '/posts').send();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+    ]);
+  } finally {
+    await app.close();
+  }
+});
+```
+
+소스 파일을 추가하기 전에 저장소 루트에서 실행하세요.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start
+```
+
+health 검증은 통과하고 새 posts 검증은 `200` 대신 `404`를 받아 실패해야 합니다. 아래 구현을 마친 뒤 같은 명령이 통과하는지 확인합니다.
+
+## 2. 응답 형태 정의하기
+
+`examples/fluo-blog/` 기준으로 `00-start/src/post.ts`를 추가하거나 교체합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/post.ts */}
+```ts title="00-start/src/post.ts"
+export interface Post {
+  readonly id: string;
+  readonly title: string;
+  readonly content: string;
+}
+```
+
+`Post`는 클라이언트에 반환하는 값의 형태를 설명합니다. 인터페이스는 TypeScript가 코드를 검사하도록 돕지만 실행 중 입력을 검증하지는 않습니다. 요청으로 게시글을 생성하는 단계에서 그 경계를 추가합니다.
+
+## 3. 컨트롤러 작성하기
+
+`00-start/src/posts.controller.ts`를 추가하거나 교체합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/posts.controller.ts */}
+```ts title="00-start/src/posts.controller.ts"
+import { Controller, Get } from '@fluojs/http';
+
+import type { Post } from './post';
+
+@Controller('/posts')
+export class PostsController {
+  @Get()
+  list(): readonly Post[] {
+    return [{ id: '1', title: 'Hello, Fluo!', content: 'My first post.' }];
+  }
+}
+```
+
+`@Controller('/posts')`는 컨트롤러의 경로 접두사를 정합니다. `@Get()`은 그 접두사에 GET 핸들러를 추가하므로 라우트는 `/posts`입니다. 배열을 반환하면 HTTP 파이프라인이 JSON 응답을 작성합니다. Fastify 라우트를 별도로 만들 필요가 없습니다.
+
+## 4. 루트 모듈에 컨트롤러 등록하기
+
+`00-start/src/app.ts`를 교체합니다. 클래스 파일이 존재하는 것만으로는 애플리케이션에 포함되지 않습니다. 모듈에서 등록해야 합니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/app.ts */}
+```ts title="00-start/src/app.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsController } from './posts.controller';
+
+@Module({
+  imports: [HealthModule.forRoot()],
+  controllers: [PostsController],
+})
+export class AppModule {}
+```
+
+## 5. 서버 시작 코드 분리하기
+
+전체 진입점은 `00-start/src/main.ts`입니다.
+
+{/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/main.ts */}
+```ts title="00-start/src/main.ts"
+import { runFastifyApplication } from '@fluojs/platform-fastify';
+
+import { AppModule } from './app';
+
+await runFastifyApplication(AppModule, {
+  host: '127.0.0.1',
+  port: Number(process.env.PORT ?? '3000'),
+});
+```
+
+`AppModule`은 애플리케이션을 설명하고 `main.ts`는 Fastify 리스너를 시작합니다. 둘을 분리하면 요청 테스트가 네트워크 소켓을 열지 않고 모듈을 import할 수 있습니다.
+
+## 6. 빌드하고 요청 보내기
+
+실행 중인 이전 서버가 있다면 Ctrl+C로 종료합니다. 저장소 루트에서 실행하세요.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+서버는 켜 둡니다. 두 번째 터미널에서 요청합니다.
+
+```bash
+curl -i http://127.0.0.1:3000/posts
+```
+
+예상 상태 코드는 `200`이고 JSON 본문은 다음과 같습니다.
+
+```json
+[{"id":"1","title":"Hello, Fluo!","content":"My first post."}]
+```
+
+이 응답이 첫 기능의 계약입니다. 이후 서비스로 코드를 옮겨도 이 결과를 유지해야 합니다. 앞에서 실행한 요청 테스트 명령을 다시 실행해 모든 검증이 통과하는지 확인합니다.
+
+## 복구
+
+[첫 라우트 체크포인트 완성본](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/01-first-route)과 파일을 비교하세요. `/posts`에서 `404`가 나오면 다른 체크포인트가 실행 중인지, `AppModule.controllers`에 `PostsController`가 있는지 확인합니다. 소스를 수정했다면 다시 빌드하세요. `start:00`은 개발 감시 프로세스가 아니라 빌드된 파일을 실행합니다.
+
+이전: [앱 만들기](/ko/docs/tutorial/create-app). 다음: [의존성 주입](/ko/docs/tutorial/dependency-injection).

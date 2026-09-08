@@ -3,9 +3,15 @@
 
 # Introduction: Peering into the Engine Room
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — framework and contributor internals.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 The third volume of the fluo series goes beyond using the framework and asks *why* the framework behaves the way it does. We trace where its performance comes from and how Dependency Injection (DI) and runtime abstraction appear directly in the source code.
 
-This book is different. While the Beginner and Intermediate volumes focus on building projects and mastering patterns, this "Advanced" volume digs deeply into fluo's internal architecture. We move away from "how-to" and embrace "how-it-is."
+The Advanced volume is deep-dive reading for framework and contributor work. Follow the [current tutorial](../../apps/docs/content/docs/tutorial/index.mdx) for your first application, then select internal components here to read alongside their source and contracts. Completing the Beginner and Intermediate volumes is not required.
 
 ## The Source-Analysis Posture
 
@@ -65,7 +71,7 @@ This posture matters especially in advanced environments, because the strongest 
 
 ## What This Volume Covers
 
-This book is organized into six major parts, each peeling back one layer of the framework.
+This volume collects six internal topics. Choose metadata, DI, runtime, HTTP, diagnostics, or extension/contribution from the [topic index](./toc.md) according to your work.
 
 1.  **Decorators and Metadata**: We begin at the front edge of the language: TC39 Stage 3 Standard Decorators. We explore how fluo uses this new standard to avoid legacy `reflect-metadata` traps by using `Symbol.metadata` as defined in `path:packages/core/src/metadata/shared.ts:9-34`.
 2.  **Inside the DI Container**: This is the heart of fluo. We dissect the resolution algorithm in `path:packages/di/src/container.ts:389-402`, scope management (Singleton, Request, Transient), and the process of detecting complex Circular Dependencies.
@@ -83,7 +89,7 @@ This is our "KSR" (Key Source Reference) convention.
 -   `path:` indicates a direct file path inside the monorepo.
 -   `packages/core` refers to the `@fluojs/core` package.
 -   `src/decorators.ts` is the file path relative to that package root.
--   `19-23` points to exact lines in the current version of the source code.
+-   `19-23` identifies source lines at the time of the excerpt. Check the symbol and surrounding implementation in your current checkout.
 
 Keep the fluo repository open in your IDE while you read. The text and the code are two sides of the same explanation. When we cite a line range, we are often pointing to a specific logic branch or a `finally` block that handles cleanup. These details are easy to miss, but they matter for understanding performance.
 
@@ -114,7 +120,7 @@ export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecora
 
 This excerpt lets advanced readers see the type-level constraint and the actual stored shape together. The shorter reference `path:packages/core/src/decorators.ts:11` is reinforced by how `TupleOnly<TTokens>` is used in the overload above.
 
--   **fluo fundamentals**: You should have read the Beginner and Intermediate volumes or have substantial experience building production fluo apps. You should know what Modules, services, and Controllers are.
+-   **fluo fundamentals**: Start with the current tutorial or equivalent experience. Understand Modules, services, and Controllers, then check the background needed for your chosen internal topic.
 -   **JavaScript internals**: Basic knowledge of the event loop, Promises, and how classes work internally in JS will help a great deal.
 -   **A no-magic mindset**: You must set aside the idea that the framework "just knows" what to do. Every behavior is code, and this book exists so you can see that code.
 
@@ -161,7 +167,7 @@ This book shows how those contracts are enforced at the type level and verified 
 
 ## A Note on Versions
 
-The code analyzed in this book corresponds to the project's `advanced-v0` state. Specific line numbers may change as the framework evolves, but the architectural principles described here are foundational pillars of fluo.
+`advanced-v0` and `project-state` identify the older narrative, not a release or a verified checkout. Source excerpts and KSRs remain starting points for locating evidence. Confirm current behavior against the package README, [behavioral contracts](../../docs/contracts/behavioral-contract-policy.md), and the relevant source and tests.
 
 ## Ready to Begin?
 
@@ -281,7 +287,7 @@ The path from user to developer who understands internals leads through source c
 
 ## Beyond the Basics: Why "Advanced"?
 
-The "Advanced" label in this book series does not simply mean "hard." It means "architectural." In the Beginner volume, you learned how to drive the car. In the Intermediate volume, you learned how to drive on highways and handle traffic flow. Now, in the Advanced volume, we disassemble the engine piece by piece to see how fuel injection works and how the pistons are timed. This knowledge lets you narrow down causes when the car breaks in a way the manual does not describe, and it lets you handle performance demands beyond factory settings.
+The "Advanced" label means architectural analysis rather than installing more application features. Read the relevant chapter when narrowing down a DI resolution problem, understanding an adapter boundary, or extending a package.
 
 ## The Standard-First Manifesto
 
@@ -367,7 +373,7 @@ This philosophy is most visible in the explicit registry system. Our goal is to 
 
 ## Your Roadmap to Mastery
 
-This book is designed to be read sequentially, but it also works as a comprehensive reference guide. If you are looking for information about a specific internal component, you can jump directly to the relevant chapter.
+This volume is a reference by internal component. Sequential reading is optional; use the [topic index](./toc.md) to jump to the area you are analyzing or changing.
 - **Part 1** lays the foundation (Decorators & Metadata).
 - **Part 2 & 3** build the core (DI & Runtime).
 - **Part 4** explores the external surface (HTTP & connectors).

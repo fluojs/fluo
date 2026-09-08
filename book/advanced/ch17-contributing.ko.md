@@ -3,6 +3,12 @@
 
 # Chapter 17. fluo Contributing Guide
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 fluo 저장소에 실제로 기여할 때 따라야 할 로컬 개발 환경, 검증 루프, 리뷰 문화, 거버넌스 흐름을 설명합니다. Chapter 16에서 확장 패키지를 설계했다면, 이제 그 결과를 저장소 규칙에 맞춰 제안하고 유지보수 가능한 형태로 기여하는 단계로 넘어갑니다.
 
 ## Learning Objectives

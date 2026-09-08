@@ -8,6 +8,7 @@ import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-m
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
+import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import {
   emailNestjsMigrationMarkerPrefix,
@@ -4274,6 +4275,10 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
 
 export async function main() {
   const changedFiles = changedFilesFromGit();
+  const behavioralChanges = behavioralChangedFiles(
+    changedFiles,
+    documentSnapshotsFromGit(changedFiles.filter(isNavigationDocument)),
+  );
   const migrationGuideSnapshots = migrationGuideSnapshotsFromGit();
   const studioReportBootstrapFailureSnapshots = studioReportBootstrapFailureSnapshotsFromGit();
 
@@ -4351,10 +4356,10 @@ export async function main() {
   enforceMicroservicesSafetyRuntimeEvidence();
   enforceRedisStreamsSubpathExportEvidence();
   enforcePlatformNodejsEngineDocumentation();
-  enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
-  enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots);
-  enforceStudioReportBootstrapFailureCompanions(changedFiles, studioReportBootstrapFailureSnapshots);
-  enforceTerminusRuntimeHealthContractCompanions(changedFiles);
+  enforceAdvancedBookCoreBoundaryCompanions(behavioralChanges);
+  enforceContractCompanionUpdates(behavioralChanges, migrationGuideSnapshots);
+  enforceStudioReportBootstrapFailureCompanions(behavioralChanges, studioReportBootstrapFailureSnapshots);
+  enforceTerminusRuntimeHealthContractCompanions(behavioralChanges);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
   console.log('Platform consistency governance checks passed.');

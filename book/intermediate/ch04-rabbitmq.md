@@ -3,6 +3,12 @@
 
 # Chapter 4. RabbitMQ
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter introduces RabbitMQ so FluoShop can move its post-payment handoff to a work queue centered model. Chapter 3 used durable streams to gain resilience. Now we look at a transport that fits fulfillment flows where queue ownership and the competing consumer model matter.
 
 Package-level RabbitMQ transport contracts, including caller-owned collaborator shutdown and request cancellation cleanup, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).
@@ -83,7 +89,7 @@ const transport = new RabbitMqMicroserviceTransport({
 export class FulfillmentModule {}
 ```
 
-This code should now look very familiar. The handler model stays the same. Only the transport bootstrap changes. That continuity is what makes the intermediate book cumulative learning rather than repetition. Whether you use the `TcpMicroserviceTransport` from Chapter 2 or this RabbitMQ transport, a `@MessagePattern` handler doesn't need a single code change to receive data.
+This code should now look very familiar. The handler model stays the same. Only the transport bootstrap changes. That continuity supports comparing transports side by side, not a requirement to execute every chapter in sequence. Whether you use the `TcpMicroserviceTransport` from Chapter 2 or this RabbitMQ transport, a `@MessagePattern` handler doesn't need a single code change to receive data.
 
 ### 4.2.3 Facade completion and shutdown ownership
 

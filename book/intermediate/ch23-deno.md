@@ -3,6 +3,12 @@
 
 # Chapter 23. Porting to Deno
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains how to move FluoShop to the Deno runtime and work with its security permission model and Web-standard execution environment. Chapter 22 showed Bun's high-performance runtime port. This chapter validates the standard-first philosophy on top of a stricter security model.
 
 ## Learning Objectives

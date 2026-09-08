@@ -1,0 +1,12 @@
+{
+  "title": "Tutorial",
+  "pages": [
+    "index",
+    "create-app",
+    "first-route",
+    "dependency-injection",
+    "validation-errors",
+    "testing",
+    "next-steps"
+  ]
+}

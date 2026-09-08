@@ -3,6 +3,12 @@
 
 # Chapter 18. Health Checks and Reliability
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 기초 개념·애플리케이션 레퍼런스.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 FluoBlog가 실제 트래픽을 처리할 준비가 되었는지 헬스 체크로 확인하는 방법을 설명합니다. Chapter 17이 성능을 높이는 캐시 계층을 다뤘다면, 이 장은 그 서비스가 언제 정상이고 언제 격리되어야 하는지 판단하는 기준을 세웁니다.
 
 Node listener helper는 이제 `@fluojs/runtime/node`가 아니라 `@fluojs/platform-nodejs`에 속합니다. 이 package boundary 변경은 Terminus 등록이나 readiness를 바꾸지 않습니다. `TerminusModule.forRoot(...)`는 계속 애플리케이션이 소유하고, `/health`는 진단을 집계하며, `/ready`는 readiness가 성공할 때만 트래픽을 수용합니다.

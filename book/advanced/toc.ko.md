@@ -1,5 +1,20 @@
 # 목차
 
+**새 학습 경로는 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작합니다.** 아래 목차는 이전 판의 참고 문서와 안정 링크를 보존합니다. 새 시리즈의 순서와 장 번호는 새 권별 목차를 따르세요.
+
+[권 소개](./ch00-introduction.ko.md) · [Book 허브](../README.ko.md)
+
+**필요한 주제 선택**
+
+- [데코레이터와 메타데이터](ch01-decorator-history.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [DI 컨테이너 내부](ch04-provider-resolution.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [런타임 부트스트랩 내부](ch08-module-graph.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [HTTP 파이프라인 해부](ch11-request-pipeline.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [테스트와 진단](ch14-portability-testing.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+- [생태계 확장](ch16-custom-package.ko.md) — 아래 분류에서 필요한 장을 선택합니다.
+
+**기존 장·세부 항목 찾아보기**
+
 - [소개: 엔진룸 들여다보기](ch00-introduction.ko.md)
   - [소스 분석 관점](ch00-introduction.ko.md#the-source-analysis-posture)
   - [이 권에서 다루는 내용](ch00-introduction.ko.md#what-this-volume-covers)
@@ -29,6 +44,8 @@
   - [기대 사항 요약](ch00-introduction.ko.md#summary-of-expectations)
 
 ## 파트 1. 데코레이터와 메타데이터
+
+언어·메타데이터 내부 구조: 데코레이터 동작, 메타데이터 소유권, 커스텀 데코레이터 경계를 추적합니다.
 
 - [1. 레거시와 표준 데코레이터, 역사와 Fluo의 선택](ch01-decorator-history.ko.md)
   - [1.1 실험적 데코레이터의 10년](ch01-decorator-history.ko.md#11-the-decade-of-experimental-decorators)
@@ -76,6 +93,8 @@
 
 ## 파트 2. DI 컨테이너 내부
 
+DI 내부 구조: 프로바이더 해석, 스코프, 순환 의존성, 동적 모듈 구성 중 필요한 주제를 선택합니다.
+
 - [4. 프로바이더 정규화와 해석 알고리즘](ch04-provider-resolution.ko.md)
   - [4.1 공개 프로바이더 문법에서 정규화된 레코드까지](ch04-provider-resolution.ko.md#41-from-public-provider-syntax-to-normalized-records)
   - [4.2 등록 의미론, 중복 검사, 스코프 가드레일](ch04-provider-resolution.ko.md#42-registration-semantics-duplicate-checks-and-scope-guardrails)
@@ -104,6 +123,8 @@
 
 ## 파트 3. 런타임 부트스트랩 내부
 
+런타임 내부 구조: 모듈 그래프 컴파일, 애플리케이션 컨텍스트, 런타임 경계를 추적합니다.
+
 - [8. 모듈 그래프 컴파일과 초기화 순서](ch08-module-graph.ko.md)
   - [8.1 부트스트랩 파이프라인은 무엇이든 만들기 전에 모듈 토폴로지를 고정하는 것부터 시작한다](ch08-module-graph.ko.md#81-the-bootstrap-pipeline-starts-by-freezing-module-topology-before-constructing-anything)
   - [8.2 그래프 컴파일은 명시적으로 순환을 거부하는 깊이 우선 순회다](ch08-module-graph.ko.md#82-graph-compilation-is-a-depth-first-walk-with-explicit-cycle-rejection)
@@ -124,6 +145,8 @@
   - [10.5 공유 요청, 응답 팩토리는 상위 런타임 동작을 호스트 간 동일하게 유지하는 좁은 다리다](ch10-runtime-branching.ko.md#105-shared-requestresponse-factories-are-the-narrow-bridge-that-keeps-higher-runtime-behavior-identical-across-hosts)
 
 ## 파트 4. HTTP 파이프라인 해부
+
+HTTP·어댑터 내부 구조: 요청 실행을 추적하거나 어댑터 작성에 필요한 계약을 읽습니다.
 
 - [챕터 11. 요청 파이프라인 해부, HTTP 요청의 일생](ch11-request-pipeline.ko.md)
   - [이 챕터에서 배우는 것](ch11-request-pipeline.ko.md#이-챕터에서-배우는-것)
@@ -176,6 +199,8 @@
 
 ## 파트 5. 테스트와 진단
 
+기여자 검증·진단: 이식성 테스트와 Studio로 프레임워크 동작을 조사합니다.
+
 - [챕터 14. 이식성 테스트와 적합성 검증](ch14-portability-testing.ko.md)
   - [이 챕터에서 배우는 것](ch14-portability-testing.ko.md#learning-objectives)
   - [사전 요구사항](ch14-portability-testing.ko.md#prerequisites)
@@ -204,6 +229,8 @@
   - [요약](ch15-studio.ko.md#요약)
 
 ## 파트 6. 생태계 확장
+
+확장·기여 레퍼런스: 변경에 맞는 패키지 경계와 기여 절차를 확인합니다.
 
 - [챕터 16. 커스텀 패키지 만들기](ch16-custom-package.ko.md)
   - [모노레포 패키지 구조](ch16-custom-package.ko.md#monorepo-package-structure)

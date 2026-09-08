@@ -3,6 +3,12 @@
 
 # Chapter 6. Request Data and DTO Validation
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 If Chapter 5 built the skeleton of routes and controllers, this chapter handles the data that crosses that boundary more safely. Here, we attach DTOs and validation rules to FluoBlog request input so the contract between the transport layer and service logic becomes clear.
 
 ## Learning Objectives

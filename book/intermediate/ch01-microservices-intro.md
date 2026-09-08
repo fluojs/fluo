@@ -3,6 +3,12 @@
 
 # Chapter 1. Microservice Architecture and fluo Strategy
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter lays out the FluoShop architecture and fluo's microservices strategy, which form the baseline for the entire intermediate volume. Building on the single-application model from the beginner volume, we now expand the scope to how service boundaries and transport choices affect system quality.
 
 ## Learning Objectives
@@ -141,7 +147,7 @@ Ambiguity is expensive in distributed systems. If retry behavior or dependency l
 
 Traditional frameworks often expose protocol details to business logic. If you start with REST and later need a broker, you may have to rewrite handlers. fluo reduces this friction by treating transports as replaceable drivers.
 
-Operational tradeoffs such as idempotency, delivery semantics, and observability still need consideration, but an infrastructure change doesn't require redesigning handler signatures. In FluoShop, this keeps the learning path cumulative. Chapter 2 covers TCP, Chapter 3 covers Redis, and each chapter builds on the foundation from the previous one.
+Operational tradeoffs such as idempotency, delivery semantics, and observability still need consideration, but an infrastructure change doesn't require redesigning handler signatures. This common model lets you compare TCP (Chapter 2), Redis (Chapter 3), and other transports. Each chapter is optional reference; implementing the previous transport is not a prerequisite.
 
 ## 1.7 Summary
 

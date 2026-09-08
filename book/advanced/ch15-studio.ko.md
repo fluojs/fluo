@@ -4,6 +4,12 @@
 
 # 15장. Studio: 시각적 진단과 관찰성
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장은 Node live Studio가 컴파일한 그래프 snapshot, 진단, 타이밍 데이터, inspect report를 사람이 읽을 수 있는 artifact로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 내보내고 저장하고 보고 해석하는 도구로 넘어갑니다.
 
 ## 학습 목표

@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: Learn what fluo is, why it is standard-first, and where to go next.
+description: Build your first fluo application, solve a specific task, or find a maintained contract.
 ---
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring.
@@ -9,15 +9,22 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 
 Most decorator-heavy TypeScript frameworks depend on legacy compiler behavior. fluo keeps the programming model close to the JavaScript language path: no `experimentalDecorators`, no `emitDecoratorMetadata`, and no hidden reflection requirement.
 
-## How these docs are organized
+## Choose your next step
 
-- **Getting Started** gives you the shortest working path, inspired by Hono's fast quick-start flow.
-- **Concepts** explains the standard-decorator and explicit dependency model before you scale up.
-- **Guides** provides task-oriented decisions for HTTP, auth, persistence, realtime, messaging, operations, testing, and tooling.
-- **Package Reference** keeps all 40 official packages discoverable by family.
-- **Examples** points to runnable starter, RealWorld, auth, and operations paths that prove the documented behavior.
-- **Governance** explains how English and Korean documentation stay in sync.
+| I want to... | Start here |
+| --- | --- |
+| Learn code and backend patterns through a product | [FluoBlog -> FluoShop -> Inside Fluo](https://github.com/fluojs/fluo/blob/main/book/README.md) |
+| Practice the first route, DI, and validation quickly | [FluoBlog HTTP exercise](/en/docs/tutorial) |
+| Check that the CLI and runtime work on my machine | [Quick Start](/en/docs/getting-started/quick-start) |
+| Add a capability to an existing application | [Task guides](/en/docs/guides) |
+| Understand standard decorators | [Concepts](/en/docs/concepts/standard-decorators) |
+| Find an API, runtime limit, or package | [Package Reference](/en/docs/packages) |
+| Run an existing application | [Examples](/en/docs/examples) |
 
-## Next step
+## Three volumes following a growing product
 
-Start with [Quick Start](./getting-started/quick-start) if you want a working project, read [Why fluo?](./why-fluo) if you are comparing frameworks, or open [Package Reference](./packages) if you already know which package family you need.
+[Volume 1](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/toc.md) develops a small blog into an operable service. [Volume 2](https://github.com/fluojs/fluo/blob/main/book/02-fluoshop/toc.md) adds merchandise sales to that same successful blog. [Volume 3](https://github.com/fluojs/fluo/blob/main/book/03-internals/toc.md) explores the Fluo internals and extension points that execute both products.
+
+The Book is the primary path for learning code and backend design. The short HTTP exercise is a companion for checking the initial execution path; guides help add a specific capability to an existing application. Package READMEs and repository contracts own detailed APIs and support boundaries.
+
+To compare frameworks first, read [Why fluo?](/en/docs/why-fluo). Start the complete learning path with [volume 1: FluoBlog](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/README.md).

@@ -3,6 +3,12 @@
 
 # Chapter 2. Creating Your First Project with the CLI
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 기초 개념·애플리케이션 레퍼런스.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 Chapter 1에서 fluo가 어떤 생각으로 만들어졌는지 봤다면, 이제 그 철학을 실제 디렉터리와 명령어로 옮길 차례입니다. 이 장을 마치면 실행 가능한 FluoBlog 스타터가 준비되고, 생성된 파일들이 왜 그 자리에 있는지도 분명해집니다. 이후 아키텍처를 쌓기 전에, 안정적으로 돌아갈 기준선을 먼저 확보하는 셈이죠.
 
 ## Learning Objectives

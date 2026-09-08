@@ -3,6 +3,12 @@
 
 # Chapter 16. Rate Limiting and Throttling
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter explains rate limiting strategies that protect the FluoBlog API from abuse and excessive traffic. Chapter 15 controlled access through Authentication and Authorization. This chapter improves service stability by controlling request frequency itself.
 
 ## Learning Objectives

@@ -4,6 +4,12 @@
 
 # Chapter 19. MongoDB and Mongoose
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter covers how to integrate FluoShop's document-oriented data model into a fluo application. Chapter 18 opened the GraphQL catalog query layer. Here, we'll organize the MongoDB persistence and transaction flow that support it.
 
 ## Learning Objectives

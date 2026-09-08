@@ -1,0 +1,309 @@
+---
+title: 기능 전체 테스트
+description: 실제 요청 파이프라인 테스트와 격리된 애플리케이션 상태로 FluoBlog의 HTTP 계약을 보호합니다.
+---
+
+## 목표와 이전 체크포인트
+
+[검증과 오류](/ko/docs/tutorial/validation-errors)를 완료한 상태에서 시작합니다. 애플리케이션 소스가 이제 `03-validation-errors`와 같은 상태인 `examples/fluo-blog/00-start`를 계속 수정합니다. 새 라우트를 추가하거나 참조 앱으로 전환하지 않습니다.
+
+목표는 같은 앱이 게시글을 나열·생성·조회하고, 상태를 바꾸지 않고 잘못된 요청을 거부하며, 리소스 오류를 반환하고, 새 애플리케이션 인스턴스마다 초기 상태로 시작하는지 증명하는 것입니다. 첫 라우트와 DI 수업부터 테스트를 사용했습니다. 이제 그 근거를 기능 전체로 확장합니다.
+
+## 1. 실제 애플리케이션 경계 유지하기
+
+이전 수업의 `00-start/src/` 애플리케이션 파일을 모두 유지합니다. `src/app.ts`의 `AppModule`도 그대로 사용합니다. `00-start/test/app.e2e.test.ts`만 아래 전체 테스트로 추가하거나 교체합니다.
+
+`../src/main`이 아니라 **`../src/app`**을 import하세요. `main.ts`는 Fastify 리스너를 엽니다. 반면 `createTestApp({ rootModule: AppModule })`은 실제 모듈 그래프를 컴파일하고 수신 포트 없이 HTTP 파이프라인을 실행합니다. 이 테스트에는 실행 중인 서버가 필요하지 않습니다.
+
+예제의 기존 `vitest.config.ts`는 공개 `fluoBabelDecoratorsPlugin()`을 사용하고 source와 test 디렉터리를 모두 포함합니다. 이 설정을 유지하며 기존 방식의 데코레이터 플래그를 켜지 않습니다.
+
+## 2. 전체 요청 테스트 작성하기
+
+{/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts */}
+```ts title="00-start/test/app.e2e.test.ts"
+import { createTestApp } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+describe('FluoBlog request pipeline', () => {
+  it.each([
+    ['/health', 'ok'],
+    ['/ready', 'ready'],
+  ])('preserves the starter endpoint when %s is requested', async (path, status) => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', path).send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ status });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lists the initial post when no post has been created', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('creates a post when its body satisfies the DTO rules', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('POST', '/posts')
+        .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
+        .send();
+
+      // Then
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({
+        id: '2',
+        title: 'Learning Fluo',
+        content: 'Explicit modules and DI.',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ['the shortest accepted values', { title: 'abc', content: 'x' }],
+    ['the longest accepted values', { title: 'a'.repeat(120), content: 'b'.repeat(5000) }],
+  ])('accepts a post when it uses %s', async (_label, body) => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('POST', '/posts').body(body).send();
+
+      // Then
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({ id: '2', ...body });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ['title is omitted', { content: 'Valid content' }, 'title'],
+    ['title is null', { title: null, content: 'Valid content' }, 'title'],
+    ['title is not a string', { title: 123, content: 'Valid content' }, 'title'],
+    ['title is too short', { title: 'ab', content: 'Valid content' }, 'title'],
+    ['title is too long', { title: 'a'.repeat(121), content: 'Valid content' }, 'title'],
+    ['content is omitted', { title: 'Valid title' }, 'content'],
+    ['content is null', { title: 'Valid title', content: null }, 'content'],
+    ['content is not a string', { title: 'Valid title', content: 123 }, 'content'],
+    ['content is empty', { title: 'Valid title', content: '' }, 'content'],
+    ['content is too long', { title: 'Valid title', content: 'a'.repeat(5001) }, 'content'],
+  ])('returns field details when %s', async (_label, body, field) => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('POST', '/posts').body(body).send();
+
+      // Then
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'BAD_REQUEST',
+          status: 400,
+          details: expect.arrayContaining([
+            expect.objectContaining({ field, source: 'body', code: expect.any(String) }),
+          ]),
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves the list when validation rejects a request', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      await app.request('POST', '/posts').body({ title: null, content: null }).send();
+
+      // When
+      const response = await app.request('GET', '/posts').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('retrieves a post when it was created by an earlier request', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      await app.request('POST', '/posts')
+        .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
+        .send();
+
+      // When
+      const response = await app.request('GET', '/posts/2').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        id: '2', title: 'Learning Fluo', content: 'Explicit modules and DI.',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('includes a created post when listing subsequent requests', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      await app.request('POST', '/posts')
+        .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
+        .send();
+
+      // When
+      const response = await app.request('GET', '/posts').send();
+
+      // Then
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+        { id: '2', title: 'Learning Fluo', content: 'Explicit modules and DI.' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns a resource error when the post ID is unknown', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('GET', '/posts/999').send();
+
+      // Then
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({
+        error: { code: 'NOT_FOUND', status: 404 },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects unbound fields when a client supplies an ID or admin flag', async () => {
+    // Given
+    const app = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await app.request('POST', '/posts')
+        .body({ id: '999', title: 'Learning Fluo', content: 'Explicit fields.', admin: true })
+        .send();
+
+      // Then
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'BAD_REQUEST',
+          status: 400,
+          details: expect.arrayContaining([
+            expect.objectContaining({ code: 'UNKNOWN_FIELD', field: 'id', source: 'body' }),
+            expect.objectContaining({ code: 'UNKNOWN_FIELD', field: 'admin', source: 'body' }),
+          ]),
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('starts with seed data when a new application is created', async () => {
+    // Given
+    const first = await createTestApp({ rootModule: AppModule });
+    try {
+      await first.request('POST', '/posts')
+        .body({ title: 'First application', content: 'Not persisted.' })
+        .send();
+    } finally {
+      await first.close();
+    }
+    const second = await createTestApp({ rootModule: AppModule });
+    try {
+      // When
+      const response = await second.request('GET', '/posts').send();
+
+      // Then
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+      ]);
+    } finally {
+      await second.close();
+    }
+  });
+});
+```
+
+각 테스트는 자신의 앱을 만들고 요청 완료를 기다린 뒤 assertion이 실패해도 `finally`에서 앱을 종료합니다. 다른 테스트의 POST나 고정된 대기 시간에 의존하지 않습니다. 마지막 테스트는 두 애플리케이션을 의도적으로 생성해 메모리를 공유하지 않는다는 것을 확인합니다.
+
+입력 테이블은 허용 범위의 양끝과 범위를 벗어난 실패를 모두 확인합니다. 오류 assertion은 사람이 읽는 문구를 고정하는 대신 상태와 구조화된 상세 정보를 검사합니다. 알 수 없는 필드 테스트는 기본 HTTP 바인더가 클라이언트의 `id`, `admin` 필드를 `UNKNOWN_FIELD`로 거부함을 증명합니다. 해당 필드는 조용히 저장되거나 허용되지 않습니다.
+
+## 3. 검증 실행하기
+
+저장소 루트에서 실행합니다.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog exec vitest run 00-start/test/app.e2e.test.ts
+pnpm --filter @fluojs/example-fluo-blog test
+pnpm --filter @fluojs/example-fluo-blog typecheck
+```
+
+예상 결과는 요청 테스트 통과, 모든 체크포인트 테스트 통과, typecheck 정상 종료입니다. 참조 스냅샷에는 직접적인 저장 동작의 서비스 테스트와 모듈 연결의 slice 테스트도 있습니다. 자신의 학습 앱의 요청 테스트는 라우트·DTO·DI·오류 경계의 결합을 검증합니다.
+
+## 4. 실제 HTTP 확인도 유지하기
+
+요청 도우미는 실제 Fastify 소켓이나 빌드된 진입점을 테스트하지 않습니다. 이전 서버를 종료하고 실행합니다.
+
+```bash
+pnpm --filter @fluojs/example-fluo-blog build:00
+pnpm --filter @fluojs/example-fluo-blog start:00
+```
+
+두 번째 터미널에서 실행합니다.
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/posts \
+  -H 'content-type: application/json' \
+  --data '{"title":"Learning Fluo","content":"Explicit modules and DI."}'
+curl -i http://127.0.0.1:3000/posts/2
+```
+
+새 프로세스에서는 차례로 `201`, `200`이 나오며 본문은 둘 다 `{"id":"2","title":"Learning Fluo","content":"Explicit modules and DI."}`입니다. 테스트 앱과 이 서버는 별개의 메모리 컬렉션을 사용합니다.
+
+## 복구
+
+[전체 요청 테스트 파일](https://github.com/fluojs/fluo/blob/main/examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts)과 [마지막 체크포인트 완성본](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/03-validation-errors)을 비교하세요. 테스트가 프레임워크 패키지를 import하지 못하면 [앱 만들기](/ko/docs/tutorial/create-app)의 저장소 준비를 다시 확인합니다. 테스트는 통과하지만 curl이 실패하면 라우트를 mock하도록 테스트를 바꾸지 말고 빌드, 실행 중인 체크포인트, 포트를 확인하세요.
+
+이전: [검증과 오류](/ko/docs/tutorial/validation-errors). 다음: [다음 단계](/ko/docs/tutorial/next-steps).

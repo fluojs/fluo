@@ -3,6 +3,12 @@
 
 # Chapter 6. NATS
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter introduces NATS into FluoShop's fast internal coordination paths and clarifies the role of control-plane messaging, which differs from durable logs or work queues. Chapter 5 covered replayable shared history. Here, the focus moves to inventory and cache coordination, where low latency and subject-based routing matter.
 
 Package-level NATS transport contracts, including completion boundaries and caller-owned collaborator shutdown, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).

@@ -3,6 +3,12 @@
 
 # Chapter 12. Execution Chain & Exception Chain — 가드, 인터셉터, 예외 처리
 
+<!-- fluo:docs-navigation:start -->
+> **이전 판 안내 — 프레임워크·기여자 내부 구조 참고 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
+>
+> [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
+
+<!-- fluo:docs-navigation:end -->
 이 장에서는 Fluo 요청 파이프라인에서 미들웨어, 가드, 인터셉터, 예외 처리가 어떤 실행 체인을 이루는지 분석합니다. Chapter 11이 요청 전체 생명주기를 다뤘다면, 여기서는 각 체인 컴포넌트가 어느 지점에 개입하고 어떤 순서로 결합되는지 더 세밀하게 살펴봅니다.
 
 ## Learning Objectives

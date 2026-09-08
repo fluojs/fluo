@@ -3,6 +3,12 @@
 
 # Chapter 11. Request Pipeline Anatomy, The Life of an HTTP Request
 
+<!-- fluo:docs-navigation:start -->
+> **Previous edition — framework and contributor internals.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
+>
+> [This volume's topic index](./toc.md) · [Book hub](../README.md)
+
+<!-- fluo:docs-navigation:end -->
 This chapter looks at the internal steps the Fluo HTTP Dispatcher follows from receiving a request to returning a response. Chapter 10 covered host branching and the adapter seam. This chapter focuses on how the real request handling pipeline works on top of that layer.
 
 ## Learning Objectives

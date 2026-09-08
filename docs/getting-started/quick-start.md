@@ -4,6 +4,8 @@
 
 ## Prerequisites
 
+This is the CLI setup command reference. For a guided first application, use the [FluoBlog tutorial](../../apps/docs/content/docs/tutorial/create-app.mdx).
+
 - Node.js runtime available on the host system.
 - `pnpm` available on the host system.
 - Shell session with permission to install a global package or run `pnpm dlx`.

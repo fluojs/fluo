@@ -144,6 +144,94 @@ function enforceContractCompanionUpdates(
   );
 }
 
+describe('FluoBlog tutorial source copies', () => {
+  const sourceLessons = [
+    'first-route',
+    'dependency-injection',
+    'validation-errors',
+    'testing',
+  ] as const;
+
+  for (const lesson of sourceLessons) {
+    it(`ships the tested checkpoint files in both locales for ${lesson}`, () => {
+      // Given: both translations identify their complete source-file examples.
+      const sourcePaths = [];
+      for (const suffix of ['', '.ko']) {
+        const page = readFileSync(
+          join(repoRoot, 'apps/docs/content/docs/tutorial', `${lesson}${suffix}.mdx`),
+          'utf8',
+        );
+        const copies = [...page.matchAll(
+          /\{\/\* fluo-tutorial-source: (examples\/fluo-blog\/[^\s]+) \*\/\}\s*\n```[^\n]*\n([\s\S]*?)\n```/g,
+        )];
+        expect(copies.length, `${lesson}${suffix} must identify its source copies`).toBeGreaterThan(0);
+        const paths = [];
+
+        for (const copy of copies) {
+          const sourcePath = copy[1];
+          const printedSource = copy[2];
+          if (sourcePath === undefined || printedSource === undefined) {
+            throw new Error('A tutorial source marker must include a path and code fence');
+          }
+
+          // When: the complete snippet is compared with the executable source.
+          const source = readFileSync(join(repoRoot, sourcePath), 'utf8');
+
+          // Then: documentation cannot silently diverge from its tested example.
+          expect(printedSource.trimEnd(), sourcePath).toBe(source.trimEnd());
+          paths.push(sourcePath);
+        }
+        sourcePaths.push(paths);
+      }
+      expect(sourcePaths[0]).toEqual(sourcePaths[1]);
+    });
+  }
+
+  for (const suffix of ['', '.ko']) {
+    it(`builds every cumulative source state from the starter and ${suffix || 'English'} lesson edits`, () => {
+      // Given: the learner begins with the health-only application.
+      const exampleRoot = join(repoRoot, 'examples/fluo-blog');
+      const readSources = (checkpoint: string) => {
+        const directory = join(exampleRoot, checkpoint, 'src');
+        return new Map(
+          readdirSync(directory, { recursive: true, encoding: 'utf8' })
+            .filter((path) => path.endsWith('.ts') && !path.endsWith('.test.ts'))
+            .map((path) => [path, readFileSync(join(directory, path), 'utf8').trimEnd()]),
+        );
+      };
+      const learnerFiles = readSources('00-start');
+      const lessons = [
+        ['first-route', '01-first-route'],
+        ['dependency-injection', '02-dependency-injection'],
+        ['validation-errors', '03-validation-errors'],
+      ] as const;
+
+      for (const [lesson, checkpoint] of lessons) {
+        const page = readFileSync(
+          join(repoRoot, 'apps/docs/content/docs/tutorial', `${lesson}${suffix}.mdx`),
+          'utf8',
+        );
+        // When: complete source-file edits are applied in lesson order.
+        for (const copy of page.matchAll(
+          /\{\/\* fluo-tutorial-source: examples\/fluo-blog\/[^/]+\/src\/([^\s]+) \*\/\}\s*\n```[^\n]*\n([\s\S]*?)\n```/g,
+        )) {
+          const path = copy[1];
+          const code = copy[2];
+          if (path === undefined || code === undefined) {
+            throw new Error('A cumulative tutorial edit must name a source file');
+          }
+          if (!path.endsWith('.test.ts')) {
+            learnerFiles.set(path, code.trimEnd());
+          }
+        }
+
+        // Then: no omitted file or import is hidden by an already-complete snapshot.
+        expect(learnerFiles, `${lesson}${suffix}`).toEqual(readSources(checkpoint));
+      }
+    });
+  }
+});
+
 describe('static asset contract companions', () => {
   it('requires focused portable, Node, and real-listener regressions', () => {
     expect(() => enforceContractCompanionUpdates(staticAssetContractCompanions)).toThrow(
