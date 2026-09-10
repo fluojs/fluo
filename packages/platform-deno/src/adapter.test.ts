@@ -419,7 +419,9 @@ describe('@fluojs/platform-deno', () => {
       'createDenoShutdownSignalRegistration',
       'shutdownRegistration',
       'createDenoFetchHandler(options)',
-      'DenoWebSocketModule, OnMessage, WebSocketGateway',
+      'DenoWebSocketModule',
+      'OnMessage',
+      'WebSocketGateway',
       'DenoServerWebSocket',
       'listen(dispatcher)',
       'close()',
@@ -427,7 +429,6 @@ describe('@fluojs/platform-deno', () => {
       'getListenTarget()',
       'getRealtimeCapability()',
       'getServer()',
-      'configureWebSocketBinding(...)',
     ] as const;
 
     for (const readme of [englishReadme, koreanReadme]) {
@@ -435,6 +436,10 @@ describe('@fluojs/platform-deno', () => {
         expect(readme).toContain(claim);
       }
     }
+    expect(DenoHttpApplicationAdapter.prototype).not.toHaveProperty('configureWebSocketBinding');
+    const installation = DenoHttpApplicationAdapter.create().getRealtimeCapability().bindingInstallation;
+    expect(installation?.version).toBe(1);
+    expect(installation?.install).toBeTypeOf('function');
   });
 
   it('dispatches requests through the shared Web request/response core', async () => {
