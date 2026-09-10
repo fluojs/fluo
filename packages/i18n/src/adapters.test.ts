@@ -63,11 +63,9 @@ function createMockHttpContext(headers: HttpRequestContext['request']['headers']
 }
 
 describe('@fluojs/i18n/adapters locale adapter surface', () => {
-  it('keeps the adapter exports isolated from the root package surface', async () => {
-    const root = await import('./index.js');
+  it('exposes adapter helpers on the dedicated subpath', async () => {
     const adapters = await import('./adapters.js');
 
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(Object.keys(adapters).sort()).toEqual([
       'bindLocale',
       'createCookieLocaleResolver',

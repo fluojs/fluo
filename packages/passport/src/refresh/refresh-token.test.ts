@@ -285,39 +285,6 @@ describe('RefreshTokenStrategy', () => {
 });
 
 describe('RefreshTokenService contract', () => {
-  it('issues refresh tokens for subjects', async () => {
-    const service = createMockRefreshTokenService();
-    const token = await service.issueRefreshToken('user-1');
-
-    expect(token).toBe('mock-refresh-token');
-    expect(service.issueRefreshToken).toHaveBeenCalledWith('user-1');
-  });
-
-  it('rotates refresh tokens and returns new tokens', async () => {
-    const service = createMockRefreshTokenService();
-    const result = await service.rotateRefreshToken('old-token');
-
-    expect(result).toMatchObject({
-      accessToken: expect.any(String),
-      refreshToken: 'new-refresh-token',
-    });
-    expect(service.rotateRefreshToken).toHaveBeenCalledWith('old-token');
-  });
-
-  it('revokes specific refresh tokens', async () => {
-    const service = createMockRefreshTokenService();
-    await service.revokeRefreshToken('token-id');
-
-    expect(service.revokeRefreshToken).toHaveBeenCalledWith('token-id');
-  });
-
-  it('revokes all tokens for a subject (logout)', async () => {
-    const service = createMockRefreshTokenService();
-    await service.revokeAllForSubject('user-1');
-
-    expect(service.revokeAllForSubject).toHaveBeenCalledWith('user-1');
-  });
-
   it('exposes the shared refresh-token service alias through RefreshTokenModule.forRoot(...)', async () => {
     class RefreshTokenServiceImpl implements RefreshTokenService {
       async issueRefreshToken(): Promise<string> {

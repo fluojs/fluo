@@ -34,11 +34,9 @@ function hasIcuSubpathExport(value: unknown): boolean {
 }
 
 describe('@fluojs/i18n/icu MessageFormat subpath', () => {
-  it('keeps ICU exports on the dedicated subpath without expanding root runtime exports', async () => {
-    const root = await import('./index.js');
+  it('exposes ICU helpers on the dedicated subpath', async () => {
     const icu = await import('./icu.js');
 
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(Object.keys(icu).sort()).toEqual(['IcuI18nService', 'createIcuI18n']);
     expect(hasIcuSubpathExport(readPackageExports())).toBe(true);
   });

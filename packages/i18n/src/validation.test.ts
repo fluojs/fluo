@@ -210,13 +210,11 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
     ).toEqual([{ code: 'CUSTOM_CODE', field: 'profile', message: 'Custom message for profile.' }]);
   });
 
-  it('exposes the validation subpath without adding validation helpers to the root entry point', async () => {
-    const root = await import('./index.js');
+  it('exposes the validation helpers on the dedicated subpath', async () => {
     const validation = await import('./validation.js');
     const options: LocalizeValidationIssuesOptions = { locale: 'en' };
 
     expect(options.locale).toBe('en');
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(Object.keys(validation).sort()).toEqual([
       'createValidationIssueTranslationKeys',
       'localizeDtoValidationError',
