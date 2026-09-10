@@ -181,7 +181,7 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
   });
 
   it('forwards multipart stream strategy through the Workers adapter', async () => {
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       multipart: { strategy: 'stream' },
     });
     await adapter.listen({

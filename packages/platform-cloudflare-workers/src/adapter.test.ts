@@ -309,7 +309,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
   it('delegates websocket upgrade requests through a configured Worker websocket binding before HTTP dispatch', async () => {
     const createWebSocketPair = createWebSocketPairStub();
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair,
     });
     const dispatcher = {
@@ -347,7 +347,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
   it('keeps websocket upgrades behind the dispatcher listen boundary', async () => {
     const createWebSocketPair = createWebSocketPairStub();
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair,
     });
     const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
@@ -421,7 +421,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('rejects live Worker websocket binding mutations after listen starts', async () => {
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair: createWebSocketPairStub(),
     });
     const initialBinding = {
@@ -773,7 +773,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
   it('returns shutdown JSON instead of upgrading WebSocket requests after close', async () => {
     const createWebSocketPair = createWebSocketPairStub();
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair,
     });
     const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
@@ -814,7 +814,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
   it('returns shutdown JSON instead of upgrading WebSocket requests while close is draining', async () => {
     const createWebSocketPair = createWebSocketPairStub();
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair,
     });
     const deferred = createDeferred<void>();

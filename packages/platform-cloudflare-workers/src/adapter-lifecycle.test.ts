@@ -92,7 +92,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
   });
 
   it('rejects Worker websocket binding reconfiguration after the listen boundary even after close', async () => {
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair: createWebSocketPairStub(),
     });
     const initialBinding = {
@@ -278,7 +278,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
 
   it('keeps waitUntil and close draining until an upgraded server websocket closes', async () => {
     const createWebSocketPair = createWebSocketPairStub();
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({ createWebSocketPair });
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({ createWebSocketPair });
     const upgradeDeferred = createDeferred<void>();
     const waitUntilPromises: Array<Promise<unknown>> = [];
     let serverSocket: CloudflareWorkerWebSocket | undefined;

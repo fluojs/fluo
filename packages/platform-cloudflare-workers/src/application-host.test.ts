@@ -15,6 +15,12 @@ function createExecutionContext(): CloudflareWorkerExecutionContext {
 }
 
 describe('CloudflareWorkerApplicationHost', () => {
+  it('retains the existing public adapter constructor for compatibility', async () => {
+    const adapter = new CloudflareWorkerHttpApplicationAdapter();
+    expect(adapter).toBeInstanceOf(CloudflareWorkerHttpApplicationAdapter);
+    await adapter.close();
+  });
+
   it('keeps a module with a fromEnv static member on the fixed-module path', async () => {
     class AppModule {
       static fromEnv() {
