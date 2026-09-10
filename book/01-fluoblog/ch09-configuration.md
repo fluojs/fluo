@@ -198,7 +198,7 @@ await app.listen();
 
 Configure the adapter passed to `FluoFactory.create()` with the already validated `blogConfig.PORT`. Awaiting `app.listen()` completes listening and the selected shutdown registration. Services read `AppSettings.port` from that same snapshot. Validation failure stops creation; injected configuration does not move a listener after startup.
 
-Reading configuration through DI is not a reason to replace this code with `FluoFactory.create()` and `listen()`. With explicit composition, you also own listen, signals, and the helper's middleware, logger, and post-creation failure cleanup policies. The book keeps the default run helper together with the validated snapshot. The next chapter's `BlogDatabaseModule` uses the same `AppSettings.databaseUrl`, and later authentication settings extend this validation path. This is not a new starting point that rereads the environment separately for database and authentication settings or discards accumulated middleware and upload limits.
+Keep the validated snapshot with the canonical `FluoFactory.create()` and `app.listen()` recipe. Factory composes common middleware and cleans up acquired resources when creation or startup fails. The application chooses its logger and host-owned signal registration explicitly and retains its configured middleware and adapter upload limits. The next chapter's `BlogDatabaseModule` uses the same `AppSettings.databaseUrl`, and later authentication settings extend this validation path. Do not reread the environment into a separate configuration source for database or authentication settings.
 
 ## Removing Environment Dependencies from Public Links
 

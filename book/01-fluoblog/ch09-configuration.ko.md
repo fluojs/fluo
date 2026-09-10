@@ -198,7 +198,7 @@ await app.listen();
 
 `FluoFactory.create()`에 전달할 adapter는 이미 검증한 `blogConfig.PORT`로 구성한다. `app.listen()`을 기다리면 수신과 선택한 shutdown 등록이 끝난다. 서비스의 `AppSettings.port`도 같은 snapshot을 사용한다. 검증 실패는 생성 전에 멈추며, 수신 뒤 주입된 설정으로 port를 옮기는 동작은 없다.
 
-설정을 DI에서 읽는다는 이유로 이 코드를 `FluoFactory.create()`와 `listen()`으로 바꿀 필요는 없다. 직접 조립을 선택하면 listen과 signal, helper의 미들웨어·logger·생성 이후 실패 정리 정책도 직접 책임져야 한다. 이 책은 기본 실행 helper와 검증된 snapshot을 함께 유지한다. 다음 장의 `BlogDatabaseModule`은 같은 `AppSettings.databaseUrl`을 사용하고, 뒤에서 인증 설정을 확장할 때도 이 검증 경로를 이어 간다. DB·인증을 위해 환경을 다시 읽는 별도 설정 원본을 만들거나 누적한 middleware·업로드 제한을 버리는 출발점이 아니다.
+검증된 snapshot을 canonical `FluoFactory.create()`와 `app.listen()` recipe와 함께 유지한다. Factory는 공통 middleware를 조합하고 생성이나 시작이 실패하면 확보한 자원을 정리한다. 앱은 logger와 host 소유 signal 등록을 명시적으로 선택하며, 기존에 구성한 middleware와 adapter 업로드 제한도 유지한다. 다음 장의 `BlogDatabaseModule`은 같은 `AppSettings.databaseUrl`을 사용하고, 뒤에서 인증 설정을 확장할 때도 이 검증 경로를 이어 간다. DB·인증 설정을 위해 환경을 다시 읽는 별도 설정 원본을 만들지 않는다.
 
 ## 공개 링크에서 환경 의존 제거하기
 
