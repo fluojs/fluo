@@ -5742,11 +5742,13 @@ describe('WebSockets runtime subpath discoverability', () => {
       : /^- \*\*`@fluojs\/websockets`\*\*:[^\r\n]*$/gm;
     const matches = content.match(pattern) ?? [];
     expect(matches).toHaveLength(1);
+    const paragraph = matches[0];
+    if (paragraph === undefined) throw new Error(`Missing WebSocket contract paragraph in ${path}.`);
     const locale = path.includes('.ko.') ? '.ko' : '';
     return {
       path,
       content,
-      paragraph: matches[0],
+      paragraph,
       failure: `Platform consistency governance check failed: docs/CONTEXT${locale}.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface${locale}.md documents them.`,
     };
   });
