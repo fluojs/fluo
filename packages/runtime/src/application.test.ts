@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApplication, defineModule, FluoFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
-import { bootstrapNodeApplication, createNodeHttpAdapter, NodeHttpApplicationAdapter, runNodeApplication } from '@fluojs/platform-nodejs';
+import { bootstrapNodeApplication, NodeHttpApplicationAdapter, runNodeApplication } from '@fluojs/platform-nodejs';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
 
@@ -1176,7 +1176,7 @@ describe('bootstrapApplication', () => {
   });
 
   it('provides getServer() on the Node HTTP adapter before listen()', async () => {
-    const adapter = createNodeHttpAdapter({ port: 0 }) as { getServer?: () => unknown };
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 }) as { getServer?: () => unknown };
 
     expect(typeof adapter.getServer).toBe('function');
     expect(adapter.getServer?.()).toBeDefined();

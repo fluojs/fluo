@@ -47,8 +47,8 @@ npm install @fluojs/runtime
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { fluoFactory } from '@fluojs/runtime';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 
 @Controller('/')
 class AppController {
@@ -64,8 +64,8 @@ class AppController {
 class AppModule {}
 
 // 애플리케이션 생성 및 시작
-const app = await fluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
@@ -189,12 +189,12 @@ dispatcher가 재사용합니다.
 
 ```typescript
 import { StandardSchemaBinder } from '@fluojs/http';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
 await app.listen();
@@ -277,7 +277,7 @@ const app = await fluoFactory.create(AppModule, { studioDevtools });
 부트스트랩 시 필터를 등록하여 횡단 관심사 에러를 처리합니다.
 
 ```typescript
-import { fluoFactory, type ExceptionFilterHandler } from '@fluojs/runtime';
+import { FluoFactory, type ExceptionFilterHandler } from '@fluojs/runtime';
 
 class GlobalErrorFilter implements ExceptionFilterHandler {
   async catch(error, { response }) {
@@ -288,8 +288,8 @@ class GlobalErrorFilter implements ExceptionFilterHandler {
   }
 }
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   filters: [new GlobalErrorFilter()],
 });
 ```
@@ -346,8 +346,8 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   errorRepresentation: {
     html: {
       render({ json }) {
@@ -414,7 +414,7 @@ class UsersModule {}
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
 - `@fluojs/runtime/web`은 서로 배타적인 두 멀티파트 소비 mode를 노출합니다. `parseMultipart(...)`는 field와 file을 buffer하고, `parseMultipartStream(...)`은 discriminated field/file part를 yield하며 complete file payload를 실체화하지 않습니다. Streaming mode는 byte를 읽는 동안 per-field, per-file, total-size, field-count, file-count, header limit을 강제하고 abort, cancellation, parser failure가 active source를 cancel합니다. 두 mode 중 하나가 선택한 body를 다시 buffered 또는 streaming으로 선택하면 `MultipartBodyConsumedError`로 reject됩니다.
-- `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
+- `NodeHttpApplicationAdapter.create(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - HTTP application bootstrap은 optional application-owned `errorRepresentation.html` provider를 representation ownership 없이 dispatcher에 전달합니다. Canonical JSON은 default로 유지되며 classification, negotiation, status/header, `HEAD`, abort, commit, fallback 의미는 HTTP가 소유합니다.
 - HTTP response writing은 단일 owner를 가집니다. Framework-managed handler 결과는 runtime이 commit하기 전에 interceptor가 변환할 수 있습니다. Handler나 response helper가 `RequestContext.response`를 commit한 뒤에는 dispatcher가 두 번째 success-response write를 건너뜁니다. `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다.
@@ -490,7 +490,7 @@ import {
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
   createNodeFileSystemAssetSource,
-  createNodeHttpAdapter,
+  NodeHttpApplicationAdapter,
   runNodeApplication,
   type NodeFileSystemAssetPrecompression,
   type NodeFileSystemAssetSourceOptions,
@@ -498,7 +498,7 @@ import {
 ```
 
 ```typescript
-const adapter = createNodeHttpAdapter({
+const adapter = NodeHttpApplicationAdapter.create({
   port: 3000,
   maxBodySize: 1_048_576,
 });
@@ -509,7 +509,7 @@ const adapter = createNodeHttpAdapter({
 - `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거입니다. 기본값은 pretty 형식입니다. 더 간결한 `[fluo] LEVEL [context] message` 줄을 원하면 `{ mode: 'minimal' }`, 런타임 로거 출력을 숨기려면 `{ mode: 'silent' }`, 낮은 심각도 메시지를 걸러내려면 `{ level: 'warn' }` 같은 threshold, 결정적인 비컬러 출력을 원하면 `{ color: false }`를 전달하세요.
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
 - `createNodeFileSystemAssetSource(options)`: `@fluojs/http`의 `StaticAssetSource` contract를 구현하는 Node 전용 filesystem source입니다. `NodeFileSystemAssetSourceOptions`는 `{ root, precompressed }` 경계를 이름 붙이고 `NodeFileSystemAssetPrecompression`은 `.br` / `.gz` sibling 선택을 제어합니다. 허용된 각 representation은 안전하게 열어 immutable in-memory byte snapshot으로 즉시 복사하고 middleware response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열지 않습니다. 따라서 애플리케이션 owner는 선택된 asset 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 snapshot byte를 설명합니다.
-- `createNodeHttpAdapter()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`는 0 이상의 정수만 받습니다.
+- `NodeHttpApplicationAdapter.create()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`는 0 이상의 정수만 받습니다.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: 직접 Node runtime flow에서 사용하는 Node 전용 부트스트랩 헬퍼.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.
 

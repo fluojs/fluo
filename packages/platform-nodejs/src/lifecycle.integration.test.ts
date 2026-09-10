@@ -4,7 +4,7 @@ import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { bootstrapNodejsApplication, createNodejsAdapter } from './index.js';
+import { bootstrapNodejsApplication, NodeHttpApplicationAdapter } from './index.js';
 
 async function requestWithEarlyHints(url: string): Promise<{
   readonly body: string;
@@ -67,7 +67,7 @@ describe('@fluojs/platform-nodejs lifecycle integration', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EarlyHintsController] });
 
-    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
@@ -143,7 +143,7 @@ describe('@fluojs/platform-nodejs lifecycle integration', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const adapter = createNodejsAdapter({
+    const adapter = NodeHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port: 0,
       shutdownTimeoutMs: 1_000,

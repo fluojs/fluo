@@ -12,7 +12,7 @@ import {
 } from '@fluojs/http';
 import { createExpressAdapter } from '@fluojs/platform-express';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { type Application, type ApplicationLogger, bootstrapApplication, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import {
@@ -316,15 +316,15 @@ interface SupportedSocketIoAdapterScenario {
 
 const supportedSocketIoAdapterScenarios: readonly SupportedSocketIoAdapterScenario[] = [
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => createNodejsAdapter({ port, shutdownTimeoutMs }),
+    createAdapter: ({ port, shutdownTimeoutMs }) => NodeHttpApplicationAdapter.create({ port, shutdownTimeoutMs }),
     name: 'platform-nodejs',
   },
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => createFastifyAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof createNodejsAdapter>,
+    createAdapter: ({ port, shutdownTimeoutMs }) => createFastifyAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof NodeHttpApplicationAdapter.create>,
     name: 'platform-fastify',
   },
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => createExpressAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof createNodejsAdapter>,
+    createAdapter: ({ port, shutdownTimeoutMs }) => createExpressAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof NodeHttpApplicationAdapter.create>,
     name: 'platform-express',
   },
 ];
@@ -347,7 +347,7 @@ async function createSocketIoAdapterFirstApplication(
 async function createNodejsSocketIoApplication(
   rootModule: ModuleType,
 ): Promise<{ app: Application; adapter: HttpApplicationAdapter }> {
-  const adapter = createNodejsAdapter({ port: 0 });
+  const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
 
   return {
     adapter,
@@ -509,7 +509,7 @@ describe('@fluojs/socket.io', () => {
 
     await expect(
       bootstrapApplication({
-        adapter: createNodejsAdapter({ port: 0 }),
+        adapter: NodeHttpApplicationAdapter.create({ port: 0 }),
         rootModule: AppModule,
       }),
     ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
@@ -659,7 +659,7 @@ describe('@fluojs/socket.io', () => {
 
   it.each([
     {
-      createAdapter: ({ port }: { port: number }) => createNodejsAdapter({ port }),
+      createAdapter: ({ port }: { port: number }) => NodeHttpApplicationAdapter.create({ port }),
       name: 'Node-backed',
     },
     {
@@ -1625,7 +1625,7 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 

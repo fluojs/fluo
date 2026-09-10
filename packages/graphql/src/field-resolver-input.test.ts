@@ -81,7 +81,7 @@ class ProductFieldResolver {
 }
 
 async function startGraphqlApplication(rootModule: ModuleType): Promise<{ readonly app: Application; readonly origin: string }> {
-  const adapter = new NodeHttpApplicationAdapter(0, '127.0.0.1', 0, 0, false, undefined);
+  const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0, retryDelayMs: 0, retryLimit: 0 });
   const app = await FluoFactory.create(rootModule, { adapter });
   await app.listen();
 

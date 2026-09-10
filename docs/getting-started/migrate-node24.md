@@ -98,13 +98,15 @@ or integration imports its Node helpers, then update source, tests, and tooling:
 
 ```ts
 import {
-  createNodeHttpAdapter,
+  NodeHttpApplicationAdapter,
   runNodeApplication,
 } from '@fluojs/platform-nodejs';
 ```
 
-The moved symbols retain their names; no compatibility shim remains at the old
-paths. This includes Node listeners, filesystem assets, loggers, compression,
+No compatibility shim remains at the old paths. Adapter creation is consolidated
+in `NodeHttpApplicationAdapter.create(options)`; also apply the
+[adapter creation migration](./migrate-node-adapter-create.md).
+Other moved symbols retain their names. This includes Node listeners, filesystem assets, loggers, compression,
 and process-signal helpers. Integration authors using the former internal Node
 seam must move to the platform-owned internal seam, not a private source path.
 Express and Fastify now consume that same platform-owned boundary.

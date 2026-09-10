@@ -632,7 +632,7 @@ import {
 import { localizeDtoValidationError } from '@fluojs/i18n/validation';
 import type { Middleware, RequestContext } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import type { DtoValidationError } from '@fluojs/validation';
 
 const acceptLanguage = createAcceptLanguageLocaleResolver();
@@ -673,7 +673,7 @@ const requestLocaleHook: Middleware = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodeHttpAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   middleware: [requestLocaleHook],
 });
 await app.listen();

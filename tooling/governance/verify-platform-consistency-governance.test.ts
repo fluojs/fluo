@@ -728,20 +728,20 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/index.ts',
-      startLine: 12,
-      endLine: 32,
+      startLine: 9,
+      endLine: 28,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 138,
-      endLine: 161,
+      startLine: 178,
+      endLine: 200,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 162,
-      endLine: 188,
+      startLine: 201,
+      endLine: 227,
       fenceLanguage: 'typescript',
     },
     {
@@ -752,14 +752,20 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 280,
-      endLine: 323,
+      startLine: 140,
+      endLine: 176,
+      fenceLanguage: 'typescript',
+    },
+    {
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
+      startLine: 326,
+      endLine: 338,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/node.test.ts',
-      startLine: 15,
-      endLine: 31,
+      startLine: 14,
+      endLine: 30,
       fenceLanguage: 'typescript',
     },
   ] as const;

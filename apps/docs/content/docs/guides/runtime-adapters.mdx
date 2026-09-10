@@ -144,46 +144,37 @@ Use the raw Node.js adapter when you want the built-in `http` or `https` server 
 `@fluojs/platform-nodejs` requires Node.js `>=24.0.0 <27`. Node versions below 24 and Node 27+ are unsupported.
 
 ```ts
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-The adapter accepts HTTPS options and body-size limits.
+`NodeHttpApplicationAdapter.create(options)` accepts HTTPS, body-size limits, compression, and multipart in the same object.
 
 ```ts
-const adapter = createNodejsAdapter({
+const adapter = NodeHttpApplicationAdapter.create({
   port: 443,
   https: {
     key: fs.readFileSync('key.pem'),
     cert: fs.readFileSync('cert.pem'),
   },
   maxBodySize: 1_048_576,
+  compression: true,
+  multipart: { maxTotalSize: 2_097_152 },
 });
 ```
 
 `maxBodySize` is enforced while raw Node request bytes are still streaming. The default request body cap is `1 MiB`; invalid `port` or `maxBodySize` values throw during setup.
 
-For one-call startup with graceful shutdown, use `runNodejsApplication(...)`.
+`compression` defaults to `false`; range responses retain identity bytes even when compression is enabled. Omitted `multipart.maxTotalSize` inherits the effective `maxBodySize`. The standard startup is `FluoFactory.create` followed by `app.listen()` as above. The host owns `app.close()` and explicit process-signal registration/cleanup.
 
-```ts
-import { runNodejsApplication } from '@fluojs/platform-nodejs';
-import { AppModule } from './app.module';
-
-await runNodejsApplication(AppModule, {
-  port: 3000,
-  globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
-});
-```
-
-If shutdown times out or fails, the helper logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
+Existing bootstrap/run helpers are not removed by this issue and use the same static creation implementation. Run-helper shutdown timeout or failure is reported through logs and `process.exitCode`, while the host owns final process termination. See the [Node adapter creation migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.md) for removed factory/type aliases and migration of existing run-helper defaults.
 
 ## Express
 
@@ -438,7 +429,7 @@ export class WorkerBindingsModule {}
 | Package | Public API |
 | --- | --- |
 | `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-nodejs` | `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
+| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
 | `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
 | `@fluojs/platform-deno` | `createDenoAdapter`, `createDenoFetchHandler`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |

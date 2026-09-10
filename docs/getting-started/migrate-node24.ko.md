@@ -99,12 +99,15 @@ tooling을 변경하세요.
 
 ```ts
 import {
-  createNodeHttpAdapter,
+  NodeHttpApplicationAdapter,
   runNodeApplication,
 } from '@fluojs/platform-nodejs';
 ```
 
-이동한 symbol은 이름을 유지하며 이전 경로에는 compatibility shim이 없습니다.
+이전 경로에는 compatibility shim이 없습니다. Adapter 생성은
+`NodeHttpApplicationAdapter.create(options)`로 통합되므로
+[adapter 생성 마이그레이션](./migrate-node-adapter-create.ko.md)도 적용하세요.
+그 외 이동한 symbol은 이름을 유지합니다.
 Node listener, filesystem asset, logger, compression, process-signal helper가
 포함됩니다. 기존 internal Node seam을 사용하는 integration 작성자는 private
 source path가 아니라 platform-owned internal seam으로 옮겨야 합니다.

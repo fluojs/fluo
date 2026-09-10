@@ -16,7 +16,7 @@ import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { bootstrapNodeApplication, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
@@ -612,7 +612,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const adapter = createNodeHttpAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await bootstrapApplication({
       adapter,
       rootModule: AppModule,
@@ -683,7 +683,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ReturnOnlyGateway],
     });
 
-    const adapter = createNodeHttpAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await bootstrapApplication({
       adapter,
       rootModule: AppModule,

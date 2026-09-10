@@ -144,46 +144,37 @@ Express나 Fastify 없이 built-in `http`/`https` server primitive를 직접 사
 `@fluojs/platform-nodejs`에는 Node.js `>=24.0.0 <27`가 필요합니다. Node 24 미만과 Node 27+는 지원하지 않습니다.
 
 ```ts
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-Adapter는 HTTPS option과 body-size limit을 받습니다.
+`NodeHttpApplicationAdapter.create(options)`는 HTTPS, body-size limit, compression, multipart를 같은 객체로 받습니다.
 
 ```ts
-const adapter = createNodejsAdapter({
+const adapter = NodeHttpApplicationAdapter.create({
   port: 443,
   https: {
     key: fs.readFileSync('key.pem'),
     cert: fs.readFileSync('cert.pem'),
   },
   maxBodySize: 1_048_576,
+  compression: true,
+  multipart: { maxTotalSize: 2_097_152 },
 });
 ```
 
 `maxBodySize`는 raw Node request byte가 아직 streaming 중일 때 적용됩니다. 기본 request body cap은 `1 MiB`이고, 잘못된 `port` 또는 `maxBodySize`는 setup 중 throw합니다.
 
-Graceful shutdown을 포함한 one-call startup에는 `runNodejsApplication(...)`을 사용합니다.
+`compression` 기본값은 `false`이며 range 응답은 compression을 켜도 identity byte를 유지합니다. `multipart.maxTotalSize` 생략은 유효 `maxBodySize`를 따릅니다. 표준 startup은 위 `FluoFactory.create` 다음 `app.listen()`입니다. Host는 `app.close()`와 명시적인 process signal 등록/해제를 소유합니다.
 
-```ts
-import { runNodejsApplication } from '@fluojs/platform-nodejs';
-import { AppModule } from './app.module';
-
-await runNodejsApplication(AppModule, {
-  port: 3000,
-  globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
-});
-```
-
-Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `process.exitCode`를 설정하지만, 최종 process termination은 host process가 소유합니다.
+기존 bootstrap/run helper는 이 이슈에서 제거하지 않으며 같은 static 생성 구현을 사용합니다. Run helper의 shutdown timeout이나 failure는 log와 `process.exitCode`로 보고하고 최종 process termination은 host가 소유합니다. 삭제된 factory/type alias와 기존 run-helper 기본값 이전은 [Node adapter 생성 마이그레이션](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.ko.md)을 참고하세요.
 
 ## Express
 
@@ -438,7 +429,7 @@ export class WorkerBindingsModule {}
 | Package | Public API |
 | --- | --- |
 | `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-nodejs` | `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
+| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
 | `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
 | `@fluojs/platform-deno` | `createDenoAdapter`, `createDenoFetchHandler`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |

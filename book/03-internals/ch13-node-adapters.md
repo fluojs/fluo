@@ -158,7 +158,7 @@ To compare the three adapters, a small program that observes requests and respon
 import assert from 'node:assert/strict';
 import { Server } from 'node:http';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { createExpressAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
@@ -172,7 +172,7 @@ const options = {
 
 const factories = [
   ['fastify', () => createFastifyAdapter(options)],
-  ['nodejs', () => createNodejsAdapter(options)],
+  ['nodejs', () => NodeHttpApplicationAdapter.create(options)],
   ['express', () => createExpressAdapter(options)],
 ] as const;
 
