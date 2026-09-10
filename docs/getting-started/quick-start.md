@@ -113,9 +113,9 @@ The tree above describes the default Node.js + Fastify application starter after
 
 Authoritative starter matrix: [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
-The default `src/main.ts` imports `runFastifyApplication` from `@fluojs/platform-fastify` and `AppModule` from `./app`. It awaits the helper once; the returned application has already listened and registered shutdown signals. Keep `ConfigModule.forRoot({ envFile: '.env', processEnv: process.env })`, `GreetingModule`, and `HealthModule.forRoot()` in `src/app.ts`, including their starter tests. Add features to these imports instead of replacing the root module.
+The default `src/main.ts` creates `FastifyHttpApplicationAdapter` through its static `create(...)`, passes it to `FluoFactory.create(AppModule, ...)` with an explicit Node logger and shutdown callback, then awaits `app.listen()`. Keep `ConfigModule.forRoot({ envFile: '.env', processEnv: process.env })`, `GreetingModule`, and `HealthModule.forRoot()` in `src/app.ts`, including their starter tests. Add features to these imports instead of replacing the root module.
 
-The [bootstrap recipe](./bootstrap-paths.md) owns helper defaults, cleanup, signals, metadata preparation, and config validation timing. The generated entrypoint parses `PORT` with `Number.parseInt(..., 10)` and falls back to `3000` only for a non-finite result; this is not the Book's strict decimal port policy. Preserve the generated standard-decorator application/test transforms. If a custom host needs `ensureMetadataSymbol()`, prepare it before decorated modules evaluate, not after static imports have already evaluated.
+The [bootstrap recipe](./bootstrap-paths.md) owns Factory defaults, cleanup, signals, metadata preparation, and config validation timing. The generated entrypoint parses `PORT` with `Number.parseInt(..., 10)` and falls back to `3000` only for a non-finite result; this is not the Book's strict decimal port policy. Preserve the generated standard-decorator application/test transforms. If a custom host needs `ensureMetadataSymbol()`, prepare it before decorated modules evaluate, not after static imports have already evaluated.
 
 In an interactive terminal, the `fluo new` wizard resolves the same maintained starter matrix before writing files.
 

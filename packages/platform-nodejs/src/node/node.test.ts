@@ -2,7 +2,9 @@ import * as rootRuntimeApi from '@fluojs/runtime';
 
 import { defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
+
 import * as publicNodeApi from '../index.js';
+import { createNodeTestApplication, startNodeTestApplication } from '../test-support/application.js';
 
 describe('NodeHttpApplicationAdapter.create', () => {
   it('keeps Node lifecycle helpers out of the runtime root barrel', () => {
@@ -59,21 +61,20 @@ describe('NodeHttpApplicationAdapter.create', () => {
     );
   });
 
-  it('fails fast before bootstrap when maxBodySize is invalid', async () => {
+  it('fails fast before Factory creation when maxBodySize is invalid', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    await expect(
-      publicNodeApi.bootstrapNodeApplication(AppModule, { maxBodySize: -1 }),
-    ).rejects.toThrow('Invalid maxBodySize value: -1. Expected a non-negative integer number of bytes.');
+    expect(() => createNodeTestApplication(AppModule, { maxBodySize: -1 }))
+      .toThrow('Invalid maxBodySize value: -1. Expected a non-negative integer number of bytes.');
   });
 
-  it('fails fast before run helper startup when maxBodySize is invalid', async () => {
+  it('fails fast before Factory listener startup when maxBodySize is invalid', async () => {
     class AppModule {}
     defineModule(AppModule, {});
 
     await expect(
-      publicNodeApi.runNodeApplication(AppModule, { maxBodySize: 1.5, shutdownSignals: false }),
+      startNodeTestApplication(AppModule, { maxBodySize: 1.5, shutdownSignals: false }),
     ).rejects.toThrow('Invalid maxBodySize value: 1.5. Expected a non-negative integer number of bytes.');
   });
 

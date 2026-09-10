@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
@@ -2045,35 +2046,35 @@ const invalidDenoPermissionPatterns = [
 const denoPermissionGuidanceRequirements = [
   [
     'packages/platform-deno/README.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
     'packages/platform-deno/README.ko.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
     'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'book/intermediate/ch23-deno.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
     'book/intermediate/ch23-deno.ko.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'docs/CONTEXT.md',
-    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'does not require environment access', 'does not require a separate Deno permission'],
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownRegistration', 'does not require environment access', 'does not require a separate Deno permission'],
   ],
   [
     'docs/CONTEXT.ko.md',
-    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'environment 접근 권한이 필요하지 않', '별도의 Deno permission이 필요하지 않'],
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownRegistration', 'environment 접근 권한이 필요하지 않', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'packages/cli/src/new/scaffold.ts',
@@ -2398,15 +2399,40 @@ function includesMarkersInOrder(content, markers) {
 function includesTypeCorrectExpressListenTargetExample(content) {
   const typedCodeFence = /```(?:ts|typescript)\r?\n([\s\S]*?)```/g;
 
-  return Array.from(content.matchAll(typedCodeFence), (match) => match[1] ?? '').some((code) =>
-    includesMarkersInOrder(code, [
-      'createExpressAdapter,',
-      'ExpressHttpApplicationAdapter,',
-      'const adapter = createExpressAdapter(',
-      'adapter instanceof ExpressHttpApplicationAdapter',
-      'adapter.getListenTarget()',
-    ]),
-  );
+  return Array.from(content.matchAll(typedCodeFence), (match) => match[1] ?? '').some((code) => {
+    const source = ts.createSourceFile('example.ts', code, ts.ScriptTarget.Latest, true);
+    const imports = new Set();
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) ||
+          statement.moduleSpecifier.text !== '@fluojs/platform-express' ||
+          !statement.importClause?.namedBindings ||
+          !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+      for (const specifier of statement.importClause.namedBindings.elements) {
+        if ((specifier.propertyName ?? specifier.name).text === 'ExpressHttpApplicationAdapter') {
+          imports.add(specifier.name.text);
+        }
+      }
+    }
+    const adapters = new Set();
+    let hasTarget = false;
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+          node.initializer && ts.isCallExpression(node.initializer)) {
+        const callee = node.initializer.expression;
+        if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) &&
+            imports.has(callee.expression.text) && callee.name.text === 'create') {
+          adapters.add(node.name.text);
+        }
+      }
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          adapters.has(node.expression.expression.text) &&
+          node.expression.name.text === 'getListenTarget') hasTarget = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return source.parseDiagnostics.length === 0 && hasTarget;
+  });
 }
 
 export function enforceExpressRuntimeMigrationDocsSync(
@@ -2424,25 +2450,27 @@ export function enforceExpressRuntimeMigrationDocsSync(
 
   const adapterSourcePath = 'packages/platform-express/src/adapter.ts';
   const adapterSource = readText(adapterSourcePath);
-  const factoryStart = adapterSource.indexOf('export function createExpressAdapter(');
-  const nextExport = factoryStart === -1 ? -1 : adapterSource.indexOf('\nexport ', factoryStart + 1);
-  const factorySource =
-    factoryStart === -1 ? '' : adapterSource.slice(factoryStart, nextExport === -1 ? undefined : nextExport);
+  const source = ts.createSourceFile(adapterSourcePath, adapterSource, ts.ScriptTarget.Latest, true);
+  const adapterClass = source.statements.find(
+    (node) => ts.isClassDeclaration(node) && node.name?.text === 'ExpressHttpApplicationAdapter',
+  );
+  const factory = adapterClass?.members.find(
+    (node) => ts.isMethodDeclaration(node) && node.name.getText(source) === 'create' &&
+      node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword),
+  );
   assert(
-    adapterSource.includes('export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {') &&
-      includesMarkersInOrder(factorySource, [
-        'export function createExpressAdapter(',
-        '): HttpApplicationAdapter {',
-        'return new ExpressHttpApplicationAdapter(',
-      ]),
-    `${adapterSourcePath} must keep createExpressAdapter() on the shared HttpApplicationAdapter public return type while constructing the exported ExpressHttpApplicationAdapter implementation.`,
+    factory?.type?.getText(source) === 'ExpressHttpApplicationAdapter' &&
+      factory.body?.statements.some((node) => ts.isReturnStatement(node) &&
+        node.expression && ts.isNewExpression(node.expression) &&
+        node.expression.expression.getText(source) === 'ExpressHttpApplicationAdapter'),
+    `${adapterSourcePath} must return the concrete ExpressHttpApplicationAdapter from static create().`,
   );
 
   for (const relativePath of expressListenTargetExamplePaths) {
     const content = readText(relativePath);
     assert(
       includesTypeCorrectExpressListenTargetExample(content),
-      `${relativePath} must narrow createExpressAdapter() from its shared HttpApplicationAdapter return type to the public ExpressHttpApplicationAdapter implementation before calling getListenTarget().`,
+      `${relativePath} must construct a concrete Express adapter with static create() before calling getListenTarget().`,
     );
   }
 }
@@ -2702,9 +2730,9 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     fastifyReadme.includes(nodeListenerEngineMarker) &&
       fastifyReadme.includes('Node.js `https.ServerOptions`') &&
-      fastifyReadme.includes('createFastifyAdapter(...)') &&
-      fastifyReadme.includes('bootstrapFastifyApplication(...)') &&
-      fastifyReadme.includes('runFastifyApplication(...)') &&
+      fastifyReadme.includes('FastifyHttpApplicationAdapter.create(...)') &&
+      !fastifyReadme.includes('bootstrapFastifyApplication(...)') &&
+      !fastifyReadme.includes('runFastifyApplication(...)') &&
       packageSurface.includes('Fastify-backed Node `http`/`https` listener') &&
       packageChooser.includes('Need Fastify-owned HTTPS/TLS startup') &&
       packageChooser.includes('plain HTTP behind that boundary') &&
@@ -2724,9 +2752,9 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     fastifyReadmeKo.includes(nodeListenerEngineMarker) &&
       fastifyReadmeKo.includes('Node.js `https.ServerOptions`') &&
-      fastifyReadmeKo.includes('createFastifyAdapter(...)') &&
-      fastifyReadmeKo.includes('bootstrapFastifyApplication(...)') &&
-      fastifyReadmeKo.includes('runFastifyApplication(...)') &&
+      fastifyReadmeKo.includes('FastifyHttpApplicationAdapter.create(...)') &&
+      !fastifyReadmeKo.includes('bootstrapFastifyApplication(...)') &&
+      !fastifyReadmeKo.includes('runFastifyApplication(...)') &&
       packageSurfaceKo.includes('Fastify 기반 Node `http`/`https` listener') &&
       packageChooserKo.includes('Fastify가 HTTPS/TLS 시작을 직접 소유해야 함') &&
       packageChooserKo.includes('일반 HTTP로 유지하세요') &&
@@ -2747,30 +2775,29 @@ function enforceCanonicalRuntimeMatrixReferences() {
     fastifyReadme.includes('`shutdownTimeoutMs: 0` starts Fastify close immediately') &&
       fastifyReadme.includes('the wait may time out on the next timer turn') &&
       fastifyReadme.includes('the underlying Fastify close and cleanup continue') &&
-      fastifyReadme.includes('starts listening before it resolves, installs shutdown registration') &&
-      fastifyReadme.includes('returns the running application shell') &&
-      !fastifyReadme.includes('the caller still invokes') &&
-      fastifyAdapterSource.includes('awaits `listen()`') &&
-      fastifyAdapterSource.includes('only then returns the running application') &&
-      fastifyAdapterSource.includes('@returns A running application shell after listening succeeds and shutdown registration completes.') &&
-      !fastifyAdapterSource.includes('callers only need to invoke `listen()`') &&
-      !fastifyAdapterSource.includes('ready to listen'),
-    'Fastify README and public TSDoc must document zero-timeout close ordering and run-helper-owned listening.',
+      fastifyReadme.includes('const app = await FluoFactory.create(AppModule, {') &&
+      fastifyReadme.includes('shutdownRegistration: createNodeShutdownSignalRegistration(),') &&
+      fastifyReadme.includes('await app.listen();') &&
+      fastifyAdapterSource.includes('static create(') &&
+      fastifyAdapterSource.includes('return new FastifyHttpApplicationAdapter('),
+    'Fastify README and source must preserve zero-timeout close ordering and explicit Factory-owned listening.',
   );
   assert(
     fastifyReadmeKo.includes('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작') &&
       fastifyReadmeKo.includes('대기는 다음 timer turn에 timeout될 수 있지만') &&
       fastifyReadmeKo.includes('기반 Fastify close와 cleanup은 계속 진행') &&
-      fastifyReadmeKo.includes('resolve되기 전에 listening을 시작하고 shutdown registration을 설치') &&
-      fastifyReadmeKo.includes('실행 중인 application shell을 반환') &&
-      !fastifyReadmeKo.includes('caller는 여전히'),
-    'Korean Fastify README must document zero-timeout close ordering and run-helper-owned listening.',
+      fastifyReadmeKo.includes('const app = await FluoFactory.create(AppModule, {') &&
+      fastifyReadmeKo.includes('shutdownRegistration: createNodeShutdownSignalRegistration(),') &&
+      fastifyReadmeKo.includes('await app.listen();'),
+    'Korean Fastify README must preserve zero-timeout close ordering and explicit Factory-owned listening.',
   );
   assert(
     platformBunReadme.includes('synchronously creates the fetch bridge') &&
       platformBunReadme.includes('Bun websocket bindings must be configured before `listen()` starts') &&
       platformBunReadme.includes('logging and `process.exitCode`') &&
-      bunChapter.includes('`runBunApplication(...)` combines bootstrap') &&
+      bunChapter.includes('BunHttpApplicationAdapter.create({') &&
+      bunChapter.includes('shutdownRegistration: createBunShutdownSignalRegistration(),') &&
+      bunChapter.includes('await app.listen();') &&
       runtimeAdaptersGuide.includes('const handler = createBunFetchHandler({') &&
       !runtimeAdaptersGuide.includes('await createBunFetchHandler') &&
       runtimeAdaptersGuide.includes('manual `Bun.serve(...)` call') &&
@@ -2783,7 +2810,9 @@ function enforceCanonicalRuntimeMatrixReferences() {
     platformBunReadmeKo.includes('동기적으로 fetch bridge') &&
       platformBunReadmeKo.includes('Bun websocket binding은 서버를 시작하는 `listen()` 전에 구성해야 합니다') &&
       platformBunReadmeKo.includes('로그와 `process.exitCode`') &&
-      bunChapterKo.includes('`runBunApplication(...)`이 bootstrap') &&
+      bunChapterKo.includes('BunHttpApplicationAdapter.create({') &&
+      bunChapterKo.includes('shutdownRegistration: createBunShutdownSignalRegistration(),') &&
+      bunChapterKo.includes('await app.listen();') &&
       runtimeAdaptersGuideKo.includes('const handler = createBunFetchHandler({') &&
       !runtimeAdaptersGuideKo.includes('await createBunFetchHandler') &&
       runtimeAdaptersGuideKo.includes('수동 `Bun.serve(...)` 호출') &&

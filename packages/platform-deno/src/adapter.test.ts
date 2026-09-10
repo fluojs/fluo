@@ -1,3 +1,5 @@
+import { type DenoTestApplicationOptions, createDenoTestApplication, startDenoTestApplication } from './test-support/application.js';
+import type { DenoShutdownSignal } from './shutdown.js';
 import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
@@ -15,23 +17,7 @@ import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fet
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  type BootstrapDenoApplicationOptions,
-  bootstrapDenoApplication,
-  createDenoAdapter,
-  type DenoApplicationSignal,
-  DenoHttpApplicationAdapter,
-  type DenoServeController,
-  type DenoServeFunction,
-  type DenoServeHandler,
-  type DenoServeOptions,
-  type DenoServerWebSocket,
-  type DenoUpgradeWebSocketFunction,
-  type DenoWebSocketBinding,
-  type DenoWebSocketMessage,
-  type RunDenoApplicationOptions,
-  runDenoApplication,
-} from './adapter.js';
+import { DenoHttpApplicationAdapter, type DenoServeController, type DenoServeFunction, type DenoServeHandler, type DenoServeOptions, type DenoServerWebSocket, type DenoUpgradeWebSocketFunction, type DenoWebSocketBinding, type DenoWebSocketMessage } from './adapter.js';
 
 // allow: SIZE_OK — Package-local Deno adapter contract regressions share serve, dispatch, signal, websocket, and README fixtures.
 
@@ -224,12 +210,12 @@ function createUpgradeWebSocketStub() {
 }
 
 function installDenoSignalMock(options: {
-  throwOnAdd?: DenoApplicationSignal;
-  throwOnRemove?: DenoApplicationSignal | readonly DenoApplicationSignal[];
+  throwOnAdd?: DenoShutdownSignal;
+  throwOnRemove?: DenoShutdownSignal | readonly DenoShutdownSignal[];
 } = {}) {
   const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
-  const listeners = new Map<DenoApplicationSignal, () => void>();
-  const throwOnRemoveSignals = new Set<DenoApplicationSignal>();
+  const listeners = new Map<DenoShutdownSignal, () => void>();
+  const throwOnRemoveSignals = new Set<DenoShutdownSignal>();
   const throwOnRemove = options.throwOnRemove;
 
   if (typeof throwOnRemove === 'string') {
@@ -240,14 +226,14 @@ function installDenoSignalMock(options: {
     }
   }
 
-  const addSignalListener = vi.fn((signal: DenoApplicationSignal, handler: () => void) => {
+  const addSignalListener = vi.fn((signal: DenoShutdownSignal, handler: () => void) => {
     if (signal === options.throwOnAdd) {
       throw new Error(`failed to register ${signal}`);
     }
 
     listeners.set(signal, handler);
   });
-  const removeSignalListener = vi.fn((signal: DenoApplicationSignal, handler: () => void) => {
+  const removeSignalListener = vi.fn((signal: DenoShutdownSignal, handler: () => void) => {
     if (throwOnRemoveSignals.has(signal)) {
       throw new Error(`failed to remove ${signal}`);
     }
@@ -269,10 +255,10 @@ function installDenoSignalMock(options: {
 
   return {
     addSignalListener,
-    emit(signal: DenoApplicationSignal) {
+    emit(signal: DenoShutdownSignal) {
       listeners.get(signal)?.();
     },
-    hasListener(signal: DenoApplicationSignal) {
+    hasListener(signal: DenoShutdownSignal) {
       return listeners.has(signal);
     },
     removeSignalListener,
@@ -375,8 +361,8 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('rejects invalid explicit numeric adapter options during setup', () => {
-    expect(() => createDenoAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
-    expect(() => createDenoAdapter({ port: 1.5 })).toThrow(/port/i);
+    expect(() => DenoHttpApplicationAdapter.create({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
+    expect(() => DenoHttpApplicationAdapter.create({ port: 1.5 })).toThrow(/port/i);
     expect(() => new DenoHttpApplicationAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
     expect(() => new DenoHttpApplicationAdapter({ port: 1.5 })).toThrow(/port/i);
   });
@@ -390,7 +376,7 @@ describe('@fluojs/platform-deno', () => {
     defineModule(AppModule, {});
 
     try {
-      app = await runDenoApplication(AppModule, {
+      app = await startDenoTestApplication(AppModule, {
         serve: server.serve,
         shutdownSignals: false,
       });
@@ -422,7 +408,9 @@ describe('@fluojs/platform-deno', () => {
       'packages/platform-deno/src/fetch-handler.test.ts',
       'packages/testing/src/portability/web-runtime-adapter-portability.test.ts',
       'new DenoHttpApplicationAdapter',
-      'createDenoAdapter(options)',
+      'DenoHttpApplicationAdapter.create(options)',
+      'createDenoShutdownSignalRegistration',
+      'shutdownRegistration',
       'createDenoFetchHandler(options)',
       'DenoWebSocketModule, OnMessage, WebSocketGateway',
       'DenoServerWebSocket',
@@ -468,7 +456,7 @@ describe('@fluojs/platform-deno', () => {
     let app: Application | undefined;
 
     try {
-      app = await bootstrapDenoApplication(AppModule, {
+      app = await createDenoTestApplication(AppModule, {
         port: 4567,
         rawBody: true,
         serve: server.serve,
@@ -512,7 +500,7 @@ describe('@fluojs/platform-deno', () => {
 
   it('dispatches successful requests through adapter.handle after listen binds the dispatcher', async () => {
     const server = createServeStub();
-    const adapter = createDenoAdapter({
+    const adapter = DenoHttpApplicationAdapter.create({
       serve: server.serve,
     });
 
@@ -555,7 +543,7 @@ describe('@fluojs/platform-deno', () => {
     defineModule(AppModule, { controllers: [StreamingUploadController] });
 
     const server = createServeStub();
-    const app = await bootstrapDenoApplication(AppModule, {
+    const app = await createDenoTestApplication(AppModule, {
       multipart: { strategy: 'stream' },
       serve: server.serve,
     });
@@ -604,7 +592,7 @@ describe('@fluojs/platform-deno', () => {
     let app: Application | undefined;
 
     try {
-      app = await bootstrapDenoApplication(AppModule, {
+      app = await createDenoTestApplication(AppModule, {
         serve: server.serve,
       });
 
@@ -635,7 +623,7 @@ describe('@fluojs/platform-deno', () => {
     let app: Application | undefined;
 
     try {
-      app = await runDenoApplication(AppModule, {
+      app = await startDenoTestApplication(AppModule, {
         serve: server.serve,
       });
 
@@ -658,7 +646,7 @@ describe('@fluojs/platform-deno', () => {
     let app: Application | undefined;
 
     try {
-      app = await runDenoApplication(AppModule, {
+      app = await startDenoTestApplication(AppModule, {
         hostname: '127.0.0.1',
         https: {
           cert: TEST_TLS_CERTIFICATE,
@@ -686,13 +674,13 @@ describe('@fluojs/platform-deno', () => {
 
   it('satisfies the shared HTTPS startup portability expectation', async () => {
     const createServe = () => createNodeBackedDenoServe();
-    const harness = createHttpAdapterPortabilityHarness<BootstrapDenoApplicationOptions, RunDenoApplicationOptions>({
-      bootstrap: async (rootModule: ModuleType, options: BootstrapDenoApplicationOptions): Promise<Application> => await bootstrapDenoApplication(rootModule, {
+    const harness = createHttpAdapterPortabilityHarness<DenoTestApplicationOptions, DenoTestApplicationOptions>({
+      bootstrap: async (rootModule: ModuleType, options: DenoTestApplicationOptions): Promise<Application> => await createDenoTestApplication(rootModule, {
         ...options,
         serve: createServe(),
       }),
       name: 'deno',
-      run: async (rootModule: ModuleType, options: RunDenoApplicationOptions): Promise<Application> => await runDenoApplication(rootModule, {
+      run: async (rootModule: ModuleType, options: DenoTestApplicationOptions): Promise<Application> => await startDenoTestApplication(rootModule, {
         ...options,
         serve: createServe(),
         shutdownSignals: false,
@@ -706,7 +694,7 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('formats explicit IPv6 listen targets with brackets', () => {
-    const adapter = createDenoAdapter({
+    const adapter = DenoHttpApplicationAdapter.create({
       hostname: '::1',
       port: 3000,
     });
@@ -718,7 +706,7 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('formats IPv6 wildcard listen targets with a bracketed bind target and localhost URL', () => {
-    const adapter = createDenoAdapter({
+    const adapter = DenoHttpApplicationAdapter.create({
       hostname: '::',
       port: 3000,
     });
@@ -730,7 +718,7 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('uses host as a portability alias for Deno listen targets', () => {
-    const adapter = createDenoAdapter({
+    const adapter = DenoHttpApplicationAdapter.create({
       host: '0.0.0.0',
       port: 3000,
     });
@@ -742,7 +730,7 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('prefers hostname over host when both Deno listen target options are provided', () => {
-    const adapter = createDenoAdapter({
+    const adapter = DenoHttpApplicationAdapter.create({
       host: '0.0.0.0',
       hostname: '127.0.0.1',
       port: 3000,
@@ -774,7 +762,7 @@ describe('@fluojs/platform-deno', () => {
     let app: Application | undefined;
 
     try {
-      app = await runDenoApplication(AppModule, {
+      app = await startDenoTestApplication(AppModule, {
         host: '0.0.0.0',
         hostname: '127.0.0.1',
         port: 4567,
@@ -804,7 +792,7 @@ describe('@fluojs/platform-deno', () => {
       defineModule(AppModule, {});
 
       const server = createServeStub();
-      const app = await runDenoApplication(AppModule, {
+      const app = await startDenoTestApplication(AppModule, {
         serve: server.serve,
         shutdownSignals: ['SIGTERM'],
       });
@@ -827,7 +815,7 @@ describe('@fluojs/platform-deno', () => {
       defineModule(AppModule, {});
 
       const server = createServeStub();
-      const app = await runDenoApplication(AppModule, {
+      const app = await startDenoTestApplication(AppModule, {
         serve: server.serve,
       });
 
@@ -851,7 +839,7 @@ describe('@fluojs/platform-deno', () => {
       defineModule(AppModule, {});
 
       const server = createServeStub();
-      const app = await runDenoApplication(AppModule, {
+      const app = await startDenoTestApplication(AppModule, {
         serve: server.serve,
         shutdownSignals: false,
       });
@@ -873,7 +861,7 @@ describe('@fluojs/platform-deno', () => {
 
       const server = createServeStub();
 
-      await expect(runDenoApplication(AppModule, {
+      await expect(startDenoTestApplication(AppModule, {
         serve: server.serve,
       })).rejects.toThrow(/failed to register SIGTERM/);
 
@@ -894,7 +882,7 @@ describe('@fluojs/platform-deno', () => {
       defineModule(AppModule, {});
 
       const server = createServeStub();
-      const app = await runDenoApplication(AppModule, {
+      const app = await startDenoTestApplication(AppModule, {
         serve: server.serve,
       });
 
@@ -922,7 +910,7 @@ describe('@fluojs/platform-deno', () => {
       let caughtError: unknown;
 
       try {
-        await runDenoApplication(AppModule, {
+        await startDenoTestApplication(AppModule, {
           serve: server.serve,
         });
       } catch (error: unknown) {
@@ -956,7 +944,7 @@ describe('@fluojs/platform-deno', () => {
         defineModule(AppModule, {});
 
         const server = createServeStub();
-        app = await runDenoApplication(AppModule, {
+        app = await startDenoTestApplication(AppModule, {
           serve: server.serve,
         });
         const closeSpy = vi.spyOn(app, 'close');
@@ -1537,7 +1525,7 @@ describe('@fluojs/platform-deno', () => {
   it('restores pre-listen dispatcher state when Deno.serve cannot be resolved', async () => {
     const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
     delete (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
-    const adapter = createDenoAdapter();
+    const adapter = DenoHttpApplicationAdapter.create();
     const dispatcher = {
       dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
         response.setStatus(200);
@@ -1603,7 +1591,7 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('exposes a not-ready error when requests arrive before listen()', async () => {
-    const adapter = createDenoAdapter();
+    const adapter = DenoHttpApplicationAdapter.create();
     const response = await adapter.handle(new Request('https://runtime.test/not-ready'));
 
     expect(response.status).toBe(500);
@@ -1649,7 +1637,7 @@ describe('@fluojs/platform-deno', () => {
     const deno = installDenoRuntimeMock();
 
     try {
-      const adapter = createDenoAdapter({ port: 4321 });
+      const adapter = DenoHttpApplicationAdapter.create({ port: 4321 });
 
       await adapter.listen({
         async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
@@ -1671,7 +1659,7 @@ describe('@fluojs/platform-deno', () => {
 
   it('reports supported fetch-style websocket hosting for the official Deno binding seam', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
-      createAdapter: () => createDenoAdapter(),
+      createAdapter: () => DenoHttpApplicationAdapter.create(),
       expectedReason:
         'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
       expectedSupport: 'supported',
@@ -1784,7 +1772,7 @@ describe('@fluojs/platform-deno', () => {
     const deno = installDenoRuntimeMock();
 
     try {
-      const adapter = createDenoAdapter();
+      const adapter = DenoHttpApplicationAdapter.create();
       const bindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
 
       adapter.configureWebSocketBinding({

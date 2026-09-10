@@ -306,8 +306,8 @@ describe('NestJS config migration documentation', () => {
 
     // Then
     for (const chapter of chapters) {
-      expect(chapter).toContain("import { createFastifyAdapter } from '@fluojs/platform-fastify';");
-      expect(chapter).toContain('adapter: createFastifyAdapter({ port: validatedConfig.PORT })');
+      expect(chapter).toContain("import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';");
+      expect(chapter).toContain('adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT })');
       expect(chapter).toContain('await app.listen();');
       expect(chapter).toContain('FluoFactory.createApplicationContext(AppModule)');
       expect(chapter).toContain('defaults: validatedConfig');

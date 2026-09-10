@@ -449,12 +449,12 @@ export class AppModule {}
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // src/main.ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.module';
 
 async function main() {
   const app = await FluoFactory.create(AppModule, {
-    adapter: createFastifyAdapter({
+    adapter: FastifyHttpApplicationAdapter.create({
       port: 3000,
     }),
     logger: createConsoleApplicationLogger(),

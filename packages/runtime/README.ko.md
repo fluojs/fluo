@@ -430,7 +430,7 @@ class UsersModule {}
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
 - `@fluojs/runtime/web`은 서로 배타적인 두 멀티파트 소비 mode를 노출합니다. `parseMultipart(...)`는 field와 file을 buffer하고, `parseMultipartStream(...)`은 discriminated field/file part를 yield하며 complete file payload를 실체화하지 않습니다. Streaming mode는 byte를 읽는 동안 per-field, per-file, total-size, field-count, file-count, header limit을 강제하고 abort, cancellation, parser failure가 active source를 cancel합니다. 두 mode 중 하나가 선택한 body를 다시 buffered 또는 streaming으로 선택하면 `MultipartBodyConsumedError`로 reject됩니다.
-- `NodeHttpApplicationAdapter.create(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
+- `NodeHttpApplicationAdapter.create(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - HTTP application bootstrap은 optional application-owned `errorRepresentation.html` provider를 representation ownership 없이 dispatcher에 전달합니다. Canonical JSON은 default로 유지되며 classification, negotiation, status/header, `HEAD`, abort, commit, fallback 의미는 HTTP가 소유합니다.
 - HTTP response writing은 단일 owner를 가집니다. Framework-managed handler 결과는 runtime이 commit하기 전에 interceptor가 변환할 수 있습니다. Handler나 response helper가 `RequestContext.response`를 commit한 뒤에는 dispatcher가 두 번째 success-response write를 건너뜁니다. `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다.
@@ -484,11 +484,11 @@ Migration은 직접적이며 의도적으로 compatibility shim을 제공하지 
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-이동한 모든 symbol은 대체 entrypoint에서 기존 이름을 유지하며, `@fluojs/platform-nodejs`는 기존 `Nodejs*` alias도 유지합니다.
+대체 entrypoint의 지원되는 Node adapter, logger, filesystem, shutdown registration export를 사용하세요. 중복 Nodejs alias와 platform bootstrap/run export는 제거됩니다.
 
 | 서브경로 | 용도 |
 | :--- | :--- |
-| `@fluojs/platform-nodejs` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
+| `@fluojs/platform-nodejs` | 로거 팩토리, concrete Node 어댑터, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, streaming `parseMultipartStream`을 포함합니다. |
 | `@fluojs/runtime/internal` | runtime wiring token, runtime-owned metadata 및 route-inspection helper와 함께 compiled runtime descriptor에 정렬되어야 하는 first-party runtime-neutral integration을 위한 `defineModule(...)`, `createRuntimeRouteInspection(...)`을 제공하는 internal package-integration seam입니다. |
 | `@fluojs/platform-nodejs/internal` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/platform-nodejs`를 우선 사용하세요. |
@@ -501,12 +501,10 @@ Migration은 직접적이며 의도적으로 compatibility shim을 제공하지 
 
 ```typescript
 import {
-  bootstrapNodeApplication,
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
   createNodeFileSystemAssetSource,
   NodeHttpApplicationAdapter,
-  runNodeApplication,
   type NodeFileSystemAssetPrecompression,
   type NodeFileSystemAssetSourceOptions,
 } from '@fluojs/platform-nodejs';
@@ -525,7 +523,6 @@ const adapter = NodeHttpApplicationAdapter.create({
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
 - `createNodeFileSystemAssetSource(options)`: `@fluojs/http`의 `StaticAssetSource` contract를 구현하는 Node 전용 filesystem source입니다. `NodeFileSystemAssetSourceOptions`는 `{ root, precompressed }` 경계를 이름 붙이고 `NodeFileSystemAssetPrecompression`은 `.br` / `.gz` sibling 선택을 제어합니다. 허용된 각 representation은 안전하게 열어 immutable in-memory byte snapshot으로 즉시 복사하고 middleware response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열지 않습니다. 따라서 애플리케이션 owner는 선택된 asset 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 snapshot byte를 설명합니다.
 - `NodeHttpApplicationAdapter.create()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`는 0 이상의 정수만 받습니다.
-- `bootstrapNodeApplication()` / `runNodeApplication()`: 직접 Node runtime flow에서 사용하는 Node 전용 부트스트랩 헬퍼.
 - `createNodeShutdownSignalRegistration(...)`, `defaultNodeShutdownSignals()`, `registerShutdownSignals(...)`: Node가 소유하는 signal API입니다. Registration callback을 Factory에 전달하며 저수준 host integration은 직접 등록할 수 있습니다.
 
 런타임 애플리케이션 로깅은 CLI lifecycle reporting과 별개입니다. 애플리케이션/런타임 자체가 내는 로그를 바꾸고 싶을 때 `ApplicationLogger`를 설정하세요:

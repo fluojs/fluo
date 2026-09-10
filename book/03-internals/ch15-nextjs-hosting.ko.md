@@ -159,7 +159,7 @@ export const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-여기서 `listen()`은 포트를 열지 않는다. Next가 소켓을 소유하고 adapter는 bound Web handler를 제공한다. 13장의 `runFastifyApplication()`을 이 파일에 넣으면 필요하지 않은 두 번째 서버와 signal 소유자가 생긴다. 단순히 “기존 main 파일을 import”하는 접근이 실패하는 이유다.
+여기서 `listen()`은 포트를 열지 않는다. Next가 소켓을 소유하고 adapter는 bound Web handler를 제공한다. 이 파일에 socket-owning Fastify startup recipe를 넣으면 필요하지 않은 두 번째 서버와 signal 소유자가 생긴다. 단순히 “기존 main 파일을 import”하는 접근이 실패하는 이유다.
 
 다음 완전한 `app/api/[[...path]]/route.ts`는 첫 요청 때 backend를 동적으로 import한다. 경로의 `../../../src/backend`는 이 파일이 있는 디렉터리에서 프로젝트 루트로 세 단계 올라간 결과다.
 

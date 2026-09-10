@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { createReactViteExampleModule } from './app';
@@ -14,7 +14,7 @@ const AppModule = createReactViteExampleModule({
 });
 const port = Number(process.env.REACT_VITE_EXAMPLE_PORT ?? '3000');
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ host: '127.0.0.1', port }),
+  adapter: FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port }),
 });
 
 await app.listen();

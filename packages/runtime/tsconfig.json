@@ -2,6 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@fluojs/runtime": [
+        "./src/index.ts"
+      ],
       "@fluojs/platform-nodejs": [
         "../platform-nodejs/src/index.ts"
       ],

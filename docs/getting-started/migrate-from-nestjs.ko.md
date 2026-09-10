@@ -93,7 +93,7 @@ await import('./bootstrap.js');
 
 ### 종료 시그널 ownership과 close phase
 
-NestJS `app.enableShutdownHooks()`는 모든 fluo bootstrap path의 암묵적인 signal wiring으로 매핑되지 않습니다. 직접 Node 애플리케이션에 기본 `SIGINT` / `SIGTERM` registration이 필요하면 `@fluojs/platform-nodejs`의 `runNodeApplication(...)`을 사용하세요. 애플리케이션이 `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, adapter-first Node bootstrap을 사용한다면 해당 Node boundary에서 `createNodeShutdownSignalRegistration(...)` 또는 `registerShutdownSignals(...)`로 signal을 명시적으로 등록하세요. Bun, Deno, Cloudflare Workers 및 기타 Fetch-style host는 shutdown event를 소유하고 `app.close(signal?)`를 호출하며, Node process-signal wiring을 상속하면 안 됩니다.
+Node의 `SIGINT`/`SIGTERM` 종료가 필요하면 `@fluojs/platform-nodejs`의 `createNodeShutdownSignalRegistration()`을 Factory의 `shutdownRegistration`으로 명시적으로 전달하세요. `FluoFactory.create(...)`는 Node signal을 암묵적으로 선택하지 않습니다. Bun과 Deno는 각 host callback을 사용하고, Cloudflare Workers 같은 host는 자체 shutdown event에서 `app.close(signal?)`를 호출합니다. Portable runtime에 Node process-signal wiring을 넣지 않습니다.
 
 Listener close 또는 connection drain 작업을 같은 이름의 fluo lifecycle hook으로 옮기지 마세요. `onModuleDestroy()`와 `onApplicationShutdown(signal?)`은 `adapter.close(signal?)`보다 먼저 완료됩니다. 닫힌 listener 또는 완료된 adapter drain이 필요한 작업은 close 이후의 adapter 또는 host shutdown boundary에 두세요.
 
@@ -106,8 +106,8 @@ Listener close 또는 connection drain 작업을 같은 이름의 fluo lifecycle
 | `@Sse()` | `@fluojs/http`의 `@Sse()`와 수동 stream용 `SseResponse` 또는 managed stream용 `AsyncIterable` | fluo는 `@Sse()`를 `text/event-stream` metadata를 가진 `GET` 라우트로 매핑한다. `AsyncIterable` 값은 SSE frame으로 변환할 수 있지만, NestJS `Observable` 반환값은 여전히 `SseResponse` 또는 async iterable로 재작성해야 한다. |
 | 반환 DTO, `@Res()`, 또는 passthrough/manual response write와 함께 쓰는 `ClassSerializerInterceptor` | framework-managed 반환값에는 `@fluojs/serialization`의 `SerializerInterceptor`; 명시적인 handler ownership에는 `RequestContext.response` | Response가 commit되지 않은 동안에만 반환값을 직렬화한다. `send(...)`, `redirect(...)`, 또는 수동 stream이 response를 commit하면 `SerializerInterceptor`는 serialization 대신 `next.handle()`에서 받은 값을 그대로 반환한다. 다른 interceptor는 chain 결과를 계속 변환할 수 있으며, dispatcher는 두 번째 success-response write를 건너뛴다. |
 | `class-transformer`의 `@Expose()`, `@Exclude()`, `@Transform()` | `@fluojs/serialization`의 `@Expose()`, `@Exclude()`, `@Transform()` | interceptor뿐 아니라 decorator도 교체합니다. fluo transform callback은 동기식이며 field value만 받으므로 여러 field를 조합한 출력은 DTO field를 할당하기 전에 계산하세요. Base metadata는 상속되지만 child override는 base와 sibling DTO에서 분리됩니다. |
-| `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | HTTP listen에는 `createFastifyAdapter()` 같은 명시적 platform adapter가 필요하다. `FluoFactory.create(AppModule)`은 adapterless application shell도 만들 수 있지만 그 shell은 `listen()`을 호출할 수 없다. CLI codemod은 지원되는 platform을 명시적으로 선택하지 않으면 이 bootstrap을 유지하고 필요한 adapter-selection warning을 출력한다. Express에는 `fluo migrate ./src --apply --platform express`를 사용해 `createExpressAdapter({ port })`를 생성하세요. |
-| NestJS `app.enableShutdownHooks()` | `@fluojs/platform-nodejs`의 `runNodeApplication(...)`, 또는 저수준 Node boundary의 명시적 `createNodeShutdownSignalRegistration(...)` / `registerShutdownSignals(...)` | `runNodeApplication(...)`이 기본 `SIGINT` / `SIGTERM` registration을 소유합니다. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, adapter-first Node bootstrap은 이를 암묵적으로 설치하지 않습니다. Fetch-style host는 shutdown signaling을 소유하고 직접 `app.close(signal?)`를 호출합니다. |
+| `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | HTTP listen에는 `FastifyHttpApplicationAdapter.create()` 같은 명시적 platform adapter가 필요하다. `FluoFactory.create(AppModule)`은 adapterless application shell도 만들 수 있지만 그 shell은 `listen()`을 호출할 수 없다. CLI codemod은 지원되는 platform을 명시적으로 선택하지 않으면 이 bootstrap을 유지하고 필요한 adapter-selection warning을 출력한다. Express에는 `fluo migrate ./src --apply --platform express`를 사용해 `ExpressHttpApplicationAdapter.create({ port })`를 생성하세요. |
+| NestJS `app.enableShutdownHooks()` | Factory의 `shutdownRegistration: createNodeShutdownSignalRegistration()` | Node signal은 명시적 callback으로만 선택합니다. Bun/Deno는 해당 host callback을 사용하며 fetch host는 자체 shutdown event를 소유합니다. |
 | Nest Devtools `SerializedGraph` | static 일대일 대응 없음; compiled DI graph 분석이 필요하면 지원되는 Node live 경로에서 `fluo dev --studio` 사용 | successful bootstrap 뒤 static `fluo inspect`는 보고된 platform component, 그 dependencies, `routes`가 담긴 `PlatformShellSnapshot`을 내보냅니다. 이는 Nest Devtools `SerializedGraph`와 호환되지 않으며 compiled module/provider graph와 provider scope metadata를 생략합니다. 해당 graph가 필요한 workflow는 file-first migration fallback을 graph parity로 취급하지 말고 Node live Studio에 유지하세요. |
 | NestJS `beforeApplicationShutdown(signal?)` | 직접 대응 없음; `@fluojs/runtime`의 `onModuleDestroy()` 또는 `onApplicationShutdown(signal?)` 사용 | `beforeApplicationShutdown`은 지원하지 않는다. Application-wide signal phase보다 먼저 수행할 shutdown preparation은 `onModuleDestroy()`에 두고, signal이 필요한 cleanup은 `onApplicationShutdown(signal?)`에 둔다. 두 hook phase는 `adapter.close(signal?)`보다 먼저 완료되므로 listener close 또는 완료된 connection drain이 필요한 작업은 adapter 또는 host shutdown boundary에 둡니다. fluo는 compatibility shim이나 추가 runtime hook을 제공하지 않는다. |
 | NestJS `PartialGraphHost`의 startup-failure graph 접근 | 직접 대응 없음; CLI stderr와 기본 bootstrap error diagnostic 사용 | <!-- fluo-studio-report-bootstrap-failure-contract: begin -->
@@ -471,7 +471,7 @@ import {
   type ConfigModuleOptions,
 } from '@fluojs/config';
 import { Module } from '@fluojs/core';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { z } from 'zod';
 
@@ -514,7 +514,7 @@ const moduleOptions = {
 })
 class AppModule {}
 
-const adapter = createFastifyAdapter({ port: validatedConfig.http.port });
+const adapter = FastifyHttpApplicationAdapter.create({ port: validatedConfig.http.port });
 const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
@@ -526,10 +526,10 @@ NestJS `forRootAsync(...)`와 `load` namespace factory에는 직접 대응하는
 
 ### Fastify 네이티브 확장 마이그레이션
 
-이식 가능한 request 동작에는 fluo `middleware`를 사용하세요. 이는 Fastify plugin API가 아닙니다. NestJS 마이그레이션에서 Fastify 전용 plugin, hook 또는 instance customisation을 유지해야 한다면 listen 전에 `createFastifyAdapter({ configureFastify })`(또는 같은 bootstrap/run option)로 전달합니다.
+이식 가능한 request 동작에는 fluo `middleware`를 사용하세요. 이는 Fastify plugin API가 아닙니다. NestJS 마이그레이션에서 Fastify 전용 plugin, hook 또는 instance customisation을 유지해야 한다면 listen 전에 `FastifyHttpApplicationAdapter.create({ configureFastify })`로 전달합니다.
 
 ```typescript
-const adapter = createFastifyAdapter({
+const adapter = FastifyHttpApplicationAdapter.create({
   configureFastify: async (fastify) => {
     fastify.addHook('onRequest', async (request, reply) => {
       reply.header('x-native-request-id', request.id);
@@ -1135,9 +1135,9 @@ class ProfileService {
 - NestJS-style Redis async module factory나 Pub/Sub command/subscriber client 공유가 그대로 유지된다고 가정하는 방식. fluo는 Redis registration을 동기 방식으로 유지하고 Pub/Sub 연결에는 전용 subscriber 소유권을 요구한다.
 - `@nestjs/cqrs` reflection discovery, controller handler, writable execution context, direct shutdown bypass option이 그대로 유지된다고 가정하는 방식. fluo는 singleton provider-only discovery, opaque private dispatch state, 내부에서 authorization된 active-pipeline drain을 사용합니다.
 - NestJS/Bull processor decorator, emit된 metadata, request/transient worker scope, 기존 queue persistence compatibility가 그대로 유지된다고 가정하는 방식. fluo는 명시적인 singleton `@QueueWorker(JobClass)` 등록과 drain, payload 변환 후 다시 enqueue, 또는 별도 queue name 격리 중 하나를 택하는 애플리케이션 소유 `queueName`/named job/`jobName` cutover를 요구한다.
-- Raw Express/Connect middleware를 fluo application middleware에 직접 전달하는 방식. fluo middleware는 `MiddlewareContext`를 받으므로 native `(req, res, next)` function에는 명시적 wrapper나 platform-owned `createExpressAdapter({ nativeMiddleware })` boundary가 필요하다.
+- Raw Express/Connect middleware를 fluo application middleware에 직접 전달하는 방식. fluo middleware는 `MiddlewareContext`를 받으므로 native `(req, res, next)` function에는 명시적 wrapper나 platform-owned `ExpressHttpApplicationAdapter.create({ nativeMiddleware })` boundary가 필요하다.
 - NestJS HTTP adapter lifecycle hook을 Bun에서 시작 후 live server mutation으로 옮길 수 있다고 가정하는 방식. `@fluojs/platform-bun`은 `listen()`이 시작되기 전에 dispatcher와 realtime seam을 바인딩하고, 중복 `listen()` 호출을 idempotent하게 유지하며, NestJS-style late host mutation 대신 외부 소유 `Bun.serve(...)` host를 위한 동기 `createBunFetchHandler(...)`를 노출한다. 이러한 manual host는 shutdown, websocket upgrade, native `routes` acceleration을 직접 소유한다.
-- NestJS HTTP 또는 WebSocket server ownership이 Deno에 그대로 이전된다고 가정하는 방식. Lifecycle owner를 하나만 선택하세요. Managed `app.listen()`은 `Deno.serve(...)`를 시작하고 adapter close/drain을 통한 server shutdown과 configured websocket upgrade를 소유합니다. `runDenoApplication(...)`은 해당 managed adapter lifecycle을 사용하면서 shutdown signal handler도 추가로 등록하고 제거합니다. Signal로 트리거된 애플리케이션 close 실패는 해당 helper가 log한 뒤 swallow하며 exit status를 설정하거나 forced termination을 수행하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `shutdownSignals: false`를 전달하고 signal과 shutdown을 직접 조율해야 합니다. Host-owned `createDenoFetchHandler(...)` 경로는 request 변환과 dispatch만 수행하며 server를 시작하거나 signal handler를 설치하거나 shutdown을 소유하거나 websocket upgrade를 자동 수행하지 않습니다. 해당 lifecycle seam은 주변 host가 제공해야 합니다.
+- NestJS HTTP 또는 WebSocket server ownership이 Deno에 그대로 이전된다고 가정하는 방식. Lifecycle owner를 하나만 선택하세요. Managed `app.listen()`은 `Deno.serve(...)`를 시작하고 adapter close/drain을 통한 server shutdown과 configured websocket upgrade를 소유합니다. Factory는 명시적인 `shutdownRegistration`으로 받은 `createDenoShutdownSignalRegistration(...)` Deno signal callback을 설치하고 해제합니다. Signal로 트리거된 애플리케이션 close 실패는 해당 helper가 log한 뒤 swallow하며 exit status를 설정하거나 forced termination을 수행하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `shutdownRegistration`을 생략하고 signal과 shutdown을 직접 조율해야 합니다. Host-owned `createDenoFetchHandler(...)` 경로는 request 변환과 dispatch만 수행하며 server를 시작하거나 signal handler를 설치하거나 shutdown을 소유하거나 websocket upgrade를 자동 수행하지 않습니다. 해당 lifecycle seam은 주변 host가 제공해야 합니다.
 - NestJS HTTP 또는 WebSocket server ownership이 Cloudflare Workers에도 유지된다고 가정하는 방식. Worker `fetch(request, env, ctx)` entrypoint를 export하고, `listen()`을 socketless dispatcher-binding boundary로 다루며, WebSocket ownership이 listen 전에 frozen되도록 bootstrap 이전에 `CloudflareWorkersWebSocketModule.forRoot()`을 import하세요. Fetch-time `env`는 bootstrap configuration이 아니며, 별도로 사용할 수 있는 pre-registration 값만 bootstrap configuration에 속합니다. Application-owned request boundary의 `RequestContext`에서 request binding을 읽고 검증하고 좁힌 뒤 application-shaped 값만 provider method에 전달하세요. Adapter는 수락된 HTTP, SSE, WebSocket lifecycle work를 `ctx.waitUntil(...)`에 등록하며 post-listen mutation용 live server를 노출하지 않습니다.
 - NestJS `SchedulerRegistry`가 mutable `CronJob` handle을 반환하거나 private scheduled method가 유효한 decorator target이라고 가정하는 방식. fluo는 descriptor 기반 scheduling control을 노출하고 scheduled decorator는 public instance method에 요구한다.
 - `EmailModule.forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`를 받거나 email provider가 기본적으로 module-local이라고 가정하는 방식. fluo email은 injected factory registration을 사용하며, `global: false`가 설정되지 않으면 기본 global visibility를 사용한다.
@@ -1197,7 +1197,7 @@ fluo migrate ./src --skip testing
 
 JSON report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 파일별 metadata가 포함됩니다. 각 파일 항목은 `filePath`, 파일 변경 여부, 적용된 transform, warning count, category label과 source line number가 포함된 warning detail을 기록합니다.
 
-Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap migration은 명시적입니다. `--platform express`를 선택해야 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하며, 대응하는 `listen(port)`가 정확히 하나의 numeric literal 인수일 때만 변환합니다. `--platform express`가 없으면 bootstrap은 warning과 함께 변경하지 않으며, 지원하지 않는 bootstrap form도 warning과 함께 보존합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap migration은 명시적입니다. `--platform express`를 선택해야 `NestFactory.create(AppModule)`를 `ExpressHttpApplicationAdapter.create(...)`로 재작성하며, 대응하는 `listen(port)`가 정확히 하나의 numeric literal 인수일 때만 변환합니다. `--platform express`가 없으면 bootstrap은 warning과 함께 변경하지 않으며, 지원하지 않는 bootstrap form도 warning과 함께 보존합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
@@ -1232,7 +1232,7 @@ const application = await FluoFactory.create(AppModule, {
 
 | NestJS 등록 | fluo 마이그레이션 |
 | --- | --- |
-| `app.use(...)` | bootstrap에서 portable `middleware`를 제공하세요. NestJS/Express `(req, res, next)` middleware를 `FluoFactory.create(AppModule, { middleware })`로 그대로 옮기면 안 됩니다. portable contract는 `handle(MiddlewareContext, next)`이며, Express 전용 handler는 `createExpressAdapter({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 두세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
+| `app.use(...)` | bootstrap에서 portable `middleware`를 제공하세요. NestJS/Express `(req, res, next)` middleware를 `FluoFactory.create(AppModule, { middleware })`로 그대로 옮기면 안 됩니다. portable contract는 `handle(MiddlewareContext, next)`이며, Express 전용 handler는 `ExpressHttpApplicationAdapter.create({ nativeMiddleware: [...] })`를 사용하는 Express adapter boundary에 두세요. 이 application-wide chain은 module middleware에 더해 실행됩니다. |
 | `app.useGlobalInterceptors(...)` | bootstrap에서 `interceptors`를 제공하세요. |
 | `app.useGlobalFilters(...)` | bootstrap에서 `filters`를 제공하세요. 이것이 shipped filter registration의 전부입니다. filter는 선언 순서대로 fluo 내장 error writer보다 먼저 실행되며, `true`를 반환한 첫 filter가 chain을 멈춥니다. |
 | `app.useGlobalGuards(...)` 또는 `APP_GUARD` | application-wide guard array는 없습니다. 필요한 각 controller 또는 handler에 `@UseGuards(...)`를 명시적으로 두고, 이 반복이 의도적이라면 application-owned shared decorator 또는 base-controller convention을 사용하세요. |

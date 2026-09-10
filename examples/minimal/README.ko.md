@@ -6,7 +6,7 @@ Node.js + Fastify의 canonical `FluoFactory.create(...)` → `app.listen()` 조�
 
 ## 이 예제가 보여주는 것
 
-- `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })` 기반 명시적 Fastify 부트스트랩
+- `FluoFactory.create(..., { adapter: FastifyHttpApplicationAdapter.create(...) })` 기반 명시적 Fastify 부트스트랩
 - `@Module`, `@Inject`, `@Controller`, `@Get`을 사용한 표준 데코레이터 DI
 - `HealthModule.forRoot(...)`의 내장 `/health` 및 `/ready` 엔드포인트
 - `/hello` 경로의 단일 스타터 컨트롤러

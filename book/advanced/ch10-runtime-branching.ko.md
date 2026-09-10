@@ -274,25 +274,20 @@ subpaths:
 이 설계는 portability mistake를 눈에 띄게 만듭니다. application code가 Node helper를 import한다면, 그 import path 자체가 이미 portability cost를 선언하고 있는 셈입니다.
 
 ## 10.3 Node platform package가 server lifecycle, retry, compression, shutdown을 소유합니다
-public Node package entrypoint는 `path:packages/platform-nodejs/src/index.ts:9-28`입니다. 이 파일은 logger factory, Node file-system asset source와 그 type, `./node/internal-node.js`의 선별된 API를 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
+public Node package entrypoint는 `path:packages/platform-nodejs/src/index.ts`입니다. 이 파일은 logger factory, Node file-system asset source와 그 type, `./node/internal-node.js`의 선별된 API를 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
 
-Node package root는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger, file-system asset helper, 선택된 Node application helper만 공개합니다.
+Node package root는 내부 파일 전체를 그대로 열지 않습니다. 아래처럼 logger, file-system asset helper, concrete Node adapter와 signal registration만 공개합니다.
 
-`path:packages/platform-nodejs/src/index.ts:9-28`
+`path:packages/platform-nodejs/src/index.ts:1-15`
 ```typescript
 export {
-  type BootstrapNodeApplicationOptions,
-  bootstrapNodeApplication,
-  type CorsInput,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
-  type NodeApplicationSignal,
   type NodeHttpAdapterOptions,
   NodeHttpApplicationAdapter,
-  type RunNodeApplicationOptions,
   registerShutdownSignals,
-  runNodeApplication,
 } from './node/internal-node.js';
+export type { NodeShutdownSignal } from './node/internal-node-shutdown.js';
 export * from './node/json-logger.js';
 export * from './node/logger.js';
 export {
@@ -306,11 +301,11 @@ export {
 
 실제 구현은 `path:packages/platform-nodejs/src/node/internal-node.ts`와 `path:packages/platform-nodejs/src/node/internal-node-listen.ts`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen lifecycle behavior, compression wiring, process-signal shutdown helper가 모두 이 Node 전용 구현에 있습니다.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:140-270`의 `NodeHttpApplicationAdapter`가 핵심 Node transport object입니다. 이 adapter는 native server, `NodeListenLifecycle`, request/response factory, drain-aware shutdown을 위한 socket set을 소유합니다. 이런 것은 root runtime의 abstract adapter contract가 알 수 없는 영역입니다.
+`path:packages/platform-nodejs/src/node/internal-node.ts`의 `NodeHttpApplicationAdapter`가 핵심 Node transport object입니다. 이 adapter는 native server, `NodeListenLifecycle`, request/response factory, drain-aware shutdown을 위한 socket set을 소유합니다. 이런 것은 root runtime의 abstract adapter contract가 알 수 없는 영역입니다.
 
 constructor는 lifecycle option을 validate하고, request-response factory를 만들고, `httpOptions`와 `httpsOptions`에서 HTTP 또는 HTTPS server를 만들고, `NodeListenLifecycle`을 만들며, 나중에 lingering socket을 강제 종료할 수 있도록 connection을 추적합니다.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:178-200`
+`path:packages/platform-nodejs/src/node/internal-node.ts:123-145`
 ```typescript
   private readonly server: NodeServer;
   private readonly listenLifecycle: NodeListenLifecycle;
@@ -339,7 +334,7 @@ constructor는 lifecycle option을 validate하고, request-response factory를 �
 
 이어지는 constructor 본문은 lifecycle policy를 validate하고 실제 Node server 생성, listener lifecycle 초기화, socket tracking을 수행합니다. 이 두 번째 발췌가 request/response factory, HTTP/HTTPS server 선택, listener admission, connection set 관리가 모두 Node branch 안에 있음을 보여 줍니다.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:201-227`
+`path:packages/platform-nodejs/src/node/internal-node.ts:146-172`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -463,9 +458,9 @@ export class NodeListenLifecycle {
 
 shutdown은 `NodeListenLifecycle.close()`를 거친 뒤 `closeNodeServerWithDrain()`이 server를 닫고, idle connection을 닫고, drain timeout을 넘기면 socket을 강제로 닫도록 위임합니다. 역시 root runtime과 분리된 host-specific operational logic입니다.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:150-176`의 `NodeHttpApplicationAdapter.create()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. `path:packages/platform-nodejs/src/node/internal-node.ts:326-338`의 `bootstrapNodeApplication()`은 그 adapter를 공유 HTTP bootstrap path에 주입합니다. `runNodeApplication()`은 거기에 shutdown-signal registration까지 얹습니다.
+`path:packages/platform-nodejs/src/node/internal-node.ts`의 `NodeHttpApplicationAdapter.create()`는 이러한 Node concern을 portable한 `HttpApplicationAdapter` 구현으로 포장합니다. 현재 application startup은 이 concrete adapter를 `FluoFactory.create()`에 전달하고 `app.listen()`을 await한다. Node logger와 signal registration은 host가 명시적으로 선택한다.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:140-176`
+`path:packages/platform-nodejs/src/node/internal-node.ts:85-121`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   /**
@@ -506,28 +501,47 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 ```
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:326-338`
-```typescript
-export async function bootstrapNodeApplication(
-  rootModule: ModuleType,
-  options: BootstrapNodeApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+Node host callback은 signal 등록과 해제를 Factory lifecycle에 연결합니다. Application 생성은 별도 platform bootstrap helper가 아니라 아래 Factory recipe가 소유합니다.
 
-  return bootstrapHttpAdapterApplication(
-    rootModule,
-    options,
-    NodeHttpApplicationAdapter.create(options),
+`path:packages/platform-nodejs/src/node/internal-node-shutdown.ts:26-35`
+```typescript
+export function createNodeShutdownSignalRegistration(
+  signals: false | readonly NodeShutdownSignal[] = defaultNodeShutdownSignals(),
+): HttpAdapterShutdownRegistration {
+  return (app, logger, forceExitTimeoutMs) => registerShutdownSignals(
+    app,
     logger,
+    signals,
+    forceExitTimeoutMs,
   );
 }
 ```
 
-첫 발췌는 기존 클래스의 static 생성 메서드입니다. Port/body 기본값과 검증, compression/multipart 전달, 실제 constructor 호출을 소유하며 다른 생성 factory를 호출하지 않습니다. 다음 bootstrap 발췌는 같은 static 경로를 사용합니다. 공개 constructor와 instance lifecycle은 그대로이므로 DI token과 `instanceof`가 유지됩니다. [마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)은 제거된 import와 options 이전을 설명합니다.
+```typescript
+import {
+  createConsoleApplicationLogger,
+  createNodeShutdownSignalRegistration,
+  NodeHttpApplicationAdapter,
+} from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 
-테스트는 의도된 public contract를 설명합니다. `path:packages/platform-nodejs/src/node/node.test.ts:14-48`은 adapter 기본 포트가 `process.env.PORT`가 아니라 `3000`임을 보여 줍니다. 이것도 explicitness choice입니다. Node-specific convenience가 ambient process configuration을 묵시적으로 끌고 들어오지 못하게 합니다.
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    host: '127.0.0.1',
+    port: 3000,
+    shutdownTimeoutMs: 10_000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
+```
 
-`path:packages/platform-nodejs/src/node/node.test.ts:14-30`
+첫 발췌는 기존 클래스의 static 생성 메서드입니다. Port/body 기본값과 검증, compression/multipart 전달, 실제 constructor 호출을 소유하며 다른 생성 factory를 호출하지 않습니다. 다음은 현재 권장 application recipe다. `shutdownTimeoutMs: 10_000`은 Node adapter의 request drain bound이고, `createNodeShutdownSignalRegistration()`의 host force-exit bound는 별도로 기본 30초다. 공개 constructor와 instance lifecycle은 그대로이므로 DI token과 `instanceof`가 유지됩니다. [마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)은 제거된 import와 options 이전을 설명합니다.
+
+테스트는 의도된 public contract를 설명합니다. `path:packages/platform-nodejs/src/node/node.test.ts:16-32`은 adapter 기본 포트가 `process.env.PORT`가 아니라 `3000`임을 보여 줍니다. 이것도 explicitness choice입니다. Node-specific convenience가 ambient process configuration을 묵시적으로 끌고 들어오지 못하게 합니다.
+
+`path:packages/platform-nodejs/src/node/node.test.ts:16-32`
 ```typescript
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
@@ -557,9 +571,10 @@ Node branch는 다음처럼 그릴 수 있습니다.
 ```text
 ./node public surface
   -> NodeHttpApplicationAdapter.create()
-  -> bootstrapNodeApplication()
-  -> runNodeApplication()
-  -> logger + shutdown helpers
+  -> createConsoleApplicationLogger()
+  -> createNodeShutdownSignalRegistration()
+  -> FluoFactory.create()
+  -> app.listen()
 
 internally
   -> native server creation

@@ -1192,7 +1192,7 @@ void bootstrap();
     expect(packageJson).toContain('@fluojs/platform-fastify');
     expect(packageJson).toContain('@fluojs/runtime');
     expect(mainFile).toContain('FluoFactory.create(AppModule, {');
-    expect(mainFile).toContain('adapter: createFastifyAdapter({ port })');
+    expect(mainFile).toContain('adapter: FastifyHttpApplicationAdapter.create({ port })');
     expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
     expect(mainFile).toContain('await app.listen();');
     expect(mainFile).not.toContain('runFastifyApplication');
@@ -1233,7 +1233,7 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-express');
     expect(mainFile).toContain('FluoFactory.create(AppModule, {');
-    expect(mainFile).toContain('adapter: createExpressAdapter({ port })');
+    expect(mainFile).toContain('adapter: ExpressHttpApplicationAdapter.create({ port })');
     expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
     expect(mainFile).toContain('await app.listen();');
     expect(mainFile).not.toContain('runExpressApplication');
@@ -1315,7 +1315,10 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-bun');
-    expect(mainFile).toContain('runBunApplication(AppModule, { port })');
+    expect(mainFile).toContain('adapter: BunHttpApplicationAdapter.create({ port, shutdownTimeoutMs: 30_000 })');
+    expect(mainFile).toContain('shutdownRegistration: createBunShutdownSignalRegistration()');
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).not.toContain('runBunApplication');
   });
 
   it('scaffolds the Deno HTTP starter when the deno runtime is selected explicitly', async () => {
@@ -1352,7 +1355,10 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-deno');
-    expect(mainFile).toContain('runDenoApplication(AppModule, { port })');
+    expect(mainFile).toContain('adapter: DenoHttpApplicationAdapter.create({ port })');
+    expect(mainFile).toContain('shutdownRegistration: createDenoShutdownSignalRegistration()');
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).not.toContain('runDenoApplication');
   });
 
   it('scaffolds the Cloudflare Workers HTTP starter when the cloudflare-workers runtime is selected explicitly', async () => {
@@ -5142,7 +5148,7 @@ exit 7
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
     expect(mainContent).toContain("from '@fluojs/platform-fastify'");
     expect(mainContent).toContain('FluoFactory.create(AppModule, {');
-    expect(mainContent).toContain('adapter: createFastifyAdapter({ port })');
+    expect(mainContent).toContain('adapter: FastifyHttpApplicationAdapter.create({ port })');
     expect(mainContent).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
     expect(mainContent).toContain('await app.listen();');
     expect(appTestContent).toContain("createRequest('/health')");

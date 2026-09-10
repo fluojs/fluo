@@ -58,7 +58,7 @@ function createDependencies() {
     ['packages/vite/CHANGELOG.md', '# @fluojs/vite\n\n## [Unreleased]\n\n## 1.0.0\n'],
     [
       'packages/cli/src/new/scaffold.ts',
-      "import { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await FluoFactory.create(AppModule, {\nadapter: createFastifyAdapter({ port })\nawait app.listen();\ncreateFastifyAdapter",
+      "import { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await FluoFactory.create(AppModule, {\nadapter: FastifyHttpApplicationAdapter.create({ port })\nawait app.listen();\nFastifyHttpApplicationAdapter.create",
     ],
     ['packages/cli/package.json', JSON.stringify({ bin: { fluo: './bin/fluo.mjs' }, main: './dist/index.js' })],
     ['CHANGELOG.md', changelog],
@@ -286,12 +286,12 @@ describe('runReleaseReadinessVerification', () => {
           "import { HealthModule } from '@fluojs/runtime';",
           'HealthModule.forRoot()',
           "@Controller('/greeting')",
-          "const starter = { adapterCall: 'createFastifyAdapter({ port })' };",
+          "const starter = { adapterCall: 'FastifyHttpApplicationAdapter.create({ port })' };",
           'const app = await FluoFactory.create(AppModule, {',
           'adapter: ${starter.adapterCall}',
           '});',
           'await app.listen();',
-          'createFastifyAdapter',
+          'FastifyHttpApplicationAdapter.create',
         ].join('\n');
       }
 

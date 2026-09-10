@@ -5,7 +5,6 @@ import { Transform } from 'node:stream';
 
 import multipart from '@fastify/multipart';
 import {
-  type CorsOptions,
   createErrorResponse,
   createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
@@ -16,9 +15,7 @@ import {
   type HttpApplicationAdapter,
   HttpException,
   InternalServerErrorException,
-  type MiddlewareLike,
   PayloadTooLargeException,
-  type SecurityHeadersOptions,
 } from '@fluojs/http';
 import {
   attachFrameworkRequestNativeRouteHandoff,
@@ -26,19 +23,8 @@ import {
   consumeRawRequestNativeRouteHandoff,
   isRoutePathNormalizationSensitive,
 } from '@fluojs/http/internal';
-import type {
-  Application,
-  ApplicationLogger,
-  CreateApplicationOptions,
-  ModuleType,
-  MultipartOptions,
-  UploadedFile,
-} from '@fluojs/runtime';
+import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
 import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
-import {
-  bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
@@ -53,11 +39,6 @@ import {
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
 } from '@fluojs/platform-nodejs/internal';
-import {
-  createConsoleApplicationLogger,
-  createNodeShutdownSignalRegistration,
-  defaultNodeShutdownSignals,
-} from '@fluojs/platform-nodejs';
 import fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 /**
@@ -72,17 +53,13 @@ export interface FastifyAdapterOptions {
   host?: string;
   https?: HttpsServerOptions;
   maxBodySize?: number;
+  multipart?: MultipartOptions;
   port?: number;
   rawBody?: boolean;
   retryDelayMs?: number;
   retryLimit?: number;
   shutdownTimeoutMs?: number;
 }
-
-/** Node.js shutdown signals supported by `runFastifyApplication(...)`. */
-export type FastifyApplicationSignal = 'SIGINT' | 'SIGTERM';
-/** CORS shorthand accepted by the Fastify runtime bootstrap helpers. */
-export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -95,37 +72,6 @@ type StreamingMultipartOptions = MultipartOptions & { strategy?: 'stream' };
 type RouteDescribingDispatcher = Dispatcher & {
   describeRoutes?: () => readonly HandlerDescriptor[];
 };
-
-/**
- * Bootstrap options for creating a Fastify-backed application without
- * implicitly registering process shutdown listeners.
- */
-export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
-  configureFastify?: FastifyAdapterOptions['configureFastify'];
-  cors?: CorsInput;
-  globalPrefix?: string;
-  globalPrefixExclude?: readonly string[];
-  host?: string;
-  https?: HttpsServerOptions;
-  logger?: ApplicationLogger;
-  maxBodySize?: number;
-  middleware?: MiddlewareLike[];
-  multipart?: MultipartOptions;
-  port?: number;
-  rawBody?: boolean;
-  retryDelayMs?: number;
-  retryLimit?: number;
-  securityHeaders?: false | SecurityHeadersOptions;
-  shutdownTimeoutMs?: number;
-}
-
-/**
- * Bootstrap options for `runFastifyApplication(...)`, including shutdown hooks.
- */
-export interface RunFastifyApplicationOptions extends BootstrapFastifyApplicationOptions {
-  forceExitTimeoutMs?: number;
-  shutdownSignals?: false | readonly FastifyApplicationSignal[];
-}
 
 interface FastifyListenTarget {
   bindTarget: string;
@@ -167,6 +113,29 @@ type FastifyListenState = 'idle' | 'starting' | 'listening';
  * server-backed realtime capability and multipart/raw-body integrations.
  */
 export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
+  /**
+   * Creates the canonical Fastify adapter for `FluoFactory.create(...)`.
+   *
+   * @param options Transport-level Fastify settings such as host, port, retries, and raw-body preservation.
+   * @returns A concrete Fastify-backed HTTP application adapter.
+   */
+  static create(
+    options: FastifyAdapterOptions = {},
+  ): FastifyHttpApplicationAdapter {
+    return new FastifyHttpApplicationAdapter(
+      resolvePort(options.port),
+      options.host,
+      options.retryDelayMs,
+      options.retryLimit,
+      options.https,
+      options.multipart,
+      options.maxBodySize,
+      options.rawBody,
+      options.shutdownTimeoutMs,
+      options.configureFastify,
+    );
+  }
+
   private closeInFlight?: Promise<void>;
   private fastifyConfigurationInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
@@ -754,83 +723,6 @@ function canonicalizeFastifyRouteShape(path: string): string {
     .map((segment) => segment.startsWith(':') ? ':' : segment);
 
   return segments.length === 0 ? '/' : `/${segments.join('/')}`;
-}
-
-/**
- * Create the recommended Fastify adapter for `FluoFactory.create(...)`.
- *
- * @example
- * ```ts
- * const app = await FluoFactory.create(AppModule, {
- *   adapter: createFastifyAdapter({ port: 3000 }),
- * });
- * ```
- *
- * @param options Transport-level Fastify settings such as host, port, retries, and raw-body preservation.
- * @param multipartOptions Optional multipart parsing limits exposed through `FrameworkRequest.files`.
- * @returns A runtime `HttpApplicationAdapter` backed by Fastify.
- */
-export function createFastifyAdapter(
-  options: FastifyAdapterOptions = {},
-  multipartOptions?: MultipartOptions,
-): HttpApplicationAdapter {
-  return new FastifyHttpApplicationAdapter(
-    resolvePort(options.port),
-    options.host,
-    options.retryDelayMs,
-    options.retryLimit,
-    options.https,
-    multipartOptions,
-    options.maxBodySize,
-    options.rawBody,
-    options.shutdownTimeoutMs,
-    options.configureFastify,
-  );
-}
-
-/**
- * Bootstrap a Fastify-backed application without implicitly calling `listen()`.
- *
- * @param rootModule Root application module compiled by the Fluo runtime.
- * @param options Runtime, middleware, and Fastify adapter settings.
- * @returns An initialized application shell that can be listened to later.
- */
-export async function bootstrapFastifyApplication(
-  rootModule: ModuleType,
-  options: BootstrapFastifyApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-
-  return bootstrapHttpAdapterApplication(
-    rootModule,
-    options,
-    createFastifyAdapter(options, options.multipart),
-    logger,
-  );
-}
-
-/**
- * Bootstrap and start a Fastify-backed application with shutdown registration.
- *
- * This helper creates the adapter, wires the runtime, awaits `listen()`, installs
- * the configured shutdown registration, and only then returns the running application.
- *
- * @param rootModule Root application module compiled by the Fluo runtime.
- * @param options Runtime, adapter, and shutdown registration settings.
- * @returns A running application shell after listening succeeds and shutdown registration completes.
- */
-export async function runFastifyApplication(
-  rootModule: ModuleType,
-  options: RunFastifyApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-  const adapter = createFastifyAdapter(options, options.multipart) as FastifyHttpApplicationAdapter;
-  return runHttpAdapterApplication(rootModule, {
-    ...options,
-    shutdownRegistration: createNodeShutdownSignalRegistration(
-      options.shutdownSignals ?? defaultNodeShutdownSignals(),
-    ),
-  }, adapter, logger);
 }
 
 class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {

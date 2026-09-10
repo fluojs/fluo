@@ -1,3 +1,6 @@
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureBunPlatform from '@fluojs/platform-bun';
+import * as FixtureDenoPlatform from '@fluojs/platform-deno';
 import {
   appendVaryHeader,
   Controller,
@@ -7,17 +10,12 @@ import {
   type RequestContext,
   type StaticAssetSource,
 } from '@fluojs/http';
-import { type BunServeOptions, type BunServerLike, bootstrapBunApplication } from '@fluojs/platform-bun';
+import type { BunServeOptions, BunServerLike } from '@fluojs/platform-bun';
 import {
   bootstrapCloudflareWorkerApplication,
   type CloudflareWorkerExecutionContext,
 } from '@fluojs/platform-cloudflare-workers';
-import {
-  bootstrapDenoApplication,
-  type DenoServeController,
-  type DenoServeHandler,
-  type DenoServeOptions,
-} from '@fluojs/platform-deno';
+import type { DenoServeController, DenoServeHandler, DenoServeOptions } from '@fluojs/platform-deno';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -152,8 +150,8 @@ type WebRuntimeStaticAssetsBootstrap = (
 ) => Promise<WebRuntimePortabilityApp>;
 
 type BunBootstrap = (
-  rootModule: Parameters<typeof bootstrapBunApplication>[0],
-  options: Parameters<typeof bootstrapBunApplication>[1],
+  rootModule: Parameters<typeof createBunTestApplication>[0],
+  options: Parameters<typeof createBunTestApplication>[1],
 ) => Promise<BunBootstrapApp>;
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -248,9 +246,9 @@ function restoreMockBun(originalBun: MockBun | undefined): void {
 }
 
 async function createBunPortabilityApp(
-  rootModule: Parameters<typeof bootstrapBunApplication>[0],
-  options: Parameters<typeof bootstrapBunApplication>[1],
-  bootstrap: BunBootstrap = bootstrapBunApplication,
+  rootModule: Parameters<typeof createBunTestApplication>[0],
+  options: Parameters<typeof createBunTestApplication>[1],
+  bootstrap: BunBootstrap = createBunTestApplication,
 ) {
   const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
   const mockBun = installMockBun();
@@ -499,7 +497,7 @@ describe('bun web runtime adapter cleanup', () => {
 
     try {
       await expect(
-        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof bootstrapBunApplication>[1], async () => {
+        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof createBunTestApplication>[1], async () => {
           throw new Error('bootstrap failed');
         }),
       ).rejects.toThrow('bootstrap failed');
@@ -519,7 +517,7 @@ describe('bun web runtime adapter cleanup', () => {
 
     try {
       await expect(
-        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof bootstrapBunApplication>[1], async () => ({
+        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof createBunTestApplication>[1], async () => ({
           close,
           async listen() {
             throw new Error('listen failed');
@@ -540,7 +538,7 @@ registerWebRuntimePortabilitySuite(
   createWebRuntimeHttpAdapterPortabilityHarness({
     async bootstrap(rootModule, options) {
       const server = createServeStub();
-      const app = await bootstrapDenoApplication(rootModule, {
+      const app = await createDenoTestApplication(rootModule, {
         ...options,
         serve: server.serve,
       });
@@ -563,7 +561,7 @@ registerWebRuntimePortabilitySuite(
 );
 registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, options) => {
   const server = createServeStub();
-  const app = await bootstrapDenoApplication(rootModule, {
+  const app = await createDenoTestApplication(rootModule, {
     ...options,
     serve: server.serve,
   });
@@ -581,7 +579,7 @@ registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, option
 });
 registerWebRuntimeStaticAssetsPortabilitySuite('deno', async (rootModule, options) => {
   const server = createServeStub();
-  const app = await bootstrapDenoApplication(rootModule, {
+  const app = await createDenoTestApplication(rootModule, {
     ...options,
     serve: server.serve,
   });
@@ -642,3 +640,32 @@ registerWebRuntimeStaticAssetsPortabilitySuite('cloudflare-workers', async (root
     },
   };
 });
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type BunTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureBunPlatform.BunAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureBunPlatform.BunShutdownSignal[];
+};
+
+function createBunTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: BunTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureBunPlatform.BunHttpApplicationAdapter.create(options),
+  });
+}
+
+type DenoTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureDenoPlatform.DenoAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureDenoPlatform.DenoShutdownSignal[];
+};
+
+function createDenoTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: DenoTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureDenoPlatform.DenoHttpApplicationAdapter.create(options),
+  });
+}

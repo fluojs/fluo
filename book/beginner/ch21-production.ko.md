@@ -123,12 +123,12 @@ volumes:
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.module';
 
 // main.ts에서의 프로덕션 부트스트랩 예시
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
 });
@@ -136,7 +136,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-Ingress나 load balancer가 아니라 Fastify 프로세스가 TLS를 직접 소유한다면 같은 certificate material을 adapter의 `https` startup surface로 전달하세요. Certificate와 private key 값은 먼저 애플리케이션 configuration 또는 secret manager를 통해 로드한 뒤, 최종 값을 `createFastifyAdapter(...)`에 넘깁니다.
+Ingress나 load balancer가 아니라 Fastify 프로세스가 TLS를 직접 소유한다면 같은 certificate material을 adapter의 `https` startup surface로 전달하세요. Certificate와 private key 값은 먼저 애플리케이션 configuration 또는 secret manager를 통해 로드한 뒤, 최종 값을 `FastifyHttpApplicationAdapter.create({ ... })`의 한 options 객체에 넘깁니다.
 
 ```typescript
 const tlsOptions = {
@@ -145,7 +145,7 @@ const tlsOptions = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '0.0.0.0',
     https: tlsOptions,
     port: 3443,
@@ -155,7 +155,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`bootstrapFastifyApplication(...)`과 `runFastifyApplication(...)`도 같은 `https` option을 받습니다. TLS가 Node.js 프로세스 앞에서 종료된다면 `https`를 설정하지 말고 신뢰된 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
+TLS가 Node.js 프로세스 앞에서 종료된다면 `https`를 설정하지 말고 신뢰된 경계 뒤에서 `FastifyHttpApplicationAdapter`를 일반 HTTP로 유지하세요.
 
 ## 21.6 Deep Dive: CI/CD Pipeline
 프로덕션 설정은 자동화된 파이프라인과 함께 운영될 때 안정성이 높아집니다. 지속적 통합(CI)과 지속적 배포(CD)는 모든 변경 사항이 일관된 절차로 테스트되고 배포되도록 만듭니다.

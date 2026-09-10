@@ -1,3 +1,5 @@
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureNodePlatform from '@fluojs/platform-nodejs';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -10,11 +12,11 @@ import {
   createServerBackedHttpAdapterRealtimeCapability,
   type HttpApplicationAdapter,
 } from '@fluojs/http';
-import { createExpressAdapter } from '@fluojs/platform-express';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { type Application, type ApplicationLogger, FluoFactory, defineModule, type ModuleType } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+
 import {
   OnConnect,
   OnDisconnect,
@@ -320,11 +322,11 @@ const supportedSocketIoAdapterScenarios: readonly SupportedSocketIoAdapterScenar
     name: 'platform-nodejs',
   },
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => createFastifyAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof NodeHttpApplicationAdapter.create>,
+    createAdapter: ({ port, shutdownTimeoutMs }) => FastifyHttpApplicationAdapter.create({ port, shutdownTimeoutMs }),
     name: 'platform-fastify',
   },
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => createExpressAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof NodeHttpApplicationAdapter.create>,
+    createAdapter: ({ port, shutdownTimeoutMs }) => ExpressHttpApplicationAdapter.create({ port, shutdownTimeoutMs }),
     name: 'platform-express',
   },
 ];
@@ -448,7 +450,7 @@ describe('@fluojs/socket.io', () => {
       providers: [ServerProbe],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1815,7 +1817,7 @@ describe('@fluojs/socket.io', () => {
       providers: [RequestGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -2322,7 +2324,7 @@ describe('@fluojs/socket.io', () => {
       providers: [DefaultGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -2714,3 +2716,19 @@ describe('@fluojs/socket.io', () => {
     }
   });
 });
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type NodeTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureNodePlatform.NodeHttpAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createNodeTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: NodeTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}

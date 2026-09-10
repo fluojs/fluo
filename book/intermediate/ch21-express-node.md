@@ -45,15 +45,12 @@ npm install @fluojs/platform-express express
 Switch to Express only after the application layer has moved off NestJS metadata semantics. Controllers and providers must use TC39 standard decorators, class-level `@Inject(...)`, and explicit DI/module wiring before the entrypoint changes its HTTP adapter. Once that migration is complete, business logic can stay unchanged while only the host engine boundary is replaced; changing the adapter alone does not preserve NestJS legacy decorators, reflection metadata, or implicit dependency discovery.
 
 ```typescript
-import {
-  createExpressAdapter,
-  ExpressHttpApplicationAdapter,
-} from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const adapter = createExpressAdapter({
+  const adapter = ExpressHttpApplicationAdapter.create({
     port: 3000,
     rawBody: true
   });
@@ -62,10 +59,6 @@ async function bootstrap() {
 
   await app.listen();
 
-  if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
-    throw new TypeError('Expected the Express adapter factory to return the Express implementation');
-  }
-
   // Resolve the actual target after startup, including an OS-assigned port.
   const { bindTarget, url } = adapter.getListenTarget();
   console.log(`Listening on ${url} (${bindTarget})`);
@@ -73,7 +66,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before accessing the Express-only `getListenTarget()` helper. The helper reports the resolved bind target and public URL after startup. `getServer()` returns the adapter-owned `node:http` `Server` or `node:https` `Server` union. Keep it, `getListenTarget()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
+`ExpressHttpApplicationAdapter.create()` returns the concrete Express adapter, so `getListenTarget()` needs no `instanceof` narrowing. The helper reports the resolved bind target and public URL after startup. `getServer()` returns the adapter-owned `node:http` `Server` or `node:https` `Server` union. Keep it, `getListenTarget()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
 
 The adapter constructs and owns its Express application rather than adopting or reusing an existing Express application; existing-app adoption is unsupported. Supply native handlers through construction-time `nativeMiddleware`. After bootstrap, calling `use(...)` to append to the native stack is not a supported surface. Prefer rewriting portable behavior as fluo `Middleware`.
 
@@ -91,7 +84,7 @@ const compressionHeaders: Middleware = {
   },
 };
 
-const adapter = createExpressAdapter();
+const adapter = ExpressHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, {
   adapter,
   middleware: [compressionHeaders],
@@ -108,7 +101,7 @@ const legacyHeaders: RequestHandler = (_request, response, next) => {
   next();
 };
 
-const adapter = createExpressAdapter({
+const adapter = ExpressHttpApplicationAdapter.create({
   nativeMiddleware: [legacyHeaders],
   port: 3000,
 });
@@ -249,21 +242,25 @@ When moving FluoShop to Express, the key host change point is `main.ts`, but onl
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+import {
+  createConsoleApplicationLogger,
+  createNodeShutdownSignalRegistration,
+} from '@fluojs/platform-nodejs';
 // apps/fluoshop-api/src/main.ts
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   const host = '127.0.0.1';
   const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
   const app = await FluoFactory.create(AppModule, {
-    adapter: createExpressAdapter({
+    adapter: ExpressHttpApplicationAdapter.create({
       host,
       port,
     }),
     globalPrefix: 'v1',
     logger: createConsoleApplicationLogger(),
+    shutdownRegistration: createNodeShutdownSignalRegistration(),
   });
 
   await app.listen();
@@ -278,18 +275,18 @@ bootstrap().catch(err => {
 
 The route prefix belongs to the Express bootstrap configuration rather than mutable `Application` state. This example also reports the fixed host and port that it configured instead of asking `Application` to discover the listener URL. The important point here is that binding Decorators such as `@FromBody()`, `@FromPath()`, and `@FromQuery()` work through the same contract whether Fastify or Express handles the request. fluo's internal Dispatcher handles translation between the adapter's native request format and the standard fluo context. DTO validation still follows the `@fluojs/validation` contract: the HTTP binder constructs DTO instances from the selected request sources, then the validation adapter applies `@fluojs/validation` rules through the configured validator before business logic sees a typed DTO, rather than installing a Nest-style global `ValidationPipe`.
 
-## 21.6 Advanced: The `run` Helpers
+## 21.6 Canonical startup and signals
 
-Unify HTTP creation through `FluoFactory.create(AppModule, { adapter })` and connect Node signals with `createNodeShutdownSignalRegistration()`. Existing platform run helpers remain for unmigrated consumers; the following recipe uses Factory.
+Unify HTTP creation through `FluoFactory.create(AppModule, { adapter })` and connect Node signals with `createNodeShutdownSignalRegistration()`. The current recipe has no platform run helper.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({
+  adapter: ExpressHttpApplicationAdapter.create({
     port: 3000,
   }),
   globalPrefix: 'api',
@@ -299,7 +296,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-This helper wires process signals to the standard fluo shutdown lifecycle and helps clean up active connections before the host exits. Put application cleanup in lifecycle-aware providers, such as `onApplicationShutdown(signal)`, so the same cleanup path works across platform adapters. In deployment environments, this shutdown boundary is important for reducing lost logs, interrupted requests, and resource leaks.
+The signal registration wires process signals to the standard fluo shutdown lifecycle and helps clean up active connections before the host exits. Put application cleanup in lifecycle-aware providers, such as `onApplicationShutdown(signal)`, so the same cleanup path works across platform adapters. In deployment environments, this shutdown boundary is important for reducing lost logs, interrupted requests, and resource leaks.
 
 ## 21.7 Comparison Summary
 

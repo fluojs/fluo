@@ -184,7 +184,7 @@ import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { randomUUID } from 'node:crypto';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { PrismaService } from '@fluojs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { expect, it } from 'vitest';
@@ -204,7 +204,7 @@ it('keeps auth, uploads, subscriptions and operations in the assembled app', asy
 
   const listening = Promise.withResolvers<string>();
   const app = await FluoFactory.create(AppModule, {
-    adapter: createFastifyAdapter({
+    adapter: FastifyHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port: 0,
       maxBodySize: 6 * 1024 * 1024,

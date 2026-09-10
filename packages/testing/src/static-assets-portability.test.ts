@@ -1,3 +1,7 @@
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureExpressPlatform from '@fluojs/platform-express';
+import * as FixtureNodePlatform from '@fluojs/platform-nodejs';
+import * as FixtureFastifyPlatform from '@fluojs/platform-fastify';
 import {
   createStaticAssetsMiddleware,
   type StaticAssetSource,
@@ -5,9 +9,9 @@ import {
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bootstrapExpressApplication } from '@fluojs/platform-express';
-import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
-import { bootstrapNodejsApplication } from '@fluojs/platform-nodejs';
+
+
+
 import { defineModule, type Application, type ModuleType } from '@fluojs/runtime';
 import { createNodeFileSystemAssetSource } from '@fluojs/platform-nodejs';
 import { describe, expect, it } from 'vitest';
@@ -16,7 +20,7 @@ type BootstrapStaticAssetsApplication = (
   rootModule: ModuleType,
   options: {
     compression: true;
-    configureFastify?: Parameters<typeof bootstrapFastifyApplication>[1]['configureFastify'];
+    configureFastify?: FixtureFastifyPlatform.FastifyAdapterOptions['configureFastify'];
     cors: false;
     middleware: [ReturnType<typeof createStaticAssetsMiddleware>];
     port: 0;
@@ -137,7 +141,7 @@ describe('static asset real-listener portability', () => {
     await writeFile(join(root, 'app.js'), Uint8Array.from({ length: 64 }, (_, index) => index));
     await writeFile(join(root, 'app.js.br'), Uint8Array.from([1, 2, 3, 4]));
     await writeFile(join(root, '.well-known.js'), Uint8Array.from([7]));
-    const app = await bootstrapNodejsApplication(StaticAssetsModule, {
+    const app = await createNodeTestApplication(StaticAssetsModule, {
       compression: true,
       cors: false,
       middleware: [createStaticAssetsMiddleware({
@@ -206,20 +210,20 @@ describe('static asset real-listener portability', () => {
   });
 
   it('serves static assets through the Node listener', async () => {
-    await assertStaticAssetsOverRealListener(bootstrapNodejsApplication);
+    await assertStaticAssetsOverRealListener(createNodeTestApplication);
   });
 
   it('serves static assets through the Express listener', async () => {
-    await assertStaticAssetsOverRealListener(bootstrapExpressApplication, true);
+    await assertStaticAssetsOverRealListener(createExpressTestApplication, true);
   });
 
   it('serves static assets through the Fastify listener', async () => {
-    await assertStaticAssetsOverRealListener(bootstrapFastifyApplication, true);
+    await assertStaticAssetsOverRealListener(createFastifyTestApplication, true);
   });
 
   it('keeps streamed static GET, HEAD, 304, and range bytes untouched by Fastify compression-compatible hooks', async () => {
     await assertStaticAssetsOverRealListener(async (rootModule, options) =>
-      await bootstrapFastifyApplication(rootModule, {
+      await createFastifyTestApplication(rootModule, {
         ...options,
         configureFastify(app) {
           app.decorateReply('compress', () => {
@@ -240,3 +244,49 @@ describe('static asset real-listener portability', () => {
     true);
   });
 });
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type ExpressTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureExpressPlatform.ExpressAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createExpressTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: ExpressTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureExpressPlatform.ExpressHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+type FastifyTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureFastifyPlatform.FastifyAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createFastifyTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: FastifyTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureFastifyPlatform.FastifyHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+type NodeTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureNodePlatform.NodeHttpAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createNodeTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: NodeTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}

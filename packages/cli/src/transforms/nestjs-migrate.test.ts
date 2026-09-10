@@ -231,8 +231,8 @@ describe('runNestJsMigration', () => {
     const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
 
     expect(mainContent).toContain('FluoFactory.create(AppModule, {');
-    expect(mainContent).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
-    expect(mainContent).toContain('adapter: createExpressAdapter({');
+    expect(mainContent).toContain("import { ExpressHttpApplicationAdapter } from \"@fluojs/platform-express\";");
+    expect(mainContent).toContain('adapter: ExpressHttpApplicationAdapter.create({');
     expect(mainContent).toMatch(/port:\s*3000/);
     expect(mainContent).toContain('await app.listen();');
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
@@ -561,7 +561,7 @@ void bootstrap();
     );
     writeFileSync(
       join(workspaceDirectory, 'node_modules', '@fluojs', 'platform-express', 'index.d.ts'),
-      'export declare function createExpressAdapter(options: { port?: number }): unknown;\n',
+      'export declare class ExpressHttpApplicationAdapter { static create(options: { port?: number }): ExpressHttpApplicationAdapter; }\n',
     );
     writeFileSync(
       join(workspaceDirectory, 'src', 'main.ts'),
@@ -591,7 +591,7 @@ void bootstrap();
 
     expect(mainContent).toMatch(/import\s*\{\s*NestFactory\s*\}\s*from\s*["']@nestjs\/core["'];/u);
     expect(mainContent).toMatch(/import\s*\{\s*FluoFactory\s*\}\s*from\s*["']@fluojs\/runtime["'];/u);
-    expect(mainContent).toMatch(/import\s*\{\s*createExpressAdapter\s*\}\s*from\s*["']@fluojs\/platform-express["'];/u);
+    expect(mainContent).toMatch(/import\s*\{\s*ExpressHttpApplicationAdapter\s*\}\s*from\s*["']@fluojs\/platform-express["'];/u);
     expect(mainContent).toContain('FluoFactory.create(AppModule');
     expect(mainContent).toContain('NestFactory.create(AppModule, { bufferLogs: true })');
     expect(mainContent).toContain('await bufferedApp.listen(4000);');

@@ -6,7 +6,7 @@ This document defines the minimal feature-slice structure used in fluo applicati
 
 For step-by-step instructions, use the [FluoBlog tutorial](../../apps/docs/content/docs/tutorial/index.mdx). This page remains the structural reference for an existing application.
 
-The snippets below show feature wiring, not a replacement starter or a complete second application. In a CLI-generated app, retain the existing config, greeting, and health registrations and tests, and keep its `runFastifyApplication` entrypoint. The isolated `AppModule` fragment illustrates adding `UsersModule` to those existing imports. `examples/minimal` instead demonstrates explicit low-level composition; see [bootstrap paths](./bootstrap-paths.md) for that distinction and metadata-before-decorated-evaluation prerequisites.
+The snippets below show feature wiring, not a replacement starter or a complete second application. In a CLI-generated app, retain the existing config, greeting, and health registrations and tests, and keep its `FluoFactory.create(...)` + `app.listen()` entrypoint. The isolated `AppModule` fragment illustrates adding `UsersModule` to those existing imports. `examples/minimal` uses the same Factory and static adapter path; see [bootstrap paths](./bootstrap-paths.md) for its ownership and metadata-before-decorated-evaluation prerequisites.
 
 ## Required Files
 

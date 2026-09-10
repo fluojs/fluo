@@ -1,6 +1,6 @@
 import { ensureMetadataSymbol, Inject, Module } from '@fluojs/core';
 import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { jsonCommandLocal, QUOTE_REQUEST, type QuoteInput, type QuoteItem, readSearchLocal, restRouteMixLocal } from '../shared/workloads.js';
@@ -149,7 +149,7 @@ function readAppShape(): AppShape {
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 3001);
   const app = await FluoFactory.create(resolveAppModule(readAppShape()), {
-    adapter: createFastifyAdapter({ port }),
+    adapter: FastifyHttpApplicationAdapter.create({ port }),
   });
 
   await app.listen();

@@ -1362,10 +1362,13 @@ function rewriteBootstrap(
     return { supported: true };
   }
 
-  function createExpressAdapter(options?: ts.ObjectLiteralExpression): ts.CallExpression {
+  function createExpressAdapterExpression(options?: ts.ObjectLiteralExpression): ts.CallExpression {
     usesExpressAdapter = true;
     return ts.factory.createCallExpression(
-      ts.factory.createIdentifier('createExpressAdapter'),
+      ts.factory.createPropertyAccessExpression(
+        ts.factory.createIdentifier('ExpressHttpApplicationAdapter'),
+        'create',
+      ),
       undefined,
       options ? [options] : [],
     );
@@ -1515,7 +1518,7 @@ function rewriteBootstrap(
           const nextArgs = [rootModule, ts.factory.createObjectLiteralExpression([
             ts.factory.createPropertyAssignment(
               'adapter',
-              createExpressAdapter(
+              createExpressAdapterExpression(
                 ts.factory.createObjectLiteralExpression([
                   ts.factory.createPropertyAssignment('port', supportedListenCall.portExpression),
                 ], true),
@@ -1574,7 +1577,7 @@ function rewriteBootstrap(
       mergeNamedImport(
         [...parseSource(withRuntimeImport, filePath).statements],
         '@fluojs/platform-express',
-        [{ imported: 'createExpressAdapter', isTypeOnly: false, local: 'createExpressAdapter' }],
+        [{ imported: 'ExpressHttpApplicationAdapter', isTypeOnly: false, local: 'ExpressHttpApplicationAdapter' }],
       ),
     )
     : withRuntimeImport;

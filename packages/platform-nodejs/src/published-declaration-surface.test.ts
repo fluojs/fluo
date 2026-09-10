@@ -1,31 +1,60 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import ts from 'typescript';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { resolveWorkspaceBuildOrder } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 const execFileAsync = promisify(execFile);
-const packageRootPath = fileURLToPath(new URL('..', import.meta.url));
+let packageRootPath: string;
+let fixtureRootPath: string;
 const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
-const buildClosureScriptPath = fileURLToPath(
-  new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url),
-);
+const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
 const manifest: { exports: Record<string, { types: string; import: string }> } = JSON.parse(
-  readFileSync(resolve(packageRootPath, 'package.json'), 'utf8'),
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 );
+const removedNames = [
+  'createNodejsAdapter', 'createNodeHttpAdapter', 'NodejsAdapterOptions', 'NodejsHttpApplicationAdapter',
+  'bootstrapNodeApplication', 'bootstrapNodejsApplication', 'runNodeApplication', 'runNodejsApplication',
+  'BootstrapNodeApplicationOptions', 'BootstrapNodejsApplicationOptions',
+  'RunNodeApplicationOptions', 'RunNodejsApplicationOptions', 'NodeApplicationSignal', 'NodejsApplicationSignal',
+];
 
 describe('@fluojs/platform-nodejs published declarations and exports', () => {
-  beforeAll(async () => {
-    if (existsSync(resolve(packageRootPath, 'dist/index.d.ts'))) {
-      return;
-    }
+  afterAll(async () => {
+    if (fixtureRootPath) await rm(fixtureRootPath, { recursive: true, force: true });
+  });
 
-    await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/platform-nodejs'], {
-      cwd: repoRootPath,
+  beforeAll(async () => {
+    fixtureRootPath = await realpath(await mkdtemp(join(tmpdir(), 'fluo-node-public-surface-')));
+    packageRootPath = join(fixtureRootPath, 'packages/platform-nodejs');
+    const packages = resolveWorkspaceBuildOrder('@fluojs/platform-nodejs', repoRootPath);
+    for (const entry of [
+      'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+      'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+      'tooling/scripts/clean-dist.mjs', buildClosureScript,
+      'packages/testing/src/babel-decorators-plugin.ts',
+      ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+    ]) {
+      await cp(join(repoRootPath, entry), join(fixtureRootPath, entry), {
+        recursive: true,
+        verbatimSymlinks: true,
+        filter: (source) => !['dist', '.vite', '.vite-temp', '.omo'].includes(basename(source)),
+      });
+    }
+    await symlink(join(repoRootPath, 'node_modules'), join(fixtureRootPath, 'node_modules'), 'dir');
+
+    await execFileAsync(process.execPath, [join(fixtureRootPath, buildClosureScript), '@fluojs/platform-nodejs'], {
+      cwd: fixtureRootPath,
       env: process.env,
+      timeout: 240_000,
+      killSignal: 'SIGTERM',
     });
   }, 300_000);
 
@@ -49,6 +78,13 @@ describe('@fluojs/platform-nodejs published declarations and exports', () => {
       types: ['node'],
     });
     const diagnostics = ts.getPreEmitDiagnostics(program);
+    const workspaceDeclarations = program.getSourceFiles().filter((file) =>
+      file.fileName.includes('/packages/') && file.fileName !== consumerFixturePath,
+    );
+    expect(workspaceDeclarations.length).toBeGreaterThan(0);
+    expect(workspaceDeclarations.every((file) =>
+      file.isDeclarationFile && file.fileName.startsWith(join(fixtureRootPath, 'packages/')),
+    )).toBe(true);
 
     expect(diagnostics.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
@@ -74,7 +110,7 @@ describe('@fluojs/platform-nodejs published declarations and exports', () => {
       const names = checker.getExportsOfModule(symbol).map((entry) => entry.name);
       expect(names).toContain('NodeHttpApplicationAdapter');
       expect(names).toContain('NodeHttpAdapterOptions');
-      for (const name of ['createNodejsAdapter', 'createNodeHttpAdapter', 'NodejsAdapterOptions', 'NodejsHttpApplicationAdapter']) {
+      for (const name of removedNames) {
         expect(names).not.toContain(name);
       }
     }
@@ -88,7 +124,7 @@ describe('@fluojs/platform-nodejs published declarations and exports', () => {
       for (const subpath of Object.keys(manifest.exports)) {
         const api = await import('@fluojs/platform-nodejs' + (subpath === '.' ? '' : subpath.slice(1)));
         assert.equal(api.NodeHttpApplicationAdapter, root.NodeHttpApplicationAdapter);
-        for (const name of ['createNodejsAdapter', 'createNodeHttpAdapter', 'NodejsAdapterOptions', 'NodejsHttpApplicationAdapter']) {
+        for (const name of ${JSON.stringify(removedNames)}) {
           assert.equal(name in api, false);
         }
       }

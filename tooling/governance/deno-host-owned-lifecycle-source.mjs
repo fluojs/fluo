@@ -12,6 +12,7 @@ import {
 
 const fetchHandlerSourcePath = 'packages/platform-deno/src/fetch-handler.ts';
 const adapterSourcePath = 'packages/platform-deno/src/adapter.ts';
+const shutdownSourcePath = 'packages/platform-deno/src/shutdown.ts';
 
 function assert(condition, message) {
   if (!condition) {
@@ -114,50 +115,50 @@ function enforceManagedAdapterSource(readText) {
     `${adapterSourcePath} managed handle() must invoke websocket upgrades through the resolved upgrade seam.`,
   );
 
-  enforceRunHelperSource(sourceFile);
-  const registration = requireFunction(sourceFile, adapterSourcePath, 'createDenoShutdownSignalRegistration');
+  const create = findClassMethod(sourceFile, 'DenoHttpApplicationAdapter', 'create');
+  assert(
+    create?.body && create.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword),
+    `${adapterSourcePath} must expose DenoHttpApplicationAdapter.create(...) as the managed adapter construction path.`,
+  );
+  assert(
+    !capabilities(create, {
+      receiverFactories: { resolveSignalHost: 'deno' },
+    }).has('signal registration'),
+    `${adapterSourcePath} static adapter creation must not install shutdown signal handlers.`,
+  );
+}
+
+function enforceShutdownSource(readText) {
+  const sourceFile = parseDenoSource(shutdownSourcePath, readText(shutdownSourcePath));
+  const registration = requireFunction(sourceFile, shutdownSourcePath, 'createDenoShutdownSignalRegistration');
   assert(
     capabilities(registration, {
-      receiverFactories: { resolveDenoSignalGlobal: 'deno' },
+      receiverFactories: { resolveSignalHost: 'deno' },
     }).has('signal registration'),
     'Deno signal registration must invoke addSignalListener(...).',
   );
-  const removal = requireFunction(sourceFile, adapterSourcePath, 'removeDenoSignalBindings');
+  const removal = requireFunction(sourceFile, shutdownSourcePath, 'removeBindings');
   assert(
-    capabilities(removal, { receivers: { denoGlobal: 'deno' } }).has('signal removal'),
+    capabilities(removal, { receivers: { host: 'deno' } }).has('signal removal'),
     'Deno signal cleanup must invoke removeSignalListener(...).',
   );
   enforceSignalCloseFailureOwnership(sourceFile);
 }
 
 function enforceSignalCloseFailureOwnership(sourceFile) {
-  const signalClose = requireFunction(sourceFile, adapterSourcePath, 'closeDenoApplicationFromSignal');
+  const signalClose = requireFunction(sourceFile, shutdownSourcePath, 'closeFromSignal');
   assert(
     !collectCallNames(signalClose).has('exit'),
-    'closeDenoApplicationFromSignal(...) must not set an exit status.',
+    'closeFromSignal(...) must not set an exit status.',
   );
   assert(
     findCalls(signalClose, 'error').length > 0 && !containsThrowStatement(signalClose),
-    'closeDenoApplicationFromSignal(...) must log and swallow signal-triggered application close failures.',
-  );
-}
-
-function enforceRunHelperSource(sourceFile) {
-  const runApplication = requireFunction(sourceFile, adapterSourcePath, 'runDenoApplication');
-  const runnerCall = findCalls(runApplication, 'runHttpAdapterApplication')[0];
-  assert(runnerCall, 'runDenoApplication(...) must use the managed HTTP adapter runner.');
-  const options = runnerCall.arguments[1];
-  assert(options && ts.isObjectLiteralExpression(options), 'runDenoApplication(...) must pass managed runner options inline.');
-  const shutdownRegistration = options.properties.find(
-    (property) => ts.isPropertyAssignment(property) && staticName(property.name) === 'shutdownRegistration',
-  );
-  assert(
-    shutdownRegistration && collectCallNames(shutdownRegistration.initializer).has('createDenoShutdownSignalRegistration'),
-    'runDenoApplication(...) must pass Deno signal registration as shutdownRegistration.',
+    'closeFromSignal(...) must log and swallow signal-triggered application close failures.',
   );
 }
 
 export function enforceDenoHostOwnedLifecycleSource(readText) {
   enforceHandlerSource(readText);
   enforceManagedAdapterSource(readText);
+  enforceShutdownSource(readText);
 }

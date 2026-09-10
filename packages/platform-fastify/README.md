@@ -43,11 +43,11 @@ The default CLI Node/Fastify application uses the Factory recipe. This fragment 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   logger: createConsoleApplicationLogger(),
@@ -61,24 +61,24 @@ await app.listen();
 The example below uses the canonical Factory recipe with the application-owned `./app.module`. Factory owns middleware composition and creation/startup failure cleanup; pass an optional `logger` and host signal callback.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port: 3000 }),
+  adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` starts Fastify close immediately. The zero value bounds only the wait: if close has not settled, the wait may time out on the next timer turn while the underlying Fastify close and cleanup continue.
+`FastifyHttpApplicationAdapter.create()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` starts Fastify close immediately. The zero value bounds only the wait: if close has not settled, the wait may time out on the next timer turn while the underlying Fastify close and cleanup continue.
 
 ## Common Patterns
 
-`bootstrapFastifyApplication(AppModule, options)` returns an initialized app without automatic listen or Node signal registration. The bootstrap-only snippets below configure that app; their caller owns later activation and shutdown. Both Fastify helpers enable security headers unless `securityHeaders: false`, add CORS/global-prefix middleware only when configured, and select the Node framework console logger unless `logger` is provided. Their middleware order is configured CORS, configured prefix, security headers, then caller middleware.
+The caller creates an initialized app through `FluoFactory.create(...)`, then owns later activation and shutdown. Configure CORS/global-prefix middleware through Factory options and select the Node framework console logger explicitly when it is required. Middleware order is configured CORS, configured prefix, security headers, then caller middleware.
 
-The retained `runFastifyApplication` serves unmigrated consumers through this same Factory lifecycle. Factory cleans listen/startup-log/signal-registration failures while preserving the initiating error. Signal unregistration is attempted once without skipping runtime teardown; its failure is retained for concurrent and later closes. See [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.md).
+Factory cleans listen, startup-log, and signal-registration failures while preserving the initiating error. Signal unregistration is attempted once without skipping runtime teardown; its failure is retained for concurrent and later closes. See [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.md).
 
 ### Early Hints
 
@@ -89,11 +89,11 @@ Fastify responses expose the optional `context.response.earlyHints` capability t
 Fastify preserves the shared `@fluojs/http` single-byte-range and `If-Range` contract. After conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields the portable `206` identity-byte response; `If-Range` reuses those selected validators, while malformed or multi-range fields retain the full response and an unsatisfiable range yields bodyless `416`. `HEAD` mirrors GET metadata without consuming a stream.
 
 ### HTTPS/TLS Startup
-When the Fastify process owns TLS directly, pass Node.js `https.ServerOptions` through the `https` option on `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, or `runFastifyApplication(...)`. The adapter starts Fastify with an HTTPS listener, and startup logs report the `https://host:port` URL.
+When the Fastify process owns TLS directly, pass Node.js `https.ServerOptions` through the `https` option on `FastifyHttpApplicationAdapter.create(...)`. The adapter starts Fastify with an HTTPS listener, and startup logs report the `https://host:port` URL.
 
 ```typescript
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '0.0.0.0',
     port: 3443,
     https: {
@@ -108,14 +108,14 @@ await app.listen();
 
 Load certificates from your application configuration or secret-management boundary before constructing the adapter; the package does not read certificate files, `process.env`, or `PORT` by itself. If a load balancer, ingress, or API gateway terminates TLS, leave `https` unset and run the Fastify adapter as plain HTTP behind that infrastructure.
 
-`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https`, `host`, and `port` options. `runFastifyApplication(...)` starts listening before it resolves, installs shutdown registration, and returns the running application shell:
+`https`, `host`, and `port` belong to the static adapter options. Create the app with `FluoFactory.create(...)`, then call `app.listen()` to activate the listener, startup logging, and the selected host shutdown callback in order.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     https: {
       cert: tlsCertificate,
@@ -130,20 +130,18 @@ await app.listen();
 ```
 
 ### Multipart and Raw Body
-The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface. Multipart files are attached to the runtime-neutral `FrameworkRequest.files` seam as adapter-provided values; Fastify requests populate it with fluo `UploadedFile` objects after body materialization. When `rawBody: true` is enabled, `FrameworkRequest.rawBody` preserves the original request bytes for non-multipart requests so webhook signature verification and other byte-sensitive flows can replay the exact payload. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same multipart settings under `options.multipart`.
+The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface. Multipart files are attached to the runtime-neutral `FrameworkRequest.files` seam as adapter-provided values; Fastify requests populate it with fluo `UploadedFile` objects after body materialization. When `rawBody: true` is enabled, `FrameworkRequest.rawBody` preserves the original request bytes for non-multipart requests so webhook signature verification and other byte-sensitive flows can replay the exact payload. Pass multipart limits through `options.multipart` on the static adapter factory.
 
 Raw-body capture is skipped for multipart requests, including mixed-case `Content-Type` media values such as `Multipart/Form-Data`. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
 
 ```typescript
-const adapter = createFastifyAdapter(
-  {
-    port: 3000,
-    rawBody: true,
-  },
-  {
+const adapter = FastifyHttpApplicationAdapter.create({
+  port: 3000,
+  rawBody: true,
+  multipart: {
     maxTotalSize: 10 * 1024 * 1024,
   },
-);
+});
 ```
 
 ### Native Raw Request and Response Objects
@@ -169,12 +167,12 @@ Fastify-backed response streams support the shared fluo stream contract used by 
 CORS is handled via bootstrap options. fluo manages the underlying CORS logic rather than relying on a separate Fastify plugin.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // Simple origin string
 await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   cors: 'https://my-frontend.com',
@@ -183,7 +181,7 @@ await FluoFactory.create(AppModule, {
 
 // Fine-grained control
 await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   cors: {
@@ -195,7 +193,7 @@ await FluoFactory.create(AppModule, {
 
 // Explicitly disabled
 await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   cors: false,
@@ -207,11 +205,11 @@ await FluoFactory.create(AppModule, {
 Configure a global routing prefix and exclude specific paths like health checks.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   globalPrefix: '/api',
@@ -221,17 +219,17 @@ await FluoFactory.create(AppModule, {
 ```
 
 ### Logging
-fluo uses its own logging system. The adapter creates the Fastify instance with its native logger disabled, and `bootstrapFastifyApplication(...)` / `runFastifyApplication(...)` select the framework console logger by default so startup and shutdown diagnostics stay consistent with the active runtime. Pass `logger` when a test harness or host application needs to capture those diagnostics through an injected `ApplicationLogger` instead of the default console logger.
+The native Fastify logger is disabled. Factory defaults to the portable logger. Pass `logger: createConsoleApplicationLogger()` for Node console output, or a custom `ApplicationLogger` when a host or test needs to capture diagnostics.
 
 ### Middleware
 You can register runtime-level middleware that runs before the request reaches the handlers. Note that these are standard `MiddlewareLike` functions, not Fastify-specific plugins.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   middleware: [myCustomMiddleware],
@@ -243,7 +241,7 @@ await FluoFactory.create(AppModule, {
 Use portable fluo middleware by default. When a migration must retain a Fastify-native plugin, hook, or instance customization, configure it through the construction-time `configureFastify` seam:
 
 ```typescript
-const adapter = createFastifyAdapter({
+const adapter = FastifyHttpApplicationAdapter.create({
   configureFastify: async (fastify) => {
     fastify.addHook('onRequest', async (request, reply) => {
       reply.header('x-native-request-id', request.id);
@@ -254,7 +252,7 @@ const adapter = createFastifyAdapter({
 });
 ```
 
-`configureFastify` runs once for each Fastify instance that the adapter creates, before fluo registers its multipart, raw-body, native-route, and wildcard-route handling. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same option. A thrown or rejected configuration prevents that `listen()` call from starting; the failed instance is not configured again, while a later `listen()` after a successful `close()` configures the newly created instance once. Although this seam can call `setReplySerializer(...)`, the adapter serializes fluo response payloads before handing them to Fastify, so an instance serializer does not customize fluo responses.
+`configureFastify` runs once for each Fastify instance that the adapter creates, before fluo registers its multipart, raw-body, native-route, and wildcard-route handling. A thrown or rejected configuration prevents that `listen()` call from starting; the failed instance is not configured again, while a later `listen()` after a successful `close()` configures the newly created instance once. Although this seam can call `setReplySerializer(...)`, the adapter serializes fluo response payloads before handing them to Fastify, so an instance serializer does not customize fluo responses.
 
 The adapter continues to own routing, CORS, logging, multipart and raw-body behavior, response semantics, and shutdown. Do not retain or mutate the Fastify instance after bootstrap, adopt an existing Fastify instance, or use this hook as a native-route bypass. Move portable request behavior to fluo `middleware` instead.
 
@@ -288,18 +286,16 @@ The same file also covers Fastify-specific native route registration with wildca
 
 ## Public API Overview
 
-- `createFastifyAdapter(options, multipartOptions?)`: Recommended factory for the Fastify adapter. `options` includes transport startup knobs such as `host`, `port`, and Node.js `https` server options. The optional second argument configures multipart limits such as `maxFileSize`, `maxFiles`, and `maxTotalSize` for direct adapter construction.
-- `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening or Node signal registration; accepts the same Fastify startup options, including `https`, when the host wants to construct the app before binding it.
-- `runFastifyApplication(module, options)`: Bootstraps the application, starts listening, installs shutdown registration, and returns the running shell with the same `https` startup surface. On signal-driven shutdown timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
+- `FastifyHttpApplicationAdapter.create(options)`: Recommended factory for the Fastify adapter. `options` includes transport startup knobs such as `host`, `port`, and Node.js `https` server options. `options.multipart` configures limits such as `maxFileSize`, `maxFiles`, and `maxTotalSize`.
 - `isFastifyMultipartTooLargeError(error)`: Detects multipart limit errors across Fastify error shapes.
 - `FastifyHttpApplicationAdapter`: The core adapter implementation.
-- Option types: `FastifyAdapterOptions`, `BootstrapFastifyApplicationOptions`, `RunFastifyApplicationOptions`, `CorsInput`, `FastifyApplicationSignal`.
+- Option types: `FastifyAdapterOptions`.
 
 ## Troubleshooting
 
 - **CORS Errors**: Ensure you're using the `cors` bootstrap option. Since Fastify's native CORS plugin is not registered, only the fluo-managed CORS logic applies.
 - **Middleware Issues**: The `middleware` option accepts runtime-level `MiddlewareLike[]` functions. These are not Fastify plugins and follow the standard middleware interface used across fluo adapters.
-- **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. `runFastifyApplication` and `bootstrapFastifyApplication` select the framework console logger by default and accept `logger` for hosts or tests that need an injected `ApplicationLogger`.
+- **Logging**: The native Fastify logger is disabled. Explicitly supply `createConsoleApplicationLogger()` or a custom `ApplicationLogger` to Factory.
 - **Global Prefix**: Use `globalPrefixExclude` to prevent the prefix from being applied to internal routes or health check endpoints.
 - **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
 - **HTTPS startup**: Use Node.js `>=24.0.0 <27` and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.

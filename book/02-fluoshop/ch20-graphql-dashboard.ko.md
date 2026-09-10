@@ -434,13 +434,13 @@ export class DashboardModule {}
 import { DashboardModule } from './orders/dashboard/module.js';
 ```
 
-**기존 `src/main.ts`의 작은 bootstrap 변경**은 `ensureMetadataSymbol()` 호출 뒤, `runFastifyApplication` 호출 전에 아래 동적 import를 추가하는 것이다. 장식된 클래스가 메타데이터 준비보다 먼저 평가되지 않게 한다.
+**기존 `src/main.ts`의 작은 startup 변경**은 `ensureMetadataSymbol()` 호출 뒤, `FluoFactory.create()` 전에 아래 동적 import를 추가하는 것이다. 장식된 클래스가 메타데이터 준비보다 먼저 평가되지 않게 한다.
 
 ```ts
 const { DashboardAuthentication } = await import('./orders/dashboard/graphql-auth.js');
 ```
 
-같은 파일에서 기존 helper의 옵션에 `middleware` 배열이 없다면 아래 항목을 추가한다. 배열이 이미 있다면 그 안에서 기존 CORS·상관관계 처리 뒤, 요청을 소비하는 미들웨어보다 앞에 `DashboardAuthentication` 클래스 토큰을 한 번만 추가한다. `AppModule`, `blogConfig.PORT`, host, 기존 종료 옵션은 바꾸지 않는다. `exports: [DashboardAuthentication]` 덕분에 bootstrap의 application middleware가 앱 컨테이너에서 이 토큰을 resolve할 수 있다.
+같은 파일에서 기존 `FluoFactory.create()` options에 `middleware` 배열이 없다면 아래 항목을 추가한다. 배열이 이미 있다면 그 안에서 기존 CORS·상관관계 처리 뒤, 요청을 소비하는 미들웨어보다 앞에 `DashboardAuthentication` 클래스 토큰을 한 번만 추가한다. `AppModule`, `blogConfig.PORT`, host, logger와 `shutdownRegistration`은 바꾸지 않는다. `exports: [DashboardAuthentication]` 덕분에 Factory의 application middleware가 앱 컨테이너에서 이 토큰을 resolve할 수 있다.
 
 ```ts
 middleware: [DashboardAuthentication],

@@ -11,7 +11,7 @@
 | 실행 환경 | 아래 검증 명령은 의존성을 설치한 repository checkout에서 Node `>=24 <27`, `pnpm@10.4.1`을 사용합니다. 생성 앱은 registry 의존성과 생성된 scripts를 유지하고, `examples/fluo-blog` 같은 repository example은 workspace 의존성과 자체 빌드 전제를 따릅니다. 이 문서는 두 앱 디렉터리를 서로 덮어쓰는 recipe가 아닙니다. |
 | 모듈과 DI | `@fluojs/runtime`의 `defineModule`, `FluoFactory`을 사용합니다. Root module과 provider를 등록하고, 모듈 간 의존성은 imports/exports로 공개해야 합니다. 생성자 의존성에는 `@fluojs/core`의 `Inject` 또는 provider의 명시적 `inject` 목록이 필요합니다. Decorator를 쓰면 module 평가 전에 `Symbol.metadata` 준비와 표준 decorator 변환이 필요합니다. [metadata 계약](./decorators-and-metadata.ko.md)을 따릅니다. |
 | Lifecycle API | `@fluojs/runtime`에서 type으로 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, `ApplicationContext`를 import합니다. 훅은 동기 `void` 또는 `Promise<void>`를 반환합니다. Interface 선언만으로 등록되지는 않습니다. Hook-bearing `useValue` 또는 적격 singleton class/factory provider가 lifecycle 대상이며, `useExisting` alias와 request/transient provider는 독립 startup hook 대상으로 root-resolve하지 않습니다. |
-| HTTP 경로 | `@fluojs/platform-fastify`의 `runFastifyApplication`, `bootstrapFastifyApplication`, `createFastifyAdapter`; `@fluojs/platform-nodejs`의 `runNodeApplication`, `bootstrapNodeApplication`, `NodeHttpApplicationAdapter.create`가 공개 API입니다. 직접 adapter를 구현할 때는 `@fluojs/http/portable`의 `HttpApplicationAdapter` 계약을 따릅니다. 이 문서의 `src/` 경로는 구현 근거이지 consumer import 경로가 아닙니다. |
+| HTTP 경로 | 각 platform의 concrete `AdapterClass.create(options)`와 `@fluojs/runtime`의 `FluoFactory.create(...)`, `app.listen()`을 사용합니다. Custom adapter는 `@fluojs/http/portable`의 `HttpApplicationAdapter`를 구현합니다. `src/` 경로는 구현 근거이지 consumer import가 아닙니다. |
 | 외부 자원 | 순수 DI 예제에는 서버, 환경 파일, 외부 서비스가 필요하지 않습니다. DB·queue·socket·background job을 추가하면 해당 자원의 연결 설정, 오류 처리, drain, close 소유권도 애플리케이션이나 해당 package에 지정해야 합니다. |
 
 ## 입력, 기본값과 완료 시점
@@ -23,8 +23,8 @@
 | Bootstrap 옵션 | `providers`는 생략 시 추가 등록 없음, `duplicateProviderPolicy`는 `warn`이며 `throw`/`ignore`도 받습니다. `moduleGraphCache`와 `diagnostics.timing`은 기본 off입니다. Timing을 켜면 `bootstrapTiming`을 제공하며 context에는 `create_dispatcher` phase가 없습니다. |
 | `app.ready()` | `Promise<void>`로 critical platform readiness를 검사할 뿐 adapter를 활성화하거나 `state`를 `ready`로 바꾸지 않습니다. HTTP health route를 자동 생성하지도 않습니다. 성공한 close 뒤에는 reject합니다. 종료 admission 판정에는 이 메서드나 `state` 대신 아래 operation gate 계약을 적용합니다. |
 | `app.listen()` | `ready()` → `adapter.listen(dispatcher)` → 시작 로그 → 선택적 host signal 등록을 기다립니다. 동시 호출은 startup과 실패 cleanup을 공유합니다. Readiness/listen/setup 실패는 원래 오류를 보존하며 `close('bootstrap-failed')`를 호출합니다. 새 startup에는 새 앱이 필요합니다. |
-| `bootstrapFastifyApplication(RootModule, options)` | 미이전 소비자를 위해 유지되는 platform helper이며 같은 Factory의 middleware와 cleanup을 사용합니다. Native logger와 host signal 선택은 platform option으로 전달합니다. 새 HTTP 앱은 [Factory recipe](../getting-started/bootstrap-paths.ko.md)를 사용하세요. |
-| Node/Fastify 종료 설정 | `shutdownSignals`는 run helper에서 기본 `['SIGINT', 'SIGTERM']`, `false`로 비활성화하거나 지원 신호 목록으로 지정합니다. `forceExitTimeoutMs = 30_000`은 signal 종료 실패를 표시하는 시간이며, adapter의 `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify의 종료 제한은 non-negative safe integer로 setup에서 검증됩니다. |
+| `AdapterClass.create(options)` | Transport를 구성하지만 listen이나 signal 등록을 시작하지 않습니다. [Factory recipe](../getting-started/bootstrap-paths.ko.md)로 application과 host callback을 조립합니다. |
+| Node/Fastify shutdown options | 명시적인 `createNodeShutdownSignalRegistration()`은 기본 `SIGINT`/`SIGTERM`을 선택합니다. Callback을 생략하면 host가 signal을 소유합니다. `forceExitTimeoutMs = 30_000`은 signal 완료 bound이며 adapter `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify는 setup 시 0 이상의 safe integer 종료 제한을 검증합니다. |
 | `close(signal?)` | 생략한 signal은 `undefined`이며 runtime이 임의로 `SIGTERM`을 붙이지 않습니다. 진행 중 teardown을 공유하고 성공 뒤 반복 close는 no-op입니다. 실패 후 명시적 재시도는 아래 phase별 소유권을 따릅니다. |
 
 ## 시작 단계
@@ -76,7 +76,7 @@ Bootstrap 실패 시 런타임은 확보한 lifecycle instance에 `bootstrap-fai
 | 호스트 타임아웃 경계 | Node 신호 등록은 기본 강제 종료 타임아웃으로 `30_000` ms를 사용합니다. 타임아웃이 나면 실패를 로그로 남기고 `process.exitCode = 1`을 설정하지만, 호스트 프로세스를 직접 종료하지는 않습니다. | `packages/platform-nodejs/src/node/internal-node-shutdown.ts:6-15`, `packages/platform-nodejs/src/node/internal-node-shutdown.ts:77-109` |
 | 어댑터 드레인 타임아웃 | Node HTTP 어댑터는 drain semantics로 서버를 종료하고, `shutdownTimeoutMs`가 지나면 남은 연결을 강제로 닫습니다. 어댑터 기본값은 `10_000` ms입니다. | `packages/platform-nodejs/src/node/internal-node.ts:67`, `packages/platform-nodejs/src/node/internal-node.ts:169-179`, `packages/platform-nodejs/src/node/internal-node.ts:335-367` |
 
-런타임은 종료 훅을 명시적 계약으로만 제공합니다. 신호 등록은 범용 런타임 표면이 아니라 주변 호스트나 어댑터 헬퍼의 책임입니다.
+런타임은 종료 훅을 명시적 계약으로만 제공합니다. 신호 등록은 범용 런타임 표면이 아니라 주변 호스트가 제공하는 shutdown registration callback의 책임입니다.
 
 ## Runtime cleanup settlement
 
@@ -95,7 +95,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 5. Adapter retry는 adapter 소유입니다. Runtime은 incomplete adapter phase에서 `close(signal)`을 다시 호출할 뿐 모든 adapter를 재시작하거나 같은 drain을 보장하지 않습니다. `MicroserviceApplication.close()`는 성공/실패 결과를 terminal하게 보존하므로 부모 close 재시도가 child transport teardown을 재실행하지 않습니다. `startAllMicroservices()` 실패는 먼저 시작된 child만 역순 rollback하며 원래 시작 오류를 유지합니다.
 6. Bootstrap 실패 시 확보한 readiness/runtime cleanup/hook/HTTP adapter/container 정리를 시도하고 원래 오류를 보존합니다. 반환된 앱의 readiness/listen/시작 로그/signal 등록 실패도 `app.close('bootstrap-failed')`를 거칩니다. Cleanup이나 logger 실패가 원래 오류를 바꾸지 않습니다. Factory 호출 이전에 생성한 외부 자원은 여전히 application이 소유합니다.
 7. Node signal은 `shutdownRegistration` callback으로 listen 후 등록합니다. 부분 등록 실패는 Node 소유자가 rollback합니다. Manual close는 해제를 한 번 시도하고 모든 runtime 정리를 계속합니다. 동시 close와 이후 close는 해제 실패를 공유하며 teardown 실패와 aggregate됩니다. Runtime teardown이 끝나면 해제 실패가 있어도 state는 `closed`입니다. Node timeout/close 실패는 로그와 `process.exitCode = 1`로 보고하며 `process.exit()`를 호출하지 않습니다.
-8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 Factory `shutdownRegistration` 생략(기존 run helper에서는 `shutdownSignals: false`)으로 이중 소유권을 피합니다.
+8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 Factory `shutdownRegistration` 생략으로 이중 소유권을 피합니다.
 
 ## 범위를 명시한 예제
 

@@ -935,12 +935,12 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
       scaffoldSource.includes('HealthModule.forRoot()') &&
       scaffoldSource.includes('@Controller(\'/greeting\')') &&
       scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
-      (scaffoldSource.includes('adapter: createFastifyAdapter({ port })') ||
-        (scaffoldSource.includes("adapterCall: 'createFastifyAdapter({ port })'") &&
+      (scaffoldSource.includes('adapter: FastifyHttpApplicationAdapter.create({ port })') ||
+        (scaffoldSource.includes("adapterCall: 'FastifyHttpApplicationAdapter.create({ port })'") &&
           scaffoldSource.includes('adapter: ${starter.adapterCall}'))) &&
       scaffoldSource.includes('await app.listen();') &&
       !scaffoldSource.includes('const RuntimeHealthModule = createHealthModule();') &&
-      scaffoldSource.includes('createFastifyAdapter') &&
+      scaffoldSource.includes('FastifyHttpApplicationAdapter.create') &&
       !scaffoldSource.includes('MetricsModule.forRoot') &&
       !scaffoldSource.includes('OpenApiModule.forRoot') &&
       !scaffoldSource.includes('src/node-http-adapter.ts'),

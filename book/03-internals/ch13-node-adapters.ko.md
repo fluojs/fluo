@@ -140,11 +140,11 @@ export class AppModule {}
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
 export const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
     rawBody: true,
@@ -163,9 +163,9 @@ await app.listen();
 ```typescript
 import assert from 'node:assert/strict';
 import { Server } from 'node:http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
@@ -177,9 +177,9 @@ const options = {
 };
 
 const factories = [
-  ['fastify', () => createFastifyAdapter(options)],
+  ['fastify', () => FastifyHttpApplicationAdapter.create(options)],
   ['nodejs', () => NodeHttpApplicationAdapter.create(options)],
-  ['express', () => createExpressAdapter(options)],
+  ['express', () => ExpressHttpApplicationAdapter.create(options)],
 ] as const;
 
 for (const [name, createAdapter] of factories) {
@@ -266,7 +266,7 @@ Fastify와 Express 소스는 안전하게 옮길 수 있는 라우트에 네이�
 
 ```typescript
 import type { RequestHandler } from 'express';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
@@ -276,7 +276,7 @@ const legacyTag: RequestHandler = (_request, response, next) => {
 };
 
 export const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({
+  adapter: ExpressHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
     rawBody: true,
@@ -298,7 +298,7 @@ Fastify는 같은 요구에 `configureFastify`라는 생성 시점 접점을 제
 
 포트를 다른 서버가 점유한 상태에서 시작한 뒤 `close()`를 호출하는 실패 실험도 의미가 있다. 기대해야 할 것은 “언젠가 시작됨”이 아니라 진행 중인 retry가 취소·정리되어, close가 끝난 뒤 포트를 비워도 닫은 adapter가 뒤늦게 bind하지 않는 것이다. 패키지의 lifecycle 테스트는 이 순서를 관찰한다. 제품 테스트에서는 느린 handler에 진입했다는 신호를 받은 후 종료를 시작하고 작업 완료 신호를 직접 해제한다. 임의의 100밀리초 대기로 경합을 만들면 부하가 큰 CI에서 다른 경로를 시험하게 된다.
 
-시그널 helper의 `forceExitTimeoutMs`는 adapter connection drain 제한과 별개다. Node 계열 run helper는 시그널 종료 실패나 timeout을 로그와 `process.exitCode`로 알리지만 최종 프로세스 종료는 호스트에 맡긴다. 열린 다른 자원이 있으면 exit code를 설정했다고 곧바로 프로세스가 끝나지 않는다. 실험 프로그램의 수동 `finally`와 운영 프로세스의 signal 경로를 분리해 검증해야 하는 이유다.
+시그널 helper의 `forceExitTimeoutMs`는 adapter connection drain 제한과 별개다. 명시적으로 전달한 Node shutdown registration callback은 시그널 종료 실패나 timeout을 로그와 `process.exitCode`로 알리지만 최종 프로세스 종료는 호스트에 맡긴다. 열린 다른 자원이 있으면 exit code를 설정했다고 곧바로 프로세스가 끝나지 않는다. 실험 프로그램의 수동 `finally`와 운영 프로세스의 signal 경로를 분리해 검증해야 하는 이유다.
 
 새로운 요구가 없다면 기존 Fastify를 유지하는 것도 올바른 결론이다. Express는 남겨야 할 네이티브 자산의 비용을 줄이고, raw Node는 중간 HTTP 엔진을 줄이면서 Node 서버 옵션을 직접 선택하게 한다. 어느 쪽도 데이터베이스 트랜잭션이나 인증을 대신하지 않는다. README의 특정 `/health` 성능 수치를 주문 조회의 성능 보장으로 가져오지 말고 실제 payload와 동시성, 오류율, 종료 시간을 나중에 함께 측정하자.
 

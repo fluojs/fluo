@@ -36,7 +36,7 @@ The former mixed-runtime entrypoints have no compatibility shim. Update imports 
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-Adapter creation is consolidated in `NodeHttpApplicationAdapter.create(options)`. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) for both removed factories and type aliases. The `NodeHttpApplicationAdapter` class and public positional constructor remain. Bootstrap/run, logger, shutdown, and filesystem helpers are not removed by this change.
+Adapter creation is consolidated in `NodeHttpApplicationAdapter.create(options)`. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) for both removed factories and type aliases. The `NodeHttpApplicationAdapter` class and public positional constructor remain. Bootstrap/run helpers and Nodejs aliases are removed; logger, shutdown registration, and filesystem utilities remain.
 
 ## When to Use
 
@@ -125,7 +125,7 @@ await app.listen();
 await app.close();
 ```
 
-Existing `bootstrapNodejsApplication(...)` / `runNodejsApplication(...)` and their Node-named helpers remain supported and internally use the same static creation path. Bootstrap does not listen; run owns listen and signal registration. These helpers default to the framework console logger and accept an injected `logger`. Run-helper `forceExitTimeoutMs` expiry or shutdown failure is reported through logs and `process.exitCode`; the host owns final process termination. Adapter `shutdownTimeoutMs` is the separate connection-drain bound.
+Create the adapter with `NodeHttpApplicationAdapter.create(options)`, create the app with `FluoFactory.create(...)`, then call `app.listen()`. Explicitly select the Node console logger and `createNodeShutdownSignalRegistration()` callback. Signal shutdown timeout or failure is reported through logs and `process.exitCode`; the host owns final process termination. Adapter `shutdownTimeoutMs` is the separate connection-drain bound.
 
 ## Behavioral Contracts
 
@@ -133,8 +133,6 @@ Existing `bootstrapNodejsApplication(...)` / `runNodejsApplication(...)` and the
 - `http` accepts Node `node:http` `ServerOptions` for plain HTTP server construction, while `https` keeps its existing TLS construction options; callers must supply at most one of those fields.
 - `maxBodySize` accepts a non-negative integer byte count, is enforced while raw Node request bytes are still streaming, and becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided in the adapter options object.
 - The raw Node adapter normalizes mixed-case JSON and multipart `content-type` values, returns `413` when request bodies exceed `maxBodySize`, propagates `x-request-id` with `x-correlation-id` fallback into the request context and error responses, and exposes a server-backed realtime capability through `getServer()` / `getRealtimeCapability()`.
-- `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
-- `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. Listen retries honor `retryLimit`/`retryDelayMs`, shutdown closes idle keep-alive connections before bounded drain, and when signal-driven shutdown times out or fails it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
 - Supported Node logger, shutdown, filesystem, and raw adapter helpers live on the package root; lower-level request/response/compression plumbing lives on `@fluojs/platform-nodejs/internal`.
 
 ## Conformance Coverage
@@ -148,14 +146,11 @@ The same regression targets also cover the package-specific public surface, cano
 ## Public API Overview
 
 - `NodeHttpApplicationAdapter.create(options)`: Primary factory for the raw Node.js HTTP adapter.
-- `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
-- `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
-- `BootstrapNodejsApplicationOptions`: Options for bootstrap-only Node.js application creation.
 - `NodeHttpAdapterOptions`: Transport-level options for `NodeHttpApplicationAdapter.create(...)`, including `compression`, `multipart`, `port`, `host`, mutually exclusive `http` or `https` construction options, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
-- `NodejsApplicationSignal`: Supported signal names for `runNodejsApplication(...)` shutdown registration.
+- `app.listen()` retries honor `retryLimit`/`retryDelayMs`. Adapter close stops idle keep-alive connections before bounded drain.
+- `NodeShutdownSignal`: The `SIGINT` and `SIGTERM` names accepted by the Node shutdown callback.
 - `NodeHttpApplicationAdapter`: The concrete `create(...)` return type and existing DI class token. `instanceof`, inheritance, the public positional constructor, and instance `listen`/`close` remain supported.
-- `RunNodejsApplicationOptions`: Options for one-call bootstrap, listen, and graceful shutdown wiring.
-- Node bootstrap/run, logger, signal, and filesystem exports remain. See the migration guide for the removed adapter factories and type aliases.
+- Node logger, signal registration, and filesystem exports remain. Bootstrap/run exports, duplicate adapter factories, and their type aliases are removed; follow the migration guide.
 - `@fluojs/platform-nodejs/internal`: First-party Node adapter integration seam replacing `@fluojs/runtime/internal-node`; it includes lower-level compression and request/response helpers.
 
 ## Multipart streaming
@@ -179,4 +174,4 @@ Runtime route dispatch owns an iterator created for a route and automatically ca
 - `packages/platform-nodejs/src/lifecycle.integration.test.ts`
 - `book/intermediate/ch21-express-node.md`
 
-`createNodeShutdownSignalRegistration(...)` rolls back partially installed handlers on registration failure and attempts every removal after an individual failure. Factory close retains unregistration failure for concurrent/later callers without skipping runtime cleanup; `factory-signals.test.ts` covers this boundary. Existing `bootstrapNodejsApplication`/`runNodejsApplication` remain for consumers awaiting platform migration. New apps use the Factory recipe above and the [migration guide](../../docs/getting-started/migrate-http-factory.md).
+`createNodeShutdownSignalRegistration(...)` rolls back partially installed handlers on registration failure and attempts every removal after an individual failure. Factory close retains unregistration failure for concurrent/later callers without skipping runtime cleanup; `factory-signals.test.ts` covers this boundary. New apps use the Factory recipe above and the [migration guide](../../docs/getting-started/migrate-http-factory.md).

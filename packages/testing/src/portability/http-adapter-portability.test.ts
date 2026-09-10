@@ -1,24 +1,17 @@
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureExpressPlatform from '@fluojs/platform-express';
+import * as FixtureNodePlatform from '@fluojs/platform-nodejs';
+import * as FixtureFastifyPlatform from '@fluojs/platform-fastify';
 import {
   appendVaryHeader,
   Controller,
   Get,
   getRequestHeader,
-  Head,
-  Post,
   type RequestContext,
 } from '@fluojs/http';
-import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
-import {
-  bootstrapFastifyApplication,
-  type FastifyHttpApplicationAdapter,
-  runFastifyApplication,
-} from '@fluojs/platform-fastify';
-import {
-  bootstrapNodeApplication,
-  bootstrapNodejsApplication,
-  runNodeApplication,
-  runNodejsApplication,
-} from '@fluojs/platform-nodejs';
+
+import type { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -497,52 +490,52 @@ describe('http adapter portability cleanup reporting', () => {
 registerPortabilitySuite(
   'node',
   createHttpAdapterPortabilityHarness({
-    bootstrap: bootstrapNodeApplication,
-    createConditionalRequestBootstrapOptions: (options) => options,
-    createErrorRepresentationBootstrapOptions: (options) => options,
+    bootstrap: createNodeTestApplication,
+    createConditionalRequestBootstrapOptions: (options): NodeTestApplicationOptions => options,
+    createErrorRepresentationBootstrapOptions: (options): NodeTestApplicationOptions => options,
     name: 'node',
-    run: runNodeApplication,
+    run: startNodeTestApplication,
   }),
   {
     streamDrainCloseEdge: true,
   },
 );
-registerHeaderHelperPortabilitySuite('node', bootstrapNodeApplication);
+registerHeaderHelperPortabilitySuite('node', createNodeTestApplication);
 
 registerPortabilitySuite(
   'nodejs-platform',
   createHttpAdapterPortabilityHarness({
-    bootstrap: bootstrapNodejsApplication,
-    createConditionalRequestBootstrapOptions: (options) => options,
-    createErrorRepresentationBootstrapOptions: (options) => options,
+    bootstrap: createNodeTestApplication,
+    createConditionalRequestBootstrapOptions: (options): NodeTestApplicationOptions => options,
+    createErrorRepresentationBootstrapOptions: (options): NodeTestApplicationOptions => options,
     name: 'nodejs-platform',
-    run: runNodejsApplication,
+    run: startNodeTestApplication,
   }),
   {
     streamDrainCloseEdge: true,
   },
 );
-registerHeaderHelperPortabilitySuite('nodejs-platform', bootstrapNodejsApplication);
+registerHeaderHelperPortabilitySuite('nodejs-platform', createNodeTestApplication);
 
 registerPortabilitySuite(
   'express',
   createHttpAdapterPortabilityHarness({
-    bootstrap: bootstrapExpressApplication,
-    createConditionalRequestBootstrapOptions: (options) => options,
-    createErrorRepresentationBootstrapOptions: (options) => options,
+    bootstrap: createExpressTestApplication,
+    createConditionalRequestBootstrapOptions: (options): ExpressTestApplicationOptions => options,
+    createErrorRepresentationBootstrapOptions: (options): ExpressTestApplicationOptions => options,
     name: 'express',
-    run: runExpressApplication,
+    run: startExpressTestApplication,
   }),
   {
     streamDrainCloseEdge: true,
   },
 );
-registerHeaderHelperPortabilitySuite('express', bootstrapExpressApplication);
+registerHeaderHelperPortabilitySuite('express', createExpressTestApplication);
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
-  bootstrap: bootstrapFastifyApplication,
-  createConditionalRequestBootstrapOptions: (options) => options,
-  createErrorRepresentationBootstrapOptions: (options) => options,
+  bootstrap: createFastifyTestApplication,
+  createConditionalRequestBootstrapOptions: (options): FastifyTestApplicationOptions => options,
+  createErrorRepresentationBootstrapOptions: (options): FastifyTestApplicationOptions => options,
   exactRawBodyByteContentType: 'application/octet-stream',
   name: 'fastify',
   prepareExactRawBodyByteTest(app) {
@@ -559,10 +552,98 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
       done(null, body);
     });
   },
-  run: runFastifyApplication,
+  run: startFastifyTestApplication,
 });
 
 registerPortabilitySuite('fastify', fastifyPortabilityHarness, {
   streamDrainCloseEdge: true,
 });
-registerHeaderHelperPortabilitySuite('fastify', bootstrapFastifyApplication);
+registerHeaderHelperPortabilitySuite('fastify', createFastifyTestApplication);
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type ExpressTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureExpressPlatform.ExpressAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createExpressTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: ExpressTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureExpressPlatform.ExpressHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+async function startExpressTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: ExpressTestApplicationOptions = {},
+) {
+  const app = await createExpressTestApplication(rootModule, {
+    ...options,
+    shutdownRegistration: options.shutdownSignals === false
+      ? undefined
+      : FixtureNodePlatform.createNodeShutdownSignalRegistration(options.shutdownSignals),
+  });
+  await app.listen();
+  return app;
+}
+
+type FastifyTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureFastifyPlatform.FastifyAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createFastifyTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: FastifyTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureFastifyPlatform.FastifyHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+async function startFastifyTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: FastifyTestApplicationOptions = {},
+) {
+  const app = await createFastifyTestApplication(rootModule, {
+    ...options,
+    shutdownRegistration: options.shutdownSignals === false
+      ? undefined
+      : FixtureNodePlatform.createNodeShutdownSignalRegistration(options.shutdownSignals),
+  });
+  await app.listen();
+  return app;
+}
+
+type NodeTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureNodePlatform.NodeHttpAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createNodeTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: NodeTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+async function startNodeTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: NodeTestApplicationOptions = {},
+) {
+  const app = await createNodeTestApplication(rootModule, {
+    ...options,
+    shutdownRegistration: options.shutdownSignals === false
+      ? undefined
+      : FixtureNodePlatform.createNodeShutdownSignalRegistration(options.shutdownSignals),
+  });
+  await app.listen();
+  return app;
+}

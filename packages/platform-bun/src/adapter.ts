@@ -1,31 +1,11 @@
-import type {
-  CorsOptions,
-  Dispatcher,
-  HandlerDescriptor,
-  HttpApplicationAdapter,
-  HttpMethod,
-  MiddlewareLike,
-  SecurityHeadersOptions,
-} from '@fluojs/http';
+import type { Dispatcher, HandlerDescriptor, HttpApplicationAdapter, HttpMethod } from '@fluojs/http';
 import {
   bindRawRequestNativeRouteHandoff,
   createFetchStyleHttpAdapterRealtimeCapability,
   isRoutePathNormalizationSensitive,
 } from '@fluojs/http/internal';
-import type {
-  Application,
-  ApplicationLogger,
-  CreateApplicationOptions,
-  ModuleType,
-  MultipartOptions,
-} from '@fluojs/runtime';
-import {
-  bootstrapHttpAdapterApplication,
-  createDefaultApplicationLogger,
-  type HttpAdapterListenTarget,
-  type RunHttpAdapterApplicationOptions,
-  runHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
+import type { MultipartOptions } from '@fluojs/runtime';
+import type { HttpAdapterListenTarget } from '@fluojs/runtime/internal/http-adapter';
 import {
   createWebRequestResponseFactory,
   dispatchWebRequest,
@@ -48,12 +28,6 @@ type BunRouteHandler = (
 type BunRouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
 type BunRouteMethodMap = Partial<Record<BunRouteMethod, BunRouteHandler | Response>>;
 type BunRouteValue = BunRouteHandler | Response | BunRouteMethodMap;
-
-/** Shutdown signal names that `runBunApplication()` can register. */
-export type BunApplicationSignal = 'SIGINT' | 'SIGTERM';
-
-/** CORS input accepted by Bun application bootstrap helpers. */
-export type BunCorsInput = false | string | string[] | CorsOptions;
 
 /** TLS options forwarded to `Bun.serve()` without adapter-level normalization. */
 export type BunTlsOptions = Record<string, unknown>;
@@ -159,7 +133,7 @@ export interface BunServerLike {
   url?: URL;
 }
 
-/** Options for `createBunAdapter()`. */
+/** Options for `BunHttpApplicationAdapter.create()`. */
 export interface BunAdapterOptions {
   /** Enables Bun development-mode behavior when supported by the host runtime. */
   development?: boolean;
@@ -175,6 +149,8 @@ export interface BunAdapterOptions {
   port?: number;
   /** Preserves raw bodies for non-multipart requests when enabled. */
   rawBody?: boolean;
+  /** Adapter shutdown bound; defaults to 10 seconds. Managed starters select 30 seconds explicitly. */
+  shutdownTimeoutMs?: number;
   /** Whether shutdown asks Bun to stop active connections immediately. */
   stopActiveConnections?: boolean;
   /** TLS options forwarded to `Bun.serve()` for HTTPS startup. */
@@ -195,53 +171,11 @@ export interface CreateBunFetchHandlerOptions {
   rawBody?: boolean;
 }
 
-/** Bootstrap options for Bun applications that do not install shutdown signal wiring. */
-export interface BootstrapBunApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
-  /** CORS policy applied by the shared HTTP bootstrap path. */
-  cors?: BunCorsInput;
-  /** Enables Bun development-mode behavior when supported by the host runtime. */
-  development?: boolean;
-  /** Global route prefix applied by the shared HTTP bootstrap path. */
-  globalPrefix?: string;
-  /** Routes excluded from the global prefix. */
-  globalPrefixExclude?: readonly string[];
-  /** Hostname passed through to `Bun.serve()`. */
-  hostname?: BunHostname;
-  /** Idle timeout passed through to `Bun.serve()`. */
-  idleTimeout?: number;
-  /** Maximum request body size forwarded as Bun's `maxRequestBodySize`. */
-  maxBodySize?: number;
-  /** Middleware applied by the shared HTTP bootstrap path. */
-  middleware?: MiddlewareLike[];
-  /** Multipart parsing limits used by the shared web request dispatcher. */
-  multipart?: MultipartOptions;
-  /** Port passed through to `Bun.serve()`, defaulting to 3000. */
-  port?: number;
-  /** Preserves raw bodies for non-multipart requests when enabled. */
-  rawBody?: boolean;
-  /** Security header policy applied by the shared HTTP bootstrap path. */
-  securityHeaders?: false | SecurityHeadersOptions;
-  /** Whether shutdown asks Bun to stop active connections immediately. */
-  stopActiveConnections?: boolean;
-  /** TLS options forwarded to `Bun.serve()` for HTTPS startup. */
-  tls?: BunTlsOptions;
-}
-
-/** Run options for Bun applications with optional shutdown signal wiring. */
-export interface RunBunApplicationOptions extends BootstrapBunApplicationOptions {
-  /** Maximum signal-driven shutdown duration before fluo reports timeout via `process.exitCode`. */
-  forceExitTimeoutMs?: number;
-  /** Shutdown signals to register, or `false` to disable signal wiring. */
-  shutdownSignals?: false | readonly BunApplicationSignal[];
-}
-
 const DEFAULT_PORT = 3000;
 const DEFAULT_DISPATCHER_NOT_READY_MESSAGE = 'Bun adapter received a request before dispatcher binding completed.';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const MINIMUM_BUN_NATIVE_ROUTES_VERSION = '1.2.3';
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
-const BUN_ADAPTER_CLOSE_TIMEOUT_MS = Symbol('fluo.bunAdapterCloseTimeoutMs');
 const BUN_ADAPTER_DIAGNOSTIC_CODES = {
   invalidOption: 'BUN_ADAPTER_INVALID_OPTION',
   realtimeBindingInvalid: 'BUN_ADAPTER_REALTIME_BINDING_INVALID',
@@ -253,10 +187,6 @@ const BUN_WEBSOCKET_SUPPORT_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
 type BunAdapterDiagnosticCode = typeof BUN_ADAPTER_DIAGNOSTIC_CODES[keyof typeof BUN_ADAPTER_DIAGNOSTIC_CODES];
-
-type BunAdapterInternalOptions = BunAdapterOptions & {
-  [BUN_ADAPTER_CLOSE_TIMEOUT_MS]?: number;
-};
 
 function attachBunAdapterDiagnosticCode<TError extends Error>(
   error: TError,
@@ -280,6 +210,16 @@ function isBunWebSocketBinding(value: unknown): value is BunWebSocketBinding<unk
 
 /** HTTP application adapter backed by native `Bun.serve()`. */
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
+  /**
+   * Creates the canonical Bun adapter for `FluoFactory.create(...)`.
+   *
+   * @param options Bun server and request parsing options.
+   * @returns A concrete HTTP adapter backed by `Bun.serve()`.
+   */
+  static create(options: BunAdapterOptions = {}): BunHttpApplicationAdapter {
+    return new BunHttpApplicationAdapter(options);
+  }
+
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private inFlightDrain?: Deferred<void>;
@@ -291,14 +231,12 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   private readonly webRequestResponseFactory;
 
   constructor(options: BunAdapterOptions = {}) {
-    const internalOptions = options as BunAdapterInternalOptions;
-
     validateNonNegativeIntegerOption('idleTimeout', options.idleTimeout);
     validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
-    validateNonNegativeIntegerOption('shutdownTimeoutMs', internalOptions[BUN_ADAPTER_CLOSE_TIMEOUT_MS]);
+    validateNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs);
     validatePortOption(options.port);
     this.options = options;
-    this.shutdownTimeoutMs = internalOptions[BUN_ADAPTER_CLOSE_TIMEOUT_MS] ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+    this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
     this.webRequestResponseFactory = createWebRequestResponseFactory({
       consumeOriginalBody: true,
       maxBodySize: options.maxBodySize,
@@ -528,154 +466,6 @@ export function createBunFetchHandler({
       request,
     });
   };
-}
-
-/**
- * Creates the recommended Bun HTTP adapter instance.
- *
- * @param options - Bun server and request parsing options.
- * @returns A fluo HTTP application adapter backed by `Bun.serve()`.
- */
-export function createBunAdapter(options: BunAdapterOptions = {}): HttpApplicationAdapter {
-  return new BunHttpApplicationAdapter(options);
-}
-
-/**
- * Bootstraps a fluo application with the Bun adapter without starting signal wiring.
- *
- * @param rootModule - Root fluo module to compile.
- * @param options - Bun adapter and application bootstrap options.
- * @returns The bootstrapped application; call `listen()` to start serving.
- */
-export async function bootstrapBunApplication(
-  rootModule: ModuleType,
-  options: BootstrapBunApplicationOptions,
-): Promise<Application> {
-  const logger = createDefaultApplicationLogger();
-
-  return bootstrapHttpAdapterApplication(
-    rootModule,
-    options,
-    createBunAdapter({
-      development: options.development,
-      hostname: options.hostname,
-      idleTimeout: options.idleTimeout,
-      maxBodySize: options.maxBodySize,
-      multipart: options.multipart,
-      port: options.port,
-      rawBody: options.rawBody,
-      stopActiveConnections: options.stopActiveConnections,
-      tls: options.tls,
-    }),
-    logger,
-  );
-}
-
-/**
- * Bootstraps, starts, and wires shutdown handling for a Bun-hosted fluo application.
- *
- * @param rootModule - Root fluo module to compile.
- * @param options - Bun adapter, application, and shutdown options.
- * @returns The running application instance.
- */
-export async function runBunApplication(
-  rootModule: ModuleType,
-  options: RunBunApplicationOptions,
-): Promise<Application> {
-  validateNonNegativeIntegerOption('forceExitTimeoutMs', options.forceExitTimeoutMs);
-
-  const logger = createDefaultApplicationLogger();
-  const adapterOptions: BunAdapterInternalOptions = {
-    development: options.development,
-    hostname: options.hostname,
-    idleTimeout: options.idleTimeout,
-    maxBodySize: options.maxBodySize,
-    multipart: options.multipart,
-    port: options.port,
-    rawBody: options.rawBody,
-    stopActiveConnections: options.stopActiveConnections,
-    tls: options.tls,
-    [BUN_ADAPTER_CLOSE_TIMEOUT_MS]: options.forceExitTimeoutMs ?? DEFAULT_FORCE_EXIT_TIMEOUT_MS,
-  };
-  const adapter = new BunHttpApplicationAdapter(adapterOptions);
-
-  return runHttpAdapterApplication(rootModule, {
-    ...options,
-    shutdownRegistration: createBunShutdownSignalRegistration(options.shutdownSignals ?? defaultBunShutdownSignals()),
-  }, adapter, logger);
-}
-
-function defaultBunShutdownSignals(): readonly BunApplicationSignal[] {
-  return ['SIGINT', 'SIGTERM'];
-}
-
-function createBunShutdownSignalRegistration(
-  signals: false | readonly BunApplicationSignal[],
-): NonNullable<RunHttpAdapterApplicationOptions['shutdownRegistration']> {
-  return (app: Application, logger: ApplicationLogger, forceExitTimeoutMs = DEFAULT_FORCE_EXIT_TIMEOUT_MS) => {
-    validateNonNegativeIntegerOption('forceExitTimeoutMs', forceExitTimeoutMs);
-
-    if (signals === false) {
-      return () => {};
-    }
-
-    const bindings: Array<{ handler: () => void; signal: BunApplicationSignal }> = [];
-
-    for (const signal of signals) {
-      const handler = () => {
-        void closeBunApplicationFromSignal(app, logger, signal, forceExitTimeoutMs);
-      };
-
-      bindings.push({ handler, signal });
-      process.once(signal, handler);
-    }
-
-    return () => {
-      for (const binding of bindings) {
-        process.off(binding.signal, binding.handler);
-      }
-    };
-  };
-}
-
-async function closeBunApplicationFromSignal(
-  app: Application,
-  logger: ApplicationLogger,
-  signal: BunApplicationSignal,
-  forceExitTimeoutMs: number,
-): Promise<void> {
-  if (app.state === 'closed') {
-    process.exitCode = 0;
-    return;
-  }
-
-  let timedOut = false;
-  const forceExitTimer = setTimeout(() => {
-    timedOut = true;
-    logger.error(
-      `Shutdown timeout exceeded after ${String(forceExitTimeoutMs)}ms; leaving process termination to the host.`,
-      undefined,
-      'FluoFactory',
-    );
-    process.exitCode = 1;
-  }, forceExitTimeoutMs);
-
-  if (forceExitTimer.unref) {
-    forceExitTimer.unref();
-  }
-
-  try {
-    await app.close(signal);
-    clearTimeout(forceExitTimer);
-
-    if (!timedOut) {
-      process.exitCode = 0;
-    }
-  } catch (error: unknown) {
-    clearTimeout(forceExitTimer);
-    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');
-    process.exitCode = 1;
-  }
 }
 
 function requireBunGlobal(): BunGlobal {

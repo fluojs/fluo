@@ -1,6 +1,6 @@
 import { ensureMetadataSymbol, Inject, Module } from '@fluojs/core';
 import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
-import { createBunAdapter } from '@fluojs/platform-bun';
+import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { jsonCommandLocal, QUOTE_REQUEST, type QuoteInput, type QuoteItem, readSearchLocal, restRouteMixLocal } from '../shared/workloads';
@@ -149,7 +149,7 @@ function readAppShape(): AppShape {
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 3003);
   const app = await FluoFactory.create(resolveAppModule(readAppShape()), {
-    adapter: createBunAdapter({ port }),
+    adapter: BunHttpApplicationAdapter.create({ port }),
   });
 
   await app.listen();

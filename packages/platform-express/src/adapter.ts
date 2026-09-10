@@ -12,7 +12,6 @@ import {
 import type { AddressInfo, Socket } from 'node:net';
 import {
   BadRequestException,
-  type CorsOptions,
   createErrorResponse,
   createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
@@ -23,9 +22,7 @@ import {
   type HttpApplicationAdapter,
   HttpException,
   InternalServerErrorException,
-  type MiddlewareLike,
   PayloadTooLargeException,
-  type SecurityHeadersOptions,
 } from '@fluojs/http';
 import {
   attachFrameworkRequestNativeRouteHandoff,
@@ -33,18 +30,7 @@ import {
   consumeRawRequestNativeRouteHandoff,
   isRoutePathNormalizationSensitive,
 } from '@fluojs/http/internal';
-import type {
-  Application,
-  ApplicationLogger,
-  CreateApplicationOptions,
-  ModuleType,
-  MultipartOptions,
-  UploadedFile,
-} from '@fluojs/runtime';
-import {
-  bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
+import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
 import {
   dispatchWithRequestResponseFactory,
   finalizeRouteOwnedMultipartBody,
@@ -62,11 +48,6 @@ import {
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
 } from '@fluojs/platform-nodejs/internal';
-import {
-  createConsoleApplicationLogger,
-  createNodeShutdownSignalRegistration,
-  defaultNodeShutdownSignals,
-} from '@fluojs/platform-nodejs';
 import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import express, {
   type ErrorRequestHandler,
@@ -91,6 +72,7 @@ export interface ExpressAdapterOptions {
   host?: string;
   https?: HttpsServerOptions;
   maxBodySize?: number;
+  multipart?: MultipartOptions;
   nativeMiddleware?: readonly ExpressNativeMiddleware[];
   port?: number;
   rawBody?: boolean;
@@ -98,15 +80,6 @@ export interface ExpressAdapterOptions {
   retryLimit?: number;
   shutdownTimeoutMs?: number;
 }
-
-/**
- * Defines the express application signal type.
- */
-export type ExpressApplicationSignal = 'SIGINT' | 'SIGTERM';
-/**
- * Defines the cors input type.
- */
-export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -117,36 +90,6 @@ type ExpressNativeRouteMethod = (typeof EXPRESS_NATIVE_ROUTE_METHODS)[number];
 type RouteDescribingDispatcher = Dispatcher & {
   describeRoutes?: () => readonly HandlerDescriptor[];
 };
-
-/**
- * Describes the bootstrap express application options contract.
- */
-export interface BootstrapExpressApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
-  cors?: CorsInput;
-  globalPrefix?: string;
-  globalPrefixExclude?: readonly string[];
-  host?: string;
-  https?: HttpsServerOptions;
-  logger?: ApplicationLogger;
-  maxBodySize?: number;
-  middleware?: MiddlewareLike[];
-  multipart?: MultipartOptions;
-  nativeMiddleware?: readonly ExpressNativeMiddleware[];
-  port?: number;
-  rawBody?: boolean;
-  retryDelayMs?: number;
-  retryLimit?: number;
-  securityHeaders?: false | SecurityHeadersOptions;
-  shutdownTimeoutMs?: number;
-}
-
-/**
- * Describes the run express application options contract.
- */
-export interface RunExpressApplicationOptions extends BootstrapExpressApplicationOptions {
-  forceExitTimeoutMs?: number;
-  shutdownSignals?: false | readonly ExpressApplicationSignal[];
-}
 
 interface ExpressListenTarget {
   bindTarget: string;
@@ -199,6 +142,29 @@ function isExpressResponseTerminated(response: ExpressResponse): boolean {
  * Represents the express http application adapter.
  */
 export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
+  /**
+   * Creates the canonical Express adapter for `FluoFactory.create(...)`.
+   *
+   * @param options Transport-level Express settings such as host, port, retries, and native middleware.
+   * @returns A concrete Express-backed HTTP application adapter.
+   */
+  static create(
+    options: ExpressAdapterOptions = {},
+  ): ExpressHttpApplicationAdapter {
+    return new ExpressHttpApplicationAdapter(
+      resolvePort(options.port),
+      options.host,
+      resolveNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs, 150),
+      resolveNonNegativeIntegerOption('retryLimit', options.retryLimit, 20),
+      options.https,
+      options.multipart,
+      resolveNonNegativeIntegerOption('maxBodySize', options.maxBodySize, DEFAULT_MAX_BODY_SIZE),
+      options.rawBody,
+      resolveNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS),
+      options.nativeMiddleware,
+    );
+  }
+
   private closing = false;
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
@@ -605,73 +571,6 @@ function createExpressRequestResponseFactory(
       await response.send(createErrorResponse(httpError, requestId));
     },
   };
-}
-
-/**
- * Create express adapter.
- *
- * @param options The options.
- * @param multipartOptions The multipart options.
- * @returns The create express adapter result.
- */
-export function createExpressAdapter(
-  options: ExpressAdapterOptions = {},
-  multipartOptions?: MultipartOptions,
-): HttpApplicationAdapter {
-  return new ExpressHttpApplicationAdapter(
-    resolvePort(options.port),
-    options.host,
-    resolveNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs, 150),
-    resolveNonNegativeIntegerOption('retryLimit', options.retryLimit, 20),
-    options.https,
-    multipartOptions,
-    resolveNonNegativeIntegerOption('maxBodySize', options.maxBodySize, DEFAULT_MAX_BODY_SIZE),
-    options.rawBody,
-    resolveNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS),
-    options.nativeMiddleware,
-  );
-}
-
-/**
- * Bootstrap express application.
- *
- * @param rootModule The root module.
- * @param options The options.
- * @returns The bootstrap express application result.
- */
-export async function bootstrapExpressApplication(
-  rootModule: ModuleType,
-  options: BootstrapExpressApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-
-  return bootstrapHttpAdapterApplication(
-    rootModule,
-    options,
-    createExpressAdapter(options, options.multipart),
-    logger,
-  );
-}
-
-/**
- * Run express application.
- *
- * @param rootModule The root module.
- * @param options The options.
- * @returns The run express application result.
- */
-export async function runExpressApplication(
-  rootModule: ModuleType,
-  options: RunExpressApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-  const adapter = createExpressAdapter(options, options.multipart) as ExpressHttpApplicationAdapter;
-  return runHttpAdapterApplication(rootModule, {
-    ...options,
-    shutdownRegistration: createNodeShutdownSignalRegistration(
-      options.shutdownSignals ?? defaultNodeShutdownSignals(),
-    ),
-  }, adapter, logger);
 }
 
 function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {

@@ -30,26 +30,32 @@ Use this package when running fluo applications on the [Deno](https://deno.com/)
 
 During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before the Deno server lifecycle completes.
 
-When `runDenoApplication(...)` runs inside Deno with signal APIs available, it also registers `SIGINT`/`SIGTERM` listeners and removes them once the application closes.
+Factory registers `createDenoShutdownSignalRegistration()` after listen when supplied as `shutdownRegistration`, and removes those SIGINT/SIGTERM listeners when close begins.
 
 ## Quick Start
 
 ```typescript
-import { runDenoApplication } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoShutdownSignalRegistration,
+} from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-await runDenoApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({ port: 3000 }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-The managed startup path opens a network listener and registers `SIGINT`/`SIGTERM` listeners by default. Run the entrypoint with network access:
+The application-owned startup path opens a network listener. The host may register `SIGINT`/`SIGTERM` with `createDenoShutdownSignalRegistration()` and owns callback failure handling. Run the entrypoint with network access:
 
 ```bash
 deno run --allow-net main.ts
 ```
 
-Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Signal-triggered application-close failures are logged and swallowed by the helper; it does not set an exit status. Hosts that require failure-status propagation or forced termination must pass `shutdownSignals: false` to `runDenoApplication(...)` and coordinate signals and shutdown themselves.
+Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Hosts coordinate signal callback failure status and forced termination themselves.
 
 ## Common Patterns
 
@@ -73,10 +79,10 @@ responsibility: consume the iterator to completion or call `return()` when endin
 If your application owns `Deno.serve(...)`, bootstrap the fluo application without calling `app.listen()` and create a request handler from its public dispatcher. `createDenoFetchHandler(...)` only translates and dispatches requests; it never starts a server or owns shutdown, signals, or websocket upgrades.
 
 ```typescript
-import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
+import { DenoHttpApplicationAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 import { FluoFactory } from '@fluojs/runtime';
 
-const adapter = createDenoAdapter();
+const adapter = DenoHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
@@ -92,10 +98,10 @@ try {
 }
 ```
 
-The surrounding host must stop `server`, coordinate process signals, and decide whether websocket upgrades are handled separately. Use `app.listen()` when fluo should own the managed server lifecycle, or `runDenoApplication(...)` when fluo should additionally install shutdown signal listeners. `adapter.handle(...)` remains available only after the managed adapter's `listen(dispatcher)` binding has completed.
+The surrounding host must stop `server`, coordinate process signals, and decide whether websocket upgrades are handled separately. Use `app.listen()` when fluo should own the managed server lifecycle; supply `createDenoShutdownSignalRegistration()` to Factory when the host wants Deno signal registration. `adapter.handle(...)` remains available only after the managed adapter's `listen(dispatcher)` binding has completed.
 
 ### Direct Adapter Construction
-Application code should usually prefer `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, or `runDenoApplication(...)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options?)` directly; the constructor accepts the same optional public `DenoAdapterOptions` as the factory, applies the default port when options are omitted, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.
+Application code should usually prefer `DenoHttpApplicationAdapter.create(options)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options?)` directly; the constructor accepts the same optional public `DenoAdapterOptions` as the factory, applies the default port when options are omitted, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.
 
 ### Opt-in Deno WebSocket Binding
 The adapter supports Deno's native `Deno.upgradeWebSocket` after the application imports and configures the `@fluojs/websockets/deno` binding. Without that binding, websocket upgrade requests continue through normal HTTP dispatch instead of being upgraded implicitly.
@@ -133,35 +139,40 @@ normalizes these binary payloads before it dispatches gateway handlers.
 Pass Deno TLS certificate material through the `https` option to start `Deno.serve` in HTTPS mode. The adapter forwards `https.cert` and `https.key` to Deno as `cert` and `key`, and startup logging reports an `https://` listen URL so the Deno package stays aligned with the shared HTTP adapter portability contract.
 
 ```typescript
-await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  https: {
-    cert: await Deno.readTextFile('./cert.pem'),
-    key: await Deno.readTextFile('./key.pem'),
-  },
-  port: 3443,
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    https: {
+      cert: await Deno.readTextFile('./cert.pem'),
+      key: await Deno.readTextFile('./key.pem'),
+    },
+    port: 3443,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 `hostname` remains the Deno-native option name. The adapter also accepts `host` as a portability alias for shared HTTP adapter tests and cross-runtime configuration helpers; when both are provided, `hostname` wins for the `Deno.serve(...)` bind target and reported listen URL.
 
-Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. `createDenoFetchHandler(...)` accepts the same request parsing options and preserves byte-exact JSON/text raw bodies while excluding `rawBody` for multipart requests. When a seam is not injected, the managed adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and failed multi-signal registration rolls back listeners that were already attached. Duplicate `listen(...)` calls on an already-running adapter are no-ops that preserve the original dispatcher pipeline. Close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. If graceful shutdown rejects, the adapter aborts ingress but retains the active server controller until `server.finished` settles; only then does it release the managed lifecycle and rethrow the original shutdown error. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher, including websocket upgrade requests, and a JSON `503` while shutdown is in progress.
+Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, and `multipart`. `createDenoFetchHandler(...)` accepts the same request parsing options and preserves byte-exact JSON/text raw bodies while excluding `rawBody` for multipart requests. When a seam is not injected, the managed adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `createDenoShutdownSignalRegistration()` selects `SIGINT`/`SIGTERM` by default; omitting Factory `shutdownRegistration` leaves signals to the host, and failed multi-signal registration rolls back listeners that were already attached. Duplicate `listen(...)` calls on an already-running adapter are no-ops that preserve the original dispatcher pipeline. Close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. If graceful shutdown rejects, the adapter aborts ingress but retains the active server controller until `server.finished` settles; only then does it release the managed lifecycle and rethrow the original shutdown error. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher, including websocket upgrade requests, and a JSON `503` while shutdown is in progress.
 
 ## Conformance Coverage
 
-`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the managed Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, shutdown-failure ownership until `server.finished`, and the bounded 10-second close timeout. `packages/platform-deno/src/fetch-handler.test.ts` applies the shared web-runtime portability harness to the host-owned handler, covering cookies/query decoding, JSON/text and byte-exact raw bodies, multipart exclusion, SSE framing, and proof that dispatch does not call `Deno.serve(...)`. `packages/platform-deno/src/declaration-surface.test.ts` rebuilds the package and verifies the manifest-exported declarations.
+`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the managed Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, omitting `shutdownRegistration`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, shutdown-failure ownership until `server.finished`, and the bounded 10-second close timeout. `packages/platform-deno/src/fetch-handler.test.ts` applies the shared web-runtime portability harness to the host-owned handler, covering cookies/query decoding, JSON/text and byte-exact raw bodies, multipart exclusion, SSE framing, and proof that dispatch does not call `Deno.serve(...)`. `packages/platform-deno/src/declaration-surface.test.ts` rebuilds the package and verifies the manifest-exported declarations.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, single byte-range status/header/body semantics, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
-The Deno 2 smoke lane checks the public `npm:@fluojs/platform-deno` root import and executes the built adapter closure natively. It dispatches a host-owned `createDenoFetchHandler(...)` request without a listener, then starts `runDenoApplication(...)` on port `0` with `shutdownSignals: false`, fetches a real route, and closes the application. Signal ownership remains disabled for that managed-listener test; signal registration is covered separately by the package-local contract suite.
+The Deno 2 smoke lane checks the public `npm:@fluojs/platform-deno` root import and executes the built adapter closure natively. It dispatches a host-owned `createDenoFetchHandler(...)` request without a listener, then creates a static Deno adapter on port `0`, calls `FluoFactory.create(...)` without a shutdown callback and awaits `app.listen()`, fetches a real route, and closes the application. Signal ownership remains disabled for that managed-listener test; signal registration is covered separately by the package-local contract suite.
 
 ## Public API Overview
 
-- `createDenoAdapter(options)`: Factory for the Deno HTTP adapter; it shares validation and normalization with direct construction.
+- `DenoHttpApplicationAdapter.create(options)`: Factory for the Deno HTTP adapter; it shares validation and normalization with direct construction.
 - `createDenoFetchHandler(options)`: Synchronously creates a `Request` handler from an already bootstrapped `app.dispatcher` without starting or owning `Deno.serve(...)`.
-- `bootstrapDenoApplication(module, options)`: Advanced bootstrap for custom orchestration.
-- `runDenoApplication(module, options)`: Recommended quick-start helper for Deno.
-- `DenoHttpApplicationAdapter(options?)`: Core adapter implementation. Direct `new DenoHttpApplicationAdapter()` or `new DenoHttpApplicationAdapter(options)` applies the same default port, `host` alias handling, `hostname` precedence, and numeric option validation as `createDenoAdapter(options)`.
+- `DenoHttpApplicationAdapter(options?)`: Core adapter implementation. Direct `new DenoHttpApplicationAdapter()` or `new DenoHttpApplicationAdapter(options)` applies the same default port, `host` alias handling, `hostname` precedence, and numeric option validation as `DenoHttpApplicationAdapter.create(options)`.
+- `createDenoShutdownSignalRegistration(signals?)`: Host signal callback supplied to Factory; rolls back partial registration and attempts every listener removal on close.
 - `listen(dispatcher)`: Binds the fluo HTTP dispatcher and starts `Deno.serve`; duplicate calls are no-ops while preserving the original dispatcher.
 - `close()`: Stops ingress, drains active requests for up to 10 seconds, and aborts the Deno serve signal if shutdown does not settle. A rejected graceful shutdown retains `getServer()` ownership until `server.finished` settles, then releases the managed lifecycle and rethrows the original shutdown error.
 - `handle(request)`: Manual `Request` to `Response` dispatcher. It succeeds after `listen(dispatcher)` binds the runtime dispatcher, returns JSON `500` before binding, and returns JSON `503` while shutdown is in progress.
@@ -171,7 +182,7 @@ The Deno 2 smoke lane checks the public `npm:@fluojs/platform-deno` root import 
 - `configureWebSocketBinding(...)`: Installs the `@fluojs/websockets/deno` binding before `listen(dispatcher)` starts the server.
 - `DenoWebSocketMessage`: The full inbound websocket payload union: `ArrayBuffer | ArrayBufferView | Blob | string`.
 - `https: { cert, key }`: HTTPS startup options forwarded to `Deno.serve` and reflected in the reported listen URL.
-- Option and seam types: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, bootstrap/run options, and listen-target helpers.
+- Option and seam types: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, `DenoAdapterOptions`, `DenoShutdownSignal`, and `DenoServeOnListenInfo`.
 
 ## Related Packages
 

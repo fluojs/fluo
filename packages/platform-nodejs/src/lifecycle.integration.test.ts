@@ -1,10 +1,11 @@
+import { createNodeTestApplication } from './test-support/application.js';
 import { Agent, get, type InformationEvent, request, Server } from 'node:http';
 import type { Socket } from 'node:net';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { bootstrapNodejsApplication, NodeHttpApplicationAdapter } from './index.js';
+import { NodeHttpApplicationAdapter } from './index.js';
 
 async function requestWithEarlyHints(url: string): Promise<{
   readonly body: string;
@@ -103,7 +104,7 @@ describe('@fluojs/platform-nodejs lifecycle integration', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = await bootstrapNodejsApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       host: '127.0.0.1',
       port: 0,
     });

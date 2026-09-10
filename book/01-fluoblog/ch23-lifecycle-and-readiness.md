@@ -102,7 +102,7 @@ The public `app.state` values `bootstrapped`, `ready`, and `closed` form a diffe
 
 A failed startup may still have partially succeeded. A database connection might open before later initialization fails. In that case the runtime invokes disposal hooks with the signal value `bootstrap-failed` and attempts container disposal. Application disposal code must release only resources it actually acquired, without assuming it is called only after startup completes successfully. Catching an initialization failure and opening the service with an empty repository is a change to the data contract, not recovery.
 
-Runtime bootstrap failure does not guarantee that the HTTP adapter is always closed. After receiving an app, the run helper additionally attempts `app.close('bootstrap-failed')` if listen, startup logging, or signal registration fails, preserving the original failure. Do not give cleanup of resources acquired during initialization the same scope as the helper's post-creation cleanup.
+Factory creation failure attempts cleanup of acquired resources, including the supplied HTTP adapter with `bootstrap-failed`, while preserving the initiating error. Failure during readiness, listen, startup logging, or explicit host registration also attempts `app.close('bootstrap-failed')`. This guarantees cleanup attempts, not successful disposal by every resource; HTTP startup failure is terminal and requires a fresh application.
 
 Also avoid large data migrations in startup hooks. Two instances starting together can race on the same change, and work that takes minutes can dominate listener readiness time. Own schema changes and data transformations as separate deployment steps, limiting application startup to checking whether required dependencies are usable. Catch up on overdue scheduled publications through normal small batches rather than processing the entire backlog indefinitely in a startup hook.
 
@@ -232,7 +232,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
@@ -241,7 +241,7 @@ const { blogAccessObserver } = await import('./observability/access-log.js');
 const { TrafficGate, TrafficMiddleware } = await import('./operations/traffic.js');
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: blogConfig.PORT,
     maxBodySize: 6 * 1024 * 1024,
@@ -398,5 +398,5 @@ This chapter's startup, readiness, and shutdown explanations follow these Docs. 
 - [Runtime lifecycle and signal ownership](../../packages/runtime/README.md)
 - [The architectural contract for startup and shutdown order](../../docs/architecture/lifecycle-and-shutdown.md)
 - [Runtime bootstrap and shutdown phase implementation](../../packages/runtime/src/bootstrap.ts)
-- [The Fastify helper and bounded close contract](../../packages/platform-fastify/README.md)
+- [The Fastify adapter and bounded close contract](../../packages/platform-fastify/README.md)
 - [Fastify run options and adapter close implementation](../../packages/platform-fastify/src/adapter.ts)

@@ -193,6 +193,7 @@ describe('Next HEAD routing contract companions', () => {
     const source = readFileSync(sourceUrl, 'utf8');
     expect(source.split(target)).toHaveLength(2);
     const mutated = source.replace(target, replacement)
+      .replace("import ts from 'typescript';", `import ts from '${import.meta.resolve('typescript')}';`)
       .replace(/from '(\.[^']+)'/gu, (_match, specifier: string) =>
         `from '${new URL(specifier, sourceUrl).href}'`)
       .replaceAll('import.meta.url', JSON.stringify(sourceUrl.href));
@@ -288,6 +289,7 @@ describe('Bounded body parser contract companions', () => {
     const source = readFileSync(sourceUrl, 'utf8');
     expect(source.split(target)).toHaveLength(2);
     const mutated = source.replace(target, replacement)
+      .replace("import ts from 'typescript';", `import ts from '${import.meta.resolve('typescript')}';`)
       .replace(/from '(\.[^']+)'/gu, (_match, specifier: string) =>
         `from '${new URL(specifier, sourceUrl).href}'`)
       .replaceAll('import.meta.url', JSON.stringify(sourceUrl.href));
@@ -728,20 +730,20 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/index.ts',
-      startLine: 9,
-      endLine: 28,
+      startLine: 1,
+      endLine: 15,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 178,
-      endLine: 200,
+      startLine: 123,
+      endLine: 145,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 201,
-      endLine: 227,
+      startLine: 146,
+      endLine: 172,
       fenceLanguage: 'typescript',
     },
     {
@@ -752,20 +754,20 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 140,
-      endLine: 176,
+      startLine: 85,
+      endLine: 121,
       fenceLanguage: 'typescript',
     },
     {
-      sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 326,
-      endLine: 338,
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node-shutdown.ts',
+      startLine: 26,
+      endLine: 35,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/node.test.ts',
-      startLine: 14,
-      endLine: 30,
+      startLine: 16,
+      endLine: 32,
       fenceLanguage: 'typescript',
     },
   ] as const;
@@ -2547,8 +2549,8 @@ describe('enforceExpressRuntimeMigrationDocsSync', () => {
       }
 
       return content.replace(
-        '): HttpApplicationAdapter {\n  return new ExpressHttpApplicationAdapter(',
-        '): ExpressHttpApplicationAdapter {\n  return new ExpressHttpApplicationAdapter(',
+        '): ExpressHttpApplicationAdapter {',
+        '): HttpApplicationAdapter {',
       );
     };
 
@@ -2557,7 +2559,7 @@ describe('enforceExpressRuntimeMigrationDocsSync', () => {
     );
   });
 
-  it('rejects getListenTarget examples without concrete Express adapter narrowing', () => {
+  it('rejects getListenTarget examples without concrete static creation', () => {
     const readText = (relativePath: string): string => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
@@ -2565,9 +2567,9 @@ describe('enforceExpressRuntimeMigrationDocsSync', () => {
         return content;
       }
 
-      const invalidExample = content.replace('adapter instanceof ExpressHttpApplicationAdapter', 'adapter');
+      const invalidExample = content.replaceAll('const adapter = ExpressHttpApplicationAdapter.create(', 'const adapter = unknownAdapter(');
 
-      return `${invalidExample}\n<!-- adapter instanceof ExpressHttpApplicationAdapter; adapter.getListenTarget() -->\n`;
+      return `${invalidExample}\n<!-- ExpressHttpApplicationAdapter.create(); adapter.getListenTarget() -->\n`;
     };
 
     expect(() => enforceExpressRuntimeMigrationDocsSync(readText)).toThrowError(
@@ -4133,9 +4135,9 @@ describe('repository governance contracts', () => {
     }
 
     for (const source of [docsContext, beginnerProduction, fastifyReadme, docsContextKo, beginnerProductionKo, fastifyReadmeKo]) {
-      expect(source).toContain('createFastifyAdapter(...)');
-      expect(source).toContain('bootstrapFastifyApplication(...)');
-      expect(source).toContain('runFastifyApplication(...)');
+      expect(source).toContain('FastifyHttpApplicationAdapter.create');
+      expect(source).not.toContain('bootstrapFastifyApplication(...)');
+      expect(source).not.toContain('runFastifyApplication(...)');
     }
 
     for (const source of [beginnerProduction, beginnerProductionKo, customAdapter, customAdapterKo]) {
@@ -4145,9 +4147,9 @@ describe('repository governance contracts', () => {
     for (const source of [runtimeAdaptersGuide, runtimeAdaptersGuideKo]) {
       expect(source).toContain('### Fastify HTTPS/TLS');
       expect(source).toContain('Node.js `https.ServerOptions`');
-      expect(source).toContain('createFastifyAdapter(...)');
-      expect(source).toContain('bootstrapFastifyApplication(...)');
-      expect(source).toContain('runFastifyApplication(...)');
+      expect(source).toContain('FastifyHttpApplicationAdapter.create');
+      expect(source).not.toContain('bootstrapFastifyApplication(...)');
+      expect(source).not.toContain('runFastifyApplication(...)');
     }
 
     expect(runtimeAdaptersGuide).toContain('plain HTTP behind that infrastructure boundary');
@@ -4158,21 +4160,18 @@ describe('repository governance contracts', () => {
     expect(fastifyReadme).toContain('`shutdownTimeoutMs: 0` starts Fastify close immediately');
     expect(fastifyReadme).toContain('the wait may time out on the next timer turn');
     expect(fastifyReadme).toContain('the underlying Fastify close and cleanup continue');
-    expect(fastifyReadme).toContain('starts listening before it resolves, installs shutdown registration');
-    expect(fastifyReadme).toContain('returns the running application shell');
-    expect(fastifyReadme).not.toContain('the caller still invokes');
-    expect(fastifyAdapterSource).toContain('awaits `listen()`');
-    expect(fastifyAdapterSource).toContain('only then returns the running application');
-    expect(fastifyAdapterSource).toContain('@returns A running application shell after listening succeeds and shutdown registration completes.');
-    expect(fastifyAdapterSource).not.toContain('callers only need to invoke `listen()`');
-    expect(fastifyAdapterSource).not.toContain('ready to listen');
+    for (const readme of [fastifyReadme, fastifyReadmeKo]) {
+      expect(readme).toContain('const app = await FluoFactory.create(AppModule, {');
+      expect(readme).toContain('shutdownRegistration: createNodeShutdownSignalRegistration(),');
+      expect(readme).toContain('await app.listen();');
+    }
+    expect(fastifyAdapterSource).toContain('static create(');
+    expect(fastifyAdapterSource).toContain('return new FastifyHttpApplicationAdapter(');
+    expect(fastifyAdapterSource).not.toMatch(/export\s+(?:async\s+)?function\s+(?:run|bootstrap)FastifyApplication/);
 
     expect(fastifyReadmeKo).toContain('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작');
     expect(fastifyReadmeKo).toContain('대기는 다음 timer turn에 timeout될 수 있지만');
     expect(fastifyReadmeKo).toContain('기반 Fastify close와 cleanup은 계속 진행');
-    expect(fastifyReadmeKo).toContain('resolve되기 전에 listening을 시작하고 shutdown registration을 설치');
-    expect(fastifyReadmeKo).toContain('실행 중인 application shell을 반환');
-    expect(fastifyReadmeKo).not.toContain('caller는 여전히');
   });
 
   it('keeps Throttler guard activation and backing-store clock docs discoverable across governed docs', () => {

@@ -88,34 +88,49 @@ Each handler receives a new `Request` so that consuming the same input stream a 
 
 After the experiment without a listener, choose an actual runtime. The following two files are complete alternatives for `src/main.ts`. Do not run both in one process. Use the previous chapter's `AppModule` and JavaScript output transformed for standard decorators. Do not remove the decorator transformation step just because the runtime can read TypeScript.
 
-For Bun, use the following.
+For Bun, create the concrete static adapter and pass it to Factory. State the 30-second application shutdown bound used by the former managed helper on the adapter, and select the package-root signal callback to retain its 30-second host force-exit bound.
 
 ```typescript
-import { runBunApplication } from '@fluojs/platform-bun';
+import {
+  BunHttpApplicationAdapter,
+  createBunShutdownSignalRegistration,
+} from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
-export const app = await runBunApplication(AppModule, {
-  hostname: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 256,
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+export const app = await FluoFactory.create(AppModule, {
+  adapter: BunHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 256,
+    shutdownTimeoutMs: 30_000,
+  }),
+  shutdownRegistration: createBunShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-For Deno, use the following.
+For Deno, use the same Factory path. Its callback logs and swallows signal-close failures without assigning an exit status. Omit the callback when the host owns signal lifecycle entirely.
 
 ```typescript
-import { runDenoApplication } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoShutdownSignalRegistration,
+} from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
-export const app = await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 256,
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+export const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 256,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 For an application whose build output is `dist/main.js`, the respective execution commands are below. For Deno, the project's npm dependencies must be configured so that Deno can resolve them. These are not instructions to put a Node test file into a Worker bundle.
@@ -130,7 +145,7 @@ deno run --allow-net dist/main.js
 
 Deno's network permission is needed to open the actual server. The adapter does not read environment variables. If the application chooses to read `PORT`, add permission for that environment variable and validate its value at that point. If both Deno's `hostname` and its portability alias `host` are supplied, `hostname` takes precedence. TLS options also differ: Bun uses `tls`, while Deno uses `https: { cert, key }`. Do not blindly pass the same options object to every runtime.
 
-Conversely, if a host already manages `Bun.serve()` or `Deno.serve()`, you can connect the earlier Fetch handler to that host. In this case, the helper handles only request conversion and dispatch. Server shutdown, signal handling, WebSocket upgrades, and Bun's native `routes` acceleration do not come with it automatically. Calling both a managed adapter's `listen()` and a separate `serve()` creates two listener owners for the same application. Choose one and write shutdown tests against that owner.
+Conversely, if a host already manages `Bun.serve()` or `Deno.serve()`, you can connect the earlier Fetch handler to that host. In this case, the bridge handles only request conversion and dispatch. Server shutdown, signal handling, WebSocket upgrades, and Bun's native `routes` acceleration do not come with it automatically. Calling both an adapter's `listen()` and a separate `serve()` creates two listener owners for the same application. Choose one and write shutdown tests against that owner.
 
 ## Separate Environment Lifetime from Request Lifetime in Workers
 
@@ -290,7 +305,7 @@ Calling `await worker.close()` inside an administrative route is particularly da
 
 Worker close rejects new ingress with 503 and waits up to 10 seconds for active work. A timeout does not mean that the underlying drain has finished. An adapter still draining rejects a resumption through `listen()`, and the lazy entrypoint does not bypass it with a new application during that interval. Once the underlying drain actually ends, the lazy path can recover. Distinguish the next fetch creating a new application after a successful lazy close from the raw adapter continuing to return 503 until an explicit listen.
 
-Bun also blocks new ingress when shutdown begins and starts `server.stop(stopActiveConnections)`. A bounded timeout only fails the caller's wait for close; it is not a signal to discard ongoing work and immediately clear the adapter's state. Deno stops new ingress, drains active handlers, and aborts the serve signal if needed. A signal-driven close failure in the Deno run helper is logged but does not set the exit status. A host that must own failure-status propagation can disable automatic registration with `shutdownSignals: false` and coordinate it separately.
+Bun also blocks new ingress when shutdown begins and starts `server.stop(stopActiveConnections)`. A bounded timeout only fails the caller's wait for close; it is not a signal to discard ongoing work and immediately clear the adapter's state. Deno stops new ingress, drains active handlers, and aborts the serve signal if needed. A signal-driven close failure in the explicitly supplied Deno shutdown callback is logged but does not set the exit status. A host that owns failure-status propagation omits `shutdownRegistration` and coordinates signals separately.
 
 ## Document Both the Common Baseline and Optional Features
 

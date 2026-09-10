@@ -1,5 +1,6 @@
+import { createNodeTestApplication } from './test-support/application.js';
 import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+
 import { describe, expect, it } from 'vitest';
 
 import { Arg, Args, FieldResolver, Query, Resolver } from './decorators.js';
@@ -27,7 +28,7 @@ describe('GraphQL object field resolver DTO input bootstrap guards', () => {
       providers: [RootArgsResolver],
     });
 
-    await expect(bootstrapNodeApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
+    await expect(createNodeTestApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
       /@Parent\(\) and @Context\(\) can only bind parameters on @FieldResolver\(\) methods/,
     );
   });
@@ -52,7 +53,7 @@ describe('GraphQL object field resolver DTO input bootstrap guards', () => {
       providers: [MissingArgsResolver],
     });
 
-    await expect(bootstrapNodeApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
+    await expect(createNodeTestApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
       /@FieldResolver\(\{ input \}\) requires @Args\(\)/,
     );
   });
@@ -78,7 +79,7 @@ describe('GraphQL object field resolver DTO input bootstrap guards', () => {
       providers: [MissingInputResolver],
     });
 
-    await expect(bootstrapNodeApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
+    await expect(createNodeTestApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
       /@Args\(\) requires @FieldResolver\(\{ input \}\)/,
     );
   });

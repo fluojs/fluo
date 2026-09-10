@@ -68,7 +68,7 @@ Book이 중심 학습 경로다. 사이트의 짧은 FluoBlog 실습은 초기 H
 
 Outbox/Inbox, 영속 Saga 상태, webhook 서명 검증, 멱등성 저장소, 비밀번호 해시, 결제·파일 저장소 어댑터는 애플리케이션 소유 구현이다. 패키지 등록만으로 exactly-once, 재시작 복구, 결제 정합성이 생긴다고 쓰지 않는다. 돈·외부 시스템·시간을 다루는 코드는 실패와 재시도의 책임을 명시한다.
 
-Node.js 지원 범위는 >=24.0.0 <27, 본문 실행 기준은 Node24와 pnpm10이다. 1권 1장에서 TypeScript `lib`를 ES2024, DOM, ESNext.Decorators로 맞추며, 이후 설정 변경에서도 이를 유지한다. CLI의 ES2022 target만으로는 Promise.withResolvers의 타입을 읽지 못한다. 표준 데코레이터를 사용하고 experimentalDecorators/emitDecoratorMetadata에 의존하지 않는다. TC39 단계와 네이티브 런타임 지원을 혼동하지 않는다. runFastifyApplication 같은 현재 helper를 사용할 때 실제 옵션과 수명주기 계약을 읽는다.
+Node.js 지원 범위는 >=24.0.0 <27, 본문 실행 기준은 Node24와 pnpm10이다. 1권 1장에서 TypeScript `lib`를 ES2024, DOM, ESNext.Decorators로 맞추며, 이후 설정 변경에서도 이를 유지한다. CLI의 ES2022 target만으로는 Promise.withResolvers의 타입을 읽지 못한다. 표준 데코레이터를 사용하고 experimentalDecorators/emitDecoratorMetadata에 의존하지 않는다. TC39 단계와 네이티브 런타임 지원을 혼동하지 않는다. 현재 서버 recipe는 `AdapterClass.create(options)`, `FluoFactory.create(AppModule, { adapter, ... })`, `await app.listen()`이며, 실제 options와 수명주기 계약을 읽는다.
 
 ## 원본과 링크
 

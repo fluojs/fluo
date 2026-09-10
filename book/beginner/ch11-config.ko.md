@@ -184,13 +184,13 @@ const configSources = {
 `FluoFactory.create(...)`는 HTTP adapter 없이도 application container를 만들 수 있고 `FluoFactory.createApplicationContext(AppModule)`은 명시적인 DI-only 형태입니다. 두 adapterless boundary 모두 configuration provider를 사용할 수 있습니다. Adapter requirement는 `listen()`에만 적용됩니다. 한 번의 HTTP startup으로 끝내려면 registration 과정에서 준비한 validated snapshot으로 adapter와 injected `ConfigService`를 함께 구성하고 port 인자 없이 `listen()`을 호출합니다.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule, validatedConfig } from './app.module';
 
 async function bootstrap() {
   const app = await FluoFactory.create(AppModule, {
-    adapter: createFastifyAdapter({ port: validatedConfig.PORT }),
+    adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT }),
   });
 
   await app.listen();

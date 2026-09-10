@@ -36,7 +36,7 @@ npm install @fluojs/platform-nodejs
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-Adapter 생성은 `NodeHttpApplicationAdapter.create(options)`로 통합되었습니다. 제거된 두 factory와 타입 별칭의 변경 목록은 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. `NodeHttpApplicationAdapter` 클래스와 공개 positional constructor는 유지됩니다. Bootstrap/run, logger, shutdown, filesystem helper는 이 변경에서 제거하지 않습니다.
+Adapter 생성은 `NodeHttpApplicationAdapter.create(options)`로 통합되었습니다. 제거된 두 factory와 타입 별칭의 변경 목록은 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. `NodeHttpApplicationAdapter` 클래스와 공개 positional constructor는 유지됩니다. Bootstrap/run helper와 Nodejs alias는 제거되며 logger, shutdown registration, filesystem utility는 유지됩니다.
 
 ## 사용 시점
 
@@ -125,7 +125,7 @@ await app.listen();
 await app.close();
 ```
 
-기존 `bootstrapNodejsApplication(...)` / `runNodejsApplication(...)`와 Node 이름의 helper는 계속 지원되며 내부에서 같은 static 생성 경로를 사용합니다. Bootstrap helper는 listen하지 않고, run helper는 listen과 signal 등록을 소유합니다. 이 helper들은 framework console logger를 기본으로 사용하며 `logger`를 주입할 수 있습니다. Run helper의 `forceExitTimeoutMs` 초과 또는 shutdown 실패는 log와 `process.exitCode`로 보고하고 host가 최종 process 종료를 소유합니다. Adapter의 `shutdownTimeoutMs`는 connection drain bound로 별개입니다.
+`NodeHttpApplicationAdapter.create(options)`와 `FluoFactory.create(...)`로 앱을 생성한 뒤 `app.listen()`을 호출합니다. Node console logger와 `createNodeShutdownSignalRegistration()` callback을 명시적으로 선택하세요. Signal 종료의 `forceExitTimeoutMs` 초과 또는 실패는 log와 `process.exitCode`로 보고하며 최종 process 종료는 host가 소유합니다. Adapter의 `shutdownTimeoutMs`는 별도의 connection drain bound입니다.
 
 ## 동작 계약
 
@@ -133,8 +133,6 @@ await app.close();
 - `http`는 plain HTTP server 생성용 Node `node:http` `ServerOptions`를 받고, `https`는 기존 TLS 생성 option을 유지합니다. 호출자는 두 field 중 하나만 제공해야 합니다.
 - `maxBodySize`는 0 이상의 정수 바이트 수만 받으며, raw Node 요청 바이트가 아직 스트리밍되는 동안 강제되고, adapter options에서 `multipart.maxTotalSize`를 명시적으로 제공하지 않으면 멀티파트 전체 크기 한도의 기본값이 됩니다.
 - Raw Node adapter는 대소문자가 섞인 JSON 및 multipart `content-type` 값을 normalize하고, request body가 `maxBodySize`를 넘으면 `413`을 반환하며, `x-request-id`와 `x-correlation-id` fallback을 request context와 error response에 전파하고, `getServer()` / `getRealtimeCapability()`를 통해 server-backed realtime capability를 노출합니다.
-- `bootstrapNodejsApplication(module, options)`는 raw Node 어댑터가 포함된 애플리케이션을 만들지만 리스닝은 시작하지 않으므로 이후 `app.listen()`과 `app.close()` 생명주기는 호출자가 소유합니다.
-- `runNodejsApplication(module, options)`는 부트스트랩, 리스닝 시작, graceful shutdown 배선을 함께 수행합니다. Listen retry는 `retryLimit`/`retryDelayMs`를 따르고, shutdown은 bounded drain 전에 idle keep-alive connection을 닫으며, 시그널 기반 종료가 타임아웃되거나 실패하면 해당 상태를 로그와 `process.exitCode`로 보고합니다. 최종 프로세스 종료는 호스트 프로세스가 계속 소유합니다.
 - 지원되는 Node logger, shutdown, filesystem, raw adapter helper는 package root에 있고 저수준 request/response/compression plumbing은 `@fluojs/platform-nodejs/internal`에 있습니다.
 
 ## Conformance 커버리지
@@ -148,14 +146,11 @@ await app.close();
 ## 공개 API 개요
 
 - `NodeHttpApplicationAdapter.create(options)`: raw Node.js HTTP 어댑터를 위한 기본 팩토리입니다.
-- `bootstrapNodejsApplication(module, options)`: 리스너를 시작하지 않고 애플리케이션 인스턴스를 생성합니다.
-- `runNodejsApplication(module, options)`: 생명주기 관리를 포함하여 애플리케이션을 부트스트랩하고 시작합니다.
-- `BootstrapNodejsApplicationOptions`: bootstrap-only Node.js 애플리케이션 생성 옵션입니다.
 - `NodeHttpAdapterOptions`: `compression`, `multipart`, `port`, `host`, 상호 배타적인 `http` 또는 `https` 생성 option, `maxBodySize`, retry 설정, raw body 보존, shutdown timeout을 포함하는 `NodeHttpApplicationAdapter.create(...)`의 transport-level 옵션입니다.
-- `NodejsApplicationSignal`: `runNodejsApplication(...)` shutdown 등록이 지원하는 시그널 이름입니다.
+- `app.listen()`의 retry는 `retryLimit`/`retryDelayMs`를 따릅니다. Adapter close는 bounded drain 전에 idle keep-alive connection을 닫습니다.
+- `NodeShutdownSignal`: Node shutdown callback이 지원하는 `SIGINT`와 `SIGTERM` 타입입니다.
 - `NodeHttpApplicationAdapter`: `create(...)`의 구체적인 반환 타입이자 기존 DI class token입니다. `instanceof`, 상속, public positional constructor 및 instance `listen`/`close`는 유지됩니다.
-- `RunNodejsApplicationOptions`: 부트스트랩, 리스닝 시작, graceful shutdown 배선을 한 번에 수행하기 위한 옵션입니다.
-- Node bootstrap/run, logger, signal, filesystem export는 유지됩니다. 삭제된 adapter factory와 타입 별칭은 migration guide를 참고하세요.
+- Node logger, signal registration, filesystem export는 유지됩니다. Bootstrap/run export, 중복 adapter factory, 해당 타입 별칭은 제거되므로 migration guide를 따르세요.
 - `@fluojs/platform-nodejs/internal`: `@fluojs/runtime/internal-node`를 대체하는 first-party Node adapter integration seam이며 저수준 compression 및 request/response helper를 포함합니다.
 
 ## Multipart 스트리밍
@@ -179,4 +174,4 @@ Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handle
 - `packages/platform-nodejs/src/lifecycle.integration.test.ts`
 - `book/intermediate/ch21-express-node.ko.md`
 
-`createNodeShutdownSignalRegistration(...)`은 부분 등록 실패 시 설치된 handler를 rollback하며 개별 해제가 실패해도 나머지를 모두 시도합니다. Factory close는 해제 실패를 동시·이후 caller에 유지하지만 runtime 자원 정리는 계속합니다. `factory-signals.test.ts`가 이를 검증합니다. 기존 `bootstrapNodejsApplication`/`runNodejsApplication`은 platform migration 전의 소비자를 위해 유지합니다. 새 앱은 위 Factory recipe와 [migration 안내](../../docs/getting-started/migrate-http-factory.ko.md)를 사용하세요.
+`createNodeShutdownSignalRegistration(...)`은 부분 등록 실패 시 설치된 handler를 rollback하며 개별 해제가 실패해도 나머지를 모두 시도합니다. Factory close는 해제 실패를 동시·이후 caller에 유지하지만 runtime 자원 정리는 계속합니다. `factory-signals.test.ts`가 이를 검증합니다. 새 앱은 위 Factory recipe와 [migration 안내](../../docs/getting-started/migrate-http-factory.ko.md)를 사용하세요.

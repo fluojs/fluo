@@ -1,17 +1,20 @@
-const resolvePublishedPackage = (name) => `npm:@fluojs/${name}`;
+const loadBuiltPackage = async (name) => {
+  const manifestUrl = new URL(`../../${name}/package.json`, import.meta.url);
+  const manifest = JSON.parse(await Deno.readTextFile(manifestUrl));
+  return import(new URL(manifest.exports['.'].import, manifestUrl).href);
+};
 
 const [
   { Controller, Get },
-  { defineModule },
+  { defineModule, FluoFactory },
   {
-    bootstrapDenoApplication,
+    DenoHttpApplicationAdapter,
     createDenoFetchHandler,
-    runDenoApplication,
   },
 ] = await Promise.all([
-  import(resolvePublishedPackage('http')),
-  import(resolvePublishedPackage('runtime')),
-  import(resolvePublishedPackage('platform-deno')),
+  loadBuiltPackage('http'),
+  loadBuiltPackage('runtime'),
+  loadBuiltPackage('platform-deno'),
 ]);
 
 class HealthController {
@@ -28,7 +31,9 @@ defineModule(AppModule, { controllers: [HealthController] });
 
 Deno.test('createDenoFetchHandler dispatches a request through the published adapter', async () => {
   // Given: a bootstrapped application and a handler that does not own a listener.
-  const app = await bootstrapDenoApplication(AppModule);
+  const app = await FluoFactory.create(AppModule, {
+    adapter: DenoHttpApplicationAdapter.create(),
+  });
 
   try {
     // When: Deno invokes the handler with a native Request.
@@ -45,17 +50,19 @@ Deno.test('createDenoFetchHandler dispatches a request through the published ada
   }
 });
 
-Deno.test('runDenoApplication serves and closes a native Deno listener', async () => {
+Deno.test('FluoFactory serves and closes a native Deno listener', async () => {
   // Given: a Deno listener whose address is reported without signal registration.
   const listening = Promise.withResolvers();
-  const app = await runDenoApplication(AppModule, {
-    hostname: '127.0.0.1',
-    onListen: listening.resolve,
-    port: 0,
-    shutdownSignals: false,
+  const app = await FluoFactory.create(AppModule, {
+    adapter: DenoHttpApplicationAdapter.create({
+      hostname: '127.0.0.1',
+      onListen: listening.resolve,
+      port: 0,
+    }),
   });
 
   try {
+    await app.listen();
     const address = await listening.promise;
 
     // When: a real native Deno fetch reaches the managed listener.

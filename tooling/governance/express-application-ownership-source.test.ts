@@ -15,7 +15,12 @@ function read(relativePath: string): string {
 function withAdapterSource(transform: (source: string) => string): (relativePath: string) => string {
   return (relativePath: string): string => {
     const content = read(relativePath);
-    return relativePath === adapterSourcePath ? transform(content) : content;
+    if (relativePath !== adapterSourcePath) return content;
+    const mutated = transform(content);
+    if (mutated === content) {
+      throw new Error(`Governance fixture left ${adapterSourcePath} unchanged.`);
+    }
+    return mutated;
   };
 }
 
@@ -72,8 +77,8 @@ describe('Express application ownership source contract', () => {
   it('rejects intersection existing application options', () => {
     const readFixture = withAdapterSource((source) =>
       source.replace(
-        'export interface BootstrapExpressApplicationOptions',
-        'export type ExistingExpressAdapterOptions = ExpressAdapterOptions & { application: Express };\n\nexport interface BootstrapExpressApplicationOptions',
+        'export class ExpressHttpApplicationAdapter',
+        'export type ExistingExpressAdapterOptions = ExpressAdapterOptions & { application: Express };\n\nexport class ExpressHttpApplicationAdapter',
       ),
     );
 

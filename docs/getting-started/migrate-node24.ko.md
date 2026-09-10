@@ -100,7 +100,6 @@ tooling을 변경하세요.
 ```ts
 import {
   NodeHttpApplicationAdapter,
-  runNodeApplication,
 } from '@fluojs/platform-nodejs';
 ```
 

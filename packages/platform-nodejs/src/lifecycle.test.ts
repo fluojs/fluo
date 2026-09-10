@@ -1,9 +1,10 @@
+import { startNodeTestApplication } from './test-support/application.js';
 import { createServer } from 'node:net';
 import { Controller, type Dispatcher, Get, Post, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { NodeHttpApplicationAdapter, runNodejsApplication } from './index.js';
+import { NodeHttpApplicationAdapter } from './index.js';
 
 function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolvePromise: (() => void) | undefined;
@@ -192,7 +193,7 @@ describe('@fluojs/platform-nodejs lifecycle boundaries', () => {
     const originalExitCode = process.exitCode;
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
-    const app = await runNodejsApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       port: 0,
       shutdownSignals: [signal],
     });

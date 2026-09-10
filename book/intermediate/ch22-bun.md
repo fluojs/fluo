@@ -46,11 +46,14 @@ bun add @fluojs/platform-bun
 
 ### 22.2.2 Bootstrapping FluoShop on Bun
 
-To run FluoShop on Bun, change the `main.ts` entrypoint to select `createBunAdapter`. Because fluo preserves request dispatch and the DI lifecycle, the migration scope stays focused on the runtime boundary.
+To run FluoShop on Bun, change the `main.ts` entrypoint to select `BunHttpApplicationAdapter.create()`. Because fluo preserves request dispatch and the DI lifecycle, the migration scope stays focused on the runtime boundary.
 
 ```typescript
 // apps/fluoshop-api/src/main.ts
-import { createBunAdapter } from '@fluojs/platform-bun';
+import {
+  BunHttpApplicationAdapter,
+  createBunShutdownSignalRegistration,
+} from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
@@ -61,14 +64,18 @@ async function bootstrap() {
   const hostname = '127.0.0.1';
   const port = 3000;
 
-  const adapter = createBunAdapter({
+  const adapter = BunHttpApplicationAdapter.create({
     port,
     // Bun-specific options
     hostname,
-    development: runtimeConfig.development
+    development: runtimeConfig.development,
+    shutdownTimeoutMs: 30_000,
   });
 
-  const app = await FluoFactory.create(AppModule, { adapter });
+  const app = await FluoFactory.create(AppModule, {
+    adapter,
+    shutdownRegistration: createBunShutdownSignalRegistration(),
+  });
 
   await app.listen();
   console.log(`FluoShop running on Bun at http://${hostname}:${port}`);
@@ -79,7 +86,7 @@ bootstrap();
 
 `Application` owns the framework lifecycle, not listener URL discovery. Because this example configures a fixed hostname and port, it can report that address directly. Infrastructure code that uses an OS-assigned port can instead retain a concrete `BunHttpApplicationAdapter` and read its documented `getListenTarget()` after `listen()` completes.
 
-For a terminal-style entrypoint, `runBunApplication(...)` combines bootstrap, `listen()`, startup logging, and optional `SIGINT`/`SIGTERM` wiring. Signal-driven shutdown reports timeout or close failures through the application logger and `process.exitCode`; the surrounding Bun host still owns final process termination.
+Current terminal startup explicitly connects the concrete adapter, `FluoFactory.create()`, and `await app.listen()`. `createBunShutdownSignalRegistration()` connects optional `SIGINT`/`SIGTERM` policy, while the surrounding Bun host owns final process termination. The adapter's default shutdown drain is 10 seconds; retain the former managed run's 30-second application drain by stating `shutdownTimeoutMs: 30_000` as above.
 
 ## 22.3 Native WebSockets
 
@@ -245,6 +252,6 @@ Bun provides high compatibility with Node.js, but differences can appear around 
 
 1. **Top-Level Await**: Bun supports this natively, but when mixing it with old CommonJS modules, you must verify initialization order.
 2. **Buffer vs Uint8Array**: Bun prefers `Uint8Array` for performance. It supports `Buffer` for compatibility, but using the Web-standard `Uint8Array` where possible can give fluo handlers better performance.
-3. **Signal Handling**: Bun's signal APIs work, but prefer `runBunApplication(...)` when you want fluo-managed `SIGINT`/`SIGTERM` listener cleanup and bounded shutdown reporting. If you host `createBunFetchHandler(...)` in your own `Bun.serve(...)`, that host owns shutdown and signal wiring.
+3. **Signal Handling**: Bun's signal APIs work. For a socket-owning application, pass `createBunShutdownSignalRegistration()` to `FluoFactory.create()` to state `SIGINT`/`SIGTERM` policy explicitly. If you host `createBunFetchHandler(...)` in your own `Bun.serve(...)`, that host owns shutdown and signal wiring.
 
 Checking these differences in advance makes a Bun deployment a stable operational option rather than just a performance experiment.

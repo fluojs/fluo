@@ -576,7 +576,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).not.toContain('Deno');
     expect(readme).not.toContain('Cloudflare');
     expect(readme).not.toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain("import { createFastifyAdapter } from '@fluojs/platform-fastify';");
+    expect(mainFile).toContain("import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';");
     expect(mainFile).toContain('await app.listen();');
     expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');
@@ -620,7 +620,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).toHaveProperty('@fluojs/platform-nodejs');
     expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
-    expect(mainFile).toContain("import { createExpressAdapter } from '@fluojs/platform-express';");
+    expect(mainFile).toContain("import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';");
     expect(mainFile).toContain('await app.listen();');
     expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');
@@ -671,17 +671,19 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('bun dist/main.js');
     expect(tsconfig.compilerOptions?.types).toEqual(['node', 'bun']);
-    expect(readme).toContain('Bun runtime + Bun native HTTP via `runBunApplication(...)`');
+    expect(readme).toContain('Bun runtime + Bun native HTTP via `FluoFactory.create(..., { adapter, shutdownRegistration })` then `app.listen()`');
     expect(readme).toContain('defaulting to Bun\'s native watch loop');
     expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Bun-native production commands');
     expect(readme).toContain('bun dist/main.js');
     expect(appFile).toContain('processEnv: process.env');
     expect(appFile).not.toContain('Bun.env');
-    expect(mainFile).toContain("import { runBunApplication } from '@fluojs/platform-bun';");
+    expect(mainFile).toContain("import { BunHttpApplicationAdapter, createBunShutdownSignalRegistration } from '@fluojs/platform-bun';");
     expect(mainFile).toContain("Bun.env.PORT ?? '3000'");
-    expect(mainFile).toContain('await runBunApplication(AppModule, { port });');
-    expect(mainFile).not.toContain('FluoFactory.create');
+    expect(mainFile).toContain('adapter: BunHttpApplicationAdapter.create({ port, shutdownTimeoutMs: 30_000 })');
+    expect(mainFile).toContain('shutdownRegistration: createBunShutdownSignalRegistration()');
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).toContain('FluoFactory.create');
   });
 
   it('generates the raw Node.js application starter scaffold', async () => {
@@ -766,7 +768,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('./dist/app');
     expect(packageJson.devDependencies).not.toHaveProperty('vitest');
-    expect(readme).toContain('Deno runtime + Deno native HTTP via `runDenoApplication(...)`');
+    expect(readme).toContain('Deno runtime + Deno native HTTP via `FluoFactory.create(..., { adapter, shutdownRegistration })` then `app.listen()`');
     expect(readme).toContain('defaulting to Deno\'s native watch loop');
     expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Deno-native production commands');
@@ -774,6 +776,10 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("Deno.env.toObject()");
     expect(appFile).toContain("'./greeting/greeting.module.ts'");
     expect(mainFile).toContain("import { AppModule } from './app.ts';");
+    expect(mainFile).toContain("import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';");
+    expect(mainFile).toContain('adapter: DenoHttpApplicationAdapter.create({ port })');
+    expect(mainFile).toContain('shutdownRegistration: createDenoShutdownSignalRegistration()');
+    expect(mainFile).toContain('await app.listen();');
     expect(appTestFile).toContain('Deno.test');
   });
 
@@ -1222,7 +1228,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
     expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).not.toContain('createHealthModule');
-    expect(mainFile).toContain("import { createFastifyAdapter } from '@fluojs/platform-fastify';");
+    expect(mainFile).toContain("import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';");
     expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
     expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');

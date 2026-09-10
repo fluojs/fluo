@@ -73,7 +73,7 @@ curl -i http://127.0.0.1:3000/greeting
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
 function readPort(value: string | undefined): number {
@@ -92,7 +92,7 @@ function readPort(value: string | undefined): number {
 }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: readPort(process.env.PORT),
     retryLimit: 0,
@@ -113,7 +113,7 @@ await app.listen();
 
 `FluoFactory.create()`는 앱을 초기화하고 `app.listen()`은 adapter 활성화와 선택적 Node signal 등록까지 기다린다. 생성과 수신을 구분하고 두 호출을 모두 await한다. 새 Node/Fastify CLI starter도 같은 경로를 사용한다.
 
-`FluoFactory.create()`에 `createFastifyAdapter()`를 전달하는 것이 공통 HTTP recipe다. Factory가 CORS, prefix, 기본 security headers, 호출자 middleware 순서를 소유하며 생성·시작 실패를 정리한다. CORS/prefix는 기본 off, security headers는 `false`로 끌 수 있는 기본 on이다. Node logger와 signal callback만 host가 명시적으로 선택한다.
+`FluoFactory.create()`에 `FastifyHttpApplicationAdapter.create()`를 전달하는 것이 공통 HTTP recipe다. Factory가 CORS, prefix, 기본 security headers, 호출자 middleware 순서를 소유하며 생성·시작 실패를 정리한다. CORS/prefix는 기본 off, security headers는 `false`로 끌 수 있는 기본 on이다. Node logger와 signal callback만 host가 명시적으로 선택한다.
 
 여기서는 Node/Fastify가 socket listener를 소유한다. Workers나 Next.js에 붙이는 앱은 호스트가 요청 전달과 종료를 소유하며, 그 경로의 활성화가 새 socket을 연다는 뜻은 아니다. 같은 `listen`이라는 이름을 모든 환경의 포트·signal 요구사항으로 확대하지 않는다. 아래 컨텍스트 실험은 같은 class의 별도 context-only 메서드를 사용한다.
 

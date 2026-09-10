@@ -242,16 +242,15 @@ export class AppModule {}
 표준 데코레이터 메타데이터 사전 설치까지 명시하려면 **`src/main.ts`는 다음 전체 파일**로 둔다. 다음 장의 직렬화 클래스는 import 부작용으로 `Symbol.metadata`를 설치하지 않으므로 decorated module보다 먼저 준비하는 순서가 중요하다.
 
 ```ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
-const { runFastifyApplication } = await import('@fluojs/platform-fastify');
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
   }),
@@ -430,13 +429,13 @@ Title은 기존 실습처럼 원문 길이를 먼저 제한하고 그다음 trim
 ```ts
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { StandardSchemaBinder } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
 ensureMetadataSymbol();
 const { SchemaBoundaryModule } = await import('./schema-boundary-app.js');
 const app = await FluoFactory.create(SchemaBoundaryModule, {
-  adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
 await app.listen();
@@ -467,6 +466,6 @@ Listen 완료 후 `POST /schema-drafts`에 `{ "post_title": "  Draft  ", "author
 - [기본 바인더](../../packages/http/src/adapters/binding.ts)와 [바인딩 테스트](../../packages/http/src/adapters/binding.test.ts): 알 수 없는 본문 key, 필수 출처, 변환기 해석의 근거다.
 - [핸들러 호출 정책](../../packages/http/src/dispatch/dispatch-handler-policy.ts), [HTTP 검증 어댑터](../../packages/http/src/adapters/dto-validation-adapter.ts): 바인딩 뒤 검증과 `400` 번역을 확인할 수 있다.
 - [`@fluojs/validation` README](../../packages/validation/README.ko.md), [공개 export](../../packages/validation/src/index.ts), [검증 테스트](../../packages/validation/src/validation.test.ts): 누락 값, 엄격한 실체화 옵션, scalar coercion의 경계다.
-- [`@fluojs/core` README](../../packages/core/README.ko.md), [`@fluojs/platform-fastify` README](../../packages/platform-fastify/README.ko.md): 명시적 DI, 메타데이터 사전 설치, 실행 helper의 근거다.
+- [`@fluojs/core` README](../../packages/core/README.ko.md), [`@fluojs/platform-fastify` README](../../packages/platform-fastify/README.ko.md): 명시적 DI, 메타데이터 사전 설치, static adapter factory의 근거다.
 
 [이전: 초안과 발행된 글은 무엇이 다른가](./ch05-post-domain.ko.md) · [1권 목차](./toc.ko.md) · [다음: 저장한 데이터와 공개할 데이터 구분하기](./ch07-response-models.ko.md)

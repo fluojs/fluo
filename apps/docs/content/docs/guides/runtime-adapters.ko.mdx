@@ -84,18 +84,18 @@ Fastify는 권장 high-throughput Node.js adapter입니다.
 `@fluojs/platform-fastify`에는 Node.js `>=24.0.0 <27`가 필요합니다. Node 24 미만과 Node 27+는 지원하지 않습니다.
 
 ```ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port: 3000 }),
+  adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-`createFastifyAdapter()`는 기본 port `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 명시한 port가 잘못되면 adapter setup 중 throw합니다.
+`FastifyHttpApplicationAdapter.create()`는 기본 port `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 명시한 port가 잘못되면 adapter setup 중 throw합니다.
 
 중요한 Fastify capability:
 
@@ -106,15 +106,13 @@ await app.listen();
 - Portability-sensitive case용 wildcard fallback이 있는 safe native Fastify route registration
 
 ```ts
-const adapter = createFastifyAdapter(
-  {
-    port: 3000,
-    rawBody: true,
-  },
-  {
+const adapter = FastifyHttpApplicationAdapter.create({
+  port: 3000,
+  rawBody: true,
+  multipart: {
     maxTotalSize: 10 * 1024 * 1024,
   },
-);
+});
 ```
 
 Multipart request에서는 raw-body capture가 생략됩니다. `multipart.maxTotalSize`가 없으면 `maxBodySize`가 기본값이 되어 HTTP adapter 전반의 size limit이 portable하게 유지됩니다.
@@ -123,10 +121,10 @@ Fastify는 공유 단일 byte-range 및 `If-Range` policy를 보존합니다. Co
 
 ### Fastify HTTPS/TLS
 
-Fastify process가 TLS를 직접 종료할 때는 Node.js `https.ServerOptions`를 `https` option으로 전달하세요. `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, `runFastifyApplication(...)`은 같은 HTTPS startup surface를 제공합니다.
+Fastify process가 TLS를 직접 종료할 때는 Node.js `https.ServerOptions`를 `FastifyHttpApplicationAdapter.create(...)`의 `https` option으로 전달하세요.
 
 ```ts
-const adapter = createFastifyAdapter({
+const adapter = FastifyHttpApplicationAdapter.create({
   host: '0.0.0.0',
   https: {
     cert: tlsCertificate,
@@ -195,7 +193,7 @@ Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `proce
 
 `compression` 기본값은 `false`이며 range 응답은 compression을 켜도 identity byte를 유지합니다. `multipart.maxTotalSize` 생략은 유효 `maxBodySize`를 따릅니다. 표준 startup은 위 `FluoFactory.create` 다음 `app.listen()`입니다. Host는 `app.close()`와 명시적인 process signal 등록/해제를 소유합니다.
 
-기존 bootstrap/run helper는 이 이슈에서 제거하지 않으며 같은 static 생성 구현을 사용합니다. Run helper의 shutdown timeout이나 failure는 log와 `process.exitCode`로 보고하고 최종 process termination은 host가 소유합니다. 삭제된 factory/type alias와 기존 run-helper 기본값 이전은 [Node adapter 생성 마이그레이션](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.ko.md)을 참고하세요.
+Static adapter + `FluoFactory.create(...)` + `app.listen()`이 managed startup 경로입니다. Node signal callback을 명시적으로 선택하면 종료 timeout/failure를 log와 `process.exitCode`로 보고하고 최종 process 종료는 host가 소유합니다. [Node adapter migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.ko.md)에 따라 제거된 alias와 run helper를 이전하세요.
 
 ## Express
 
@@ -205,26 +203,21 @@ Express host 교체는 NestJS legacy decorator 또는 reflection metadata semant
 
 ```ts
 import {
-  createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const adapter = createExpressAdapter({ port: 3000 });
+const adapter = ExpressHttpApplicationAdapter.create({ port: 3000 });
 const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
-
-if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
-  throw new TypeError('Expected the Express adapter factory to return the Express implementation');
-}
 
 const { bindTarget, url } = adapter.getListenTarget();
 console.log(`Listening on ${url} (${bindTarget})`);
 ```
 
-`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. startup 이후 Express 전용 `getListenTarget()` helper를 해석하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper와 `getServer()`, `getRealtimeCapability()`는 native host detail을 application provider에 전달하지 말고 infrastructure boundary에만 두세요.
+`ExpressHttpApplicationAdapter.create()`는 concrete `ExpressHttpApplicationAdapter`를 반환하므로 별도 narrow 없이 startup 이후 `getListenTarget()`을 사용할 수 있습니다. `getListenTarget()`, `getServer()`, `getRealtimeCapability()`는 infrastructure boundary에 두고 application provider는 portable 계약을 사용하세요.
 
 Adapter는 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않습니다. Native Express handler는 construction-time `nativeMiddleware`로 제공해야 하며, bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않습니다. 이식 가능한 동작은 fluo `Middleware`로 재작성하는 방식을 우선하세요.
 
@@ -248,12 +241,12 @@ Native Express Router match도 shared fluo dispatcher로 hand off됩니다. 따�
 Native `Bun.serve()` application에는 Bun adapter를 사용합니다.
 
 ```ts
-import { createBunAdapter } from '@fluojs/platform-bun';
+import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createBunAdapter({ port: 3000 }),
+  adapter: BunHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
@@ -287,29 +280,34 @@ Bun fetch dispatch는 공유 단일 byte-range 및 `If-Range` policy를 보존�
 Native `Deno.serve` deployment에는 Deno adapter를 사용합니다.
 
 ```ts
-import { runDenoApplication } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
 import { AppModule } from './app.module.ts';
 
-await runDenoApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    port: 3000,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-이 managed 경로는 network listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록하므로 network 접근 권한을 부여해 실행하세요.
+이 managed 경로는 network listener를 엽니다. 예제는 `createDenoShutdownSignalRegistration()`을 `shutdownRegistration`으로 명시하며, host가 signal을 직접 소유하면 이를 생략합니다. Network 접근 권한을 부여해 실행하세요.
 
 ```bash
 deno run --allow-net main.ts
 ```
 
-Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Signal로 트리거된 애플리케이션 close 실패는 helper가 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `runDenoApplication(...)`에 `shutdownSignals: false`를 설정하고 signal과 shutdown을 직접 조율해야 합니다.
+Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Signal로 트리거된 애플리케이션 close 실패는 helper가 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 Factory의 `shutdownRegistration`을 생략하고 signal과 shutdown을 직접 조율해야 합니다.
 
 Host-owned `Deno.serve(...)`에는 `app.listen()` 없이 bootstrap하고 public dispatcher에서 handler를 생성합니다.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
-import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
+import { DenoHttpApplicationAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
-const adapter = createDenoAdapter();
+const adapter = DenoHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
@@ -324,14 +322,20 @@ Deno.serve({ port: 3000 }, handler);
 HTTPS mode로 시작하려면 TLS material을 `https` option으로 넘깁니다.
 
 ```ts
-await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  https: {
-    cert: await Deno.readTextFile('./cert.pem'),
-    key: await Deno.readTextFile('./key.pem'),
-  },
-  port: 3443,
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    https: {
+      cert: await Deno.readTextFile('./cert.pem'),
+      key: await Deno.readTextFile('./key.pem'),
+    },
+    port: 3443,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 `hostname`은 Deno-native option name입니다. `host`는 portability alias로 허용되며, 둘 다 있으면 `hostname`이 우선합니다. Dispatcher가 bind되기 전 `handle(...)`은 JSON `500`, shutdown 중에는 JSON `503`을 반환합니다.
@@ -436,8 +440,8 @@ export class WorkerBindingsModule {}
 | Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
 | --- | --- | --- | --- | --- | --- | --- |
 | Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
-| Bootstrap helper | `runFastifyApplication` | `runNodejsApplication` | `runExpressApplication` | `runBunApplication` | `runDenoApplication` | `createCloudflareWorkerEntrypoint` |
-| Manual bootstrap | `bootstrapFastifyApplication` | `bootstrapNodejsApplication` | `bootstrapExpressApplication` | `bootstrapBunApplication` | `bootstrapDenoApplication` | `bootstrapCloudflareWorkerApplication` |
+| Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `createCloudflareWorkerEntrypoint` |
+| Adapter creation | `FastifyHttpApplicationAdapter.create` | `NodeHttpApplicationAdapter.create` | `ExpressHttpApplicationAdapter.create` | `BunHttpApplicationAdapter.create` | `DenoHttpApplicationAdapter.create` | `createCloudflareWorkerAdapter` |
 | Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
 | Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
 | SSE/streaming | Yes | Yes | Yes | Yes | Yes | Fetch response contract |
@@ -449,11 +453,11 @@ export class WorkerBindingsModule {}
 
 | Package | Public API |
 | --- | --- |
-| `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
-| `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
-| `@fluojs/platform-deno` | `createDenoAdapter`, `createDenoFetchHandler`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
+| `@fluojs/platform-fastify` | `FastifyHttpApplicationAdapter.create`, `FastifyHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, Node adapter option types |
+| `@fluojs/platform-express` | `ExpressHttpApplicationAdapter.create`, `ExpressHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-bun` | `BunHttpApplicationAdapter.create`, `createBunFetchHandler`, Bun realtime binding types |
+| `@fluojs/platform-deno` | `DenoHttpApplicationAdapter.create`, `createDenoFetchHandler`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
 | `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
 
 ## 흔한 실수

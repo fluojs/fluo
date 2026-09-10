@@ -140,11 +140,11 @@ At first, one Fastify entry file is enough. The following `src/main.ts` is the c
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
 export const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
     rawBody: true,
@@ -163,9 +163,9 @@ To compare the three adapters, a small program that observes requests and respon
 ```typescript
 import assert from 'node:assert/strict';
 import { Server } from 'node:http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
@@ -177,9 +177,9 @@ const options = {
 };
 
 const factories = [
-  ['fastify', () => createFastifyAdapter(options)],
+  ['fastify', () => FastifyHttpApplicationAdapter.create(options)],
   ['nodejs', () => NodeHttpApplicationAdapter.create(options)],
-  ['express', () => createExpressAdapter(options)],
+  ['express', () => ExpressHttpApplicationAdapter.create(options)],
 ] as const;
 
 for (const [name, createAdapter] of factories) {
@@ -266,7 +266,7 @@ If all you need to keep from the existing Express code is request tagging, the f
 
 ```typescript
 import type { RequestHandler } from 'express';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
@@ -276,7 +276,7 @@ const legacyTag: RequestHandler = (_request, response, next) => {
 };
 
 export const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({
+  adapter: ExpressHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
     rawBody: true,
@@ -298,7 +298,7 @@ Not every `close()` has the same implementation. Fastify chains a `listen()` iss
 
 A failure experiment that starts while another server holds the port and then calls `close()` is also useful. The expectation is not "it eventually starts." The in-progress retry should be cancelled and disposed of, so that freeing the port after close completes does not let the closed adapter bind late. The packages' lifecycle tests observe this sequence. In product tests, start shutdown after receiving a signal that a slow handler has been entered, then explicitly release the work-completion signal. Creating a race with an arbitrary 100-millisecond wait tests a different path on a heavily loaded CI machine.
 
-The signal helper's `forceExitTimeoutMs` is separate from the adapter's connection drain limit. The Node-family run helpers report signal-driven shutdown failures or timeouts through logs and `process.exitCode`, but leave final process termination to the host. If other resources remain open, setting an exit code does not immediately end the process. That is why an experiment's manual `finally` path and a production process's signal path must be verified separately.
+The signal helper's `forceExitTimeoutMs` is separate from the adapter's connection drain limit. The explicitly supplied Node shutdown registration callback reports signal-driven shutdown failures or timeouts through logs and `process.exitCode`, but leave final process termination to the host. If other resources remain open, setting an exit code does not immediately end the process. That is why an experiment's manual `finally` path and a production process's signal path must be verified separately.
 
 Keeping the existing Fastify adapter is also a valid conclusion if there is no new requirement. Express reduces the cost of retaining native assets, while raw Node removes an intermediate HTTP engine and lets you choose Node server options directly. Neither replaces database transactions or authentication. Do not turn a README's specific `/health` performance figure into a performance guarantee for order queries. Later, measure the real payload, concurrency, error rate, and shutdown time together.
 
