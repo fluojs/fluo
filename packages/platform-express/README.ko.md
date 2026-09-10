@@ -73,15 +73,13 @@ async streamEvents(_input: undefined, ctx: RequestContext) {
 `rawBody` 보존은 opt-in(`rawBody: true`)이며 multipart request는 `rawBody`를 노출하지 않습니다. Static adapter factory의 `options.multipart`에 멀티파트 제한을 전달하세요. `multipart.maxTotalSize`를 생략하면 `maxBodySize`가 기본 총 payload 제한입니다.
 
 ```typescript
-const adapter = ExpressHttpApplicationAdapter.create(
-  {
-    port: 3000,
-    rawBody: true,
-  },
-  {
+const adapter = ExpressHttpApplicationAdapter.create({
+  port: 3000,
+  rawBody: true,
+  multipart: {
     maxTotalSize: 10 * 1024 * 1024,
   },
-);
+});
 ```
 
 ### Express/Connect Middleware 경계
@@ -164,7 +162,7 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 `ExpressHttpApplicationAdapter.create(options)`는 `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다.
 
 
-두 helper는 startup/shutdown diagnostics에 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
+Factory의 기본값은 portable logger입니다. Node console 출력이 필요하면 `logger: createConsoleApplicationLogger()`를 전달하고, 사용자 `ApplicationLogger`로 startup/shutdown diagnostics를 처리할 수도 있습니다.
 
 ## Multipart 스트리밍
 

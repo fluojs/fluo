@@ -124,7 +124,7 @@ Native handoff가 붙은 뒤 app middleware가 framework request의 method 또�
 - `BunAdapterOptions`: `BunHttpApplicationAdapter.create()`가 받는 host, port, TLS, raw-body, multipart, shutdown 옵션입니다.
 - `BunWebSocketBinding`, `BunWebSocketUpgradeHost` 및 `BunRealtimeBindingHost`: 일반 HTTP dispatch 전에 `@fluojs/websockets/bun`이 사용하는 binding 계약입니다. Binding은 upgrade 가능한 host만 받으며 adapter가 소유하는 Bun server lifecycle이나 raw fetch handler는 받지 않습니다.
 - `BunWebSocketBindingHost`: Bun realtime binding 설정을 위한 backward-compatible alias입니다.
-- `BunServeOptions`, `BunServerLike`, `BunWebSocketHandler`, `BunServerWebSocket`, `BunWebSocketMessage`, `BunApplicationSignal`, `BunCorsInput`, `BunTlsOptions`, `CreateBunFetchHandlerOptions`: 저수준 Bun host, websocket, signal, CORS, TLS, fetch-handler integration type입니다.
+- `BunServeOptions`, `BunServerLike`, `BunWebSocketHandler`, `BunServerWebSocket`, `BunWebSocketMessage`, `BunShutdownSignal`, `BunTlsOptions`, `CreateBunFetchHandlerOptions`: 저수준 Bun host, websocket, signal, TLS, fetch-handler integration type입니다.
 
 ## 어댑터 계약
 

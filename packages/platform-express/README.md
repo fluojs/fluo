@@ -162,7 +162,7 @@ If the same adapter instance is listened again after close, its native route des
 `ExpressHttpApplicationAdapter.create(options)` supports `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory.
 
 
-Both helpers use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when `logger` is provided.
+Factory defaults to its portable logger. Pass `logger: createConsoleApplicationLogger()` for Node console output, or supply a custom `ApplicationLogger` for startup and shutdown diagnostics.
 
 ## Multipart streaming
 

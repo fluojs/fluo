@@ -36,7 +36,7 @@ The former mixed-runtime entrypoints have no compatibility shim. Update imports 
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-Adapter creation is consolidated in `NodeHttpApplicationAdapter.create(options)`. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) for both removed factories and type aliases. The `NodeHttpApplicationAdapter` class and public positional constructor remain. Bootstrap/run, logger, shutdown, and filesystem helpers are not removed by this change.
+Adapter creation is consolidated in `NodeHttpApplicationAdapter.create(options)`. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) for both removed factories and type aliases. The `NodeHttpApplicationAdapter` class and public positional constructor remain. Bootstrap/run helpers and Nodejs aliases are removed; logger, shutdown registration, and filesystem utilities remain.
 
 ## When to Use
 

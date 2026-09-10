@@ -36,7 +36,7 @@ npm install @fluojs/platform-nodejs
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-Adapter 생성은 `NodeHttpApplicationAdapter.create(options)`로 통합되었습니다. 제거된 두 factory와 타입 별칭의 변경 목록은 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. `NodeHttpApplicationAdapter` 클래스와 공개 positional constructor는 유지됩니다. Bootstrap/run, logger, shutdown, filesystem helper는 이 변경에서 제거하지 않습니다.
+Adapter 생성은 `NodeHttpApplicationAdapter.create(options)`로 통합되었습니다. 제거된 두 factory와 타입 별칭의 변경 목록은 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. `NodeHttpApplicationAdapter` 클래스와 공개 positional constructor는 유지됩니다. Bootstrap/run helper와 Nodejs alias는 제거되며 logger, shutdown registration, filesystem utility는 유지됩니다.
 
 ## 사용 시점
 

@@ -76,7 +76,7 @@ Bootstrap 실패 시 런타임은 확보한 lifecycle instance에 `bootstrap-fai
 | 호스트 타임아웃 경계 | Node 신호 등록은 기본 강제 종료 타임아웃으로 `30_000` ms를 사용합니다. 타임아웃이 나면 실패를 로그로 남기고 `process.exitCode = 1`을 설정하지만, 호스트 프로세스를 직접 종료하지는 않습니다. | `packages/platform-nodejs/src/node/internal-node-shutdown.ts:6-15`, `packages/platform-nodejs/src/node/internal-node-shutdown.ts:77-109` |
 | 어댑터 드레인 타임아웃 | Node HTTP 어댑터는 drain semantics로 서버를 종료하고, `shutdownTimeoutMs`가 지나면 남은 연결을 강제로 닫습니다. 어댑터 기본값은 `10_000` ms입니다. | `packages/platform-nodejs/src/node/internal-node.ts:67`, `packages/platform-nodejs/src/node/internal-node.ts:169-179`, `packages/platform-nodejs/src/node/internal-node.ts:335-367` |
 
-런타임은 종료 훅을 명시적 계약으로만 제공합니다. 신호 등록은 범용 런타임 표면이 아니라 주변 호스트나 어댑터 헬퍼의 책임입니다.
+런타임은 종료 훅을 명시적 계약으로만 제공합니다. 신호 등록은 범용 런타임 표면이 아니라 주변 호스트가 제공하는 shutdown registration callback의 책임입니다.
 
 ## Runtime cleanup settlement
 
@@ -95,7 +95,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 5. Adapter retry는 adapter 소유입니다. Runtime은 incomplete adapter phase에서 `close(signal)`을 다시 호출할 뿐 모든 adapter를 재시작하거나 같은 drain을 보장하지 않습니다. `MicroserviceApplication.close()`는 성공/실패 결과를 terminal하게 보존하므로 부모 close 재시도가 child transport teardown을 재실행하지 않습니다. `startAllMicroservices()` 실패는 먼저 시작된 child만 역순 rollback하며 원래 시작 오류를 유지합니다.
 6. Bootstrap 실패 시 확보한 readiness/runtime cleanup/hook/HTTP adapter/container 정리를 시도하고 원래 오류를 보존합니다. 반환된 앱의 readiness/listen/시작 로그/signal 등록 실패도 `app.close('bootstrap-failed')`를 거칩니다. Cleanup이나 logger 실패가 원래 오류를 바꾸지 않습니다. Factory 호출 이전에 생성한 외부 자원은 여전히 application이 소유합니다.
 7. Node signal은 `shutdownRegistration` callback으로 listen 후 등록합니다. 부분 등록 실패는 Node 소유자가 rollback합니다. Manual close는 해제를 한 번 시도하고 모든 runtime 정리를 계속합니다. 동시 close와 이후 close는 해제 실패를 공유하며 teardown 실패와 aggregate됩니다. Runtime teardown이 끝나면 해제 실패가 있어도 state는 `closed`입니다. Node timeout/close 실패는 로그와 `process.exitCode = 1`로 보고하며 `process.exit()`를 호출하지 않습니다.
-8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 Factory `shutdownRegistration` 생략(기존 run helper에서는 `shutdownSignals: false`)으로 이중 소유권을 피합니다.
+8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 Factory `shutdownRegistration` 생략으로 이중 소유권을 피합니다.
 
 ## 범위를 명시한 예제
 

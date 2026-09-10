@@ -52,7 +52,7 @@ Factory 생성 실패는 확보한 runtime 자원, lifecycle instance, 전달된
 
 ## Startup Sequence
 
-아래 공통 초기화 순서는 Factory와 Fastify helper가 함께 사용합니다. 생성, lifecycle readiness, 요청 수용은 서로 다른 경계이며 상세 계약은 [Lifecycle & Shutdown Guarantees](../architecture/lifecycle-and-shutdown.ko.md)가 소유합니다.
+아래 공통 초기화 순서는 Factory가 소유합니다. 생성, lifecycle readiness, 요청 수용은 서로 다른 경계이며 상세 계약은 [Lifecycle & Shutdown Guarantees](../architecture/lifecycle-and-shutdown.ko.md)가 소유합니다.
 
 1. `FluoFactory.create(rootModule, options)`가 `packages/runtime/src/bootstrap.ts`에서 HTTP 생성 구현을 직접 소유하며 forwarding 자유 함수는 없습니다.
 2. `bootstrapModule(...)`는 루트 모듈에서 도달 가능한 모듈 그래프를 컴파일하고 import, export, provider visibility, injection metadata를 검증합니다.
@@ -61,7 +61,7 @@ Factory 생성 실패는 확보한 runtime 자원, lifecycle instance, 전달된
 5. `runBootstrapHooks(...)`는 모든 `onModuleInit()` 훅을 먼저 실행한 뒤, 모든 `onApplicationBootstrap()` 훅을 실행합니다.
 6. `platformShell.start()`는 라이프사이클 훅이 모두 성공한 뒤에 실행됩니다. readiness는 이 start 단계가 끝난 후에만 표시됩니다.
 7. `createRuntimeDispatcher(...)`가 Factory에서 조합한 middleware로 dispatcher를 만들고 `FluoFactory.create(...)`가 `FluoApplication` 인스턴스를 반환합니다.
-8. `app.listen()`은 readiness를 검사하고 adapter를 활성화합니다. run helper는 내부에서 이를 await하고, Factory/bootstrap 호출자는 이후 직접 호출합니다. Node/Fastify에서는 서버를 bind하지만 host-owned Workers/Next.js에서는 새 socket listener 대신 dispatcher를 활성화합니다.
+8. `app.listen()`은 readiness를 검사하고 adapter를 활성화합니다. 호출자는 Factory로 생성한 앱에서 이를 명시적으로 await합니다. Node/Fastify에서는 서버를 bind하지만 host-owned Workers/Next.js에서는 새 socket listener 대신 dispatcher를 활성화합니다.
 
 ## Entry Points
 
@@ -104,7 +104,7 @@ Factory 생성 실패는 확보한 runtime 자원, lifecycle instance, 전달된
 
 ## Evidence
 
-- [공통 helper 구현](../../packages/runtime/src/http-adapter-shared.ts)과 [테스트](../../packages/runtime/src/http-adapter-shared.test.ts): middleware, 완료 시점, 실패/signal cleanup.
+- [내부 HTTP adapter integration](../../packages/runtime/src/http-adapter-shared.ts)과 [테스트](../../packages/runtime/src/http-adapter-shared.test.ts): middleware, 완료 시점, 실패/signal cleanup.
 - [Fastify 구현](../../packages/platform-fastify/src/adapter.ts)과 [테스트](../../packages/platform-fastify/src/adapter.test.ts): 숫자 검증, logging, listen, Node signal 연결.
 - [Runtime bootstrap](../../packages/runtime/src/bootstrap.ts)과 [테스트](../../packages/runtime/src/bootstrap.test.ts): 공통 초기화와 실패 정리.
 - [CLI scaffold](../../packages/cli/src/new/scaffold.ts)와 [테스트](../../packages/cli/src/new/scaffold.test.ts): 생성 import, 등록, script, port parser.

@@ -124,7 +124,7 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - `BunAdapterOptions`: host, port, TLS, raw-body, multipart, and shutdown options accepted by `BunHttpApplicationAdapter.create()`.
 - `BunWebSocketBinding`, `BunWebSocketUpgradeHost`, and `BunRealtimeBindingHost`: binding contracts used by `@fluojs/websockets/bun` before normal HTTP dispatch. Bindings receive only an upgrade-capable host, not the adapter-owned Bun server lifecycle or raw fetch handler.
 - `BunWebSocketBindingHost`: Backward-compatible alias for configuring Bun realtime bindings.
-- `BunServeOptions`, `BunServerLike`, `BunWebSocketHandler`, `BunServerWebSocket`, `BunWebSocketMessage`, `BunApplicationSignal`, `BunCorsInput`, `BunTlsOptions`, and `CreateBunFetchHandlerOptions`: Lower-level Bun host, websocket, signal, CORS, TLS, and fetch-handler integration types.
+- `BunServeOptions`, `BunServerLike`, `BunWebSocketHandler`, `BunServerWebSocket`, `BunWebSocketMessage`, `BunShutdownSignal`, `BunTlsOptions`, and `CreateBunFetchHandlerOptions`: Lower-level Bun host, websocket, signal, TLS, and fetch-handler integration types.
 
 ## Adapter Contract
 

@@ -52,7 +52,7 @@ Factory creation failure closes acquired runtime resources, lifecycle instances,
 
 ## Startup Sequence
 
-The shared initialization sequence below is used by both Factory and the Fastify helpers. Creation, lifecycle readiness, and request admission are distinct boundaries; [Lifecycle & Shutdown Guarantees](../architecture/lifecycle-and-shutdown.md) owns their detailed contract.
+The initialization sequence below is owned by Factory. Creation, lifecycle readiness, and request admission are distinct boundaries; [Lifecycle & Shutdown Guarantees](../architecture/lifecycle-and-shutdown.md) owns their detailed contract.
 
 1. `FluoFactory.create(rootModule, options)` owns HTTP creation directly in `packages/runtime/src/bootstrap.ts`; there is no forwarding free-function implementation.
 2. `bootstrapModule(...)` compiles the reachable module graph from the root module and validates imports, exports, provider visibility, and injection metadata.
@@ -104,7 +104,7 @@ The shared initialization sequence below is used by both Factory and the Fastify
 
 ## Evidence
 
-- [Shared helper implementation](../../packages/runtime/src/http-adapter-shared.ts) and [tests](../../packages/runtime/src/http-adapter-shared.test.ts): middleware, completion, and failure/signal cleanup.
+- [Internal HTTP adapter integration](../../packages/runtime/src/http-adapter-shared.ts) and [tests](../../packages/runtime/src/http-adapter-shared.test.ts): middleware, completion, and failure/signal cleanup.
 - [Fastify implementation](../../packages/platform-fastify/src/adapter.ts) and [tests](../../packages/platform-fastify/src/adapter.test.ts): numeric validation, logging, listening, and Node signal wiring.
 - [Runtime bootstrap](../../packages/runtime/src/bootstrap.ts) and [tests](../../packages/runtime/src/bootstrap.test.ts): shared initialization and failure cleanup.
 - [CLI scaffold](../../packages/cli/src/new/scaffold.ts) and [tests](../../packages/cli/src/new/scaffold.test.ts): generated imports, registrations, scripts, and port parser.
