@@ -140,6 +140,14 @@ fluo new my-deno-app --shape application --transport http --runtime deno --platf
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
 
+The Cloudflare Workers template calls
+`CloudflareWorkerApplicationHost.create(AppModule)` and exports
+`export default { fetch: worker.fetch }`. The host owns first-request bootstrap,
+retry, generation replacement, and drain recovery. Each generation internally
+creates its adapter, calls `FluoFactory.create(AppModule, { adapter })`, and awaits
+no-socket `app.listen()`. Use the host's `{ fromEnv }` overload when the first
+Worker environment must select bootstrap configuration.
+
 Select the official HTTP-first React SSR + Vite application with the named starter flag:
 
 ```bash

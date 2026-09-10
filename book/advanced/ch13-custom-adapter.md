@@ -163,7 +163,7 @@ The `committed` property tells whether the response has already been sent. It is
 
 In environments such as AWS Lambda or Cloudflare Workers, the platform owns the long-running ingress loop. The application still calls `listen()` to bind the Fluo dispatcher, but exported Worker code reuses the adapter-backed `fetch` handler for each incoming event instead of opening a socket.
 
-In `packages/platform-cloudflare-workers/src/adapter.ts`, `listen()` stores the shared dispatcher once, and each `fetch` event delegates through that dispatcher to produce a Web `Response`. The lazy entrypoint helper follows the same lifecycle by bootstrapping once on first request and then reusing the resolved Worker application. In this way, the adapter pattern connects traditional server environments and modern edge runtimes through the same contract without implying a new adapter per request.
+In `packages/platform-cloudflare-workers/src/adapter.ts`, `listen()` stores the shared dispatcher once, and each `fetch` event delegates through that dispatcher to produce a Web `Response`. `CloudflareWorkerApplicationHost` separately owns lazy bootstrap on the first request and then reuses its resolved Worker application generation. In this way, the adapter pattern connects traditional server environments and modern edge runtimes through the same contract without implying a new adapter per request.
 
 ## 13.7 Reporting Realtime Capability
 

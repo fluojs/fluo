@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest';
-
 import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
-import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
 import { DenoHttpApplicationAdapter } from '@fluojs/platform-deno';
+import { describe, expect, it } from 'vitest';
 
 import { createFetchStyleWebSocketConformanceHarness } from './fetch-style-websocket-conformance.js';
 
@@ -56,7 +55,7 @@ describe('official fetch-style runtime websocket contract', () => {
 
   it('keeps Cloudflare Workers on the shared supported websocket expansion seam', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
-      createAdapter: () => createCloudflareWorkerAdapter(),
+      createAdapter: () => CloudflareWorkerHttpApplicationAdapter.create(),
       expectedSupport: 'supported',
       expectedReason:
         'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',

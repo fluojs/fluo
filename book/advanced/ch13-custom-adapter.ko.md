@@ -163,7 +163,7 @@ const fluoResponse: FrameworkResponse = {
 
 AWS Lambda나 Cloudflare Workers 같은 환경에서는 플랫폼이 장기 실행 ingress loop를 소유합니다. 애플리케이션은 여전히 `listen()`을 호출해 Fluo dispatcher를 binding하지만, export된 Worker 코드는 socket을 열지 않고 각 incoming event마다 adapter-backed `fetch` handler를 재사용합니다.
 
-`packages/platform-cloudflare-workers/src/adapter.ts`에서는 `listen()`이 shared dispatcher를 한 번 저장하고, 각 `fetch` 이벤트가 그 dispatcher에 위임되어 Web `Response`를 생성합니다. lazy entrypoint helper도 첫 요청에서 한 번 bootstrap한 뒤 resolved Worker application을 재사용하는 동일한 lifecycle을 따릅니다. 이처럼 어댑터 패턴은 request마다 새 adapter를 만든다고 암시하지 않으면서 전통적인 서버 환경과 현대적인 엣지 런타임을 같은 계약으로 연결합니다.
+`packages/platform-cloudflare-workers/src/adapter.ts`에서는 `listen()`이 shared dispatcher를 한 번 저장하고, 각 `fetch` 이벤트가 그 dispatcher에 위임되어 Web `Response`를 생성합니다. `CloudflareWorkerApplicationHost`는 첫 요청의 lazy bootstrap과 이후 resolved Worker application generation 재사용을 별도로 소유합니다. 이처럼 어댑터 패턴은 request마다 새 adapter를 만든다고 암시하지 않으면서 전통적인 서버 환경과 현대적인 엣지 런타임을 같은 계약으로 연결합니다.
 
 ## 13.7 실시간 통신 역량(Realtime Capability) 보고
 

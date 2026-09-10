@@ -16,6 +16,9 @@ decorator, protocol operation을 HTTP 앱 생성과 같은 기능으로 취급�
 | `bootstrapApplication({ rootModule, ...options })` | `FluoFactory.create(rootModule, options)` |
 | 기본 security header가 없다는 가정의 Factory 호출 | `securityHeaders: false`를 전달하거나 공통 기본값을 채택하세요. |
 | readiness, adapter, post-listen setup 실패 뒤 `app.listen()` 재시도 | 새 앱을 만드세요. 실패한 앱은 terminal shutdown에 진입합니다. |
+| Worker `createCloudflareWorkerAdapter(...)` | `CloudflareWorkerHttpApplicationAdapter.create(...)` 뒤 `FluoFactory.create(AppModule, { adapter })`와 `app.listen()`을 사용하세요. |
+| Worker `bootstrapCloudflareWorkerApplication(...)` | `CloudflareWorkerHttpApplicationAdapter`를 생성해 `FluoFactory.create(...)`에 전달하고 no-socket `app.listen()`을 await합니다. Worker direct-creation recipe를 참고하세요. |
+| Worker `createCloudflareWorkerEntrypoint(...)`, `createCloudflareWorkerEnvEntrypoint(...)` | fixed module에는 `CloudflareWorkerApplicationHost.create(AppModule, options)`를 사용하고, 첫 environment configuration에는 같은 메서드의 `{ fromEnv }`를 사용하세요. |
 
 제거된 이름은 package root, 모든 export-map subpath, 배포 JavaScript,
 emitted declaration에서 사라지며 compatibility alias는 없습니다.

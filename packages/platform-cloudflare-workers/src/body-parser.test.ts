@@ -2,7 +2,7 @@ import { Controller, Post, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 import bodyParserCases from '../../../tooling/testing/body-parser-cases.json';
-import { createCloudflareWorkerAdapter } from './adapter.js';
+import { CloudflareWorkerHttpApplicationAdapter } from './adapter.js';
 
 @Controller('/body')
 class BodyController {
@@ -17,7 +17,7 @@ defineModule(BodyModule, { controllers: [BodyController] });
 
 describe('Workers inherited bounded parser conformance', () => {
   it.each(bodyParserCases)('preserves %j with %s through the actual fetch adapter', async (body, mime) => {
-    const adapter = createCloudflareWorkerAdapter({ bodyParser: 'text', rawBody: true });
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({ bodyParser: 'text', rawBody: true });
     const app = await FluoFactory.create(BodyModule, { adapter });
     const lifecycles: Promise<unknown>[] = [];
     try {
@@ -38,7 +38,7 @@ describe('Workers inherited bounded parser conformance', () => {
 
   it('inherits custom parsing and UTF-8 limits before invoking the callback', async () => {
     let calls = 0;
-    const adapter = createCloudflareWorkerAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       maxBodySize: 3,
       bodyParser(text, context) {
         calls += 1;

@@ -1,27 +1,24 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import { transformFileAsync } from '@babel/core';
 import ts from 'typescript';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { resolveWorkspaceBuildOrder } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 const execFileAsync = promisify(execFile);
-const packageRootPath = fileURLToPath(new URL('..', import.meta.url));
+let packageRootPath: string;
+let fixtureRootPath: string;
 const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
-const buildClosureScriptPath = fileURLToPath(
-  new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url),
-);
-const requiredArtifactPaths = [
-  resolve(packageRootPath, 'dist/index.js'),
-  resolve(packageRootPath, 'dist/adapter.js'),
-  resolve(packageRootPath, 'dist/adapter.d.ts'),
-  resolve(packageRootPath, 'dist/index.d.ts'),
-] as const;
-const babelConfigPath = resolve(repoRootPath, 'tooling/babel/babel.config.cjs');
-const buildTsconfigPath = resolve(packageRootPath, 'tsconfig.build.json');
+const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
+let babelConfigPath: string;
+let buildTsconfigPath: string;
 
 type SourceArtifacts = {
   readonly declaration: string;
@@ -155,13 +152,36 @@ function getSourceArtifacts(): SourceArtifacts {
 }
 
 describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
+  afterAll(async () => {
+    if (fixtureRootPath) await rm(fixtureRootPath, { recursive: true, force: true });
+  });
+
   beforeAll(async () => {
-    if (!requiredArtifactPaths.every((artifactPath) => existsSync(artifactPath))) {
-      await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/platform-cloudflare-workers'], {
-        cwd: repoRootPath,
-        env: process.env,
+    fixtureRootPath = await realpath(await mkdtemp(join(tmpdir(), 'fluo-worker-public-')));
+    packageRootPath = join(fixtureRootPath, 'packages/platform-cloudflare-workers');
+    babelConfigPath = join(fixtureRootPath, 'tooling/babel/babel.config.cjs');
+    buildTsconfigPath = join(packageRootPath, 'tsconfig.build.json');
+    const packages = resolveWorkspaceBuildOrder('@fluojs/platform-cloudflare-workers', repoRootPath);
+    for (const entry of [
+      'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+      'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+      'tooling/scripts/clean-dist.mjs', buildClosureScript,
+      'packages/testing/src/babel-decorators-plugin.ts',
+      ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+    ]) {
+      await cp(join(repoRootPath, entry), join(fixtureRootPath, entry), {
+        recursive: true,
+        verbatimSymlinks: true,
+        filter: (source) => !['dist', '.vite', '.vite-temp', '.omo'].includes(basename(source)),
       });
     }
+    await symlink(join(repoRootPath, 'node_modules'), join(fixtureRootPath, 'node_modules'), 'dir');
+    await execFileAsync(process.execPath, [join(fixtureRootPath, buildClosureScript), '@fluojs/platform-cloudflare-workers'], {
+      cwd: fixtureRootPath,
+      env: process.env,
+      timeout: 240_000,
+      killSignal: 'SIGTERM',
+    });
 
     const runtimeRootPath = resolve(packageRootPath, 'dist/index.js');
     const emittedSourceRuntimePromise = emitSourceRuntime();
@@ -232,5 +252,70 @@ describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
       ts.ScriptKind.TS,
     )).toEqual(normalizeAst(generatedSourceArtifacts.declaration, sourceAdapterPath, ts.ScriptKind.TS));
     expect(readExportAllTargets(declarationRootPath)).toEqual(readExportAllTargets(sourceRootPath));
+  });
+
+  it('publishes the canonical Worker host and adapter classes without retired helpers', () => {
+    const generatedSourceArtifacts = getSourceArtifacts();
+    const retiredExports = [
+      'bootstrapCloudflareWorkerApplication',
+      'createCloudflareWorkerAdapter',
+      'createCloudflareWorkerEntrypoint',
+      'createCloudflareWorkerEnvEntrypoint',
+    ] as const;
+
+    expect(generatedSourceArtifacts.runtimeRootExports).toContain('CloudflareWorkerApplicationHost');
+    expect(generatedSourceArtifacts.runtimeRootExports).toContain('CloudflareWorkerHttpApplicationAdapter');
+
+    for (const retiredExport of retiredExports) {
+      expect(generatedSourceArtifacts.runtimeRootExports).not.toContain(retiredExport);
+      expect(generatedSourceArtifacts.runtime).not.toContain(`function ${retiredExport}`);
+      expect(generatedSourceArtifacts.declaration).not.toContain(`declare function ${retiredExport}`);
+    }
+    const declaration = ts.createSourceFile('adapter.d.ts', generatedSourceArtifacts.declaration, ts.ScriptTarget.Latest, true);
+    const declaredNames = declaration.statements.flatMap((node) =>
+      (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) ||
+       ts.isClassDeclaration(node) || ts.isFunctionDeclaration(node)) && node.name
+        ? [node.name.text] : [],
+    );
+    for (const name of [
+      'BootstrapCloudflareWorkerApplicationOptions', 'CloudflareWorkerApplication',
+      'CloudflareWorkerEntrypoint', 'CloudflareWorkerEnvBootstrap',
+      'CloudflareWorkerEnvEntrypointFactory', 'CloudflareWorkerEnvEntrypoint',
+    ]) expect(declaredNames).not.toContain(name);
+  });
+
+  it('preserves required environment and concrete adapter types in emitted declarations', () => {
+    const consumerPath = resolve(packageRootPath, 'consumer.mts');
+    const consumer = `
+      import { CloudflareWorkerApplicationHost, CloudflareWorkerHttpApplicationAdapter } from './dist/index.js';
+      type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+      type Assert<T extends true> = T;
+      type Env = { token: string };
+      class AppModule {}
+      const fixed = CloudflareWorkerApplicationHost.create(AppModule);
+      const configured = CloudflareWorkerApplicationHost.create<Env>({ fromEnv: () => ({ rootModule: AppModule }) });
+      const adapter = CloudflareWorkerHttpApplicationAdapter.create();
+      type FixedReady = Assert<Equal<Parameters<typeof fixed.ready>, []>>;
+      type EnvReady = Assert<Equal<Parameters<typeof configured.ready>, [env: Env]>>;
+      type ConcreteAdapter = Assert<Equal<typeof adapter, CloudflareWorkerHttpApplicationAdapter>>;
+    `;
+    const options: ts.CompilerOptions = {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      target: ts.ScriptTarget.ESNext,
+      strict: true,
+      noEmit: true,
+      types: ['node'],
+    };
+    const host = ts.createCompilerHost(options);
+    const originalGetSourceFile = host.getSourceFile.bind(host);
+    host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) =>
+      resolve(fileName) === consumerPath
+        ? ts.createSourceFile(fileName, consumer, languageVersion, true)
+        : originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+    const program = ts.createProgram([consumerPath], options, host);
+    expect(ts.getPreEmitDiagnostics(program).map((diagnostic) =>
+      ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+    )).toEqual([]);
   });
 });

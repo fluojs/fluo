@@ -2505,10 +2505,12 @@ describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
         return content;
       }
 
-      return content.replace(
-        'cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers',
+      const mutated = content.replace(
+        /cannot\s+supply `ConfigModule\.forRoot\(\.\.\.\)` or singleton bootstrap providers/u,
         'Map fetch-time bindings into `ConfigModule.forRoot(...)` or singleton bootstrap providers',
       );
+      expect(mutated).not.toBe(content);
+      return mutated;
     };
 
     expect(() => enforceCloudflareWorkersLifecycleDocsSync(readText)).toThrowError(
@@ -2530,6 +2532,19 @@ describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
 
   it('accepts synchronized fetch-time Worker env guidance', () => {
     expect(() => enforceCloudflareWorkersLifecycleDocsSync()).not.toThrow();
+  });
+
+  it('accepts equivalent soft wrapping of the Worker binding contract', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      if (relativePath !== 'packages/platform-cloudflare-workers/README.md') return content;
+      const wrapped = content.replace(
+        /cannot\s+supply `ConfigModule\.forRoot\(\.\.\.\)` or singleton bootstrap providers/u,
+        'cannot\nsupply `ConfigModule.forRoot(...)` or singleton bootstrap providers',
+      ).replace(/application-shaped\s+values/u, 'application-shaped\nvalues');
+      return wrapped;
+    };
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync(readText)).not.toThrow();
   });
 });
 

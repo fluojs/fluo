@@ -72,7 +72,7 @@ Factory 생성 실패는 확보한 runtime 자원, lifecycle instance, 전달된
 | `packages/runtime/src/bootstrap.ts` | `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, `FluoFactory.createMicroservice(...)`의 실제 구현입니다. |
 | `packages/platform-nodejs/src/index.ts` | 플랫폼이 소유하는 raw Node adapter, logging, filesystem, shutdown signal helper의 구현 소스입니다. |
 | `packages/platform-fastify/src/adapter.ts` | Fastify 경로의 `FastifyHttpApplicationAdapter.create(...)`를 노출합니다. |
-| `packages/platform-cloudflare-workers/src/adapter.ts` | Worker fetch 경로의 `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, `createCloudflareWorkerEntrypoint(...)`를 노출합니다. |
+| `packages/platform-cloudflare-workers/src/adapter.ts` | 직접 Worker 애플리케이션 생성의 `CloudflareWorkerHttpApplicationAdapter.create(...)`와 host-owned lazy fetch lifecycle의 `CloudflareWorkerApplicationHost.create(...)`를 노출합니다. |
 
 ## Platform Registration
 

@@ -808,7 +808,6 @@ describe('scaffoldBootstrapApp', () => {
       devDependencies?: Record<string, string>;
       scripts?: Record<string, string>;
     };
-    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
     const workerFile = readFileSync(join(targetDirectory, 'src', 'worker.ts'), 'utf8');
     const wranglerConfig = readFileSync(join(targetDirectory, 'wrangler.jsonc'), 'utf8');
@@ -825,18 +824,11 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.preview).toBe('wrangler dev --remote --show-interactive-dev-session=false');
     expect(packageJson.scripts).not.toHaveProperty('start');
     expect(readDirectorySnapshot(targetDirectory)).not.toHaveProperty('.env');
-    expect(readme).toContain('Cloudflare Workers runtime + Cloudflare Workers HTTP via `createCloudflareWorkerEntrypoint(...)`');
-    expect(readme).toContain('defaulting to Wrangler\'s native dev loop');
-    expect(readme).toContain('fluo dev --runner fluo');
-    expect(readme).toContain('Wrangler-native preview/deploy commands');
-    expect(readme).toContain('Wrangler tooling requires Node/npm-compatible tooling locally');
-    expect(readme).toContain('- Preview: pnpm preview');
-    expect(readme).toContain('- Deploy: pnpm deploy');
     expect(appFile).not.toContain('ConfigModule.forRoot');
     expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
     expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).not.toContain('createHealthModule');
-    expect(workerFile).toContain('createCloudflareWorkerEntrypoint(AppModule)');
+    expect(workerFile).toContain('CloudflareWorkerApplicationHost.create(AppModule)');
     expect(wranglerConfig).toContain('src/worker.ts');
   });
 

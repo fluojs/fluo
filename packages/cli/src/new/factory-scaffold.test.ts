@@ -80,4 +80,39 @@ describe('canonical Node HTTP starter boundary', () => {
       await rm(targetDirectory, { recursive: true, force: true });
     }
   });
+
+  it('creates Cloudflare Workers applications through the explicit host factory', async () => {
+    // Given
+    const targetDirectory = await mkdtemp(join(tmpdir(), 'fluo-worker-host-starter-'));
+    try {
+      await scaffoldBootstrapApp({
+        ...DEFAULT_BOOTSTRAP_SCHEMA,
+        packageManager: 'pnpm',
+        platform: 'cloudflare-workers',
+        projectName: 'worker-host-starter',
+        runtime: 'cloudflare-workers',
+        skipInstall: true,
+        targetDirectory,
+      });
+      // When
+      const source = await readFile(join(targetDirectory, 'src/worker.ts'), 'utf8');
+      const file = ts.createSourceFile('worker.ts', source, ts.ScriptTarget.Latest, true);
+      const calls: string[] = [];
+      const visit = (node: ts.Node) => {
+        if (ts.isCallExpression(node)) calls.push(node.expression.getText(file));
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      // Then
+      expect(calls.filter((name) => name === 'CloudflareWorkerApplicationHost.create')).toHaveLength(1);
+      expect(calls.filter((name) => [
+        'bootstrapCloudflareWorkerApplication',
+        'createCloudflareWorkerAdapter',
+        'createCloudflareWorkerEntrypoint',
+        'createCloudflareWorkerEnvEntrypoint',
+      ].includes(name))).toEqual([]);
+    } finally {
+      await rm(targetDirectory, { recursive: true, force: true });
+    }
+  });
 });

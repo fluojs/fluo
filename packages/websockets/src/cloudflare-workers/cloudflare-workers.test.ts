@@ -805,7 +805,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('keeps real Worker adapter websocket upgrades on shutdown JSON during application shutdown', async () => {
     const createWebSocketPair = createWebSocketPairStub();
-    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({
       createWebSocketPair,
     });
     const disconnectStarted = createDeferred<void>();

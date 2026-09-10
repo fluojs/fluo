@@ -1395,7 +1395,7 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-cloudflare-workers');
-    expect(workerFile).toContain('createCloudflareWorkerEntrypoint(AppModule)');
+    expect(workerFile).toContain('CloudflareWorkerApplicationHost.create(AppModule)');
   });
 
   it('scaffolds the TCP microservice starter when shape and transport are selected explicitly', async () => {
