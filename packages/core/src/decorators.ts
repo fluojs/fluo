@@ -8,8 +8,6 @@ import type { InjectionToken } from './types.js';
 
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 
-type TupleOnly<T extends readonly unknown[]> = number extends T['length'] ? never : T;
-
 /**
  * Declares module-level metadata (`imports`, `providers`, `controllers`, `exports`, `global`) on a class.
  *
@@ -24,53 +22,20 @@ export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorF
 }
 
 /**
- * Marks the decorated module as global so its exported providers are visible without explicit imports.
- *
- * @returns A standard class decorator that marks the target module as globally visible.
- */
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
-
-/**
  * Defines explicit constructor injection tokens for the decorated class.
  *
  * Passing tokens variadically (`@Inject(A, B)`) is the canonical API. Calling `@Inject()` records an
  * explicit empty inject list so subclasses can intentionally clear inherited constructor tokens.
- * During the staged migration window, the legacy array form (`@Inject([A, B])`) is still normalized.
+ * Spread an existing token list with `@Inject(...tokens)`; a nested array is not a token.
  *
  * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
+ * @throws {TypeError} When an array is passed as a token instead of spreading it.
  */
-export function Inject(): StandardClassDecoratorFn;
-/**
- * Defines explicit constructor injection tokens for the decorated class.
- *
- * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
- * @returns A standard class decorator that stores explicit injection metadata on the target class.
- */
-export function Inject<const TTokens extends readonly InjectionToken[]>(
-  ...tokens: TupleOnly<TTokens>
-): StandardClassDecoratorFn;
-/**
- * Defines explicit constructor injection tokens for the decorated class.
- *
- * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
- * @returns A standard class decorator that stores explicit injection metadata on the target class.
- */
-export function Inject(tokens: readonly InjectionToken[]): StandardClassDecoratorFn;
-/**
- * Defines explicit constructor injection tokens for the decorated class.
- *
- * @param tokensOrList Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
- * @returns A standard class decorator that stores explicit injection metadata on the target class.
- */
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly InjectionToken[]]
-    : [...tokensOrList as readonly InjectionToken[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });

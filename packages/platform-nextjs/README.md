@@ -21,6 +21,7 @@ dependency injection.
 - [Options](#options)
 - [Runtime Contract](#runtime-contract)
 - [Public API](#public-api)
+- [API Migration](#api-migration)
 
 ## Installation
 
@@ -96,12 +97,12 @@ like every other Fluo HTTP platform:
 
 ```typescript
 // src/backend.ts
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app.module';
 
-export const nextAdapter = createNextAdapter();
+export const nextAdapter = NextHttpApplicationAdapter.create();
 export const app = await FluoFactory.create(AppModule, {
   adapter: nextAdapter,
 });
@@ -141,9 +142,9 @@ Opt in at adapter construction when a GET-only Fluo route should answer Next's
 automatic HEAD as well as an explicit `HEAD` export:
 
 ```typescript
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
 });
 ```
@@ -235,8 +236,9 @@ application and dispatcher, then attaches the dispatcher through
 `NextHttpApplicationAdapter.listen()`.
 
 The Next adapter does not create the application and does not open a socket.
-It only exposes bound Web handlers after the dispatcher is attached, while
-Next.js continues to own the HTTP server.
+It dispatches through instance `fetch(request)` after the dispatcher is attached,
+while Next.js continues to own the HTTP server. Use the lazy facade above for
+ordinary App route integration.
 
 Route facades dynamically import `src/backend.ts` on the first request.
 Import completion includes its top-level `FluoFactory.create()` and
@@ -347,7 +349,7 @@ The backend module performs ordinary Fluo bootstrap once when the first route
 request imports it:
 
 ```typescript
-const nextAdapter = createNextAdapter();
+const nextAdapter = NextHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, {
   adapter: nextAdapter,
 });
@@ -405,7 +407,7 @@ The route facade obtains its adapter from the same graph.
 
 ```typescript
 // app/api/[[...path]]/route.ts
-import { createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 import { getApplication } from '../../../src/application';
 
 export const { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } =
@@ -469,7 +471,7 @@ separation, and retained close/failure in an actual Next production build.
 ## Options
 
 ```typescript
-const nextAdapter = createNextAdapter({
+const nextAdapter = NextHttpApplicationAdapter.create({
   maxBodySize: 1_048_576,
   rawBody: true,
 });
@@ -510,20 +512,60 @@ Use a Fluo Node or Fastify platform adapter when the application requires raw No
 
 ## Public API
 
-- `createNextAdapter(options)`: creates the HTTP adapter passed to `FluoFactory.create()`
-- `NextAdapterOptions`: adapter-owned request parsing and opt-in HEAD routing options
-- `NextAdapterLoader`: dynamic canonical backend adapter loader
-- `defineNextApplication(options)`: process-local application Promise accessor for an explicit key
-- `NextApplicationOptions<T>`: application-owned key and async load contract
-- `createNextAppRouterHandler(loadAdapter)`: creates method-keyed App Router handler exports (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`) ready for destructuring
-- `NextHttpApplicationAdapter`: `HttpApplicationAdapter` with bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS` handlers
-- `NextAppRouteHandler`: Web request handler type used by those bound methods
-- `NextAppRouterMethodHandlers`: method-keyed App Router record returned by `createNextAppRouterHandler()`
-- `createNextPagesRouterHandler(loadAdapter)`: creates a request-lazy streaming Pages Router API handler
-- `NextPagesRouterConfig`: type-checks the required static `bodyParser: false` literal
-- `withFluoNextBackend(config, options?)`: exported from `@fluojs/platform-nextjs/next-config`; adds the packaged Turbopack decorator loader with opt-in scope/path preservation
-- `FluoNextBackendOptions`: `include`, `exclude`, and `preserveModulePaths` option type on the same `next-config` subpath
-- `decorators-loader`: packaged loader subpath used by the config helper
+| Public import owner | Exports and responsibility |
+| --- | --- |
+| `@fluojs/platform-nextjs` | `NextHttpApplicationAdapter.create(options)` creates an independent, unbound adapter. `NextAdapterOptions`, `NextAdapterLoader`, and `InvalidNextAdapterOptionError` also belong to the root. |
+| `@fluojs/platform-nextjs` | `defineNextApplication(options)` and `NextApplicationOptions<T>` own the process-local application Promise for an explicit key. |
+| `@fluojs/platform-nextjs/app-router` | `createNextAppRouterHandler(loadAdapter)`, `NextAppRouteHandler`, `NextAppRouterMethodHandlers`: lazy Web Request callbacks and the seven method exports required by Next. |
+| `@fluojs/platform-nextjs/pages-router` | `createNextPagesRouterHandler(loadAdapter)`, `NextPagesRouterConfig`: the Node stream bridge and required static `bodyParser: false` type. |
+| `@fluojs/platform-nextjs/next-config` | `withFluoNextBackend(config, options?)`, `FluoNextBackendOptions`: Turbopack compiler configuration and opt-in scope/path preservation. |
+| `@fluojs/platform-nextjs/decorators-loader` | The packaged compiler loader used by the config helper. |
+
+The adapter retains its `HttpApplicationAdapter` class identity, public
+constructor and inheritance, and instance `fetch(request)`, `listen(dispatcher)`,
+`close()`, and `getRealtimeCapability()`. Creation does not bind a dispatcher or
+open a socket; instance execution state is not shared through static fields.
+Host callbacks and the compiler helper remain distinct capabilities rather than
+being wrapped in creation classes.
+
+## API Migration
+
+This is a major release removing public APIs. There are no permanent compatibility aliases.
+
+| Removed surface | Replacement |
+| --- | --- |
+| Root/App/Pages `createNextAdapter(options)` | Import `NextHttpApplicationAdapter` from the root and call `.create(options)`. The same option validation and class instance are preserved. |
+| App/Pages `NextHttpApplicationAdapter`, `NextAdapterOptions`, `NextAdapterLoader` | Move imports to the root. Import App's former `InvalidNextAdapterOptionError` from the root too. |
+| Root `createNextAppRouterHandler`, `NextAppRouteHandler`, `NextAppRouterMethodHandlers` | Import from `/app-router`. |
+| Root `createNextPagesRouterHandler`, `NextPagesRouterConfig` | Import from `/pages-router`. |
+| Adapter `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` fields | Destructure the result of `createNextAppRouterHandler(loadAdapter)` into route module exports. Lazily import the backend as in the App Router recipe above. |
+
+Do not delete Next route module exports such as `GET`/`POST`/`HEAD`.
+The adapter's low-level instance dispatch remains `fetch(request)`, but do not
+replace lazy bootstrap with an eager backend import or direct bound handler
+export in a route. Do not convert Pages into a Web Request callback. Preserve
+`bodyParser: false`, demand-driven input, `drain` waits for
+`ServerResponse.write()` backpressure, disconnect abort, and remaining-upload
+drain after the response completes. Next retains socket ownership.
+
+Each facade's closure cache retains only that facade's loader Promise.
+The `defineNextApplication` keyed cache retains the first Promise and failure
+across consumers in the same JS global. Do not attribute one cache's guarantees
+to the other. Neither automatically retries failure or reopens a closed application.
+
+The consumer audit includes package tests/public declarations, the real Next
+fixture, Docs runtime-adapters/http-platform pages, and Book volume 3 chapter 15
+creation/import paths. Current CLI generators and `examples/` have no consumers
+of this Next API. The executable example is the [package fixture](./e2e/README.md).
+Historical changelogs retain the API that existed at the time. New source and
+distributed JavaScript/`.d.ts` do not retain the removed exports.
+
+`src/public-api.test.ts`, `src/app-router.test.ts`,
+`src/head-routing-public-types.test.ts`, and real Next E2E verify creation, host
+methods, cache distinctions, and import ownership. Internal
+`createLazyNextAdapterResolver` is the actual closure-cache implementation shared
+by the App/Pages bridges, not a public package export. Documentation code-fence
+import ownership is checked by `pnpm verify:platform-consistency-governance`.
 
 ## Development Verification
 
@@ -546,13 +588,13 @@ store SSR over HTTP without source aliases. See the [fixture guide](./e2e/README
 Set `NextAdapterOptions.bodyParser` at adapter construction. It accepts the
 HTTP-owned `BodyParser`: `'default'` (also the omitted default), `'text'`, or a
 synchronous/asynchronous callback. Application-wide text mode is
-`createNextAdapter({ bodyParser: 'text' })`. For path-specific policy, delegate
+`NextHttpApplicationAdapter.create({ bodyParser: 'text' })`. For path-specific policy, delegate
 unselected paths to the unchanged parser instead of reconstructing Requests:
 
 ```typescript
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   rawBody: true,

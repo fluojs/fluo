@@ -25,7 +25,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@fluojs/http';
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
 
 const sentinel = process.env.FLUO_E2E_BOOTSTRAP;
@@ -278,7 +278,7 @@ class HeadStreamController {
 class BackendModule {}
 
 // No Content-Type rewrite, Request reconstruction, or parser outside the adapter.
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 128,
   rawBody: true,

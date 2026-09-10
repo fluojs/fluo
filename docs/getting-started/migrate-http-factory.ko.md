@@ -34,13 +34,13 @@ emitted declaration에서 사라지며 compatibility alias는 없습니다.
 import { FluoFactory } from '@fluojs/runtime';
 import {
   createConsoleApplicationLogger,
-  createNodejsAdapter,
+  NodeHttpApplicationAdapter,
   createNodeShutdownSignalRegistration,
 } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.js';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   logger: createConsoleApplicationLogger(),
   shutdownRegistration: createNodeShutdownSignalRegistration(),
 });

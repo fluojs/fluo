@@ -131,14 +131,23 @@ export class AppModule {}
 
 ## lazy bootstrap이 완료된 adapter만 노출한다
 
+adapter 생성과 accessor의 공개 import는 root, App/Pages host bridge는 각각
+`/app-router`와 `/pages-router`, compiler는 `/next-config`가 소유한다.
+`NextHttpApplicationAdapter.create(options)`가 실제 adapter를 생성한다. 기존
+`createNextAdapter` import와 router subpath의 adapter 재노출은 제거되었다.
+constructor와 상속은 유지하지만 정상 route 연결은 아래 lazy facade를 사용한다.
+`nextAdapter.GET` 등의 instance 별칭을 export하지 않는다. Next가 요구하는
+일곱 route export는 facade에서 계속 제공한다. 이전 표면별 교체 방법은
+[API migration](../../packages/platform-nextjs/README.ko.md#api-migration)에 있다.
+
 다음은 완전한 `src/backend.ts`다. adapter는 application을 생성하지 않는다. runtime이 module graph와 DI를 구성하고 `app.listen()`을 통해 dispatcher를 adapter에 연결한다.
 
 ```typescript
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app';
 
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   rawBody: true,
@@ -296,7 +305,7 @@ curl -I http://127.0.0.1:3000/api/posts/999
 그 route를 제공한다는 뜻은 아니다.
 
 ```typescript
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   bodyParser(text, context) {
@@ -329,13 +338,14 @@ malformed JSON에서 미인증 401, 인증 후 400을, 큰 입력에서는 413�
 아래 완전한 `src/next-adapter.test.ts`는 앞의 `AppModule`과 현재 Fluo 표준 데코레이터 Vitest 구성을 전제로 한다. 테스트는 Next 서버를 열지 않고 adapter와 lazy facade의 공개 접점을 검증한다. `@fluojs/testing/vitest`의 decorator plugin을 사용하는 기존 테스트 설정이 필요하며 Next용 config helper가 Vitest의 변환을 대신하지는 않는다.
 
 ```typescript
-import { createNextAdapter, createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 import { AppModule } from './app';
 
 it('shares one loader and keeps explicit close terminal at the facade', async () => {
-  const adapter = createNextAdapter();
+  const adapter = NextHttpApplicationAdapter.create();
   const app = await FluoFactory.create(AppModule, { adapter });
   let loads = 0;
 

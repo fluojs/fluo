@@ -24,7 +24,7 @@ import {
 import type { NextApiHandler } from 'next';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createNextAdapter } from './adapter.js';
+import { NextHttpApplicationAdapter } from './index.js';
 import { dispatchNextPagesRequest } from './pages-bridge.js';
 import {
   createNextPagesRouterHandler,
@@ -163,7 +163,7 @@ class PagesAppModule {}
 const activeApplications: Application[] = [];
 
 async function createTestAdapter() {
-  const adapter = createNextAdapter();
+  const adapter = NextHttpApplicationAdapter.create();
   const app = await FluoFactory.create(PagesAppModule, { adapter });
   await app.listen();
   activeApplications.push(app);

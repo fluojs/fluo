@@ -11,7 +11,7 @@ import { Controller, Get, Post, Produces, Version, createHandlerMapping, type Fr
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { bootstrapHttpAdapterApplication } from '@fluojs/runtime/internal/http-adapter';
-import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 
 import {
   ApiBearerAuth,
@@ -687,7 +687,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const adapter = createNodeHttpAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = registerAppForCleanup(await bootstrapHttpAdapterApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',

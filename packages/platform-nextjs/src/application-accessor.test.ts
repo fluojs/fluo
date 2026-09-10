@@ -153,7 +153,7 @@ describe('defineNextApplication', () => {
       key,
       load: async () => {
         loads += 1;
-        const adapter = next.createNextAdapter();
+        const adapter = next.NextHttpApplicationAdapter.create();
         const app = await FluoFactory.create(AppModule, { adapter });
         await app.listen();
         await app.container.resolve(Resource);
@@ -178,7 +178,7 @@ describe('defineNextApplication', () => {
       expect(destroys).toBe(2);
       expect(loads).toBe(1);
       expect(graph.app.state).toBe('closed');
-      await expect(graph.adapter.GET(new Request('http://next.test/'))).resolves.toMatchObject({
+      await expect(graph.adapter.fetch(new Request('http://next.test/'))).resolves.toMatchObject({
         status: 503,
       });
       await expect(graph.app.container.resolve(Resource)).rejects.toThrow();

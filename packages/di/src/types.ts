@@ -1,29 +1,11 @@
 import type { Constructor, ForwardRefToken, InjectionToken, MaybePromise, OptionalInjectToken, Token } from '@fluojs/core';
 
+export type { ForwardRefToken, OptionalInjectToken } from '@fluojs/core';
+
 /**
  * Lifetime policy understood by the DI container.
  */
 export type Scope = 'singleton' | 'request' | 'transient';
-
-/**
- * Namespace helpers for the public DI scope literals.
- */
-export namespace Scope {
-  /**
-   * Default lifetime used when a provider omits an explicit scope.
-   */
-  export const DEFAULT: Scope = 'singleton';
-
-  /**
-   * Scope literal for providers that should be recreated per request container.
-   */
-  export const REQUEST: Scope = 'request';
-
-  /**
-   * Scope literal for providers that should be recreated on every resolution.
-   */
-  export const TRANSIENT: Scope = 'transient';
-}
 
 /**
  * Constructable class token used by provider definitions.
@@ -72,16 +54,6 @@ export interface ExistingProvider<T = unknown> {
 }
 
 /**
- * Deferred token resolver used to break declaration-time cycles between providers.
- */
-export type ForwardRefFn<T = unknown> = ForwardRefToken<T>;
-
-/**
- * Wrapper token that marks a dependency as optional during resolution.
- */
-export type OptionalToken<T = unknown> = OptionalInjectToken<T>;
-
-/**
  * Public provider shape accepted by container registration and override APIs.
  */
 export type Provider<T = unknown> =
@@ -127,49 +99,55 @@ export interface NormalizedProvider<T = unknown> {
 }
 
 /**
- * Wraps a token factory so DI metadata can defer token lookup until resolution time.
- *
- * @param fn Lazy token resolver used when the dependency is eventually resolved.
- * @returns A marker object understood by container normalization and resolution helpers.
- *
- * @example
- * ```ts
- * @Inject(forwardRef(() => AuthService))
- * class UsersService {
- *   constructor(private readonly auth: AuthService) {}
- * }
- * ```
+ * Creates deferred dependency tokens without evaluating their resolver.
  */
-export function forwardRef<T = unknown>(fn: () => Token<T>): ForwardRefFn<T> {
-  return Object.freeze<ForwardRefFn<T>>({ __forwardRef__: true, forwardRef: fn });
+export class ForwardRef {
+  private constructor() {}
+
+  /**
+   * Wraps a token resolver for declaration-order dependencies, not constructor cycles.
+   *
+   * @param fn Lazy token resolver, retained by identity.
+   * @returns A frozen plain wrapper accepted by Inject and provider inject arrays.
+   */
+  static create<T = unknown>(fn: () => Token<T>): ForwardRefToken<T> {
+    return Object.freeze<ForwardRefToken<T>>({ __forwardRef__: true, forwardRef: fn });
+  }
 }
 
 /**
- * Returns whether a value is a `forwardRef(...)` token wrapper.
+ * Returns whether a value is a deferred token wrapper.
  *
  * @param value Unknown dependency entry being inspected.
- * @returns `true` when the value was produced by {@link forwardRef}.
+ * @returns `true` when the value carries the ForwardRef marker.
  */
-export function isForwardRef(value: unknown): value is ForwardRefFn {
-  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefFn).__forwardRef__ === true;
+export function isForwardRef(value: unknown): value is ForwardRefToken {
+  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefToken).__forwardRef__ === true;
 }
 
 /**
- * Marks a dependency token as optional so missing registrations resolve to `undefined` instead of throwing.
- *
- * @param token Token that may be absent in the current container hierarchy.
- * @returns An optional-token wrapper understood by container resolution.
+ * Creates optional dependency tokens independently of deferred token lookup.
  */
-export function optional<T = unknown>(token: Token<T>): OptionalToken<T> {
-  return Object.freeze<OptionalToken<T>>({ __optional__: true, token });
+export class Optional {
+  private constructor() {}
+
+  /**
+   * Marks one dependency as optional without resolving or replacing its token.
+   *
+   * @param token Token that may be absent in the current container hierarchy.
+   * @returns A frozen plain wrapper; missing registrations resolve to undefined.
+   */
+  static create<T = unknown>(token: Token<T>): OptionalInjectToken<T> {
+    return Object.freeze<OptionalInjectToken<T>>({ __optional__: true, token });
+  }
 }
 
 /**
- * Returns whether a value is an optional-token wrapper created by {@link optional}.
+ * Returns whether a value is an optional-token wrapper.
  *
  * @param value Unknown dependency entry being inspected.
  * @returns `true` when the value wraps an optional token.
  */
-export function isOptionalToken(value: unknown): value is OptionalToken {
-  return typeof value === 'object' && value !== null && '__optional__' in value && (value as OptionalToken).__optional__ === true;
+export function isOptionalToken(value: unknown): value is OptionalInjectToken {
+  return typeof value === 'object' && value !== null && '__optional__' in value && (value as OptionalInjectToken).__optional__ === true;
 }

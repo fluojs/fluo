@@ -131,13 +131,13 @@ const adapter = createExpressAdapter({
 ### 21.2.2 Setup
 
 ```typescript
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 
 async function bootstrap() {
-  const adapter = createNodejsAdapter({
+  const adapter = NodeHttpApplicationAdapter.create({
     port: 443,
     https: {
       key: fs.readFileSync('key.pem'),

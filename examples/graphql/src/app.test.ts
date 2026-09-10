@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import { createNodejsAdapter, NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 
 import { AppModule, AuthorBatchRecorder, LiveUpdates } from './app';
 import { fetchWithin, parseSubscriptionData, parseSubscriptionFrame, readSubscriptionPayload, waitWithin } from './test-helpers';
@@ -124,7 +124,7 @@ describe('GraphQL example application', () => {
   it('serves a DataLoader-backed query and an SSE subscription after startup', async () => {
     // Given: the official GraphQL module registration and an OS-assigned listener.
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ port: 0 }),
+      adapter: NodeHttpApplicationAdapter.create({ port: 0 }),
       cors: false,
       logger: createConsoleApplicationLogger(),
     });

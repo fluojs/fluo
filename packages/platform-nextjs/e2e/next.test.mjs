@@ -356,6 +356,7 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
 
     await t.test('resolves only published package exports before building', async () => {
       const preflight = run(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict';
         import { createRequire } from 'node:module';
         import { access } from 'node:fs/promises';
         import { fileURLToPath } from 'node:url';
@@ -369,7 +370,22 @@ test('packaged Fluo serves both routers in a real Next 16 production build', {
             throw new Error('Not a staged dist export: ' + url);
           }
           await access(fileURLToPath(url));
-          await import(name);
+          const entry = await import(name);
+          const nextExports = {
+            '@fluojs/platform-nextjs': ['InvalidNextAdapterOptionError', 'NextHttpApplicationAdapter', 'defineNextApplication'],
+            '@fluojs/platform-nextjs/app-router': ['createNextAppRouterHandler'],
+            '@fluojs/platform-nextjs/pages-router': ['createNextPagesRouterHandler'],
+            '@fluojs/platform-nextjs/next-config': ['withFluoNextBackend'],
+          };
+          if (nextExports[name]) assert.deepEqual(Object.keys(entry).sort(), nextExports[name]);
+          if (name === '@fluojs/platform-nextjs') {
+            const adapter = entry.NextHttpApplicationAdapter.create();
+            assert.ok(adapter instanceof entry.NextHttpApplicationAdapter);
+            for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']) {
+              assert.equal(method in adapter, false);
+            }
+            await adapter.close();
+          }
           console.log(name + ' -> ' + url);
         }
         const loader = createRequire(import.meta.url).resolve(

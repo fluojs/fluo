@@ -57,13 +57,14 @@ On a Next.js 16.x Node.js host, use the adapter's opt-in to connect HEAD to
 GET-only Fluo routes:
 
 ```ts
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 
-const nextAdapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+const nextAdapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
 ```
 
-Export only `GET` from the standard lazy `createNextAppRouterHandler(...)`
-facade for Next auto-HEAD, or also export `HEAD` for direct invocation. Both
+Import `createNextAppRouterHandler` from `@fluojs/platform-nextjs/app-router`.
+Export only `GET` from that standard lazy facade for Next auto-HEAD, or also
+export `HEAD` for direct invocation. Both
 select a route once in explicit HEAD, ALL method wildcard, then GET order;
 handler-produced 404s are never retried. Status and headers are preserved while
 the body is removed and stream cancellation and request cleanup are awaited.
@@ -144,27 +145,29 @@ Use the raw Node.js adapter when you want the built-in `http` or `https` server 
 `@fluojs/platform-nodejs` requires Node.js `>=24.0.0 <27`. Node versions below 24 and Node 27+ are unsupported.
 
 ```ts
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-The adapter accepts HTTPS options and body-size limits.
+`NodeHttpApplicationAdapter.create(options)` accepts HTTPS, body-size limits, compression, and multipart in the same object.
 
 ```ts
-const adapter = createNodejsAdapter({
+const adapter = NodeHttpApplicationAdapter.create({
   port: 443,
   https: {
     key: fs.readFileSync('key.pem'),
     cert: fs.readFileSync('cert.pem'),
   },
   maxBodySize: 1_048_576,
+  compression: true,
+  multipart: { maxTotalSize: 2_097_152 },
 });
 ```
 
@@ -174,11 +177,11 @@ Use Factory creation and instance listen, with explicit `shutdownRegistration` f
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({
+  adapter: NodeHttpApplicationAdapter.create({
     port: 3000,
   }),
   globalPrefix: 'api',
@@ -189,6 +192,10 @@ await app.listen();
 ```
 
 If shutdown times out or fails, the helper logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
+
+`compression` defaults to `false`; range responses retain identity bytes even when compression is enabled. Omitted `multipart.maxTotalSize` inherits the effective `maxBodySize`. The standard startup is `FluoFactory.create` followed by `app.listen()` as above. The host owns `app.close()` and explicit process-signal registration/cleanup.
+
+Existing bootstrap/run helpers are not removed by this issue and use the same static creation implementation. Run-helper shutdown timeout or failure is reported through logs and `process.exitCode`, while the host owns final process termination. See the [Node adapter creation migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.md) for removed factory/type aliases and migration of existing run-helper defaults.
 
 ## Express
 
@@ -443,7 +450,7 @@ export class WorkerBindingsModule {}
 | Package | Public API |
 | --- | --- |
 | `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-nodejs` | `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
+| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
 | `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
 | `@fluojs/platform-deno` | `createDenoAdapter`, `createDenoFetchHandler`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |

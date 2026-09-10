@@ -1,5 +1,5 @@
 import type { MaybePromise, Token } from '@fluojs/core';
-import type { ClassType, Container, ForwardRefFn, OptionalToken, Provider } from '@fluojs/di';
+import type { ClassType, Container, ForwardRefToken, OptionalInjectToken, Provider } from '@fluojs/di';
 import type { Guard, Interceptor } from '@fluojs/http';
 import type { BootstrapApplicationOptions, BootstrapModuleOptions, BootstrapResult, ModuleType } from '@fluojs/runtime';
 import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions, TestResponse } from './http.js';
@@ -45,7 +45,7 @@ export interface OverrideProviderBuilder<T> {
   useClass(cls: ClassType<T>): TestingModuleBuilder;
   useFactory(
     factory: (...args: unknown[]) => MaybePromise<T>,
-    inject?: Array<Token | ForwardRefFn | OptionalToken>,
+    inject?: Array<Token | ForwardRefToken | OptionalInjectToken>,
   ): TestingModuleBuilder;
   useExisting(token: Token<T>): TestingModuleBuilder;
 }

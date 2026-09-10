@@ -36,10 +36,10 @@ Use this package when you are:
 Every fluo application starts with module metadata declared through `@fluojs/core`.
 
 ```ts
-import { Global, Inject, Module, Scope } from '@fluojs/core';
+import { Inject, Module, Scope } from '@fluojs/core';
 
-@Global()
 @Module({
+  global: true,
   providers: [DatabaseService],
   exports: [DatabaseService],
 })
@@ -62,7 +62,7 @@ class UserService {
 
 ### Standard decorators with TC39 decorator support
 
-fluo uses TC39 standard decorators. You do not need `experimentalDecorators: true` or `emitDecoratorMetadata: true` to use `@Module`, `@Inject`, `@Global`, or `@Scope`.
+fluo uses TC39 standard decorators. You do not need `experimentalDecorators: true` or `emitDecoratorMetadata: true` to use `@Module`, `@Inject`, or `@Scope`. Global visibility is a `Module` option, not another decorator.
 
 Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Importing `@fluojs/core` does not install a global `Symbol.metadata` polyfill. Fluo's built-in decorators keep working through framework-owned stores, but a custom standard decorator that reads `context.metadata` needs `Symbol.metadata` before its decorated module is evaluated.
 
@@ -79,7 +79,7 @@ The dynamic import is intentional. An ordinary bootstrap module that statically 
 ### Empty module metadata
 
 `@Module()` and `@Module(undefined)` are shorthand for `@Module({})`. They still register
-module metadata, preserve previously declared partial fields and `@Global()` in either
+module metadata, preserve previously declared partial fields and `@Module({ global: true })` in either
 order, and advance the metadata version. An undecorated class is different.
 
 ### Explicit dependency metadata
@@ -95,13 +95,13 @@ class UsesConfigValue {
 }
 ```
 
-Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. The array form `@Inject([A, B])` is also accepted, but new code should prefer the variadic form. If a token is unavailable at decoration time, wrap that one token with `forwardRef(...)`; if a dependency may be absent, wrap that token with `optional(...)`. The wrapper helpers are runtime DI helpers from `@fluojs/di`; `@fluojs/core` only exports the shared wrapper types accepted by `@Inject(...)`.
+Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. Spread existing lists with `@Inject(...tokens)`. The removed `@Inject([A, B])` form is rejected at typecheck and throws `TypeError` at runtime; `@Inject()` still clears inherited tokens. If a token is unavailable at decoration time, wrap that one token with `ForwardRef.create(...)`; if a dependency may be absent, wrap that token with `Optional.create(...)`. The wrapper helpers are runtime DI helpers from `@fluojs/di`; `@fluojs/core` only exports the shared wrapper types accepted by `@Inject(...)`.
 
 ```ts
 import { Inject } from '@fluojs/core';
-import { forwardRef, optional } from '@fluojs/di';
+import { ForwardRef, Optional } from '@fluojs/di';
 
-@Inject(forwardRef(() => AuditLogger), optional(CacheClient))
+@Inject(ForwardRef.create(() => AuditLogger), Optional.create(CacheClient))
 class UsesDeferredAndOptionalDeps {}
 ```
 
@@ -206,7 +206,20 @@ Standard decorators cannot automatically infer types for abstract classes or int
 
 ## Public API
 
-- **Decorators**: `Module`, `Global`, `Inject`, `Scope`
+For the breaking declaration changes, follow the
+[Core and DI migration guide](../../docs/getting-started/migrate-core-di-declarations.md).
+`Module({ global: true })` replaces `Global`; injection is variadic only. Existing
+token arrays must be spread. Scope values are literals.
+
+Own and effective metadata reads are deliberately different: `getOwnClassDiMetadata`
+returns only the class's own record, while `getClassDiMetadata` and
+`getInheritedClassDiMetadata` apply base-to-leaf overrides, including an explicit
+empty inject list. Module metadata stays class-local. On the request-pipeline seam,
+`getOwnConstructorRequestPipelineMetadataBag` reads only the constructor's own bag;
+`getRequestPipelineMetadataBag` includes inherited keys. These reader distinctions,
+frozen snapshots, and write-version invalidation are not alternate authoring APIs.
+
+- **Decorators**: `Module`, `Inject`, `Scope`
 - **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **Metadata runtime**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`

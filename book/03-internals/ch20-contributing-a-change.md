@@ -8,7 +8,7 @@
 
 At first, the operator wanted to display a single post. That blog gained reader accounts and subscriptions, then grew into a shop where the same users buy T-shirts. In Volume 3, we followed order requests through decorators, the module graph, DI, the runtime, and adapters. What remains is to turn the ability to read those internals into a change that other users can safely receive.
 
-A contribution does not need a grand starting point. Suppose that while assembling the extension package from Chapter 17, you find yourself repeatedly writing `@Module({})` even for small modules that do not yet have providers. The syntax you want is `@Module()`. But is simply marking the argument optional enough? Must an empty module still be registered in the graph? What information must remain when it is combined with `@Global()`? These questions turn a small syntactic convenience into an actual contract change.
+A contribution does not need a grand starting point. Suppose that while assembling the extension package from Chapter 17, you find yourself repeatedly writing `@Module({})` even for small modules that do not yet have providers. The syntax you want is `@Module()`. But is simply marking the argument optional enough? Must an empty module still be registered in the graph? What information must remain when it is combined with `@Module({ global: true })`? These questions turn a small syntactic convenience into an actual contract change.
 
 This chapter uses the empty `Module` default contract already implemented in the current `@fluojs/core`. `Module()`, `Module(undefined)`, and `Module({})` are all currently supported. We do not claim to have discovered an unresolved bug or submitted a new PR. This is an experiment that reconstructs a change from the completed source and tests, then injects a defect in an independent learning worktree to check the tests' ability to detect it. Nor does it claim to reproduce the history of a particular past commit.
 
@@ -16,7 +16,7 @@ This check is also the first step in contributing. If a failure in the version y
 
 ## Expand One Sentence into an Executable Contract
 
-The acceptance criteria must be more precise than "the empty object inside the parentheses can be omitted." Omitting the argument and passing explicit `undefined` must register the same module metadata as an empty object. The class must remain distinguishable from an undecorated class, and previously recorded partial fields and the `@Global` marker must be preserved. The metadata snapshot must be protected, and the change version must be updated. Do not broaden the scope to automatically treat `null` as an empty object too.
+The acceptance criteria must be more precise than "the empty object inside the parentheses can be omitted." Omitting the argument and passing explicit `undefined` must register the same module metadata as an empty object. The class must remain distinguishable from an undecorated class, and previously recorded partial fields and the `global: true` marker must be preserved. The metadata snapshot must be protected, and the change version must be updated. Do not broaden the scope to automatically treat `null` as an empty object too.
 
 Although these criteria do not directly mention domain outcomes, their connection to the product is clear. An empty module can be explicitly placed in the assembly before its features are added. If a configuration module's providers are recorded first and an empty `@Module()` is applied afterward, that configuration must not disappear. If decorator order erases the global module marker, token visibility in the existing app changes. That is how a syntax change can spread into injection failures in existing order or post services.
 
@@ -29,7 +29,7 @@ Choose ownership first as well. `packages/core/src/decorators.ts` and the core R
 The following is the **complete `packages/core/src/module-defaults.consumer.test.ts` file** you can add in an independent learning checkout. It is a consumer-oriented experiment that deliberately overlaps with the repository's current `module-defaults.test.ts`. In an actual contribution, extend a nearby existing test rather than retaining duplicate coverage of the same behavior.
 
 ```ts
-import { Global, getModuleMetadata, Module } from '@fluojs/core';
+import { getModuleMetadata, Module } from '@fluojs/core';
 import { getModuleMetadataVersion } from '@fluojs/core/internal';
 import { expect, it } from 'vitest';
 
@@ -62,12 +62,12 @@ it('keeps partial fields and both Global decorator orders', () => {
   @Module({ providers: [Marker], exports: [Marker] })
   class PartialModule {}
 
-  @Global()
+  @Module({ global: true })
   @Module()
   class OuterGlobalModule {}
 
   @Module()
-  @Global()
+  @Module({ global: true })
   class InnerGlobalModule {}
 
   expect(getModuleMetadata(PartialModule)).toMatchObject({
@@ -201,7 +201,7 @@ Module 인수 생략과 undefined 입력이 빈 모듈 메타데이터를 등록
 
 Do not manually update versions and package changelogs in several places. Fluo's official path is Changesets and `.github/workflows/release.yml`. Contributors express intent in a changeset and leave version adjustments, changelog generation, and publishing to the canonical GitHub Actions workflow. Local `npm publish` is not part of that path.
 
-The PR description should lead with the contract to review rather than boast about how short the code is. For this example, a title could be "Restore the registration contract for empty Module calls." Connect the three affected calls, the distinction from undecorated classes, preservation of partial metadata and Global, continued rejection of null, and test and declaration evidence in the body. Do not fill in check marks for results you have not run; separate reproduction steps from observed outcomes.
+The PR description should lead with the contract to review rather than boast about how short the code is. For this example, a title could be "Restore the registration contract for empty Module calls." Connect the three affected calls, the distinction from undecorated classes, preservation of partial metadata and continued rejection of null, and test and declaration evidence in the body. Do not fill in check marks for results you have not run; separate reproduction steps from observed outcomes.
 
 State the expected reproduction results as well. In the fault-injected experiment, the omitted and undefined cases fail while the `{}` case still passes. After the fix, all three inputs produce identical metadata, and a consumer graph containing the empty module is assembled. These results are criteria for readers to verify, not measured results from a PR submitted by this manuscript. A good submission description can be concrete without hiding this distinction.
 

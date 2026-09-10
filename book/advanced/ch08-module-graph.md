@@ -222,7 +222,7 @@ Formally, this is a typical DFS, but the implementation matters more than the na
 
 The exact throw site is `path:packages/runtime/src/module-graph.ts:200-208`. The error is `ModuleGraphError`, and the message is `Circular module import detected for ${moduleType.name}.` The hint recommends extracting shared Providers into a separate Module.
 
-That hint is not just guidance text. It means the runtime treats a Module cycle as a structural problem. It is not something to cover with a lazy Token trick. This is clearly different from Provider-level `forwardRef()` in the DI package.
+That hint is not just guidance text. It means the runtime treats a Module cycle as a structural problem. It is not something to cover with a lazy Token trick. This is clearly different from Provider-level `ForwardRef.create()` in the DI package.
 
 Once a Module passes the cycle check, the compiler normalizes metadata with `normalizeModuleDefinition()` at `path:packages/runtime/src/module-graph.ts:170-183`. This step fills missing fields with empty arrays or `false`. Later phases no longer need to keep asking whether `imports` or `exports` are undefined.
 
@@ -371,7 +371,7 @@ function validateProviderVisibility(
             module: compiledModule.type.name,
             token,
             phase: 'provider visibility validation',
-            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global() to make its exports universally visible.`,
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Module({ global: true }) to make its exports universally visible.`,
           },
         );
       }
@@ -408,7 +408,7 @@ function validateControllerVisibility(
             module: compiledModule.type.name,
             token,
             phase: 'controller visibility validation',
-            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global().`,
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Module({ global: true }).`,
           },
         );
       }
@@ -419,7 +419,7 @@ function validateControllerVisibility(
 
 The important point is that Providers and Controllers share the same accessible set. Being a Controller does not grant separate permission to cross Module boundaries.
 
-The error messages in this file are especially instructive. When a Token is not visible, the runtime suggests exporting it from the owning Module and importing that Module. If universal visibility is the goal, it suggests marking the owner with `@Global()`. In other words, validation is not just a defensive layer. It encodes the framework's architectural teaching in code.
+The error messages in this file are especially instructive. When a Token is not visible, the runtime suggests exporting it from the owning Module and importing that Module. If universal visibility is the goal, it suggests marking the owner with `@Module({ global: true })`. In other words, validation is not just a defensive layer. It encodes the framework's architectural teaching in code.
 
 Constructor metadata validation is also an essential layer. `validateClassInjectionMetadata()` at `path:packages/runtime/src/module-graph.ts:103-129` compares required constructor arity with the number of configured injection Tokens. If metadata is insufficient, it throws `ModuleInjectionMetadataError` before Provider instantiation starts.
 

@@ -2,13 +2,7 @@ import type {
   NextApiHandler,
 } from 'next';
 
-import {
-  createNextAdapter,
-  type NextAdapterLoader,
-  type NextAdapterOptions,
-  NextHttpApplicationAdapter,
-} from './adapter.js';
-import { createLazyNextAdapterResolver } from './lazy-adapter.js';
+import { createLazyNextAdapterResolver, type NextAdapterLoader } from './lazy-adapter.js';
 import { dispatchNextPagesRequest } from './pages-bridge.js';
 
 /** Static Pages Router config shape required for Fluo request parsing. */
@@ -33,10 +27,3 @@ export function createNextPagesRouterHandler(
     await dispatchNextPagesRequest(resolveAdapter, request, response);
   };
 }
-
-export {
-  createNextAdapter,
-  type NextAdapterLoader,
-  type NextAdapterOptions,
-  NextHttpApplicationAdapter,
-};

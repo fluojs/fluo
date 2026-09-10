@@ -1,7 +1,7 @@
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createNodeShutdownSignalRegistration, createNodejsAdapter } from './index.js';
+import { createNodeShutdownSignalRegistration, NodeHttpApplicationAdapter } from './index.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -12,7 +12,7 @@ describe('Factory-owned Node signal registration', () => {
     // Given
     class AppModule {}
     defineModule(AppModule, {});
-    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const baseline = process.listeners('SIGINT');
     const failure = new Error('signal registration failed');
     const originalOnce = process.once;
@@ -46,7 +46,7 @@ describe('Factory-owned Node signal registration', () => {
     const before = new Map(signals.map((signal) => [signal, process.listeners(signal)]));
     const failure = new Error('signal removal failed');
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ host: '127.0.0.1', port: 0 }),
+      adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 }),
       logger: { debug() {}, error() {}, log() {}, warn() {} },
       shutdownRegistration: createNodeShutdownSignalRegistration(signals),
     });

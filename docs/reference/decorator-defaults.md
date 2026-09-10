@@ -4,9 +4,11 @@
 
 This is the final implementation reconciliation of [#3701](https://github.com/fluojs/fluo/issues/3701),
 whose audit covered all 42 public `@fluojs/*` packages at
-`4a0fd3c37b5b220c3bc38519b8e231bb9e442d37`. There are 165 owned public decorator
-factories in 19 packages. Exactly 15 gain defaults; the other 150 keep their argument
-contracts. Re-exported subpaths, overloads, and aliases of the same owned API are not
+`4a0fd3c37b5b220c3bc38519b8e231bb9e442d37`. That audit counted 165 owned public decorator
+factories in 19 packages: 15 gained defaults and 150 retained their argument
+contracts. #3738 subsequently removes `Global` (164 factories remain) and the legacy
+Inject array overload. See the [declaration migration](../getting-started/migrate-core-di-declarations.md).
+Re-exported subpaths, overloads, and aliases of the same owned API are not
 counted twice. Metadata readers/writers, DI token wrappers, mapped DTO constructors,
 and compiler plugins are not decorators.
 
@@ -42,13 +44,14 @@ to omitting the decorator. Their existing `null` failures occur on decorator
 application, not necessarily on factory invocation.
 
 `Module()` is not an undecorated class. It registers metadata, preserves earlier
-partial fields and `Global()` in either order, isolates class records, and increments
+partial fields and `Module({ global: true })` in either order, isolates class records, and increments
 the module metadata version. `Path()` writes HTTP, React, and route-inspection
 metadata while keeping the React metadata's `options` property absent.
 
 ## Remaining 150 APIs
 
-Every name below retains its pre-issue argument contract and implementation.
+This stable section records the original 150-API group; 149 remain after #3738.
+The Core row reflects that later consolidation. Other rows retain their argument contracts.
 `?` denotes an already optional argument; `...` denotes existing variadic input.
 Names in this table are factories even when the table omits call parentheses.
 
@@ -67,7 +70,7 @@ Names in this table are factories even when the table omits call parentheses.
 | throttler | `Throttle`, `SkipThrottle` | 2 | `Throttle(options)` requires positive finite integer limit/ttl; skip remains no-arg |
 | cache-manager | `CacheKey`, `CacheTTL`, `CacheEvict` | 3 | Key/resolver, TTL in seconds, and eviction target required; explicit `CacheTTL(0)` means no expiry |
 | passport | `UseAuth`, `UseOptionalAuth`, `RequireScopes` | 3 | `UseAuth(strategyName)` and `UseOptionalAuth(strategyName)` require a strategy; scopes remain variadic and compositional |
-| core | `Global`, `Inject`, `Scope` | 3 | `Global()`; explicit variadic/legacy-array injection tokens, with `Inject()` clearing inherited tokens; scope required |
+| core | `Inject`, `Scope` | 2 | Explicit variadic injection tokens or spread lists; `Inject()` clears inherited tokens; scope literal required |
 | queue | `QueueWorker` | 1 | Job constructor required; options remain `{}` |
 | cron | `Cron`, `Interval`, `Timeout` | 3 | Expression/milliseconds required; options remain `{}` |
 | cqrs | `CommandHandler`, `QueryHandler`, `EventHandler`, `Saga` | 4 | Message/event constructor required; Saga also accepts a nonempty constructor array and is a class factory |

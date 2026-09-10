@@ -375,7 +375,7 @@ import { Module } from '@fluojs/core';
 import {
   Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
 } from '@fluojs/http';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { z } from 'zod';
 
@@ -407,7 +407,7 @@ class DraftController {
 class AppModule { }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
 await app.listen();
@@ -821,9 +821,9 @@ runtime bootstrap에서 `conditionalRequest`를 구성해 representation 존재 
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
-import { createConsoleApplicationLogger, createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({}),
+  adapter: NodeHttpApplicationAdapter.create({}),
   conditionalRequest: {
     resolve({ handler, request }) {
       return {

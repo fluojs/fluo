@@ -46,7 +46,7 @@ function formatDiContext(ctx?: DiErrorContext): string {
  *
  * @remarks
  * This usually points to malformed provider objects, missing `@Inject(...)` tokens, or `null`/
- * `undefined` references that were evaluated before a `forwardRef()` indirection could be applied.
+ * `undefined` references that were evaluated before a `ForwardRef.create()` indirection could be applied.
  */
 export class InvalidProviderError extends FluoCodeError {
   constructor(message: string, context?: DiErrorContext) {
@@ -109,12 +109,12 @@ export class ScopeMismatchError extends FluoCodeError {
  * @remarks
  * The formatted message includes the full dependency path plus a first-party hint that points callers toward
  * extracting shared logic, introducing a mediator, or moving the interaction to a later boundary.
- * `forwardRef()` only defers declaration-time token lookup and cannot resolve a true constructor cycle.
+ * `ForwardRef.create()` only defers declaration-time token lookup and cannot resolve a true constructor cycle.
  */
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. forwardRef() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. ForwardRef.create() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +

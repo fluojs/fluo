@@ -43,7 +43,7 @@ A package is ready for `1.0` and the Official tier only when all of the followin
 
 ## Release Metadata Contract
 
-The canonical release workflow runs on latest Node `24.x`. Exact `24.0.0`, latest `24.x`, and latest `26.x` run a frozen install, full `pnpm verify`, and generated starter checks; latest `24.x` also runs `pnpm verify:docs`, and Node 26 is never a publish runtime. Node support narrowing carries major Changesets and actionable [migration guidance](../reference/node-support.md) in this change; #3679 reconciles the coordinated release.
+The canonical release workflow runs on latest Node `24.x`. Exact `24.0.0`, latest `24.x`, and latest `26.x` run a frozen install followed by the same full build, typecheck, lint, and test coverage as local `pnpm verify`, distributed across CI jobs, plus generated starter checks. PR verification shares build artifacts from the same commit and Node version, then runs tests and starter verification in parallel after the build. Latest `24.x` runs `pnpm verify:docs` once, and Node 26 is never a publish runtime. Node support narrowing carries major Changesets and actionable [migration guidance](../reference/node-support.md) in this change; #3679 reconciles the coordinated release.
 
 Changesets (`.changeset/*.md`) is the canonical release metadata tool. Contributors record semver intent and changelog text in committed changeset files at PR time; the Changesets GitHub Action consumes those files to version packages, generate changelogs, and publish to npm. Package-level changelogs are generated automatically, and the root `CHANGELOG.md` remains available for repo-wide narrative. GitHub Releases are created automatically by the Changesets action.
 

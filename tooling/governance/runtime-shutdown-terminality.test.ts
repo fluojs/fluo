@@ -299,10 +299,10 @@ describe('legacy Book runtime source consumers', () => {
   ])('keeps Chapter 9 runtime source excerpts byte-aligned with bootstrap.ts in %s', (relativePath) => {
     const content = read(relativePath);
     const runtimeSource = read('packages/runtime/src/bootstrap.ts');
-    const contextMarker = 'path:packages/runtime/src/bootstrap.ts:913-947';
-    const listenMarker = 'path:packages/runtime/src/bootstrap.ts:755-829';
+    const contextMarker = 'path:packages/runtime/src/bootstrap.ts:921-955';
+    const listenMarker = 'path:packages/runtime/src/bootstrap.ts:755-831';
     const readyMarker = 'path:packages/runtime/src/bootstrap.ts:668-674';
-    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1606-1626';
+    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1614-1634';
     const contextGet = sourceExample(content, contextMarker);
     const applicationListen = sourceExample(content, listenMarker);
 
@@ -318,7 +318,8 @@ describe('legacy Book runtime source consumers', () => {
     expect(contextGet.match(/this\.assertProviderResolutionAllowed\(\);/gu)).toHaveLength(2);
     expect(contextGet).not.toContain('return resolveContextToken(');
     expect(applicationListen).toContain('if (this.closeStarted)');
-    expect(applicationListen).toContain('this.listenPromise = Promise.resolve().then(() => this.startListening());');
+    expect(applicationListen).toContain('this.listenPromise = Promise.resolve().then(() => this.startListening()).finally(() => {');
+    expect(applicationListen).toContain('this.listenPromise = undefined;');
     expect(applicationListen).toContain('Application startup was interrupted by shutdown.');
     expect(applicationListen).not.toContain("if (this.applicationState === 'closed')");
   });
@@ -328,7 +329,7 @@ describe('legacy Book runtime source consumers', () => {
     'book/advanced/ch09-app-context.ko.md',
   ])('rejects a changed source excerpt without governing narrative in %s', (relativePath) => {
     const content = read(relativePath);
-    const marker = 'path:packages/runtime/src/bootstrap.ts:913-947';
+    const marker = 'path:packages/runtime/src/bootstrap.ts:921-955';
     const excerpt = sourceExample(content, marker);
     const changed = content.replace(excerpt, `${excerpt}\n// source drift`);
 

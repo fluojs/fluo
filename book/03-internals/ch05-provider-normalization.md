@@ -38,7 +38,7 @@ A value provider becomes a singleton record with no dependencies. `useValue: und
 
 Each object provider requires a valid `provide` and exactly one creation strategy. You cannot supply both `useValue` and `useFactory` and ask for an interpretation such as "use the factory if there is no value." Allowed tokens are strings, symbols, and constructible classes; a non-constructible arrow function is not a class token. The internal check uses `Reflect.construct` to verify constructibility, but it does not actually call the user class's constructor. Order processing or connection creation must not happen during registration.
 
-The injection array is also copied into a new array and frozen. The shapes of `forwardRef()` and `optional()` wrappers are validated, and the wrappers are preserved as separate frozen records. Changes a caller makes to the original array or wrapper after registration therefore do not silently alter the container's declaration. This does not deeply freeze the internals of a `useValue` object or a factory's closure. Declaration stability and application state immutability must be kept distinct.
+The injection array is also copied into a new array and frozen. The shapes of `ForwardRef.create()` and `Optional.create()` wrappers are validated, and the wrappers are preserved as separate frozen records. Changes a caller makes to the original array or wrapper after registration therefore do not silently alter the container's declaration. This does not deeply freeze the internals of a `useValue` object or a factory's closure. Declaration stability and application state immutability must be kept distinct.
 
 ## Observing Internal Records with a Purchase Policy
 

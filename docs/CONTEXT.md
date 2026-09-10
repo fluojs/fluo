@@ -48,8 +48,16 @@ Prisma, Drizzle, and Mongoose `afterCommit` ordering, native capability, nesting
 
 ## Decorator Default Audit
 
+For Core/DI declaration consolidation, follow the
+[migration inventory](./getting-started/migrate-core-di-declarations.md) and the
+[Core](../packages/core/README.md) / [DI](../packages/di/README.md) API owners.
+Use `@Module({ global: true })`, variadic `@Inject(...)`, literal scopes,
+`ForwardRef.create(...)`, and `Optional.create(...)`. Own/effective metadata
+readers keep separate audiences and semantics.
+
 [Public Decorator Defaults](./reference/decorator-defaults.md) reconciles all 165 owned public
-factories: fifteen safe defaults and 150 preserved contracts. Start there for HTTP empty relative
+factories at the original audit: fifteen safe defaults and 150 other contracts.
+Issue #3738 removes `Global`, leaving 164 factories, and removes legacy array injection. Start there for HTTP empty relative
 paths, `Module()` registration, OpenAPI empty writes, React options absence, and required
 `UseAuth(strategyName)`. Public declaration coverage is
 `tooling/governance/decorator-defaults-public-types.test.ts`; runtime evidence stays in the owning packages.
@@ -112,11 +120,20 @@ Static delivery is a portable `@fluojs/http` middleware contract, documented in 
 
 The [Node 24 migration guide](./getting-started/migrate-node24.md) owns upcoming coordinated-release preparation and the Node, packages, then imports order. Of the actual 42 public manifests, 41 stable packages have explicit major intent and `@fluojs/react` has 0.x minor intent. Publication is maintainer-owned; #3169 remains the umbrella until the user-run release.
 
-See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0 <27` classification, eight portable omissions, exact/latest CI evidence, and consumer migration. `tooling/governance/node-support-classification.test.ts` and `pnpm test:node-floor` verify these boundaries.
+See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0 <27` classification, eight portable omissions, exact/latest CI evidence, and consumer migration. `.github/workflows/node-verification.yml` verifies the full build, typecheck, lint, sharded tests, and generated starters on all three Node versions, with one docs verification on latest `24.x`. `tooling/ci/node-verification-workflow.test.ts` verifies the execution topology, build artifact transfer, and failure-blocking aggregate gate. `tooling/governance/node-support-classification.test.ts` and the local focused `pnpm test:node-floor` command check support boundaries without replacing full CI.
 
 `@fluojs/cqrs` requires Node.js `>=24.0.0 <27` as its package-owned support contract. This is the verified Node listener support window: Node.js versions below 24 and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
 
 ## Next.js Hosting
+
+For canonical imports, start at the [Next public API and migration owner](../packages/platform-nextjs/README.md#api-migration):
+root `NextHttpApplicationAdapter.create(options)` and `defineNextApplication`,
+App/Pages lazy bridges on `/app-router` and `/pages-router`, compiler on
+`/next-config`. Adapter method aliases are removed; Next route exports remain.
+Public declaration/JavaScript ownership is exercised by
+`packages/platform-nextjs/src/head-routing-public-types.test.ts`; real App/Pages
+build/start/request evidence lives in the package E2E. Code-fence import checks
+run through `tooling/governance/nextjs-public-imports.mjs` and its regression suite.
 
 [`@fluojs/platform-nextjs`](../packages/platform-nextjs/README.md) hosts Fluo in
 Next.js 16.x App Router and Pages Router on Node.js `>=24.0.0 <27`, using
@@ -259,7 +276,7 @@ CQRS dispatch context discoverability is split across `packages/cqrs/README.md`,
 
 Core request-pipeline metadata seam discoverability is split across `packages/core/README.md` and [`docs/reference/package-surface.md`](./reference/package-surface.md): `@fluojs/core/request-pipeline` is the documented package-integration seam for first-party request-pipeline packages such as `@fluojs/validation`, `@fluojs/serialization`, and `@fluojs/openapi` to share DTO validation, binding, and standard decorator metadata-bag access without importing `@fluojs/core/internal` directly. Application code should continue to use root `@fluojs/core` decorators and public helpers unless a package-integration contract explicitly applies.
 
-Core DI and NestJS migration discoverability is split across `packages/core/README.md`, `packages/di/README.md`, `packages/runtime/README.md`, [`docs/architecture/di-and-modules.md`](./architecture/di-and-modules.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`book/beginner/ch04-decorators-intro.md`](../book/beginner/ch04-decorators-intro.md), and [`book/advanced/ch16-custom-package.md`](../book/advanced/ch16-custom-package.md): `@Inject(...)` is a class decorator that declares constructor Tokens in parameter order rather than a property or parameter decorator; `@Injectable()` has no fluo equivalent because Providers are registered explicitly; `@Scope('request')` and `@Scope('transient')` define Provider lifecycles, with request-scoped resolution requiring `createRequestScope()` and captive singleton dependencies rejected with `ScopeMismatchError`; and `@Optional()` becomes `optional(TOKEN)` in class-level `@Inject(...)` or a Provider `inject` list, resolving an absent Provider as `undefined`. Circular Module imports are rejected during Module Graph compilation and must be removed by extracting shared Providers into a separate Module or package; `forwardRef(...)` only delays one dependency Token lookup inside class-level `@Inject(...)` or Provider `inject`, without making Module cycles or true constructor cycles resolvable; and custom standard decorators that read `context.metadata` must run `ensureMetadataSymbol()` in a preload entrypoint before dynamically importing their decorated application graph because static imports are evaluated before the bootstrap module body.
+Core DI and NestJS migration discoverability is split across `packages/core/README.md`, `packages/di/README.md`, `packages/runtime/README.md`, [`docs/architecture/di-and-modules.md`](./architecture/di-and-modules.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`book/beginner/ch04-decorators-intro.md`](../book/beginner/ch04-decorators-intro.md), and [`book/advanced/ch16-custom-package.md`](../book/advanced/ch16-custom-package.md): `@Inject(...)` is a class decorator that declares constructor Tokens in parameter order rather than a property or parameter decorator; `@Injectable()` has no fluo equivalent because Providers are registered explicitly; `@Scope('request')` and `@Scope('transient')` define Provider lifecycles, with request-scoped resolution requiring `createRequestScope()` and captive singleton dependencies rejected with `ScopeMismatchError`; and `@Optional()` becomes `Optional.create(TOKEN)` in class-level `@Inject(...)` or a Provider `inject` list, resolving an absent Provider as `undefined`. Circular Module imports are rejected during Module Graph compilation and must be removed by extracting shared Providers into a separate Module or package; `ForwardRef.create(...)` only delays one dependency Token lookup inside class-level `@Inject(...)` or Provider `inject`, without making Module cycles or true constructor cycles resolvable; and custom standard decorators that read `context.metadata` must run `ensureMetadataSymbol()` in a preload entrypoint before dynamically importing their decorated application graph because static imports are evaluated before the bootstrap module body.
 
 Runtime lifecycle and NestJS migration discoverability is split across `packages/runtime/README.md`, [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`docs/architecture/lifecycle-and-shutdown.md`](./architecture/lifecycle-and-shutdown.md), and the advanced [Module Graph](../book/advanced/ch08-module-graph.md) and [Application Context](../book/advanced/ch09-app-context.md) chapters: the public four-hook contract runs `onModuleInit()` before `onApplicationBootstrap()` at startup, then runs `onModuleDestroy()` before `onApplicationShutdown(signal?)` in reverse lifecycle-instance order at shutdown. NestJS `beforeApplicationShutdown` is unsupported; preparation must move into one of those documented shutdown phases, and fluo provides no compatibility shim, alias, fallback, or additional runtime hook.
 
@@ -585,3 +602,7 @@ Lifecycle publishers receive immutable observer snapshots that cannot modify the
 ## Canonical HTTP Factory migration
 
 HTTP creation uses `FluoFactory.create(AppModule, { adapter })` → `app.listen()` → `app.close()`. Owners are the [bootstrap protocol](./getting-started/bootstrap-paths.md), [lifecycle contract](./architecture/lifecycle-and-shutdown.md), and [runtime README](../packages/runtime/README.md). Follow the [migration guide](./getting-started/migrate-http-factory.md) for removed imports and logger/middleware/signal/failure policies. Evidence is in runtime `factory-lifecycle.test.ts`/`factory-public-types.test.ts`, Node `factory-signals.test.ts`, CLI `factory-scaffold.test.ts`, and `tooling/governance/runtime-shutdown-terminality.test.ts`.
+
+## Node Adapter Creation
+
+Raw Node adapter creation follows `NodeHttpApplicationAdapter.create(options)` in the [package README](../packages/platform-nodejs/README.md). The [migration guide](./getting-started/migrate-node-adapter-create.md) covers the single options path including compression/multipart and removed factory/type aliases. `packages/platform-nodejs/src/adapter-create.test.ts`, `src/published-declaration-surface.test.ts`, and `packages/cli/src/new/scaffold.test.ts` verify listener behavior, DI identity, published imports, and generated code; `tooling/governance/node-adapter-creation.test.ts` checks discoverability/enforcement/regression companion requirements.

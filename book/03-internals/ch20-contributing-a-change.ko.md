@@ -8,7 +8,7 @@
 
 운영자는 처음에 게시글 하나를 보여주고 싶었다. 그 블로그가 독자 계정과 구독을 갖추고, 같은 사용자가 티셔츠를 사는 상점으로 자랐다. 3권에서는 주문 요청이 데코레이터, 모듈 그래프, DI, 런타임과 어댑터를 통과하는 과정을 살폈다. 이제 남은 일은 내부를 읽는 능력을 다른 사용자가 안전하게 받을 변경으로 바꾸는 것이다.
 
-기여를 시작하는 계기는 거창할 필요가 없다. 17장의 확장 패키지를 조립하면서 아직 provider가 없는 작은 모듈에도 `@Module({})`를 반복해서 쓰게 됐다고 하자. 개발자가 원하는 사용법은 `@Module()`이다. 그러나 단순히 인수를 optional로 표시하는 것만으로 충분한가? 빈 모듈도 그래프에 등록되어야 하는가? `@Global()`과 섞이면 어떤 정보가 남아야 하는가? 이런 질문이 작은 문법 편의 기능을 실제 계약 변경으로 만든다.
+기여를 시작하는 계기는 거창할 필요가 없다. 17장의 확장 패키지를 조립하면서 아직 provider가 없는 작은 모듈에도 `@Module({})`를 반복해서 쓰게 됐다고 하자. 개발자가 원하는 사용법은 `@Module()`이다. 그러나 단순히 인수를 optional로 표시하는 것만으로 충분한가? 빈 모듈도 그래프에 등록되어야 하는가? `@Module({ global: true })`와 섞이면 어떤 정보가 남아야 하는가? 이런 질문이 작은 문법 편의 기능을 실제 계약 변경으로 만든다.
 
 이 장의 사례는 현재 `@fluojs/core`에 이미 구현된 빈 `Module` 기본값 계약을 이용한다. `Module()`, `Module(undefined)`, `Module({})`는 현재 모두 지원된다. 미해결 버그를 발견했다거나 새 PR을 제출했다고 주장하지 않는다. 완성된 소스와 테스트를 기준으로 변경을 재구성하고, 독립 학습 worktree에서 결함을 주입해 테스트의 검출력을 확인하는 실험이다. 특정 과거 커밋의 역사를 재현했다는 주장도 아니다.
 
@@ -16,7 +16,7 @@
 
 ## 한 문장을 실행 가능한 계약으로 펼친다
 
-변경의 수용 기준은 “괄호 안의 빈 객체를 생략할 수 있다”보다 구체적이어야 한다. 인수 생략과 명시적 `undefined`는 빈 객체와 같은 모듈 metadata를 등록해야 한다. 아무 데코레이터도 없는 클래스와 구분되어야 하며, 이전에 기록된 부분 필드와 `@Global` 표시를 보존해야 한다. metadata snapshot은 보호되어야 하고 변경 버전도 갱신되어야 한다. `null`까지 자동으로 빈 객체 취급하는 범위 확장은 하지 않는다.
+변경의 수용 기준은 “괄호 안의 빈 객체를 생략할 수 있다”보다 구체적이어야 한다. 인수 생략과 명시적 `undefined`는 빈 객체와 같은 모듈 metadata를 등록해야 한다. 아무 데코레이터도 없는 클래스와 구분되어야 하며, 이전에 기록된 부분 필드와 `global: true` 표시를 보존해야 한다. metadata snapshot은 보호되어야 하고 변경 버전도 갱신되어야 한다. `null`까지 자동으로 빈 객체 취급하는 범위 확장은 하지 않는다.
 
 이 기준에는 도메인 결과가 직접 등장하지 않지만 제품과의 연결은 분명하다. 기능을 추가하기 전의 빈 module도 조립부에 명시적으로 배치할 수 있다. 설정 모듈의 provider를 먼저 기록한 뒤 빈 `@Module()`을 적용하더라도 설정이 사라지지 않아야 한다. 전역 모듈 표시가 decorator 순서 때문에 사라지면 기존 앱의 토큰 가시성이 바뀐다. 문법 변경이 기존 주문이나 게시글 서비스의 주입 실패로 번지는 경로다.
 
@@ -29,7 +29,7 @@
 다음은 독립 학습 checkout에서 추가할 수 있는 **완전한 `packages/core/src/module-defaults.consumer.test.ts` 파일**이다. 현재 저장소의 `module-defaults.test.ts`와 의도적으로 겹치는 소비자 관점 실험이다. 실제 기여에서는 가까운 기존 테스트를 확장하고 같은 검증을 중복해서 남기지 않는다.
 
 ```ts
-import { Global, getModuleMetadata, Module } from '@fluojs/core';
+import { getModuleMetadata, Module } from '@fluojs/core';
 import { getModuleMetadataVersion } from '@fluojs/core/internal';
 import { expect, it } from 'vitest';
 
@@ -62,12 +62,12 @@ it('keeps partial fields and both Global decorator orders', () => {
   @Module({ providers: [Marker], exports: [Marker] })
   class PartialModule {}
 
-  @Global()
+  @Module({ global: true })
   @Module()
   class OuterGlobalModule {}
 
   @Module()
-  @Global()
+  @Module({ global: true })
   class InnerGlobalModule {}
 
   expect(getModuleMetadata(PartialModule)).toMatchObject({

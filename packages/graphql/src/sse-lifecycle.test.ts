@@ -2,7 +2,7 @@ import { Server } from 'node:http';
 
 import { Inject, Scope } from '@fluojs/core';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
-import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Resolver, Subscription } from './decorators.js';
@@ -118,7 +118,7 @@ describe('GraphQL SSE lifecycle', () => {
       providers: [SseRequestLifecycleProbe, SseAbortLifecycleResolver],
     });
 
-    const adapter = createNodeHttpAdapter({ port: 0, shutdownTimeoutMs: 100 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0, shutdownTimeoutMs: 100 });
     const app = await FluoFactory.create(AppModule, { adapter });
     const clientController = new AbortController();
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;

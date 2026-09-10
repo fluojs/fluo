@@ -36,7 +36,7 @@ Fluo의 컨테이너는 공개 provider 형태를 그대로 해석하지 않습�
 export interface ClassProvider<T = unknown> {
   provide: Token<T>;
   useClass: ClassType<T>;
-  inject?: Array<Token | ForwardRefFn | OptionalToken>;
+  inject?: Array<Token | ForwardRefToken | OptionalInjectToken>;
   scope?: Scope;
   multi?: boolean;
 }
@@ -44,7 +44,7 @@ export interface ClassProvider<T = unknown> {
 export interface FactoryProvider<T = unknown> {
   provide: Token<T>;
   useFactory: (...deps: unknown[]) => MaybePromise<T>;
-  inject?: Array<Token | ForwardRefFn | OptionalToken>;
+  inject?: Array<Token | ForwardRefToken | OptionalInjectToken>;
   scope?: Scope;
   multi?: boolean;
   resolverClass?: ClassType;
@@ -69,7 +69,7 @@ export interface ExistingProvider<T = unknown> {
 }
 
 export interface NormalizedProvider<T = unknown> {
-  inject: Array<Token | ForwardRefFn | OptionalToken>;
+  inject: Array<Token | ForwardRefToken | OptionalInjectToken>;
   provide: Token<T>;
   scope: Scope;
   type: 'class' | 'factory' | 'value' | 'existing';
@@ -96,7 +96,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     return freezeNormalizedProvider({
       inject: normalizeInject(metadata?.inject, provider),
       provide: provider,
-      scope: normalizeProviderScope(metadata?.scope, provider) ?? Scope.DEFAULT,
+      scope: normalizeProviderScope(metadata?.scope, provider) ?? 'singleton',
       type: 'class',
       useClass: provider,
     });
@@ -115,7 +115,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: [],
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
+      scope: 'singleton',
       type: 'value',
       useValue: objectProvider.useValue,
     });
@@ -124,7 +124,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
 class provider는 `getClassDiMetadata()`를 통해 명시적으로 기록된 inject와 scope를 읽습니다. value provider는 이미 값이 있으므로 inject 배열을 비우고 singleton 기본 scope를 붙입니다.
 
-정규화 로직은 `path:packages/di/src/provider-normalization.ts:103-153`에서 `inject` 경계도 검증합니다. 값 자체가 배열이어야 하며, 각 엔트리는 문자열, symbol, constructable class token 또는 올바른 `forwardRef()` / `optional()` wrapper여야 합니다. 이 조기 검증 덕분에 잘못된 입력이 나중에 raw `TypeError`나 흐릿한 resolution 실패로 바뀌지 않습니다. 입력이 이 지점에서 표준화되므로, 하위 리졸버는 의존성 목록이 이미 실행 가능한 형태라고 가정할 수 있습니다.
+정규화 로직은 `path:packages/di/src/provider-normalization.ts:103-153`에서 `inject` 경계도 검증합니다. 값 자체가 배열이어야 하며, 각 엔트리는 문자열, symbol, constructable class token 또는 올바른 `ForwardRef.create()` / `Optional.create()` wrapper여야 합니다. 이 조기 검증 덕분에 잘못된 입력이 나중에 raw `TypeError`나 흐릿한 resolution 실패로 바뀌지 않습니다. 입력이 이 지점에서 표준화되므로, 하위 리졸버는 의존성 목록이 이미 실행 가능한 형태라고 가정할 수 있습니다.
 
 조기 검증 자체는 작은 helper 하나로 고정되어 있습니다.
 
@@ -169,9 +169,9 @@ function isToken(value: unknown): value is Token {
 }
 ```
 
-문자열, symbol, constructable class token은 평가하지 않고 그대로 통과합니다. arrow function처럼 construct할 수 없는 함수는 등록 중 거부됩니다. wrapper 객체는 필수 callable 또는 내부 token을 검증한 뒤 frozen record로 snapshot합니다. 특히 `forwardRef()`는 계속 lazy하게 동작합니다. 정규화는 wrapper의 함수를 검증하지만 호출하지 않습니다.
+문자열, symbol, constructable class token은 평가하지 않고 그대로 통과합니다. arrow function처럼 construct할 수 없는 함수는 등록 중 거부됩니다. wrapper 객체는 필수 callable 또는 내부 token을 검증한 뒤 frozen record로 snapshot합니다. 특히 `ForwardRef.create()`는 계속 lazy하게 동작합니다. 정규화는 wrapper의 함수를 검증하지만 호출하지 않습니다.
 
-또한 정규화는 Fluo의 "지연된 기본값(lazy defaults)"이 적용되는 지점입니다. 프로바이더가 스코프를 지정하지 않으면 `normalizeProvider`는 필드를 비워 두지 않습니다. 클래스 메타데이터를 읽고 `Scope.DEFAULT`라는 프레임워크 기본값을 채웁니다. scope가 존재하면 `normalizeProviderScope()`는 `singleton`, `request`, `transient`만 허용하고 다른 값은 `InvalidProviderError`로 변환합니다. 따라서 provider가 등록될 때는 동작 계약이 이미 명시된 상태입니다. 이 명시성 때문에 정규화 레코드가 provider 구성에 대한 컨테이너의 최종 기준이 됩니다.
+또한 정규화는 Fluo의 "지연된 기본값(lazy defaults)"이 적용되는 지점입니다. 프로바이더가 스코프를 지정하지 않으면 `normalizeProvider`는 필드를 비워 두지 않습니다. 클래스 메타데이터를 읽고 `'singleton'`이라는 프레임워크 기본값을 채웁니다. scope가 존재하면 `normalizeProviderScope()`는 `singleton`, `request`, `transient`만 허용하고 다른 값은 `InvalidProviderError`로 변환합니다. 따라서 provider가 등록될 때는 동작 계약이 이미 명시된 상태입니다. 이 명시성 때문에 정규화 레코드가 provider 구성에 대한 컨테이너의 최종 기준이 됩니다.
 
 factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선순위를 더 분명히 드러냅니다.
 
@@ -188,7 +188,7 @@ factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선
       inject: normalizeInject(objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'factory',
       useFactory: objectProvider.useFactory,
     });
@@ -205,7 +205,7 @@ factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선
       inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'class',
       useClass: objectProvider.useClass,
     });
@@ -222,13 +222,13 @@ factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `reso
 
 마지막으로 정규화는 최종 검증을 수행합니다. `provide` 같은 필수 필드가 있는지, 값 프로바이더와 팩토리를 동시에 지정하는 식의 명백한 모순이 없는지 확인합니다. 이 방어선 덕분에 DI 컨테이너의 내부 상태는 유효한 레코드만 다루게 됩니다. `normalizeProvider`를 통과한 provider는 Fluo 엔진이 실행 가능한 구성 조각으로 취급할 수 있습니다.
 
-평범한 class 등록의 경우 컨테이너는 `getClassDiMetadata()`로 constructor 메타데이터를 읽고, 명시적 scope가 없으면 `Scope.DEFAULT`를 사용합니다. 이 흐름은 `path:packages/di/src/provider-normalization.ts:168-179`에 보입니다. 즉 class 문법은 결국 token이 자기 자신인 normalized class provider의 sugar일 뿐입니다.
+평범한 class 등록의 경우 컨테이너는 `getClassDiMetadata()`로 constructor 메타데이터를 읽고, 명시적 scope가 없으면 `'singleton'`을 사용합니다. 이 흐름은 `path:packages/di/src/provider-normalization.ts:168-179`에 보입니다. 즉 class 문법은 결국 token이 자기 자신인 normalized class provider의 sugar일 뿐입니다.
 
 factory provider는 조금 더 미묘합니다. 컨테이너는 우선 `provider.scope`를 존중하지만, `resolverClass`가 있으면 그 클래스의 scope 메타데이터를 읽고, 마지막 fallback으로 singleton default를 사용합니다. 이 우선순위는 `path:packages/di/src/provider-normalization.ts:200-215`에 드러납니다. 즉 비동기 또는 계산형 provider도 class provider와 같은 scope 언어에 참여합니다.
 
 `{ provide, useClass }`도 같은 상속 패턴을 따릅니다. `path:packages/di/src/provider-normalization.ts:217-232`는 `objectProvider.inject`가 `undefined`일 때 컨테이너가 `objectProvider.useClass`의 메타데이터를 사용하는 모습을 보여줍니다. undefined가 아닌 provider 값은 최종 권위를 가지며, class decorator는 fallback 계약을 제공합니다.
 
-두 개의 helper wrapper도 이 정규화 단계와 연결됩니다. 겉으로는 dependency 문법처럼 보이지만 실제로는 나중 resolution을 위한 표시자입니다. `forwardRef()`와 `optional()`은 `path:packages/di/src/types.ts:137-168`에 선언되어 있습니다. 이 함수들은 직접 resolve를 수행하지 않습니다. 후속 단계가 특별 취급할 수 있도록 token을 감쌀 뿐입니다.
+두 개의 helper wrapper도 이 정규화 단계와 연결됩니다. 겉으로는 dependency 문법처럼 보이지만 실제로는 나중 resolution을 위한 표시자입니다. `ForwardRef.create()`와 `Optional.create()`은 `path:packages/di/src/types.ts:137-168`에 선언되어 있습니다. 이 static 메서드들은 직접 resolve를 수행하지 않습니다. 후속 단계가 특별 취급할 수 있도록 token을 감쌀 뿐입니다.
 
 배열이 아닌 `inject`, 유효하지 않은 엔트리, 잘못된 wrapper, 지원하지 않는 `scope`가 provider 정규화에 들어오면 `path:packages/di/src/provider-normalization.ts`는 provider context와 작성 힌트를 담은 `InvalidProviderError`를 던집니다. 이것은 중요한 선택입니다. Fluo는 작성 오류를 등록/정규화 단계에서 드러내고 싶어 합니다. 그래프가 절반쯤 활성화된 뒤 생성 시점에 뒤늦게 터뜨리려 하지 않습니다.
 
@@ -283,7 +283,7 @@ for each incoming provider:
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
-      if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT) {
+      if (this.requestScopeEnabled && normalized.scope === 'singleton') {
         throw new ScopeMismatchError(
           `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
           {
@@ -511,7 +511,7 @@ scope cache 선택은 provider scope와 현재 컨테이너가 request scope인�
 `path:packages/di/src/container.ts:949-970`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
         return this.requestCacheForWrite();
       }
@@ -712,7 +712,7 @@ special dependency entry는 모두 이 helper에서 해석됩니다.
 `path:packages/di/src/container.ts:857-879`
 ```typescript
   private async resolveDepToken(
-    depEntry: Token | ForwardRefFn | OptionalToken,
+    depEntry: Token | ForwardRefToken | OptionalInjectToken,
     chain: Token[],
     activeTokens: Set<Token>,
   ): Promise<unknown> {
@@ -738,7 +738,7 @@ special dependency entry는 모두 이 helper에서 해석됩니다.
 
 optional은 먼저 등록 여부를 보고 없으면 `undefined`를 반환합니다. `forwardRef`는 컨테이너의 `forwardRefTokenCache`를 통해 factory 결과 token을 얻은 뒤, `allowForwardRef` 플래그를 켠 상태로 같은 resolver에 들어갑니다.
 
-optional injection은 가장 작은 분기입니다. dependency entry가 `OptionalToken`이면 컨테이너는 먼저 `has(innerToken)`을 검사합니다. token이 없으면 에러 없이 `undefined`를 반환합니다. 있으면 평범하게 resolve합니다. 정확한 코드는 `path:packages/di/src/container.ts:862-870`에 있고, 두 결과는 `path:packages/di/src/container.test.ts:972-1009`에서 검증합니다.
+optional injection은 가장 작은 분기입니다. dependency entry가 `OptionalInjectToken`이면 컨테이너는 먼저 `has(innerToken)`을 검사합니다. token이 없으면 에러 없이 `undefined`를 반환합니다. 있으면 평범하게 resolve합니다. 정확한 코드는 `path:packages/di/src/container.ts:862-870`에 있고, 두 결과는 `path:packages/di/src/container.test.ts:972-1009`에서 검증합니다.
 
 forward reference도 의도적으로 단순합니다. `isForwardRef(depEntry)`가 참이면 wrapper는 `resolveForwardRefToken()`을 통해 lazy evaluation 되고 결과가 cache되며, 그 token을 `resolveWithChain(..., allowForwardRef=true)`에 넘깁니다. 이는 `path:packages/di/src/container.ts:872-876`과 `path:packages/di/src/container.ts:1367-1375`에 보입니다. 이 wrapper는 token lookup 시점을 늦출 뿐입니다. proxy 인스턴스나 lazy object를 만들어 주지 않습니다.
 
@@ -785,7 +785,7 @@ alias는 dependency-entry 수준이 아니라 provider 수준 기능입니다. `
     return freezeNormalizedProvider({
       inject: [],
       provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
+      scope: 'singleton',
       type: 'existing',
       useExisting: objectProvider.useExisting,
     });
@@ -885,11 +885,11 @@ special dependency entry 알고리즘은 이렇게 정리됩니다.
 
 ```text
 resolveDepToken(entry):
-  if entry is optional(token):
+  if entry is Optional.create(token):
     if token is absent:
       return undefined
     return resolve(token)
-  if entry is forwardRef(factory):
+  if entry is ForwardRef.create(factory):
     token = factory()
     return resolve(token, allowForwardRef=true)
   return resolve(entry)
@@ -965,7 +965,7 @@ singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 `path:packages/di/src/container.ts:1234-1251`
 ```typescript
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-    if (provider.scope !== Scope.DEFAULT) {
+    if (provider.scope !== 'singleton') {
       return;
     }
 
@@ -986,11 +986,11 @@ singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 
 이 검사는 singleton provider가 만들어지기 전에 dependency graph를 확인합니다. 재귀 helper는 alias, multi-provider contribution, nested dependency, wrapper, unregistered class metadata 뒤의 request-scoped provider도 같은 규칙으로 잡아냅니다.
 
-`CircularDependencyError`는 의도적으로 매우 노골적입니다. `path:packages/di/src/errors.ts:106-125`의 constructor는 full chain과 함께, shared logic 분리 또는 `forwardRef()` 사용을 권장하는 first-party hint를 넣습니다. 그 복구 조언은 표준 해결 모델에 뿌리를 두고 있습니다.
+`CircularDependencyError`는 의도적으로 매우 노골적입니다. `path:packages/di/src/errors.ts:106-125`의 constructor는 full chain과 함께, shared logic 분리, mediator, 또는 생성 이후 경계로 이동을 권장하는 first-party hint를 넣습니다. 그 복구 조언은 표준 해결 모델에 뿌리를 두고 있습니다.
 
 고급 분석 루프를 마무리하려면 장의 주장을 소스의 실제 행동 계약과 일치시켜야 합니다. `path:packages/di/src/provider-normalization.ts:168-249`는 `normalizeProvider`가 실제로 모든 프로바이더 형태의 기본 진입점임을 확인합니다. `path:packages/di/src/container.ts:670-683`은 `resolveWithChain`이 운영의 첫 번째 분기로 사이클 감지를 처리함을 증명합니다. `path:packages/di/src/container.ts:1201-1232`는 `instantiate`가 생성자가 실행되기 전에 싱글톤 스코프 위생을 강제함을 보여줍니다. `path:packages/di/src/container.ts:857-879`는 optional, forwardRef, 표준 토큰이 통합된 해결 헬퍼를 공유함을 보여줍니다. `path:packages/di/src/container.test.ts:1223-1255`와 `path:packages/di/src/container.test.ts:737-755`의 테스트는 대표적인 multi-provider 집계·순서 보존과 registration-conflict 동작을 보여 줍니다.
 
-이 표준 우선 아키텍처는 모듈 그래프가 복잡해져도 DI 컨테이너를 예측 가능한 상태 머신으로 유지합니다. 복잡성은 정규화 단계로 옮기고, 등록 중에는 스코프와 토폴로지 규칙을 강제합니다. `path:packages/di/src/types.ts:137-168`의 `forwardRef()` 지원도 이 모델 안에 들어 있으며, 프록시 객체를 만들지 않고 조회 지연 marker만 제공합니다.
+이 표준 우선 아키텍처는 모듈 그래프가 복잡해져도 DI 컨테이너를 예측 가능한 상태 머신으로 유지합니다. 복잡성은 정규화 단계로 옮기고, 등록 중에는 스코프와 토폴로지 규칙을 강제합니다. `path:packages/di/src/types.ts:137-168`의 `ForwardRef.create()` 지원도 이 모델 안에 들어 있으며, 프록시 객체를 만들지 않고 조회 지연 marker만 제공합니다.
 
 구현 관점의 디버깅 체크리스트는 다음과 같습니다.
 - 등록 직후 실패하면 normalization과 duplicate check를 먼저 본다.

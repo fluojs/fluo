@@ -97,12 +97,11 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
       };
     case 'nodejs':
       return {
-        adapterCall: 'createNodejsAdapter({ port })',
-        adapterFactory: 'createNodejsAdapter',
+        adapterCall: 'NodeHttpApplicationAdapter.create({ port })',
+        adapterFactory: 'NodeHttpApplicationAdapter',
         entrypoint: 'src/main.ts',
         packageName: '@fluojs/platform-nodejs',
         platformLabel: 'raw Node.js HTTP',
-        runHelper: 'runNodejsApplication',
         runtimeLabel: 'Node.js runtime',
       };
     default:
@@ -475,6 +474,7 @@ function createHttpCommandsSection(options: BootstrapOptions): string {
 
 function createHttpProjectReadme(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
+  const adapterCreation = starter.adapterCall?.split('(')[0];
   const entrypointLabel = starter.entrypoint;
   const starterContract = options.runtime === 'node'
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`FluoFactory.create(..., { adapter })\` then \`app.listen()\``
@@ -484,7 +484,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`runDenoApplication(...)\``
     : options.runtime === 'cloudflare-workers'
       ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`createCloudflareWorkerEntrypoint(...)\``
-      : `\`${entrypointLabel}\` wires the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${starter.adapterFactory}(... )\``.replace('(... )', '(...)');
+      : `\`${entrypointLabel}\` wires the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${adapterCreation}(...)\`, then \`FluoFactory.create(AppModule, { adapter })\` and \`app.listen()\`. The application owner calls \`app.close()\`; process-signal registration is explicit.`;
   const corsLine = options.runtime === 'node'
     ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `FluoFactory.create(AppModule, { adapter, cors })` to configure it'
     : options.runtime === 'cloudflare-workers'
@@ -493,7 +493,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
       ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `runDenoApplication(..., { cors })` to configure it'
       : starter.runHelper
         ? `- CORS: no CORS middleware is added by default; pass \`cors\` explicitly to \`${starter.runHelper}(..., { cors })\` to configure it`
-        : `- CORS: no CORS middleware is added by default; import \`createCorsMiddleware\` from \`@fluojs/http\` and configure \`FluoFactory.create(..., { adapter: ${starter.adapterFactory}(...), middleware: [createCorsMiddleware({ allowOrigin })] })\` with an explicit allowed origin policy`;
+        : `- CORS: no CORS middleware is added by default; import \`createCorsMiddleware\` from \`@fluojs/http\` and configure \`FluoFactory.create(..., { adapter: ${adapterCreation}(...), middleware: [createCorsMiddleware({ allowOrigin })] })\` with an explicit allowed origin policy`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
     : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`createTestApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
@@ -718,13 +718,13 @@ function createAppFile(options: BootstrapOptions): string {
   const importSuffix = options.runtime === 'deno' ? '.ts' : '';
 
   if (options.runtime === 'cloudflare-workers') {
-    return `import { Global, Module } from '@fluojs/core';
+    return `import { Module } from '@fluojs/core';
 import { HealthModule } from '@fluojs/runtime';
 
 import { GreetingModule } from './greeting/greeting.module';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     GreetingModule,
     HealthModule.forRoot(),
@@ -738,14 +738,14 @@ export class AppModule {}
       ? 'Deno.env.toObject()'
       : 'process.env';
 
-  return `import { Global, Module } from '@fluojs/core';
+  return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 
 import { GreetingModule } from './greeting/greeting.module${importSuffix}';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
@@ -991,7 +991,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app';
 
 // The generated starter wires the selected first-class fluo new application path:
-// ${starter.runtimeLabel} + ${starter.platformLabel} via ${starter.adapterFactory}(...).
+// ${starter.runtimeLabel} + ${starter.platformLabel} via ${starter.adapterCall?.split('(')[0]}(...).
 
 const parsedPort = Number.parseInt(${portExpression}, 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
@@ -1887,7 +1887,7 @@ Use the unit templates for fast logic checks. Use the mixed verification templat
 }
 
 function createMixedAppFile(): string {
-  return `import { Global, Module } from '@fluojs/core';
+  return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
 import { HealthModule } from '@fluojs/runtime';
@@ -1899,8 +1899,8 @@ const parsedMicroservicePort = Number.parseInt(process.env.MICROSERVICE_PORT ?? 
 const microservicePort = Number.isFinite(parsedMicroservicePort) ? parsedMicroservicePort : 4000;
 const microserviceHost = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
@@ -1942,7 +1942,7 @@ await app.listen();
 function createMixedAppTestFile(): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import {
@@ -2026,8 +2026,8 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 describe('AppModule mixed starter', () => {
   it('keeps HTTP routes and message handlers in one explicit topology contract', async () => {
     const transport = new InMemoryLoopbackTransport();
-    @Global()
     @Module({
+      global: true,
       imports: [
         ConfigModule.forRoot({
           envFile: '.env',

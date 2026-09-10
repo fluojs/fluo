@@ -134,7 +134,7 @@ Next, it is easiest to look at Decorator types in the order you meet them in rea
 Class Decorators apply to an entire class. In fluo, many of the most visible framework concepts start here.
 
 - `@Module()`
-- `@Global()`
+- `@Module({ global: true })`
 - `@Inject(...)`
 - `@Scope(...)`
 - `@Controller()`
@@ -250,7 +250,7 @@ The method body shows what the code does, and the Decorator lines tell you where
 
 Before closing the chapter, it is worth seeing how fluo combines multiple supported standard Decorators on one class.
 
-The TC39 model can describe several kinds of class elements, but a language capability does not automatically become a framework API. The public `@fluojs/core` Decorators are class-level: `@Module()`, `@Global()`, `@Inject(...)`, and `@Scope(...)`. fluo does not provide a core accessor-interception Decorator or contract.
+The TC39 model can describe several kinds of class elements, but a language capability does not automatically become a framework API. The public `@fluojs/core` Decorators are class-level: `@Module()`, `@Module({ global: true })`, `@Inject(...)`, and `@Scope(...)`. fluo does not provide a core accessor-interception Decorator or contract.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';

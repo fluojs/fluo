@@ -132,14 +132,24 @@ This is deliberately a printable SSR document without hydration. Do not put an i
 
 ## Expose the Adapter Only After Lazy Bootstrap Completes
 
+The root owns public adapter creation and accessor imports; `/app-router` and
+`/pages-router` own their respective host bridges, and `/next-config` owns the
+compiler. `NextHttpApplicationAdapter.create(options)` performs adapter creation.
+The former `createNextAdapter` import and adapter re-exports from router subpaths
+are removed. Constructors and inheritance remain supported, but ordinary routes
+use the lazy facade below. Do not export instance aliases such as
+`nextAdapter.GET`. The facade still provides all seven route exports required by
+Next. See [API migration](../../packages/platform-nextjs/README.md#api-migration)
+for each old surface's replacement.
+
 The following is the complete `src/backend.ts`. The adapter does not create the application. The runtime constructs the module graph and DI, then connects the dispatcher to the adapter through `app.listen()`.
 
 ```typescript
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app';
 
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   rawBody: true,
@@ -304,7 +314,7 @@ assumes you add `/api/posts/draft`; it does not claim the earlier AppModule
 already provides that route.
 
 ```typescript
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   bodyParser(text, context) {
@@ -340,13 +350,14 @@ every Next version or deployment environment.
 The following complete `src/next-adapter.test.ts` assumes the earlier `AppModule` and the current Fluo standard-decorator Vitest configuration. It tests the public interfaces of the adapter and lazy facade without opening a Next server. An existing test configuration using the decorator plugin from `@fluojs/testing/vitest` is required; the Next config helper does not replace Vitest's transformation.
 
 ```typescript
-import { createNextAdapter, createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 import { AppModule } from './app';
 
 it('shares one loader and keeps explicit close terminal at the facade', async () => {
-  const adapter = createNextAdapter();
+  const adapter = NextHttpApplicationAdapter.create();
   const app = await FluoFactory.create(AppModule, { adapter });
   let loads = 0;
 

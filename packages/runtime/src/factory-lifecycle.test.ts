@@ -1,6 +1,6 @@
 import { publicToken } from '@fluojs/core';
 import { Controller, Get, type HttpApplicationAdapter } from '@fluojs/http';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { APPLICATION_LOGGER, defineModule, FluoFactory, type ApplicationLogger } from './index.js';
@@ -37,7 +37,7 @@ describe('canonical HTTP factory lifecycle', () => {
         },
       }],
     });
-    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const applicationLogger = logger();
     const app = await FluoFactory.create(AppModule, {
       adapter,
@@ -145,7 +145,7 @@ describe('canonical HTTP factory lifecycle', () => {
         await response.send({ ok: true });
       },
     }];
-    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter, logger: logger(), middleware, securityHeaders: false,
     });

@@ -1,0 +1,280 @@
+name: Node verification
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: true
+        type: string
+      verify-isolated-http-benchmark:
+        required: true
+        type: boolean
+
+env:
+  CI: '1'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Archive package builds
+        run: tar -cf "$RUNNER_TEMP/node-build.tar" packages/*/dist packages/cli/src/new/published-internal-dependencies.ts
+
+      - name: Upload package builds
+        uses: actions/upload-artifact@v6
+        with:
+          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}/node-build.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  checks:
+    name: Typecheck, lint and docs
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package builds
+        uses: actions/download-artifact@v7
+        with:
+          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}
+
+      - name: Restore package builds
+        run: tar -xf "$RUNNER_TEMP/node-build.tar"
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Verify docs
+        if: inputs.node-version == '24.x'
+        run: pnpm verify:docs
+
+      - name: Install isolated HTTP benchmark dependencies
+        if: inputs.verify-isolated-http-benchmark
+        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile
+
+      - name: Typecheck isolated HTTP benchmark
+        if: inputs.verify-isolated-http-benchmark
+        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck
+
+  test:
+    name: Test (${{ matrix.lane }})
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: packages-1
+            project: packages
+            shard: 1/4
+          - lane: packages-2
+            project: packages
+            shard: 2/4
+          - lane: packages-3
+            project: packages
+            shard: 3/4
+          - lane: packages-4
+            project: packages
+            shard: 4/4
+          - lane: other
+            project: other
+            shard: ''
+    env:
+      FLUO_VITEST_SHUTDOWN_DEBUG: '1'
+      FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package builds
+        uses: actions/download-artifact@v7
+        with:
+          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}
+
+      - name: Restore package builds
+        run: tar -xf "$RUNNER_TEMP/node-build.tar"
+
+      - name: Test packages shard
+        if: matrix.project == 'packages'
+        env:
+          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/${{ matrix.lane }}
+        run: pnpm vitest run --project packages --shard=${{ matrix.shard }} --maxWorkers=1
+
+      - name: Test apps project
+        if: matrix.project == 'other'
+        env:
+          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/apps
+        run: pnpm vitest run --project apps --maxWorkers=1
+
+      - name: Test examples project
+        if: matrix.project == 'other'
+        env:
+          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/examples
+        run: pnpm vitest run --project examples --maxWorkers=1
+
+      - name: Test tooling project
+        if: matrix.project == 'other'
+        env:
+          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling
+        run: pnpm vitest run --project tooling --maxWorkers=1
+
+      - name: Print Vitest shutdown debug summary
+        if: ${{ always() }}
+        run: |
+          if [ ! -d "$FLUO_VITEST_SHUTDOWN_DEBUG_DIR" ]; then
+            echo "No Vitest shutdown debug artifacts were produced."
+            exit 0
+          fi
+
+          node --input-type=module <<'EOF'
+          import { existsSync, readdirSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const directory = process.env.FLUO_VITEST_SHUTDOWN_DEBUG_DIR;
+          if (!directory || !existsSync(directory)) {
+            console.log('No Vitest shutdown debug artifacts were produced.');
+            process.exit(0);
+          }
+
+          const collectJsonFiles = (currentDirectory) => {
+            const entries = readdirSync(currentDirectory, { withFileTypes: true });
+
+            return entries
+              .flatMap((entry) => {
+                const entryPath = join(currentDirectory, entry.name);
+                if (entry.isDirectory()) {
+                  return collectJsonFiles(entryPath);
+                }
+
+                return entry.name.endsWith('.json') ? [entryPath] : [];
+              })
+              .sort();
+          };
+
+          const files = collectJsonFiles(directory);
+          if (files.length === 0) {
+            console.log('No Vitest shutdown debug artifacts were produced.');
+            process.exit(0);
+          }
+
+          for (const file of files) {
+            const artifact = JSON.parse(readFileSync(file, 'utf8'));
+            const activeHandleSummary = Array.isArray(artifact.process?.activeHandles?.types)
+              ? artifact.process.activeHandles.types.map((entry) => `${entry.constructorName}x${String(entry.count)}`).join(', ')
+              : '';
+
+            console.log(`artifact: ${file.slice(directory.length + 1)}`);
+            console.log(`  kind: ${String(artifact.kind ?? 'unknown')}`);
+            if (artifact.lastTestReady?.fullName) {
+              console.log(`  last ready test: ${artifact.lastTestReady.fullName}`);
+            }
+            if (artifact.lastActivity?.file) {
+              console.log(`  worker last activity: ${artifact.lastActivity.file} (${artifact.lastActivity.phase})`);
+            }
+            if (activeHandleSummary.length > 0) {
+              console.log(`  active handles: ${activeHandleSummary}`);
+            }
+          }
+          EOF
+
+      - name: Upload Vitest shutdown debug artifacts
+        if: ${{ always() && hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: vitest-shutdown-debug-${{ inputs.node-version }}-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/vitest-shutdown-debug/**/*.json
+          if-no-files-found: error
+
+  starters:
+    name: Generated starters
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package builds
+        uses: actions/download-artifact@v7
+        with:
+          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}
+
+      - name: Restore package builds
+        run: tar -xf "$RUNNER_TEMP/node-build.tar"
+
+      - name: Install generated starter browser
+        run: pnpm --dir examples/react-vite-ssr exec playwright install --with-deps chrome
+
+      - name: Verify generated starters
+        env:
+          FLUO_CLI_SANDBOX_ROOT: ${{ runner.temp }}/fluo-node-${{ inputs.node-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: pnpm --dir packages/cli sandbox:matrix < /dev/null

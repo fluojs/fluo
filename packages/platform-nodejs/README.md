@@ -29,14 +29,14 @@ This package targets Node.js `>=24.0.0 <27` and declares that exact `engines.nod
 
 ## Runtime Node Import Migration
 
-The former mixed-runtime entrypoints have no compatibility shim. Update imports directly; moved symbols retain their names:
+The former mixed-runtime entrypoints have no compatibility shim. Update imports directly, then apply the adapter-creation migration below:
 
 | Removed import | Replacement |
 | :--- | :--- |
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-The root replacement includes `createNodeHttpAdapter`, `NodeHttpApplicationAdapter`, `bootstrapNodeApplication`, `runNodeApplication`, Node logger factories, shutdown registration helpers, and `createNodeFileSystemAssetSource`. Existing `createNodejsAdapter`, `bootstrapNodejsApplication`, and `runNodejsApplication` aliases remain available.
+Adapter creation is consolidated in `NodeHttpApplicationAdapter.create(options)`. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) for both removed factories and type aliases. The `NodeHttpApplicationAdapter` class and public positional constructor remain. Bootstrap/run, logger, shutdown, and filesystem helpers are not removed by this change.
 
 ## When to Use
 
@@ -45,12 +45,12 @@ Use this package when you want to run a fluo application directly on the Node.js
 ## Quick Start
 
 ```typescript
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
@@ -66,37 +66,40 @@ Raw Node responses expose `context.response.earlyHints`. Check that optional cap
 The adapter exposes the documented Node.js transport options: host/port binding, plain HTTP or HTTPS construction configuration, request body limits, raw-body preservation, listen retry settings, and shutdown drain bounds.
 
 ```typescript
-const adapter = createNodejsAdapter({
+const adapter = NodeHttpApplicationAdapter.create({
   port: 3000,
   http: {
     maxHeaderSize: 16_384,
     joinDuplicateHeaders: true,
   },
   maxBodySize: 1_048_576,
+  compression: true,
+  multipart: { maxTotalSize: 2_097_152 },
 });
 ```
 
 `http` accepts Node's `node:http` `ServerOptions` and passes them to `createServer(options, handler)` before the listener starts. Use it for construction-time settings such as `maxHeaderSize`, `insecureHTTPParser`, `joinDuplicateHeaders`, or `highWaterMark`. For TLS, provide `https` with Node's HTTPS server options instead. `http` and `https` are mutually exclusive; supplying both throws before the adapter creates a server, so no option is silently ignored.
 
-`maxBodySize` accepts a byte count number. It is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` during bootstrap.
+`maxBodySize` accepts a byte count number. It is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` in the same adapter options object.
 
-`createNodejsAdapter()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, or adapter-level `shutdownTimeoutMs` are invalid. The default request body cap is `1 MiB`.
+`NodeHttpApplicationAdapter.create()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, or adapter-level `shutdownTimeoutMs` are invalid. The default request body cap is `1 MiB`.
+
+Defaults are `compression: false`, `rawBody: false`, `retryDelayMs: 150`, `retryLimit: 20`, and `shutdownTimeoutMs: 10_000`. Node chooses the bind address when `host` is omitted. Multipart defaults to buffered parsing, and omitted `multipart.maxTotalSize` inherits the effective `maxBodySize` (`1_048_576` bytes when both are omitted). Explicit `0` is preserved. Even with compression enabled, range responses retain identity representation bytes and range metadata without recompression.
 
 ### Direct Application Execution
+Creation neither binds the port nor registers process signals.
+
 Create through `FluoFactory.create(AppModule, { adapter })` and start through `app.listen()`. The Node logger and shutdown callback below are explicit selections at this host boundary.
-
-When signal-driven shutdown exceeds the run-helper `forceExitTimeoutMs` or fails, the helper logs the condition and sets `process.exitCode`, but leaves final process termination to the host process owner. Use adapter-level `shutdownTimeoutMs` for connection drain bounds and run-helper `forceExitTimeoutMs` for signal handler completion bounds.
-
-`bootstrapNodejsApplication(...)` and `runNodejsApplication(...)` use the framework console logger by default. Pass `logger` when a host or portability test needs startup/shutdown diagnostics captured through an injected `ApplicationLogger`.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({
+  adapter: NodeHttpApplicationAdapter.create({
     port: 3000,
+    shutdownTimeoutMs: 10_000,
   }),
   globalPrefix: 'api',
   logger: createConsoleApplicationLogger(),
@@ -109,21 +112,26 @@ To configure before listening, create through the same Factory, finish configura
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createConsoleApplicationLogger, createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({
+  adapter: NodeHttpApplicationAdapter.create({
     port: 3000,
   }),
   logger: createConsoleApplicationLogger(),
 });
 await app.listen();
+
+// When the host requests shutdown:
+await app.close();
 ```
+
+Existing `bootstrapNodejsApplication(...)` / `runNodejsApplication(...)` and their Node-named helpers remain supported and internally use the same static creation path. Bootstrap does not listen; run owns listen and signal registration. These helpers default to the framework console logger and accept an injected `logger`. Run-helper `forceExitTimeoutMs` expiry or shutdown failure is reported through logs and `process.exitCode`; the host owns final process termination. Adapter `shutdownTimeoutMs` is the separate connection-drain bound.
 
 ## Behavioral Contracts
 
-- `createNodejsAdapter(options)` is the adapter-first entrypoint for running fluo directly on Node's built-in `http` or `https` server primitives.
+- `NodeHttpApplicationAdapter.create(options)` is the adapter-first entrypoint for running fluo directly on Node's built-in `http` or `https` server primitives.
 - `http` accepts Node `node:http` `ServerOptions` for plain HTTP server construction, while `https` keeps its existing TLS construction options; callers must supply at most one of those fields.
-- `maxBodySize` accepts a non-negative integer byte count, is enforced while raw Node request bytes are still streaming, and becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided through the bootstrap/run helpers.
+- `maxBodySize` accepts a non-negative integer byte count, is enforced while raw Node request bytes are still streaming, and becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided in the adapter options object.
 - The raw Node adapter normalizes mixed-case JSON and multipart `content-type` values, returns `413` when request bodies exceed `maxBodySize`, propagates `x-request-id` with `x-correlation-id` fallback into the request context and error responses, and exposes a server-backed realtime capability through `getServer()` / `getRealtimeCapability()`.
 - `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
 - `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. Listen retries honor `retryLimit`/`retryDelayMs`, shutdown closes idle keep-alive connections before bounded drain, and when signal-driven shutdown times out or fails it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
@@ -131,30 +139,30 @@ await app.listen();
 
 ## Conformance Coverage
 
-`packages/platform-nodejs/src/index.test.ts`, `packages/platform-nodejs/src/lifecycle.test.ts`, and `packages/platform-nodejs/src/lifecycle.integration.test.ts` are the package-local regression targets for the documented Node.js contract. The adapter portability suite runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, single byte-range status/header/body semantics, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+`packages/platform-nodejs/src/adapter-create.test.ts`, `packages/platform-nodejs/src/published-declaration-surface.test.ts`, `packages/platform-nodejs/src/index.test.ts`, `packages/platform-nodejs/src/lifecycle.test.ts`, and `packages/platform-nodejs/src/lifecycle.integration.test.ts` are the package-local regression targets for the documented Node.js contract. The adapter portability suite runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, single byte-range status/header/body semantics, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
 This package exposes an `HttpApplicationAdapter`; it is not a runtime-managed `PlatformComponent` registered under `platform.components`. Therefore the generic `createPlatformConformanceHarness(...)` component lifecycle checks are outside this package's supported contract, while `createHttpAdapterPortabilityHarness(...)` is the applicable shared harness.
 
-The same regression targets also cover the package-specific public surface, type aliases, adapter-first startup, plain HTTP construction options and their HTTPS conflict boundary, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
+The same regression targets also cover the package-specific public surface, canonical static creation, adapter-first startup, plain HTTP construction options and their HTTPS conflict boundary, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
 
 ## Public API Overview
 
-- `createNodejsAdapter(options)`: Primary factory for the raw Node.js HTTP adapter.
+- `NodeHttpApplicationAdapter.create(options)`: Primary factory for the raw Node.js HTTP adapter.
 - `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
 - `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
 - `BootstrapNodejsApplicationOptions`: Options for bootstrap-only Node.js application creation.
-- `NodejsAdapterOptions`: Transport-level options for `createNodejsAdapter(...)`, including `port`, `host`, mutually exclusive `http` or `https` construction options, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
+- `NodeHttpAdapterOptions`: Transport-level options for `NodeHttpApplicationAdapter.create(...)`, including `compression`, `multipart`, `port`, `host`, mutually exclusive `http` or `https` construction options, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
 - `NodejsApplicationSignal`: Supported signal names for `runNodejsApplication(...)` shutdown registration.
-- `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/platform-nodejs`.
+- `NodeHttpApplicationAdapter`: The concrete `create(...)` return type and existing DI class token. `instanceof`, inheritance, the public positional constructor, and instance `listen`/`close` remain supported.
 - `RunNodejsApplicationOptions`: Options for one-call bootstrap, listen, and graceful shutdown wiring.
-- Former `@fluojs/runtime/node` exports keep their names on this package root: `createNodeHttpAdapter`, `NodeHttpApplicationAdapter`, `bootstrapNodeApplication`, `runNodeApplication`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `createNodeShutdownSignalRegistration`, `defaultNodeShutdownSignals`, `registerShutdownSignals`, and `createNodeFileSystemAssetSource` plus their public option types.
+- Node bootstrap/run, logger, signal, and filesystem exports remain. See the migration guide for the removed adapter factories and type aliases.
 - `@fluojs/platform-nodejs/internal`: First-party Node adapter integration seam replacing `@fluojs/runtime/internal-node`; it includes lower-level compression and request/response helpers.
 
 ## Multipart streaming
 
-`multipart` remains adapter-owned: pass `createNodeHttpAdapter(options, false, multipartOptions)` as the Factory adapter when selecting multipart policy (`false` disables compression). Factory itself has no `multipart` option.
+`multipart` remains adapter-owned; Factory itself has no `multipart` option.
 
-Set `multipart: { strategy: 'stream' }` when creating the application to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. The Node listener creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
+Set `multipart: { strategy: 'stream' }` in `NodeHttpApplicationAdapter.create(...)` to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. The Node listener creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
 
 Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
 

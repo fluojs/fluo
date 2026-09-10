@@ -228,7 +228,7 @@ function compileModule(
 
 정확한 throw site는 `path:packages/runtime/src/module-graph.ts:200-208`입니다. 에러는 `ModuleGraphError`이고, 메시지는 `Circular module import detected for ${moduleType.name}.`입니다. hint는 shared provider를 별도 module로 추출하라고 권장합니다.
 
-이 hint는 단순한 안내 문구가 아닙니다. runtime이 module cycle을 구조 문제로 본다는 뜻입니다. lazy token trick으로 덮을 문제가 아닙니다. 이 점은 DI 패키지의 provider-level `forwardRef()`와 분명히 다릅니다.
+이 hint는 단순한 안내 문구가 아닙니다. runtime이 module cycle을 구조 문제로 본다는 뜻입니다. lazy token trick으로 덮을 문제가 아닙니다. 이 점은 DI 패키지의 provider-level `ForwardRef.create()`와 분명히 다릅니다.
 
 module이 cycle 검사를 통과하면, compiler는 `path:packages/runtime/src/module-graph.ts:170-183`의 `normalizeModuleDefinition()`으로 metadata를 정규화합니다. 이 단계는 빠진 field를 빈 배열이나 `false`로 채웁니다. 그래서 이후 단계는 `imports`나 `exports`가 undefined인지 계속 물어볼 필요가 없습니다.
 
@@ -380,7 +380,7 @@ function validateProviderVisibility(
             module: compiledModule.type.name,
             token,
             phase: 'provider visibility validation',
-            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global() to make its exports universally visible.`,
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Module({ global: true }) to make its exports universally visible.`,
           },
         );
       }
@@ -418,7 +418,7 @@ function validateControllerVisibility(
             module: compiledModule.type.name,
             token,
             phase: 'controller visibility validation',
-            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global().`,
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Module({ global: true }).`,
           },
         );
       }
@@ -430,7 +430,7 @@ function validateControllerVisibility(
 provider와 controller가 같은 accessible set을 공유한다는 점이 중요합니다. controller라는 이유로 module boundary를 건너뛰는 별도 권한은 없습니다.
 
 
-이 파일의 에러 메시지는 특히 설명력이 높습니다. token이 보이지 않으면 runtime은 owning module에서 export하고 그 module을 import하라고 제안합니다. universal visibility가 목적이라면 owner를 `@Global()`로 표시하라고 안내합니다. 즉 validation은 단순 방어가 아니라, 프레임워크의 architectural teaching을 코드로 담은 계층입니다.
+이 파일의 에러 메시지는 특히 설명력이 높습니다. token이 보이지 않으면 runtime은 owning module에서 export하고 그 module을 import하라고 제안합니다. universal visibility가 목적이라면 owner를 `@Module({ global: true })`로 표시하라고 안내합니다. 즉 validation은 단순 방어가 아니라, 프레임워크의 architectural teaching을 코드로 담은 계층입니다.
 
 constructor metadata validation도 필수 계층입니다. `path:packages/runtime/src/module-graph.ts:103-129`의 `validateClassInjectionMetadata()`는 required constructor arity와 configured injection token 개수를 비교합니다. metadata가 부족하면, provider instantiation이 시작되기 전에 `ModuleInjectionMetadataError`를 던집니다.
 

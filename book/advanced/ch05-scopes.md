@@ -26,49 +26,29 @@ This chapter explains how the Fluo DI container implements the three lifecycles,
 
 ## 5.1 The scope vocabulary is small on purpose
 Fluo's scope system is intentionally small.
-`path:packages/di/src/types.ts:3-26` defines only three lifetime labels.
+`path:packages/di/src/types.ts:5-8` defines only three lifetime labels.
 `singleton`, `request`, and `transient` are the whole set. This small vocabulary is not a missing feature. It is a design constraint chosen to keep provider lifetime understandable across packages.
 
-This limit is clearer because the public type and helper literals live in the same place.
+This limit is explicit in the public type union.
 
-`path:packages/di/src/types.ts:3-26`
+`path:packages/di/src/types.ts:5-8`
 ```typescript
 /**
  * Lifetime policy understood by the DI container.
  */
 export type Scope = 'singleton' | 'request' | 'transient';
-
-/**
- * Namespace helpers for the public DI scope literals.
- */
-export namespace Scope {
-  /**
-   * Default lifetime used when a provider omits an explicit scope.
-   */
-  export const DEFAULT: Scope = 'singleton';
-
-  /**
-   * Scope literal for providers that should be recreated per request container.
-   */
-  export const REQUEST: Scope = 'request';
-
-  /**
-   * Scope literal for providers that should be recreated on every resolution.
-   */
-  export const TRANSIENT: Scope = 'transient';
-}
 ```
 
-This excerpt shows that new scopes are not added secretly through configuration files or runtime branches. The lifetime vocabulary understood by the container is fixed in the type alias and namespace constants.
+This excerpt shows that new scopes are not added secretly through configuration files or runtime branches. The lifetime vocabulary understood by the container is fixed in the type union and its three literal values.
 
-The namespace helpers in the same file show the same idea. `Scope.DEFAULT` is just `'singleton'`. `Scope.REQUEST` and `Scope.TRANSIENT` are literal aliases too. There is no fourth mode for module-local caches, no provider pooling strategy, and no special case where reflection implicitly joins the decision.
+DI's `Scope` is a type-only union, not a runtime namespace. Providers and the Core `@Scope` decorator accept the `'singleton'`, `'request'`, and `'transient'` literals. There is no fourth mode for module-local caches, no provider pooling strategy, and no special case where reflection implicitly joins the decision.
 
 The same simplicity appears in `@Scope(...)`.
 The decorator in `path:packages/core/src/decorators.ts:79-89` records one string field in class DI metadata.
 Then `path:packages/core/src/metadata/class-di.ts:95-123` makes that field inheritable through the constructor lineage. In other words, scope is only a combination of explicit metadata and container policy. It is not inferred from usage patterns.
 
 This connects directly to predictability. If a class omits `@Scope(...)`,
-the normalization in `path:packages/di/src/provider-normalization.ts:168-179` inserts `Scope.DEFAULT`.
+the normalization in `path:packages/di/src/provider-normalization.ts:168-179` inserts `'singleton'`.
 So Fluo is singleton-first unless the author explicitly chooses a shorter lifetime.
 
 Class provider normalization stores this default in the actual internal record.
@@ -82,7 +62,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     return freezeNormalizedProvider({
       inject: normalizeInject(metadata?.inject, provider),
       provide: provider,
-      scope: normalizeProviderScope(metadata?.scope, provider) ?? Scope.DEFAULT,
+      scope: normalizeProviderScope(metadata?.scope, provider) ?? 'singleton',
       type: 'class',
       useClass: provider,
     });
@@ -92,7 +72,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 Here, the scope decision is complete before instantiation. Later resolve paths only look at this `scope` field and choose a cache map. They do not change the class creation path separately for each scope.
 
 Tests reinforce this contract.
-`path:packages/di/src/container.test.ts:125-158` verifies that `Scope.REQUEST` and `Scope.TRANSIENT` constants work in both decorators and provider objects.
+`packages/di/src/container.test.ts` verifies that `'request'` and `'transient'` literals work in both decorators and provider objects.
 `path:packages/di/src/container.test.ts:104-122` shows that the same metadata path works correctly with the combination of `@Inject` and `@Scope`.
 
 The point advanced readers should notice is that scope selection is complete before instantiation. `normalizeProvider()` computes the scope and stores it in the normalized record. After that, scope only affects cache selection and guardrails. It does not change object construction code.
@@ -153,7 +133,7 @@ Looking at the container fields immediately shows why singleton, request, and mu
   private readonly pendingDisposables: Disposable[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
-  private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
+  private readonly forwardRefTokenCache = new WeakMap<ForwardRefToken, Token>();
   private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
   private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
   private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
@@ -238,7 +218,7 @@ We will inspect the cache selection rules closely once. The request, override, a
 `path:packages/di/src/container.ts:1191-1213`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
         return this.requestCacheForWrite();
       }
@@ -261,7 +241,7 @@ We will inspect the cache selection rules closely once. The request, override, a
   }
 
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
         return this.multiRequestCacheForWrite();
       }
@@ -398,7 +378,7 @@ The earlier `cacheFor()` excerpt already showed the request guard for single pro
 `path:packages/di/src/container.ts:1214-1236`
 ```typescript
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
         return this.multiRequestCacheForWrite();
       }
@@ -575,7 +555,7 @@ The forbidden side names only `request` in the dependency scope check.
 `path:packages/di/src/container.ts:1554-1571`
 ```typescript
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-    if (provider.scope !== Scope.DEFAULT) {
+    if (provider.scope !== 'singleton') {
       return;
     }
 
@@ -668,7 +648,7 @@ The current `override()` implementation is in `path:packages/di/src/container.ts
 
     if (this.requestScopeEnabled) {
       for (const [token, normalizedProviders] of normalizedByToken) {
-        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === Scope.DEFAULT);
+        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === 'singleton');
 
         if (introducesSingleton && !this.has(token)) {
           throw new ScopeMismatchError(

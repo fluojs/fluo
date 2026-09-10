@@ -107,7 +107,7 @@ Do not move listener-close or connection-drain work into a same-named fluo lifec
 | NestJS construct | fluo construct | Notes |
 | --- | --- | --- |
 | `@Module({ imports, controllers, providers, exports })` | `@Module({ imports, controllers, providers, exports })` from `@fluojs/core` | Module boundaries and explicit exports remain the primary composition unit. |
-| `forwardRef(() => OtherModule)` in a Module `imports` array | no direct replacement; extract shared Providers into a third Module or package | fluo rejects circular Module imports during Module Graph compilation. `forwardRef(...)` is only a dependency-Token wrapper for class-level `@Inject(...)` lists and Provider `inject` arrays; it does not make Module or true constructor cycles resolvable. |
+| `forwardRef(() => OtherModule)` in a Module `imports` array | no direct replacement; extract shared Providers into a third Module or package | fluo rejects circular Module imports during Module Graph compilation. `ForwardRef.create(...)` is only a dependency-Token wrapper for class-level `@Inject(...)` lists and Provider `inject` arrays; it does not make Module or true constructor cycles resolvable. |
 | `@Controller('/users')` | `@Controller('/users')` from `@fluojs/http` | Controller decoration is part of the HTTP package, not the core package. |
 | `@Get()`, `@Post()`, other route decorators | `@Get()`, `@Post()`, other route decorators from `@fluojs/http` | HTTP route decoration remains method-based. |
 | `@Sse()` | `@Sse()` from `@fluojs/http` with `SseResponse` for manual streams or `AsyncIterable` for managed streams | fluo maps `@Sse()` to a `GET` route with `text/event-stream` metadata. It can convert `AsyncIterable` values into SSE frames, while NestJS `Observable` return values must still be rewritten to `SseResponse` or an async iterable. |
@@ -128,7 +128,7 @@ Studio reports are post-bootstrap artifacts: `fluo inspect` must complete applic
 | NestJS HTTP server lifecycle hooks or late WebSocket server mutation when moving to Cloudflare Workers | `@fluojs/platform-cloudflare-workers` plus `CloudflareWorkersWebSocketModule.forRoot()` from `@fluojs/websockets/cloudflare-workers` | Workers expose a host-owned `fetch(request, env, ctx)` boundary rather than a server socket. The exported `fetch` handler receives no host-invoked shutdown callback. An application-owned trigger outside `worker.fetch` may call `await worker.close()` directly. A management route inside the same `worker.fetch` must return its current response, then use `ctx.waitUntil(worker.close())` or an equivalent non-self-awaiting mechanism; awaiting it there waits for its own active request to drain and reaches the shutdown timeout. `listen()` only binds the fluo dispatcher; register the Worker WebSocket module in the application graph so bootstrap configures its binding before that listen boundary. Each accepted request is tracked through `ctx.waitUntil(...)`. A successful lazy-entrypoint `close()` is restartable: the next `fetch(...)` bootstraps a fresh application, rerunning bootstrap hooks and reconstructing singleton providers. Bootstrap receives only the predeclared root module and options; request `env` is attached during dispatch, so it cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep independently available pre-registration values in bootstrap configuration. Read, validate, and narrow selected fetch-time bindings from `RequestContext`, then pass application-shaped values into provider methods. |
 | `@Injectable()` provider marker | provider class or provider definition listed in `@Module(...).providers` | fluo does not use `@Injectable()` as a required provider registration step. |
 | `@Injectable({ scope: Scope.REQUEST })` or `@Injectable({ scope: Scope.TRANSIENT })` | explicit provider registration with `@Scope('request')` / `@Scope('transient')`, or a provider `scope: 'request'` / `scope: 'transient'` | Providers are singleton by default. A request-scoped provider must resolve from a `createRequestScope()` child; it is not promoted through NestJS-style scope bubbling. |
-| `@Optional()` with `@Inject(TOKEN)` | class-level `@Inject(optional(TOKEN))` from `@fluojs/core` and `@fluojs/di`, or provider `inject: [optional(TOKEN)]` | `optional(TOKEN)` is a token wrapper, not a decorator. An unregistered optional token resolves to `undefined`; the constructor parameter must allow `undefined`. |
+| `@Optional()` with `@Inject(TOKEN)` | class-level `@Inject(Optional.create(TOKEN))` from `@fluojs/core` and `@fluojs/di`, or provider `inject: [Optional.create(TOKEN)]` | `Optional.create(TOKEN)` is a token wrapper, not a decorator. An unregistered optional token resolves to `undefined`; the constructor parameter must allow `undefined`. |
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | property injection such as `@Inject(TOKEN) private value` | class-level `@Inject(TOKEN)` plus a matching constructor parameter | fluo's `@Inject(...)` is a standard class Decorator that declares constructor Tokens in parameter order. It is not a property or constructor-parameter Decorator. |
 | `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support, including Zod and Valibot | This is a fluo-native validation surface, not class-validator compatibility. Ordinary validators skip `null` / `undefined`, requiredness uses `@IsDefined()`, plain-object materialization retains safe own enumerable extra properties by default, supports opt-in rejection through `materialize(..., { undeclaredProperties: 'reject' })`, and validation groups are unsupported. |
@@ -334,8 +334,8 @@ The runtime rejects subscription resolver results that are not `AsyncIterable`; 
 - Dependency injection is NEVER inferred from constructor types. fluo requires explicit `@Inject(...)` declarations for constructor dependencies.
 - NestJS property injection MUST become constructor injection. Put `@Inject(TokenA, TokenB)` on the class and keep its Token order aligned with the constructor parameters; do not attach `@Inject(...)` to properties or parameters.
 - NestJS provider scopes are not scope bubbling. Declare a fluo provider as `@Scope('request')`, `@Scope('transient')`, or with its explicit provider `scope`; singleton remains the default. Resolve request-scoped providers only from `createRequestScope()`: resolving one from the root throws `RequestScopeResolutionError`, and injecting one into a singleton throws `ScopeMismatchError`.
-- NestJS `@Optional()` must become `optional(Token)` inside the class-level `@Inject(...)` token list or a provider `inject` array. `optional(...)` is not a property, parameter, or class decorator; an absent registration resolves as `undefined`.
-- NestJS Module `forwardRef(...)` has no fluo equivalent. Break Module import cycles by extracting shared Providers into a separate Module or package. fluo's `forwardRef(...)` only defers lookup for one dependency Token in class-level `@Inject(...)` or Provider `inject`; it does not resolve Module cycles or true constructor cycles.
+- NestJS `@Optional()` must become `Optional.create(Token)` inside the class-level `@Inject(...)` token list or a provider `inject` array. `Optional.create(...)` is not a property, parameter, or class decorator; an absent registration resolves as `undefined`.
+- NestJS Module `forwardRef(...)` has no fluo equivalent. Break Module import cycles by extracting shared Providers into a separate Module or package. fluo's `ForwardRef.create(...)` only defers lookup for one dependency Token in class-level `@Inject(...)` or Provider `inject`; it does not resolve Module cycles or true constructor cycles.
 - HTTP listening is adapter-first. `FluoFactory.create(...)` does not select a platform implicitly: it may build an adapterless application shell, but `listen()` requires an application created with an explicit adapter.
 - NestJS `beforeApplicationShutdown` is unsupported and does not add a phase between fluo's documented shutdown hooks. Move preparation to `onModuleDestroy()` when it must precede application-wide signal cleanup, or to `onApplicationShutdown(signal?)` when it needs the signal. Do not introduce a compatibility shim, fallback, alias, or new runtime hook; the four-hook contract and its startup/shutdown ordering remain unchanged.
 - `@nestjs/config` migration is not an async Dynamic Module or namespace-loader clone. `@fluojs/config` exposes synchronous `ConfigModule.forRoot(...)`; pass ambient process values through the explicit `processEnv` option, validate the merged snapshot with a synchronous Standard Schema `schema`, and use `global?: boolean` with default global visibility instead of NestJS `isGlobal`. Await remote secrets and NestJS `load` factories at the application bootstrap boundary before module graph construction, but preserve their nested objects in `defaults` or `runtimeOverrides`; plain objects deep-merge and remain available through dot-path `ConfigService` lookups.
@@ -632,7 +632,7 @@ import {
 import { localizeDtoValidationError } from '@fluojs/i18n/validation';
 import type { Middleware, RequestContext } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import type { DtoValidationError } from '@fluojs/validation';
 
 const acceptLanguage = createAcceptLanguageLocaleResolver();
@@ -673,7 +673,7 @@ const requestLocaleHook: Middleware = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodeHttpAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   middleware: [requestLocaleHook],
 });
 await app.listen();
@@ -786,7 +786,7 @@ List dependencies in `inject` and return the final Prisma options from `useFacto
 Register each injected dependency through a surface visible to the async Prisma module before its options provider resolves:
 
 ```typescript
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { PrismaModule } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
@@ -794,8 +794,8 @@ class DatabaseConfig {
   readonly url = 'postgresql://localhost/app';
 }
 
-@Global()
 @Module({
+  global: true,
   providers: [DatabaseConfig],
   exports: [DatabaseConfig],
 })
@@ -817,7 +817,7 @@ class AppModule {}
 ```
 
 Registering `DatabaseConfig` only in the importing `AppModule`'s `providers` is insufficient: the async child module can see only its local tokens, exports from its own imports, global module exports, and bootstrap runtime providers.
-Export injected dependencies from an imported `@Global()` module as above, or supply them as bootstrap runtime providers.
+Export injected dependencies from an imported `@Module({ global: true })` module as above, or supply them as bootstrap runtime providers.
 
 NestJS `imports`, `useClass`, and `useExisting` are not `forRootAsync(...)` compatibility fields. Resolve their configuration, class construction, and provider aliases at application bootstrap or through explicit fluo provider registration, then pass the ready dependencies through `inject`.
 

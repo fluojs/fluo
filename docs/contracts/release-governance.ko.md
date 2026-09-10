@@ -43,7 +43,7 @@
 
 ## Release Metadata Contract
 
-Canonical release workflow는 최신 Node `24.x`에서 실행합니다. Exact `24.0.0`, 최신 `24.x`, 최신 `26.x`는 frozen install, 전체 `pnpm verify`, 생성 starter 검증을 실행합니다. 최신 `24.x`는 `pnpm verify:docs`도 실행하며, Node 26은 publish runtime이 아닙니다. Node 지원 범위 축소는 이 PR에서 major Changeset과 실행 가능한 [마이그레이션 안내](../reference/node-support.ko.md)를 포함하고, #3679가 coordinated release를 조정합니다.
+Canonical release workflow는 최신 Node `24.x`에서 실행합니다. Exact `24.0.0`, 최신 `24.x`, 최신 `26.x`는 frozen install 뒤에 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 분할 CI job으로 검증하며 생성 starter도 검증합니다. PR 검증은 같은 commit과 Node 버전의 빌드 artifact를 공유하고, 빌드 뒤에 테스트와 starter 검증을 병렬로 실행합니다. 최신 `24.x`는 `pnpm verify:docs`를 한 번 실행하며, Node 26은 publish runtime이 아닙니다. Node 지원 범위 축소는 이 PR에서 major Changeset과 실행 가능한 [마이그레이션 안내](../reference/node-support.ko.md)를 포함하고, #3679가 coordinated release를 조정합니다.
 
 Changesets(`.changeset/*.md`)는 canonical release metadata 도구입니다. 기여자는 PR 시점에 committed changeset 파일에 semver intent와 changelog text를 기록하고, Changesets GitHub Action은 이 파일들을 소비해 패키지 버전을 올리고, changelog를 생성하며, npm에 publish합니다. 패키지별 changelog는 자동으로 생성되고, 루트 `CHANGELOG.md`는 repo-wide narrative로 남습니다. GitHub Releases는 Changesets action이 자동으로 생성합니다.
 

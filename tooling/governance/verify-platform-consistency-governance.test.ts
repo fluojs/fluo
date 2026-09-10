@@ -695,8 +695,8 @@ describe('advanced runtime branching source excerpts', () => {
   const excerpts: readonly RuntimeSourceExcerpt[] = [
     {
       sourcePath: 'packages/runtime/src/bootstrap.ts',
-      startLine: 1640,
-      endLine: 1664,
+      startLine: 1648,
+      endLine: 1672,
       fenceLanguage: 'typescript',
     },
     {
@@ -728,20 +728,20 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/index.ts',
-      startLine: 12,
-      endLine: 32,
+      startLine: 9,
+      endLine: 28,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 138,
-      endLine: 161,
+      startLine: 178,
+      endLine: 200,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 162,
-      endLine: 188,
+      startLine: 201,
+      endLine: 227,
       fenceLanguage: 'typescript',
     },
     {
@@ -752,14 +752,20 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
-      startLine: 280,
-      endLine: 323,
+      startLine: 140,
+      endLine: 176,
+      fenceLanguage: 'typescript',
+    },
+    {
+      sourcePath: 'packages/platform-nodejs/src/node/internal-node.ts',
+      startLine: 326,
+      endLine: 338,
       fenceLanguage: 'typescript',
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/node.test.ts',
-      startLine: 15,
-      endLine: 31,
+      startLine: 14,
+      endLine: 30,
       fenceLanguage: 'typescript',
     },
   ] as const;
@@ -4386,8 +4392,11 @@ describe('repository governance contracts', () => {
   });
 
   it('keeps PR CI governance-gated', () => {
+    // Given
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+    const nodeWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/node-verification.yml'), 'utf8');
     const vitestConfig = readFileSync(resolve(repoRoot, 'vitest.config.ts'), 'utf8');
+    // When
     const workflowLines = ciWorkflow.split('\n');
     const verifyJobStart = workflowLines.indexOf('  verify:');
     const verifyJobEnd = workflowLines.findIndex(
@@ -4410,33 +4419,36 @@ describe('repository governance contracts', () => {
     };
     const verifyNeeds = directNeeds(verifyJobLines);
 
+    // Then
     expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
     expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'");
-    expect(ciWorkflow).toContain(
-      'run: pnpm vitest run $' + '{{ needs.resolve-pr-verification-scope.outputs.test_paths }}',
-    );
+    expect(ciWorkflow).toContain('uses: ./.github/workflows/node-verification.yml');
     expect(ciWorkflow).toContain("if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'");
-    expect(ciWorkflow).toContain('- lane: packages-1');
-    expect(ciWorkflow).toContain('- lane: packages-4');
-    expect(ciWorkflow).toContain(
+    expect(nodeWorkflow).toContain('- lane: packages-1');
+    expect(nodeWorkflow).toContain('- lane: packages-4');
+    expect(nodeWorkflow).toContain(
       'run: pnpm vitest run --project packages --shard=$' + '{{ matrix.shard }} --maxWorkers=1',
     );
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project apps --maxWorkers=1');
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project examples --maxWorkers=1');
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project tooling --maxWorkers=1');
-    expect(ciWorkflow).toContain(
+    expect(nodeWorkflow).toContain('run: pnpm vitest run --project apps --maxWorkers=1');
+    expect(nodeWorkflow).toContain('run: pnpm vitest run --project examples --maxWorkers=1');
+    expect(nodeWorkflow).toContain('run: pnpm vitest run --project tooling --maxWorkers=1');
+    expect(nodeWorkflow).toContain(
       'FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/$' + '{{ matrix.lane }}',
     );
-    expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling');
-    expect(ciWorkflow).toContain("hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != ''");
+    expect(nodeWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling');
+    expect(nodeWorkflow).toContain("hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != ''");
     expect(vitestConfig).toContain('passWithNoTests: true');
-    expect(ciWorkflow).toContain('build-and-typecheck:');
-    expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
+    expect(nodeWorkflow).toContain('run: pnpm build');
+    expect(nodeWorkflow).toContain('run: pnpm typecheck');
+    expect(nodeWorkflow).toContain('run: pnpm lint');
+    expect(ciWorkflow).toMatch(/if: \$\{\{ always\(\) && github.event_name == 'pull_request' \}\}/u);
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
     expect(verifyJobStart).toBeGreaterThanOrEqual(0);
     expect(verifyNeedsStart).toBeGreaterThanOrEqual(0);
     expect(verifyNeeds).toContain('deno-platform');
+    expect(verifyNeeds).toContain('node-support');
+    expect(verifyNeeds).toContain('verify-platform-consistency-governance');
     expect(() => {
       expect(
         directNeeds(verifyJobLines.filter((line) => line !== '      - deno-platform')),
@@ -4463,11 +4475,18 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
   });
 
-  it('runs canonical docs verification for full PR verification scope', () => {
+  it('runs canonical docs verification once on latest Node 24 for every PR scope', () => {
+    // Given
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+    const nodeWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/node-verification.yml'), 'utf8');
 
-    expect(ciWorkflow).toMatch(
-      /build-and-typecheck:[\s\S]*?- name: Verify docs \(full\)\n\s+if: github\.event_name != 'pull_request' \|\| needs\.resolve-pr-verification-scope\.outputs\.mode != 'scoped'\n\s+run: pnpm verify:docs[\s\S]*?\n {2}lint:/u,
+    // When
+    const docsRuns = [...ciWorkflow.matchAll(/run: pnpm verify:docs/gu), ...nodeWorkflow.matchAll(/run: pnpm verify:docs/gu)];
+
+    // Then
+    expect(docsRuns).toHaveLength(1);
+    expect(nodeWorkflow).toMatch(
+      /checks:[\s\S]*?if: inputs\.node-version == '24.x'\n\s+run: pnpm verify:docs/u,
     );
   });
 

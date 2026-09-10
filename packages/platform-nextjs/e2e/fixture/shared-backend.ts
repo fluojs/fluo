@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Inject, Module, publicToken } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
 
 import type { PublicBlog } from './shared-application';
@@ -44,7 +44,7 @@ export async function loadApplication(key: string) {
   }
   await observe('load', key);
   if (key === 'failed') throw new Error('FLUO_E2E_SHARED_BOOTSTRAP_FAILURE');
-  const adapter = createNextAdapter();
+  const adapter = NextHttpApplicationAdapter.create();
   const app = await FluoFactory.create(AppModule, { adapter });
   try {
     await app.listen();

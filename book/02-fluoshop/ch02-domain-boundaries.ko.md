@@ -263,10 +263,10 @@ it('requires an explicit override for an existing token', async () => {
 
 ```ts
 import { Inject } from '@fluojs/core';
-import { CircularDependencyError, Container, forwardRef } from '@fluojs/di';
+import { CircularDependencyError, Container, ForwardRef } from '@fluojs/di';
 import { expect, it } from 'vitest';
 
-@Inject(forwardRef(() => OrderSide))
+@Inject(ForwardRef.create(() => OrderSide))
 class CatalogSide {
   constructor(readonly orders: OrderSide) {}
 }
@@ -287,11 +287,11 @@ it('rejects a real cycle even when token lookup is deferred', async () => {
 });
 ```
 
-`forwardRef()`는 선언 시 아직 사용할 수 없는 클래스 토큰의 조회를 늦춘다. `CatalogSide`를 만들려면 `OrderSide`가 필요하고, 그 객체를 만들려면 다시 `CatalogSide`가 필요한 문제를 해소하지는 않는다. 예상 결과는 성공한 해석이 아니라 `CircularDependencyError`이며, 테스트는 그 거부를 성공 조건으로 삼는다. 생성자 순환을 “양방향 협력”이라는 이름으로 정상화하지 않는 것이 이 실험의 목적이다.
+`ForwardRef.create()`는 선언 시 아직 사용할 수 없는 클래스 토큰의 조회를 늦춘다. `CatalogSide`를 만들려면 `OrderSide`가 필요하고, 그 객체를 만들려면 다시 `CatalogSide`가 필요한 문제를 해소하지는 않는다. 예상 결과는 성공한 해석이 아니라 `CircularDependencyError`이며, 테스트는 그 거부를 성공 조건으로 삼는다. 생성자 순환을 “양방향 협력”이라는 이름으로 정상화하지 않는 것이 이 실험의 목적이다.
 
 해결은 대개 협력의 위치를 바꾸는 것이다. 상품을 읽고 주문을 만드는 상위 사용 사례가 둘을 순서대로 호출하게 하거나, 양쪽이 공유하던 규칙을 상태 없는 값 함수로 추출한다. 그렇다고 모든 호출을 이벤트로 바꾸지는 않는다. 호출 결과가 바로 필요한 작업을 비동기로 바꾸면 결과 확인과 실패 처리가 더 어려워진다. 이벤트가 필요한 실제 요구는 뒤의 비동기 처리 장에서 다룬다.
 
-수명주기도 경계의 일부다. 기본 singleton 서비스에 현재 고객 ID를 필드로 저장하면 두 요청이 같은 인스턴스를 공유한다. 메서드 인자로 검증된 ID를 전달하는 단순한 형태가 먼저다. 요청 전용 상태를 주입해야 한다면 명시적으로 request scope를 사용한다. Fluo는 singleton이 request-scoped provider를 의존하는 경우를 `ScopeMismatchError`로 거부하며 자동으로 singleton을 요청 범위로 바꾸지 않는다. 잘못된 수명을 `optional()`로 감추는 것도 해결이 아니다.
+수명주기도 경계의 일부다. 기본 singleton 서비스에 현재 고객 ID를 필드로 저장하면 두 요청이 같은 인스턴스를 공유한다. 메서드 인자로 검증된 ID를 전달하는 단순한 형태가 먼저다. 요청 전용 상태를 주입해야 한다면 명시적으로 request scope를 사용한다. Fluo는 singleton이 request-scoped provider를 의존하는 경우를 `ScopeMismatchError`로 거부하며 자동으로 singleton을 요청 범위로 바꾸지 않는다. 잘못된 수명을 `Optional.create()`로 감추는 것도 해결이 아니다.
 
 ## 적절한 경계는 변경을 작게 만든다
 

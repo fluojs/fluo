@@ -8,12 +8,16 @@ The private root workspace and 35 Node-bound public packages, including [`@fluoj
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
-| Exact Node `24.0.0` | Frozen install, full `pnpm verify`, generated starter sandbox matrix | Minimum supported floor, not the release runtime |
-| Latest Node `24.x` | Frozen install, canonical `pnpm verify`, `pnpm verify:docs`, generated starter sandbox matrix | Canonical development and Changesets release runtime |
-| Latest Node `26.x` | Frozen install, full `pnpm verify`, generated starter sandbox matrix | Forward verification only; never publish |
+| Exact Node `24.0.0` | Frozen install, sharded full verification, generated starter sandbox matrix | Minimum supported floor, not the release runtime |
+| Latest Node `24.x` | Frozen install, sharded full verification, `pnpm verify:docs`, generated starter sandbox matrix | Canonical development and Changesets release runtime |
+| Latest Node `26.x` | Frozen install, sharded full verification, generated starter sandbox matrix | Forward verification only; never publish |
 | Bun, Deno, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
 
-The `node-support` job in `.github/workflows/ci.yml` is required by the aggregate `verify` gate. Every matrix entry runs the full build, typecheck, lint, and test suite through `pnpm verify`; the focused `test:node-floor` command remains available for local checks, not as a substitute for full CI verification. It covers manifest classification, all scaffold profiles, config env-file/watch behavior, the published portable runtime import, Node HTTP listeners, adapter portability, and the existing Vite compatibility seam. CI does not substitute a later 24.x patch for the exact 24.0.0 claim.
+The `node-support` matrix in `.github/workflows/ci.yml` calls `.github/workflows/node-verification.yml` and is required by the aggregate `verify` gate. Every Node version verifies the same full build, typecheck, lint, and test coverage as local `pnpm verify`. In CI, `pnpm build` is followed by independent jobs for `pnpm typecheck` and `pnpm lint`, sharded tests, and generated starter verification. Package tests use four shards, and the apps, examples, and tooling projects also run in full; each test process retains `--maxWorkers=1`. A small change scope does not skip this full Node verification.
+
+Build artifacts are transferred only within the same workflow run, commit, and Node version. A tar archive preserves package `dist` directories and the CLI's generated dependency metadata, including executable permissions and symbolic links; it does not bypass public declaration fixtures or package global setup. Generated starter verification runs after the build without waiting for tests to finish. Latest `24.x` consolidates the former duplicate PR verification and runs `pnpm verify:docs` once. The aggregate gate does not treat a required job's failure, cancellation, or skip as success.
+
+The focused `test:node-floor` command remains available for local checks, not as a substitute for full CI verification. It covers manifest classification, all scaffold profiles, config env-file/watch behavior, the published portable runtime import, Node HTTP listeners, adapter portability, and the existing Vite compatibility seam. CI does not substitute a later 24.x patch for the exact 24.0.0 claim.
 
 ## Portable package boundaries
 

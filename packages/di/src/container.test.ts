@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, InvalidProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
-import { forwardRef, optional, type Provider, Scope } from './types.js';
+import { ForwardRef, Optional, type Provider } from './types.js';
 
 describe('Container', () => {
   it('caches singleton providers', async () => {
@@ -70,7 +70,7 @@ describe('Container', () => {
 
     const root = new Container().register(
       RootSingleton,
-      { provide: RequestStore, scope: Scope.REQUEST, useClass: RequestStore },
+      { provide: RequestStore, scope: 'request', useClass: RequestStore },
     );
     const rootInternals = root as unknown as { childScopes?: Set<Container> };
     const requestScope = root.createRequestScope();
@@ -126,7 +126,7 @@ describe('Container', () => {
     class Logger {}
 
     @Inject(Logger)
-    @ScopeDecorator(Scope.REQUEST)
+    @ScopeDecorator('request')
     class RequestService {
       constructor(readonly logger: Logger) {}
     }
@@ -141,7 +141,7 @@ describe('Container', () => {
       RequestService,
       {
         provide: TransientService,
-        scope: Scope.TRANSIENT,
+        scope: 'transient',
         useClass: TransientService,
       },
     );
@@ -262,8 +262,8 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: RequestDep, scope: Scope.REQUEST, useClass: RequestDep },
-        { provide: TransientDep, scope: Scope.TRANSIENT, useClass: TransientDep, inject: [RequestDep] },
+        { provide: RequestDep, scope: 'request', useClass: RequestDep },
+        { provide: TransientDep, scope: 'transient', useClass: TransientDep, inject: [RequestDep] },
         { provide: SingletonService, useClass: SingletonService, inject: [TransientDep] },
       );
 
@@ -280,8 +280,8 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: RequestDep, scope: Scope.REQUEST, useClass: RequestDep },
-        { provide: FACTORY_TOKEN, scope: Scope.TRANSIENT, useFactory: (dep: unknown) => dep, inject: [RequestDep] },
+        { provide: RequestDep, scope: 'request', useClass: RequestDep },
+        { provide: FACTORY_TOKEN, scope: 'transient', useFactory: (dep: unknown) => dep, inject: [RequestDep] },
         { provide: SingletonService, useClass: SingletonService, inject: [FACTORY_TOKEN] },
       );
 
@@ -380,7 +380,7 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
+        { provide: ServiceA, useClass: ServiceA, inject: [ForwardRef.create(() => ServiceB)] },
         { provide: ServiceB, useClass: ServiceB, inject: [] },
       );
 
@@ -400,7 +400,7 @@ describe('Container', () => {
 
       const resolveServiceB = vi.fn(() => ServiceB);
       const container = new Container().register(
-        { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(resolveServiceB)] },
+        { provide: ServiceA, useClass: ServiceA, inject: [ForwardRef.create(resolveServiceB)] },
         { provide: ServiceB, useClass: ServiceB, inject: [] },
       );
 
@@ -421,7 +421,7 @@ describe('Container', () => {
       const resolveEmptyToken = vi.fn(() => emptyToken);
       const container = new Container().register(
         { provide: emptyToken, useValue: 'empty-token-value' },
-        { provide: ServiceA, scope: Scope.TRANSIENT, useClass: ServiceA, inject: [forwardRef(resolveEmptyToken)] },
+        { provide: ServiceA, scope: 'transient', useClass: ServiceA, inject: [ForwardRef.create(resolveEmptyToken)] },
       );
 
       expect(container.has(emptyToken)).toBe(true);
@@ -445,8 +445,8 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
-        { provide: ServiceB, useClass: ServiceB, inject: [forwardRef(() => ServiceA)] },
+        { provide: ServiceA, useClass: ServiceA, inject: [ForwardRef.create(() => ServiceB)] },
+        { provide: ServiceB, useClass: ServiceB, inject: [ForwardRef.create(() => ServiceA)] },
       );
 
       await expect(container.resolve(ServiceA)).rejects.toThrow(CircularDependencyError);
@@ -520,7 +520,7 @@ describe('Container', () => {
 
       const root = new Container().register({
         provide: token,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: () => ({ value: `first-${++created}` }),
       });
       const requestScope = root.createRequestScope();
@@ -529,7 +529,7 @@ describe('Container', () => {
 
       root.override({
         provide: token,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: () => ({ value: `second-${++created}` }),
       });
 
@@ -549,7 +549,7 @@ describe('Container', () => {
 
       const container = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: Consumer, scope: Scope.TRANSIENT, useClass: Consumer, inject: [CONFIG] },
+        { provide: Consumer, scope: 'transient', useClass: Consumer, inject: [CONFIG] },
       );
 
       const beforeOverride = await container.resolve<Consumer>(Consumer);
@@ -649,7 +649,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+        { provide: RequestConsumer, scope: 'request', useClass: RequestConsumer, inject: [CONFIG] },
       );
       const requestScope = root.createRequestScope();
 
@@ -673,7 +673,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+        { provide: RequestConsumer, scope: 'request', useClass: RequestConsumer, inject: [CONFIG] },
       );
       const parentScope = root.createRequestScope();
       const descendantScope = parentScope.createRequestScope();
@@ -887,8 +887,8 @@ describe('Container', () => {
       class Logger {}
       class MutatedLogger {}
 
-      const forwardLogger = forwardRef(() => Logger);
-      const optionalLogger = optional(Logger);
+      const forwardLogger = ForwardRef.create(() => Logger);
+      const optionalLogger = Optional.create(Logger);
 
       expect(Object.isFrozen(forwardLogger)).toBe(true);
       expect(Object.isFrozen(optionalLogger)).toBe(true);
@@ -977,7 +977,7 @@ describe('Container', () => {
       const container = new Container().register({
         provide: MyService,
         useClass: MyService,
-        inject: [optional(LOGGER)],
+        inject: [Optional.create(LOGGER)],
       });
 
       const instance = await container.resolve(MyService);
@@ -998,7 +998,7 @@ describe('Container', () => {
 
       const container = new Container().register(
         { provide: LOGGER, useClass: Logger },
-        { provide: MyService, useClass: MyService, inject: [optional(LOGGER)] },
+        { provide: MyService, useClass: MyService, inject: [Optional.create(LOGGER)] },
       );
 
       const instance = await container.resolve(MyService);
@@ -1019,9 +1019,9 @@ describe('Container', () => {
 
       const container = new Container().register({
         provide: MyService,
-        scope: Scope.TRANSIENT,
+        scope: 'transient',
         useClass: MyService,
-        inject: [optional(LOGGER)],
+        inject: [Optional.create(LOGGER)],
       });
 
       const beforeRegister = await container.resolve<MyService>(MyService);
@@ -1100,7 +1100,7 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: REQUEST_LOGGER, useClass: RequestLogger, scope: Scope.REQUEST },
+        { provide: REQUEST_LOGGER, useClass: RequestLogger, scope: 'request' },
         { provide: LOGGER_ALIAS_A, useExisting: REQUEST_LOGGER },
         { provide: LOGGER_ALIAS_B, useExisting: LOGGER_ALIAS_A },
         { provide: MyService, useClass: MyService, inject: [LOGGER_ALIAS_B] },
@@ -1125,7 +1125,7 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: REQUEST_LOGGER, useClass: RequestLogger, scope: Scope.REQUEST },
+        { provide: REQUEST_LOGGER, useClass: RequestLogger, scope: 'request' },
         { provide: LOGGER_ALIAS_A, useExisting: REQUEST_LOGGER },
         { provide: LOGGER_ALIAS_B, useExisting: LOGGER_ALIAS_A },
         { provide: LOGGER_ALIAS_C, useExisting: REQUEST_LOGGER },
@@ -1169,7 +1169,7 @@ describe('Container', () => {
       const container = new Container().register(
         { provide: CONFIG, useValue: 'initial' },
         { provide: CONFIG_ALIAS, useExisting: CONFIG },
-        { provide: Consumer, scope: Scope.TRANSIENT, useClass: Consumer, inject: [CONFIG_ALIAS] },
+        { provide: Consumer, scope: 'transient', useClass: Consumer, inject: [CONFIG_ALIAS] },
       );
 
       const initial = await container.resolve<Consumer>(Consumer);
@@ -1195,7 +1195,7 @@ describe('Container', () => {
         { provide: SHADOWED, useValue: 'root-shadowed' },
       );
       const child = root.createRequestScope().override({ provide: SHADOWED, useValue: 'child-shadowed' });
-      const grandchild = child.createRequestScope().register({ provide: CHILD_ONLY, useFactory: () => 'grandchild-only', scope: Scope.REQUEST });
+      const grandchild = child.createRequestScope().register({ provide: CHILD_ONLY, useFactory: () => 'grandchild-only', scope: 'request' });
 
       expect(grandchild.has(ROOT)).toBe(true);
       expect(grandchild.has(SHADOWED)).toBe(true);
@@ -1209,7 +1209,7 @@ describe('Container', () => {
       const CHILD_PLUGINS = Symbol('ChildPlugins');
 
       const root = new Container().register({ provide: PLUGINS, useValue: 'root-plugin', multi: true });
-      const child = root.createRequestScope().register({ provide: CHILD_PLUGINS, useFactory: () => 'child-plugin', multi: true, scope: Scope.REQUEST });
+      const child = root.createRequestScope().register({ provide: CHILD_PLUGINS, useFactory: () => 'child-plugin', multi: true, scope: 'request' });
 
       expect(child.has(PLUGINS)).toBe(true);
       expect(child.has(CHILD_PLUGINS)).toBe(true);
@@ -1258,7 +1258,7 @@ describe('Container', () => {
         { provide: PLUGINS, useValue: 'root-a', multi: true },
         { provide: PLUGINS, useValue: 'root-b', multi: true },
       );
-      const child = root.createRequestScope().register({ provide: PLUGINS, useFactory: () => 'child-c', multi: true, scope: Scope.REQUEST });
+      const child = root.createRequestScope().register({ provide: PLUGINS, useFactory: () => 'child-c', multi: true, scope: 'request' });
 
       await expect(root.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
       await expect(child.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b', 'child-c']);
@@ -1300,7 +1300,7 @@ describe('Container', () => {
         provide: PLUGINS,
         useClass: RequestPlugin,
         multi: true,
-        scope: Scope.REQUEST,
+        scope: 'request',
       });
 
       await expect(root.resolve(PLUGINS)).rejects.toThrow('outside request scope');
@@ -1350,7 +1350,7 @@ describe('Container', () => {
     it('keeps child-owned request providers out of parent lookup and caches', async () => {
       const token = Symbol('ChildRequestProvider');
       const root = new Container();
-      const child = root.createRequestScope().register({ provide: token, useFactory: () => ({ value: 'child' }), scope: Scope.REQUEST });
+      const child = root.createRequestScope().register({ provide: token, useFactory: () => ({ value: 'child' }), scope: 'request' });
 
       const first = await child.resolve<{ value: string }>(token);
       const second = await child.resolve<{ value: string }>(token);
@@ -1369,8 +1369,8 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: RequestStore, scope: Scope.REQUEST, useClass: RequestStore },
-        { provide: TransientService, scope: Scope.TRANSIENT, useClass: TransientService, inject: [RequestStore] },
+        { provide: RequestStore, scope: 'request', useClass: RequestStore },
+        { provide: TransientService, scope: 'transient', useClass: TransientService, inject: [RequestStore] },
       );
 
       expect(container.hasRequestScopedDependency(TransientService)).toBe(true);
@@ -1384,7 +1384,7 @@ describe('Container', () => {
 
       const container = new Container().register(
         { provide: PLUGINS, useClass: SingletonPlugin, multi: true },
-        { provide: PLUGINS, scope: Scope.REQUEST, useClass: RequestPlugin, multi: true },
+        { provide: PLUGINS, scope: 'request', useClass: RequestPlugin, multi: true },
       );
 
       expect(container.hasRequestScopedDependency(PLUGINS)).toBe(true);
@@ -1400,9 +1400,9 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: REQUEST_STORE, scope: Scope.REQUEST, useClass: RequestStore },
+        { provide: REQUEST_STORE, scope: 'request', useClass: RequestStore },
         { provide: STORE_ALIAS, useExisting: REQUEST_STORE },
-        { provide: Consumer, useClass: Consumer, inject: [forwardRef(() => STORE_ALIAS)] },
+        { provide: Consumer, useClass: Consumer, inject: [ForwardRef.create(() => STORE_ALIAS)] },
       );
 
       expect(container.hasRequestScopedDependency(Consumer)).toBe(true);
@@ -1435,7 +1435,7 @@ describe('Container', () => {
       const container = new Container().register({
         provide: Consumer,
         useClass: Consumer,
-        inject: [optional(OPTIONAL_STORE)],
+        inject: [Optional.create(OPTIONAL_STORE)],
       });
 
       expect(container.hasRequestScopedDependency(Consumer)).toBe(false);
@@ -1453,12 +1453,12 @@ describe('Container', () => {
       const container = new Container().register({
         provide: Consumer,
         useClass: Consumer,
-        inject: [optional(OPTIONAL_STORE)],
+        inject: [Optional.create(OPTIONAL_STORE)],
       });
 
       expect(container.hasRequestScopedDependency(Consumer)).toBe(false);
 
-      container.register({ provide: OPTIONAL_STORE, scope: Scope.REQUEST, useClass: RequestStore });
+      container.register({ provide: OPTIONAL_STORE, scope: 'request', useClass: RequestStore });
 
       expect(container.hasRequestScopedDependency(Consumer)).toBe(true);
 
@@ -1479,13 +1479,13 @@ describe('Container', () => {
       const root = new Container().register({
         provide: Consumer,
         useClass: Consumer,
-        inject: [optional(OPTIONAL_STORE)],
+        inject: [Optional.create(OPTIONAL_STORE)],
       });
       const child = root.createRequestScope();
 
       expect(child.hasRequestScopedDependency(Consumer)).toBe(false);
 
-      root.register({ provide: OPTIONAL_STORE, scope: Scope.REQUEST, useClass: RequestStore });
+      root.register({ provide: OPTIONAL_STORE, scope: 'request', useClass: RequestStore });
 
       expect(child.hasRequestScopedDependency(Consumer)).toBe(true);
 
@@ -1504,7 +1504,7 @@ describe('Container', () => {
       }
 
       const container = new Container().register(
-        { provide: REQUEST_STORE, scope: Scope.REQUEST, useClass: RequestStore },
+        { provide: REQUEST_STORE, scope: 'request', useClass: RequestStore },
         { provide: STORE_ALIAS, useExisting: REQUEST_STORE },
         { provide: Consumer, useClass: Consumer, inject: [STORE_ALIAS] },
       );
@@ -1540,7 +1540,7 @@ describe('Container', () => {
 
       const container = new Container().register({
         provide: TransientService,
-        scope: Scope.TRANSIENT,
+        scope: 'transient',
         useClass: TransientService,
       });
 
@@ -1694,8 +1694,8 @@ describe('Container', () => {
       }
 
       const root = new Container().register(
-        { provide: ParentRequestService, scope: Scope.REQUEST, useClass: ParentRequestService },
-        { provide: ChildRequestService, scope: Scope.REQUEST, useClass: ChildRequestService },
+        { provide: ParentRequestService, scope: 'request', useClass: ParentRequestService },
+        { provide: ChildRequestService, scope: 'request', useClass: ChildRequestService },
       );
       const parentScope = root.createRequestScope();
       const childScope = parentScope.createRequestScope();
@@ -1717,7 +1717,7 @@ describe('Container', () => {
 
       const root = new Container().register({
         provide: RequestStore,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useClass: RequestStore,
       });
       const rootInternals = root as unknown as { childScopes: Set<Container> };
@@ -1832,7 +1832,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         RootService,
-        { provide: RequestService, scope: Scope.REQUEST, useClass: RequestService },
+        { provide: RequestService, scope: 'request', useClass: RequestService },
       );
       const requestScope = root.createRequestScope();
 
@@ -1862,7 +1862,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         RootService,
-        { provide: RequestService, scope: Scope.REQUEST, useClass: RequestService },
+        { provide: RequestService, scope: 'request', useClass: RequestService },
       );
       const requestScope = root.createRequestScope();
 
@@ -1900,7 +1900,7 @@ describe('Container', () => {
         RootService,
         {
           provide: token,
-          scope: Scope.REQUEST,
+          scope: 'request',
           useFactory: () => new RequestService('first child'),
         },
       );
@@ -1911,7 +1911,7 @@ describe('Container', () => {
       await firstRequestScope.resolve(token);
       root.override({
         provide: token,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: () => new RequestService('second child'),
       });
       await secondRequestScope.resolve(token);
@@ -2055,7 +2055,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+        { provide: RequestConsumer, scope: 'request', useClass: RequestConsumer, inject: [CONFIG] },
       );
       const parentScope = root.createRequestScope();
       const descendantScope = parentScope.createRequestScope();
@@ -2094,7 +2094,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+        { provide: RequestConsumer, scope: 'request', useClass: RequestConsumer, inject: [CONFIG] },
       );
       const requestScope = root.createRequestScope();
 
@@ -2140,7 +2140,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+        { provide: RequestConsumer, scope: 'request', useClass: RequestConsumer, inject: [CONFIG] },
       );
       const requestScope = root.createRequestScope();
 
@@ -2174,7 +2174,7 @@ describe('Container', () => {
 
       const root = new Container().register(
         { provide: CONFIG, useValue: 'before-override' },
-        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+        { provide: RequestConsumer, scope: 'request', useClass: RequestConsumer, inject: [CONFIG] },
       );
       const requestScope = root.createRequestScope();
 
@@ -2206,10 +2206,10 @@ describe('Container', () => {
       class SecondChildService {}
 
       const root = new Container().register({ provide: ROOT_VALUE, useValue: 'root' });
-      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: FirstChildService });
+      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, scope: 'request', useClass: FirstChildService });
 
       await requestScope.resolve(CHILD_SERVICE);
-      requestScope.override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: SecondChildService });
+      requestScope.override({ provide: CHILD_SERVICE, scope: 'request', useClass: SecondChildService });
 
       const rootResolution = root.resolve<string>(ROOT_VALUE).then((value) => events.push(`root:resolved:${value}`));
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -2236,10 +2236,10 @@ describe('Container', () => {
       class SecondChildService {}
 
       const root = new Container().register({ provide: ROOT_VALUE, useValue: 'root' });
-      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: FirstChildService });
+      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, scope: 'request', useClass: FirstChildService });
 
       await requestScope.resolve(CHILD_SERVICE);
-      requestScope.override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: SecondChildService });
+      requestScope.override({ provide: CHILD_SERVICE, scope: 'request', useClass: SecondChildService });
 
       await expect(root.resolve(ROOT_VALUE)).resolves.toBe('root');
       await expect(requestScope.resolve(CHILD_SERVICE)).rejects.toThrow('child-local stale failed');
@@ -2500,7 +2500,7 @@ describe('Recovery-oriented error context', () => {
     const message = (error as CircularDependencyError).message;
     expect(message).toContain('Dependency chain:');
     expect(message).toContain('Hint:');
-    expect(message).toContain('forwardRef');
+    expect(message).toContain('ForwardRef.create');
   });
 
   it('error meta includes machine-readable token for ContainerResolutionError', async () => {

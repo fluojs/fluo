@@ -1,5 +1,5 @@
-import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { optional } from '@fluojs/di';
+import { Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
+import { Optional } from '@fluojs/di';
 import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, Produces, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -329,8 +329,9 @@ describe('bootstrapModule', () => {
   it('allows exported providers from a global module without direct imports', () => {
     class Logger {}
 
-    @Global()
     @Module({
+
+      global: true,
       exports: [Logger],
       providers: [Logger],
     })
@@ -362,7 +363,7 @@ describe('bootstrapModule', () => {
   it('injects undefined into a provider when an optional token is absent from the bootstrap graph', async () => {
     const OPTIONAL_TOKEN = Symbol('optional-provider-absent');
 
-    @Inject(optional(OPTIONAL_TOKEN))
+    @Inject(Optional.create(OPTIONAL_TOKEN))
     class OptionalProviderConsumer {
       constructor(readonly dependency: unknown) {}
     }
@@ -382,7 +383,7 @@ describe('bootstrapModule', () => {
     const OPTIONAL_TOKEN = Symbol('optional-controller-absent');
 
     @Controller('/optional-absent')
-    @Inject(optional(OPTIONAL_TOKEN))
+    @Inject(Optional.create(OPTIONAL_TOKEN))
     class OptionalControllerConsumer {
       constructor(readonly dependency: unknown) {}
 
@@ -413,7 +414,7 @@ describe('bootstrapModule', () => {
   it('resolves an accessible optional token for a provider consumer', async () => {
     class OptionalDependency {}
 
-    @Inject(optional(OptionalDependency))
+    @Inject(Optional.create(OptionalDependency))
     class OptionalProviderConsumer {
       constructor(readonly dependency: OptionalDependency | undefined) {}
     }
@@ -440,7 +441,7 @@ describe('bootstrapModule', () => {
     class OptionalDependency {}
 
     @Controller('/optional-accessible')
-    @Inject(optional(OptionalDependency))
+    @Inject(Optional.create(OptionalDependency))
     class OptionalControllerConsumer {
       constructor(readonly dependency: OptionalDependency | undefined) {}
 
@@ -478,7 +479,7 @@ describe('bootstrapModule', () => {
   it('rejects a provider optional token that exists in an inaccessible sibling module', () => {
     class OptionalDependency {}
 
-    @Inject(optional(OptionalDependency))
+    @Inject(Optional.create(OptionalDependency))
     class OptionalProviderConsumer {
       constructor(readonly dependency: OptionalDependency | undefined) {}
     }
@@ -514,7 +515,7 @@ describe('bootstrapModule', () => {
     class OptionalDependency {}
 
     @Controller('/optional-inaccessible')
-    @Inject(optional(OptionalDependency))
+    @Inject(Optional.create(OptionalDependency))
     class OptionalControllerConsumer {
       constructor(readonly dependency: OptionalDependency | undefined) {}
 
@@ -893,7 +894,7 @@ describe('bootstrapModule requiredConstructorParameters fix', () => {
     expect(() => bootstrapModule(AppModule)).not.toThrow();
   });
 
-  it('keeps supporting the legacy array syntax during the staged migration', () => {
+  it('accepts explicit variadic injection after declaration migration', () => {
     class Logger {}
 
     @Inject(Logger)

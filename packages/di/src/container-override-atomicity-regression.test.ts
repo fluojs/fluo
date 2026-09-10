@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from './container.js';
 import { DuplicateProviderError, ScopeMismatchError } from './errors.js';
-import { Scope } from './types.js';
+
 
 describe('Container override batch atomicity regressions', () => {
   it('leaves earlier single registrations unchanged when a later token group is ambiguous', async () => {
@@ -96,7 +96,7 @@ describe('Container override batch atomicity regressions', () => {
     expect(() =>
       requestScope.override(
         { provide: stable, useValue: 'replacement' },
-        { provide: introduced, scope: Scope.DEFAULT, useValue: 'new-singleton' },
+        { provide: introduced, scope: 'singleton', useValue: 'new-singleton' },
       ),
     ).toThrow(ScopeMismatchError);
 

@@ -22,7 +22,7 @@ The TypeScript statement `import { CATALOG_READER } from './catalog-reader.js'` 
 
 Re-exports are explicit too. An intermediate module importing another module does not automatically forward that module's exports to the next consumer. The intermediate module must list the token again in its own `exports`. The token must be either one of its own providers or a token actually exported by an imported module. A token being visible somewhere globally is not enough to export it when the module neither owns it nor has received it through an import.
 
-`@Global()` makes the exports of a global module that has entered the graph visible without an explicit import. It does not automatically discover every global module whose class exists on disk. This is useful for foundations such as shared configuration that must be supplied consistently across features. Making every internal account and order implementation global, however, reduces the benefits of boundary validation. For this shop, we choose to keep feature dependencies readable in `imports`.
+`@Module({ global: true })` makes the exports of a global module that has entered the graph visible without an explicit import. It does not automatically discover every global module whose class exists on disk. This is useful for foundations such as shared configuration that must be supplied consistently across features. Making every internal account and order implementation global, however, reduces the benefits of boundary validation. For this shop, we choose to keep feature dependencies readable in `imports`.
 
 When applying this to the actual application, file boundaries can be arranged as follows. The table shows where to move the classes from the experimental file below into the application; it does not claim that these files already exist as completed implementations in the repository.
 
@@ -64,7 +64,7 @@ The following is the complete file `fluo-blog/src/experiments/module-compilation
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Inject, Module } from '@fluojs/core';
-import { optional } from '@fluojs/di';
+import { Optional } from '@fluojs/di';
 import { bootstrapModule, FluoFactory, ModuleGraphCompileCache, ModuleVisibilityError } from '@fluojs/runtime';
 
 interface AccountReader {
@@ -190,7 +190,7 @@ test('rejects hidden targets even through aliases or optional injection', () => 
   })
   class AliasLeakModule { }
 
-  @Inject(optional(MemoryCatalog))
+  @Inject(Optional.create(MemoryCatalog))
   class OptionalLeak {
     constructor(readonly catalog: MemoryCatalog | undefined) { }
   }

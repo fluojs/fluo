@@ -1,10 +1,10 @@
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodejsAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 
 import { AppModule } from './app';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({
+  adapter: NodeHttpApplicationAdapter.create({
     port: 3000,
   }),
   logger: createConsoleApplicationLogger(),

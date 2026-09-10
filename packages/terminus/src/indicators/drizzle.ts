@@ -1,4 +1,4 @@
-import { optional, type Provider } from '@fluojs/di';
+import { Optional, type Provider } from '@fluojs/di';
 
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, waitForIndicatorProbeSettlement, withIndicatorTimeout } from './utils.js';
@@ -119,7 +119,7 @@ export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealth
   const indicatorProviderToken = Symbol('fluo.terminus.drizzle-health-indicator');
 
   return {
-    inject: [optional(DRIZZLE_HANDLE_PROVIDER), optional(DRIZZLE_DATABASE)],
+    inject: [Optional.create(DRIZZLE_HANDLE_PROVIDER), Optional.create(DRIZZLE_DATABASE)],
     provide: indicatorProviderToken,
     useFactory: (handleProvider: unknown, database: unknown) => {
       const resolvedHandleProvider = typeof handleProvider === 'object' && handleProvider !== null

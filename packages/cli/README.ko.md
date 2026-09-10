@@ -130,6 +130,8 @@ fluo new my-express-app --shape application --transport http --runtime node --pl
 fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
 ```
 
+Raw Node starter는 `NodeHttpApplicationAdapter.create(options)`로 adapter를 만들고 `FluoFactory.create(AppModule, { adapter })` 다음 `app.listen()`을 실행합니다. Host가 `app.close()`와 명시적인 signal 등록/해제를 소유합니다. 기존 run helper의 middleware/logger/signal 기본값에서 이전하려면 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. 기존 프로젝트는 자동 변경하지 않습니다.
+
 애플리케이션 매트릭스에는 런타임별 entrypoint, scripts, dependency 세트를 갖춘 Bun, Deno, Cloudflare Workers 네이티브 스타터도 포함됩니다.
 
 ```bash

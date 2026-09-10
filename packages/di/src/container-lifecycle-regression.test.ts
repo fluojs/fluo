@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ScopeMismatchError } from './errors.js';
-import { Scope } from './types.js';
+
 
 interface Deferred {
   readonly promise: Promise<void>;
@@ -91,24 +91,24 @@ describe('Container lifecycle regressions', () => {
     const root = new Container().register(
       {
         provide: firstGateToken,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: waitForFactoryPeer,
       },
       {
         provide: secondGateToken,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: waitForFactoryPeer,
       },
       {
         provide: firstToken,
         inject: [firstGateToken, secondToken],
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: (_gate: unknown, second: unknown) => second,
       },
       {
         provide: secondToken,
         inject: [secondGateToken, firstToken],
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: (_gate: unknown, first: unknown) => first,
       },
     );
@@ -251,7 +251,7 @@ describe('Container lifecycle regressions', () => {
     const requestScope = new Container()
       .register({
         provide: token,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: async () => {
           factoryStarted.resolve();
           await factoryRelease.promise;

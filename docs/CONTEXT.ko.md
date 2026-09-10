@@ -48,8 +48,15 @@ Prisma·Drizzle·Mongoose의 `afterCommit`은 [트랜잭션 문맥 계약](./arc
 
 ## Decorator Default Audit
 
-[Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 소유한 공개 factory 165개를
-안전한 기본값 추가 15개와 계약 보존 150개로 대조합니다. HTTP 빈 상대 경로, `Module()` 등록,
+Core/DI 선언 통합은 [migration 목록](./getting-started/migrate-core-di-declarations.ko.md)과
+[Core](../packages/core/README.ko.md) / [DI](../packages/di/README.ko.md) API 소유 문서를
+따르세요. `@Module({ global: true })`, variadic `@Inject(...)`, literal scope,
+`ForwardRef.create(...)`, `Optional.create(...)`를 사용합니다. Own/effective metadata
+reader의 audience와 의미 구분은 유지됩니다. 기존 165개 factory 조사 이후 #3738에서
+`Global`을 제거해 164개가 되었으며 legacy array injection도 제거했습니다.
+
+[Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 원래 조사한 공개 factory 165개를
+안전한 기본값 추가 15개와 나머지 계약 150개로 대조합니다. HTTP 빈 상대 경로, `Module()` 등록,
 OpenAPI 빈 write, React options 부재, 필수 `UseAuth(strategyName)`의 시작점입니다.
 공개 declaration 검증은 `tooling/governance/decorator-defaults-public-types.test.ts`이며
 runtime 증거는 각 소유 패키지에 있습니다.
@@ -112,11 +119,20 @@ NestJS GraphQL 마이그레이션에서는 [GraphQL 마이그레이션 경계](.
 
 다음 coordinated release 준비와 Node → 패키지 → import 순서는 [Node 24 migration guide](./getting-started/migrate-node24.ko.md)가 안내합니다. 실제 public manifest 42개 중 stable 41개는 explicit major, `@fluojs/react`는 0.x minor intent입니다. 공개는 maintainer가 수행하며 #3169는 user-run release까지 umbrella로 유지합니다.
 
-Root와 Node-bound package의 `>=24.0.0 <27` 분류, 8개 portable omission, exact/latest CI 증거 및 consumer migration은 [Node.js Support](./reference/node-support.ko.md)에서 확인합니다. `tooling/governance/node-support-classification.test.ts`와 `pnpm test:node-floor`가 이를 검증합니다.
+Root와 Node-bound package의 `>=24.0.0 <27` 분류, 8개 portable omission, exact/latest CI 증거 및 consumer migration은 [Node.js Support](./reference/node-support.ko.md)에서 확인합니다. `.github/workflows/node-verification.yml`은 세 Node 버전 모두에서 전체 build, typecheck, lint, 분할 테스트와 생성 starter를 검증하고, 최신 `24.x`에서 문서를 한 번 검증합니다. `tooling/ci/node-verification-workflow.test.ts`는 실행 구조, 빌드 artifact 전달, 실패 시 aggregate gate 차단을 검증합니다. `tooling/governance/node-support-classification.test.ts`와 로컬 집중 검증 명령 `pnpm test:node-floor`는 지원 경계를 확인하며 전체 CI를 대체하지 않습니다.
 
 `@fluojs/cqrs`는 패키지 자체의 지원 계약에 따라 Node.js `>=24.0.0 <27`을 요구합니다. 이는 검증된 Node listener 지원 창으로 Node.js 24 미만과 Node.js 27+는 제외됩니다. consumer 계약은 [`packages/cqrs/README.ko.md`](../packages/cqrs/README.ko.md) 및 [Package Surface](./reference/package-surface.ko.md)를 참조하세요.
 
 ## Next.js 호스팅
+
+Canonical import는 [Next 공개 API와 migration 소유 문서](../packages/platform-nextjs/README.ko.md#api-migration)에서 시작하세요.
+Root의 `NextHttpApplicationAdapter.create(options)`와 `defineNextApplication`,
+`/app-router`와 `/pages-router`의 lazy bridge, `/next-config`의 compiler로 나뉩니다.
+Adapter method 별칭은 제거하지만 Next route export는 유지합니다.
+공개 declaration/JavaScript 소유권은
+`packages/platform-nextjs/src/head-routing-public-types.test.ts`, 실제 App/Pages
+build/start/request는 package E2E가 검증합니다. Code fence의 import 검사는
+`tooling/governance/nextjs-public-imports.mjs`와 해당 회귀 suite로 실행합니다.
 
 [`@fluojs/platform-nextjs`](../packages/platform-nextjs/README.ko.md)는
 Node.js `>=24.0.0 <27`의 Next.js 16.x App Router와 Pages Router에서 Fluo를
@@ -258,7 +274,7 @@ CQRS dispatch context discoverability는 `packages/cqrs/README.ko.md`, [`docs/ar
 
 Core request-pipeline metadata seam discoverability는 `packages/core/README.ko.md`와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `@fluojs/core/request-pipeline`은 `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` 같은 first-party request-pipeline 패키지가 `@fluojs/core/internal`을 직접 import하지 않고 DTO validation, binding, 표준 데코레이터 metadata bag 접근을 공유하기 위한 문서화된 package-integration seam이다. 애플리케이션 코드는 package-integration 계약이 명시적으로 적용되는 경우가 아니라면 계속 root `@fluojs/core` 데코레이터와 공개 helper를 사용해야 한다.
 
-Core DI 및 NestJS migration discoverability는 `packages/core/README.ko.md`, `packages/di/README.ko.md`, `packages/runtime/README.ko.md`, [`docs/architecture/di-and-modules.ko.md`](./architecture/di-and-modules.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch04-decorators-intro.ko.md`](../book/beginner/ch04-decorators-intro.ko.md), [`book/advanced/ch16-custom-package.ko.md`](../book/advanced/ch16-custom-package.ko.md)로 나뉜다. `@Inject(...)`는 속성 또는 매개변수 데코레이터가 아니라 생성자 토큰을 매개변수 순서대로 선언하는 클래스 데코레이터다. Provider는 명시적으로 등록하므로 `@Injectable()`에 대응하는 fluo 기능은 없다. `@Scope('request')`와 `@Scope('transient')`는 Provider lifecycle을 정의하며, request-scoped resolution에는 `createRequestScope()`가 필요하고 captive singleton dependency는 `ScopeMismatchError`로 거부된다. `@Optional()`은 class-level `@Inject(...)` 또는 Provider `inject` 목록의 `optional(TOKEN)`으로 옮기며, 없는 Provider는 `undefined`로 해석한다. Module Graph compilation은 순환 Module import를 거부하므로 shared Provider를 별도 Module 또는 package로 추출해야 하며, `forwardRef(...)`는 class-level `@Inject(...)` 또는 Provider `inject` 내부에서 하나의 dependency Token lookup만 늦출 뿐 Module cycle이나 실제 constructor cycle을 해소하지 않는다. 또한 `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 static import가 bootstrap module body보다 먼저 평가되므로, preload entrypoint에서 `ensureMetadataSymbol()`을 실행한 뒤 decorated application graph를 dynamic import해야 한다.
+Core DI 및 NestJS migration discoverability는 `packages/core/README.ko.md`, `packages/di/README.ko.md`, `packages/runtime/README.ko.md`, [`docs/architecture/di-and-modules.ko.md`](./architecture/di-and-modules.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch04-decorators-intro.ko.md`](../book/beginner/ch04-decorators-intro.ko.md), [`book/advanced/ch16-custom-package.ko.md`](../book/advanced/ch16-custom-package.ko.md)로 나뉜다. `@Inject(...)`는 속성 또는 매개변수 데코레이터가 아니라 생성자 토큰을 매개변수 순서대로 선언하는 클래스 데코레이터다. Provider는 명시적으로 등록하므로 `@Injectable()`에 대응하는 fluo 기능은 없다. `@Scope('request')`와 `@Scope('transient')`는 Provider lifecycle을 정의하며, request-scoped resolution에는 `createRequestScope()`가 필요하고 captive singleton dependency는 `ScopeMismatchError`로 거부된다. `@Optional()`은 class-level `@Inject(...)` 또는 Provider `inject` 목록의 `Optional.create(TOKEN)`으로 옮기며, 없는 Provider는 `undefined`로 해석한다. Module Graph compilation은 순환 Module import를 거부하므로 shared Provider를 별도 Module 또는 package로 추출해야 하며, `ForwardRef.create(...)`는 class-level `@Inject(...)` 또는 Provider `inject` 내부에서 하나의 dependency Token lookup만 늦출 뿐 Module cycle이나 실제 constructor cycle을 해소하지 않는다. 또한 `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 static import가 bootstrap module body보다 먼저 평가되므로, preload entrypoint에서 `ensureMetadataSymbol()`을 실행한 뒤 decorated application graph를 dynamic import해야 한다.
 
 Runtime lifecycle 및 NestJS migration discoverability는 `packages/runtime/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/architecture/lifecycle-and-shutdown.ko.md`](./architecture/lifecycle-and-shutdown.ko.md), advanced [Module Graph](../book/advanced/ch08-module-graph.ko.md)와 [Application Context](../book/advanced/ch09-app-context.ko.md) chapter로 나뉜다. 공개된 네 hook 계약은 startup에서 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown에서 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행한다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 준비 작업은 문서화된 두 shutdown phase 중 하나로 옮겨야 한다. Fluo는 compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않는다.
 
@@ -583,3 +599,7 @@ Lifecycle publisher는 channel resolution, queue job, generated identity, provid
 ## Canonical HTTP Factory migration
 
 HTTP 생성은 `FluoFactory.create(AppModule, { adapter })` → `app.listen()` → `app.close()`를 사용합니다. Owner는 [bootstrap protocol](./getting-started/bootstrap-paths.ko.md), [lifecycle 계약](./architecture/lifecycle-and-shutdown.ko.md), [runtime README](../packages/runtime/README.ko.md)이며 제거 import·logger·middleware·signal·실패 정책은 [migration guide](./getting-started/migrate-http-factory.ko.md)를 따릅니다. 근거는 runtime `factory-lifecycle.test.ts`/`factory-public-types.test.ts`, Node `factory-signals.test.ts`, CLI `factory-scaffold.test.ts`, `tooling/governance/runtime-shutdown-terminality.test.ts`입니다.
+
+## Node Adapter Creation
+
+Raw Node adapter 생성은 [package README](../packages/platform-nodejs/README.ko.md)의 `NodeHttpApplicationAdapter.create(options)`를 따릅니다. Compression·multipart를 포함하는 단일 options 경로와 삭제된 factory/type alias는 [마이그레이션](./getting-started/migrate-node-adapter-create.ko.md)에 있습니다. `packages/platform-nodejs/src/adapter-create.test.ts`, `src/published-declaration-surface.test.ts`, `packages/cli/src/new/scaffold.test.ts`가 listener·DI identity·배포 import·생성 코드를 검증하고 `tooling/governance/node-adapter-creation.test.ts`가 discoverability/enforcement/regression companion 요구를 검증합니다.

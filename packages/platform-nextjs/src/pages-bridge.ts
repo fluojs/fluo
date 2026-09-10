@@ -6,7 +6,8 @@ import type {
 } from 'node:stream';
 import { finished } from 'node:stream/promises';
 
-import type { NextAdapterLoader, NextHttpApplicationAdapter } from './adapter.js';
+import type { NextHttpApplicationAdapter } from './adapter.js';
+import type { NextAdapterLoader } from './lazy-adapter.js';
 
 interface NextPagesRequestSource extends Readable {
   readonly aborted?: boolean;

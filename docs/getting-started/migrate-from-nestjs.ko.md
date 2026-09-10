@@ -100,7 +100,7 @@ Listener close 또는 connection drain 작업을 같은 이름의 fluo lifecycle
 | NestJS 구성 요소 | fluo 구성 요소 | 메모 |
 | --- | --- | --- |
 | `@Module({ imports, controllers, providers, exports })` | `@fluojs/core`의 `@Module({ imports, controllers, providers, exports })` | 모듈 경계와 명시적 export는 그대로 주요 구성 단위다. |
-| 모듈 `imports` 배열의 `forwardRef(() => OtherModule)` | 직접 대응 없음; 공유 프로바이더를 세 번째 모듈 또는 패키지로 추출 | fluo는 모듈 그래프 컴파일 중 순환 모듈 import를 거부한다. `forwardRef(...)`는 클래스 수준 `@Inject(...)` 목록과 프로바이더 `inject` 배열에서만 쓰는 의존성 토큰 wrapper이며, 모듈 순환이나 실제 생성자 순환을 해석 가능하게 만들지 않는다. |
+| 모듈 `imports` 배열의 `forwardRef(() => OtherModule)` | 직접 대응 없음; 공유 프로바이더를 세 번째 모듈 또는 패키지로 추출 | fluo는 모듈 그래프 컴파일 중 순환 모듈 import를 거부한다. `ForwardRef.create(...)`는 클래스 수준 `@Inject(...)` 목록과 프로바이더 `inject` 배열에서만 쓰는 의존성 토큰 wrapper이며, 모듈 순환이나 실제 생성자 순환을 해석 가능하게 만들지 않는다. |
 | `@Controller('/users')` | `@fluojs/http`의 `@Controller('/users')` | 컨트롤러 데코레이터는 코어 패키지가 아니라 HTTP 패키지에 속한다. |
 | `@Get()`, `@Post()` 등 라우트 데코레이터 | `@fluojs/http`의 `@Get()`, `@Post()` 등 | HTTP 라우트 선언은 계속 메서드 기반 데코레이터를 사용한다. |
 | `@Sse()` | `@fluojs/http`의 `@Sse()`와 수동 stream용 `SseResponse` 또는 managed stream용 `AsyncIterable` | fluo는 `@Sse()`를 `text/event-stream` metadata를 가진 `GET` 라우트로 매핑한다. `AsyncIterable` 값은 SSE frame으로 변환할 수 있지만, NestJS `Observable` 반환값은 여전히 `SseResponse` 또는 async iterable로 재작성해야 한다. |
@@ -121,7 +121,7 @@ Studio report는 bootstrap 이후 artifact다. `fluo inspect`는 snapshot, timin
 | Cloudflare Workers로 이동할 때의 NestJS HTTP server lifecycle hook 또는 late WebSocket server mutation | `@fluojs/platform-cloudflare-workers`와 `@fluojs/websockets/cloudflare-workers`의 `CloudflareWorkersWebSocketModule.forRoot()` | Workers는 server socket 대신 host-owned `fetch(request, env, ctx)` boundary를 노출합니다. Exported `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로 애플리케이션이 close trigger를 소유합니다. `worker.fetch` 밖의 application-owned trigger는 `await worker.close()`를 직접 호출할 수 있습니다. 같은 `worker.fetch` 안의 management route는 현재 response를 반환한 뒤 `ctx.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그 안에서 await하면 자기 자신의 active request drain을 기다리다 shutdown timeout에 도달합니다. `listen()`은 fluo dispatcher만 binding합니다. Application graph에 Worker WebSocket module을 등록하여 bootstrap이 해당 listen boundary 전에 binding을 구성하도록 하세요. 수락된 각 request는 `ctx.waitUntil(...)`로 추적됩니다. 성공한 lazy-entrypoint `close()`는 재시작 가능합니다. 다음 `fetch(...)`는 새 application을 bootstrap하여 bootstrap hook을 다시 실행하고 singleton provider를 다시 생성합니다. Bootstrap에는 미리 선언한 root module과 option만 전달되고 request `env`는 dispatch 중에 연결되므로, `env`는 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. 별도로 사용할 수 있는 pre-registration 값만 bootstrap configuration에 두세요. `RequestContext`에서 선택한 fetch-time binding을 읽고 검증하고 좁힌 뒤 application-shaped 값으로 provider method에 전달하세요. |
 | `@Injectable()` 프로바이더 마커 | `@Module(...).providers`에 등록된 프로바이더 클래스 또는 provider definition | fluo는 필수 프로바이더 등록 단계로 `@Injectable()`을 사용하지 않는다. |
 | `@Injectable({ scope: Scope.REQUEST })` 또는 `@Injectable({ scope: Scope.TRANSIENT })` | `@Scope('request')` / `@Scope('transient')` 또는 provider `scope: 'request'` / `scope: 'transient'`를 사용한 명시적 프로바이더 등록 | 프로바이더의 기본 scope는 singleton이다. Request-scoped provider는 `createRequestScope()` child에서 resolve해야 하며 NestJS-style scope bubbling으로 승격되지 않는다. |
-| `@Inject(TOKEN)`과 함께 쓰는 `@Optional()` | `@fluojs/core` 및 `@fluojs/di`의 클래스 수준 `@Inject(optional(TOKEN))` 또는 provider `inject: [optional(TOKEN)]` | `optional(TOKEN)`은 decorator가 아니라 token wrapper다. 등록되지 않은 optional token은 `undefined`로 resolve되므로 constructor parameter는 `undefined`를 허용해야 한다. |
+| `@Inject(TOKEN)`과 함께 쓰는 `@Optional()` | `@fluojs/core` 및 `@fluojs/di`의 클래스 수준 `@Inject(Optional.create(TOKEN))` 또는 provider `inject: [Optional.create(TOKEN)]` | `Optional.create(TOKEN)`은 decorator가 아니라 token wrapper다. 등록되지 않은 optional token은 `undefined`로 resolve되므로 constructor parameter는 `undefined`를 허용해야 한다. |
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
 | `@Inject(TOKEN) private value` 같은 속성 주입 | 클래스 수준 `@Inject(TOKEN)`과 이에 대응하는 생성자 매개변수 | fluo의 `@Inject(...)`는 생성자 토큰을 매개변수 순서대로 선언하는 표준 클래스 데코레이터다. 속성 또는 생성자 매개변수 데코레이터가 아니다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Zod와 Valibot을 포함한 Standard Schema를 지원하는 `@fluojs/validation` | 이는 class-validator 호환 계층이 아니라 fluo 고유 검증 surface다. 일반 validator는 `null` / `undefined`를 건너뛰고, 필수값에는 `@IsDefined()`를 사용하며, plain 객체 materialization은 안전한 own enumerable 추가 속성을 기본적으로 유지하며 `materialize(..., { undeclaredProperties: 'reject' })`를 통한 opt-in 거부를 지원하고 validation group은 지원되지 않는다. |
@@ -327,8 +327,8 @@ Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합�
 - 의존성 주입은 생성자 타입에서 절대 추론되지 않는다. fluo는 생성자 의존성에 대해 명시적 `@Inject(...)` 선언을 요구한다.
 - NestJS 속성 주입은 반드시 생성자 주입으로 바꾼다. 클래스에 `@Inject(TokenA, TokenB)`를 붙이고 토큰 순서를 생성자 매개변수와 맞추며, 속성이나 매개변수에는 `@Inject(...)`를 붙이지 않는다.
 - NestJS provider scope는 scope bubbling이 아니다. fluo provider는 `@Scope('request')`, `@Scope('transient')` 또는 명시적 provider `scope`로 선언하고 singleton은 기본값으로 유지한다. Request-scoped provider는 `createRequestScope()`에서만 resolve해야 한다. Root에서 resolve하면 `RequestScopeResolutionError`가 발생하고 singleton에 주입하면 `ScopeMismatchError`가 발생한다.
-- NestJS `@Optional()`은 클래스 수준 `@Inject(...)` token list 또는 provider `inject` 배열의 `optional(Token)`으로 바꾼다. `optional(...)`은 property, parameter, class decorator가 아니며 등록이 없으면 `undefined`로 resolve된다.
-- NestJS 모듈 `forwardRef(...)`에 직접 대응하는 fluo 기능은 없다. 공유 프로바이더를 별도 모듈이나 패키지로 추출해 모듈 import 순환을 끊는다. fluo의 `forwardRef(...)`는 클래스 수준 `@Inject(...)` 또는 프로바이더 `inject`에서 의존성 토큰 하나의 조회만 지연하며, 모듈 순환이나 실제 생성자 순환을 해결하지 않는다.
+- NestJS `@Optional()`은 클래스 수준 `@Inject(...)` token list 또는 provider `inject` 배열의 `Optional.create(Token)`으로 바꾼다. `Optional.create(...)`은 property, parameter, class decorator가 아니며 등록이 없으면 `undefined`로 resolve된다.
+- NestJS 모듈 `forwardRef(...)`에 직접 대응하는 fluo 기능은 없다. 공유 프로바이더를 별도 모듈이나 패키지로 추출해 모듈 import 순환을 끊는다. fluo의 `ForwardRef.create(...)`는 클래스 수준 `@Inject(...)` 또는 프로바이더 `inject`에서 의존성 토큰 하나의 조회만 지연하며, 모듈 순환이나 실제 생성자 순환을 해결하지 않는다.
 - HTTP listen은 adapter-first 방식이다. `FluoFactory.create(...)`는 platform을 암묵적으로 선택하지 않는다. Adapterless application shell을 만들 수는 있지만 `listen()`에는 명시적 adapter와 함께 생성한 application이 필요하다.
 - NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo의 문서화된 shutdown hook 사이에 새 phase를 추가하지 않는다. Application-wide signal cleanup보다 먼저 준비 작업을 끝내야 하면 `onModuleDestroy()`로 옮기고, signal이 필요하면 `onApplicationShutdown(signal?)`로 옮긴다. Compatibility shim, fallback, alias 또는 새 runtime hook을 도입하면 안 되며 네 hook 계약과 startup/shutdown ordering은 그대로 유지된다.
 - `@nestjs/config` migration은 async Dynamic Module 또는 namespace loader를 그대로 복제하지 않는다. `@fluojs/config`는 동기 `ConfigModule.forRoot(...)`를 제공한다. Ambient process value는 명시적 `processEnv` option으로 전달하고, 병합된 snapshot은 동기 Standard Schema `schema`로 검증하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다. Remote secret과 NestJS `load` factory는 module graph 구성 전에 application bootstrap boundary에서 await하되 nested object는 `defaults` 또는 `runtimeOverrides`에 그대로 보존한다. Plain object는 deep merge되고 dot-path `ConfigService` lookup으로 계속 접근할 수 있다.
@@ -622,7 +622,7 @@ import {
 import { localizeDtoValidationError } from '@fluojs/i18n/validation';
 import type { Middleware, RequestContext } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import type { DtoValidationError } from '@fluojs/validation';
 
 const acceptLanguage = createAcceptLanguageLocaleResolver();
@@ -663,7 +663,7 @@ const requestLocaleHook: Middleware = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodeHttpAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   middleware: [requestLocaleHook],
 });
 await app.listen();
@@ -776,7 +776,7 @@ Top-level `name`, `global` option은 계속 지원합니다.
 Prisma option provider가 resolve되기 전에 주입할 각 의존성을 async Prisma module에서 볼 수 있는 surface를 통해 등록합니다.
 
 ```typescript
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { PrismaModule } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
@@ -784,8 +784,8 @@ class DatabaseConfig {
   readonly url = 'postgresql://localhost/app';
 }
 
-@Global()
 @Module({
+  global: true,
   providers: [DatabaseConfig],
   exports: [DatabaseConfig],
 })
@@ -807,7 +807,7 @@ class AppModule {}
 ```
 
 Import하는 `AppModule`의 `providers`에만 `DatabaseConfig`를 등록하는 것으로는 충분하지 않습니다. Async child module은 자신의 local token, 자신의 import가 export한 token, global module export, bootstrap runtime provider만 볼 수 있습니다.
-위 예시처럼 주입 의존성을 import한 `@Global()` module에서 export하거나 bootstrap runtime provider로 제공하세요.
+위 예시처럼 주입 의존성을 import한 `@Module({ global: true })` module에서 export하거나 bootstrap runtime provider로 제공하세요.
 
 NestJS의 `imports`, `useClass`, `useExisting`은 `forRootAsync(...)` 호환 field가 아닙니다. 해당 configuration, class construction, provider alias는 application bootstrap 또는 명시적인 fluo provider registration에서 해석하고, 준비된 의존성을 `inject`로 전달하세요.
 

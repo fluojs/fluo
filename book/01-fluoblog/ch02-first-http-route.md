@@ -58,14 +58,14 @@ export class PostsController {
 The following is a **complete file** for `src/app.ts` that adds the controller while preserving the generated starter configuration. `ConfigModule`, `HealthModule`, and `GreetingModule` are existing registrations created by the CLI; this chapter's new feature is the single `controllers` entry.
 
 ```ts
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 import { GreetingModule } from './greeting/greeting.module';
 import { PostsController } from './posts/posts.controller';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',

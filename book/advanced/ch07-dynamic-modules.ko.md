@@ -94,7 +94,7 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
 이 발췌가 보여 주는 핵심은 overwrite가 아니라 field-level composition입니다. 그래서 정적 decorator와 동적 helper가 같은 class metadata store를 공유해도 마지막 호출 하나가 모든 이전 정보를 지워 버리지 않습니다.
 
 그래서 Fluo는 두 가지 authoring style을 동시에 지원할 수 있습니다.
-- **정적 decorator 스타일**은 `path:packages/core/src/decorators.ts:13-34`의 `@Module(...)`과 `@Global()`을 사용하며, 이는 선언 시점에 메타데이터 세터를 호출하는 문법적 설탕(syntactic sugar)에 불과합니다.
+- **정적 decorator 스타일**은 `path:packages/core/src/decorators.ts:13-34`의 `@Module(...)`과 `@Module({ global: true })`를 사용하며, 이는 선언 시점에 메타데이터 세터를 호출하는 문법적 설탕(syntactic sugar)에 불과합니다.
 - **programmatic 스타일**은 factory function 내에서 `defineModule(...)` 또는 심지어 `defineModuleMetadata(...)`를 직접 호출합니다.
 
 런타임에서는 둘 다 같은 metadata store로 수렴합니다. 가장 작은 예시는 `ConfigReloadModule.forRoot()`입니다. `path:packages/config/src/reload-module.ts:128-153`는 `ConfigReloadModuleImpl` subclass를 만들고 caller-owned load option을 snapshot으로 분리한 뒤, `defineModuleMetadata(...)`로 module metadata를 기록하고 그 subclass를 반환합니다. 별도의 runtime wrapper object나 proxy는 생성되지 않습니다.
@@ -347,7 +347,7 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
 ## 7.3 Async module helpers are factory providers with memoized option resolution
 비동기 사례는 많은 프레임워크가 불투명해지는 지점입니다. 많은 경우 복잡한 상태 머신 뒤에 "어떻게"를 숨기곤 합니다. 하지만 Fluo는 여기서도 의외로 직접적입니다. async module helper도 여전히 module factory이며, 차이는 options provider 중 하나가 실행이 지연되고 결과가 메모이제이션(memoization)되는 **factory provider**라는 점뿐입니다.
 
-공유 계약은 `path:packages/core/src/types.ts:64-67`의 `AsyncModuleOptions<T>`에서 옵니다. 필드는 의존성 해결을 위한 `inject?: InjectionToken[]`와 실제 구성 로직을 담은 `useFactory`뿐입니다. `InjectionToken`은 plain `Token` 값에 더해 문서화된 `forwardRef(...)`와 `optional(...)` wrapper를 포함하므로, async module factory는 `@Inject(...)`와 provider `inject` 배열이 받는 것과 같은 명시적 injection entry에 의존할 수 있습니다.
+공유 계약은 `path:packages/core/src/types.ts:64-67`의 `AsyncModuleOptions<T>`에서 옵니다. 필드는 의존성 해결을 위한 `inject?: InjectionToken[]`와 실제 구성 로직을 담은 `useFactory`뿐입니다. `InjectionToken`은 plain `Token` 값에 더해 문서화된 `ForwardRef.create(...)`와 `Optional.create(...)` wrapper를 포함하므로, async module factory는 `@Inject(...)`와 provider `inject` 배열이 받는 것과 같은 명시적 injection entry에 의존할 수 있습니다.
 
 `EmailModule.forRootAsync()`는 아주 읽기 좋은 명시적 메모이제이션 예시입니다. `path:packages/email/src/module.ts:114-138`은 user factory를 로컬 변수에 저장하고, `cachedResult` promise를 만들고, 처음 한 번만 promise를 초기화하는 `memoizedFactory(...deps)`를 정의한 뒤, `EMAIL_OPTIONS`에 대한 singleton factory provider를 등록합니다.
 
@@ -551,7 +551,7 @@ function createExportedTokenSet(
 
 따라서 dynamic module의 `exports` 배열은 선언만으로 끝나지 않습니다. 그래프 컴파일 중 로컬 provider나 imported export와 맞지 않으면 즉시 실패하므로, 위 Redis, Socket.IO, Passport helper의 export 설계가 실제 visibility rule에 묶입니다.
 
-dynamic module이 `global: true`를 선언할 때, 그것은 어떤 마법의 전역 레지스트리를 호출하는 것이 아닙니다. 정적 `@Global()` 모듈과 같은 module-graph validation 흐름에 참여하는 것입니다. 차이는 metadata가 코드로 설정되었다는 점뿐입니다. 이러한 일관성 덕분에 `useExisting` 별칭을 사용하여 내부 객체에 안정적인 공개 이름을 부여하거나, 명명된 토큰 헬퍼(named token helper)를 사용하여 동일한 컨테이너 내에서 충돌 없이 여러 모듈 인스턴스(예: 두 개의 별도 데이터베이스 연결)가 공존하도록 할 수 있습니다.
+dynamic module이 `global: true`를 선언할 때, 그것은 어떤 마법의 전역 레지스트리를 호출하는 것이 아닙니다. 정적 `@Module({ global: true })` 모듈과 같은 module-graph validation 흐름에 참여하는 것입니다. 차이는 metadata가 코드로 설정되었다는 점뿐입니다. 이러한 일관성 덕분에 `useExisting` 별칭을 사용하여 내부 객체에 안정적인 공개 이름을 부여하거나, 명명된 토큰 헬퍼(named token helper)를 사용하여 동일한 컨테이너 내에서 충돌 없이 여러 모듈 인스턴스(예: 두 개의 별도 데이터베이스 연결)가 공존하도록 할 수 있습니다.
 
 여기서 유용한 설계 휴리스틱이 나옵니다.
 - 소비자가 구성 형태(shape)에 직접 의존해서는 안 될 때는 원시 옵션 토큰을 **내부(internal)**로 유지하십시오.

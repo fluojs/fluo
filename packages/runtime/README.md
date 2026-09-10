@@ -48,7 +48,7 @@ The `FluoFactory` is the primary entrypoint for creating applications.
 import { Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 
 @Controller('/')
 class AppController {
@@ -65,7 +65,7 @@ class AppModule { }
 
 // Create and start the application
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
@@ -138,11 +138,13 @@ before the route consumes it.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createConsoleApplicationLogger, createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodeHttpAdapter({}, false, {
-    strategy: 'stream',
-    maxTotalSize: 25 * 1024 * 1024,
+  adapter: NodeHttpApplicationAdapter.create({
+    multipart: {
+      strategy: 'stream',
+      maxTotalSize: 25 * 1024 * 1024,
+    },
   }),
   logger: createConsoleApplicationLogger(),
 });
@@ -203,12 +205,12 @@ controllers; see the [complete schema route example](../http/README.md#standard-
 
 ```typescript
 import { StandardSchemaBinder } from '@fluojs/http';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
 await app.listen();
@@ -303,7 +305,7 @@ class GlobalErrorFilter implements ExceptionFilterHandler {
 }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   filters: [new GlobalErrorFilter()],
 });
 ```
@@ -361,7 +363,7 @@ function escapeHtml(value: string): string {
 }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   errorRepresentation: {
     html: {
       render({ json }) {
@@ -428,7 +430,7 @@ class UsersModule {}
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
 - `@fluojs/runtime/web` exposes two mutually exclusive multipart consumption modes: `parseMultipart(...)` buffers fields and files, while `parseMultipartStream(...)` yields discriminated field/file parts and never materializes complete file payloads. Streaming mode enforces per-field, per-file, total-size, field-count, file-count, and header limits while bytes are read; abort, cancellation, and parser failures cancel the active source. A body selected by either mode rejects a second buffered or streaming selection with `MultipartBodyConsumedError`.
-- `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
+- `NodeHttpApplicationAdapter.create(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - HTTP application bootstrap passes an optional application-owned `errorRepresentation.html` provider to the dispatcher without taking representation ownership. Canonical JSON remains the default; HTTP keeps classification, negotiation, status/header, `HEAD`, abort, commit, and fallback semantics.
 - HTTP response writing is single-owner: framework-managed handler results may be transformed by interceptors before the runtime commits them. Once a handler or response helper commits `RequestContext.response`, the dispatcher skips a second success-response write. `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged, while other interceptors may still transform the chain result.
@@ -503,7 +505,7 @@ import {
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
   createNodeFileSystemAssetSource,
-  createNodeHttpAdapter,
+  NodeHttpApplicationAdapter,
   runNodeApplication,
   type NodeFileSystemAssetPrecompression,
   type NodeFileSystemAssetSourceOptions,
@@ -511,7 +513,7 @@ import {
 ```
 
 ```typescript
-const adapter = createNodeHttpAdapter({
+const adapter = NodeHttpApplicationAdapter.create({
   port: 3000,
   maxBodySize: 1_048_576,
 });
@@ -522,7 +524,7 @@ For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`
 - `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
 - `createNodeFileSystemAssetSource(options)`: Node-only filesystem implementation of the `@fluojs/http` `StaticAssetSource` contract. `NodeFileSystemAssetSourceOptions` names its `{ root, precompressed }` boundary and `NodeFileSystemAssetPrecompression` selects `.br` / `.gz` siblings. Each accepted representation is securely opened, eagerly copied into an immutable in-memory byte snapshot, and its `FileHandle` is closed before middleware response writing. The returned `source()` only replays that snapshot; it never reopens the pathname. Application owners therefore bound memory by the selected asset size, while `size` and the strong `ETag` describe those exact snapshot bytes.
-- `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
+- `NodeHttpApplicationAdapter.create()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
 - `createNodeShutdownSignalRegistration(...)`, `defaultNodeShutdownSignals()`, `registerShutdownSignals(...)`: Node-owned signal APIs. Supply the registration callback to Factory; lower-level host integrations can register directly.
 

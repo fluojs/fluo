@@ -130,6 +130,8 @@ fluo new my-express-app --shape application --transport http --runtime node --pl
 fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
 ```
 
+The raw Node starter creates its adapter with `NodeHttpApplicationAdapter.create(options)`, then calls `FluoFactory.create(AppModule, { adapter })` and `app.listen()`. The host owns `app.close()` and explicit signal registration/cleanup. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) when moving from run-helper middleware/logger/signal defaults. Existing projects are not rewritten.
+
 The application matrix also includes runtime-native Bun, Deno, and Cloudflare Workers starters with runtime-specific entrypoints, scripts, and dependency sets:
 
 ```bash

@@ -134,14 +134,14 @@ export class PostsModule {}
 다음은 `src/app.ts`의 **완전한 교체 파일**이다. 이전 장의 `PostsController` 직접 등록을 제거하고 `PostsModule`을 import한다. 나머지는 생성된 starter 구성이다.
 
 ```ts
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 import { GreetingModule } from './greeting/greeting.module';
 import { PostsModule } from './posts/posts.module';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
@@ -157,7 +157,7 @@ export class AppModule {}
 
 이제 루트 모듈은 게시글 기능에 컨트롤러가 몇 개 있고 어떤 seed 토큰을 쓰는지 몰라도 된다. `PostsService`를 루트의 `providers`에도 다시 등록하지 않는다. 그것은 의존성을 보이게 하는 정상 경로가 아니라 등록 소유권을 중복시키는 시도다. 다른 기능이 서비스를 필요로 한다면 자신의 `imports`에 `PostsModule`을 연결하고 그 모듈의 export를 사용한다.
 
-starter의 루트에 있던 `@Global()`을 모든 기능 모듈로 복제하지도 않는다. `PostsModule`에는 글로벌 선언이 없다. 전역 가시성으로 빠진 import를 숨기면 기능 간 의존성의 방향이 코드에서 잘 보이지 않는다. 규모가 커질수록 명시적인 모듈 연결은 처음 보는 사람이 변경 영향 범위를 읽는 데 도움이 된다.
+starter의 루트에 있던 `@Module({ global: true })`를 모든 기능 모듈로 복제하지도 않는다. `PostsModule`에는 글로벌 선언이 없다. 전역 가시성으로 빠진 import를 숨기면 기능 간 의존성의 방향이 코드에서 잘 보이지 않는다. 규모가 커질수록 명시적인 모듈 연결은 처음 보는 사람이 변경 영향 범위를 읽는 데 도움이 된다.
 
 새 구조의 요청은 루트에서 게시글 모듈로, 그 안에서 controller로, 주입된 service로 이어진다. `INITIAL_POSTS`는 서비스 생성 시 읽힌다. GET 요청마다 seed를 다시 주입하거나 새로운 배열 provider를 만드는 구조가 아니다. 기본 singleton 서비스가 앱 컨텍스트 안에서 공유되고, 조회할 때 호출자에게 반환할 복사본을 만든다.
 
@@ -267,7 +267,7 @@ node dist-summary/main.js
 
 Fluo의 scope는 기본 singleton, 요청별 request, 해석별 transient로 구분된다. 모든 provider를 request로 바꾸면 공유 상태 문제가 자동으로 해결되는 것은 아니다. 생성을 반복하는 비용이 늘고, singleton이 request provider를 의존하면 `ScopeMismatchError`로 거부된다. 루트 컨테이너에서 request provider를 직접 해석하는 것도 올바른 사용이 아니다. 요청 scope는 `createRequestScope()`로 만든 자식 경계가 소유한다.
 
-순환 의존성도 이름만 바꿔 해결할 수 없다. 나중에 `PostsService`가 `AccountsService`를 필요로 하고 반대 방향의 생성자 의존성까지 생기면, 어떤 작업을 누가 조율할지 다시 정해야 한다. `forwardRef()`는 아직 선언되지 않은 토큰의 조회를 늦출 수 있지만 실제 생성자 순환을 끊지 않는다. 작동하지 않는 관계에 지연 참조를 반복해서 붙이는 대신 두 기능을 함께 사용하는 상위 작업으로 조율을 옮기는 편이 책임을 설명하기 쉽다.
+순환 의존성도 이름만 바꿔 해결할 수 없다. 나중에 `PostsService`가 `AccountsService`를 필요로 하고 반대 방향의 생성자 의존성까지 생기면, 어떤 작업을 누가 조율할지 다시 정해야 한다. `ForwardRef.create()`는 아직 선언되지 않은 토큰의 조회를 늦출 수 있지만 실제 생성자 순환을 끊지 않는다. 작동하지 않는 관계에 지연 참조를 반복해서 붙이는 대신 두 기능을 함께 사용하는 상위 작업으로 조율을 옮기는 편이 책임을 설명하기 쉽다.
 
 이 장에서 만든 분리는 클래스 수 자체를 목표로 하지 않는다. 일회성 계산 함수는 함수로 두면 되고, 외부 협력자가 없는 작은 로직은 `new`로 직접 테스트해도 된다. DI가 필요한 곳은 애플리케이션이 어떤 협력자를 어떤 수명으로 제공할지 결정해야 하는 구성 경계다. 2권에서 같은 블로그에 상점을 붙일 때도 모든 모듈을 새 프로세스로 옮기는 대신 이런 경계를 먼저 사용한다.
 

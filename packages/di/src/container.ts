@@ -12,12 +12,12 @@ import { registerMultiContributionResolver } from './multi-contribution-registry
 import { normalizeProvider } from './provider-normalization.js';
 import type {
   Disposable,
-  ForwardRefFn,
+  ForwardRefToken,
   NormalizedProvider,
-  OptionalToken,
+  OptionalInjectToken,
   Provider,
 } from './types.js';
-import { isForwardRef, isOptionalToken, Scope } from './types.js';
+import { isForwardRef, isOptionalToken } from './types.js';
 
 /**
  * Factory provider resolution mode recorded after a factory returns either synchronously or through a promise.
@@ -308,7 +308,7 @@ export class Container {
   private readonly pendingDisposables: Disposable[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
-  private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
+  private readonly forwardRefTokenCache = new WeakMap<ForwardRefToken, Token>();
   private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
   private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
   private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
@@ -384,7 +384,7 @@ export class Container {
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
-      if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT) {
+      if (this.requestScopeEnabled && normalized.scope === 'singleton') {
         throw new ScopeMismatchError(
           `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
           {
@@ -461,7 +461,7 @@ export class Container {
 
     if (this.requestScopeEnabled) {
       for (const [token, normalizedProviders] of normalizedByToken) {
-        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === Scope.DEFAULT);
+        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === 'singleton');
 
         if (introducesSingleton && !this.has(token)) {
           throw new ScopeMismatchError(
@@ -884,15 +884,15 @@ export class Container {
 
     const metadata = getClassDiMetadata(token);
 
-    if (metadata?.scope === Scope.REQUEST) {
+    if (metadata?.scope === 'request') {
       return true;
     }
 
-    return (metadata?.inject ?? []).some((depEntry: Token | ForwardRefFn | OptionalToken) => this.dependencyEntryRequiresRequestScope(depEntry, visited));
+    return (metadata?.inject ?? []).some((depEntry: Token | ForwardRefToken | OptionalInjectToken) => this.dependencyEntryRequiresRequestScope(depEntry, visited));
   }
 
   private normalizedProviderRequiresRequestScope(provider: NormalizedProvider, visited: Set<Token>): boolean {
-    if (provider.scope === Scope.REQUEST) {
+    if (provider.scope === 'request') {
       return true;
     }
 
@@ -904,7 +904,7 @@ export class Container {
   }
 
   private dependencyEntryRequiresRequestScope(
-    depEntry: Token | ForwardRefFn | OptionalToken,
+    depEntry: Token | ForwardRefToken | OptionalInjectToken,
     visited: Set<Token>,
   ): boolean {
     const depToken = this.resolveProviderDependencyToken(depEntry);
@@ -1129,7 +1129,7 @@ export class Container {
   }
 
   private getCachedScopedOrSingletonInstance(provider: NormalizedProvider): Promise<unknown> | undefined {
-    if (provider.scope !== Scope.DEFAULT) {
+    if (provider.scope !== 'singleton') {
       return undefined;
     }
 
@@ -1143,7 +1143,7 @@ export class Container {
   }
 
   private cacheOwnerFor(provider: NormalizedProvider): Container {
-    if (provider.scope !== Scope.DEFAULT || !this.requestScopeEnabled) {
+    if (provider.scope !== 'singleton' || !this.requestScopeEnabled) {
       return this;
     }
 
@@ -1155,7 +1155,7 @@ export class Container {
   }
 
   private async resolveDepToken(
-    depEntry: Token | ForwardRefFn | OptionalToken,
+    depEntry: Token | ForwardRefToken | OptionalInjectToken,
     chain: Token[],
     activeTokens: Set<Token>,
   ): Promise<unknown> {
@@ -1247,7 +1247,7 @@ export class Container {
    * inadvertently register singletons on child containers.
    */
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
         return this.requestCacheForWrite();
       }
@@ -1270,7 +1270,7 @@ export class Container {
   }
 
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
         return this.multiRequestCacheForWrite();
       }
@@ -1667,7 +1667,7 @@ export class Container {
   }
 
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-    if (provider.scope !== Scope.DEFAULT) {
+    if (provider.scope !== 'singleton') {
       return;
     }
 
@@ -1686,7 +1686,7 @@ export class Container {
   }
 
   private findRequestScopedDependency(
-    depEntries: readonly (Token | ForwardRefFn | OptionalToken)[],
+    depEntries: readonly (Token | ForwardRefToken | OptionalInjectToken)[],
     visited: Set<Token>,
   ): Token | undefined {
     for (const depEntry of depEntries) {
@@ -1723,7 +1723,7 @@ export class Container {
       const provider = this.resolveEffectiveProvider(token);
 
       if (provider) {
-        if (provider.scope === Scope.REQUEST) {
+        if (provider.scope === 'request') {
           return provider.provide;
         }
 
@@ -1736,7 +1736,7 @@ export class Container {
 
       const metadata = getClassDiMetadata(token);
 
-      if (metadata?.scope === Scope.REQUEST) {
+      if (metadata?.scope === 'request') {
         return token;
       }
 
@@ -1754,7 +1754,7 @@ export class Container {
       aliasChain.add(currentToken);
 
       for (const multiProvider of this.collectMultiProviders(currentToken)) {
-        if (multiProvider.scope === Scope.REQUEST) {
+        if (multiProvider.scope === 'request') {
           return multiProvider.provide;
         }
 
@@ -1827,7 +1827,7 @@ export class Container {
     }
   }
 
-  private resolveProviderDependencyToken(depEntry: Token | ForwardRefFn | OptionalToken): Token {
+  private resolveProviderDependencyToken(depEntry: Token | ForwardRefToken | OptionalInjectToken): Token {
     if (isForwardRef(depEntry)) {
       return this.resolveForwardRefToken(depEntry);
     }
@@ -1839,7 +1839,7 @@ export class Container {
     return depEntry as Token;
   }
 
-  private resolveForwardRefToken(forwardRefEntry: ForwardRefFn): Token {
+  private resolveForwardRefToken(forwardRefEntry: ForwardRefToken): Token {
     if (this.forwardRefTokenCache.has(forwardRefEntry)) {
       return this.forwardRefTokenCache.get(forwardRefEntry)!;
     }
@@ -1944,7 +1944,7 @@ export class Container {
     return provider.inject.some((depEntry) => this.dependencyEntryReferencesToken(depEntry, token, visited));
   }
 
-  private dependencyEntryReferencesToken(depEntry: Token | ForwardRefFn | OptionalToken, token: Token, visited: Set<Token>): boolean {
+  private dependencyEntryReferencesToken(depEntry: Token | ForwardRefToken | OptionalInjectToken, token: Token, visited: Set<Token>): boolean {
     return this.dependencyTokenReferencesToken(this.resolveProviderDependencyToken(depEntry), token, visited);
   }
 

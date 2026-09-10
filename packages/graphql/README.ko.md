@@ -66,7 +66,7 @@ Code-first resolver discovery 대신 schema-first 통합을 원하면 executable
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { Module } from '@fluojs/core';
-import { createNodejsAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
 class HelloInput {
@@ -93,10 +93,10 @@ class HelloResolver {
 class AppModule { }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createNodejsAdapter({}),
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
   logger: createConsoleApplicationLogger(),
 });
-await app.listen(3000);
+await app.listen();
 // curl -X POST http://localhost:3000/graphql \
 //   -H "Content-Type: application/json" \
 //   -d '{"query": "{ hello(name: \"fluo\") }"}'

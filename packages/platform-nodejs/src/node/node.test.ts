@@ -2,10 +2,9 @@ import * as rootRuntimeApi from '@fluojs/runtime';
 
 import { defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
-import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '../index.js';
 import * as publicNodeApi from '../index.js';
 
-describe('createNodeHttpAdapter', () => {
+describe('NodeHttpApplicationAdapter.create', () => {
   it('keeps Node lifecycle helpers out of the runtime root barrel', () => {
     expect(rootRuntimeApi).not.toHaveProperty('bootstrapNodeApplication');
     expect(rootRuntimeApi).not.toHaveProperty('createNodeHttpAdapter');
@@ -17,7 +16,7 @@ describe('createNodeHttpAdapter', () => {
     process.env.PORT = '4321';
 
     try {
-      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+      const adapter = publicNodeApi.NodeHttpApplicationAdapter.create();
 
       expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
       await adapter.close();
@@ -35,7 +34,7 @@ describe('createNodeHttpAdapter', () => {
     process.env.PORT = 'not-a-number';
 
     try {
-      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+      const adapter = publicNodeApi.NodeHttpApplicationAdapter.create();
 
       expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
       await adapter.close();
@@ -49,13 +48,13 @@ describe('createNodeHttpAdapter', () => {
   });
 
   it('does not expose node compression internals on the public node subpath', () => {
-    expect(publicNodeApi.createNodeHttpAdapter).toBeTypeOf('function');
+    expect(publicNodeApi.NodeHttpApplicationAdapter.create).toBeTypeOf('function');
     expect(publicNodeApi).not.toHaveProperty('compressNodeResponse');
     expect(publicNodeApi).not.toHaveProperty('createNodeResponseCompression');
   });
 
   it('fails fast when maxBodySize is not provided as numeric bytes', () => {
-    expect(() => Function.prototype.call.call(publicNodeApi.createNodeHttpAdapter, undefined, { maxBodySize: '1mb' })).toThrow(
+    expect(() => Function.prototype.call.call(publicNodeApi.NodeHttpApplicationAdapter.create, undefined, { maxBodySize: '1mb' })).toThrow(
       'Invalid maxBodySize value: 1mb. Expected a non-negative integer number of bytes.',
     );
   });
@@ -83,6 +82,6 @@ describe('createNodeHttpAdapter', () => {
     ['retryLimit', 1.5, 'Invalid retryLimit value: 1.5. Expected a non-negative integer.'],
     ['shutdownTimeoutMs', Number.NaN, 'Invalid shutdownTimeoutMs value: NaN. Expected a non-negative integer.'],
   ] as const)('fails fast when %s is not a non-negative integer', (name, value, message) => {
-    expect(() => publicNodeApi.createNodeHttpAdapter({ [name]: value } as unknown as NodeHttpAdapterOptions)).toThrow(message);
+    expect(() => publicNodeApi.NodeHttpApplicationAdapter.create({ [name]: value })).toThrow(message);
   });
 });

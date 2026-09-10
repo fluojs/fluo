@@ -718,9 +718,13 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
     expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
-    expect(mainFile).toContain("import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';");
+    expect(mainFile).toContain("import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';");
     expect(mainFile).toContain('await app.listen();');
     expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
+    expect(mainFile).toContain("import { FluoFactory } from '@fluojs/runtime';");
+    expect(mainFile).toContain('adapter: NodeHttpApplicationAdapter.create({ port }),');
+    expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
+    expect(mainFile).not.toContain('runNodejsApplication');
     expect(mainFile).not.toContain('logger,');
   });
 

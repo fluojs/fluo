@@ -133,7 +133,7 @@ This shared bootstrap spine is the foundation of this chapter. To understand the
 
 The context shell itself shows that intent. The stored values are the ones needed for the compiled Module baseline and lifecycle cleanup, and the public behavior is DI lookup and close.
 
-`path:packages/runtime/src/bootstrap.ts:913-947`
+`path:packages/runtime/src/bootstrap.ts:921-955`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
@@ -479,11 +479,11 @@ The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstr
 
 So in Fluo, readiness is not synonymous with "the server socket has been bound." It is a pre-listen gate based on the platform shell. Transport startup is allowed only if critical platform components report that they are ready.
 
-`listen()` in `path:packages/runtime/src/bootstrap.ts:755-829` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
+`listen()` in `path:packages/runtime/src/bootstrap.ts:755-831` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
 
 Then `listen()` applies the adapter policy. Adapterless application bootstrap is allowed, but listening without an adapter is blocked by this guard.
 
-`path:packages/runtime/src/bootstrap.ts:755-829`
+`path:packages/runtime/src/bootstrap.ts:755-831`
 ```typescript
   async listen(): Promise<void> {
     if (this.closeStarted) {
@@ -499,7 +499,9 @@ Then `listen()` applies the adapter policy. Adapterless application bootstrap is
     if (!this.startupPromise) {
       // Publish the transition before adapter or host callbacks can re-enter.
       // Close waits only for raw startup, never for startup's failure cleanup.
-      this.listenPromise = Promise.resolve().then(() => this.startListening());
+      this.listenPromise = Promise.resolve().then(() => this.startListening()).finally(() => {
+        this.listenPromise = undefined;
+      });
       this.startupPromise = this.listenPromise.catch(async (error: unknown) => {
         try {
           await this.close('bootstrap-failed');
@@ -568,11 +570,11 @@ That exact error string is verified in `path:packages/runtime/src/application.te
 
 Only after this guard passes does `listen()` call `await this.ready()`, then `await this.adapter.listen(this.dispatcher)`. On success, it changes state to `'ready'` and writes the startup log. The transport adapter does not own the application state transition by itself. It participates as part of the larger runtime shell policy.
 
-Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:1606-1626`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
+Dispatcher assembly happens earlier, in `createRuntimeDispatcher()` at `path:packages/runtime/src/bootstrap.ts:1614-1634`. The runtime builds handler mapping from compiled Module controllers, logs route mappings, then creates a dispatcher with middleware, converters, interceptors, observers, and an optional exception filter.
 
 Dispatcher creation is the request-facing step needed only by the full application branch. It creates handler sources from the compiled Module baseline, groups HTTP pipeline options, and returns the dispatcher.
 
-`path:packages/runtime/src/bootstrap.ts:1606-1626`
+`path:packages/runtime/src/bootstrap.ts:1614-1634`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,

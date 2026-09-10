@@ -1,4 +1,4 @@
-import { Global, getModuleMetadata, Module } from '@fluojs/core';
+import { getModuleMetadata, Module } from '@fluojs/core';
 import { getModuleMetadataVersion } from '@fluojs/core/internal';
 import { describe, expect, it } from 'vitest';
 
@@ -52,13 +52,13 @@ describe('empty Module factory defaults', () => {
     expect(getModuleMetadataVersion()).toBe(before + 2);
   });
 
-  it('preserves Global in either decorator order and on both sides of partial metadata', () => {
+  it('preserves global metadata in either decorator order and on both sides of partial metadata', () => {
     // Given / When
-    @Global()
+    @Module({ global: true })
     @Module()
     class OuterGlobal {}
     @Module()
-    @Global()
+    @Module({ global: true })
     class InnerGlobal {}
     @Module()
     @Module({ exports: ['token'], providers: [{ provide: 'token', useValue: 1 }] })

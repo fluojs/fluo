@@ -1,4 +1,4 @@
-import { Global, Inject, Module } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -1554,7 +1554,7 @@ describe('PrismaModule.forRootAsync', () => {
       readonly url = 'postgres://localhost/test';
     }
 
-    @Global()
+    @Module({ global: true })
     @Module({ providers: [ConfigService], exports: [ConfigService] })
     class ConfigModule {}
 

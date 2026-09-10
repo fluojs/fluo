@@ -21,6 +21,7 @@ Fluo backend를 Next.js App Router Route Handlers와 Pages Router API Routes에
 - [Options](#options)
 - [Runtime contract](#runtime-contract)
 - [Public API](#public-api)
+- [API Migration](#api-migration)
 
 ## 설치
 
@@ -97,12 +98,12 @@ export class AppModule {}
 
 ```typescript
 // src/backend.ts
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app.module';
 
-export const nextAdapter = createNextAdapter();
+export const nextAdapter = NextHttpApplicationAdapter.create();
 export const app = await FluoFactory.create(AppModule, {
   adapter: nextAdapter,
 });
@@ -142,9 +143,9 @@ GET-only Fluo route가 Next의 자동 HEAD와 명시적인 `HEAD` export 모두�
 응답해야 한다면 adapter 생성 시 opt-in합니다.
 
 ```typescript
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
 });
 ```
@@ -235,8 +236,8 @@ application과 dispatcher를 만들고
 `NextHttpApplicationAdapter.listen()`으로 dispatcher를 연결합니다.
 
 Next adapter는 application을 만들지 않고 socket도 열지 않습니다.
-Dispatcher 연결 후 bound Web handlers만 제공하며 HTTP server는 계속
-Next.js가 소유합니다.
+Dispatcher 연결 후 instance `fetch(request)`로 dispatch하며 HTTP server는
+계속 Next.js가 소유합니다. 정상 App route 연결은 위 lazy facade를 사용합니다.
 
 Route facade는 첫 request에서 `src/backend.ts`를 dynamic import합니다.
 Import 완료에는 top-level `FluoFactory.create()`와 `app.listen()`이
@@ -350,7 +351,7 @@ Backend module은 첫 route request가 import할 때 일반 Fluo bootstrap을 �
 번 수행합니다.
 
 ```typescript
-const nextAdapter = createNextAdapter();
+const nextAdapter = NextHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, {
   adapter: nextAdapter,
 });
@@ -408,7 +409,7 @@ Route facade도 같은 graph에서 adapter를 가져옵니다.
 
 ```typescript
 // app/api/[[...path]]/route.ts
-import { createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 import { getApplication } from '../../../src/application';
 
 export const { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } =
@@ -472,7 +473,7 @@ production build의 별도 RSC/auth/route 평가, 겹치는 초기화, key/proce
 ## Options
 
 ```typescript
-const nextAdapter = createNextAdapter({
+const nextAdapter = NextHttpApplicationAdapter.create({
   maxBodySize: 1_048_576,
   rawBody: true,
 });
@@ -513,20 +514,56 @@ Application이 raw Node.js transport ownership, WebSocket upgrades, independentl
 
 ## Public API
 
-- `createNextAdapter(options)`: `FluoFactory.create()`에 전달할 HTTP adapter 생성
-- `NextAdapterOptions`: adapter가 소유하는 request parsing 및 opt-in HEAD routing options
-- `NextAdapterLoader`: dynamic canonical backend adapter loader
-- `defineNextApplication(options)`: 명시적 key의 process-local application Promise accessor
-- `NextApplicationOptions<T>`: application 소유 key와 async load 계약
-- `createNextAppRouterHandler(loadAdapter)`: 구조분해 export 가능한 method-keyed App Router handler export record 생성 (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`)
-- `NextHttpApplicationAdapter`: bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` handlers를 가진 `HttpApplicationAdapter`
-- `NextAppRouteHandler`: bound methods가 사용하는 Web request handler type
-- `NextAppRouterMethodHandlers`: route module에서 구조분해 export하는 method-keyed App Router record (`createNextAppRouterHandler()` 반환)
-- `createNextPagesRouterHandler(loadAdapter)`: request-lazy streaming Pages Router API handler 생성
-- `NextPagesRouterConfig`: 필수 static `bodyParser: false` literal type-check
-- `withFluoNextBackend(config, options?)`: `@fluojs/platform-nextjs/next-config` export; packaged Turbopack decorator loader와 opt-in 범위/경로 보존 추가
-- `FluoNextBackendOptions`: 같은 `next-config` subpath의 `include`, `exclude`, `preserveModulePaths` 옵션 타입
-- `decorators-loader`: config helper가 사용하는 packaged loader subpath
+| 공개 import 소유자 | Export와 역할 |
+| --- | --- |
+| `@fluojs/platform-nextjs` | `NextHttpApplicationAdapter.create(options)`는 독립된 미연결 adapter를 생성합니다. `NextAdapterOptions`, `NextAdapterLoader`, `InvalidNextAdapterOptionError`도 root 소유입니다. |
+| `@fluojs/platform-nextjs` | `defineNextApplication(options)`와 `NextApplicationOptions<T>`는 명시적인 key의 process-local application Promise를 소유합니다. |
+| `@fluojs/platform-nextjs/app-router` | `createNextAppRouterHandler(loadAdapter)`, `NextAppRouteHandler`, `NextAppRouterMethodHandlers`: Web Request를 받는 lazy callback과 Next가 요구하는 일곱 method export입니다. |
+| `@fluojs/platform-nextjs/pages-router` | `createNextPagesRouterHandler(loadAdapter)`, `NextPagesRouterConfig`: Node stream bridge와 필수 static `bodyParser: false` 타입입니다. |
+| `@fluojs/platform-nextjs/next-config` | `withFluoNextBackend(config, options?)`, `FluoNextBackendOptions`: Turbopack compiler 설정과 opt-in scope/path 보존입니다. |
+| `@fluojs/platform-nextjs/decorators-loader` | Config helper가 사용하는 packaged compiler loader입니다. |
+
+Adapter는 `HttpApplicationAdapter` class identity, public constructor와 상속,
+instance `fetch(request)`, `listen(dispatcher)`, `close()`,
+`getRealtimeCapability()`를 유지합니다. 생성이 dispatcher 연결이나 socket
+생성을 의미하지 않으며, instance 실행 상태를 static으로 공유하지 않습니다.
+Host callback과 compiler helper는 별도의 기능이므로 생성 class로 감싸지 않습니다.
+
+## API Migration
+
+이 변경은 공개 API를 삭제하는 major release입니다. 영구 compatibility alias는 없습니다.
+
+| 제거한 표면 | 교체 방법 |
+| --- | --- |
+| Root/App/Pages의 `createNextAdapter(options)` | Root에서 `NextHttpApplicationAdapter`를 import하고 `.create(options)`를 호출합니다. 같은 options 검증과 class instance를 유지합니다. |
+| App/Pages의 `NextHttpApplicationAdapter`, `NextAdapterOptions`, `NextAdapterLoader` | Root import로 이동합니다. App의 `InvalidNextAdapterOptionError`도 root에서 import합니다. |
+| Root의 `createNextAppRouterHandler`, `NextAppRouteHandler`, `NextAppRouterMethodHandlers` | `/app-router`에서 import합니다. |
+| Root의 `createNextPagesRouterHandler`, `NextPagesRouterConfig` | `/pages-router`에서 import합니다. |
+| Adapter의 `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` 필드 | Route module이 `createNextAppRouterHandler(loadAdapter)`의 반환값을 구조분해 export합니다. 위 App Router recipe처럼 backend를 lazy import하세요. |
+
+Next route module의 `GET`/`POST`/`HEAD` 등 export 자체는 삭제하지 않습니다.
+Adapter의 저수준 instance dispatch는 `fetch(request)`로 남지만 route에서 eager
+backend import나 직접 bound handler export로 lazy bootstrap을 대체하지 마세요.
+Pages를 Web Request callback으로 바꾸지 않습니다. `bodyParser: false`, demand-driven
+input, `ServerResponse.write()` backpressure의 `drain` 대기, disconnect abort와
+응답 완료 후 남은 upload drain을 유지하며 socket은 Next 소유입니다.
+
+각 facade의 closure cache는 그 facade의 loader Promise만 보존합니다.
+`defineNextApplication`의 keyed cache는 같은 JS global의 여러 소비자에 걸쳐 첫
+Promise와 실패를 보존합니다. 한 cache를 다른 cache의 보장으로 해석하지 마세요.
+두 cache 모두 실패를 자동 재시도하거나 닫힌 application을 다시 열지 않습니다.
+
+소비자 조사는 package tests/public declarations, 실제 Next fixture, Docs의
+runtime-adapters/http-platform 페이지와 Book 3권 15장의 생성·import 경로를 포함합니다.
+현재 CLI generator와 `examples/`에는 이 Next API 소비자가 없습니다. 실행 가능한
+예제는 [package fixture](./e2e/README.ko.md)입니다. 과거 changelog는 당시 API의
+기록으로 유지합니다. 새 source와 배포 JavaScript/`.d.ts`에는 제거한 export를 남기지 않습니다.
+
+`src/public-api.test.ts`, `src/app-router.test.ts`,
+`src/head-routing-public-types.test.ts`와 실제 Next E2E가 생성, host method,
+cache 구분, import 소유권을 검증합니다. 내부 `createLazyNextAdapterResolver`는
+App/Pages 두 bridge가 공유하는 실제 closure cache 구현이며 공개 package export가 아닙니다.
+문서 code fence의 import 소유권은 `pnpm verify:platform-consistency-governance`로 검사합니다.
 
 ## 개발 검증
 
@@ -548,13 +585,13 @@ HTTP로 검증합니다. [Fixture 실행 안내](./e2e/README.ko.md)를 참조�
 
 Adapter 생성 시 `NextAdapterOptions.bodyParser`를 설정합니다. HTTP 소유
 `BodyParser`인 `'default'`(생략 시 기본값), `'text'`, 동기/비동기 callback을 받습니다.
-애플리케이션 전체 text mode는 `createNextAdapter({ bodyParser: 'text' })`입니다.
+애플리케이션 전체 text mode는 `NextHttpApplicationAdapter.create({ bodyParser: 'text' })`입니다.
 경로별 정책은 Request 재구성 대신 선택하지 않은 경로를 기존 parser에 위임합니다.
 
 ```typescript
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 
-export const nextAdapter = createNextAdapter({
+export const nextAdapter = NextHttpApplicationAdapter.create({
   headRouting: 'explicit-or-get',
   maxBodySize: 1_048_576,
   rawBody: true,
