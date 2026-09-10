@@ -1,6 +1,3 @@
-import * as FixtureRuntime from '@fluojs/runtime';
-import * as FixtureBunPlatform from '@fluojs/platform-bun';
-import * as FixtureDenoPlatform from '@fluojs/platform-deno';
 import {
   appendVaryHeader,
   Controller,
@@ -11,11 +8,14 @@ import {
   type StaticAssetSource,
 } from '@fluojs/http';
 import type { BunServeOptions, BunServerLike } from '@fluojs/platform-bun';
+import * as FixtureBunPlatform from '@fluojs/platform-bun';
 import {
-  bootstrapCloudflareWorkerApplication,
+  CloudflareWorkerApplicationHost,
   type CloudflareWorkerExecutionContext,
 } from '@fluojs/platform-cloudflare-workers';
 import type { DenoServeController, DenoServeHandler, DenoServeOptions } from '@fluojs/platform-deno';
+import * as FixtureDenoPlatform from '@fluojs/platform-deno';
+import * as FixtureRuntime from '@fluojs/runtime';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -600,7 +600,8 @@ registerWebRuntimePortabilitySuite(
   'cloudflare-workers',
   createWebRuntimeHttpAdapterPortabilityHarness({
     async bootstrap(rootModule, options) {
-      const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+      const worker = CloudflareWorkerApplicationHost.create(rootModule, options);
+      await worker.ready();
 
       return {
         close() {
@@ -617,7 +618,8 @@ registerWebRuntimePortabilitySuite(
   }),
 );
 registerWebRuntimeHeaderHelperPortabilitySuite('cloudflare-workers', async (rootModule, options) => {
-  const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+  const worker = CloudflareWorkerApplicationHost.create(rootModule, options);
+  await worker.ready();
 
   return {
     close() {
@@ -629,7 +631,8 @@ registerWebRuntimeHeaderHelperPortabilitySuite('cloudflare-workers', async (root
   };
 });
 registerWebRuntimeStaticAssetsPortabilitySuite('cloudflare-workers', async (rootModule, options) => {
-  const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+  const worker = CloudflareWorkerApplicationHost.create(rootModule, options);
+  await worker.ready();
 
   return {
     close() {

@@ -13,9 +13,7 @@ import type {
   CreateApplicationOptions,
   ModuleType,
 } from '@fluojs/runtime';
-import {
-  bootstrapHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
+import { FluoFactory } from '@fluojs/runtime';
 import {
   type CreateWebRequestResponseFactoryOptions,
   createWebRequestResponseFactory,
@@ -106,8 +104,8 @@ export interface CloudflareWorkerAdapterOptions extends CreateWebRequestResponse
   createWebSocketPair?: CloudflareWorkerWebSocketPairFactory;
 }
 
-/** Bootstrap options for constructing a Cloudflare Worker application shell. */
-export interface BootstrapCloudflareWorkerApplicationOptions
+/** Options used to construct each Cloudflare Worker application host generation. */
+export interface CloudflareWorkerApplicationHostOptions
   extends Omit<CreateApplicationOptions, 'adapter' | 'middleware'>,
     CloudflareWorkerMiddlewareOptions,
     CloudflareWorkerAdapterOptions {}
@@ -121,8 +119,8 @@ export interface CloudflareWorkerHandler<Env = unknown> {
   ): Promise<Response>;
 }
 
-/** Fully bootstrapped Cloudflare Worker application wrapper. */
-export interface CloudflareWorkerApplication<Env = unknown>
+/** A fetch-capable application generation owned by a Cloudflare Worker host. */
+export interface CloudflareWorkerApplicationGeneration<Env = unknown>
   extends CloudflareWorkerHandler<Env> {
   readonly adapter: CloudflareWorkerHttpApplicationAdapter;
   readonly app: Application;
@@ -130,38 +128,20 @@ export interface CloudflareWorkerApplication<Env = unknown>
   close(signal?: string): Promise<void>;
 }
 
-/** Lazy Cloudflare Worker entrypoint that bootstraps on first use. */
-export interface CloudflareWorkerEntrypoint<Env = unknown>
-  extends CloudflareWorkerHandler<Env> {
-  close(signal?: string): Promise<void>;
-  ready(): Promise<CloudflareWorkerApplication<Env>>;
-}
-
-/** Isolate-lifetime root module and final bootstrap options selected from a Worker environment. */
-export interface CloudflareWorkerEnvBootstrap {
-  readonly options?: BootstrapCloudflareWorkerApplicationOptions;
+/** Isolate-lifetime root module and final host options selected from a Worker environment. */
+export interface CloudflareWorkerHostConfiguration {
+  readonly options?: CloudflareWorkerApplicationHostOptions;
   readonly rootModule: ModuleType;
 }
 
 /**
- * Factory that derives the isolate-lifetime bootstrap configuration from the first supplied environment.
+ * Factory that derives the isolate-lifetime host configuration from the first supplied environment.
  *
  * Each application generation uses the returned configuration, including a generation restarted after a successful close.
  */
-export type CloudflareWorkerEnvEntrypointFactory<Env = unknown> = (
+export type CloudflareWorkerHostFactory<Env = unknown> = (
   env: Env,
-) => CloudflareWorkerEnvBootstrap;
-
-/**
- * Lazy Cloudflare Worker entrypoint whose first explicit environment configures the isolate.
- *
- * A successful close starts a fresh application generation with the same cached configuration.
- */
-export interface CloudflareWorkerEnvEntrypoint<Env = unknown>
-  extends CloudflareWorkerHandler<Env> {
-  close(signal?: string): Promise<void>;
-  ready(env: Env): Promise<CloudflareWorkerApplication<Env>>;
-}
+) => CloudflareWorkerHostConfiguration;
 
 /**
  * Cloudflare Workers HTTP adapter with waitUntil-aware request tracking and graceful close behavior.
@@ -182,6 +162,18 @@ export class CloudflareWorkerHttpApplicationAdapter
     validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
     this.options = options;
     this.webRequestResponseFactory = createWebRequestResponseFactory(options);
+  }
+
+  /**
+   * Create the canonical Cloudflare Worker adapter instance.
+   *
+   * @param options Parsing, raw-body, and websocket-pair options for Worker requests.
+   * @returns A Cloudflare Worker HTTP adapter.
+   */
+  static create(
+    options: CloudflareWorkerAdapterOptions = {},
+  ): CloudflareWorkerHttpApplicationAdapter {
+    return new CloudflareWorkerHttpApplicationAdapter(options);
   }
 
   async close(): Promise<void> {
@@ -363,205 +355,199 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 }
 
-/**
- * Create the canonical Cloudflare Worker adapter instance.
- *
- * @param options Parsing, raw-body, and websocket-pair options for Worker requests.
- * @returns A Cloudflare Worker HTTP adapter.
- */
-export function createCloudflareWorkerAdapter(
-  options: CloudflareWorkerAdapterOptions = {},
-): CloudflareWorkerHttpApplicationAdapter {
-  return new CloudflareWorkerHttpApplicationAdapter(options);
-}
+type CloudflareWorkerHostMode = 'environment' | 'fixed';
 
 /**
- * Bootstrap a Cloudflare Worker application and return its fetch-capable wrapper.
+ * Lazy, isolate-owned Cloudflare Worker application host.
  *
- * @param rootModule Root module compiled by the Fluo runtime.
- * @param options Worker adapter and runtime bootstrap options.
- * @returns A bootstrapped Worker application wrapper with `fetch(...)` and `close(...)`.
+ * The host owns bootstrap sharing, environment configuration reuse, generation replacement,
+ * close admission, and timeout recovery. Every generation creates a fresh adapter and
+ * application through `FluoFactory.create(...)` followed by `app.listen()`.
  */
-export async function bootstrapCloudflareWorkerApplication<Env = unknown>(
-  rootModule: ModuleType,
-  options: BootstrapCloudflareWorkerApplicationOptions = {},
-): Promise<CloudflareWorkerApplication<Env>> {
-  const adapter = createCloudflareWorkerAdapter(options);
-  const app = await bootstrapHttpAdapterApplication(rootModule, options, adapter);
-  await app.listen();
+export class CloudflareWorkerApplicationHost<
+  Env = unknown,
+  Mode extends CloudflareWorkerHostMode = 'fixed',
+> implements CloudflareWorkerHandler<Env> {
+  private closeError: unknown;
+  private closeInFlight?: Promise<void>;
+  private closeRecovery?: Promise<void>;
+  private configuration?: CloudflareWorkerHostConfiguration;
+  private runningApplication?: Promise<CloudflareWorkerApplicationGeneration<Env>>;
 
-  return {
-    adapter,
-    app,
-    close(signal?: string) {
-      return app.close(signal);
-    },
-    fetch(request: Request, env: Env, executionContext: CloudflareWorkerExecutionContext) {
-      return adapter.fetch(request, env, executionContext);
-    },
-  };
-}
+  private constructor(
+    private readonly createConfiguration: (env: Env | undefined) => CloudflareWorkerHostConfiguration,
+  ) {}
 
-/**
- * Create a lazy Cloudflare Worker entrypoint that bootstraps once on first request.
- *
- * @param rootModule Root module compiled by the Fluo runtime.
- * @param options Worker adapter and runtime bootstrap options.
- * @returns A Worker entrypoint exposing lazy `fetch(...)`, `ready()`, and `close(...)` helpers.
- */
-export function createCloudflareWorkerEntrypoint<Env = unknown>(
-  rootModule: ModuleType,
-  options: BootstrapCloudflareWorkerApplicationOptions = {},
-): CloudflareWorkerEntrypoint<Env> {
-  const entrypoint = createLazyCloudflareWorkerEntrypoint<Env, undefined>({
-    createApplication() {
-      return bootstrapCloudflareWorkerApplication<Env>(rootModule, options);
-    },
-    getReadyArgument() {
-      return undefined;
-    },
-  });
+  /**
+   * Create a fixed-module Worker host.
+   *
+   * @param rootModule Root module compiled by the Fluo runtime.
+   * @param options Worker adapter and runtime application options.
+   * @returns A host whose `ready()` does not require an environment.
+   */
+  static create<Env = unknown>(
+    rootModule: ModuleType,
+    options?: CloudflareWorkerApplicationHostOptions,
+  ): CloudflareWorkerApplicationHost<Env, 'fixed'>;
+  /**
+   * Create an environment-configured Worker host.
+   *
+   * @param configuration A first-environment factory for the isolate-lifetime configuration.
+   * @returns A host whose `ready(env)` requires the first Worker environment.
+   */
+  static create<Env>(
+    configuration: { readonly fromEnv: CloudflareWorkerHostFactory<Env> },
+  ): CloudflareWorkerApplicationHost<Env, 'environment'>;
+  static create<Env>(
+    rootModuleOrConfiguration: ModuleType | { readonly fromEnv: CloudflareWorkerHostFactory<Env> },
+    options: CloudflareWorkerApplicationHostOptions = {},
+  ): CloudflareWorkerApplicationHost<Env, CloudflareWorkerHostMode> {
+    if ('fromEnv' in rootModuleOrConfiguration) {
+      return new CloudflareWorkerApplicationHost<Env, 'environment'>(
+        (env) => {
+          if (env === undefined) {
+            throw new Error('Cloudflare Worker environment configuration requires an environment.');
+          }
 
-  return {
-    close: entrypoint.close,
-    fetch: entrypoint.fetch,
-    ready() {
-      return entrypoint.ready(undefined);
-    },
-  };
-}
-
-/**
- * Create a lazy Cloudflare Worker entrypoint configured once per isolate from its first supplied environment.
- *
- * @param factory Factory that derives and caches the root module and final bootstrap options from one Worker environment.
- * @returns A Worker entrypoint exposing env-aware lazy `fetch(...)`, `ready(env)`, and `close(...)` helpers for application generations using that cached configuration.
- */
-export function createCloudflareWorkerEnvEntrypoint<Env = unknown>(
-  factory: CloudflareWorkerEnvEntrypointFactory<Env>,
-): CloudflareWorkerEnvEntrypoint<Env> {
-  let bootstrap: CloudflareWorkerEnvBootstrap | undefined;
-
-  return createLazyCloudflareWorkerEntrypoint<Env, Env>({
-    createApplication(env) {
-      bootstrap ??= factory(env);
-      return bootstrapCloudflareWorkerApplication<Env>(bootstrap.rootModule, bootstrap.options);
-    },
-    getReadyArgument(env) {
-      return env;
-    },
-  });
-}
-
-interface LazyCloudflareWorkerEntrypointOptions<Env, ReadyArgument> {
-  readonly createApplication: (
-    readyArgument: ReadyArgument,
-  ) => Promise<CloudflareWorkerApplication<Env>>;
-  readonly getReadyArgument: (env: Env) => ReadyArgument;
-}
-
-function createLazyCloudflareWorkerEntrypoint<Env, ReadyArgument>(
-  options: LazyCloudflareWorkerEntrypointOptions<Env, ReadyArgument>,
-): {
-  readonly close: (signal?: string) => Promise<void>;
-  readonly fetch: CloudflareWorkerHandler<Env>['fetch'];
-  readonly ready: (readyArgument: ReadyArgument) => Promise<CloudflareWorkerApplication<Env>>;
-} {
-  let closeError: unknown;
-  let closeInFlight: Promise<void> | undefined;
-  let closeRecovery: Promise<void> | undefined;
-  let runningApplication: Promise<CloudflareWorkerApplication<Env>> | undefined;
-
-  const ready = async (readyArgument: ReadyArgument): Promise<CloudflareWorkerApplication<Env>> => {
-    if (closeRecovery) {
-      await closeRecovery;
+          return rootModuleOrConfiguration.fromEnv(env);
+        },
+      );
     }
 
-    if (closeError) {
-      throw closeError;
+    return new CloudflareWorkerApplicationHost<Env, 'fixed'>(() => ({
+      options,
+      rootModule: rootModuleOrConfiguration,
+    }));
+  }
+
+  /**
+   * Fetch through the current application generation.
+   *
+   * This arrow property intentionally remains bound so generated Worker modules can export
+   * `{ fetch: host.fetch }` without losing host ownership.
+   */
+  readonly fetch = async (
+    request: Request,
+    env: Env,
+    executionContext: CloudflareWorkerExecutionContext,
+  ): Promise<Response> => {
+    if (this.closeError || this.closeInFlight || this.closeRecovery) {
+      return createShutdownResponse();
     }
 
-    if (!runningApplication) {
-      const application = Promise.resolve().then(() => options.createApplication(readyArgument));
-      runningApplication = application;
+    return await (await this.readyInternal(env)).fetch(request, env, executionContext);
+  };
+
+  /** Close the active generation and retain admission control until its drain settles. */
+  readonly close = async (signal?: string): Promise<void> => {
+    if (this.closeInFlight) {
+      await this.closeInFlight;
+      return;
+    }
+
+    if (this.closeRecovery) {
+      await this.closeRecovery;
+    }
+
+    if (this.closeError) {
+      throw this.closeError;
+    }
+
+    const application = this.runningApplication;
+
+    if (!application) {
+      return;
+    }
+
+    const closing = (async () => {
+      let currentApplication: CloudflareWorkerApplicationGeneration<Env> | undefined;
+
+      try {
+        currentApplication = await application;
+        await currentApplication.close(signal);
+
+        if (this.runningApplication === application) {
+          this.runningApplication = undefined;
+        }
+      } catch (error) {
+        if (currentApplication && isShutdownTimeoutError(error)) {
+          this.closeRecovery = watchTimedOutCloseRecovery(currentApplication, {
+            clearRunningApplication: () => {
+              if (this.runningApplication === application) {
+                this.runningApplication = undefined;
+              }
+            },
+            setCloseError: (recoveryError) => {
+              this.closeError = recoveryError;
+            },
+            setCloseRecovery: (recovery) => {
+              this.closeRecovery = recovery;
+            },
+          });
+        } else {
+          this.closeError = error;
+        }
+
+        throw error;
+      } finally {
+        this.closeInFlight = undefined;
+      }
+    })();
+
+    this.closeInFlight = closing;
+    await closing;
+  };
+
+  /** Resolve the current application generation using the overload-selected readiness contract. */
+  readonly ready = async (
+    ...args: Mode extends 'environment' ? [env: Env] : []
+  ): Promise<CloudflareWorkerApplicationGeneration<Env>> => await this.readyInternal(args[0]);
+
+  private async readyInternal(env: Env | undefined): Promise<CloudflareWorkerApplicationGeneration<Env>> {
+    if (this.closeRecovery) {
+      await this.closeRecovery;
+    }
+
+    if (this.closeError) {
+      throw this.closeError;
+    }
+
+    if (!this.runningApplication) {
+      const application = Promise.resolve().then(async () => await this.createApplication(env));
+      this.runningApplication = application;
       void application.catch(() => {
-        if (runningApplication === application) {
-          runningApplication = undefined;
+        if (this.runningApplication === application) {
+          this.runningApplication = undefined;
         }
       });
     }
 
-    return await runningApplication;
-  };
+    return await this.runningApplication;
+  }
 
-  return {
-    async close(signal?: string) {
-      if (closeInFlight) {
-        await closeInFlight;
-        return;
-      }
+  private async createApplication(
+    env: Env | undefined,
+  ): Promise<CloudflareWorkerApplicationGeneration<Env>> {
+    this.configuration ??= this.createConfiguration(env);
+    const { options = {}, rootModule } = this.configuration;
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create(options);
+    const app = await FluoFactory.create(rootModule, {
+      ...options,
+      adapter,
+    });
+    await app.listen();
 
-      if (closeRecovery) {
-        await closeRecovery;
-      }
-
-      if (closeError) {
-        throw closeError;
-      }
-
-      const application = runningApplication;
-
-      if (!application) {
-        return;
-      }
-
-      const closing = (async () => {
-        let currentApplication: CloudflareWorkerApplication<Env> | undefined;
-
-        try {
-          currentApplication = await application;
-          await currentApplication.close(signal);
-
-          if (runningApplication === application) {
-            runningApplication = undefined;
-          }
-        } catch (error) {
-          if (currentApplication && isShutdownTimeoutError(error)) {
-            closeRecovery = watchTimedOutCloseRecovery(currentApplication, {
-              clearRunningApplication() {
-                if (runningApplication === application) {
-                  runningApplication = undefined;
-                }
-              },
-              setCloseError(error) {
-                closeError = error;
-              },
-              setCloseRecovery(recovery) {
-                closeRecovery = recovery;
-              },
-            });
-          } else {
-            closeError = error;
-          }
-
-          throw error;
-        } finally {
-          closeInFlight = undefined;
-        }
-      })();
-
-      closeInFlight = closing;
-      await closing;
-    },
-    async fetch(request: Request, env: Env, executionContext: CloudflareWorkerExecutionContext) {
-      if (closeError || closeInFlight || closeRecovery) {
-        return createShutdownResponse();
-      }
-
-      return await (await ready(options.getReadyArgument(env))).fetch(request, env, executionContext);
-    },
-    ready,
-  };
+    return {
+      adapter,
+      app,
+      close(signal?: string) {
+        return app.close(signal);
+      },
+      fetch(request: Request, requestEnvironment: Env, executionContext: CloudflareWorkerExecutionContext) {
+        return adapter.fetch(request, requestEnvironment, executionContext);
+      },
+    };
+  }
 }
 
 function createWebSocketUpgradeResponse(socket: CloudflareWorkerWebSocket): Response {
@@ -654,7 +640,7 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 function watchTimedOutCloseRecovery<Env>(
-  currentApplication: CloudflareWorkerApplication<Env>,
+  currentApplication: CloudflareWorkerApplicationGeneration<Env>,
   callbacks: {
     clearRunningApplication(): void;
     setCloseError(error: unknown): void;
@@ -716,43 +702,39 @@ function createLifecycleTrackedResponse(
     return { lifecycle: Promise.resolve(), response };
   }
 
-  try {
-    const reader = responseBody.getReader();
-    const trackedBody = new ReadableStream<Uint8Array>({
-      async cancel(reason) {
-        try {
-          await reader.cancel(reason);
+  const reader = responseBody.getReader();
+  const trackedBody = new ReadableStream<Uint8Array>({
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+        lifecycle.resolve();
+      } catch (error) {
+        lifecycle.reject(error);
+        throw error;
+      }
+    },
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+
+        if (result.done) {
+          controller.close();
           lifecycle.resolve();
-        } catch (error) {
-          lifecycle.reject(error);
-          throw error;
+          return;
         }
-      },
-      async pull(controller) {
-        try {
-          const result = await reader.read();
 
-          if (result.done) {
-            controller.close();
-            lifecycle.resolve();
-            return;
-          }
+        controller.enqueue(result.value);
+      } catch (error) {
+        controller.error(error);
+        lifecycle.reject(error);
+      }
+    },
+  });
 
-          controller.enqueue(result.value);
-        } catch (error) {
-          controller.error(error);
-          lifecycle.reject(error);
-        }
-      },
-    });
-
-    return {
-      lifecycle: lifecycle.promise,
-      response: new Response(trackedBody, response),
-    };
-  } catch (error) {
-    throw error;
-  }
+  return {
+    lifecycle: lifecycle.promise,
+    response: new Response(trackedBody, response),
+  };
 }
 
 function isLifecycleTrackedStreamingResponse(response: Response): boolean {

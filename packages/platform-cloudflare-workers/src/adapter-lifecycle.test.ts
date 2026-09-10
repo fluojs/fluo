@@ -5,9 +5,8 @@ import * as runtimeWeb from '@fluojs/runtime/web';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  CloudflareWorkerHttpApplicationAdapter,
-  createCloudflareWorkerAdapter,
   type CloudflareWorkerExecutionContext,
+  CloudflareWorkerHttpApplicationAdapter,
   type CloudflareWorkerWebSocket,
   type CloudflareWorkerWebSocketBinding,
   type CloudflareWorkerWebSocketPair,
@@ -119,7 +118,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
   });
 
   it('releases waitUntil and close drains when an SSE response body is canceled', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const dispatcherCompleted = createDeferred<void>();
     const waitUntilPromises: Array<Promise<unknown>> = [];
     let cancelReason: unknown;
@@ -178,7 +177,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
   it('releases the close drain when SSE reader acquisition fails synchronously', async () => {
     vi.useFakeTimers();
 
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const streamingResponse = new Response(new ReadableStream<Uint8Array>(), {
       headers: { 'content-type': 'text/event-stream' },
     });
@@ -215,7 +214,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
   it('releases the close drain when tracked SSE stream construction fails synchronously', async () => {
     vi.useFakeTimers();
 
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const streamingResponse = new Response(new ReadableStream<Uint8Array>(), {
       headers: { 'content-type': 'text/event-stream' },
     });
@@ -249,7 +248,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
   it('clears fake shutdown timeout handles when the close drain settles before timeout', async () => {
     vi.useFakeTimers();
 
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const deferred = createDeferred<void>();
 
     try {

@@ -477,12 +477,12 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
   const starterContract = options.runtime === 'node' || options.runtime === 'bun' || options.runtime === 'deno'
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`FluoFactory.create(..., { adapter, shutdownRegistration })\` then \`app.listen()\``
     : options.runtime === 'cloudflare-workers'
-      ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`createCloudflareWorkerEntrypoint(...)\``
+      ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`CloudflareWorkerApplicationHost.create(...)\``
       : `\`${entrypointLabel}\` wires the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${adapterCreation}(...)\`, then \`FluoFactory.create(AppModule, { adapter })\` and \`app.listen()\`. The application owner calls \`app.close()\`; process-signal registration is explicit.`;
   const corsLine = options.runtime === 'node'
     ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `FluoFactory.create(AppModule, { adapter, cors })` to configure it'
     : options.runtime === 'cloudflare-workers'
-    ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `createCloudflareWorkerEntrypoint(..., { cors })` to configure it'
+    ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `CloudflareWorkerApplicationHost.create(AppModule, { cors })` to configure it'
     : `- CORS: no CORS middleware is added by default; pass \`cors\` explicitly to \`FluoFactory.create(AppModule, { adapter, cors })\` to configure it`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
@@ -928,14 +928,14 @@ await app.listen();
   }
 
   if (options.runtime === 'cloudflare-workers') {
-    return `import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
+    return `import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 
 import { AppModule } from './app';
 
 // The generated starter wires the selected first-class fluo new application path:
-// Cloudflare Workers runtime + Cloudflare Workers HTTP via createCloudflareWorkerEntrypoint(...).
+// Cloudflare Workers runtime + Cloudflare Workers HTTP via CloudflareWorkerApplicationHost.create(...).
 
-const worker = createCloudflareWorkerEntrypoint(AppModule);
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
 
 export default {
   fetch: worker.fetch,

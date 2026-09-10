@@ -1,18 +1,17 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   Controller,
   Get,
   Post,
-  SseResponse,
   type RequestContext,
+  SseResponse,
 } from '@fluojs/http';
 import { defineModule } from '@fluojs/runtime';
+import { describe, expect, it } from 'vitest';
 
 import {
-  bootstrapCloudflareWorkerApplication,
-  CloudflareWorkerHttpApplicationAdapter,
+  CloudflareWorkerApplicationHost,
   type CloudflareWorkerExecutionContext,
+  CloudflareWorkerHttpApplicationAdapter,
 } from './adapter.js';
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -40,9 +39,10 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
       controllers: [CookieController],
     });
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule, { cors: false });
+    const worker = CloudflareWorkerApplicationHost.create(AppModule, { cors: false });
 
     try {
+      await worker.ready();
       const response = await worker.fetch(
         new Request('https://worker.test/cookies', {
           headers: {
@@ -88,12 +88,13 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
       controllers: [WebhookController],
     });
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
+    const worker = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
       rawBody: true,
     });
 
     try {
+      await worker.ready();
       const [jsonResponse, textResponse] = await Promise.all([
         worker.fetch(
           new Request('https://worker.test/webhooks/json', {
@@ -148,12 +149,13 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
       controllers: [UploadController],
     });
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
+    const worker = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
       rawBody: true,
     });
 
     try {
+      await worker.ready();
       const form = new FormData();
       form.set('name', 'Ada');
       form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
@@ -232,9 +234,10 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
       controllers: [EventsController],
     });
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule, { cors: false });
+    const worker = CloudflareWorkerApplicationHost.create(AppModule, { cors: false });
 
     try {
+      await worker.ready();
       const response = await worker.fetch(
         new Request('https://worker.test/events', {
           headers: { accept: 'text/event-stream' },

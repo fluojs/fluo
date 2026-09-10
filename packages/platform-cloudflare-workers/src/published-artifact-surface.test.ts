@@ -233,4 +233,23 @@ describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
     )).toEqual(normalizeAst(generatedSourceArtifacts.declaration, sourceAdapterPath, ts.ScriptKind.TS));
     expect(readExportAllTargets(declarationRootPath)).toEqual(readExportAllTargets(sourceRootPath));
   });
+
+  it('publishes the canonical Worker host and adapter classes without retired helpers', () => {
+    const generatedSourceArtifacts = getSourceArtifacts();
+    const retiredExports = [
+      'bootstrapCloudflareWorkerApplication',
+      'createCloudflareWorkerAdapter',
+      'createCloudflareWorkerEntrypoint',
+      'createCloudflareWorkerEnvEntrypoint',
+    ] as const;
+
+    expect(generatedSourceArtifacts.runtimeRootExports).toContain('CloudflareWorkerApplicationHost');
+    expect(generatedSourceArtifacts.runtimeRootExports).toContain('CloudflareWorkerHttpApplicationAdapter');
+
+    for (const retiredExport of retiredExports) {
+      expect(generatedSourceArtifacts.runtimeRootExports).not.toContain(retiredExport);
+      expect(generatedSourceArtifacts.runtime).not.toContain(`function ${retiredExport}`);
+      expect(generatedSourceArtifacts.declaration).not.toContain(`declare function ${retiredExport}`);
+    }
+  });
 });

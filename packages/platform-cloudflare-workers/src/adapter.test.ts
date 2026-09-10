@@ -13,15 +13,12 @@ import * as runtimeWeb from '@fluojs/runtime/web';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import {
-  bootstrapCloudflareWorkerApplication,
+  CloudflareWorkerApplicationHost,
   type CloudflareWorkerExecutionContext,
   CloudflareWorkerHttpApplicationAdapter,
   type CloudflareWorkerWebSocket,
   type CloudflareWorkerWebSocketBinding,
   type CloudflareWorkerWebSocketPair,
-  createCloudflareWorkerAdapter,
-  createCloudflareWorkerEnvEntrypoint,
-  createCloudflareWorkerEntrypoint,
 } from './adapter.js';
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -191,14 +188,14 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('rejects invalid explicit numeric adapter options during setup', () => {
-    expect(() => createCloudflareWorkerAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
-    expect(() => createCloudflareWorkerAdapter({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);
+    expect(() => CloudflareWorkerHttpApplicationAdapter.create({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
+    expect(() => CloudflareWorkerHttpApplicationAdapter.create({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);
   });
 
   it('keeps the machine-consumed realtime capability contract synchronized with both READMEs', () => {
     const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
-    const capability = createCloudflareWorkerAdapter().getRealtimeCapability();
+    const capability = CloudflareWorkerHttpApplicationAdapter.create().getRealtimeCapability();
 
     if (!capability.bindingInstallation) {
       throw new Error('Expected the Cloudflare Workers adapter to expose websocket binding installation.');
@@ -238,9 +235,10 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule);
+    const worker = CloudflareWorkerApplicationHost.create(AppModule);
 
     try {
+      await worker.ready();
       expect(log).toHaveBeenCalledWith('[fluo] LOG [FluoFactory] Starting fluo application...');
       expect(log).not.toHaveBeenCalledWith(
         expect.stringContaining(`[fluo] ${String(process.pid)} -`),
@@ -251,7 +249,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('delegates Worker fetch handling to the shared web adapter core', async () => {
-    const adapter = createCloudflareWorkerAdapter({ rawBody: true });
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({ rawBody: true });
     const dispatcher = {
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(204);
@@ -290,7 +288,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('exposes a supported fetch-style raw websocket expansion contract for Worker runtimes', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const capability = adapter.getRealtimeCapability();
     const { bindingInstallation, ...contract } = capability;
 
@@ -398,7 +396,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       controllers: [GuardedController],
     });
 
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -480,7 +478,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       controllers: [WebhookController],
     });
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
+    const worker = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
       globalPrefix: '/api',
       rawBody: true,
@@ -526,7 +524,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingUploadController] });
 
-    const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
+    const worker = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
       multipart: { strategy: 'stream' },
     });
@@ -555,7 +553,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('registers request lifecycle work with executionContext.waitUntil', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const deferred = createDeferred<Response>();
     const waitUntil = vi.fn((promise: Promise<unknown>) => promise);
 
@@ -580,7 +578,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('passes Worker env and execution context through the framework request boundary', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const env = { API_KEY: 'worker-secret' };
     const executionContext = createExecutionContext();
 
@@ -604,7 +602,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('keeps waitUntil and close drains open until streaming response bodies finish', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const waitUntilPromises: Array<Promise<unknown>> = [];
     let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
     let closeSettled = false;
@@ -673,7 +671,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('keeps the dispatcher until an in-flight Worker request settles during close', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const deferred = createDeferred<void>();
     const dispatcher = {
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
@@ -719,7 +717,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   });
 
   it('rejects listen while Worker close is still draining and keeps shutdown responses stable', async () => {
-    const adapter = createCloudflareWorkerAdapter();
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const deferred = createDeferred<void>();
     const originalDispatcher = {
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
@@ -871,7 +869,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     vi.useFakeTimers();
 
     try {
-      const adapter = createCloudflareWorkerAdapter();
+      const adapter = CloudflareWorkerHttpApplicationAdapter.create();
       const neverSettles = new Promise<void>(() => {});
 
       await adapter.listen({
@@ -929,7 +927,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       providers: [StartupProbe],
     });
 
-    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+    const entrypoint = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
     });
 
@@ -977,7 +975,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       providers: [StartupProbe],
     });
 
-    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+    const entrypoint = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
     });
 
@@ -1034,16 +1032,18 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       providers: [StartupProbe],
     });
 
-    const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
-      configuredEnvironments.push(env);
+    const entrypoint = CloudflareWorkerApplicationHost.create<WorkerEnv>({
+      fromEnv: (env) => {
+        configuredEnvironments.push(env);
 
-      return {
-        options: {
-          cors: false,
-          globalPrefix: env.prefix,
-        },
-        rootModule: AppModule,
-      };
+        return {
+          options: {
+            cors: false,
+            globalPrefix: env.prefix,
+          },
+          rootModule: AppModule,
+        };
+      },
     });
 
     expectTypeOf(entrypoint.ready).parameter(0).toEqualTypeOf<WorkerEnv>();
@@ -1106,16 +1106,18 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       providers: [StartupProbe],
     });
 
-    const entrypoint = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
-      configuredEnvironments.push(env);
+    const entrypoint = CloudflareWorkerApplicationHost.create<WorkerEnv>({
+      fromEnv: (env) => {
+        configuredEnvironments.push(env);
 
-      return {
-        options: {
-          cors: false,
-          globalPrefix: env.prefix,
-        },
-        rootModule: AppModule,
-      };
+        return {
+          options: {
+            cors: false,
+            globalPrefix: env.prefix,
+          },
+          rootModule: AppModule,
+        };
+      },
     });
 
     const firstEnvironment = { prefix: '/configured' };
@@ -1164,7 +1166,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       providers: [StartupProbe],
     });
 
-    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+    const entrypoint = CloudflareWorkerApplicationHost.create(AppModule, {
       cors: false,
     });
 
@@ -1199,7 +1201,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     vi.useFakeTimers();
 
     const deferred = createDeferred<void>();
-    let entrypoint: ReturnType<typeof createCloudflareWorkerEntrypoint> | undefined;
+    let entrypoint: CloudflareWorkerApplicationHost | undefined;
 
     try {
       let bootstrapCount = 0;
@@ -1233,7 +1235,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
         providers: [StartupProbe],
       });
 
-      entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+      entrypoint = CloudflareWorkerApplicationHost.create(AppModule, {
         cors: false,
       });
 
