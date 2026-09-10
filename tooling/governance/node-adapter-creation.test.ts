@@ -20,19 +20,20 @@ describe('Node adapter creation contract companions', () => {
   });
 
   it.each(['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'])('rejects missing %s discoverability', (missing) => {
-    expect(() => enforceContractCompanionUpdates(companions.filter((path) => path !== missing))).toThrow();
+    expect(() => enforceContractCompanionUpdates(companions.filter((path) => path !== missing)))
+      .toThrow('must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates');
   });
 
   it('rejects missing tooling enforcement even with package regression coverage', () => {
     expect(() => enforceContractCompanionUpdates(
       companions.filter((path) => !path.startsWith('tooling/')),
-    )).toThrow();
+    )).toThrow('must include CI/tooling enforcement updates');
   });
 
   it('rejects missing regression coverage even with tooling enforcement', () => {
     expect(() => enforceContractCompanionUpdates([
       ...companions.filter((path) => !path.endsWith('.test.ts')),
       'tooling/governance/verify-platform-consistency-governance.mjs',
-    ])).toThrow();
+    ])).toThrow('must include regression test updates for the changed contract surface');
   });
 });
