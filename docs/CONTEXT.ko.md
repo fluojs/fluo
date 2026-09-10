@@ -112,7 +112,7 @@ NestJS GraphQL 마이그레이션에서는 [GraphQL 마이그레이션 경계](.
 
 다음 coordinated release 준비와 Node → 패키지 → import 순서는 [Node 24 migration guide](./getting-started/migrate-node24.ko.md)가 안내합니다. 실제 public manifest 42개 중 stable 41개는 explicit major, `@fluojs/react`는 0.x minor intent입니다. 공개는 maintainer가 수행하며 #3169는 user-run release까지 umbrella로 유지합니다.
 
-Root와 Node-bound package의 `>=24.0.0 <27` 분류, 8개 portable omission, exact/latest CI 증거 및 consumer migration은 [Node.js Support](./reference/node-support.ko.md)에서 확인합니다. `tooling/governance/node-support-classification.test.ts`와 `pnpm test:node-floor`가 이를 검증합니다.
+Root와 Node-bound package의 `>=24.0.0 <27` 분류, 8개 portable omission, exact/latest CI 증거 및 consumer migration은 [Node.js Support](./reference/node-support.ko.md)에서 확인합니다. `.github/workflows/node-verification.yml`은 세 Node 버전 모두에서 전체 build, typecheck, lint, 분할 테스트와 생성 starter를 검증하고, 최신 `24.x`에서 문서를 한 번 검증합니다. `tooling/ci/node-verification-workflow.test.ts`는 실행 구조, 빌드 artifact 전달, 실패 시 aggregate gate 차단을 검증합니다. `tooling/governance/node-support-classification.test.ts`와 로컬 집중 검증 명령 `pnpm test:node-floor`는 지원 경계를 확인하며 전체 CI를 대체하지 않습니다.
 
 `@fluojs/cqrs`는 패키지 자체의 지원 계약에 따라 Node.js `>=24.0.0 <27`을 요구합니다. 이는 검증된 Node listener 지원 창으로 Node.js 24 미만과 Node.js 27+는 제외됩니다. consumer 계약은 [`packages/cqrs/README.ko.md`](../packages/cqrs/README.ko.md) 및 [Package Surface](./reference/package-surface.ko.md)를 참조하세요.
 

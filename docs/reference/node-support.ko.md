@@ -8,12 +8,16 @@ Private root workspace와 [`@fluojs/platform-nextjs`](../../packages/platform-ne
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
-| Exact Node `24.0.0` | Frozen install, 전체 `pnpm verify`, 생성 starter sandbox matrix | 최소 지원 floor이며 release runtime은 아님 |
-| Latest Node `24.x` | Frozen install, canonical `pnpm verify`, `pnpm verify:docs`, 생성 starter sandbox matrix | Canonical 개발 및 Changesets release runtime |
-| Latest Node `26.x` | Frozen install, 전체 `pnpm verify`, 생성 starter sandbox matrix | Forward verification 전용이며 publish에 사용하지 않음 |
+| Exact Node `24.0.0` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | 최소 지원 floor이며 release runtime은 아님 |
+| Latest Node `24.x` | Frozen install, 분할 전체 검증, `pnpm verify:docs`, 생성 starter sandbox matrix | Canonical 개발 및 Changesets release runtime |
+| Latest Node `26.x` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
-`.github/workflows/ci.yml`의 `node-support` job은 aggregate `verify` gate의 필수 조건입니다. 모든 matrix 항목은 `pnpm verify`로 전체 build, typecheck, lint, test suite를 실행합니다. 집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. CI는 exact 24.0.0 검증을 더 최신인 24.x patch로 대체하지 않습니다.
+`.github/workflows/ci.yml`의 `node-support` matrix는 `.github/workflows/node-verification.yml`을 호출하며 aggregate `verify` gate의 필수 조건입니다. 모든 Node 버전은 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 검증합니다. CI에서는 `pnpm build`가 끝나면 `pnpm typecheck`와 `pnpm lint`, 분할 테스트, 생성 starter 검증을 독립 job에서 실행합니다. 패키지 테스트는 4개 shard로 나누고 apps, examples, tooling project도 모두 실행하며, 각 테스트 프로세스는 `--maxWorkers=1`을 유지합니다. 변경 범위가 작아도 이 전체 Node 검증은 생략하지 않습니다.
+
+빌드 artifact는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
+
+집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. CI는 exact 24.0.0 검증을 더 최신인 24.x patch로 대체하지 않습니다.
 
 ## Portable package boundaries
 

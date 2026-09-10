@@ -17,20 +17,18 @@ it('builds the portable cookie helper dependency closure in native CI', () => {
   expect(nativeJob).toContain('run: pnpm --filter @fluojs/http... build');
 });
 
-it('runs scoped PR package scripts serially to prevent shared artifact build races', () => {
+it('runs sharded PR suites with one worker to prevent shared artifact build races', () => {
   // Given
-  const workflow = readFileSync(resolve(import.meta.dirname, '../../.github/workflows/ci.yml'), 'utf8');
+  const workflow = readFileSync(resolve(import.meta.dirname, '../../.github/workflows/node-verification.yml'), 'utf8');
 
   // When
-  const scopedPackageTestStep = workflow.slice(
-    workflow.indexOf('      - name: Test (scoped PR package scripts)'),
-    workflow.indexOf('      - name: Test (scoped PR fallback paths)'),
-  );
+  const testCommands = [...workflow.matchAll(/run: (pnpm vitest run .+)/gu)].map((match) => match[1]);
 
   // Then
-  expect(scopedPackageTestStep).toMatch(
-    /run: pnpm --workspace-concurrency=1 -r --if-present \$\{\{ needs\.resolve-pr-verification-scope\.outputs\.test_filter_args \}\} run test/u,
-  );
+  expect(testCommands).toHaveLength(4);
+  for (const command of testCommands) {
+    expect(command).toMatch(/--maxWorkers=1$/u);
+  }
 });
 
 it('requires the Deno platform job before the Verify aggregate can pass', () => {
@@ -41,5 +39,5 @@ it('requires the Deno platform job before the Verify aggregate can pass', () => 
   const verifyJob = workflow.slice(workflow.indexOf('  verify:\n'));
 
   // Then
-  expect(verifyJob).toMatch(/\n      - deno-platform\n/u);
+  expect(verifyJob).toMatch(/\n {6}- deno-platform\n/u);
 });
