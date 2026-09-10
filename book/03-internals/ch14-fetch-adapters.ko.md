@@ -208,24 +208,26 @@ export function createWorkerModule(region: string) {
 다음 완전한 `src/worker.ts`는 환경 값에서 모듈을 선택한다. 함수 안에서 값의 범위를 검사하는 이유는 이 값이 요청 입력이 아니라 애플리케이션 세대를 구성하는 외부 설정이기 때문이다. 이 검증 실패는 고객의 상품 조회 DTO 오류와 같은 400 응답 계약이 아니다.
 
 ```typescript
-import { createCloudflareWorkerEnvEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 import { createWorkerModule } from './worker-app.js';
 
 export interface WorkerEnv {
   CATALOG_REGION: string;
 }
 
-export const worker = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
-  if (
-    typeof env.CATALOG_REGION !== 'string' ||
-    !/^[a-z0-9-]{1,32}$/.test(env.CATALOG_REGION)
-  ) {
-    throw new TypeError('CATALOG_REGION must be a short region identifier');
-  }
-  return {
-    rootModule: createWorkerModule(env.CATALOG_REGION),
-    options: { rawBody: true, maxBodySize: 256 },
-  };
+export const worker = CloudflareWorkerApplicationHost.create<WorkerEnv>({
+  fromEnv: (env) => {
+    if (
+      typeof env.CATALOG_REGION !== 'string' ||
+      !/^[a-z0-9-]{1,32}$/.test(env.CATALOG_REGION)
+    ) {
+      throw new TypeError('CATALOG_REGION must be a short region identifier');
+    }
+    return {
+      rootModule: createWorkerModule(env.CATALOG_REGION),
+      options: { rawBody: true, maxBodySize: 256 },
+    };
+  },
 });
 
 export default { fetch: worker.fetch };
@@ -303,7 +305,7 @@ Workers의 `adapter.fetch(request, env, executionContext)`에는 세 번째 인�
 
 관리 경로 안에서 `await worker.close()`를 호출하는 구현은 특히 위험하다. close는 활성 요청이 끝나기를 기다리는데 활성 요청 자신이 close를 기다리게 된다. 관리 요청을 설계한다면 현재 요청을 기다리는 형태를 피하고 `executionContext.waitUntil(worker.close())` 같은 비동기 관찰 경로를 사용해야 한다. 이 장의 probe는 fetch 호출 밖에서 close하므로 직접 await할 수 있다. 이런 차이를 숨긴 범용 “모든 호스트에서 같은 shutdown hook”은 오히려 장애를 만든다.
 
-Worker close는 새 유입을 503으로 막고 활성 작업을 최대 10초 기다린다. timeout은 underlying drain이 끝났다는 뜻이 아니다. 아직 drain 중인 adapter의 `listen()`은 재개를 거절하며, lazy entrypoint는 이 시간 동안 새 application으로 우회하지 않는다. 이후 underlying drain이 실제로 끝나면 lazy 경로는 복구할 수 있다. 성공한 lazy close 뒤 다음 fetch가 새 application을 만드는 동작과, raw adapter가 명시적 listen 전까지 503을 유지하는 동작을 구분해야 한다.
+Worker close는 새 유입을 503으로 막고 활성 작업을 최대 10초 기다린다. timeout은 underlying drain이 끝났다는 뜻이 아니다. 아직 drain 중인 adapter의 `listen()`은 재개를 거절하며, lazy host는 이 시간 동안 새 application으로 우회하지 않는다. 이후 underlying drain이 실제로 끝나면 lazy host는 복구할 수 있다. 성공한 host close 뒤 다음 fetch가 새 application을 만드는 동작과, raw adapter가 명시적 listen 전까지 503을 유지하는 동작을 구분해야 한다.
 
 Bun도 종료 시작 시 새 유입을 막고 `server.stop(stopActiveConnections)`를 시작한다. bounded timeout은 호출자의 close 대기를 실패시킬 뿐, 진행 중인 작업을 버리고 adapter 상태를 즉시 비우는 신호가 아니다. Deno는 새 유입을 중단하고 active handler를 drain하며 필요하면 serve signal을 abort한다. 명시적으로 전달한 Deno shutdown callback의 signal-driven close 실패는 로그에 남지만 exit status를 설정하지 않는다. 실패 상태 전파를 직접 소유하는 호스트는 `shutdownRegistration`을 생략하고 signal을 별도로 조율한다.
 

@@ -72,7 +72,7 @@ The initialization sequence below is owned by Factory. Creation, lifecycle readi
 | `packages/runtime/src/bootstrap.ts` | Actual implementations of `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, and `FluoFactory.createMicroservice(...)`. |
 | `packages/platform-nodejs/src/index.ts` | Platform-owned raw Node adapter, logging, filesystem, and shutdown signal helpers. |
 | `packages/platform-fastify/src/adapter.ts` | Exposes `FastifyHttpApplicationAdapter.create(...)` for the Fastify path. |
-| `packages/platform-cloudflare-workers/src/adapter.ts` | Exposes `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, and `createCloudflareWorkerEntrypoint(...)` for the Worker fetch path. |
+| `packages/platform-cloudflare-workers/src/adapter.ts` | Exposes `CloudflareWorkerHttpApplicationAdapter.create(...)` for direct Worker application creation and `CloudflareWorkerApplicationHost.create(...)` for host-owned lazy fetch lifecycle. |
 
 ## Platform Registration
 

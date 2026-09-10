@@ -17,6 +17,8 @@ operations into HTTP application creation.
 | `bootstrapApplication({ rootModule, ...options })` | `FluoFactory.create(rootModule, options)` |
 | Factory callers relying on no default security headers | Pass `securityHeaders: false`, or adopt the common default. |
 | Retrying `app.listen()` after readiness, adapter, or post-listen setup failure | Create a fresh app; the failed app has entered terminal shutdown. |
+| Worker `createCloudflareWorkerAdapter(...)` | `CloudflareWorkerHttpApplicationAdapter.create(...)`, then `FluoFactory.create(AppModule, { adapter })` and `app.listen()`. |
+| Worker `bootstrapCloudflareWorkerApplication(...)`, `createCloudflareWorkerEntrypoint(...)`, or `createCloudflareWorkerEnvEntrypoint(...)` | Use `CloudflareWorkerApplicationHost.create(AppModule, options)` for fixed modules, or the same method with `{ fromEnv }` when the first environment chooses configuration. |
 
 The removed names are absent from package root, every export-map subpath,
 deployed JavaScript, and emitted declarations. There is no compatibility alias.

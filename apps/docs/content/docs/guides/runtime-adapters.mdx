@@ -345,11 +345,11 @@ await app.listen();
 Use the Workers adapter for edge `fetch` deployments.
 
 ```ts
-import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const adapter = createCloudflareWorkerAdapter();
+const adapter = CloudflareWorkerHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
@@ -359,13 +359,13 @@ export default {
 };
 ```
 
-For zero-config lazy bootstrap, use the entrypoint helper.
+For lazy bootstrap, use the host that owns its generation and drain lifecycle.
 
 ```ts
-import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
-const worker = createCloudflareWorkerEntrypoint(AppModule);
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
 
 export default {
   fetch: worker.fetch,
@@ -393,9 +393,9 @@ export class RealtimeModule {}
 
 Worker fetch dispatch preserves the shared single-byte-range and `If-Range` policy: after conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields `206`; `If-Range` reuses those validators, malformed or multi-range fields retain the full response, and an unsatisfiable range yields bodyless `416`.
 
-Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy entrypoint whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh application.
+Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy host whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh generation.
 
-The Worker `env` object is available per request at `request.cloudflare.env`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. The first `createCloudflareWorkerEntrypoint(...)` request triggers bootstrap only when `ready()` has not already started it. In either path, only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method. Register the provider and controller in the owning module.
+The Worker `env` object is available per request at `request.cloudflare.env`. Direct `FluoFactory.create(...)` finishes module registration before its exported `fetch(...)` handles traffic. `CloudflareWorkerApplicationHost.create(AppModule, options)` starts its first bootstrap only when `ready()` has not already started it. In either path, only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Use `CloudflareWorkerApplicationHost.create({ fromEnv })` only when the first environment must select that configuration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method. Register the provider and controller in the owning module.
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
@@ -440,8 +440,8 @@ export class WorkerBindingsModule {}
 | Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
 | --- | --- | --- | --- | --- | --- | --- |
 | Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
-| Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `createCloudflareWorkerEntrypoint` |
-| Adapter creation | `FastifyHttpApplicationAdapter.create` | `NodeHttpApplicationAdapter.create` | `ExpressHttpApplicationAdapter.create` | `BunHttpApplicationAdapter.create` | `DenoHttpApplicationAdapter.create` | `createCloudflareWorkerAdapter` |
+| Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `CloudflareWorkerApplicationHost.create` for lazy hosts |
+| Adapter creation | `FastifyHttpApplicationAdapter.create` | `NodeHttpApplicationAdapter.create` | `ExpressHttpApplicationAdapter.create` | `BunHttpApplicationAdapter.create` | `DenoHttpApplicationAdapter.create` | `CloudflareWorkerHttpApplicationAdapter.create` |
 | Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
 | Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
 | SSE/streaming | Yes | Yes | Yes | Yes | Yes | Yes through fetch response contract |
@@ -458,7 +458,7 @@ export class WorkerBindingsModule {}
 | `@fluojs/platform-express` | `ExpressHttpApplicationAdapter.create`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `BunHttpApplicationAdapter.create`, `createBunFetchHandler`, Bun realtime binding types |
 | `@fluojs/platform-deno` | `DenoHttpApplicationAdapter.create`, `createDenoFetchHandler`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
-| `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
+| `@fluojs/platform-cloudflare-workers` | `CloudflareWorkerHttpApplicationAdapter.create`, `CloudflareWorkerApplicationHost.create`, Worker adapter/host generation types |
 
 ## Common mistakes
 

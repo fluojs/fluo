@@ -208,24 +208,26 @@ export function createWorkerModule(region: string) {
 The following complete `src/worker.ts` selects a module from an environment value. The function validates the value's allowed range because it is external configuration for an application generation, not request input. A failure of this validation is not the same 400 response contract as an error in a customer's product-query DTO.
 
 ```typescript
-import { createCloudflareWorkerEnvEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 import { createWorkerModule } from './worker-app.js';
 
 export interface WorkerEnv {
   CATALOG_REGION: string;
 }
 
-export const worker = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => {
-  if (
-    typeof env.CATALOG_REGION !== 'string' ||
-    !/^[a-z0-9-]{1,32}$/.test(env.CATALOG_REGION)
-  ) {
-    throw new TypeError('CATALOG_REGION must be a short region identifier');
-  }
-  return {
-    rootModule: createWorkerModule(env.CATALOG_REGION),
-    options: { rawBody: true, maxBodySize: 256 },
-  };
+export const worker = CloudflareWorkerApplicationHost.create<WorkerEnv>({
+  fromEnv: (env) => {
+    if (
+      typeof env.CATALOG_REGION !== 'string' ||
+      !/^[a-z0-9-]{1,32}$/.test(env.CATALOG_REGION)
+    ) {
+      throw new TypeError('CATALOG_REGION must be a short region identifier');
+    }
+    return {
+      rootModule: createWorkerModule(env.CATALOG_REGION),
+      options: { rawBody: true, maxBodySize: 256 },
+    };
+  },
 });
 
 export default { fetch: worker.fetch };
@@ -303,7 +305,7 @@ In Workers, `adapter.fetch(request, env, executionContext)` requires its third a
 
 Calling `await worker.close()` inside an administrative route is particularly dangerous. Close waits for active requests to finish, while the active request itself waits for close. When designing an administrative request, avoid a form that waits for the current request; use an asynchronous observation path such as `executionContext.waitUntil(worker.close())`. This chapter's probe closes outside the fetch call, so it can await close directly. A generic "same shutdown hook on every host" that hides this distinction can itself cause an outage.
 
-Worker close rejects new ingress with 503 and waits up to 10 seconds for active work. A timeout does not mean that the underlying drain has finished. An adapter still draining rejects a resumption through `listen()`, and the lazy entrypoint does not bypass it with a new application during that interval. Once the underlying drain actually ends, the lazy path can recover. Distinguish the next fetch creating a new application after a successful lazy close from the raw adapter continuing to return 503 until an explicit listen.
+Worker close rejects new ingress with 503 and waits up to 10 seconds for active work. A timeout does not mean that the underlying drain has finished. An adapter still draining rejects a resumption through `listen()`, and the lazy host does not bypass it with a new application during that interval. Once the underlying drain actually ends, the lazy host can recover. Distinguish the next fetch creating a new application after a successful host close from the raw adapter continuing to return 503 until an explicit listen.
 
 Bun also blocks new ingress when shutdown begins and starts `server.stop(stopActiveConnections)`. A bounded timeout only fails the caller's wait for close; it is not a signal to discard ongoing work and immediately clear the adapter's state. Deno stops new ingress, drains active handlers, and aborts the serve signal if needed. A signal-driven close failure in the explicitly supplied Deno shutdown callback is logged but does not set the exit status. A host that owns failure-status propagation omits `shutdownRegistration` and coordinates signals separately.
 

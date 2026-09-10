@@ -30,19 +30,20 @@ fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)
 
 이 어댑터는 dispatcher가 binding된 뒤 각 요청 수명주기를 `executionContext.waitUntil(...)`에 연결하고, `close()` 중에도 진행 중인 디스패치, terminal close까지의 upgraded server WebSocket, SSE(`text/event-stream`) response body를 유지하여 Worker 종료 도중 활성 작업이 중간에 잘리지 않도록 보장합니다.
 
-애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다. Lazy entrypoint는 timed-out close가 아직 drain 중인 동안 shutdown response를 계속 반환하지만, underlying close가 나중에 settle되면 해당 임시 gate를 해제하여 이후 request가 새 Worker application을 bootstrap할 수 있게 합니다.
+애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다. Lazy host는 timed-out close가 아직 drain 중인 동안 shutdown response를 계속 반환하지만, underlying close가 나중에 settle되면 해당 임시 gate를 해제하여 이후 request가 새 Worker application을 bootstrap할 수 있게 합니다.
 
 ## 빠른 시작
 
-### 표준 어댑터 사용
-애플리케이션을 부트스트랩하고 표준 Cloudflare Worker `fetch` 핸들러를 내보냅니다.
+### 직접 애플리케이션 생성
+먼저 concrete adapter를 생성한 뒤 `FluoFactory.create`가 애플리케이션 생성을
+소유하게 하세요. `app.listen()`은 socket을 열지 않고 dispatcher를 binding합니다.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
-const adapter = createCloudflareWorkerAdapter();
+const adapter = CloudflareWorkerHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
@@ -52,14 +53,16 @@ export default {
 };
 ```
 
-### 지연 엔트리포인트 (Zero-Config)
-첫 번째 요청 시 부트스트랩을 수행하는 엔트리포인트 헬퍼를 사용하여 설정을 더욱 간소화할 수 있습니다.
+### Host가 소유하는 lazy 애플리케이션
+이 isolate가 lazy bootstrap, generation 교체, retry, close/drain recovery를
+소유해야 할 때만 `CloudflareWorkerApplicationHost`를 사용하세요. 이는 직접
+애플리케이션 생성과 다른 capability이며 두 번째 Factory가 아닙니다.
 
 ```typescript
-import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
-const worker = createCloudflareWorkerEntrypoint(AppModule);
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
 
 export default {
   fetch: worker.fetch,
@@ -70,13 +73,22 @@ export default {
 
 Cloudflare Workers는 exported `fetch` 핸들러에 host가 호출하는 shutdown callback을 제공하지 않습니다. NestJS shutdown hook을 마이그레이션할 때는 application-owned close trigger를 선택하세요. `worker.fetch` 호출 밖에서 실행되는 out-of-band lifecycle trigger는 `await worker.close()`를 직접 호출할 수 있습니다. 같은 `worker.fetch` 호출 안에서 처리되는 management route는 `close()`를 await하지 않고 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그렇지 않으면 `close()`가 자기 자신의 active request drain을 기다리다 shutdown timeout에 도달합니다. `worker.fetch`만 export한다고 해서 close 호출이 마련되지는 않습니다.
 
-성공한 `worker.close()`는 의도적으로 재시작 가능합니다. 현재 lazy application을 해제하며, 이후의 `worker.fetch(...)`는 isolate 안에서 새 application을 bootstrap하여 bootstrap lifecycle hook을 다시 실행하고 application singleton provider를 다시 생성합니다. Env-aware entrypoint에서는 이 새 application generation도 factory를 다시 호출하지 않고 첫 environment에서 cache한 configuration을 사용합니다. `close()`를 terminal Worker shutdown signal로 취급하지 마세요. Application에 terminal behavior가 필요하면 해당 상태를 명시적으로 소유하고 강제해야 합니다.
+성공한 `worker.close()`는 의도적으로 재시작 가능합니다. 현재 host generation을
+해제하며, 이후의 `worker.fetch(...)`는 isolate 안에서 새 generation을 생성하여
+bootstrap lifecycle hook을 다시 실행하고 application singleton provider를 다시
+생성합니다. Env-aware host에서도 이 generation은 factory를 다시 호출하지 않고 첫
+environment에서 cache한 configuration을 사용합니다. `close()`를 terminal Worker
+shutdown signal로 취급하지 마세요. Application에 terminal behavior가 필요하면 해당
+상태를 명시적으로 소유하고 강제해야 합니다.
 
-### Env-aware 지연 엔트리포인트
-첫 번째 Worker `env`로 root module 또는 bootstrap option을 선택해야 하면 `createCloudflareWorkerEnvEntrypoint(...)`를 사용하세요. 이 factory는 isolate마다 module registration 전에 한 번 실행되며, 반환한 root module과 option은 해당 isolate에 cache되고 실행 중인 각 application generation이 이를 재사용합니다.
+### Env-aware lazy host
+첫 번째 Worker `env`로 root module 또는 bootstrap option을 선택해야 하면 같은
+`CloudflareWorkerApplicationHost.create` 메서드의 `{ fromEnv }` overload를
+사용하세요. 이 factory는 isolate마다 module registration 전에 한 번 실행되며
+configuration은 cache되고 실행 중인 각 application generation이 이를 재사용합니다.
 
 ```typescript
-import { createCloudflareWorkerEnvEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 import { createAppModule } from './app.module';
 
 interface WorkerEnv {
@@ -84,21 +96,34 @@ interface WorkerEnv {
   DB: D1Database;
 }
 
-const worker = createCloudflareWorkerEnvEntrypoint<WorkerEnv>((env) => ({
-  rootModule: createAppModule({ database: env.DB }),
-  options: {
-    globalPrefix: env.API_PREFIX,
-  },
-}));
+const worker = CloudflareWorkerApplicationHost.create<WorkerEnv>({
+  fromEnv: (env) => ({
+    rootModule: createAppModule({ database: env.DB }),
+    options: {
+      globalPrefix: env.API_PREFIX,
+    },
+  }),
+});
 
 export default {
   fetch: worker.fetch,
 };
 ```
 
-같은 이유로 `worker.ready(env)`도 명시적 `env`를 요구합니다. 첫 번째로 제공한 environment가 singleton bootstrap configuration을 결정하며, 이후 request environment는 `request.cloudflare.env`에 계속 연결되지만 이를 재구성하지는 않습니다. 성공한 `worker.close()`는 현재 application generation만 해제합니다. 이후 `ready(env)` 또는 `fetch(...)`는 factory를 다시 호출하지 않고 보존된 첫 environment의 module과 option에서 새 application을 생성합니다. Bootstrap configuration을 첫 Worker request 전에 이미 사용할 수 있으면 기존 `createCloudflareWorkerEntrypoint(module, options)`를 사용하세요.
+같은 이유로 `worker.ready(env)`도 명시적 `env`를 요구합니다. 첫 번째로 제공한
+environment가 singleton bootstrap configuration을 결정하며, 이후 request
+environment는 `request.cloudflare.env`에 계속 연결되지만 이를 재구성하지는
+않습니다. 성공한 `worker.close()`는 현재 application generation만 해제합니다. 이후
+`ready(env)` 또는 `fetch(...)`는 factory를 다시 호출하지 않고 보존된 첫
+environment의 module과 option에서 새 application을 생성합니다. Bootstrap
+configuration을 첫 Worker request 전에 이미 사용할 수 있으면
+`CloudflareWorkerApplicationHost.create(AppModule, options)`를 사용하세요.
 
-표준 `createCloudflareWorkerEntrypoint(...)`의 request-bound `env` 경로에서는 fetch-time binding으로 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Request별 binding을 읽고 검증한 뒤 좁혀서 application-shaped 값으로 provider method에 전달하세요. 첫 environment가 module registration 전에 application을 구성해야 할 때만 env-aware entrypoint를 선택하세요.
+fixed-module host의 request-bound `env` 경로에서는 fetch-time binding으로
+`ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다.
+Request별 binding을 읽고 검증한 뒤 좁혀서 application-shaped 값으로 provider
+method에 전달하세요. 첫 environment가 module registration 전에 application을
+구성해야 할 때만 `{ fromEnv }` overload를 선택하세요.
 
 ## 주요 패턴
 
@@ -145,10 +170,15 @@ export class RealtimeModule {}
 Bootstrap 전에 application module graph에 `RealtimeModule`을 import하세요. Application bootstrap 중 `CloudflareWorkersWebSocketModule`이 gateway를 발견하고 `app.listen()`이 binding을 freeze하기 전에 versioned realtime capability를 통해 Worker adapter binding을 설치합니다. `configureWebSocketBinding()`은 compatibility facade로 유지됩니다. Listen boundary 이후에는 binding을 추가하거나 교체하지 마세요.
 
 ### 엣지 네이티브 미들웨어
-표준 fluo 미들웨어(CORS, Global Prefix 등)는 Worker bootstrap helper를 통해 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다. `createCloudflareWorkerAdapter(...)`는 adapter가 소유하는 parsing 및 websocket-pair 옵션만 받습니다. Routing 및 middleware 옵션은 `bootstrapCloudflareWorkerApplication(...)` 또는 `createCloudflareWorkerEntrypoint(...)`에 전달하세요.
+표준 fluo 미들웨어(CORS, Global Prefix 등)는 `FluoFactory.create(...)`를 통해
+완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다.
+`CloudflareWorkerHttpApplicationAdapter.create(...)`는 adapter가 소유하는 parsing 및
+websocket-pair 옵션만 받습니다. Routing 및 middleware 옵션은
+`FluoFactory.create(...)`에 직접 전달하거나 host-owned lazy capability가 필요할 때
+fixed-module host option으로 전달하세요.
 
 ```typescript
-const worker = createCloudflareWorkerEntrypoint(AppModule, {
+const worker = CloudflareWorkerApplicationHost.create(AppModule, {
   globalPrefix: 'api/v1',
   cors: true,
 });
@@ -157,13 +187,13 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 ### 동작 참고
 
 - Public concrete `CloudflareWorkerHttpApplicationAdapter.fetch(request, env, executionContext)` 계약은 Worker `executionContext`를 필수로 요구합니다. Direct caller는 모든 HTTP, SSE, WebSocket ingress가 `executionContext.waitUntil(...)`에 active work를 등록하도록 실제 세 번째 `ctx` 인수를 전달해야 합니다. Migration: direct two-argument adapter call을 `adapter.fetch(request, env, ctx)`로 바꾸세요.
-- `fetch()`는 `listen()` 또는 lazy entrypoint가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. Upgraded server WebSocket은 terminal `close` event까지 해당 lifecycle과 close drain을 유지하고, SSE(`text/event-stream`) response는 body가 끝나거나 cancel될 때까지 이를 유지합니다. SSE reader 또는 tracked-stream setup이 동기적으로 실패하면 오류를 전파하기 전에 lifecycle을 release합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
-- `maxBodySize` 같은 adapter option은 Worker adapter 생성 시 검증됩니다. `globalPrefix`, `cors`, `middleware`, `securityHeaders` 같은 bootstrap 전용 옵션은 `createCloudflareWorkerAdapter(...)`가 아니라 Worker bootstrap helper에 전달해야 합니다.
+- `fetch()`는 `listen()` 또는 lazy host가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. Upgraded server WebSocket은 terminal `close` event까지 해당 lifecycle과 close drain을 유지하고, SSE(`text/event-stream`) response는 body가 끝나거나 cancel될 때까지 이를 유지합니다. SSE reader 또는 tracked-stream setup이 동기적으로 실패하면 오류를 전파하기 전에 lifecycle을 release합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
+- `maxBodySize` 같은 adapter option은 `CloudflareWorkerHttpApplicationAdapter.create(...)`가 검증합니다. `globalPrefix`, `cors`, `middleware`, `securityHeaders` 같은 application option은 `FluoFactory.create(...)` 또는 fixed-module host configuration에 속합니다.
 - WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않으며, adapter가 한 번이라도 listen한 뒤 defined binding을 교체하거나 해제하려는 시도는 Worker upgrade ownership을 바꾸는 대신 빠르게 실패합니다. 다른 websocket binding이 필요하면 새 adapter를 생성하세요.
-- `close()`는 shutdown 중 및 shutdown 이후 새 HTTP 및 WebSocket upgrade request에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다. Lazy entrypoint는 adapter의 underlying drain이 나중에 끝나면 이 timeout을 영구적으로 캐시하지 않습니다.
+- `close()`는 shutdown 중 및 shutdown 이후 새 HTTP 및 WebSocket upgrade request에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다. Lazy host는 adapter의 underlying drain이 나중에 끝나면 이 timeout을 영구적으로 캐시하지 않습니다.
 - Worker `fetch(...)` dispatch path는 body를 포함하는 RFC `QUERY` route와 `PURGE` 같은 uppercase extension method를 보존하며, method token과 parsed body는 동일한 fetch dispatch seam을 통해 등록된 route에 도달합니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
-- Worker `env` 객체는 각 `FrameworkRequest`에 `request.cloudflare.env`로 연결되고 Worker execution context는 `request.cloudflare.executionContext`로 제공됩니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`는 미리 선언한 root module과 option을 유지하므로 fetch-time `env`는 request dispatch 중에만 연결됩니다. 첫 명시적 Worker environment가 module registration 전에 root module 또는 final bootstrap option을 선택해야 하면 opt-in `createCloudflareWorkerEnvEntrypoint(...)`를 사용하세요. 이 API의 `ready(env)`는 environment를 요구하고 첫 environment의 module과 option을 isolate마다 한 번 cache하며, 그 configuration에서 application generation마다 하나의 application을 생성합니다. 성공한 close 뒤에는 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 application을 재시작합니다. 어느 경로든 의도적으로 request별인 binding에는 request-bound `request.cloudflare.env`를 사용하세요.
+- Worker `env` 객체는 각 `FrameworkRequest`에 `request.cloudflare.env`로 연결되고 Worker execution context는 `request.cloudflare.executionContext`로 제공됩니다. 직접 `FluoFactory.create(...)`는 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `CloudflareWorkerApplicationHost.create(AppModule, options)`는 미리 선언한 root module과 option을 유지하므로 fetch-time `env`는 request dispatch 중에만 연결됩니다. 첫 명시적 Worker environment가 module registration 전에 root module 또는 final bootstrap option을 선택해야 하면 `{ fromEnv }` overload를 사용하세요. 이 API의 `ready(env)`는 environment를 요구하고 첫 environment의 module과 option을 isolate마다 한 번 cache하며, 그 configuration에서 application generation마다 하나의 application을 생성합니다. 성공한 close 뒤에는 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 application을 재시작합니다. 어느 경로든 의도적으로 request별인 binding에는 request-bound `request.cloudflare.env`를 사용하세요.
 
 ## Lifecycle 및 public seam 참고
 
@@ -192,22 +222,17 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 
 ## Conformance 커버리지
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts`와 `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일들은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, body-cancellation 및 synchronous setup-failure drain, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP 및 websocket lifecycle guard, listen boundary 이후 websocket binding freeze, zero-config 및 env-aware lazy entrypoint 재사용, 명시적 env-aware readiness, 성공한 lazy 재시작 후 첫 environment configuration 보존, timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, public seam source import, structured realtime capability contract, bounded 10초 close timeout을 검증합니다.
+`packages/platform-cloudflare-workers/src/adapter.test.ts`와 `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일들은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, body-cancellation 및 synchronous setup-failure drain, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP 및 websocket lifecycle guard, listen boundary 이후 websocket binding freeze, fixed-module 및 env-aware lazy host 재사용, 명시적 env-aware readiness, 성공한 host 재시작 후 첫 environment configuration 보존, timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, public seam source import, structured realtime capability contract, bounded 10초 close timeout을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 conditional request, single-byte range 및 `If-Range`, body를 포함하는 `QUERY` 및 `PURGE` fetch dispatch, malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트는 두 README locale의 structured realtime capability contract를 parse하고 machine-consumed value를 adapter capability와 비교합니다.
 
 ## 공개 API 개요
 
-- `createCloudflareWorkerAdapter(options)`: Worker HTTP 어댑터를 위한 팩토리입니다.
-- `createCloudflareWorkerEntrypoint(module, options)`: 지연 부트스트랩 방식의 Worker 엔트리포인트를 생성합니다.
-- `createCloudflareWorkerEnvEntrypoint(factory)`: 첫 명시적 Worker environment에서 지연 Worker 엔트리포인트를 생성합니다.
-- `bootstrapCloudflareWorkerApplication(module, options)`: Worker를 위한 비동기 부트스트랩 헬퍼입니다.
-- `CloudflareWorkerHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
-- `CloudflareWorkerHandler`: Worker application wrapper와 lazy entrypoint가 공유하는 fetch handler interface입니다.
-- `CloudflareWorkerApplication`: `adapter`, `app`, `fetch(...)`, `close(...)`를 제공하는 fully bootstrapped Worker application wrapper입니다.
-- `CloudflareWorkerEntrypoint`: `fetch`, `ready()`, `close()` lifecycle method를 제공하는 lazy entrypoint입니다.
-- `CloudflareWorkerEnvEntrypoint`: `fetch`, `ready(env)`, `close()` lifecycle method를 제공하는 env-aware lazy entrypoint입니다.
-- Option 및 type: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerEnvBootstrap`, `CloudflareWorkerEnvEntrypointFactory`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, `CloudflareWorkerWebSocketUpgradeResult`.
+- `CloudflareWorkerHttpApplicationAdapter.create(options)`: concrete Worker HTTP adapter를 생성합니다.
+- `CloudflareWorkerApplicationHost.create(AppModule, options)`: lazy fixed-module Worker host를 생성합니다.
+- `CloudflareWorkerApplicationHost.create({ fromEnv })`: 첫 명시적 Worker environment에서 env-aware lazy Worker host를 생성합니다.
+- `CloudflareWorkerApplicationGeneration<Env>`: `app`, concrete `adapter`, extractable `fetch`, `close(...)`를 갖는 host `ready(...)` 결과입니다.
+- Option 및 type: `CloudflareWorkerAdapterOptions`, `CloudflareWorkerApplicationHostOptions`, `CloudflareWorkerHostConfiguration`, `CloudflareWorkerHostFactory<Env>`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, `CloudflareWorkerWebSocketUpgradeResult`.
 
 ## 관련 패키지
 
@@ -223,13 +248,14 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 ## Bounded Body Parsing
 
 `CloudflareWorkerAdapterOptions`는 runtime Web factory의 HTTP 소유 `bodyParser`
-정책을 상속합니다. Adapter와 bootstrap helper는 `'text'`, `'default'`, 사용자
-callback을 받으며 생략하면 기존 MIME 기반 파싱과 limit을 유지합니다.
+정책을 상속합니다. `CloudflareWorkerHttpApplicationAdapter.create(...)`와 host
+configuration은 `'text'`, `'default'`, 사용자 callback을 받으며 생략하면 기존 MIME
+기반 파싱과 limit을 유지합니다.
 
 ```typescript
-import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
 
-const adapter = createCloudflareWorkerAdapter({
+const adapter = CloudflareWorkerHttpApplicationAdapter.create({
   bodyParser: 'text', maxBodySize: 1_048_576, rawBody: true,
 });
 ```

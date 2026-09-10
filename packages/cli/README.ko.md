@@ -140,6 +140,14 @@ fluo new my-deno-app --shape application --transport http --runtime deno --platf
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
 
+Cloudflare Workers template은 `CloudflareWorkerHttpApplicationAdapter.create()`로
+adapter를 생성하고 `FluoFactory.create(AppModule, { adapter })`에 전달한 뒤
+`app.listen()`을 await해 socket을 열지 않고 dispatcher를 binding합니다. 첫 요청
+bootstrap, retry, generation 교체, drain recovery가 필요하면
+`CloudflareWorkerApplicationHost`를 생성하고 `export default { fetch: worker.fetch }`로
+`worker.fetch`를 내보내세요. 첫 Worker environment가 bootstrap configuration을
+선택할 때는 같은 메서드의 `{ fromEnv }` overload를 사용합니다.
+
 공식 HTTP-first React SSR + Vite application은 named starter flag로 선택합니다.
 
 ```bash

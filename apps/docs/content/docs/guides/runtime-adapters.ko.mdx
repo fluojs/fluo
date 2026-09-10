@@ -345,11 +345,11 @@ await app.listen();
 Edge `fetch` deployment에는 Workers adapter를 사용합니다.
 
 ```ts
-import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const adapter = createCloudflareWorkerAdapter();
+const adapter = CloudflareWorkerHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
@@ -359,13 +359,13 @@ export default {
 };
 ```
 
-Zero-config lazy bootstrap에는 entrypoint helper를 사용합니다.
+lazy bootstrap에는 generation과 drain lifecycle을 소유하는 host를 사용합니다.
 
 ```ts
-import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
-const worker = createCloudflareWorkerEntrypoint(AppModule);
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
 
 export default {
   fetch: worker.fetch,
@@ -393,9 +393,9 @@ export class RealtimeModule {}
 
 Worker fetch dispatch는 공유 단일 byte-range 및 `If-Range` policy를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 `206`을 만들고, `If-Range`는 선택된 validator를 재사용하며 malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만듭니다.
 
-Worker request는 active HTTP, SSE body, upgraded WebSocket work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 HTTP 및 WebSocket ingress는 JSON `503`을 받고, active work에는 bounded 10-second drain window가 주어집니다. Lazy entrypoint의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤, 이후 request가 새 application을 bootstrap할 수 있게 합니다.
+Worker request는 active HTTP, SSE body, upgraded WebSocket work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 HTTP 및 WebSocket ingress는 JSON `503`을 받고, active work에는 bounded 10-second drain window가 주어집니다. Lazy host의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤, 이후 request가 새 generation을 bootstrap할 수 있게 합니다.
 
-Worker `env` object는 request별로 `request.cloudflare.env`에서 사용할 수 있습니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`에서는 `ready()`가 bootstrap을 미리 시작하지 않은 경우에만 첫 request가 bootstrap을 시작합니다. 어느 경로든 미리 선언한 root module과 option만 module registration에 참여하고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값으로 제한하세요. Handler의 `RequestContext`에서 선택한 fetch-time binding을 읽고 검증하고 좁힌 뒤 application-shaped 값만 injected provider method에 전달하세요. Provider와 controller를 owning module에 등록하세요.
+Worker `env` object는 request별로 `request.cloudflare.env`에서 사용할 수 있습니다. 직접 `FluoFactory.create(...)`는 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `CloudflareWorkerApplicationHost.create(AppModule, options)`는 `ready()`가 bootstrap을 미리 시작하지 않은 경우에만 첫 bootstrap을 시작합니다. 어느 경로든 미리 선언한 root module과 option만 module registration에 참여하고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값으로 제한하세요. 첫 environment가 그 configuration을 선택해야 할 때만 `CloudflareWorkerApplicationHost.create({ fromEnv })`를 사용하세요. Handler의 `RequestContext`에서 선택한 fetch-time binding을 읽고 검증하고 좁힌 뒤 application-shaped 값만 injected provider method에 전달하세요. Provider와 controller를 owning module에 등록하세요.
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
@@ -440,8 +440,8 @@ export class WorkerBindingsModule {}
 | Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
 | --- | --- | --- | --- | --- | --- | --- |
 | Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
-| Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `createCloudflareWorkerEntrypoint` |
-| Adapter creation | `FastifyHttpApplicationAdapter.create` | `NodeHttpApplicationAdapter.create` | `ExpressHttpApplicationAdapter.create` | `BunHttpApplicationAdapter.create` | `DenoHttpApplicationAdapter.create` | `createCloudflareWorkerAdapter` |
+| Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | lazy host용 `CloudflareWorkerApplicationHost.create` |
+| Adapter creation | `FastifyHttpApplicationAdapter.create` | `NodeHttpApplicationAdapter.create` | `ExpressHttpApplicationAdapter.create` | `BunHttpApplicationAdapter.create` | `DenoHttpApplicationAdapter.create` | `CloudflareWorkerHttpApplicationAdapter.create` |
 | Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
 | Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
 | SSE/streaming | Yes | Yes | Yes | Yes | Yes | Fetch response contract |
@@ -458,7 +458,7 @@ export class WorkerBindingsModule {}
 | `@fluojs/platform-express` | `ExpressHttpApplicationAdapter.create`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `BunHttpApplicationAdapter.create`, `createBunFetchHandler`, Bun realtime binding types |
 | `@fluojs/platform-deno` | `DenoHttpApplicationAdapter.create`, `createDenoFetchHandler`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
-| `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
+| `@fluojs/platform-cloudflare-workers` | `CloudflareWorkerHttpApplicationAdapter.create`, `CloudflareWorkerApplicationHost.create`, Worker adapter/host generation types |
 
 ## 흔한 실수
 
