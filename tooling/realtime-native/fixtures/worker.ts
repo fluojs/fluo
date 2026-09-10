@@ -20,7 +20,7 @@ class NativeWorkerGateway {
     executionContext?.waitUntil(closing);
     void closing.then(
       () => console.log('NATIVE_WORKER_CLOSED'),
-      (error) => console.error('NATIVE_WORKER_CLOSE_FAILED', error),
+      (error: unknown) => console.error('NATIVE_WORKER_CLOSE_FAILED', error),
     );
   }
 }

@@ -6,7 +6,7 @@ import {
 import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 
-function once(socket: WebSocket, event: 'close' | 'message' | 'open'): Promise<MessageEvent | void> {
+function once(socket: WebSocket, event: 'close' | 'message' | 'open'): Promise<Event | void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Timed out waiting for Bun ${event}.`)), 5_000);
     socket.addEventListener(event, (value) => {
@@ -20,7 +20,7 @@ function once(socket: WebSocket, event: 'close' | 'message' | 'open'): Promise<M
   });
 }
 
-function messageData(event: MessageEvent | void): string {
+function messageData(event: Event | void): string {
   if (!(event instanceof MessageEvent)) {
     throw new TypeError('Expected a Bun websocket message event.');
   }

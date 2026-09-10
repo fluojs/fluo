@@ -1,3 +1,7 @@
+/// <reference lib="es2024.promise" />
+
+declare const Deno: { readTextFile(path: URL): Promise<string> };
+
 const loadBuiltPackage = async (name: string, entrypoint = '.') => {
   const manifestUrl = new URL(`../../../packages/${name}/package.json`, import.meta.url);
   const manifest = JSON.parse(await Deno.readTextFile(manifestUrl));
@@ -25,7 +29,7 @@ const {
 const { DenoHttpApplicationAdapter } = platform;
 const { FluoFactory, defineModule } = runtime;
 
-function once(socket: WebSocket, event: 'close' | 'message' | 'open'): Promise<MessageEvent | void> {
+function once(socket: WebSocket, event: 'close' | 'message' | 'open'): Promise<Event | void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Timed out waiting for Deno ${event}.`)), 5_000);
     socket.addEventListener(event, (value) => {
@@ -39,7 +43,7 @@ function once(socket: WebSocket, event: 'close' | 'message' | 'open'): Promise<M
   });
 }
 
-function messageData(event: MessageEvent | void): string {
+function messageData(event: Event | void): string {
   if (!(event instanceof MessageEvent)) {
     throw new TypeError('Expected a Deno websocket message event.');
   }

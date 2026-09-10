@@ -1279,6 +1279,35 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('does not classify a WebSocket IncomingMessage migration as a Fastify raw-context change', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guides = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+    ];
+    const changedFiles = [
+      ...guides,
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+    const snapshots = Object.fromEntries(guides.map((path) => [path, {
+      base: '- WebSocket migration: WebSocketModule uses IncomingMessage.',
+      head: '- WebSocket migration: NodeWebSocketModule uses IncomingMessage.',
+    }]));
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).not.toThrow();
+
+    for (const token of ['context.request.raw', 'context.response.raw', 'FastifyRequest', 'FastifyReply']) {
+      const explicitFastify = Object.fromEntries(guides.map((path) => [path, {
+        ...snapshots[path],
+        head: `${snapshots[path].head} ${token}`,
+      }]));
+      expect(() => enforceContractCompanionUpdates(changedFiles, explicitFastify))
+        .toThrow(/Fastify raw request and response migration docs/u);
+    }
+  });
+
   it('requires Fastify raw-object regression coverage for its migration documentation', async () => {
     // Given: Fastify raw-object migration and package documentation updates with their discoverability and tooling companions.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

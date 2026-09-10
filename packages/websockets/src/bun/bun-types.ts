@@ -5,8 +5,6 @@ import type {
 import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
-  WebSocketUpgradeContext,
-  WebSocketUpgradeRejection,
 } from '../types.js';
 
 /**
@@ -31,8 +29,6 @@ export interface WebSocketGatewayContext {
  * Fetch-style request guard used before Bun websocket upgrades are accepted.
  */
 export type WebSocketUpgradeGuard = SharedWebSocketUpgradeGuard<Request>;
-
-export type { WebSocketUpgradeContext, WebSocketUpgradeRejection };
 
 /**
  * Defines the Bun websocket module options type.

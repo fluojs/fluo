@@ -5,8 +5,6 @@ import type { WebSocket } from 'ws';
 import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
-  WebSocketUpgradeContext,
-  WebSocketUpgradeRejection,
 } from '../types.js';
 
 /**
@@ -26,8 +24,6 @@ export interface WebSocketGatewayContext {
   request: IncomingMessage;
   socket: WebSocket;
 }
-
-export type { WebSocketUpgradeContext, WebSocketUpgradeRejection };
 
 /**
  * Hook that can allow or reject a websocket upgrade before the adapter accepts it.

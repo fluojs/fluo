@@ -1487,7 +1487,11 @@ function hasFastifyRawContextMigrationGuideUpdate(migrationGuideSnapshots) {
       ...snapshot.head.split('\n').filter((line) => !baseLines.has(line)),
     ];
 
-    return changedLines.some((line) => fastifyRawContextTokens.some((token) => line.includes(token)));
+    return changedLines.some((line) => fastifyRawContextTokens.some((token) =>
+      line.includes(token)
+      && !(line.startsWith('- WebSocket migration')
+        && (token === 'IncomingMessage' || token === 'ServerResponse')),
+    ));
   });
 }
 
@@ -3086,7 +3090,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageSurface.includes('(payload, socket, request, socketId)') &&
       packageSurface.includes("replies: { mode: 'event-envelope' }") &&
       packageSurface.includes('thrown HTTP exceptions') &&
-      packageSurface.includes('token-only root `WebSocketGatewayLifecycleService`') &&
+      packageSurface.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
       packageSurface.includes('terminal Node shutdown admission gate') &&
       packageSurface.includes('retained per-connection lifecycle state') &&
       docsContext.includes('packages/websockets/README.md') &&
@@ -3096,7 +3100,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContext.includes('ignored raw WebSocket handler return values') &&
       docsContext.includes('(payload, socket, request, socketId)') &&
       docsContext.includes("replies: { mode: 'event-envelope' }") &&
-      docsContext.includes('token-only `WebSocketGatewayLifecycleService`') &&
+      docsContext.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
       docsContext.includes('terminal Node shutdown admission') &&
       docsContext.includes('retained per-connection lifecycle state'),
     'docs/CONTEXT.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface.md documents them.',
@@ -3108,7 +3112,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageSurfaceKo.includes('(payload, socket, request, socketId)') &&
       packageSurfaceKo.includes("replies: { mode: 'event-envelope' }") &&
       packageSurfaceKo.includes('throw된 HTTP exception') &&
-      packageSurfaceKo.includes('token-only root `WebSocketGatewayLifecycleService`') &&
+      packageSurfaceKo.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
       packageSurfaceKo.includes('upgrade accept 직전에') &&
       packageSurfaceKo.includes('connection별 lifecycle state retention') &&
       docsContextKo.includes('packages/websockets/README.ko.md') &&
@@ -3118,7 +3122,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('raw WebSocket handler return value') &&
       docsContextKo.includes('(payload, socket, request, socketId)') &&
       docsContextKo.includes("replies: { mode: 'event-envelope' }") &&
-      docsContextKo.includes('token-only `WebSocketGatewayLifecycleService`') &&
+      docsContextKo.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
       docsContextKo.includes('upgrade accept 직전에') &&
       docsContextKo.includes('connection별 lifecycle state retention'),
     'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface.ko.md documents them.',

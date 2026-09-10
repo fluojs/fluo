@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
+import { fileURLToPath } from 'node:url';
 
+import ts from 'typescript';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { WebSocketUpgradeGuard as BunWebSocketUpgradeGuard } from './bun.js';
 import * as bun from './bun.js';
@@ -18,6 +20,30 @@ type UpgradeGuardRequest<TGuard> = TGuard extends (...args: infer TArguments) =>
   : never;
 
 describe('@fluojs/websockets public surface', () => {
+  it('owns shared upgrade and reply contracts only at the root, not runtime subpaths', () => {
+    const paths = ['index', 'node', 'bun', 'deno', 'cloudflare-workers']
+      .map((name) => fileURLToPath(new URL(`./${name}.ts`, import.meta.url)));
+    const program = ts.createProgram(paths, {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+    });
+    const checker = program.getTypeChecker();
+    for (const [index, path] of paths.entries()) {
+      const source = program.getSourceFile(path);
+      if (!source) throw new Error(`Missing public entrypoint ${path}.`);
+      const symbol = checker.getSymbolAtLocation(source);
+      if (!symbol) throw new Error(`Missing public module symbol ${path}.`);
+      const names = checker.getExportsOfModule(symbol).map((entry) => entry.name);
+      for (const shared of [
+        'WebSocketUpgradeContext', 'WebSocketUpgradeRejection', 'WebSocketEventEnvelope', 'WebSocketReplyMode',
+      ]) {
+        if (index === 0) expect(names).toContain(shared);
+        else expect(names).not.toContain(shared);
+      }
+    }
+  });
+
   it('declares the patched ws dependency floor', () => {
     const packageManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
