@@ -2170,6 +2170,7 @@ describe('@fluojs/event-bus', () => {
     it('ignores incoming transport messages once shutdown starts', async () => {
       const loggerEvents: string[] = [];
       const releaseClose = createDeferred<void>();
+      const enteredClose = createDeferred<void>();
       const transport = {
         published: [] as Array<{ channel: string; payload: unknown }>,
         subscribed: [] as Array<{ channel: string; handler: (payload: unknown) => Promise<void> }>,
@@ -2180,6 +2181,7 @@ describe('@fluojs/event-bus', () => {
           this.subscribed.push({ channel, handler });
         },
         async close() {
+          enteredClose.resolve();
           await releaseClose.promise;
         },
       } satisfies EventBusTransport & {
@@ -2215,7 +2217,7 @@ describe('@fluojs/event-bus', () => {
       expect(incomingSubscription).toBeDefined();
 
       const closePromise = app.close();
-      await flushAsyncWork();
+      await enteredClose.promise;
       await incomingSubscription!.handler({ userId: 'ignored-during-shutdown' });
 
       expect(store.calls).toBe(0);
@@ -2247,10 +2249,12 @@ describe('@fluojs/event-bus', () => {
 
     it('awaits transport.close() before shutdown resolves', async () => {
       const releaseClose = createDeferred<void>();
+      const enteredClose = createDeferred<void>();
       let closeStarted = false;
       const transport = {
         async close() {
           closeStarted = true;
+          enteredClose.resolve();
           await releaseClose.promise;
         },
         async publish(_channel: string, _payload: unknown) {},
@@ -2268,7 +2272,7 @@ describe('@fluojs/event-bus', () => {
         shutdownResolved = true;
       });
 
-      await flushAsyncWork();
+      await enteredClose.promise;
 
       expect(closeStarted).toBe(true);
       expect(shutdownResolved).toBe(false);
