@@ -111,13 +111,13 @@ Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocke
 ```typescript
 // DenoWebSocketModule을 설정하면 게이트웨이가 Deno의 네이티브 업그레이드를 사용합니다.
 import { Module } from '@fluojs/core';
-import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';
-import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+  handlePing(_payload: unknown, socket) {
     socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
   // Deno 바인딩이 내부적으로 네이티브 업그레이드를 처리합니다.

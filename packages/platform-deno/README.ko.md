@@ -107,13 +107,13 @@ try {
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';
-import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+  handlePing(_payload: unknown, socket) {
     socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
 }
@@ -178,7 +178,7 @@ Deno 2 smoke lane은 public `npm:@fluojs/platform-deno` root import를 검사하
 - `getListenTarget()`: Deno `hostname` 또는 portable `host` alias를 사용해 bind target과 public URL을 보고합니다.
 - `getRealtimeCapability()`: runtime integration을 위한 fetch-style Deno websocket upgrade capability를 보고합니다.
 - `getServer()`: adapter가 listen 중일 때 active `Deno.serve` controller를 반환합니다.
-- `configureWebSocketBinding(...)`: `listen(dispatcher)`가 server를 시작하기 전에 `@fluojs/websockets/deno` binding을 설치합니다.
+- Deno realtime module은 `listen(dispatcher)`가 server를 시작하기 전에 module registration 중 version-1 capability로 binding을 설치하며 direct configure/setter API는 제거됩니다.
 - `DenoWebSocketMessage`: 전체 수신 websocket payload union인 `ArrayBuffer | ArrayBufferView | Blob | string`입니다.
 - `https: { cert, key }`: `Deno.serve`로 전달되고 보고되는 listen URL에 반영되는 HTTPS 시작 옵션입니다.
 - Option 및 seam type: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interface, `DenoAdapterOptions`, `DenoShutdownSignal`, `DenoServeOnListenInfo`.

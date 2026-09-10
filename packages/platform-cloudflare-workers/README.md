@@ -155,10 +155,8 @@ The adapter supports Cloudflare's native `WebSocketPair` for real-time communica
 
 ```typescript
 import { Module } from '@fluojs/core';
-import {
-  CloudflareWorkersWebSocketModule,
-  WebSocketGateway,
-} from '@fluojs/websockets/cloudflare-workers';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
 
 @WebSocketGateway({ path: '/ws' })
 export class EdgeGateway {}
@@ -170,7 +168,7 @@ export class EdgeGateway {}
 export class RealtimeModule {}
 ```
 
-Import `RealtimeModule` into the application module graph before bootstrap. During application bootstrap, `CloudflareWorkersWebSocketModule` discovers the gateway and installs the Worker adapter binding through its versioned realtime capability before `app.listen()` freezes it; `configureWebSocketBinding()` remains a compatibility facade. Do not add or replace the binding after the listen boundary.
+Import `RealtimeModule` into the application module graph before bootstrap. During application bootstrap, `CloudflareWorkersWebSocketModule` discovers the gateway and installs the Worker adapter binding through the version-1 realtime capability before `app.listen()` freezes it. Direct binding configuration is removed; do not add or replace the binding after the listen boundary.
 
 ### Edge-Native Middleware
 Standard fluo middleware (CORS, Global Prefix, etc.) is fully supported through
@@ -235,7 +233,7 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 - `CloudflareWorkerApplicationHost.create(AppModule, options)`: Creates a lazy fixed-module Worker host.
 - `CloudflareWorkerApplicationHost.create({ fromEnv })`: Creates an env-aware lazy Worker host from its first explicit Worker environment.
 - `CloudflareWorkerApplicationGeneration<Env>`: The host `ready(...)` result with `app`, concrete `adapter`, extractable `fetch`, and `close(...)`.
-- Options and types: `CloudflareWorkerAdapterOptions`, `CloudflareWorkerApplicationHostOptions`, `CloudflareWorkerHostConfiguration`, `CloudflareWorkerHostFactory<Env>`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, and `CloudflareWorkerWebSocketUpgradeResult`.
+- Options and types: `CloudflareWorkerAdapterOptions`, `CloudflareWorkerApplicationHostOptions`, `CloudflareWorkerHostConfiguration`, `CloudflareWorkerHostFactory<Env>`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, and `CloudflareWorkerWebSocketUpgradeResult`.
 
 ## Related Packages
 

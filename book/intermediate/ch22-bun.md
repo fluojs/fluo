@@ -98,7 +98,8 @@ In fluo, WebSockets are handled through Gateways. When running on Bun, the frame
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { BunWebSocketModule, OnConnect, WebSocketGateway } from '@fluojs/websockets/bun';
+import { OnConnect, WebSocketGateway } from '@fluojs/websockets';
+import { BunWebSocketModule } from '@fluojs/websockets/bun';
 
 @WebSocketGateway({ path: '/events' })
 export class NotificationGateway {

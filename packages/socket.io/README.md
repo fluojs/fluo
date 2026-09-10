@@ -4,6 +4,8 @@
 
 Socket.IO v4 gateway adapter for the fluo runtime.
 
+On Bun, Socket.IO and raw WebSocket gateways install their distinct protocols through the same version-1 realtime binding capability before `app.listen()`. This shares only the host installation boundary: Socket.IO namespaces, ACKs, and Engine.IO behavior remain separate from raw WebSocket framing.
+
 ## Table of Contents
 
 - [Installation](#installation)

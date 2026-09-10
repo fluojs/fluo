@@ -4,6 +4,8 @@
 
 fluo 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
 
+Bun에서 Socket.IO와 raw WebSocket gateway는 `app.listen()` 전에 동일한 version-1 realtime binding capability를 통해 각자의 protocol을 설치합니다. 공유하는 것은 host 설치 경계뿐이며 Socket.IO namespace, ACK, Engine.IO 동작은 raw WebSocket framing과 별개로 유지됩니다.
+
 ## 목차
 
 - [설치](#설치)

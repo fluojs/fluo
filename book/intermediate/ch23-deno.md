@@ -111,13 +111,13 @@ Like Bun, Deno provides its own WebSocket implementation through `Deno.upgradeWe
 ```typescript
 // With DenoWebSocketModule configured, gateways use Deno's native upgrade.
 import { Module } from '@fluojs/core';
-import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';
-import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+  handlePing(_payload: unknown, socket) {
     socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
   // The Deno binding handles native upgrades internally.
