@@ -33,6 +33,7 @@ function resolveSummaryOutputPaths(outputDirectory = scriptDirectory) {
 }
 
 function parseCliOptions(argv = process.argv.slice(2)) {
+  let skipBuild = false;
   let writeDrafts = false;
   let writeSummary = false;
   let summaryOutputDirectory;
@@ -44,6 +45,11 @@ function parseCliOptions(argv = process.argv.slice(2)) {
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
+
+    if (argument === '--skip-build') {
+      skipBuild = true;
+      continue;
+    }
 
     if (argument === '--write-drafts') {
       writeDrafts = true;
@@ -135,6 +141,7 @@ function parseCliOptions(argv = process.argv.slice(2)) {
   return {
     changedPackages: changedPackages.filter((packageName) => typeof packageName === 'string' && packageName.length > 0),
     distTag,
+    skipBuild,
     summaryOutputDirectory,
     targetPackage,
     targetVersion,
@@ -166,8 +173,11 @@ function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
-function runCanonicalReleaseReadinessVerificationCommands(runCommand) {
-  runCommand('pnpm', ['build']);
+function runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild) {
+  // CI may reuse a successful full build from an earlier step on the same checkout.
+  if (!skipBuild) {
+    runCommand('pnpm', ['build']);
+  }
   runCommand('pnpm', ['typecheck']);
 
   for (const projectName of releaseReadinessVitestProjects) {
@@ -849,7 +859,7 @@ function upsertReleaseCandidateDraft(dependencies = {}) {
 }
 
 export function runReleaseReadinessVerification(options = {}, dependencies = {}) {
-  const { changedPackages = [], distTag, releaseIntentFile, releaseIntentRecords, summaryOutputDirectory, targetPackage, targetVersion, writeDrafts = false, writeSummary: shouldWriteSummary = false } = options;
+  const { changedPackages = [], distTag, releaseIntentFile, releaseIntentRecords, skipBuild = false, summaryOutputDirectory, targetPackage, targetVersion, writeDrafts = false, writeSummary: shouldWriteSummary = false } = options;
   const {
     isPublishedVersion: registryVersionExists = isPublishedVersion,
     run: runCommand = run,
@@ -864,7 +874,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
   const checks = [];
   const packageManifests = listWorkspacePackageManifests();
 
-  runCanonicalReleaseReadinessVerificationCommands(runCommand);
+  runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild);
 
   const quickStart = readText('docs/getting-started/quick-start.md');
   const contributing = readText('CONTRIBUTING.md');

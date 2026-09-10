@@ -35,6 +35,8 @@ export function runReleaseReadinessVerification(
     distTag?: string;
     releaseIntentFile?: string;
     releaseIntentRecords?: ReleaseIntentRecord[];
+    /** Reuse a successful full build already completed on this same checkout. Defaults to false. */
+    skipBuild?: boolean;
     summaryOutputDirectory?: string;
     targetPackage?: string;
     targetVersion?: string;
