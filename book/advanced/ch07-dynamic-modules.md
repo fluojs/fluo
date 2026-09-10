@@ -94,7 +94,7 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
 The key point in this excerpt is field-level composition, not overwrite. Because of that, a static Decorator and a dynamic helper can share the same class metadata store without one final call erasing all previous information.
 
 That is why Fluo can support two authoring styles at the same time.
-- **Static decorator style** uses `@Module(...)` and `@Global()` from `path:packages/core/src/decorators.ts:13-34`. These are just syntactic sugar that call metadata setters at declaration time.
+- **Static decorator style** uses `@Module(...)` and `@Module({ global: true })` from `path:packages/core/src/decorators.ts:13-34`. These are just syntactic sugar that call metadata setters at declaration time.
 - **Programmatic style** calls `defineModule(...)`, or even `defineModuleMetadata(...)`, directly inside a factory function.
 
 At runtime, both styles converge on the same metadata store. The smallest example is `ConfigReloadModule.forRoot()`. `path:packages/config/src/reload-module.ts:128-153` creates a `ConfigReloadModuleImpl` subclass, snapshots the caller-owned load options, records Module metadata with `defineModuleMetadata(...)`, and returns that subclass. No separate runtime wrapper object or proxy is created.
@@ -347,7 +347,7 @@ The programmatic nature of `defineModule` also allows Module imports to be built
 ## 7.3 Async Module helpers are Factory Providers with memoized option resolution
 The asynchronous case is where many frameworks become opaque. They often hide the "how" behind a complicated state machine. Fluo stays surprisingly direct here too. An Async Module helper is still a Module factory. The only difference is that one options Provider is a **Factory Provider** whose execution is delayed and whose result is memoized.
 
-The shared contract comes from `AsyncModuleOptions<T>` in `path:packages/core/src/types.ts:64-67`. Its only fields are `inject?: InjectionToken[]` for dependency resolution and `useFactory` for the actual configuration logic. `InjectionToken` includes plain `Token` values plus documented `forwardRef(...)` and `optional(...)` wrappers, so async module factories can depend on the same explicit injection entries accepted by `@Inject(...)` and provider `inject` arrays.
+The shared contract comes from `AsyncModuleOptions<T>` in `path:packages/core/src/types.ts:64-67`. Its only fields are `inject?: InjectionToken[]` for dependency resolution and `useFactory` for the actual configuration logic. `InjectionToken` includes plain `Token` values plus documented `ForwardRef.create(...)` and `Optional.create(...)` wrappers, so async module factories can depend on the same explicit injection entries accepted by `@Inject(...)` and provider `inject` arrays.
 
 `EmailModule.forRootAsync()` is a very readable explicit-memoization example. `path:packages/email/src/module.ts:114-138` stores the user factory in a local variable, creates a `cachedResult` promise, defines `memoizedFactory(...deps)` that initializes the promise only once, and registers a singleton Factory Provider for `EMAIL_OPTIONS`.
 
@@ -551,7 +551,7 @@ function createExportedTokenSet(
 
 Therefore, a Dynamic Module's `exports` array is not just a declaration. If it does not match a local Provider or imported export during graph compilation, the system fails immediately. The export designs of the Redis, Socket.IO, and Passport helpers above are therefore bound to real visibility rules.
 
-When a Dynamic Module declares `global: true`, it is not calling some magical global registry. It participates in the same Module Graph validation flow as a static `@Global()` Module. The only difference is that the metadata was set by code. This consistency lets you use `useExisting` aliases to give internal objects stable public names, or named Token helpers to let multiple Module instances, such as two separate database connections, coexist inside the same container without collisions.
+When a Dynamic Module declares `global: true`, it is not calling some magical global registry. It participates in the same Module Graph validation flow as a static `@Module({ global: true })` Module. The only difference is that the metadata was set by code. This consistency lets you use `useExisting` aliases to give internal objects stable public names, or named Token helpers to let multiple Module instances, such as two separate database connections, coexist inside the same container without collisions.
 
 This gives us a useful design heuristic.
 - Keep raw option Tokens **internal** when consumers should not depend directly on the configuration shape.

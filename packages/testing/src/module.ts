@@ -2,13 +2,12 @@ import { getModuleMetadata, type MaybePromise, type Token } from '@fluojs/core';
 import {
   type ClassType,
   type ContainerResolutionState,
-  type ForwardRefFn,
+  type ForwardRefToken,
   isForwardRef,
   isOptionalToken,
   type NormalizedProvider,
-  type OptionalToken,
+  type OptionalInjectToken,
   type Provider,
-  Scope,
 } from '@fluojs/di';
 import { resolveMultiContribution } from '@fluojs/di/internal';
 import type { Guard, HandlerSource, Interceptor } from '@fluojs/http';
@@ -208,7 +207,7 @@ function effectiveProvidersForToken(introspection: ContainerIntrospection, token
 }
 
 function isSingletonLifecycleProvider(provider: NormalizedProvider): boolean {
-  if (provider.scope !== Scope.DEFAULT) {
+  if (provider.scope !== 'singleton') {
     return false;
   }
 
@@ -310,7 +309,7 @@ function hasTokenInContainer(introspection: ContainerIntrospection, token: Token
   return lookupProvider(introspection, token) !== undefined || collectMultiProviders(introspection, token).length > 0;
 }
 
-function dependencyToken(entry: Token | ForwardRefFn | OptionalToken): Token {
+function dependencyToken(entry: Token | ForwardRefToken | OptionalInjectToken): Token {
   if (isOptionalToken(entry)) {
     return entry.token;
   }
@@ -384,7 +383,7 @@ function providerGraphForProviderIsSyncResolvable(
   });
 }
 
-function resolveSyncDependency(entry: Token | ForwardRefFn | OptionalToken, state: SyncResolverState): unknown {
+function resolveSyncDependency(entry: Token | ForwardRefToken | OptionalInjectToken, state: SyncResolverState): unknown {
   if (isOptionalToken(entry)) {
     if (!hasToken(state, entry.token)) {
       return undefined;
@@ -607,7 +606,7 @@ class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {
 
   useFactory(
     factory: (...args: unknown[]) => MaybePromise<T>,
-    inject?: Array<Token | ForwardRefFn | OptionalToken>,
+    inject?: Array<Token | ForwardRefToken | OptionalInjectToken>,
   ): TestingModuleBuilder {
     this.builder.addOverride({ provide: this.token, useFactory: factory, inject });
     return this.builder;

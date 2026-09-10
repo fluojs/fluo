@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from './container.js';
 import { CircularDependencyError } from './errors.js';
-import { Scope } from './types.js';
+
 
 interface Deferred {
   readonly promise: Promise<void>;
@@ -19,8 +19,8 @@ function createDeferred(): Deferred {
 }
 
 const cachedMultiProviderScopes = [
-  { label: 'singleton', scope: Scope.DEFAULT },
-  { label: 'request-scoped', scope: Scope.REQUEST },
+  { label: 'singleton', scope: 'singleton' },
+  { label: 'request-scoped', scope: 'request' },
 ] as const;
 
 describe.each(cachedMultiProviderScopes)('$label multi-provider lifecycle', ({ scope }) => {
@@ -67,7 +67,7 @@ describe.each(cachedMultiProviderScopes)('$label multi-provider lifecycle', ({ s
         useFactory: (_gate: unknown, collection: unknown) => collection,
       },
     );
-    const container = scope === Scope.REQUEST ? root.createRequestScope() : root;
+    const container = scope === 'request' ? root.createRequestScope() : root;
 
     // When
     const resolutions = Promise.all([

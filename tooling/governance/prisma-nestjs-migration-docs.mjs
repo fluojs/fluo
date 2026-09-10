@@ -29,8 +29,8 @@ const prismaDocumentationAnchors = [
     relativePath: 'docs/getting-started/migrate-from-nestjs.md',
     heading: '### Prisma Async Registration and Rollback Guarantees',
     codeAnchors: [
-      "import { Global, Module } from '@fluojs/core';",
-      '@Global()',
+      "import { Module } from '@fluojs/core';",
+      '  global: true,',
       '  providers: [DatabaseConfig],',
       '  exports: [DatabaseConfig],',
       'class DatabaseConfigModule {}',
@@ -44,8 +44,8 @@ const prismaDocumentationAnchors = [
     relativePath: 'docs/getting-started/migrate-from-nestjs.ko.md',
     heading: '### Prisma 비동기 등록과 롤백 보장',
     codeAnchors: [
-      "import { Global, Module } from '@fluojs/core';",
-      '@Global()',
+      "import { Module } from '@fluojs/core';",
+      '  global: true,',
       '  providers: [DatabaseConfig],',
       '  exports: [DatabaseConfig],',
       'class DatabaseConfigModule {}',
@@ -127,7 +127,7 @@ function enforceDocumentationClaims(readText) {
 
     assert(
       completeVisibilityExamples.length === 1,
-      `${relativePath} must contain exactly one complete @Global() Prisma visibility example with exported DatabaseConfig, sibling-module import, and injected factory.`,
+      `${relativePath} must contain exactly one complete @Module({ global: true }) Prisma visibility example with exported DatabaseConfig, sibling-module import, and injected factory.`,
     );
   }
 }

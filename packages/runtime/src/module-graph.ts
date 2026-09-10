@@ -1,4 +1,4 @@
-import type { Token } from '@fluojs/core';
+import type { ForwardRefToken, InjectionToken, OptionalInjectToken, Token } from '@fluojs/core';
 import { type Provider, validateProviderInputs } from '@fluojs/di/internal';
 import type { MiddlewareLike } from '@fluojs/http/portable';
 
@@ -35,11 +35,6 @@ export function providerToken(provider: Provider): Token {
 
   return provider.provide;
 }
-
-type InjectionToken = Token | ForwardRefFn | OptionalToken;
-
-type ForwardRefFn = { __forwardRef__: true; forwardRef: () => Token };
-type OptionalToken = { __optional__: true; token: Token };
 
 type ClassDiMetadataView = {
   inject?: readonly InjectionToken[];
@@ -502,12 +497,12 @@ function getEffectiveClassDiMetadata(target: Function): ClassDiMetadataView | un
   };
 }
 
-function isForwardRef(value: unknown): value is ForwardRefFn {
-  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefFn).__forwardRef__ === true;
+function isForwardRef(value: unknown): value is ForwardRefToken {
+  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefToken).__forwardRef__ === true;
 }
 
-function isOptionalToken(value: unknown): value is OptionalToken {
-  return typeof value === 'object' && value !== null && '__optional__' in value && (value as OptionalToken).__optional__ === true;
+function isOptionalToken(value: unknown): value is OptionalInjectToken {
+  return typeof value === 'object' && value !== null && '__optional__' in value && (value as OptionalInjectToken).__optional__ === true;
 }
 
 function resolveInjectionToken(t: InjectionToken): Token {
@@ -822,7 +817,7 @@ function validateProviderVisibility(
             module: compiledModule.type.name,
             token,
             phase: 'provider visibility validation',
-            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global() to make its exports universally visible.`,
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Module({ global: true }) to make its exports universally visible.`,
           },
         );
       }
@@ -855,7 +850,7 @@ function validateControllerVisibility(
             module: compiledModule.type.name,
             token,
             phase: 'controller visibility validation',
-            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global().`,
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Module({ global: true }).`,
           },
         );
       }

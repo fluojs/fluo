@@ -21,7 +21,7 @@ export type Token<T = unknown> = string | symbol | Constructor<T>;
 /**
  * Deferred dependency-token wrapper accepted inside injection metadata.
  *
- * `@fluojs/di` creates this shape with `forwardRef(...)` so class decorators can
+ * `@fluojs/di` creates this shape with `ForwardRef.create(...)` so class decorators can
  * record tokens that are not available at decoration time without widening provider tokens.
  */
 export interface ForwardRefToken<T = unknown> {
@@ -32,7 +32,7 @@ export interface ForwardRefToken<T = unknown> {
 /**
  * Optional dependency-token wrapper accepted inside injection metadata.
  *
- * `@fluojs/di` creates this shape with `optional(...)` so required and optional
+ * `@fluojs/di` creates this shape with `Optional.create(...)` so required and optional
  * constructor dependencies can share the same class-level `@Inject(...)` list.
  */
 export interface OptionalInjectToken<T = unknown> {
@@ -44,7 +44,7 @@ export interface OptionalInjectToken<T = unknown> {
  * Constructor dependency entry accepted by `@Inject(...)` and provider inject arrays.
  *
  * Plain `Token` values register required dependencies, while `ForwardRefToken` and
- * `OptionalInjectToken` preserve documented `forwardRef(...)` and `optional(...)` wrappers.
+ * `OptionalInjectToken` preserve documented `ForwardRef.create(...)` and `Optional.create(...)` wrappers.
  */
 export type InjectionToken<T = unknown> = Token<T> | ForwardRefToken<T> | OptionalInjectToken<T>;
 

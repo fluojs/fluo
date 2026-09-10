@@ -18,8 +18,8 @@ const prismaVisibilityCodeAnchors = [
   {
     path: 'docs/getting-started/migrate-from-nestjs.md',
     anchors: [
-      "import { Global, Module } from '@fluojs/core';",
-      '@Global()',
+      "import { Module } from '@fluojs/core';",
+      '  global: true,',
       '  providers: [DatabaseConfig],',
       '  exports: [DatabaseConfig],',
       'class DatabaseConfigModule {}',
@@ -32,8 +32,8 @@ const prismaVisibilityCodeAnchors = [
   {
     path: 'docs/getting-started/migrate-from-nestjs.ko.md',
     anchors: [
-      "import { Global, Module } from '@fluojs/core';",
-      '@Global()',
+      "import { Module } from '@fluojs/core';",
+      '  global: true,',
       '  providers: [DatabaseConfig],',
       '  exports: [DatabaseConfig],',
       'class DatabaseConfigModule {}',
@@ -104,8 +104,14 @@ describe('NestJS Prisma migration documentation', () => {
     'rejects $mutation Prisma visibility code anchor $anchor in $path',
     ({ path, anchor, replacement }) => {
     // Given
-      const readWithMutatedCodeAnchor = (relativePath: string): string =>
-        relativePath === path ? read(relativePath).replace(anchor, replacement) : read(relativePath);
+      const readWithMutatedCodeAnchor = (relativePath: string): string => {
+        const markdown = read(relativePath);
+        if (relativePath !== path) return markdown;
+        const sectionStart = markdown.indexOf('<!-- fluo-prisma-contract:');
+        expect(sectionStart).toBeGreaterThanOrEqual(0);
+        return markdown.slice(0, sectionStart)
+          + markdown.slice(sectionStart).replace(anchor, replacement);
+      };
 
       // When / Then
       expect(() => enforcePrismaNestjsMigrationDocs(readWithMutatedCodeAnchor)).toThrow(
@@ -158,7 +164,7 @@ class VisibilityModule {}
     const runGovernanceGuard = () => enforcePrismaNestjsMigrationDocs(readWithSplitVisibilityExample);
 
     // Then
-    expect(runGovernanceGuard).toThrow('complete @Global() Prisma visibility example');
+    expect(runGovernanceGuard).toThrow('complete @Module({ global: true }) Prisma visibility example');
   });
 
   it('requires the main governance body to invoke the Prisma guard', () => {

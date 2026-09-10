@@ -174,9 +174,9 @@ const requestContainer = container.createRequestScope();
 const scopedService = await requestContainer.resolve(RequestScopedService);
 ```
 
-Request-scope containers may resolve providers from their parent chain, but request-owned registrations must not introduce new singleton providers. Register singleton providers on the root container before creating request scopes. If a request scope needs local additions, declare them with `scope: 'request'`/`Scope.REQUEST` or use `override()` for an explicit request-local replacement. The same rule applies to multi providers: default-scope multi providers belong on the root container, while request-local multi providers must opt into request scope or be replaced through `override()`.
+Request-scope containers may resolve providers from their parent chain, but request-owned registrations must not introduce new singleton providers. Register singleton providers on the root container before creating request scopes. If a request scope needs local additions, declare them with `scope: 'request'` or use `override()` for an explicit request-local replacement. The same rule applies to multi providers: default-scope multi providers belong on the root container, while request-local multi providers must opt into request scope or be replaced through `override()`.
 
-Provider objects are validated at registration time: every object provider must include a string, symbol, or constructable class `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). Alias providers require the same valid token forms for `useExisting`. For class providers, an omitted or `undefined` `inject` value falls back to the `useClass` `@Inject(...)` metadata; any other explicit `inject` value must be an array containing valid tokens or well-formed `forwardRef(...)` / `optional(...)` wrappers. Value providers must omit `inject`; declaring it as an own property is rejected even when its value is `undefined`. Explicit `scope` values must be `singleton`, `request`, or `transient`. Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
+Provider objects are validated at registration time: every object provider must include a string, symbol, or constructable class `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). Alias providers require the same valid token forms for `useExisting`. For class providers, an omitted or `undefined` `inject` value falls back to the `useClass` `@Inject(...)` metadata; any other explicit `inject` value must be an array containing valid tokens or well-formed `ForwardRef.create(...)` / `Optional.create(...)` wrappers. Value providers must omit `inject`; declaring it as an own property is rejected even when its value is `undefined`. Explicit `scope` values must be `singleton`, `request`, or `transient`. Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
 
 ## NestJS Scope and Optional Dependency Migration
 
@@ -184,16 +184,16 @@ NestJS `@Injectable({ scope: Scope.REQUEST })` and `@Injectable({ scope: Scope.T
 
 fluo does not implement NestJS scope bubbling. Resolve request-scoped providers from a `createRequestScope()` child container: root resolution throws `RequestScopeResolutionError`, and a singleton that depends on a request-scoped provider throws `ScopeMismatchError`.
 
-NestJS `@Optional()` maps to `optional(Token)` in a class-level `@Inject(...)` list or a provider `inject` array. `optional(...)` is a token wrapper, not a decorator, and a missing registration resolves to `undefined`.
+NestJS `@Optional()` maps to `Optional.create(Token)` in a class-level `@Inject(...)` list or a provider `inject` array. `Optional.create(...)` is a token wrapper, not a decorator, and a missing registration resolves to `undefined`.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
-import { optional } from '@fluojs/di';
+import { Optional } from '@fluojs/di';
 
 class AuditLogger {}
 
 @Scope('request')
-@Inject(optional(AuditLogger))
+@Inject(Optional.create(AuditLogger))
 class RequestAuditService {
   constructor(private readonly auditLogger: AuditLogger | undefined) {}
 }
@@ -203,13 +203,13 @@ class RequestAuditService {
 
 The container automatically detects circular dependencies and throws a `CircularDependencyError` to prevent infinite loops. This includes direct (A→A), two-node (A→B→A), and deep (A→B→C→A) cycles.
 
-Use `forwardRef()` when a token is referenced before its declaration. It defers token lookup for declaration-order issues, but it does not make true constructor cycles resolvable; those cycles are still rejected with `CircularDependencyError`.
+Use `ForwardRef.create()` when a token is referenced before its declaration. It defers token lookup for declaration-order issues, but it does not make true constructor cycles resolvable; those cycles are still rejected with `CircularDependencyError`.
 
 ```typescript
-import { forwardRef } from '@fluojs/di';
+import { ForwardRef } from '@fluojs/di';
 import { Inject } from '@fluojs/core';
 
-@Inject(forwardRef(() => ServiceB))
+@Inject(ForwardRef.create(() => ServiceB))
 class ServiceA {
   constructor(private readonly serviceB: ServiceB) {}
 }
@@ -221,13 +221,13 @@ class ServiceB {
 }
 ```
 
-`forwardRef(...)` and `optional(...)` are token wrappers used inside the class-level `@Inject(...)` token list or provider-level `inject` arrays. They are not decorators and do not attach to constructor parameters.
+`ForwardRef.create(...)` and `Optional.create(...)` are token wrappers used inside the class-level `@Inject(...)` token list or provider-level `inject` arrays. They are not decorators and do not attach to constructor parameters.
 
 ```typescript
-import { optional } from '@fluojs/di';
+import { Optional } from '@fluojs/di';
 import { Inject } from '@fluojs/core';
 
-@Inject(optional(AuditLogger))
+@Inject(Optional.create(AuditLogger))
 class ServiceWithOptionalLogger {
   constructor(private readonly auditLogger: AuditLogger | undefined) {}
 }
@@ -284,12 +284,21 @@ contribution indexes are not part of the root `Container` API.
 ## Troubleshooting
 
 ### CircularDependencyError
-Thrown when the container detects a cycle in the dependency graph. Check your constructor injections and remove the cycle by extracting shared state, introducing a mediator, or changing the lifetime boundary. `forwardRef()` only defers token lookup for declaration-order issues; it does not break true constructor cycles.
+Thrown when the container detects a cycle in the dependency graph. Check your constructor injections and remove the cycle by extracting shared state, introducing a mediator, or changing the lifetime boundary. `ForwardRef.create()` only defers token lookup for declaration-order issues; it does not break true constructor cycles.
 
 ### Token Not Found
 Ensure all required providers are registered in the container. If you use `createRequestScope()`, the child container can resolve tokens from the parent, but not vice versa.
 
 ## Public API
+
+`ForwardRef.create(fn)` and `Optional.create(token)` own wrapper creation and return
+frozen plain records, preserving resolver and token identity without resolving them.
+Metadata and provider registration still snapshot wrapper records. Both Core and DI
+export the shared `ForwardRefToken<T>` and `OptionalInjectToken<T>` types.
+The removed creation functions, runtime scope namespace, and old wrapper type names
+have no compatibility aliases. Follow the
+[Core and DI migration guide](../../docs/getting-started/migrate-core-di-declarations.md).
+`Optional.create` is a DI token factory, not the unrelated HTTP `Optional` field decorator.
 
 | Surface | Kind | Description |
 |---|---|---|
@@ -302,13 +311,13 @@ Ensure all required providers are registered in the container. If you use `creat
 | `container.has(token)` | `Container` instance method | Checks if a token is registered in the container or its parents. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 | `container.dispose()` | `Container` instance method | Disposes request children before parent/root caches, shares an active attempt, and retries only failed `onDestroy()` hooks on a later explicit call. |
-| `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
-| `isForwardRef(value)` | Type guard for values produced by `forwardRef(...)`; useful when integrating custom provider tooling with DI token wrappers. |
-| `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
-| `isOptionalToken(value)` | Type guard for values produced by `optional(...)`; useful when inspecting provider-level `inject` arrays. |
-| `Scope` | Exposes `DEFAULT`, `REQUEST`, and `TRANSIENT` scope constants. |
+| `ForwardRef.create(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
+| `isForwardRef(value)` | Type guard for values produced by `ForwardRef.create(...)`; useful when integrating custom provider tooling with DI token wrappers. |
+| `Optional.create(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
+| `isOptionalToken(value)` | Type guard for values produced by `Optional.create(...)`; useful when inspecting provider-level `inject` arrays. |
+| `Scope` | Type-only union of `'singleton'`, `'request'`, and `'transient'`. Import the decorator from `@fluojs/core`. |
 | Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, and `ExistingProvider` describe the public registration shapes accepted by `register(...)` and `override(...)`. |
-| Token wrapper types | `ForwardRefFn` and `OptionalToken` describe the wrapper values returned by `forwardRef(...)` and `optional(...)`. |
+| Token wrapper types | `ForwardRefToken` and `OptionalInjectToken` describe the wrapper values returned by `ForwardRef.create(...)` and `Optional.create(...)`. |
 | Container helper types | `ClassType`, `Disposable`, and `RequestScopeContainer` support typed provider declarations, teardown hooks, and request-scope helper boundaries. |
 | Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, and `ContainerFactoryResolutionState` describe the read-only graph/cache views and controlled cache adoption helpers returned by `inspectResolutionState()`. |
 | `FactoryResolutionKind` | Root export | Classifies whether a factory provider returned synchronously (`sync`) or through a promise (`async`) for container diagnostics and introspection. |

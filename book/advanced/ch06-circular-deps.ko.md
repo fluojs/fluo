@@ -9,11 +9,11 @@
 > [이 권의 주제별 목차](./toc.ko.md) · [Book 허브](../README.ko.md)
 
 <!-- fluo:docs-navigation:end -->
-이 장은 Fluo 컨테이너가 순환 의존성을 어떻게 탐지하고, 어떤 경우에 `forwardRef()`가 도움이 되며, 어떤 경우에는 구조를 다시 나눠야 하는지를 다룹니다. Chapter 5에서 scope와 캐시 정책을 정리했다면, 이제 DI 그래프가 깨지는 지점을 읽고 복구하는 규칙을 배웁니다.
+이 장은 Fluo 컨테이너가 순환 의존성을 어떻게 탐지하고, 어떤 경우에 `ForwardRef.create()`가 도움이 되며, 어떤 경우에는 구조를 다시 나눠야 하는지를 다룹니다. Chapter 5에서 scope와 캐시 정책을 정리했다면, 이제 DI 그래프가 깨지는 지점을 읽고 복구하는 규칙을 배웁니다.
 
 ## Learning Objectives
 - active token 집합과 readable chain으로 순환 의존성을 감지하는 방식을 이해합니다.
-- `forwardRef()`가 해결하는 문제와 해결하지 못하는 문제를 구분합니다.
+- `ForwardRef.create()`가 해결하는 문제와 해결하지 못하는 문제를 구분합니다.
 - alias chain과 scope validation에서도 cycle이 드러나는 이유를 설명합니다.
 - provider cycle과 module import cycle이 서로 다른 실패 단계임을 정리합니다.
 - 실제 코드베이스에서 순환을 끊는 리팩터링 전략을 도출합니다.
@@ -47,7 +47,7 @@ async resolve<T>(token: Token<T>): Promise<T> {
 
 이 발췌에서 중요한 부분은 마지막 줄입니다. 루트 호출은 이전 방문 기록을 들고 시작하지 않고, 현재 resolve 작업 안에서만 유효한 active 상태를 새로 만듭니다.
 
-실제 detector는 `path:packages/di/src/container.ts:457-475`의 `resolveForwardRefCircularDependency()`입니다. 이름과 달리 ordinary cycle과 `forwardRef()` 이후에 만난 cycle을 모두 처리합니다. 핵심 질문은 단 하나입니다. "이 token이 현재 construction chain 안에서 이미 active한가?"
+실제 detector는 `path:packages/di/src/container.ts:457-475`의 `resolveForwardRefCircularDependency()`입니다. 이름과 달리 ordinary cycle과 `ForwardRef.create()` 이후에 만난 cycle을 모두 처리합니다. 핵심 질문은 단 하나입니다. "이 token이 현재 construction chain 안에서 이미 active한가?"
 
 그 질문은 `resolveWithChain()`의 첫 줄에서 실행되고, active가 아니면 등록된 provider 해석으로 넘어갑니다.
 
@@ -96,7 +96,7 @@ private resolveForwardRefCircularDependency(
 }
 ```
 
-이 코드는 `forwardRef()`를 특별한 성공 경로로 취급하지 않습니다. 이미 active한 token이면 실패하고, forward-ref edge였을 때만 실패 이유를 더 정확하게 설명합니다.
+이 코드는 `ForwardRef.create()`를 특별한 성공 경로로 취급하지 않습니다. 이미 active한 token이면 실패하고, forward-ref edge였을 때만 실패 이유를 더 정확하게 설명합니다.
 
 chain과 active set은 `path:packages/di/src/container.ts:582-597`의 `withTokenInChain()`이 관리합니다. 이 helper는 token을 배열과 집합에 넣고, 중첩 resolution을 수행한 뒤, `finally`에서 둘 다 제거합니다. 이 구조가 바로 Fluo 에러 메시지 품질의 핵심 알고리즘 패턴입니다.
 
@@ -185,20 +185,24 @@ expect(root.left.shared).toBe(root.right.shared);
 constructor DI에 필요한 엄격함은 바로 이 정도입니다. 공유 dependency를 여러 경로에서 재사용하는 것은 괜찮습니다. 끝나지 않은 constructor chain 안으로 재진입하는 것은 안 됩니다.
 
 ## 6.2 What forwardRef actually solves and what it does not
-circular dependency에서 가장 흔한 오해는 `forwardRef()`가 cycle 자체를 해결해 준다고 믿는 것입니다. Fluo에서 `forwardRef()`는 더 좁고 정직한 역할만 수행합니다. token lookup을 resolution 시점까지 지연할 뿐입니다. lazy object를 만들어 주지도 않고, 서로가 서로를 기다리는 constructor 완료를 가능하게 해 주지도 않습니다.
+circular dependency에서 가장 흔한 오해는 `ForwardRef.create()`가 cycle 자체를 해결해 준다고 믿는 것입니다. Fluo에서 `ForwardRef.create()`는 더 좁고 정직한 역할만 수행합니다. token lookup을 resolution 시점까지 지연할 뿐입니다. lazy object를 만들어 주지도 않고, 서로가 서로를 기다리는 constructor 완료를 가능하게 해 주지도 않습니다.
 
-wrapper는 `path:packages/di/src/types.ts:123-149`에 선언되어 있습니다. `forwardRef(fn)`은 `__forwardRef__`와 `forwardRef()` callback을 가진 객체를 반환합니다. 그 안에 숨겨진 다른 메커니즘은 없습니다.
+wrapper는 `path:packages/di/src/types.ts:123-149`에 선언되어 있습니다. `ForwardRef.create(fn)`은 `__forwardRef__`와 `forwardRef()` callback을 가진 객체를 반환합니다. 그 안에 숨겨진 다른 메커니즘은 없습니다.
 
 `path:packages/di/src/types.ts:73-149`
 ```typescript
-export type ForwardRefFn<T = unknown> = { __forwardRef__: true; forwardRef: () => Token<T> };
+import type { ForwardRefToken, Token } from '@fluojs/core';
 
-export function forwardRef<T = unknown>(fn: () => Token<T>): ForwardRefFn<T> {
-  return { __forwardRef__: true, forwardRef: fn };
+export class ForwardRef {
+  private constructor() {}
+
+  static create<T = unknown>(fn: () => Token<T>): ForwardRefToken<T> {
+    return Object.freeze<ForwardRefToken<T>>({ __forwardRef__: true, forwardRef: fn });
+  }
 }
 
-export function isForwardRef(value: unknown): value is ForwardRefFn {
-  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefFn).__forwardRef__ === true;
+export function isForwardRef(value: unknown): value is ForwardRefToken {
+  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefToken).__forwardRef__ === true;
 }
 ```
 
@@ -209,7 +213,7 @@ resolution은 이 wrapper를 오직 한 곳에서만 특별 취급합니다. `pa
 `path:packages/di/src/container.ts:558-579`
 ```typescript
 private async resolveDepToken(
-  depEntry: Token | ForwardRefFn | OptionalToken,
+  depEntry: Token | ForwardRefToken | OptionalInjectToken,
   chain: Token[],
   activeTokens: Set<Token>,
 ): Promise<unknown> {
@@ -237,12 +241,12 @@ private async resolveDepToken(
 
 왜 이것이 중요한가? 나중에 resolved token이 이미 active하다는 사실이 드러나면, `resolveForwardRefCircularDependency()`가 `path:packages/di/src/container.ts:467-471`의 더 정확한 메시지를 낼 수 있기 때문입니다. Fluo는 declaration-time lookup 문제와 construction-time cycle 문제를 분리해서 말하고 있습니다.
 
-테스트는 두 측면을 모두 잡아 냅니다. `path:packages/di/src/container.test.ts:299-318`은 `forwardRef(() => ServiceB)`가 성공하는 사례를 보여 줍니다. Service A가 Service B를 lazy하게 가리키지만, Service B는 constructor 동안 Service A를 다시 요구하지 않습니다.
+테스트는 두 측면을 모두 잡아 냅니다. `path:packages/di/src/container.test.ts:299-318`은 `ForwardRef.create(() => ServiceB)`가 성공하는 사례를 보여 줍니다. Service A가 Service B를 lazy하게 가리키지만, Service B는 constructor 동안 Service A를 다시 요구하지 않습니다.
 
 `path:packages/di/src/container.test.ts:299-318`
 ```typescript
 const container = new Container().register(
-  { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
+  { provide: ServiceA, useClass: ServiceA, inject: [ForwardRef.create(() => ServiceB)] },
   { provide: ServiceB, useClass: ServiceB, inject: [] },
 );
 
@@ -255,7 +259,7 @@ expect(a.b.value).toBe('b');
 
 성공 조건은 `ServiceB`가 `ServiceA`를 다시 요구하지 않는다는 데 있습니다. 이 테스트가 증명하는 것은 declaration-time token deferral이지, 서로 맞물린 생성자 완료가 아닙니다.
 
-실패 사례도 그만큼 중요합니다. `path:packages/di/src/container.test.ts:320-336`은 양쪽을 모두 `forwardRef()`로 감싸도 여전히 `CircularDependencyError`가 나야 한다고 검증합니다. 그리고 테스트는 `/forwardRef only defers token lookup/i`라는 메시지 조각까지 확인합니다. 이것이 바로 프레임워크가 전달하려는 교훈입니다.
+실패 사례도 그만큼 중요합니다. `path:packages/di/src/container.test.ts:320-336`은 양쪽을 모두 `ForwardRef.create()`로 감싸도 여전히 `CircularDependencyError`가 나야 한다고 검증합니다. 그리고 테스트는 `/forwardRef only defers token lookup/i`라는 메시지 조각까지 확인합니다. 이것이 바로 프레임워크가 전달하려는 교훈입니다.
 
 `path:packages/di/src/container.test.ts:320-336`
 ```typescript
@@ -268,22 +272,22 @@ class ServiceB {
 }
 
 const container = new Container().register(
-  { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
-  { provide: ServiceB, useClass: ServiceB, inject: [forwardRef(() => ServiceA)] },
+  { provide: ServiceA, useClass: ServiceA, inject: [ForwardRef.create(() => ServiceB)] },
+  { provide: ServiceB, useClass: ServiceB, inject: [ForwardRef.create(() => ServiceA)] },
 );
 
 await expect(container.resolve(ServiceA)).rejects.toThrow(CircularDependencyError);
 await expect(container.resolve(ServiceA)).rejects.toThrow(/forwardRef only defers token lookup/i);
 ```
 
-두 번째 assertion은 문서의 핵심 문장을 테스트 계약으로 고정합니다. `forwardRef()`는 lookup 시점만 늦추며, true circular construction은 여전히 거부됩니다.
+두 번째 assertion은 문서의 핵심 문장을 테스트 계약으로 고정합니다. `ForwardRef.create()`는 lookup 시점만 늦추며, true circular construction은 여전히 거부됩니다.
 
-실무 규칙은 간단합니다. 문제가 declaration order라면 `forwardRef()`를 사용하십시오. 두 constructor가 실제로 서로를 필요로 하는 설계라면, `forwardRef()`는 에러 시점을 늦출 뿐 해결책이 아닙니다.
+실무 규칙은 간단합니다. 문제가 declaration order라면 `ForwardRef.create()`를 사용하십시오. 두 constructor가 실제로 서로를 필요로 하는 설계라면, `ForwardRef.create()`는 에러 시점을 늦출 뿐 해결책이 아닙니다.
 
-`forwardRef()` 알고리즘은 이렇게 적을 수 있습니다.
+`ForwardRef.create()` 알고리즘은 이렇게 적을 수 있습니다.
 
 ```text
-if dependency entry is forwardRef(factory):
+if dependency entry is ForwardRef.create(factory):
   token = factory()
   resolve token with allowForwardRef=true
   if token is already active:
@@ -304,7 +308,7 @@ scope validation은 dependency entry를 실제 provider까지 따라가므로 al
 `path:packages/di/src/container.ts:827-847`
 ```typescript
 private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-  if (provider.scope !== Scope.DEFAULT) {
+  if (provider.scope !== 'singleton') {
     return;
   }
 
@@ -503,7 +507,7 @@ module cycle question:
   can the runtime topologically order imported modules without revisiting a module currently being compiled?
 ```
 
-Fluo가 둘을 분리하는 이유는 recovery strategy도 다르기 때문입니다. provider cycle은 constructor responsibility를 재설계하거나, 정말 declaration ordering만 문제라면 `forwardRef()`로 해결할 수 있습니다. 반면 module cycle은 구조 문제이므로 보통 shared module로 export를 이동해야 합니다.
+Fluo가 둘을 분리하는 이유는 recovery strategy도 다르기 때문입니다. provider cycle은 constructor responsibility를 재설계하거나, 정말 declaration ordering만 문제라면 `ForwardRef.create()`로 해결할 수 있습니다. 반면 module cycle은 구조 문제이므로 보통 shared module로 export를 이동해야 합니다.
 
 이 분리는 아키텍처 성숙도의 신호입니다. 프레임워크는 모든 그래프 에러를 하나의 generic "dependency cycle" 버킷으로 뭉개지 않습니다. 어느 그래프가 깨졌는지 구체적으로 알려 줍니다.
 
@@ -517,7 +521,7 @@ Fluo가 둘을 분리하는 이유는 recovery strategy도 다르기 때문입�
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. forwardRef() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. ForwardRef.create() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +
@@ -529,11 +533,11 @@ export class CircularDependencyError extends FluoCodeError {
 }
 ```
 
-에러 메시지는 두 정보를 함께 줍니다. 하나는 실제 chain이고, 다른 하나는 cycle을 끊는 지원되는 방법입니다. shared logic을 추출하거나 mediator를 도입하거나 interaction을 더 늦은 boundary로 옮겨야 합니다. `forwardRef()`는 declaration-order token lookup에만 도움이 되며 cycle을 해결할 수 없습니다.
+에러 메시지는 두 정보를 함께 줍니다. 하나는 실제 chain이고, 다른 하나는 cycle을 끊는 지원되는 방법입니다. shared logic을 추출하거나 mediator를 도입하거나 interaction을 더 늦은 boundary로 옮겨야 합니다. `ForwardRef.create()`는 declaration-order token lookup에만 도움이 되며 cycle을 해결할 수 없습니다.
 
 두 번째 패턴은 constructor-time dependency를 더 늦은 interaction boundary로 바꾸는 것입니다. 예를 들어 한 서비스가 다른 서비스를 직접 들고 있기보다, event를 발행하거나 callback을 받는 구조로 바꿀 수 있습니다. Fluo 컨테이너는 partially initialized object graph를 허용하지 않기 때문에, 자연스럽게 이런 분리를 유도합니다.
 
-세 번째 패턴은 declaration order만 진짜 문제일 때에만 `forwardRef()`를 사용하는 것입니다. 두 파일이 서로를 참조하지만, 실제 construction 동안 한쪽만 상대를 필요로 한다면 `forwardRef()`가 적절합니다. 반대로 두 constructor가 즉시 서로를 필요로 한다면, 그것은 에러 시점만 늦출 뿐입니다.
+세 번째 패턴은 declaration order만 진짜 문제일 때에만 `ForwardRef.create()`를 사용하는 것입니다. 두 파일이 서로를 참조하지만, 실제 construction 동안 한쪽만 상대를 필요로 한다면 `ForwardRef.create()`가 적절합니다. 반대로 두 constructor가 즉시 서로를 필요로 한다면, 그것은 에러 시점만 늦출 뿐입니다.
 
 module cycle에 대해서는 runtime hint가 대응되는 구조적 수정을 제안합니다. `path:packages/runtime/src/module-graph.ts:200-208`의 메시지처럼, 공유 provider를 제3의 모듈로 옮기고, 그 모듈에서 export한 뒤, 원래 두 모듈이 서로 대신 그 shared module을 import하게 만드십시오.
 
@@ -542,11 +546,11 @@ module cycle에 대해서는 runtime hint가 대응되는 구조적 수정을 �
 ```text
 if cycle is in provider resolution:
   check whether one edge is only declaration-order sensitive
-  if yes, consider forwardRef()
+  if yes, consider ForwardRef.create()
   if no, extract shared logic or move interaction to runtime/event boundary
 
 if cycle is in module imports:
-  do not use forwardRef()
+  do not use ForwardRef.create()
   move shared exports into a third module
   let both original modules import the shared module instead
 ```

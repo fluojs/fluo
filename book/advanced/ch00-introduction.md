@@ -97,20 +97,16 @@ Keep the fluo repository open in your IDE while you read. The text and the code 
 
 This is not an introductory book. We assume you are comfortable with the following knowledge.
 
--   **TypeScript mastery**: You should understand advanced types, generics, and the subtleties of `tsconfig.json` settings. As seen in `path:packages/core/src/decorators.ts:11`, we use utility types such as `TupleOnly<T>` to enforce strict variadic constraints.
+-   **TypeScript mastery**: You should understand advanced types, generics, and the subtleties of `tsconfig.json` settings. Understand the variadic `InjectionToken` list in `packages/core/src/decorators.ts` and the wrapper union in `packages/core/src/types.ts`.
 
-`TupleOnly<T>` appears only in the type declaration, but the actual `@Inject()` API combines that constraint with runtime normalization.
+`@Inject()` accepts only variadic tokens; spread an existing list. The typechecker and runtime boundary reject nested arrays.
 
 `path:packages/core/src/decorators.ts:53-76`
 ```typescript
-export function Inject<const TTokens extends readonly Token[]>(
-  ...tokens: TupleOnly<TTokens>
-): StandardClassDecoratorFn;
-export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });
@@ -118,7 +114,7 @@ export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecora
 }
 ```
 
-This excerpt lets advanced readers see the type-level constraint and the actual stored shape together. The shorter reference `path:packages/core/src/decorators.ts:11` is reinforced by how `TupleOnly<TTokens>` is used in the overload above.
+This excerpt lets advanced readers see the type-level constraint and the actual stored shape together. An empty list clears inherited tokens; inner token and resolver identities are preserved.
 
 -   **fluo fundamentals**: Start with the current tutorial or equivalent experience. Understand Modules, services, and Controllers, then check the background needed for your chosen internal topic.
 -   **JavaScript internals**: Basic knowledge of the event loop, Promises, and how classes work internally in JS will help a great deal.
@@ -187,7 +183,7 @@ A Circular Dependency message is not just a string. It is a Behavioral Contract 
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the cycle by extracting shared logic into a separate provider, or use forwardRef() to defer one side of the dependency.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. ForwardRef.create() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +
@@ -304,21 +300,16 @@ To understand the internals deeply, we examine several key areas of the monorepo
 ### 1. The Core Infrastructure (`packages/core`)
 This is where the Standard Decorators live. We analyze `path:packages/core/src/decorators.ts:19-89` and `path:packages/core/src/metadata/` to see how fluo builds a high-performance metadata registry with `WeakMap` and `Symbol.metadata`. We pay special attention to `path:packages/core/src/metadata/class-di.ts:33-83`, where the core DI metadata logic lives.
 
-Most visibly, `@Module()` and `@Global()` preserve the shape of standard class decorators while converging on the same metadata writer.
+Most visibly, `@Module()` and `@Module({ global: true })` preserve the shape of standard class decorators while converging on the same metadata writer.
 
 `path:packages/core/src/decorators.ts:19-33`
 ```typescript
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };
 }
 
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
 ```
 
 This small facade shows the connection between the public Decorator API and the internal metadata store. The remaining metadata directory references stay citation-only in this introduction, and each detailed chapter extracts only the implementation it needs.
@@ -337,7 +328,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
     return {
       inject: (metadata?.inject ?? []).map(normalizeInjectToken),
       provide: provider,
-      scope: metadata?.scope ?? Scope.DEFAULT,
+      scope: metadata?.scope ?? 'singleton',
       type: 'class',
       useClass: provider,
     };

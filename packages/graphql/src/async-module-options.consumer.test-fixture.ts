@@ -1,4 +1,4 @@
-import { type OptionalToken, optional } from '@fluojs/di';
+import { Optional, type OptionalInjectToken } from '@fluojs/di';
 import { type GraphqlAsyncModuleOptions, GraphqlModule } from '@fluojs/graphql';
 
 class GraphqlSettings {
@@ -15,10 +15,10 @@ const asyncOptions = {
 void GraphqlModule.forRootAsync(asyncOptions);
 
 const optionalAsyncOptions = {
-  inject: [optional(GraphqlSettings)],
+  inject: [Optional.create(GraphqlSettings)],
   useFactory: async (settings) => ({
     graphiql: settings?.graphiql ?? false,
   }),
-} satisfies GraphqlAsyncModuleOptions<[OptionalToken<GraphqlSettings>]>;
+} satisfies GraphqlAsyncModuleOptions<[OptionalInjectToken<GraphqlSettings>]>;
 
 void GraphqlModule.forRootAsync(optionalAsyncOptions);

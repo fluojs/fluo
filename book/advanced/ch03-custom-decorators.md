@@ -31,20 +31,15 @@ Fluo's public Decorators are built with the same shape. The external API is a sm
 
 `path:packages/core/src/decorators.ts:19-33`
 ```typescript
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };
 }
 
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
 ```
 
-The important point in this excerpt is that the Decorator doesn't directly manipulate a separate global registry. `@Module()` and `@Global()` preserve the standard Decorator signature while delegating the real state change to metadata helpers.
+The important point in this excerpt is that the Decorator doesn't directly manipulate a separate global registry. `@Module()` and `@Module({ global: true })` preserve the standard Decorator signature while delegating the real state change to metadata helpers.
 
 Unlike legacy decorators, standard Decorators are not just functions that receive a target. They are highly structured transformers. For example, a standard Decorator for a class has the signature `(value: Function, context: ClassDecoratorContext) => void | Function`. This structure lets you not only observe a class, but also replace it entirely or register initialization routines that run when the class is defined.
 
@@ -99,10 +94,10 @@ The key point in this chapter is not the name `@CurrentUser()` itself, but the s
 
 `path:packages/core/src/decorators.ts:69-76`
 ```typescript
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });

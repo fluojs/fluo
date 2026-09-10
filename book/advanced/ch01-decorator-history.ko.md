@@ -142,22 +142,12 @@ Fluo에서 우리는 이러한 타입 안전성 기능을 활용하여 견고한
 
 `path:packages/core/src/decorators.ts:19-23`
 ```typescript
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };
 }
 
-/**
- * Marks the decorated module as global so its exported providers are visible without explicit imports.
- *
- * @returns A standard class decorator that marks the target module as globally visible.
- */
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
 ```
 
 여기서 중요한 점은 descriptor나 prototype 변형이 아니라, 표준 클래스 데코레이터가 받은 `target`에 좁은 메타데이터를 기록한다는 사실입니다. 그래서 타입 안전성 설명은 문법 차이 소개에 머물지 않고, Fluo의 공개 API가 표준 데코레이터 계약을 런타임 저장 규칙으로 이어 붙인다는 구현 근거를 갖습니다.
@@ -171,29 +161,24 @@ class Service {
   constructor(private repo: Repo) {}
 }
 ```
-컴파일러는 생성자에 대해 `design:paramtypes`를 자동으로 방출합니다. Fluo(표준)의 경우, 공개 `@Inject` API는 토큰 목록을 먼저 정규화한 뒤 클래스 DI 메타데이터로 기록합니다.
+컴파일러는 생성자에 대해 `design:paramtypes`를 자동으로 방출합니다. Fluo(표준)의 경우, 공개 `@Inject` API는 variadic 토큰 목록을 클래스 DI 메타데이터로 기록하고 중첩 배열을 거부합니다.
 
 `path:packages/core/src/decorators.ts:46-77`
 ```typescript
-export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
-/**
- * Defines explicit constructor injection tokens for the decorated class.
- *
- * @param tokensOrList Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
- * @returns A standard class decorator that stores explicit injection metadata on the target class.
- */
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });
   };
 }
+
+
 ```
 
-Fluo는 레거시 프레임워크의 암묵적인 타입 기반 주입보다 명시성(`@Inject(Repo)`)을 우선시하여, 의존성 연결이 항상 가시적이고 감사 가능하도록 보장합니다. 이 발췌에서 보듯 배열 형태는 마이그레이션 가장자리에서만 정규화되고, 최종 기록은 언제나 개발자가 넘긴 토큰 배열입니다. 이러한 명시성은 레거시 타입 방출이 자주 실패하는 인터페이스와 추상 클래스에서도 Fluo가 일관되게 작동한다는 뜻입니다.
+Fluo는 레거시 프레임워크의 암묵적인 타입 기반 주입보다 명시성(`@Inject(Repo)`)을 우선시하여, 의존성 연결이 항상 가시적이고 감사 가능하도록 보장합니다. 기존 배열은 `@Inject(...tokens)`로 spread하며, 최종 기록은 전달한 토큰의 snapshot입니다. 빈 `@Inject()`는 상속 토큰을 명시적으로 지웁니다. 이러한 명시성은 레거시 타입 방출이 자주 실패하는 인터페이스와 추상 클래스에서도 Fluo가 일관되게 작동한다는 뜻입니다.
 
 명시적인 토큰을 요구함으로써 Fluo는 타입 기반 주입과 관련된 일반적인 "순환 의존성" 함정도 피합니다. 레거시 프레임워크에서 두 클래스가 서로의 타입에 의존하는 경우 컴파일러는 종종 메타데이터 값으로 `undefined`를 방출하며, 이는 추적하기 어려운 런타임 오류로 이어집니다. Fluo에서는 토큰이 명시적이므로 프레임워크가 이러한 상황을 훨씬 더 우아하게 감지하고 처리할 수 있습니다.
 
@@ -278,7 +263,7 @@ class ModernService {
 
 다음 챕터에서는 메타데이터 시스템 자체를 더 자세히 살펴보며, Fluo가 고성능의 타입 안전한 구성 엔진을 구축하기 위해 심볼과 Reflect를 어떻게 사용하는지 알아볼 것입니다. 여기서 논의한 명시성과 표준화의 원칙들이 프레임워크의 가장 미세한 수준에서 어떻게 적용되는지 보게 될 것입니다. 기대해 주십시오.
 
-이 미래 지향적 주장에는 실제 구현 근거가 있습니다. 공개 표면인 `path:packages/core/src/decorators.ts:19-89`는 의도적으로 매우 작고, `@Module`, `@Global`, `@Inject`, `@Scope`만 제공합니다. 레거시 descriptor 스타일 데코레이터를 위한 호환성 셰임도 없고 `design:paramtypes`를 읽는 분기도 없으므로, 이 절제 자체가 아키텍처 선택의 핵심입니다. 특히 위 `@Inject` 발췌와 `path:packages/core/src/decorators.ts:46-77`의 오버로드를 천천히 읽어보면 Fluo의 태도가 더 분명해집니다. Fluo는 정석인 variadic 호출을 우선하고, 마이그레이션 기간 동안만 배열 형태를 정규화한 뒤, 최종적으로는 `path:packages/core/src/metadata/class-di.ts:33-38`에 정의된 `defineClassDiMetadata`를 통해 명시적 생성자 토큰만 기록합니다. 즉, 마이그레이션 친화성은 API 가장자리에만 남겨두고 실제 런타임 계약은 이미 standard-first와 explicit-first로 고정한 것입니다.
+이 미래 지향적 주장에는 실제 구현 근거가 있습니다. 공개 표면인 `path:packages/core/src/decorators.ts:19-89`는 의도적으로 매우 작고, `@Module`, `@Inject`, `@Scope`만 제공합니다. 레거시 descriptor 스타일 데코레이터를 위한 호환성 셰임도 없고 `design:paramtypes`를 읽는 분기도 없으므로, 이 절제 자체가 아키텍처 선택의 핵심입니다. 위 `@Inject` 구현은 variadic 호출만 받으며 중첩 배열은 거부합니다. 기존 token 목록은 spread하고, `packages/core/src/metadata/class-di.ts`가 frozen snapshot과 상속 override를 보존합니다.
 
 같은 파일은 Fluo가 **의도적으로 만들지 않은 것**도 보여줍니다. 위 발췌의 마지막 반환부와 `path:packages/core/src/decorators.ts:69-77`은 토큰을 복사해 저장할 뿐, 파라미터 타입을 추론하지도 않고 인터페이스를 유추하지도 않으며 컴파일러가 방출한 힌트를 조회하지도 않습니다. 바로 이 생략 덕분에 Fluo는 `tsc`, `swc`, 그리고 앞으로의 네이티브 데코레이터 런타임까지 이식성을 유지합니다. 이를 받치는 메타데이터 계층도 같은 메시지를 줍니다. `path:packages/core/src/metadata/class-di.ts:33-37`은 DI 메타데이터에서 오직 `inject`와 `scope` 두 필드만 병합하며, 이 작은 병합 형상만 봐도 DI 상태가 끝없이 커지는 리플렉션 덤프가 아니라 런타임이 결정론적으로 해석할 수 있는 최소 레코드임을 알 수 있습니다.
 

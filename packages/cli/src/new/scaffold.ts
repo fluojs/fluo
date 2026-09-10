@@ -714,13 +714,13 @@ function createAppFile(options: BootstrapOptions): string {
   const importSuffix = options.runtime === 'deno' ? '.ts' : '';
 
   if (options.runtime === 'cloudflare-workers') {
-    return `import { Global, Module } from '@fluojs/core';
+    return `import { Module } from '@fluojs/core';
 import { HealthModule } from '@fluojs/runtime';
 
 import { GreetingModule } from './greeting/greeting.module';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     GreetingModule,
     HealthModule.forRoot(),
@@ -734,14 +734,14 @@ export class AppModule {}
       ? 'Deno.env.toObject()'
       : 'process.env';
 
-  return `import { Global, Module } from '@fluojs/core';
+  return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 
 import { GreetingModule } from './greeting/greeting.module${importSuffix}';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
@@ -1861,7 +1861,7 @@ Use the unit templates for fast logic checks. Use the mixed verification templat
 }
 
 function createMixedAppFile(): string {
-  return `import { Global, Module } from '@fluojs/core';
+  return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
 import { HealthModule } from '@fluojs/runtime';
@@ -1873,8 +1873,8 @@ const parsedMicroservicePort = Number.parseInt(process.env.MICROSERVICE_PORT ?? 
 const microservicePort = Number.isFinite(parsedMicroservicePort) ? parsedMicroservicePort : 4000;
 const microserviceHost = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
@@ -1910,7 +1910,7 @@ await app.listen();
 function createMixedAppTestFile(): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import {
@@ -1994,8 +1994,8 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 describe('AppModule mixed starter', () => {
   it('keeps HTTP routes and message handlers in one explicit topology contract', async () => {
     const transport = new InMemoryLoopbackTransport();
-    @Global()
     @Module({
+      global: true,
       imports: [
         ConfigModule.forRoot({
           envFile: '.env',

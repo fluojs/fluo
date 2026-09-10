@@ -1,5 +1,5 @@
 import type { Token } from '@fluojs/core';
-import { optional, type Provider } from '@fluojs/di';
+import { Optional, type Provider } from '@fluojs/di';
 
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, waitForIndicatorProbeSettlement, withIndicatorTimeout } from './utils.js';
@@ -212,8 +212,8 @@ export function createPrismaHealthIndicatorProvider(
     ? options.clientToken ?? getPrismaClientToken(options.name)
     : undefined;
   const inject = [
-    ...(serviceToken === undefined ? [] : [optional(serviceToken)]),
-    ...(clientToken === undefined ? [] : [optional(clientToken)]),
+    ...(serviceToken === undefined ? [] : [Optional.create(serviceToken)]),
+    ...(clientToken === undefined ? [] : [Optional.create(clientToken)]),
   ];
 
   return {

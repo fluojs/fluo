@@ -173,9 +173,9 @@ const requestContainer = container.createRequestScope();
 const scopedService = await requestContainer.resolve(RequestScopedService);
 ```
 
-request scope 컨테이너는 부모 체인의 provider를 해석할 수 있지만, request가 소유하는 등록은 새 singleton provider를 만들 수 없습니다. singleton provider는 request scope를 만들기 전에 루트 컨테이너에 등록하세요. request scope에 로컬 provider를 추가해야 한다면 `scope: 'request'`/`Scope.REQUEST`를 명시하거나 `override()`로 의도적인 request-local 교체를 표현하세요. multi provider에도 같은 규칙이 적용됩니다. 기본 scope의 multi provider는 루트 컨테이너에 등록하고, request-local multi provider는 request scope를 명시하거나 `override()`로 교체해야 합니다.
+request scope 컨테이너는 부모 체인의 provider를 해석할 수 있지만, request가 소유하는 등록은 새 singleton provider를 만들 수 없습니다. singleton provider는 request scope를 만들기 전에 루트 컨테이너에 등록하세요. request scope에 로컬 provider를 추가해야 한다면 `scope: 'request'`를 명시하거나 `override()`로 의도적인 request-local 교체를 표현하세요. multi provider에도 같은 규칙이 적용됩니다. 기본 scope의 multi provider는 루트 컨테이너에 등록하고, request-local multi provider는 request scope를 명시하거나 `override()`로 교체해야 합니다.
 
-provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 string, symbol 또는 constructable class `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. alias provider의 `useExisting`에도 동일한 유효 토큰 형태가 필요합니다. class provider에서 `inject`를 생략하거나 `undefined`로 지정하면 `useClass`의 `@Inject(...)` 메타데이터로 fallback하며, 그 밖의 명시적 `inject` 값은 유효한 token 또는 올바른 `forwardRef(...)` / `optional(...)` wrapper로 구성된 배열이어야 합니다. value provider는 `inject`를 생략해야 하며, 값이 `undefined`인 경우에도 자체 속성으로 선언하면 거부됩니다. 명시적인 `scope` 값은 `singleton`, `request`, `transient` 중 하나여야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
+provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 string, symbol 또는 constructable class `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. alias provider의 `useExisting`에도 동일한 유효 토큰 형태가 필요합니다. class provider에서 `inject`를 생략하거나 `undefined`로 지정하면 `useClass`의 `@Inject(...)` 메타데이터로 fallback하며, 그 밖의 명시적 `inject` 값은 유효한 token 또는 올바른 `ForwardRef.create(...)` / `Optional.create(...)` wrapper로 구성된 배열이어야 합니다. value provider는 `inject`를 생략해야 하며, 값이 `undefined`인 경우에도 자체 속성으로 선언하면 거부됩니다. 명시적인 `scope` 값은 `singleton`, `request`, `transient` 중 하나여야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
 
 ## NestJS scope 및 optional 의존성 마이그레이션
 
@@ -183,16 +183,16 @@ NestJS `@Injectable({ scope: Scope.REQUEST })`와 `@Injectable({ scope: Scope.TR
 
 fluo는 NestJS scope bubbling을 구현하지 않습니다. Request-scoped provider는 `createRequestScope()` child container에서 resolve하세요. Root에서 resolve하면 `RequestScopeResolutionError`가 발생하고, request-scoped provider에 의존하는 singleton은 `ScopeMismatchError`를 발생시킵니다.
 
-NestJS `@Optional()`은 클래스 수준 `@Inject(...)` 목록 또는 provider `inject` 배열의 `optional(Token)`으로 매핑합니다. `optional(...)`은 decorator가 아닌 token wrapper이고, 등록이 없으면 `undefined`로 resolve됩니다.
+NestJS `@Optional()`은 클래스 수준 `@Inject(...)` 목록 또는 provider `inject` 배열의 `Optional.create(Token)`으로 매핑합니다. `Optional.create(...)`은 decorator가 아닌 token wrapper이고, 등록이 없으면 `undefined`로 resolve됩니다.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
-import { optional } from '@fluojs/di';
+import { Optional } from '@fluojs/di';
 
 class AuditLogger {}
 
 @Scope('request')
-@Inject(optional(AuditLogger))
+@Inject(Optional.create(AuditLogger))
 class RequestAuditService {
   constructor(private readonly auditLogger: AuditLogger | undefined) {}
 }
@@ -202,13 +202,13 @@ class RequestAuditService {
 
 컨테이너는 순환 의존성을 자동으로 감지하고 `CircularDependencyError`를 발생시켜 무한 루프를 방지합니다. 여기에는 직접 참조(A→A), 이중 노드(A→B→A), 깊은 순환(A→B→C→A)이 모두 포함됩니다.
 
-선언 순서 때문에 아직 정의되지 않은 토큰을 참조해야 한다면 `forwardRef()`를 사용하세요. `forwardRef()`는 선언 순서 문제를 위해 토큰 조회를 지연할 뿐이며, 실제 생성자 순환을 해소하지는 않습니다. 그런 순환은 여전히 `CircularDependencyError`로 거부됩니다.
+선언 순서 때문에 아직 정의되지 않은 토큰을 참조해야 한다면 `ForwardRef.create()`를 사용하세요. `ForwardRef.create()`는 선언 순서 문제를 위해 토큰 조회를 지연할 뿐이며, 실제 생성자 순환을 해소하지는 않습니다. 그런 순환은 여전히 `CircularDependencyError`로 거부됩니다.
 
 ```typescript
-import { forwardRef } from '@fluojs/di';
+import { ForwardRef } from '@fluojs/di';
 import { Inject } from '@fluojs/core';
 
-@Inject(forwardRef(() => ServiceB))
+@Inject(ForwardRef.create(() => ServiceB))
 class ServiceA {
   constructor(private readonly serviceB: ServiceB) {}
 }
@@ -220,13 +220,13 @@ class ServiceB {
 }
 ```
 
-`forwardRef(...)`와 `optional(...)`은 클래스 수준 `@Inject(...)` 토큰 목록이나 provider 수준 `inject` 배열 안에서 쓰는 토큰 래퍼입니다. 이들은 데코레이터가 아니며 constructor parameter에 붙이지 않습니다.
+`ForwardRef.create(...)`와 `Optional.create(...)`은 클래스 수준 `@Inject(...)` 토큰 목록이나 provider 수준 `inject` 배열 안에서 쓰는 토큰 래퍼입니다. 이들은 데코레이터가 아니며 constructor parameter에 붙이지 않습니다.
 
 ```typescript
-import { optional } from '@fluojs/di';
+import { Optional } from '@fluojs/di';
 import { Inject } from '@fluojs/core';
 
-@Inject(optional(AuditLogger))
+@Inject(Optional.create(AuditLogger))
 class ServiceWithOptionalLogger {
   constructor(private readonly auditLogger: AuditLogger | undefined) {}
 }
@@ -283,12 +283,20 @@ contribution index는 root `Container` API에 속하지 않습니다.
 ## 문제 해결
 
 ### CircularDependencyError
-의존성 그래프에서 순환이 감지될 때 발생합니다. 생성자 주입 항목을 확인하고 공유 상태 추출, 중재자 도입, 수명 주기 경계 변경 등으로 순환을 제거하세요. `forwardRef()`는 선언 순서 문제를 위해 토큰 조회만 지연하며, 실제 생성자 순환을 끊지는 않습니다.
+의존성 그래프에서 순환이 감지될 때 발생합니다. 생성자 주입 항목을 확인하고 공유 상태 추출, 중재자 도입, 수명 주기 경계 변경 등으로 순환을 제거하세요. `ForwardRef.create()`는 선언 순서 문제를 위해 토큰 조회만 지연하며, 실제 생성자 순환을 끊지는 않습니다.
 
 ### 토큰을 찾을 수 없음 (Token Not Found)
 필요한 모든 provider가 컨테이너에 등록되어 있는지 확인하세요. `createRequestScope()`를 사용하는 경우 자식 컨테이너는 부모의 토큰을 해석할 수 있지만, 그 반대는 불가능합니다.
 
 ## 공개 API
+
+`ForwardRef.create(fn)`과 `Optional.create(token)`이 wrapper 생성을 소유하며
+resolver와 token을 resolve하지 않고 identity를 보존한 frozen plain record를 반환합니다.
+Metadata와 provider 등록은 계속 wrapper record를 snapshot합니다. Core와 DI는
+공유 타입 `ForwardRefToken<T>`과 `OptionalInjectToken<T>`을 같은 이름으로 export합니다.
+제거된 생성 함수, runtime scope namespace, 이전 wrapper 타입 이름에는 호환 alias가
+없습니다. [Core와 DI migration 가이드](../../docs/getting-started/migrate-core-di-declarations.ko.md)를
+따르세요. `Optional.create`는 DI token factory이며 별개의 HTTP `Optional` field decorator가 아닙니다.
 
 | Surface | 종류 | 설명 |
 |---|---|---|
@@ -301,13 +309,13 @@ contribution index는 root `Container` API에 속하지 않습니다.
 | `container.has(token)` | `Container` instance method | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
 | `container.dispose()` | `Container` instance method | parent/root cache보다 request child를 먼저 정리하고 active 시도를 공유하며, 이후 명시적 호출에서 실패한 `onDestroy()` hook만 재시도합니다. |
-| `forwardRef(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
-| `isForwardRef(value)` | `forwardRef(...)`가 만든 값인지 확인하는 type guard입니다. 커스텀 provider tooling이 DI token wrapper와 통합될 때 사용할 수 있습니다. |
-| `optional(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |
-| `isOptionalToken(value)` | `optional(...)`이 만든 값인지 확인하는 type guard입니다. provider 수준 `inject` 배열을 검사할 때 사용할 수 있습니다. |
-| `Scope` | `DEFAULT`, `REQUEST`, `TRANSIENT` scope 상수를 제공합니다. |
+| `ForwardRef.create(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
+| `isForwardRef(value)` | `ForwardRef.create(...)`가 만든 값인지 확인하는 type guard입니다. 커스텀 provider tooling이 DI token wrapper와 통합될 때 사용할 수 있습니다. |
+| `Optional.create(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |
+| `isOptionalToken(value)` | `Optional.create(...)`이 만든 값인지 확인하는 type guard입니다. provider 수준 `inject` 배열을 검사할 때 사용할 수 있습니다. |
+| `Scope` | `'singleton'`, `'request'`, `'transient'`의 타입 전용 union입니다. Decorator는 `@fluojs/core`에서 import합니다. |
 | Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, `ExistingProvider`는 `register(...)`와 `override(...)`가 받는 공개 registration shape를 설명합니다. |
-| Token wrapper types | `ForwardRefFn`과 `OptionalToken`은 `forwardRef(...)`와 `optional(...)`이 반환하는 wrapper 값을 설명합니다. |
+| Token wrapper types | `ForwardRefToken`과 `OptionalInjectToken`은 `ForwardRef.create(...)`와 `Optional.create(...)`이 반환하는 wrapper 값을 설명합니다. |
 | Container helper types | `ClassType`, `Disposable`, `RequestScopeContainer`는 typed provider 선언, teardown hook, request-scope helper 경계를 지원합니다. |
 | Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, `ContainerFactoryResolutionState`는 `inspectResolutionState()`가 반환하는 read-only graph/cache view와 controlled cache adoption helper를 설명합니다. |
 | `FactoryResolutionKind` | Root export | container 진단과 introspection을 위해 factory provider가 동기적으로 반환했는지(`sync`) 또는 promise를 통해 반환했는지(`async`)를 분류합니다. |

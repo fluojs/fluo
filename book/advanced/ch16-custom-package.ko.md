@@ -49,7 +49,7 @@ fluo에서 가시성(visibility)은 일급 설계 요소입니다. 패키지는 
 ### Dependency Declaration
 
 fluo 패키지는 일반적으로 세 가지 핵심 기둥에 의존합니다.
-- `@fluojs/core`: 메타데이터 중추(`@Module`, `@Global`, `@Inject`)를 제공합니다.
+- `@fluojs/core`: 메타데이터 중추(`@Module`, `@Inject`)를 제공합니다.
 - `@fluojs/di`: 토큰 기반 컨테이너와 프로바이더 모델을 제공합니다.
 - `@fluojs/runtime`: bootstrap API와 함께 class-based programmatic module을 위한 공개 `ModuleType` 및 `defineModule(...)` 경계를 제공합니다.
 
@@ -136,7 +136,7 @@ fluo에서 `@Module`의 `exports` 필드는 단순한 힌트가 아니라 엄격
 1. **로컬 가시성**: 모든 프로바이더는 정의된 모듈 내에서 가시적입니다.
 2. **내보낸 가시성**: 프로바이더는 정의 모듈을 `import`하는 모듈에 대해서만 `exports` 배열에 나열된 경우에 가시적입니다.
 3. **재노출 (Re-exports)**: 모듈은 다른 모듈을 다시 내보낼 수 있습니다. 이를 통해 임포트된 모듈의 내보내기 항목을 "프록시" 모듈을 임포트하는 모든 모듈에서 사용할 수 있게 합니다.
-4. **전역 모듈**: `@Global()` 데코레이터가 지정된 모듈은 명시적인 임포트가 필요 없지만, 그 프로바이더가 전체 애플리케이션 그래프에서 가시적이려면 여전히 내보내기(export)가 필요합니다.
+4. **전역 모듈**: `@Module({ global: true })` 데코레이터가 지정된 모듈은 명시적인 임포트가 필요 없지만, 그 프로바이더가 전체 애플리케이션 그래프에서 가시적이려면 여전히 내보내기(export)가 필요합니다.
 
 ## Practical Example: Feature-Flags Mini-Package
 
@@ -235,9 +235,9 @@ fluo 런타임은 누락된 메타데이터 필드(예: 생략된 경우 `export
 
 ### Handling Circular Dependencies
 
-런타임은 모듈 그래프 컴파일 중 순환 모듈 import를 거부합니다. `imports` 항목을 `forwardRef()`로 감싸지 마세요. 대신 양쪽이 공유하는 프로바이더를 export하는 세 번째 모듈로 옮기고, 각 모듈이 그 공유 모듈을 import하도록 구성하세요. 공유 책임이 한 모듈보다 크다면 별도 패키지로 추출합니다.
+런타임은 모듈 그래프 컴파일 중 순환 모듈 import를 거부합니다. `imports` 항목을 `ForwardRef.create()`로 감싸지 마세요. 대신 양쪽이 공유하는 프로바이더를 export하는 세 번째 모듈로 옮기고, 각 모듈이 그 공유 모듈을 import하도록 구성하세요. 공유 책임이 한 모듈보다 크다면 별도 패키지로 추출합니다.
 
-`forwardRef()`의 DI 역할은 더 좁습니다. 선언 순서 때문에 아직 사용할 수 없는 의존성 토큰 하나를 클래스 수준 `@Inject(...)` 목록이나 프로바이더 `inject` 배열 안에서 감쌀 때만 사용하세요. 이 wrapper는 토큰 조회를 지연할 뿐이며, 모듈 import 순환이나 실제 생성자 순환을 해석 가능하게 만들지 않습니다.
+`ForwardRef.create()`의 DI 역할은 더 좁습니다. 선언 순서 때문에 아직 사용할 수 없는 의존성 토큰 하나를 클래스 수준 `@Inject(...)` 목록이나 프로바이더 `inject` 배열 안에서 감쌀 때만 사용하세요. 이 wrapper는 토큰 조회를 지연할 뿐이며, 모듈 import 순환이나 실제 생성자 순환을 해석 가능하게 만들지 않습니다.
 
 ## Conclusion
 

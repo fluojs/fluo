@@ -125,7 +125,7 @@ class ServiceC {
 
   it('allows class-level @Inject examples', () => {
     const source = `
-@Inject(DepA, optional(DepB))
+@Inject(DepA, Optional.create(DepB))
 class Service {
   constructor(private readonly depA: DepA, private readonly depB: DepB | undefined) {}
 }
@@ -150,8 +150,8 @@ class Service {
 
     expect(englishBeginner).toMatch(/class-level `@Inject\(\.\.\.\)`[^\n]+not a property-injection Decorator/u);
     expect(koreanBeginner).toMatch(/클래스 수준 `@Inject\(\.\.\.\)`[^\n]+속성 주입 데코레이터가 아닙니다/u);
-    expect(englishAdvanced).toMatch(/rejects circular Module imports[^\n]+Do not wrap entries in `imports` with `forwardRef\(\)`/u);
-    expect(koreanAdvanced).toMatch(/순환 모듈 import를 거부[^\n]+`imports` 항목을 `forwardRef\(\)`로 감싸지 마세요/u);
+    expect(englishAdvanced).toMatch(/rejects circular Module imports[^\n]+Do not wrap entries in `imports` with `ForwardRef\.create\(\)`/u);
+    expect(koreanAdvanced).toMatch(/순환 모듈 import를 거부[^\n]+`imports` 항목을 `ForwardRef\.create\(\)`로 감싸지 마세요/u);
     expect(englishMigration).toMatch(/property injection MUST become constructor injection/u);
     expect(englishMigration).toMatch(/Module `forwardRef\(\.\.\.\)` has no fluo equivalent/u);
     expect(koreanMigration).toMatch(/속성 주입은 반드시 생성자 주입으로 바꾼다/u);
@@ -169,7 +169,7 @@ class Service {
       expect(context).toContain("@Scope('transient')");
       expect(context).toContain('createRequestScope()');
       expect(context).toContain('ScopeMismatchError');
-      expect(context).toContain('optional(TOKEN)');
+      expect(context).toContain('Optional.create(TOKEN)');
     }
   });
 });

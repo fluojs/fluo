@@ -134,7 +134,7 @@ fluo는 첫 번째 답을 원합니다.
 클래스 데코레이터는 클래스 전체에 적용됩니다. fluo에서는 가장 눈에 잘 들어오는 프레임워크 개념 중 상당수가 여기에서 시작됩니다.
 
 - `@Module()`
-- `@Global()`
+- `@Module({ global: true })`
 - `@Inject(...)`
 - `@Scope(...)`
 - `@Controller()`
@@ -250,7 +250,7 @@ findAll() {
 
 장을 닫기 전에 fluo가 지원하는 여러 표준 데코레이터를 하나의 클래스에서 어떻게 조합하는지 살펴보겠습니다.
 
-TC39 모델은 여러 종류의 클래스 요소를 표현할 수 있지만, 언어 차원의 기능이 자동으로 프레임워크 API가 되는 것은 아닙니다. 공개 `@fluojs/core` 데코레이터인 `@Module()`, `@Global()`, `@Inject(...)`, `@Scope(...)`는 모두 클래스 수준에서 사용됩니다. fluo는 core 접근자 가로채기 데코레이터나 계약을 제공하지 않습니다.
+TC39 모델은 여러 종류의 클래스 요소를 표현할 수 있지만, 언어 차원의 기능이 자동으로 프레임워크 API가 되는 것은 아닙니다. 공개 `@fluojs/core` 데코레이터인 `@Module()`, `@Module({ global: true })`, `@Inject(...)`, `@Scope(...)`는 모두 클래스 수준에서 사용됩니다. fluo는 core 접근자 가로채기 데코레이터나 계약을 제공하지 않습니다.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';

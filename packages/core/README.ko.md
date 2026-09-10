@@ -34,10 +34,10 @@ npm install @fluojs/core
 모든 fluo 애플리케이션은 `@fluojs/core`가 기록하는 모듈 메타데이터에서 시작합니다.
 
 ```ts
-import { Global, Inject, Module, Scope } from '@fluojs/core';
+import { Inject, Module, Scope } from '@fluojs/core';
 
-@Global()
 @Module({
+  global: true,
   providers: [DatabaseService],
   exports: [DatabaseService],
 })
@@ -60,7 +60,7 @@ class UserService {
 
 ### TC39 데코레이터를 사용하는 표준 데코레이터
 
-fluo는 TC39 표준 데코레이터를 사용하므로 `experimentalDecorators: true`나 `emitDecoratorMetadata: true`에 의존하지 않습니다.
+fluo는 TC39 표준 데코레이터를 사용하므로 `@Module`, `@Inject`, `@Scope`에 `experimentalDecorators: true`나 `emitDecoratorMetadata: true`가 필요하지 않습니다. Global visibility는 별도 decorator가 아닌 `Module` option입니다.
 
 core 메타데이터는 fluo가 소유한 저장소와 TC39 `Symbol.metadata` 통합 지점을 통해 기록되며, `reflect-metadata`나 컴파일러가 생성하는 design type 메타데이터를 사용하지 않습니다. `@fluojs/core`를 import하는 것만으로는 전역 `Symbol.metadata` 폴리필을 설치하지 않습니다. fluo 내장 데코레이터는 framework-owned store를 통해 계속 동작하지만, `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 decorated module이 평가되기 전에 `Symbol.metadata`가 필요합니다.
 
@@ -77,7 +77,7 @@ dynamic import는 의도적인 순서 보장입니다. decorated class를 static
 ### 빈 module metadata
 
 `@Module()`과 `@Module(undefined)`는 `@Module({})`의 축약입니다. Module metadata 등록,
-앞서 선언된 부분 필드와 어느 순서의 `@Global()` 보존, metadata version 갱신은 유지합니다.
+앞서 선언된 부분 필드와 어느 순서의 `@Module({ global: true })` 보존, metadata version 갱신은 유지합니다.
 Decorator가 없는 클래스와는 다릅니다.
 
 ### 명시적인 의존성 메타데이터
@@ -93,13 +93,13 @@ class UsesConfigValue {
 }
 ```
 
-여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. `@Inject([A, B])` 배열 형태도 허용되지만, 새 코드는 variadic 형태를 사용하는 것이 좋습니다. 데코레이션 시점에 아직 사용할 수 없는 토큰은 해당 토큰만 `forwardRef(...)`로 감싸고, 없어도 되는 의존성은 해당 토큰만 `optional(...)`로 감쌉니다. 이 wrapper helper들은 `@fluojs/di`가 제공하는 runtime DI helper입니다. `@fluojs/core`는 `@Inject(...)`가 받는 공유 wrapper 타입만 export합니다.
+여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. 기존 목록은 `@Inject(...tokens)`로 spread합니다. 제거된 `@Inject([A, B])` 형태는 타입 검사에서 거부되고 런타임에서 `TypeError`를 던집니다. `@Inject()`의 상속 토큰 지우기는 유지됩니다. 데코레이션 시점에 아직 사용할 수 없는 토큰은 해당 토큰만 `ForwardRef.create(...)`로 감싸고, 없어도 되는 의존성은 해당 토큰만 `Optional.create(...)`로 감쌉니다. 이 wrapper helper들은 `@fluojs/di`가 제공하는 runtime DI helper입니다. `@fluojs/core`는 `@Inject(...)`가 받는 공유 wrapper 타입만 export합니다.
 
 ```ts
 import { Inject } from '@fluojs/core';
-import { forwardRef, optional } from '@fluojs/di';
+import { ForwardRef, Optional } from '@fluojs/di';
 
-@Inject(forwardRef(() => AuditLogger), optional(CacheClient))
+@Inject(ForwardRef.create(() => AuditLogger), Optional.create(CacheClient))
 class UsesDeferredAndOptionalDeps {}
 ```
 
@@ -202,7 +202,19 @@ Class를 다시 평가하면 이름이 같아도 다른 constructor이며 자동
 
 ## 공개 API
 
-- **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
+Breaking 선언 변경은
+[Core와 DI migration 가이드](../../docs/getting-started/migrate-core-di-declarations.ko.md)를
+따르세요. `Global`은 `Module({ global: true })`로 대체하며 injection은 variadic만
+지원합니다. 기존 token 배열은 spread하고 scope 값은 literal로 지정하세요.
+
+Own과 effective metadata read는 의도적으로 다릅니다. `getOwnClassDiMetadata`는
+클래스 자체 record만 반환하며, `getClassDiMetadata`와 `getInheritedClassDiMetadata`는
+명시적인 빈 inject 목록을 포함해 base-to-leaf override를 적용합니다. Module metadata는
+class-local입니다. Request-pipeline seam의 `getOwnConstructorRequestPipelineMetadataBag`는
+constructor 자체 bag만 읽고 `getRequestPipelineMetadataBag`는 inherited key를 포함합니다.
+이 reader 구분, frozen snapshot, write-version invalidation은 대체 authoring API가 아닙니다.
+
+- **데코레이터**: `Module`, `Inject`, `Scope`
 - **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **메타데이터 런타임**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`

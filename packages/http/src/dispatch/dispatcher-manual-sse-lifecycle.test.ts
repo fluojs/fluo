@@ -1,4 +1,4 @@
-import { Container, Scope } from '@fluojs/di';
+import { Container } from '@fluojs/di';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -207,7 +207,7 @@ function createFixture(options: ManualSseFixtureOptions = {}): ManualSseFixture 
   const root = new Container().register(
     {
       provide: RequestScopedDisposable,
-      scope: Scope.REQUEST,
+      scope: 'request',
       useFactory: () => new RequestScopedDisposable(events),
     },
     ManualSseController,

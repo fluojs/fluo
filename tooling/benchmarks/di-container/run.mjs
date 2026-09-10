@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { writeFile } from 'node:fs/promises';
 
 import { defineClassDiMetadata } from '../../../packages/core/dist/internal.js';
-import { Container, Scope } from '../../../packages/di/dist/index.js';
+import { Container } from '../../../packages/di/dist/index.js';
 
 const DEFAULT_ITERATIONS = 5_000;
 const SMOKE_ITERATIONS = 250;
@@ -95,9 +95,9 @@ function createRequestScopeScenario(mode, iterations) {
     Object.defineProperty(RequestContext, 'name', { value: `${prefix}Context` });
     Object.defineProperty(RequestRepository, 'name', { value: `${prefix}Repository` });
     Object.defineProperty(RequestService, 'name', { value: `${prefix}Service` });
-    defineInject(RequestContext, [], Scope.REQUEST);
-    defineInject(RequestRepository, [RequestContext], Scope.REQUEST);
-    defineInject(RequestService, [RequestRepository], Scope.REQUEST);
+    defineInject(RequestContext, [], 'request');
+    defineInject(RequestRepository, [RequestContext], 'request');
+    defineInject(RequestService, [RequestRepository], 'request');
 
     const container = new Container().register(RequestContext, RequestRepository, RequestService);
 
@@ -194,7 +194,7 @@ function createMultiProviderScenario(mode, iterations) {
 function createTransientScenario(mode, iterations) {
   if (mode === 'cold-plan') {
     const entries = createColdPlanContainers(coldSlotCount(iterations), () => {
-      const chain = createDependencyChain('ColdTransientChain', 8, Scope.TRANSIENT);
+      const chain = createDependencyChain('ColdTransientChain', 8, 'transient');
       const container = new Container().register(...chain.providers);
 
       return { container, token: chain.leaf };
@@ -208,7 +208,7 @@ function createTransientScenario(mode, iterations) {
     };
   }
 
-  const chain = createDependencyChain('WarmTransientChain', 8, Scope.TRANSIENT);
+  const chain = createDependencyChain('WarmTransientChain', 8, 'transient');
   const container = new Container().register(...chain.providers);
 
   return async () => {
