@@ -57,12 +57,13 @@ import { AppModule } from './app.module';
 
 const adapter = CloudflareWorkerHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, {
+  adapter,
   globalPrefix: 'api/v1',
-  cors: true,
+  cors: { origin: '*' },
 });
 await app.listen();
 
-// app.listen()은 서버 소켓 없이 dispatcher를 binding합니다.
+// app.listen() binds the dispatcher without opening a socket.
 
 export default {
   fetch: (request, env, context) => adapter.fetch(request, env, context),

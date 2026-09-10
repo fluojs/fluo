@@ -182,7 +182,7 @@ fixed-module host option으로 전달하세요.
 ```typescript
 const worker = CloudflareWorkerApplicationHost.create(AppModule, {
   globalPrefix: 'api/v1',
-  cors: true,
+  cors: { origin: '*' },
 });
 ```
 

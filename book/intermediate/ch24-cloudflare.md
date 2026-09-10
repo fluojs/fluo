@@ -57,8 +57,9 @@ import { AppModule } from './app.module';
 
 const adapter = CloudflareWorkerHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, {
+  adapter,
   globalPrefix: 'api/v1',
-  cors: true,
+  cors: { origin: '*' },
 });
 await app.listen();
 

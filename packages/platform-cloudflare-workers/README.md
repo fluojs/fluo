@@ -183,7 +183,7 @@ host-owned lazy capability is required.
 ```typescript
 const worker = CloudflareWorkerApplicationHost.create(AppModule, {
   globalPrefix: 'api/v1',
-  cors: true,
+  cors: { origin: '*' },
 });
 ```
 
