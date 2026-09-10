@@ -1,8 +1,9 @@
+import { createNodeTestApplication } from './test-support/application.js';
 import { Inject, Scope } from '@fluojs/core';
 import type { Application } from '@fluojs/runtime';
 import { defineModule } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
@@ -173,7 +174,7 @@ describe('GraphQL teardown error aggregation', () => {
       ],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+    const app = await createNodeTestApplication(AppModule, { cors: false, port: 0 });
 
     await app.listen();
 

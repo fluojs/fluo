@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createTestApp, createTestingModule } from '@fluojs/testing';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
@@ -147,7 +147,7 @@ describe('BearerJwtStrategy', () => {
 
 describe('AppModule e2e', () => {
   it('serializes Bearer challenges and authenticates through an ephemeral Fastify port', async () => {
-    const adapter = createFastifyAdapter({ port: 0 });
+    const adapter = FastifyHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, { adapter });
 
     try {

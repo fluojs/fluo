@@ -1,3 +1,5 @@
+import { createBunTestApplication } from '../../../platform-bun/test-support/application.js';
+import { createDenoTestApplication } from '../../../platform-deno/test-support/application.js';
 import {
   appendVaryHeader,
   Controller,
@@ -7,17 +9,12 @@ import {
   type RequestContext,
   type StaticAssetSource,
 } from '@fluojs/http';
-import { type BunServeOptions, type BunServerLike, bootstrapBunApplication } from '@fluojs/platform-bun';
+import { type BunServeOptions, type BunServerLike } from '@fluojs/platform-bun';
 import {
   bootstrapCloudflareWorkerApplication,
   type CloudflareWorkerExecutionContext,
 } from '@fluojs/platform-cloudflare-workers';
-import {
-  bootstrapDenoApplication,
-  type DenoServeController,
-  type DenoServeHandler,
-  type DenoServeOptions,
-} from '@fluojs/platform-deno';
+import { type DenoServeController, type DenoServeHandler, type DenoServeOptions } from '@fluojs/platform-deno';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -152,8 +149,8 @@ type WebRuntimeStaticAssetsBootstrap = (
 ) => Promise<WebRuntimePortabilityApp>;
 
 type BunBootstrap = (
-  rootModule: Parameters<typeof bootstrapBunApplication>[0],
-  options: Parameters<typeof bootstrapBunApplication>[1],
+  rootModule: Parameters<typeof createBunTestApplication>[0],
+  options: Parameters<typeof createBunTestApplication>[1],
 ) => Promise<BunBootstrapApp>;
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -248,9 +245,9 @@ function restoreMockBun(originalBun: MockBun | undefined): void {
 }
 
 async function createBunPortabilityApp(
-  rootModule: Parameters<typeof bootstrapBunApplication>[0],
-  options: Parameters<typeof bootstrapBunApplication>[1],
-  bootstrap: BunBootstrap = bootstrapBunApplication,
+  rootModule: Parameters<typeof createBunTestApplication>[0],
+  options: Parameters<typeof createBunTestApplication>[1],
+  bootstrap: BunBootstrap = createBunTestApplication,
 ) {
   const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
   const mockBun = installMockBun();
@@ -499,7 +496,7 @@ describe('bun web runtime adapter cleanup', () => {
 
     try {
       await expect(
-        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof bootstrapBunApplication>[1], async () => {
+        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof createBunTestApplication>[1], async () => {
           throw new Error('bootstrap failed');
         }),
       ).rejects.toThrow('bootstrap failed');
@@ -519,7 +516,7 @@ describe('bun web runtime adapter cleanup', () => {
 
     try {
       await expect(
-        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof bootstrapBunApplication>[1], async () => ({
+        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof createBunTestApplication>[1], async () => ({
           close,
           async listen() {
             throw new Error('listen failed');
@@ -540,7 +537,7 @@ registerWebRuntimePortabilitySuite(
   createWebRuntimeHttpAdapterPortabilityHarness({
     async bootstrap(rootModule, options) {
       const server = createServeStub();
-      const app = await bootstrapDenoApplication(rootModule, {
+      const app = await createDenoTestApplication(rootModule, {
         ...options,
         serve: server.serve,
       });
@@ -563,7 +560,7 @@ registerWebRuntimePortabilitySuite(
 );
 registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, options) => {
   const server = createServeStub();
-  const app = await bootstrapDenoApplication(rootModule, {
+  const app = await createDenoTestApplication(rootModule, {
     ...options,
     serve: server.serve,
   });
@@ -581,7 +578,7 @@ registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, option
 });
 registerWebRuntimeStaticAssetsPortabilitySuite('deno', async (rootModule, options) => {
   const server = createServeStub();
-  const app = await bootstrapDenoApplication(rootModule, {
+  const app = await createDenoTestApplication(rootModule, {
     ...options,
     serve: server.serve,
   });

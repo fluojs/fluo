@@ -49,25 +49,25 @@ type ApplicationStarterDescriptor = {
   entrypoint: 'src/main.ts' | 'src/worker.ts';
   packageName?: '@fluojs/platform-bun' | '@fluojs/platform-cloudflare-workers' | '@fluojs/platform-deno' | '@fluojs/platform-express' | '@fluojs/platform-fastify' | '@fluojs/platform-nodejs';
   platformLabel: string;
-  runHelper?: string;
   runtimeLabel: string;
 };
 
 function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' | 'runtime'>): ApplicationStarterDescriptor {
   if (options.runtime === 'bun') {
     return {
-      adapterCall: 'createBunAdapter({ port })',
-      adapterFactory: 'createBunAdapter',
+      adapterCall: 'BunHttpApplicationAdapter.create({ port })',
+      adapterFactory: 'BunHttpApplicationAdapter',
       entrypoint: 'src/main.ts',
       packageName: '@fluojs/platform-bun',
       platformLabel: 'Bun native HTTP',
-      runHelper: 'runBunApplication',
       runtimeLabel: 'Bun runtime',
     };
   }
 
   if (options.runtime === 'deno') {
     return {
+      adapterCall: 'DenoHttpApplicationAdapter.create({ port })',
+      adapterFactory: 'DenoHttpApplicationAdapter',
       entrypoint: 'src/main.ts',
       packageName: '@fluojs/platform-deno',
       platformLabel: 'Deno native HTTP',
@@ -87,12 +87,11 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
   switch (options.platform) {
     case 'express':
       return {
-        adapterCall: 'createExpressAdapter({ port })',
-        adapterFactory: 'createExpressAdapter',
+        adapterCall: 'ExpressHttpApplicationAdapter.create({ port })',
+        adapterFactory: 'ExpressHttpApplicationAdapter',
         entrypoint: 'src/main.ts',
         packageName: '@fluojs/platform-express',
         platformLabel: 'Express HTTP',
-        runHelper: 'runExpressApplication',
         runtimeLabel: 'Node.js runtime',
       };
     case 'nodejs':
@@ -106,12 +105,11 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
       };
     default:
       return {
-        adapterCall: 'createFastifyAdapter({ port })',
-        adapterFactory: 'createFastifyAdapter',
+        adapterCall: 'FastifyHttpApplicationAdapter.create({ port })',
+        adapterFactory: 'FastifyHttpApplicationAdapter',
         entrypoint: 'src/main.ts',
         packageName: '@fluojs/platform-fastify',
         platformLabel: 'Fastify HTTP',
-        runHelper: 'runFastifyApplication',
         runtimeLabel: 'Node.js runtime',
       };
   }
@@ -476,12 +474,8 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
   const adapterCreation = starter.adapterCall?.split('(')[0];
   const entrypointLabel = starter.entrypoint;
-  const starterContract = options.runtime === 'node'
-    ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`FluoFactory.create(..., { adapter })\` then \`app.listen()\``
-    : starter.runHelper
-    ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${starter.runHelper}(...)\``
-    : options.runtime === 'deno'
-    ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`runDenoApplication(...)\``
+  const starterContract = options.runtime === 'node' || options.runtime === 'bun' || options.runtime === 'deno'
+    ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`FluoFactory.create(..., { adapter, shutdownRegistration })\` then \`app.listen()\``
     : options.runtime === 'cloudflare-workers'
       ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`createCloudflareWorkerEntrypoint(...)\``
       : `\`${entrypointLabel}\` wires the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${adapterCreation}(...)\`, then \`FluoFactory.create(AppModule, { adapter })\` and \`app.listen()\`. The application owner calls \`app.close()\`; process-signal registration is explicit.`;
@@ -489,11 +483,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
     ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `FluoFactory.create(AppModule, { adapter, cors })` to configure it'
     : options.runtime === 'cloudflare-workers'
     ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `createCloudflareWorkerEntrypoint(..., { cors })` to configure it'
-    : options.runtime === 'deno'
-      ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `runDenoApplication(..., { cors })` to configure it'
-      : starter.runHelper
-        ? `- CORS: no CORS middleware is added by default; pass \`cors\` explicitly to \`${starter.runHelper}(..., { cors })\` to configure it`
-        : `- CORS: no CORS middleware is added by default; import \`createCorsMiddleware\` from \`@fluojs/http\` and configure \`FluoFactory.create(..., { adapter: ${adapterCreation}(...), middleware: [createCorsMiddleware({ allowOrigin })] })\` with an explicit allowed origin policy`;
+    : `- CORS: no CORS middleware is added by default; pass \`cors\` explicitly to \`FluoFactory.create(AppModule, { adapter, cors })\` to configure it`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
     : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`createTestApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
@@ -917,17 +907,23 @@ function createMainFile(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
 
   if (options.runtime === 'deno') {
-    return `import { runDenoApplication } from '@fluojs/platform-deno';
+    return `import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app.ts';
 
 // The generated starter wires the selected first-class fluo new application path:
-// Deno runtime + Deno native HTTP via runDenoApplication(...).
+// Deno runtime + Deno native HTTP via DenoHttpApplicationAdapter.create(...),
+// FluoFactory.create(...), and an explicit Deno host shutdown callback.
 
 const parsedPort = Number.parseInt(Deno.env.get('PORT') ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
-await runDenoApplication(AppModule, { port });
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({ port }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
+});
+await app.listen();
 `;
   }
 
@@ -973,19 +969,17 @@ await app.listen();
 `;
   }
 
-  if (starter.runHelper) {
-    return `import { ${starter.runHelper} } from '${starter.packageName}';
+  const hostShutdownRegistration = options.runtime === 'bun'
+    ? ', createBunShutdownSignalRegistration'
+    : '';
+  const adapterOptions = options.runtime === 'bun'
+    ? '{ port, shutdownTimeoutMs: 30_000 }'
+    : '{ port }';
+  const shutdownRegistration = options.runtime === 'bun'
+    ? '\n  shutdownRegistration: createBunShutdownSignalRegistration(),'
+    : '';
 
-import { AppModule } from './app';
-
-const parsedPort = Number.parseInt(${portExpression}, 10);
-const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
-
-await ${starter.runHelper}(AppModule, { port });
-`;
-  }
-
-  return `import { ${starter.adapterFactory} } from '${starter.packageName}';
+  return `import { ${starter.adapterFactory}${hostShutdownRegistration} } from '${starter.packageName}';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';
@@ -997,7 +991,7 @@ const parsedPort = Number.parseInt(${portExpression}, 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: ${starter.adapterCall},
+  adapter: ${starter.adapterFactory}.create(${adapterOptions}),${shutdownRegistration}
 });
 await app.listen();
 `;
@@ -1919,7 +1913,7 @@ export class AppModule {}
 }
 
 function createMixedMainFile(): string {
-  return `import { createFastifyAdapter } from '@fluojs/platform-fastify';
+  return `import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -1929,7 +1923,7 @@ const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port }),
+  adapter: FastifyHttpApplicationAdapter.create({ port }),
   logger: createConsoleApplicationLogger(),
   shutdownRegistration: createNodeShutdownSignalRegistration(),
 });

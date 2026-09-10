@@ -8,24 +8,11 @@ import { createServer as createHttpsServer, type ServerOptions as HttpsServerOpt
 import type { AddressInfo, Socket } from 'node:net';
 
 import {
-  type CorsOptions,
   createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type HttpApplicationAdapter,
-  type MiddlewareLike,
-  type SecurityHeadersOptions,
 } from '@fluojs/http';
-import type {
-  Application,
-  ApplicationLogger,
-  CreateApplicationOptions,
-  ModuleType,
-  MultipartOptions,
-} from '@fluojs/runtime';
-import {
-  bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
+import type { MultipartOptions } from '@fluojs/runtime';
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
@@ -64,7 +51,6 @@ import {
   defaultNodeShutdownSignals,
   registerShutdownSignals,
 } from './internal-node-shutdown.js';
-import { createConsoleApplicationLogger } from './logger.js';
 
 /**
  * Settings for `NodeHttpApplicationAdapter.create`, including transport and body parsing.
@@ -83,48 +69,7 @@ export interface NodeHttpAdapterOptions {
   shutdownTimeoutMs?: number;
 }
 
-/**
- * Defines the node application signal type.
- */
-export type NodeApplicationSignal = 'SIGINT' | 'SIGTERM';
-
-/**
- * Defines the cors input type.
- */
-export type CorsInput = false | string | string[] | CorsOptions;
-
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-
-/**
- * Describes the bootstrap node application options contract.
- */
-export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
-  compression?: boolean;
-  cors?: CorsInput;
-  globalPrefix?: string;
-  globalPrefixExclude?: readonly string[];
-  host?: string;
-  http?: HttpServerOptions;
-  https?: HttpsServerOptions;
-  logger?: ApplicationLogger;
-  maxBodySize?: number;
-  middleware?: MiddlewareLike[];
-  multipart?: MultipartOptions;
-  port?: number;
-  rawBody?: boolean;
-  retryDelayMs?: number;
-  retryLimit?: number;
-  securityHeaders?: false | SecurityHeadersOptions;
-  shutdownTimeoutMs?: number;
-}
-
-/**
- * Describes the run node application options contract.
- */
-export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptions {
-  forceExitTimeoutMs?: number;
-  shutdownSignals?: false | readonly NodeApplicationSignal[];
-}
 
 interface NodeListenTarget {
   bindTarget: string;
@@ -314,48 +259,6 @@ function createNodeRequestResponseFactory(
       await writeNodeAdapterErrorResponse(error, response, requestId);
     },
   };
-}
-
-/**
- * Bootstrap node application.
- *
- * @param rootModule The root module.
- * @param options The options.
- * @returns The bootstrap node application result.
- */
-export async function bootstrapNodeApplication(
-  rootModule: ModuleType,
-  options: BootstrapNodeApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-
-  return bootstrapHttpAdapterApplication(
-    rootModule,
-    options,
-    NodeHttpApplicationAdapter.create(options),
-    logger,
-  );
-}
-
-/**
- * Run node application.
- *
- * @param rootModule The root module.
- * @param options The options.
- * @returns The run node application result.
- */
-export async function runNodeApplication(
-  rootModule: ModuleType,
-  options: RunNodeApplicationOptions,
-): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-  const adapter = NodeHttpApplicationAdapter.create(options);
-  return runHttpAdapterApplication(rootModule, {
-    ...options,
-    shutdownRegistration: createNodeShutdownSignalRegistration(
-      options.shutdownSignals ?? defaultNodeShutdownSignals(),
-    ),
-  }, adapter, logger);
 }
 
 export {

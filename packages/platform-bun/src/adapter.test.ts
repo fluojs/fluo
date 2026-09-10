@@ -1,3 +1,4 @@
+import { type BunTestApplicationOptions, createBunTestApplication, startBunTestApplication } from './test-support/application.js';
 import { readFileSync } from 'node:fs';
 import { All, Controller, createAccessLogObserver, createCorrelationMiddleware, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
@@ -5,18 +6,8 @@ import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fet
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  type BootstrapBunApplicationOptions,
-  BunHttpApplicationAdapter,
-  type BunServeOptions,
-  type BunServerLike,
-  type BunServerWebSocket,
-  type BunWebSocketBinding,
-  bootstrapBunApplication,
-  createBunAdapter,
-  createBunFetchHandler,
-  runBunApplication,
-} from './adapter.js';
+import { BunHttpApplicationAdapter, type BunServeOptions, type BunServerLike, type BunServerWebSocket, type BunWebSocketBinding, createBunFetchHandler } from './adapter.js';
+import { createBunShutdownSignalRegistration } from './shutdown.js';
 
 type MockBunServer = BunServerLike & {
   fetch(request: Request): Promise<Response | undefined>;
@@ -336,8 +327,8 @@ function isMockBunRouteMethodSupported(value: NonNullable<BunServeOptions['route
 }
 
 function registerBunWebRuntimePortabilitySuite(): void {
-  const bunPortabilityHarness = createWebRuntimeHttpAdapterPortabilityHarness<BootstrapBunApplicationOptions>({
-    async bootstrap(rootModule: ModuleType, options: BootstrapBunApplicationOptions) {
+  const bunPortabilityHarness = createWebRuntimeHttpAdapterPortabilityHarness<BunTestApplicationOptions>({
+    async bootstrap(rootModule: ModuleType, options: BunTestApplicationOptions) {
       const mockBun = installMockBun();
       const app = await bootstrapAndListenBunApplication(rootModule, options);
 
@@ -402,8 +393,8 @@ function registerBunWebRuntimePortabilitySuite(): void {
   });
 }
 
-async function bootstrapAndListenBunApplication(rootModule: Parameters<typeof bootstrapBunApplication>[0], options: BootstrapBunApplicationOptions) {
-  const app = await bootstrapBunApplication(rootModule, options);
+async function bootstrapAndListenBunApplication(rootModule: Parameters<typeof createBunTestApplication>[0], options: BunTestApplicationOptions) {
+  const app = await createBunTestApplication(rootModule, options);
 
   await app.listen();
   return app;
@@ -418,9 +409,9 @@ describe('@fluojs/platform-bun', () => {
 
   it('rejects invalid explicit numeric adapter options during setup', () => {
     const failures = [
-      captureError(() => createBunAdapter({ idleTimeout: -1 })),
-      captureError(() => createBunAdapter({ maxBodySize: 1.5 })),
-      captureError(() => createBunAdapter({ port: 65_536 })),
+      captureError(() => BunHttpApplicationAdapter.create({ idleTimeout: -1 })),
+      captureError(() => BunHttpApplicationAdapter.create({ maxBodySize: 1.5 })),
+      captureError(() => BunHttpApplicationAdapter.create({ port: 65_536 })),
       captureError(() => createBunFetchHandler({
       dispatcher: { async dispatch() {} },
       maxBodySize: Number.NaN,
@@ -442,24 +433,22 @@ describe('@fluojs/platform-bun', () => {
     expect(failures.every((error) => error.constructor === Error)).toBe(true);
   });
 
-  it('rejects invalid signal shutdown timeout options before registering Bun signal handlers', async () => {
+  it('rejects invalid host signal timeout options before registering Bun signal handlers', async () => {
     installMockBun();
 
     class AppModule {}
     defineModule(AppModule, {});
 
-    const failure = await captureRejectedError(runBunApplication(AppModule, {
-      forceExitTimeoutMs: Number.NaN,
-      shutdownSignals: false,
-    }));
-
-    expect(failure.constructor).toBe(Error);
-    expect(failure).toMatchObject({
-      code: 'BUN_ADAPTER_INVALID_OPTION',
-    });
-    expect(failure.message).toBe(
-      'Invalid forceExitTimeoutMs value: NaN. Expected a non-negative integer.',
-    );
+    const app = await createBunTestApplication(AppModule, { port: 0 });
+    try {
+      expect(() => createBunShutdownSignalRegistration(false)(
+        app,
+        { debug() {}, error() {}, log() {}, warn() {} },
+        Number.NaN,
+      )).toThrow('Invalid forceExitTimeoutMs value: NaN. Expected a non-negative integer.');
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps the Bun adapter runtime import path free of the Node runtime subpath', () => {
@@ -475,7 +464,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       middleware: [createCorrelationMiddleware()],
       port: 0,
@@ -709,7 +698,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingUploadController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       multipart: { strategy: 'stream' },
       port: 4313,
@@ -899,7 +888,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [WebhookController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4310,
       rawBody: true,
@@ -942,7 +931,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [UsersController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4314,
     });
@@ -978,7 +967,7 @@ describe('@fluojs/platform-bun', () => {
 
     class AppModule {}
     defineModule(AppModule, { controllers: [NativeAccessLogController] });
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       observers: [createAccessLogObserver({
         sink: {
@@ -1029,7 +1018,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [AssetController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4330,
     });
@@ -1075,7 +1064,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [UsersController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4319,
     });
@@ -1137,7 +1126,7 @@ describe('@fluojs/platform-bun', () => {
         },
       } as never,
     });
-    const adapter = createBunAdapter({
+    const adapter = BunHttpApplicationAdapter.create({
       hostname: '127.0.0.1',
       port: 4320,
     }) as BunHttpApplicationAdapter;
@@ -1195,7 +1184,7 @@ describe('@fluojs/platform-bun', () => {
         },
       } as never,
     });
-    const adapter = createBunAdapter({
+    const adapter = BunHttpApplicationAdapter.create({
       hostname: '127.0.0.1',
       port: 4322,
     }) as BunHttpApplicationAdapter;
@@ -1245,7 +1234,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [CustomFallbackController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4328,
     });
@@ -1316,7 +1305,7 @@ describe('@fluojs/platform-bun', () => {
         },
       } as never,
     });
-    const adapter = createBunAdapter({
+    const adapter = BunHttpApplicationAdapter.create({
       hostname: '127.0.0.1',
       port: 4326,
     }) as BunHttpApplicationAdapter;
@@ -1376,7 +1365,7 @@ describe('@fluojs/platform-bun', () => {
         },
       } as never,
     });
-    const adapter = createBunAdapter({
+    const adapter = BunHttpApplicationAdapter.create({
       hostname: '127.0.0.1',
       port: 4327,
     }) as BunHttpApplicationAdapter;
@@ -1416,7 +1405,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [FirstController, SecondController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4315,
     });
@@ -1450,7 +1439,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [CatchAllController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4316,
     });
@@ -1492,7 +1481,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [VersionedController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4323,
       versioning: {
@@ -1534,7 +1523,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [NormalizeController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4324,
     });
@@ -1569,7 +1558,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [CorsController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       cors: 'https://client.test',
       hostname: '127.0.0.1',
       port: 4325,
@@ -1613,7 +1602,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [VersionGateController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4317,
     });
@@ -1650,7 +1639,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [ErrorController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4318,
     });
@@ -1716,7 +1705,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EventsController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4311,
     });
@@ -1851,7 +1840,7 @@ describe('@fluojs/platform-bun', () => {
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = process.listeners(signal).length;
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4312,
       shutdownSignals: [signal],
@@ -1888,7 +1877,7 @@ describe('@fluojs/platform-bun', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [HealthController] });
 
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       hostname: '127.0.0.1',
       port: 4314,
       tls,
@@ -1923,7 +1912,7 @@ describe('@fluojs/platform-bun', () => {
 
     const originalExitCode = process.exitCode;
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined as never) as typeof process.exit);
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       forceExitTimeoutMs: 25,
       hostname: '127.0.0.1',
       port: 4313,
@@ -1963,7 +1952,7 @@ describe('@fluojs/platform-bun', () => {
     const listenersBefore = process.listeners(signal).length;
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined as never) as typeof process.exit);
-    const app = await runBunApplication(AppModule, {
+    const app = await startBunTestApplication(AppModule, {
       forceExitTimeoutMs: 100,
       hostname: '127.0.0.1',
       port: 4328,
@@ -2001,7 +1990,7 @@ describe('@fluojs/platform-bun', () => {
     const originalExitCode = process.exitCode;
     const signal = 'SIGTERM' as const;
     const listenersBefore = process.listeners(signal).length;
-    let app: Awaited<ReturnType<typeof runBunApplication>> | undefined;
+    let app: Awaited<ReturnType<typeof startBunTestApplication>> | undefined;
 
     @Controller('/drain')
     class DrainController {
@@ -2016,7 +2005,7 @@ describe('@fluojs/platform-bun', () => {
     defineModule(AppModule, { controllers: [DrainController] });
 
     try {
-      app = await runBunApplication(AppModule, {
+      app = await startBunTestApplication(AppModule, {
         forceExitTimeoutMs: 20_000,
         hostname: '127.0.0.1',
         port: 4315,
@@ -2083,7 +2072,7 @@ describe('@fluojs/platform-bun', () => {
 
   it('keeps close pending and server state until Bun termination and request drain settle', async () => {
     const mockBun = installMockBun();
-    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const adapter = BunHttpApplicationAdapter.create() as BunHttpApplicationAdapter;
     const requestAccepted = createDeferred<void>();
     const requestDrain = createDeferred<void>();
     const serverTermination = createDeferred<void>();
@@ -2132,7 +2121,7 @@ describe('@fluojs/platform-bun', () => {
 
   it('retains close state until request drain settles after Bun termination rejects', async () => {
     const mockBun = installMockBun();
-    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const adapter = BunHttpApplicationAdapter.create() as BunHttpApplicationAdapter;
     const requestAccepted = createDeferred<void>();
     const requestDrain = createDeferred<void>();
     const serverTermination = createDeferred<void>();
@@ -2218,7 +2207,7 @@ describe('@fluojs/platform-bun', () => {
 
   it('returns shutdown 503 for ordinary HTTP ingress during close', async () => {
     const mockBun = installMockBun();
-    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const adapter = BunHttpApplicationAdapter.create() as BunHttpApplicationAdapter;
     const deferred = createDeferred<void>();
     const dispatcher = {
       dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
@@ -2253,7 +2242,7 @@ describe('@fluojs/platform-bun', () => {
 
   it('does not rebind the live dispatcher when listen() is called more than once', async () => {
     const mockBun = installMockBun();
-    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const adapter = BunHttpApplicationAdapter.create() as BunHttpApplicationAdapter;
     const firstDispatcher = {
       dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
         response.setStatus(200);
@@ -2323,7 +2312,7 @@ describe('@fluojs/platform-bun', () => {
 
     try {
       const mockBun = installMockBun();
-      const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+      const adapter = BunHttpApplicationAdapter.create() as BunHttpApplicationAdapter;
       const deferred = createDeferred<void>();
 
       await adapter.listen({
@@ -2354,7 +2343,7 @@ describe('@fluojs/platform-bun', () => {
 
     try {
       const mockBun = installMockBun();
-      const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+      const adapter = BunHttpApplicationAdapter.create() as BunHttpApplicationAdapter;
       const requestAccepted = createDeferred<void>();
       const deferred = createDeferred<void>();
       const dispatcher = {
@@ -2779,7 +2768,7 @@ describe('@fluojs/platform-bun', () => {
   it('throws a clear error when Bun.serve() is unavailable', async () => {
     delete (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
 
-    const adapter = createBunAdapter();
+    const adapter = BunHttpApplicationAdapter.create();
 
     const failure = await captureRejectedError(Promise.resolve(
       adapter.listen({ dispatch: async () => undefined }),
@@ -2796,7 +2785,7 @@ describe('@fluojs/platform-bun', () => {
 
   it('reports supported fetch-style websocket hosting for the official Bun binding seam', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
-      createAdapter: () => createBunAdapter(),
+      createAdapter: () => BunHttpApplicationAdapter.create(),
       expectedReason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
       expectedSupport: 'supported',

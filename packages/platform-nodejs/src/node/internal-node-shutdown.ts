@@ -1,7 +1,8 @@
 import type { Application, ApplicationLogger } from '@fluojs/runtime';
 import type { HttpAdapterShutdownRegistration } from '@fluojs/runtime/internal/http-adapter';
 
-type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';
+/** Signals accepted by the Node host shutdown registration. */
+export type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';
 
 const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 

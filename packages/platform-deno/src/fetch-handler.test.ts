@@ -1,20 +1,16 @@
+import { type DenoTestApplicationOptions, createDenoTestApplication } from './test-support/application.js';
 import { Controller, Get } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  type BootstrapDenoApplicationOptions,
-  bootstrapDenoApplication,
-  createDenoFetchHandler,
-  type DenoServeFunction,
-} from './index.js';
+import { createDenoFetchHandler, type DenoServeFunction } from './index.js';
 
 function registerHostOwnedDenoPortabilitySuite(): void {
-  const harness = createWebRuntimeHttpAdapterPortabilityHarness<BootstrapDenoApplicationOptions>({
-    async bootstrap(rootModule: ModuleType, options: BootstrapDenoApplicationOptions) {
+  const harness = createWebRuntimeHttpAdapterPortabilityHarness<DenoTestApplicationOptions>({
+    async bootstrap(rootModule: ModuleType, options: DenoTestApplicationOptions) {
       const serve = vi.fn<DenoServeFunction>();
-      const app = await bootstrapDenoApplication(rootModule, {
+      const app = await createDenoTestApplication(rootModule, {
         ...options,
         serve,
       });
@@ -102,7 +98,7 @@ describe('createDenoFetchHandler', () => {
     });
 
     const serve = vi.fn<DenoServeFunction>();
-    const app = await bootstrapDenoApplication(AppModule, { serve });
+    const app = await createDenoTestApplication(AppModule, { serve });
 
     try {
       const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });

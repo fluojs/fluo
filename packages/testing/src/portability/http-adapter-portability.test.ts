@@ -1,3 +1,6 @@
+import { createExpressTestApplication, startExpressTestApplication } from '../../../platform-express/test-support/application.js';
+import { createFastifyTestApplication, startFastifyTestApplication } from '../../../platform-fastify/test-support/application.js';
+import { createNodeTestApplication, startNodeTestApplication } from '../../../platform-nodejs/test-support/application.js';
 import {
   appendVaryHeader,
   Controller,
@@ -7,18 +10,9 @@ import {
   Post,
   type RequestContext,
 } from '@fluojs/http';
-import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
-import {
-  bootstrapFastifyApplication,
-  type FastifyHttpApplicationAdapter,
-  runFastifyApplication,
-} from '@fluojs/platform-fastify';
-import {
-  bootstrapNodeApplication,
-  bootstrapNodejsApplication,
-  runNodeApplication,
-  runNodejsApplication,
-} from '@fluojs/platform-nodejs';
+
+import { type FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -497,50 +491,50 @@ describe('http adapter portability cleanup reporting', () => {
 registerPortabilitySuite(
   'node',
   createHttpAdapterPortabilityHarness({
-    bootstrap: bootstrapNodeApplication,
+    bootstrap: createNodeTestApplication,
     createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'node',
-    run: runNodeApplication,
+    run: startNodeTestApplication,
   }),
   {
     streamDrainCloseEdge: true,
   },
 );
-registerHeaderHelperPortabilitySuite('node', bootstrapNodeApplication);
+registerHeaderHelperPortabilitySuite('node', createNodeTestApplication);
 
 registerPortabilitySuite(
   'nodejs-platform',
   createHttpAdapterPortabilityHarness({
-    bootstrap: bootstrapNodejsApplication,
+    bootstrap: createNodeTestApplication,
     createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'nodejs-platform',
-    run: runNodejsApplication,
+    run: startNodeTestApplication,
   }),
   {
     streamDrainCloseEdge: true,
   },
 );
-registerHeaderHelperPortabilitySuite('nodejs-platform', bootstrapNodejsApplication);
+registerHeaderHelperPortabilitySuite('nodejs-platform', createNodeTestApplication);
 
 registerPortabilitySuite(
   'express',
   createHttpAdapterPortabilityHarness({
-    bootstrap: bootstrapExpressApplication,
+    bootstrap: createExpressTestApplication,
     createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'express',
-    run: runExpressApplication,
+    run: startExpressTestApplication,
   }),
   {
     streamDrainCloseEdge: true,
   },
 );
-registerHeaderHelperPortabilitySuite('express', bootstrapExpressApplication);
+registerHeaderHelperPortabilitySuite('express', createExpressTestApplication);
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
-  bootstrap: bootstrapFastifyApplication,
+  bootstrap: createFastifyTestApplication,
   createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   exactRawBodyByteContentType: 'application/octet-stream',
@@ -559,10 +553,10 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
       done(null, body);
     });
   },
-  run: runFastifyApplication,
+  run: startFastifyTestApplication,
 });
 
 registerPortabilitySuite('fastify', fastifyPortabilityHarness, {
   streamDrainCloseEdge: true,
 });
-registerHeaderHelperPortabilitySuite('fastify', bootstrapFastifyApplication);
+registerHeaderHelperPortabilitySuite('fastify', createFastifyTestApplication);

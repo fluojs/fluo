@@ -16,10 +16,10 @@ function createTextDispatcher(body: string): Dispatcher {
 
 describe('runtime internal node seam', () => {
   it('keeps the public runtime/node path focused on supported node helpers', () => {
-    expect(publicNodeApi.bootstrapNodeApplication).toBe(internalNodeApi.bootstrapNodeApplication);
     expect(publicNodeApi.NodeHttpApplicationAdapter.create).toBe(internalNodeApi.NodeHttpApplicationAdapter.create);
-    expect(publicNodeApi.runNodeApplication).toBe(internalNodeApi.runNodeApplication);
     expect(publicNodeApi.createNodeShutdownSignalRegistration).toBe(internalNodeApi.createNodeShutdownSignalRegistration);
+    expect(publicNodeApi).not.toHaveProperty('bootstrapNodeApplication');
+    expect(publicNodeApi).not.toHaveProperty('runNodeApplication');
     expect(publicNodeApi).not.toHaveProperty('compressNodeResponse');
     expect(publicNodeApi).not.toHaveProperty('createNodeResponseCompression');
   });

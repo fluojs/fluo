@@ -1,3 +1,8 @@
+import {
+  type FastifyTestApplicationOptions as BootstrapFastifyApplicationOptions,
+  createFastifyTestApplication as bootstrapFastifyApplication,
+  startFastifyTestApplication as runFastifyApplication,
+} from './test-support/application.js';
 import { readFileSync } from 'node:fs';
 import { IncomingMessage, request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders, InformationEvent } from 'node:http';
@@ -33,21 +38,25 @@ import {
   Version,
   VersioningType,
 } from '@fluojs/http';
-import { type Application, createHealthModule, defineModule, FluoFactory } from '@fluojs/runtime';
+import {
+  type Application,
+  createHealthModule,
+  defineModule,
+  FluoFactory,
+  type MultipartOptions,
+} from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  type BootstrapFastifyApplicationOptions,
-  bootstrapFastifyApplication,
-  createFastifyAdapter,
+  type FastifyAdapterOptions,
   FastifyHttpApplicationAdapter,
   isFastifyMultipartTooLargeError,
-  type RunFastifyApplicationOptions,
-  runFastifyApplication,
 } from './adapter.js';
+
+const createFastifyAdapter = FastifyHttpApplicationAdapter.create;
 
 function createDeferred<T>(): {
   promise: Promise<T>;
@@ -216,7 +225,7 @@ JNCDpGwh8us=
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness<
   BootstrapFastifyApplicationOptions,
-  RunFastifyApplicationOptions,
+  BootstrapFastifyApplicationOptions,
   Application
 >({
   bootstrap: bootstrapFastifyApplication,
@@ -1754,9 +1763,12 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createFastifyAdapter({ port: 0 }, {
-        maxFileSize: 1024,
-        maxTotalSize: 10,
+      adapter: createFastifyAdapter({
+        multipart: {
+          maxFileSize: 1024,
+          maxTotalSize: 10,
+        },
+        port: 0,
       }),
     });
 

@@ -1,3 +1,6 @@
+import { createExpressTestApplication } from '../../platform-express/test-support/application.js';
+import { createFastifyTestApplication } from '../../platform-fastify/test-support/application.js';
+import { createNodeTestApplication } from '../../platform-nodejs/test-support/application.js';
 import type { IncomingMessage } from 'node:http';
 import { type AddressInfo, createConnection } from 'node:net';
 import type { Duplex } from 'node:stream';
@@ -12,11 +15,11 @@ import {
   type HttpApplicationAdapter,
   UnauthorizedException,
 } from '@fluojs/http';
-import { bootstrapExpressApplication } from '@fluojs/platform-express';
-import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
+
+
 import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import { bootstrapNodeApplication, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
@@ -188,21 +191,21 @@ function onceCloseDetails(socket: WebSocket): Promise<{ code: number; reason: Bu
 }
 
 type ServerBackedGatewayScenario = {
-  bootstrap: typeof bootstrapNodeApplication | typeof bootstrapFastifyApplication | typeof bootstrapExpressApplication;
+  bootstrap: typeof createNodeTestApplication | typeof createFastifyTestApplication | typeof createExpressTestApplication;
   name: string;
 };
 
 const serverBackedGatewayScenarios: readonly ServerBackedGatewayScenario[] = [
   {
-    bootstrap: bootstrapNodeApplication,
+    bootstrap: createNodeTestApplication,
     name: 'platform-nodejs',
   },
   {
-    bootstrap: bootstrapFastifyApplication,
+    bootstrap: createFastifyTestApplication,
     name: 'platform-fastify',
   },
   {
-    bootstrap: bootstrapExpressApplication,
+    bootstrap: createExpressTestApplication,
     name: 'platform-express',
   },
 ];
@@ -489,7 +492,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, DedupeGateway, { provide: ALIAS_TOKEN, useClass: DedupeGateway }],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -557,7 +560,7 @@ describe('@fluojs/websockets', () => {
       imports: [WebSocketModule.forRoot()],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -757,7 +760,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const app = await bootstrapFastifyApplication(AppModule, {
+    const app = await createFastifyTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -827,7 +830,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const app = await bootstrapExpressApplication(AppModule, {
+    const app = await createExpressTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -993,7 +996,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, AsyncGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1056,7 +1059,7 @@ describe('@fluojs/websockets', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1093,7 +1096,7 @@ describe('@fluojs/websockets', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1128,7 +1131,7 @@ describe('@fluojs/websockets', () => {
       providers: [LimitedGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1205,7 +1208,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1260,7 +1263,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1317,7 +1320,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1367,7 +1370,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, BufferPayloadGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1421,7 +1424,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1481,7 +1484,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, BufferedGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1545,7 +1548,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, AsyncGateway2],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -1610,7 +1613,7 @@ describe('@fluojs/websockets', () => {
       providers: [SharedState, FirstGateway, SecondGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -2126,7 +2129,7 @@ describe('@fluojs/websockets', () => {
       providers: [ChatGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -2171,7 +2174,7 @@ describe('@fluojs/websockets', () => {
       providers: [ChatGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -2201,7 +2204,7 @@ describe('@fluojs/websockets', () => {
       providers: [ChatGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     });
@@ -2237,7 +2240,7 @@ describe('@fluojs/websockets', () => {
       providers: [ShutdownGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownTimeoutMs: 200,
@@ -2287,7 +2290,7 @@ describe('@fluojs/websockets', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownTimeoutMs: 200,
@@ -2346,7 +2349,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownTimeoutMs: 200,
@@ -2464,7 +2467,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownTimeoutMs: 200,

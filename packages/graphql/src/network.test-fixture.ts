@@ -1,18 +1,16 @@
+import { createNodeTestApplication } from './test-support/application.js';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import {
-  bootstrapNodeApplication as bootstrapRuntimeNodeApplication,
-  NodeHttpApplicationAdapter,
-} from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { afterEach } from 'vitest';
 
-type GraphqlTestApplication = Awaited<ReturnType<typeof bootstrapRuntimeNodeApplication>>;
+type GraphqlTestApplication = Awaited<ReturnType<typeof createNodeTestApplication>>;
 type GraphqlTestApplications = Map<number, GraphqlTestApplication | undefined>;
 type Closeable = { close: () => Promise<void> };
 
 export function createGraphqlNetworkFixture(): {
   readonly bootstrapNodeApplication: (
-    ...args: Parameters<typeof bootstrapRuntimeNodeApplication>
+    ...args: Parameters<typeof createNodeTestApplication>
   ) => Promise<GraphqlTestApplication>;
   readonly findAvailablePort: () => Promise<number>;
   readonly resolvePort: (port: number) => Promise<number>;
@@ -27,7 +25,7 @@ export function createGraphqlNetworkFixture(): {
   return {
     async bootstrapNodeApplication(rootModule, options): Promise<GraphqlTestApplication> {
       const token = options?.port;
-      const app = await bootstrapRuntimeNodeApplication(
+      const app = await createNodeTestApplication(
         rootModule,
         token !== undefined && applications.has(token) ? { ...options, port: 0 } : options,
       );

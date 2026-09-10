@@ -1,3 +1,5 @@
+import { type NodeTestApplicationOptions, createNodeTestApplication, startNodeTestApplication } from './test-support/application.js';
+import { type NodeShutdownSignal } from './node/internal-node-shutdown.js';
 import { readFileSync } from 'node:fs';
 import { type ServerOptions as HttpServerOptions, type IncomingHttpHeaders, request as requestHttp } from 'node:http';
 import type { ServerOptions as HttpsServerOptions } from 'node:https';
@@ -17,20 +19,8 @@ import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtim
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import * as platformNodejsApi from './index.js';
-import {
-  type BootstrapNodeApplicationOptions,
-  type BootstrapNodejsApplicationOptions,
-  bootstrapNodeApplication,
-  bootstrapNodejsApplication,
-  type NodeApplicationSignal,
-  type NodeHttpAdapterOptions,
-  NodeHttpApplicationAdapter,
-  type NodejsApplicationSignal,
-  type RunNodeApplicationOptions,
-  type RunNodejsApplicationOptions,
-  runNodeApplication,
-  runNodejsApplication,
-} from './index.js';
+import * as platformNodejsInternalApi from './internal.js';
+import { type NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from './index.js';
 
 type NodeHttpApplicationAdapterConstructorParameters = ConstructorParameters<
   typeof NodeHttpApplicationAdapter
@@ -80,7 +70,7 @@ type MultipartRequestWithFiles = RequestContext['request'] & {
   }>;
 };
 
-type AppWithAdapter = Awaited<ReturnType<typeof bootstrapNodejsApplication>> & {
+type AppWithAdapter = Awaited<ReturnType<typeof createNodeTestApplication>> & {
   adapter?: {
     getListenTarget?: () => { url: string };
   };
@@ -144,14 +134,14 @@ JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
 const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
-  BootstrapNodejsApplicationOptions,
-  RunNodejsApplicationOptions
+  NodeTestApplicationOptions,
+  NodeTestApplicationOptions
 >({
-  bootstrap: bootstrapNodejsApplication,
+  bootstrap: createNodeTestApplication,
   createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'nodejs',
-  run: runNodejsApplication,
+  run: startNodeTestApplication,
 });
 
 describe('@fluojs/platform-nodejs', () => {
@@ -262,33 +252,31 @@ describe('@fluojs/platform-nodejs', () => {
     });
   });
 
-  it('re-exports the existing Node compatibility helpers through the platform package', () => {
-    expect(bootstrapNodejsApplication).toBe(bootstrapNodeApplication);
-    expect(runNodejsApplication).toBe(runNodeApplication);
+  it('does not expose removed Node startup helpers from either public package seam', () => {
+    for (const api of [platformNodejsApi, platformNodejsInternalApi]) {
+      expect(api).not.toHaveProperty('bootstrapNodeApplication');
+      expect(api).not.toHaveProperty('bootstrapNodejsApplication');
+      expect(api).not.toHaveProperty('runNodeApplication');
+      expect(api).not.toHaveProperty('runNodejsApplication');
+    }
   });
 
-  it('publishes the Node value surface without duplicate adapter factories', () => {
+  it('publishes the Node value surface without startup aliases', () => {
     expect(Object.keys(platformNodejsApi).sort()).toEqual([
       'NodeHttpApplicationAdapter',
-      'bootstrapNodeApplication',
-      'bootstrapNodejsApplication',
       'createConsoleApplicationLogger',
       'createJsonApplicationLogger',
       'createNodeFileSystemAssetSource',
       'createNodeShutdownSignalRegistration',
       'defaultNodeShutdownSignals',
       'registerShutdownSignals',
-      'runNodeApplication',
-      'runNodejsApplication',
     ]);
   });
 
-  it('keeps the documented Node.js type aliases aligned with the runtime adapter surface', () => {
-    expectTypeOf<BootstrapNodejsApplicationOptions>().toEqualTypeOf<BootstrapNodeApplicationOptions>();
+  it('keeps static adapter creation concrete and accepts only adapter options', () => {
     expectTypeOf<Parameters<typeof NodeHttpApplicationAdapter.create>[0]>().toEqualTypeOf<NodeHttpAdapterOptions | undefined>();
-    expectTypeOf<NodejsApplicationSignal>().toEqualTypeOf<NodeApplicationSignal>();
+    expectTypeOf<NodeShutdownSignal>().toEqualTypeOf<NodeShutdownSignal>();
     expectTypeOf<ReturnType<typeof NodeHttpApplicationAdapter.create>>().toEqualTypeOf<NodeHttpApplicationAdapter>();
-    expectTypeOf<RunNodejsApplicationOptions>().toEqualTypeOf<RunNodeApplicationOptions>();
   });
 
   it('preserves the Node adapter constructor parameter order for positional consumers', () => {
@@ -579,7 +567,7 @@ describe('@fluojs/platform-nodejs', () => {
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
-    const app = await runNodejsApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       port: 0,
       shutdownSignals: [signal],
     });
@@ -616,7 +604,7 @@ describe('@fluojs/platform-nodejs', () => {
     });
 
     try {
-      const app = await bootstrapNodejsApplication(AppModule, { port: 0 });
+      const app = await createNodeTestApplication(AppModule, { port: 0 });
       await app.close();
 
       const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[\\d;]*m`, 'g');
@@ -677,7 +665,7 @@ describe('@fluojs/platform-nodejs', () => {
         failureLogged();
       }
     });
-    const app = await runNodejsApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       port: 0,
       shutdownSignals: [signal],
     });
@@ -724,7 +712,7 @@ describe('@fluojs/platform-nodejs', () => {
         timeoutLogged();
       }
     });
-    const app = await runNodejsApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       forceExitTimeoutMs: 1,
       port: 0,
       shutdownSignals: [signal],
@@ -995,7 +983,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [UploadController] });
 
-    const app = await bootstrapNodejsApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       maxBodySize: 8,
       multipart: { maxTotalSize: 1024 },
       port: 0,
@@ -1103,7 +1091,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingUploadController] });
 
-    const app = await bootstrapNodejsApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       multipart: { strategy: 'stream' },
       port: 0,
     }) as AppWithAdapter;

@@ -1,5 +1,6 @@
+import { createNodeTestApplication } from './test-support/application.js';
 import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+
 import { GraphQLObjectType, GraphQLString } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
@@ -111,7 +112,7 @@ describe('GraphQL object field resolvers', () => {
       providers: [BookQueryResolver, BookFieldResolver],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+    const app = await createNodeTestApplication(AppModule, { cors: false, port: 0 });
 
     try {
       await app.listen();
@@ -136,7 +137,7 @@ describe('GraphQL object field resolvers', () => {
       imports: [GraphqlModule.forRoot({ graphiql: true, resolvers: [NullableBookQueryResolver, NullableBookFieldResolver] })],
       providers: [NullableBookQueryResolver, NullableBookFieldResolver],
     });
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+    const app = await createNodeTestApplication(AppModule, { cors: false, port: 0 });
 
     try {
       await app.listen();
@@ -175,7 +176,7 @@ describe('GraphQL object field resolvers', () => {
       imports: [GraphqlModule.forRoot({ resolvers: [NullableBookQueryResolver, NullableBookFieldResolver] })],
       providers: [NullableBookQueryResolver, NullableBookFieldResolver],
     });
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+    const app = await createNodeTestApplication(AppModule, { cors: false, port: 0 });
 
     try {
       await app.listen();
@@ -215,7 +216,7 @@ describe('GraphQL object field resolvers', () => {
       providers: [BookQueryResolver, BookFieldResolver, DuplicateBookFieldResolver],
     });
 
-    await expect(bootstrapNodeApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
+    await expect(createNodeTestApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
       /FieldResolverBook\.author.*registered more than once/,
     );
   });
@@ -236,7 +237,7 @@ describe('GraphQL object field resolvers', () => {
       providers: [InvalidRootResolver],
     });
 
-    await expect(bootstrapNodeApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
+    await expect(createNodeTestApplication(AppModule, { cors: false, port: 0 })).rejects.toThrow(
       /@Parent\(\) and @Context\(\) can only bind parameters on @FieldResolver\(\) methods/,
     );
   });

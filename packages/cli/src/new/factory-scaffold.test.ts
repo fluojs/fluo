@@ -41,4 +41,43 @@ describe('canonical Node HTTP starter boundary', () => {
       await rm(targetDirectory, { recursive: true, force: true });
     }
   });
+
+  it.each(['bun', 'deno'] as const)('creates %s applications through Factory with explicit host shutdown ownership', async (runtime) => {
+    // Given
+    const targetDirectory = await mkdtemp(join(tmpdir(), 'fluo-factory-edge-starter-'));
+    try {
+      await scaffoldBootstrapApp({
+        ...DEFAULT_BOOTSTRAP_SCHEMA,
+        packageManager: 'pnpm',
+        platform: runtime,
+        projectName: `${runtime}-factory-starter`,
+        runtime,
+        skipInstall: true,
+        targetDirectory,
+      });
+      // When
+      const source = await readFile(join(targetDirectory, 'src/main.ts'), 'utf8');
+      const file = ts.createSourceFile('main.ts', source, ts.ScriptTarget.Latest, true);
+      const calls: string[] = [];
+      const visit = (node: ts.Node) => {
+        if (ts.isCallExpression(node)) calls.push(node.expression.getText(file));
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      // Then
+      expect(calls.filter((name) => name === 'FluoFactory.create')).toHaveLength(1);
+      expect(calls.filter((name) => name === 'app.listen')).toHaveLength(1);
+      expect(calls).toContain(
+        runtime === 'bun'
+          ? 'createBunShutdownSignalRegistration'
+          : 'createDenoShutdownSignalRegistration',
+      );
+      expect(calls.filter((name) => /^run.*Application$/.test(name))).toEqual([]);
+      if (runtime === 'bun') {
+        expect(source).toContain('shutdownTimeoutMs: 30_000');
+      }
+    } finally {
+      await rm(targetDirectory, { recursive: true, force: true });
+    }
+  });
 });

@@ -1,3 +1,4 @@
+import { createNodeTestApplication, startNodeTestApplication } from './test-support/application.js';
 import { request as httpsRequest } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { Inject, Scope } from '@fluojs/core';
@@ -27,7 +28,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FluoFactory, defineModule } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
-import { bootstrapNodeApplication, NodeHttpApplicationAdapter, runNodeApplication } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
 
@@ -72,7 +73,7 @@ async function fetchForTest(...args: Parameters<typeof fetch>): Promise<Response
   return registerResponseForCleanup(await fetch(...args));
 }
 
-async function resolveNodeApplicationUrl(app: Awaited<ReturnType<typeof bootstrapNodeApplication>>): Promise<string> {
+async function resolveNodeApplicationUrl(app: Awaited<ReturnType<typeof createNodeTestApplication>>): Promise<string> {
   const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
 
   if (!(adapter instanceof NodeHttpApplicationAdapter)) {
@@ -82,7 +83,7 @@ async function resolveNodeApplicationUrl(app: Awaited<ReturnType<typeof bootstra
   return adapter.getListenTarget().url;
 }
 
-async function resolveNodeApplicationPort(app: Awaited<ReturnType<typeof bootstrapNodeApplication>>): Promise<number> {
+async function resolveNodeApplicationPort(app: Awaited<ReturnType<typeof createNodeTestApplication>>): Promise<number> {
   const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
 
   if (!(adapter instanceof NodeHttpApplicationAdapter)) {
@@ -999,7 +1000,7 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -1032,7 +1033,7 @@ describe('bootstrapApplication', () => {
       controllers: [SearchController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -1080,7 +1081,7 @@ describe('bootstrapApplication', () => {
       controllers: [SearchController],
     });
 
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       converters: [QueryNumberConverter],
       cors: false,
       port: 0,
@@ -1131,7 +1132,7 @@ describe('bootstrapApplication', () => {
       controllers: [SearchController],
     });
 
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       converters: [QueryNumberConverter],
       cors: false,
       port: 0,
@@ -1191,7 +1192,7 @@ describe('bootstrapApplication', () => {
       controllers: [WebhookController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       rawBody: true,
@@ -1244,7 +1245,7 @@ describe('bootstrapApplication', () => {
       controllers: [WebhookController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -1284,7 +1285,7 @@ describe('bootstrapApplication', () => {
       controllers: [UploadController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       rawBody: true,
@@ -1328,7 +1329,7 @@ describe('bootstrapApplication', () => {
       controllers: [UploadController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       maxBodySize: 10,
       port: 0,
@@ -1385,7 +1386,7 @@ describe('bootstrapApplication', () => {
       controllers: [RuntimeController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -1422,7 +1423,7 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       middleware: [createSecurityHeadersMiddleware()],
       port: 0,
@@ -1468,7 +1469,7 @@ describe('bootstrapApplication', () => {
       controllers: [RuntimeController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       observers: [new StatusObserver()],
       port: 0,
     }));
@@ -1504,7 +1505,7 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       maxBodySize: 8,
       port: 0,
@@ -1548,7 +1549,7 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -1588,7 +1589,7 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       versioning: {
@@ -1639,7 +1640,7 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       versioning: {
@@ -1683,7 +1684,7 @@ describe('bootstrapApplication', () => {
       controllers: [UsersController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       versioning: {
@@ -1725,7 +1726,7 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       port: 0,
     });
 
@@ -1763,7 +1764,7 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
       port: 0,
@@ -1796,7 +1797,7 @@ describe('bootstrapApplication', () => {
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = process.listeners(signal).length;
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownSignals: [signal],
@@ -1828,7 +1829,7 @@ describe('bootstrapApplication', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       cors: false,
       forceExitTimeoutMs: 25,
       port: 0,
@@ -1876,7 +1877,7 @@ describe('bootstrapApplication', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownSignals: ['SIGTERM'],
@@ -1919,7 +1920,7 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
       https: {
@@ -1957,7 +1958,7 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = await runNodeApplication(AppModule, {
+    const app = await startNodeTestApplication(AppModule, {
       cors: false,
       host: '0.0.0.0',
       port: 0,
@@ -2012,7 +2013,7 @@ describe('bootstrapApplication', () => {
       imports: [HealthModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       port: 0,
@@ -2077,7 +2078,7 @@ describe('bootstrapApplication', () => {
       imports: [HealthModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/health', '/ready'],
@@ -2128,7 +2129,7 @@ describe('bootstrapApplication', () => {
       controllers: [AppController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       observers: [new PathObserver()],
@@ -2168,7 +2169,7 @@ describe('bootstrapApplication', () => {
       controllers: [AppController, InternalController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/internal/*'],
@@ -2216,7 +2217,7 @@ describe('bootstrapApplication', () => {
       controllers: [AppController, InternalController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       globalPrefix: '///api//',
       globalPrefixExclude: ['//internal//*'],
@@ -2254,7 +2255,7 @@ describe('bootstrapApplication', () => {
       controllers: [AppController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       globalPrefix: '/',
       port: 0,
@@ -2291,7 +2292,7 @@ describe('bootstrapApplication', () => {
       controllers: [SlowController],
     });
 
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownTimeoutMs: 1_000,
@@ -2384,7 +2385,7 @@ describe('bootstrapApplication', () => {
       controllers: [HangingController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
       shutdownTimeoutMs: 50,
@@ -2948,7 +2949,7 @@ describe('bootstrapApplication', () => {
       providers: [RequestScopedCounter],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -2988,7 +2989,7 @@ describe('bootstrapApplication', () => {
       controllers: [CookieController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -3016,7 +3017,7 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: 'https://my-frontend.com',
       port: 0,
     }));
@@ -3046,7 +3047,7 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: ['https://a.com', 'https://b.com'],
       port: 0,
     }));
@@ -3079,7 +3080,7 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [PingController] });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: { allowOrigin: 'https://my-frontend.com', maxAge: 600 },
       port: 0,
     }));
@@ -3115,7 +3116,7 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [SlowController] });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -3187,7 +3188,7 @@ describe('bootstrapApplication', () => {
       controllers: [EventsController],
     });
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       port: 0,
     }));
@@ -3377,7 +3378,7 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
       filters: [filter],
@@ -3415,7 +3416,7 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
       filters: [filter],
@@ -3464,7 +3465,7 @@ describe('exception filter pipeline', () => {
       },
     };
 
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
       filters: [firstFilter, secondFilter],

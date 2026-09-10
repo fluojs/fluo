@@ -1,3 +1,8 @@
+import {
+  type ExpressTestApplicationOptions as BootstrapExpressApplicationOptions,
+  createExpressTestApplication as bootstrapExpressApplication,
+  startExpressTestApplication as runExpressApplication,
+} from './test-support/application.js';
 import { readFileSync } from 'node:fs';
 import {
   createServer as createHttpServer,
@@ -34,7 +39,13 @@ import {
   Version,
   VersioningType,
 } from '@fluojs/http';
-import { type Application, createHealthModule, defineModule, FluoFactory } from '@fluojs/runtime';
+import {
+  type Application,
+  createHealthModule,
+  defineModule,
+  FluoFactory,
+  type MultipartOptions,
+} from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
@@ -47,12 +58,12 @@ import type {
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  bootstrapExpressApplication,
-  createExpressAdapter,
+  type ExpressAdapterOptions,
   ExpressHttpApplicationAdapter,
   isExpressMultipartTooLargeError,
-  runExpressApplication,
 } from './adapter.js';
+
+const createExpressAdapter = ExpressHttpApplicationAdapter.create;
 
 function createDeferred<T>(): {
   promise: Promise<T>;
@@ -263,7 +274,11 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
-const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
+const expressPortabilityHarness = createHttpAdapterPortabilityHarness<
+  BootstrapExpressApplicationOptions,
+  BootstrapExpressApplicationOptions,
+  Application
+>({
   bootstrap: bootstrapExpressApplication,
   createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
@@ -1529,10 +1544,11 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingUploadController] });
 
-    const adapter = createExpressAdapter(
-      { host: '127.0.0.1', port: 0 },
-      { strategy: 'stream' },
-    ) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      multipart: { strategy: 'stream' },
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
     const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
@@ -1582,10 +1598,11 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [NativeStreamingCleanupController] });
 
-    const adapter = createExpressAdapter(
-      { host: '127.0.0.1', port: 0 },
-      { strategy: 'stream' },
-    ) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      multipart: { strategy: 'stream' },
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
     const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
@@ -1652,10 +1669,11 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingAbortController] });
 
-    const adapter = createExpressAdapter(
-      { host: '127.0.0.1', port: 0 },
-      { strategy: 'stream' },
-    ) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      multipart: { strategy: 'stream' },
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
     const app = await FluoFactory.create(AppModule, { adapter });
     let request: ReturnType<typeof httpRequest> | undefined;
 
