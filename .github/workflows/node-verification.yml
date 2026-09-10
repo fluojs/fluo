@@ -118,9 +118,12 @@ jobs:
           - lane: packages-4
             project: packages
             shard: 4/4
-          - lane: other
-            project: other
-            shard: ''
+          - lane: tooling-1
+            project: tooling
+            shard: 1/2
+          - lane: tooling-2
+            project: tooling
+            shard: 2/2
     env:
       FLUO_VITEST_SHUTDOWN_DEBUG: '1'
       FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug
@@ -157,22 +160,22 @@ jobs:
         run: pnpm vitest run --project packages --shard=${{ matrix.shard }} --maxWorkers=1
 
       - name: Test apps project
-        if: matrix.project == 'other'
+        if: matrix.lane == 'tooling-1'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/apps
         run: pnpm vitest run --project apps --maxWorkers=1
 
       - name: Test examples project
-        if: matrix.project == 'other'
+        if: matrix.lane == 'tooling-1'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/examples
         run: pnpm vitest run --project examples --maxWorkers=1
 
-      - name: Test tooling project
-        if: matrix.project == 'other'
+      - name: Test tooling shard
+        if: matrix.project == 'tooling'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling
-        run: pnpm vitest run --project tooling --maxWorkers=1
+        run: pnpm vitest run --project tooling --shard=${{ matrix.shard }} --maxWorkers=1
 
       - name: Print Vitest shutdown debug summary
         if: ${{ always() }}
