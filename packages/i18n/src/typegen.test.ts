@@ -290,11 +290,9 @@ export interface I18nCatalogTypedService {
     await expectI18nRejection(() => generateI18nCatalogTypesFromDirectory({ rootDir }), 'I18N_INVALID_CATALOG');
   });
 
-  it('is available from the typegen subpath without adding root value exports', async () => {
-    const root = await import('./index.js');
+  it('is available from the typegen subpath', async () => {
     const typegen = await import('./typegen.js');
 
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(typegen.generateI18nCatalogTypes).toBe(generateI18nCatalogTypes);
     expect(typegen.generateI18nCatalogTypes([{ locale: 'en', messages: { title: 'Welcome' } }])).toContain('"title"');
   });

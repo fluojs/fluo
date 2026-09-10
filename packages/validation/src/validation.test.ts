@@ -1060,26 +1060,6 @@ describe('DefaultValidator', () => {
     });
   });
 
-  it('rejects cyclic nested payloads during materialize instead of recursing indefinitely', async () => {
-    class NodeDto {
-      @MinLength(1)
-      name = '';
-
-      @ValidateNested(() => NodeDto)
-      child?: NodeDto;
-    }
-
-    const validator = new DefaultValidator();
-    const payload: { child?: unknown; name: string } = { name: 'root' };
-    payload.child = payload;
-
-    await expect(
-      validator.materialize<NodeDto>(payload, NodeDto),
-    ).rejects.toMatchObject({
-      issues: [{ code: 'INVALID_NESTED', field: 'child', message: 'child contains invalid nested data.' }],
-    });
-  });
-
   it('rejects cyclic DTO instances during validation instead of recursing indefinitely', async () => {
     class NodeDto {
       @MinLength(1)

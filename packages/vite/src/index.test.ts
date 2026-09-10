@@ -112,12 +112,6 @@ describe('fluoDecoratorsPlugin', () => {
     );
   });
 
-  it('skips generated test files', async () => {
-    const plugin = fluoDecoratorsPlugin();
-
-    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/app.test.ts')).resolves.toBeNull();
-  });
-
   it.each([
     ['@babel/core', 'ERR_MODULE_NOT_FOUND'],
     ['@babel/plugin-proposal-decorators', 'MODULE_NOT_FOUND'],

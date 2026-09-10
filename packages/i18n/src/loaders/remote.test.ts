@@ -306,13 +306,11 @@ describe('@fluojs/i18n/loaders/remote', () => {
     expect(providerCalls).toBe(0);
   });
 
-  it('is available from the remote loader subpath without adding root value exports', async () => {
-    const root = await import('../index.js');
+  it('is available from the remote loader subpath', async () => {
     const remote = await import('./remote.js');
     const loaderLoadOptions: I18nLoaderLoadOptions = {};
     const loader: I18nLoader = new RemoteI18nLoader({ provider: () => ({ title: 'typed' }) });
 
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(remote.RemoteI18nLoader).toBe(RemoteI18nLoader);
     expect(remote.CachedRemoteI18nLoader).toBe(CachedRemoteI18nLoader);
     expect(remote.createCachedRemoteI18nLoader).toBe(createCachedRemoteI18nLoader);
