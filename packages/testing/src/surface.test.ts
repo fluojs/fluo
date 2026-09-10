@@ -584,7 +584,7 @@ describe('@fluojs/testing surface', () => {
     }
   }, DESCENDANT_TIMEOUT_TEST_TIMEOUT_MS);
 
-  it('build emits the published harness subpath files without blocking the Vitest worker event loop', async () => {
+  it('builds published harness declarations and imports every public subpath', async () => {
     await runBuild();
 
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
@@ -609,14 +609,7 @@ describe('@fluojs/testing surface', () => {
       .toContain('NetworkHttpErrorRepresentationBootstrapOptions');
     expect(readFileSync(resolve(packageRootPath, 'dist/portability/web-runtime-adapter-portability.d.ts'), 'utf8'))
       .toContain('WebHttpErrorRepresentationBootstrapOptions');
-  }, 300_000);
 
-  it('imports every public package subpath through the published export map', async () => {
-    await runBuild();
-
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      exports: Record<string, { import: string; types: string }>;
-    };
     const publicSubpaths = Object.keys(packageJson.exports);
     const nodeSafeSubpaths = publicSubpaths.filter((subpath) => subpath !== './mock');
     const importScript = `
