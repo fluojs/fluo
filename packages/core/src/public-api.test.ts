@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -81,7 +80,6 @@ type InternalSubpathTypeExports = {
 
 const documentedRootRuntimeExports = [
   'Module',
-  'Global',
   'Inject',
   'Scope',
   'FluoError',
@@ -248,10 +246,14 @@ describe('@fluojs/core public API surface', () => {
     expect(coreRequestPipelineApi).not.toHaveProperty('cloneWithFallback');
   });
 
-  it('documents that forwardRef and optional wrappers come from @fluojs/di', () => {
-    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-
-    expect(readme).toContain("import { forwardRef, optional } from '@fluojs/di';");
-    expect(readme).toContain('@fluojs/core` only exports the shared wrapper types');
+  it('keeps DI wrapper creation and removed decorators out of every core entrypoint', async () => {
+    const root = await import('./index.js');
+    for (const api of [root, coreInternalApi, coreRequestPipelineApi]) {
+      expect(api).not.toHaveProperty('Global');
+      expect(api).not.toHaveProperty('forwardRef');
+      expect(api).not.toHaveProperty('optional');
+      expect(api).not.toHaveProperty('ForwardRef');
+      expect(api).not.toHaveProperty('Optional');
+    }
   });
 });

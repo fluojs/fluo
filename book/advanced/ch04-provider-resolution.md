@@ -36,7 +36,7 @@ The public types show the separation between the shapes a Provider may accept an
 export interface ClassProvider<T = unknown> {
   provide: Token<T>;
   useClass: ClassType<T>;
-  inject?: Array<Token | ForwardRefFn | OptionalToken>;
+  inject?: Array<Token | ForwardRefToken | OptionalInjectToken>;
   scope?: Scope;
   multi?: boolean;
 }
@@ -44,7 +44,7 @@ export interface ClassProvider<T = unknown> {
 export interface FactoryProvider<T = unknown> {
   provide: Token<T>;
   useFactory: (...deps: unknown[]) => MaybePromise<T>;
-  inject?: Array<Token | ForwardRefFn | OptionalToken>;
+  inject?: Array<Token | ForwardRefToken | OptionalInjectToken>;
   scope?: Scope;
   multi?: boolean;
   resolverClass?: ClassType;
@@ -69,7 +69,7 @@ export interface ExistingProvider<T = unknown> {
 }
 
 export interface NormalizedProvider<T = unknown> {
-  inject: Array<Token | ForwardRefFn | OptionalToken>;
+  inject: Array<Token | ForwardRefToken | OptionalInjectToken>;
   provide: Token<T>;
   scope: Scope;
   type: 'class' | 'factory' | 'value' | 'existing';
@@ -96,7 +96,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     return freezeNormalizedProvider({
       inject: normalizeInject(metadata?.inject, provider),
       provide: provider,
-      scope: normalizeProviderScope(metadata?.scope, provider) ?? Scope.DEFAULT,
+      scope: normalizeProviderScope(metadata?.scope, provider) ?? 'singleton',
       type: 'class',
       useClass: provider,
     });
@@ -115,7 +115,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: [],
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
+      scope: 'singleton',
       type: 'value',
       useValue: objectProvider.useValue,
     });
@@ -124,7 +124,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
 A class Provider reads explicitly recorded `inject` and `scope` values through `getClassDiMetadata()`. A value Provider already has its value, so it uses an empty `inject` array and receives the default singleton Scope.
 
-Normalization also validates the `inject` boundary in `path:packages/di/src/provider-normalization.ts:103-153`. The value itself must be an array, and every entry must be a string, symbol, constructable class Token, or a well-formed `forwardRef()` / `optional()` wrapper. This early validation keeps malformed input from turning into a raw `TypeError` or a vague resolution failure later. Because the input is standardized here, downstream resolvers can assume the dependency list already has an executable shape.
+Normalization also validates the `inject` boundary in `path:packages/di/src/provider-normalization.ts:103-153`. The value itself must be an array, and every entry must be a string, symbol, constructable class Token, or a well-formed `ForwardRef.create()` / `Optional.create()` wrapper. This early validation keeps malformed input from turning into a raw `TypeError` or a vague resolution failure later. Because the input is standardized here, downstream resolvers can assume the dependency list already has an executable shape.
 
 The early validation itself is fixed in one small helper.
 
@@ -169,9 +169,9 @@ function isToken(value: unknown): value is Token {
 }
 ```
 
-String, symbol, and constructable class Tokens pass through without being evaluated. Non-constructable functions such as arrow functions are rejected during registration. Wrapper objects are checked for their required callable or nested Token and then snapshotted as frozen records. In particular, `forwardRef()` remains lazy: normalization validates the wrapper's function but does not call it.
+String, symbol, and constructable class Tokens pass through without being evaluated. Non-constructable functions such as arrow functions are rejected during registration. Wrapper objects are checked for their required callable or nested Token and then snapshotted as frozen records. In particular, `ForwardRef.create()` remains lazy: normalization validates the wrapper's function but does not call it.
 
-Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `Scope.DEFAULT`. If a Scope is present, `normalizeProviderScope()` accepts only `singleton`, `request`, or `transient`; every other value becomes `InvalidProviderError`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the normalized record the container's final source of truth for Provider configuration.
+Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `'singleton'`. If a Scope is present, `normalizeProviderScope()` accepts only `singleton`, `request`, or `transient`; every other value becomes `InvalidProviderError`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the normalized record the container's final source of truth for Provider configuration.
 
 The factory and `{ provide, useClass }` branches make Scope precedence and inject precedence clearer.
 
@@ -188,7 +188,7 @@ The factory and `{ provide, useClass }` branches make Scope precedence and injec
       inject: normalizeInject(objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'factory',
       useFactory: objectProvider.useFactory,
     });
@@ -205,7 +205,7 @@ The factory and `{ provide, useClass }` branches make Scope precedence and injec
       inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'class',
       useClass: objectProvider.useClass,
     });
@@ -222,13 +222,13 @@ Another detail in `normalizeProvider` is that it preserves `forwardRef` and `opt
 
 Finally, normalization performs final validation. It checks whether required fields such as `provide` exist and whether there are obvious contradictions such as specifying a value Provider and a factory at the same time. This defensive layer means the DI container's internal state only handles valid records. A Provider that passes through `normalizeProvider` can be treated as an executable configuration piece by the Fluo engine.
 
-For plain class registration, the container reads constructor metadata through `getClassDiMetadata()` and uses `Scope.DEFAULT` when no explicit Scope exists. This flow appears in `path:packages/di/src/provider-normalization.ts:168-179`. In other words, class syntax is sugar for a normalized class Provider whose Token is the class itself.
+For plain class registration, the container reads constructor metadata through `getClassDiMetadata()` and uses `'singleton'` when no explicit Scope exists. This flow appears in `path:packages/di/src/provider-normalization.ts:168-179`. In other words, class syntax is sugar for a normalized class Provider whose Token is the class itself.
 
 A factory Provider is a little more subtle. The container first respects `provider.scope`, then reads Scope metadata from `resolverClass` if present, and finally uses the singleton default. This precedence appears in `path:packages/di/src/provider-normalization.ts:200-215`. So async or computed Providers participate in the same Scope language as class Providers.
 
 `{ provide, useClass }` follows the same inheritance pattern. `path:packages/di/src/provider-normalization.ts:217-232` shows the container reading metadata from `objectProvider.useClass` whenever `objectProvider.inject` is `undefined`. A non-undefined Provider value keeps final authority, while the class decorator provides the fallback contract.
 
-Two helper wrappers are also connected to this normalization step. They look like dependency syntax from the outside, but they are really markers for later resolution. `forwardRef()` and `optional()` are declared in `path:packages/di/src/types.ts:137-168`. These functions don't resolve anything themselves. They only wrap Tokens so later steps can treat them specially.
+Two helper wrappers are also connected to this normalization step. They look like dependency syntax from the outside, but they are really markers for later resolution. `ForwardRef.create()` and `Optional.create()` are declared in `path:packages/di/src/types.ts:137-168`. These static methods don't resolve anything themselves. They only wrap Tokens so later steps can treat them specially.
 
 If a non-array `inject`, an invalid entry, a malformed wrapper, or an unsupported `scope` enters provider normalization, `path:packages/di/src/provider-normalization.ts` throws an `InvalidProviderError` with provider context and an authoring hint. This is an important choice. Fluo wants authoring errors to appear during registration and normalization, not much later during creation when the graph is already half active.
 
@@ -283,7 +283,7 @@ The early part of registration combines disposal state, normalization, and the r
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
-      if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT) {
+      if (this.requestScopeEnabled && normalized.scope === 'singleton') {
         throw new ScopeMismatchError(
           `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
           {
@@ -511,7 +511,7 @@ Scope cache selection branches on Provider Scope and whether the current contain
 `path:packages/di/src/container.ts:949-970`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
         return this.requestCacheForWrite();
       }
@@ -712,7 +712,7 @@ Every special dependency entry is interpreted in this helper.
 `path:packages/di/src/container.ts:857-879`
 ```typescript
   private async resolveDepToken(
-    depEntry: Token | ForwardRefFn | OptionalToken,
+    depEntry: Token | ForwardRefToken | OptionalInjectToken,
     chain: Token[],
     activeTokens: Set<Token>,
   ): Promise<unknown> {
@@ -738,7 +738,7 @@ Every special dependency entry is interpreted in this helper.
 
 Optional first checks registration and returns `undefined` if the Token is absent. `forwardRef` resolves the factory through the container's `forwardRefTokenCache`, then enters the same resolver with the `allowForwardRef` flag enabled.
 
-Optional injection is the smallest branch. If the dependency entry is an `OptionalToken`, the container first checks `has(innerToken)`. If the Token is absent, it returns `undefined` without an error. If the Token exists, it resolves normally. The exact code is in `path:packages/di/src/container.ts:862-870`, and both outcomes are tested in `path:packages/di/src/container.test.ts:972-1009`.
+Optional injection is the smallest branch. If the dependency entry is an `OptionalInjectToken`, the container first checks `has(innerToken)`. If the Token is absent, it returns `undefined` without an error. If the Token exists, it resolves normally. The exact code is in `path:packages/di/src/container.ts:862-870`, and both outcomes are tested in `path:packages/di/src/container.test.ts:972-1009`.
 
 Forward references are intentionally simple too. If `isForwardRef(depEntry)` is true, the wrapper is lazily evaluated and cached through `resolveForwardRefToken()`, and the resulting Token is passed to `resolveWithChain(..., allowForwardRef=true)`. This appears in `path:packages/di/src/container.ts:872-876` and `path:packages/di/src/container.ts:1367-1375`. The wrapper only delays Token lookup. It doesn't create a proxy instance or lazy object.
 
@@ -785,7 +785,7 @@ At normalization time, an alias Provider closes into an `existing` record withou
     return freezeNormalizedProvider({
       inject: [],
       provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
+      scope: 'singleton',
       type: 'existing',
       useExisting: objectProvider.useExisting,
     });
@@ -885,11 +885,11 @@ The special dependency entry algorithm can be summarized like this.
 
 ```text
 resolveDepToken(entry):
-  if entry is optional(token):
+  if entry is Optional.create(token):
     if token is absent:
       return undefined
     return resolve(token)
-  if entry is forwardRef(factory):
+  if entry is ForwardRef.create(factory):
     token = factory()
     return resolve(token, allowForwardRef=true)
   return resolve(entry)
@@ -965,7 +965,7 @@ The singleton dependency Scope check runs before the Provider is created.
 `path:packages/di/src/container.ts:1234-1251`
 ```typescript
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-    if (provider.scope !== Scope.DEFAULT) {
+    if (provider.scope !== 'singleton') {
       return;
     }
 
@@ -986,11 +986,11 @@ The singleton dependency Scope check runs before the Provider is created.
 
 This check inspects the dependency graph before a singleton Provider is made. The recursive helpers catch request-scoped Providers behind aliases, multi-Provider contributions, nested dependencies, wrappers, and unregistered class metadata.
 
-`CircularDependencyError` is intentionally explicit. Its constructor in `path:packages/di/src/errors.ts:106-125` includes the full chain and a first-party hint recommending shared-logic extraction or `forwardRef()` use. That recovery advice is rooted in the standard resolution model.
+`CircularDependencyError` is intentionally explicit. Its constructor in `path:packages/di/src/errors.ts:106-125` includes the full chain and a first-party hint recommending shared-logic extraction, a mediator, or moving interaction to a later boundary. That recovery advice is rooted in the standard resolution model.
 
 Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/provider-normalization.ts:168-249` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:670-683` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:1201-1232` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:857-879` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The tests in `path:packages/di/src/container.test.ts:1223-1255` and `path:packages/di/src/container.test.ts:737-755` demonstrate representative multi-Provider aggregation/order and registration-conflict behavior.
 
-This standard-first architecture keeps the DI container as a predictable state machine even when the Module Graph becomes complex. Complexity moves into normalization, and registration enforces Scope and topology rules. `forwardRef()` support in `path:packages/di/src/types.ts:137-168` also fits this model. It provides a lookup-deferral marker without creating proxy objects.
+This standard-first architecture keeps the DI container as a predictable state machine even when the Module Graph becomes complex. Complexity moves into normalization, and registration enforces Scope and topology rules. `ForwardRef.create()` support in `path:packages/di/src/types.ts:137-168` also fits this model. It provides a lookup-deferral marker without creating proxy objects.
 
 An implementation-facing debugging checklist looks like this.
 - If registration fails immediately, inspect normalization and duplicate checks first.

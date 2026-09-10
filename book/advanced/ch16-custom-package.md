@@ -49,7 +49,7 @@ In fluo, visibility is a first-class design element. A package usually exposes f
 ### Dependency Declaration
 
 fluo packages generally depend on three core pillars.
-- `@fluojs/core`: Provides the metadata backbone (`@Module`, `@Global`, `@Inject`).
+- `@fluojs/core`: Provides the metadata backbone (`@Module`, `@Inject`).
 - `@fluojs/di`: Provides the Token-based container and Provider model.
 - `@fluojs/runtime`: Provides the public `ModuleType` and `defineModule(...)` boundary for class-based programmatic modules, in addition to bootstrap APIs.
 
@@ -136,7 +136,7 @@ In fluo, the `exports` field of `@Module` is not a simple hint. It is a strictly
 1. **Local visibility**: Every Provider is visible inside the Module where it is defined.
 2. **Exported visibility**: A Provider is visible to Modules that `import` its defining Module only when it is listed in the `exports` array.
 3. **Re-exports**: A Module can re-export another Module. This makes the exports of the imported Module available to every Module that imports the "proxy" Module.
-4. **Global Modules**: A Module with the `@Global()` decorator does not require explicit imports, but its Providers still need to be exported to be visible across the full application graph.
+4. **Global Modules**: A Module with the `@Module({ global: true })` decorator does not require explicit imports, but its Providers still need to be exported to be visible across the full application graph.
 
 ## Practical Example: Feature-Flags Mini-Package
 
@@ -235,9 +235,9 @@ The fluo runtime normalizes missing metadata fields, such as `exports: []` when 
 
 ### Handling Circular Dependencies
 
-The runtime rejects circular Module imports during Module Graph compilation. Do not wrap entries in `imports` with `forwardRef()`. Instead, move the Providers shared by both sides into a third Module that exports them, then import that shared Module from each side. If the shared responsibility is broader than one Module, extract it into a separate package.
+The runtime rejects circular Module imports during Module Graph compilation. Do not wrap entries in `imports` with `ForwardRef.create()`. Instead, move the Providers shared by both sides into a third Module that exports them, then import that shared Module from each side. If the shared responsibility is broader than one Module, extract it into a separate package.
 
-`forwardRef()` has a narrower DI role: use it only around a dependency Token inside a class-level `@Inject(...)` list or a Provider `inject` array when declaration order means that Token is not available yet. It delays Token lookup; it does not make a Module import cycle or a true constructor cycle resolvable.
+`ForwardRef.create()` has a narrower DI role: use it only around a dependency Token inside a class-level `@Inject(...)` list or a Provider `inject` array when declaration order means that Token is not available yet. It delays Token lookup; it does not make a Module import cycle or a true constructor cycle resolvable.
 
 ## Conclusion
 

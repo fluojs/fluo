@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from './container.js';
 import { ScopeMismatchError } from './errors.js';
-import { Scope } from './types.js';
+
 
 describe('singleton dependency scope validation across multi providers', () => {
   it('fails with ScopeMismatchError before any multi-provider factory runs', async () => {
@@ -21,7 +21,7 @@ describe('singleton dependency scope validation across multi providers', () => {
       {
         multi: true,
         provide: pluginToken,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: () => {
           factoryCalls.push('request-plugin');
           return 'request-plugin';
@@ -49,7 +49,7 @@ describe('singleton dependency scope validation across multi providers', () => {
       {
         multi: true,
         provide: pluginToken,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: () => 'request-plugin',
       },
       {
@@ -76,7 +76,7 @@ describe('singleton dependency scope validation across multi providers', () => {
       {
         multi: true,
         provide: pluginToken,
-        scope: Scope.REQUEST,
+        scope: 'request',
         useFactory: () => {
           factoryCalls += 1;
           return 'request-plugin';
@@ -123,7 +123,7 @@ describe('singleton dependency scope validation across multi providers', () => {
     const pluginToken = Symbol('request-scope-plugins');
     const root = new Container().register(
       { multi: true, provide: pluginToken, useValue: 'singleton-plugin' },
-      { multi: true, provide: pluginToken, scope: Scope.REQUEST, useFactory: () => 'request-plugin' },
+      { multi: true, provide: pluginToken, scope: 'request', useFactory: () => 'request-plugin' },
     );
     const requestScope = root.createRequestScope();
 

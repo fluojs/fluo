@@ -2,8 +2,7 @@ import type { Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 
 import { InvalidProviderError } from './errors.js';
-import type { ClassType, ForwardRefFn, NormalizedProvider, OptionalToken, Provider } from './types.js';
-import { Scope } from './types.js';
+import type { ClassType, ForwardRefToken, NormalizedProvider, OptionalInjectToken, Provider, Scope } from './types.js';
 
 type ProviderObjectInput = {
   readonly inject?: unknown;
@@ -18,7 +17,7 @@ type ProviderObjectInput = {
 };
 
 type ValidatedProviderObject = ProviderObjectInput & { readonly provide: Token };
-type NormalizedInjectToken = Token | ForwardRefFn | OptionalToken;
+type NormalizedInjectToken = Token | ForwardRefToken | OptionalInjectToken;
 
 function isClassConstructor(value: Provider): value is ClassType {
   return isConstructableFunction(value);
@@ -96,7 +95,7 @@ function normalizeProviderScope(scope: unknown, providerToken: Token): Scope | u
   throw new InvalidProviderError('Provider scope must be one of singleton, request, or transient.', {
     token: providerToken,
     scope: String(scope),
-    hint: 'Use Scope.DEFAULT, Scope.REQUEST, Scope.TRANSIENT, or the matching string literal.',
+    hint: "Use the 'singleton', 'request', or 'transient' literal.",
   });
 }
 
@@ -108,7 +107,7 @@ function normalizeInjectToken(token: unknown, providerToken: Token, index: numbe
       });
     }
 
-    return Object.freeze<ForwardRefFn>({
+    return Object.freeze<ForwardRefToken>({
       __forwardRef__: true,
       forwardRef: token.forwardRef,
     });
@@ -121,7 +120,7 @@ function normalizeInjectToken(token: unknown, providerToken: Token, index: numbe
       });
     }
 
-    return Object.freeze<OptionalToken>({
+    return Object.freeze<OptionalInjectToken>({
       __optional__: true,
       token: token.token,
     });
@@ -131,9 +130,9 @@ function normalizeInjectToken(token: unknown, providerToken: Token, index: numbe
     return token;
   }
 
-  throw new InvalidProviderError(`Provider inject entry at index ${String(index)} must be a string, symbol, class, forwardRef(), or optional() token wrapper.`, {
+  throw new InvalidProviderError(`Provider inject entry at index ${String(index)} must be a string, symbol, class, ForwardRef.create(), or Optional.create() token wrapper.`, {
     token: providerToken,
-    hint: 'Check that every dependency token is defined, and use forwardRef() for declaration-order cycles.',
+    hint: 'Check that every dependency token is defined, and use ForwardRef.create() for declaration-order cycles.',
   });
 }
 
@@ -172,7 +171,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     return freezeNormalizedProvider({
       inject: normalizeInject(metadata?.inject, provider),
       provide: provider,
-      scope: normalizeProviderScope(metadata?.scope, provider) ?? Scope.DEFAULT,
+      scope: normalizeProviderScope(metadata?.scope, provider) ?? 'singleton',
       type: 'class',
       useClass: provider,
     });
@@ -197,7 +196,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: [],
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
+      scope: 'singleton',
       type: 'value',
       useValue: objectProvider.useValue,
     });
@@ -214,7 +213,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: normalizeInject(objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'factory',
       useFactory: objectProvider.useFactory,
     });
@@ -231,7 +230,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'class',
       useClass: objectProvider.useClass,
     });
@@ -245,7 +244,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     return freezeNormalizedProvider({
       inject: [],
       provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
+      scope: 'singleton',
       type: 'existing',
       useExisting: objectProvider.useExisting,
     });

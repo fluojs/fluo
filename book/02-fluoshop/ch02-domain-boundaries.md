@@ -263,10 +263,10 @@ An actual constructor cycle is one of the earliest signs that boundaries have br
 
 ```ts
 import { Inject } from '@fluojs/core';
-import { CircularDependencyError, Container, forwardRef } from '@fluojs/di';
+import { CircularDependencyError, Container, ForwardRef } from '@fluojs/di';
 import { expect, it } from 'vitest';
 
-@Inject(forwardRef(() => OrderSide))
+@Inject(ForwardRef.create(() => OrderSide))
 class CatalogSide {
   constructor(readonly orders: OrderSide) {}
 }
@@ -287,11 +287,11 @@ it('rejects a real cycle even when token lookup is deferred', async () => {
 });
 ```
 
-`forwardRef()` delays looking up a class token that is not yet available at declaration time. It does not solve the problem that creating `CatalogSide` requires `OrderSide`, whose creation requires `CatalogSide` again. The expected result is `CircularDependencyError`, not successful resolution, and the test treats that rejection as success. The purpose of the experiment is to avoid normalizing constructor cycles under the name "bidirectional collaboration."
+`ForwardRef.create()` delays looking up a class token that is not yet available at declaration time. It does not solve the problem that creating `CatalogSide` requires `OrderSide`, whose creation requires `CatalogSide` again. The expected result is `CircularDependencyError`, not successful resolution, and the test treats that rejection as success. The purpose of the experiment is to avoid normalizing constructor cycles under the name "bidirectional collaboration."
 
 The solution is usually to change where collaboration takes place. Have a higher-level use case that reads catalog data and creates an order call the two in sequence, or extract a rule shared by both into a stateless value function. This does not mean turning every call into an event. Making an operation asynchronous when its result is needed immediately complicates checking the result and handling failures. The later chapters on asynchronous processing cover real requirements for events.
 
-Lifecycle is part of the boundary too. If a default singleton service stores the current customer ID in a field, two requests share that instance. Start with the simpler form: pass the verified ID as a method argument. If request-specific state must be injected, use request scope explicitly. Fluo rejects a singleton that depends on a request-scoped provider with `ScopeMismatchError`; it does not automatically convert the singleton to request scope. Hiding an incorrect lifetime with `optional()` is not a solution either.
+Lifecycle is part of the boundary too. If a default singleton service stores the current customer ID in a field, two requests share that instance. Start with the simpler form: pass the verified ID as a method argument. If request-specific state must be injected, use request scope explicitly. Fluo rejects a singleton that depends on a request-scoped provider with `ScopeMismatchError`; it does not automatically convert the singleton to request scope. Hiding an incorrect lifetime with `Optional.create()` is not a solution either.
 
 ## The Right Boundaries Keep Changes Small
 

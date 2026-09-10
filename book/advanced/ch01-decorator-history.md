@@ -142,22 +142,12 @@ In Fluo, we use these type-safety features to provide a robust developer experie
 
 `path:packages/core/src/decorators.ts:19-23`
 ```typescript
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };
 }
 
-/**
- * Marks the decorated module as global so its exported providers are visible without explicit imports.
- *
- * @returns A standard class decorator that marks the target module as globally visible.
- */
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
 ```
 
 The important point here is not descriptor or prototype mutation, but the fact that a standard class Decorator records narrow metadata on the received `target`. Therefore, the type-safety explanation is not merely a syntax comparison; it is backed by implementation evidence showing that Fluo connects its public API's standard Decorator contract to runtime storage rules.
@@ -171,29 +161,24 @@ class Service {
   constructor(private repo: Repo) {}
 }
 ```
-The compiler automatically emits `design:paramtypes` for the constructor. In Fluo, the public `@Inject` API first normalizes the Token list and then records it as class DI metadata.
+The compiler automatically emits `design:paramtypes` for the constructor. In Fluo, the public `@Inject` API records variadic tokens as class DI metadata and rejects nested arrays.
 
 `path:packages/core/src/decorators.ts:46-77`
 ```typescript
-export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
-/**
- * Defines explicit constructor injection tokens for the decorated class.
- *
- * @param tokensOrList Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
- * @returns A standard class decorator that stores explicit injection metadata on the target class.
- */
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });
   };
 }
+
+
 ```
 
-Fluo prioritizes explicitness, `@Inject(Repo)`, over the implicit type-based injection of legacy frameworks, ensuring that dependency wiring is always visible and auditable. As this excerpt shows, the array form is normalized only at the migration edge, and the final record is always the Token array supplied by the developer. This explicitness means Fluo works consistently even with interfaces and abstract classes, where legacy type emission frequently fails.
+Fluo prioritizes explicitness, `@Inject(Repo)`, over the implicit type-based injection of legacy frameworks, ensuring that dependency wiring is always visible and auditable. Spread existing arrays with `@Inject(...tokens)`; the stored record snapshots the supplied tokens. Empty `@Inject()` explicitly clears inherited tokens. This explicitness means Fluo works consistently even with interfaces and abstract classes, where legacy type emission frequently fails.
 
 By requiring explicit Tokens, Fluo also avoids common Circular Dependency traps associated with type-based injection. In legacy frameworks, when two classes depend on each other's types, the compiler often emits `undefined` as the metadata value, producing runtime errors that are hard to trace. In Fluo, because Tokens are explicit, the framework can detect and handle these situations much more gracefully.
 
@@ -278,7 +263,7 @@ Chapter 1 laid the foundation for exploring Fluo's advanced internals. We examin
 
 In the next chapter, we look more closely at the metadata system itself and see how Fluo uses symbols and Reflect to build a high-performance, type-safe configuration engine. You will see how the principles of explicitness and standardization discussed here apply at the framework's finest level. Stay tuned.
 
-This future-facing claim has real implementation evidence. The public surface at `path:packages/core/src/decorators.ts:19-89` is intentionally very small, offering only `@Module`, `@Global`, `@Inject`, and `@Scope`. There is no compatibility shim for legacy descriptor-style decorators, and there is no branch that reads `design:paramtypes`, so that restraint is the core of the architectural choice. If you slowly read the `@Inject` excerpt above and the overloads in `path:packages/core/src/decorators.ts:46-77`, Fluo's attitude becomes clearer. Fluo prioritizes the canonical variadic call, normalizes the array form only during the migration period, and ultimately records only explicit constructor Tokens through `defineClassDiMetadata` defined at `path:packages/core/src/metadata/class-di.ts:33-38`. In other words, migration friendliness remains only at the API edge, while the actual runtime contract is already fixed as standard-first and explicit-first.
+This future-facing claim has real implementation evidence. The public surface at `path:packages/core/src/decorators.ts:19-89` is intentionally very small, offering only `@Module`, `@Inject`, and `@Scope`. There is no compatibility shim for legacy descriptor-style decorators, and there is no branch that reads `design:paramtypes`, so that restraint is the core of the architectural choice. The `@Inject` implementation accepts only variadic calls and rejects nested arrays. Spread existing token lists; `packages/core/src/metadata/class-di.ts` preserves frozen snapshots and inherited overrides.
 
 The same file also shows what Fluo **intentionally did not build**. The final return block in the excerpt above and `path:packages/core/src/decorators.ts:69-77` only copy and store Tokens. They do not infer parameter types, infer interfaces, or read compiler-emitted hints, and that omission is exactly why Fluo preserves portability across `tsc`, `swc`, and future native Decorator runtimes. The metadata layer supporting this design sends the same message. `path:packages/core/src/metadata/class-di.ts:33-37` merges only two fields in DI metadata, `inject` and `scope`, and that small merge shape reveals Fluo's philosophy: DI state is not an endlessly growing reflection dump, but a minimal record the runtime can resolve deterministically.
 

@@ -17,10 +17,10 @@
 - A module MAY export its own provider tokens.
 - A module MAY re-export tokens exported by an imported module.
 - A module MUST NOT export a token that is neither local nor re-exported from an imported module.
-- A module marked with `@Global()` or `global: true` makes its exported tokens visible without direct imports. Non-exported providers remain private.
+- A module marked with `@Module({ global: true })` or `global: true` makes its exported tokens visible without direct imports. Non-exported providers remain private.
 
 `@Module()` and `@Module(undefined)` use `{}`: they register a module, preserve earlier partial
-metadata and `@Global()` regardless of decorator order, and increment the module metadata version.
+metadata and `@Module({ global: true })` regardless of decorator order, and increment the module metadata version.
 They do not infer providers or injections and are not equivalent to leaving a class undecorated.
 See [Public Decorator Defaults](../reference/decorator-defaults.md).
 
@@ -30,9 +30,9 @@ See [Public Decorator Defaults](../reference/decorator-defaults.md).
 - A class or controller with required constructor parameters MUST provide matching class-level `@Inject(...)` metadata unless the provider object supplies `inject` explicitly.
 - `@Inject(...)` tokens MUST cover every required constructor parameter. Missing entries fail module-graph validation with `ModuleInjectionMetadataError`.
 - `@Inject()` with no tokens records an explicit empty override and clears inherited constructor token metadata.
-- Constructor tokens MAY be classes, strings, symbols, `forwardRef(...)` wrappers, or `optional(...)` wrappers.
-- `forwardRef(...)` wraps one token whose value is not defined at decoration time because of declaration order; it does not make true constructor cycles resolvable.
-- `optional(token)` wraps one dependency token as optional. A missing optional token resolves to `undefined` instead of throwing.
+- Constructor tokens MAY be classes, strings, symbols, `ForwardRef.create(...)` wrappers, or `Optional.create(...)` wrappers.
+- `ForwardRef.create(...)` wraps one token whose value is not defined at decoration time because of declaration order; it does not make true constructor cycles resolvable.
+- `Optional.create(token)` wraps one dependency token as optional. A missing optional token resolves to `undefined` instead of throwing.
 - A provider or controller MAY inject tokens that are local to the current module.
 - A provider or controller MAY inject tokens exported by directly imported modules.
 - A provider or controller MAY inject tokens exported by global modules.
@@ -56,7 +56,7 @@ See [Public Decorator Defaults](../reference/decorator-defaults.md).
 
 - fluo MUST NOT rely on `emitDecoratorMetadata` or implicit constructor type reflection for DI resolution.
 - Provider tokens MUST be defined when registration metadata is normalized. `null` or `undefined` inject tokens are invalid.
-- Circular provider dependency chains fail resolution with `CircularDependencyError`. `forwardRef(...)` only defers declaration-time token lookup; it does not make true constructor cycles resolvable, so those cycles must be removed by refactoring.
+- Circular provider dependency chains fail resolution with `CircularDependencyError`. `ForwardRef.create(...)` only defers declaration-time token lookup; it does not make true constructor cycles resolvable, so those cycles must be removed by refactoring.
 - Duplicate registration of the same token inside one container MUST fail unless the replacement is intentional through `container.override(...)`.
 - A rejected `container.override(...)` batch MUST NOT change any registration, cached instance, or disposal ownership. The whole batch is validated before the first mutation.
 - Duplicate provider tokens across modules are governed at bootstrap by `duplicateProviderPolicy`, with `warn` as the default policy.

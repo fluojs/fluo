@@ -18,7 +18,7 @@ This document defines the current fluo decorator and metadata contract. fluo use
 
 ## Decorator Model
 
-- `@Module(...)`, `@Global()`, `@Inject(...)`, and `@Scope(...)` in `@fluojs/core` are standard class decorators.
+- `@Module(...)`, `@Module({ global: true })`, `@Inject(...)`, and `@Scope(...)` in `@fluojs/core` are standard class decorators.
 - `@Controller(...)` is a standard class decorator in `@fluojs/http`.
 - `@Get(...)`, `@Post(...)`, `@Put(...)`, `@Patch(...)`, `@Delete(...)`, `@Options(...)`, `@Head(...)`, and related HTTP decorators are standard method decorators.
 - DTO binding decorators such as `@FromBody(...)` and related HTTP field decorators are standard field decorators.
@@ -39,7 +39,9 @@ React `Path`, core `Module`, and OpenAPI `ApiOperation`/`ApiBody`. Paths default
 module/operation/body objects default to `{}`. Explicit `undefined` has the same meaning.
 `Route` still requires its method. No bare overload, reflection inference, or invalid-input
 coercion is added. The [complete audit](../reference/decorator-defaults.md) enumerates all
-165 APIs and preserves the other 150 contracts, including `UseAuth(strategyName)`.
+the original 165 APIs. After #3738 removes `Global`, 164 remain; the other 149
+factories retain their contracts, including `UseAuth(strategyName)`. Inject is
+variadic-only, including spread lists; see the [migration guide](../getting-started/migrate-core-di-declarations.md).
 
 Empty paths retain controller/router prefixes and collide with explicit `'/'` routes after
 normalization. Empty Module metadata still registers and merges; empty OpenAPI metadata can

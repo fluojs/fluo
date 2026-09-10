@@ -45,7 +45,7 @@ import { Inject } from '@fluojs/core';
 import {
   CircularDependencyError,
   Container,
-  optional,
+  Optional,
 } from '@fluojs/di';
 
 interface CatalogSnapshot {
@@ -92,7 +92,7 @@ interface AuditSink {
   record(event: string): void;
 }
 
-@Inject(optional(AUDIT_SINK))
+@Inject(Optional.create(AUDIT_SINK))
 class PreviewAudit {
   constructor(readonly sink: AuditSink | undefined) {}
 }
@@ -230,7 +230,7 @@ The third test checks a distinction often missed in production. Optional injecti
 
 A token visited before during depth-first traversal does not always indicate a cycle. It is normal for both paths of a diamond to converge on the same snapshot. Cycle detection needs to ask not "have we seen it somewhere before?" but "are we re-entering a creation path that has not yet completed?" `withTokenInChain()` adds the token to the path array and the set of active tokens, then removes it in `finally` on both success and failure. A single global visited set could mistake normal sharing for a cycle or leave traces of a failed path behind.
 
-A single call following `Orders -> Inventory -> Orders` can be detected by this path check. Adding `forwardRef(() => OrdersService)` cannot complete an object that is already being created, so the result is still `CircularDependencyError`. The fix is about dividing responsibilities rather than reference syntax. Have an order coordinator call both an inventory reservation port and an order persistence port, or move the interaction to explicit method calls after construction. The problem cannot be solved while leaving constructors that each require the other's completed instance.
+A single call following `Orders -> Inventory -> Orders` can be detected by this path check. Adding `ForwardRef.create(() => OrdersService)` cannot complete an object that is already being created, so the result is still `CircularDependencyError`. The fix is about dividing responsibilities rather than reference syntax. Have an order coordinator call both an inventory reservation port and an order persistence port, or move the interaction to explicit method calls after construction. The problem cannot be solved while leaving constructors that each require the other's completed instance.
 
 The last test is more demanding. `ORDERS` and `INVENTORY` start from separate top-level `resolve()` calls and each pauses at its own gate. Releasing the gates makes each path wait for an in-flight Promise owned by the other path. Looking only at either path's array cannot reveal every edge leading back to the token that path started. Cache sharing can thus become an endless mutual wait.
 

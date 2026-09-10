@@ -4,8 +4,11 @@
 
 이 문서는 [#3701](https://github.com/fluojs/fluo/issues/3701)의 조사표를 최종 구현과 대조한 결과입니다.
 조사 기준은 `4a0fd3c37b5b220c3bc38519b8e231bb9e442d37`의 공개 `@fluojs/*` 42개 패키지입니다.
-19개 패키지가 소유한 공개 decorator factory는 165개이며, 정확히 15개에 기본값을 추가하고
-나머지 150개의 인수 계약은 유지합니다. 같은 소유 API의 subpath 재수출, overload, alias는
+당시 19개 패키지의 공개 decorator factory 165개 중 정확히 15개에 기본값을 추가하고
+나머지 150개의 인수 계약을 유지했습니다. 이후 #3738에서 `Global`을 제거해 164개가
+남았으며 legacy Inject array overload도 제거했습니다.
+[선언 migration](../getting-started/migrate-core-di-declarations.ko.md)을 참조하세요.
+같은 소유 API의 subpath 재수출, overload, alias는
 중복 집계하지 않습니다. Metadata reader/writer, DI token wrapper, mapped DTO constructor,
 compiler plugin은 decorator가 아닙니다.
 
@@ -38,13 +41,14 @@ body가 없는 route에는 `requestBody`를 추가하지 않습니다. 빈 OpenA
 않습니다. 기존 `null` 실패는 factory 호출이 아니라 decorator 적용 시 발생할 수 있습니다.
 
 `Module()`은 decorator가 없는 클래스와 다릅니다. Metadata를 등록하며 앞서 기록된 부분 필드와
-어느 순서의 `Global()`도 보존하고, 클래스별 record를 격리하며 module metadata version을
+어느 순서의 `Module({ global: true })`도 보존하고, 클래스별 record를 격리하며 module metadata version을
 증가시킵니다. `Path()`는 HTTP, React, route-inspection metadata를 기록하면서 React
 metadata의 `options` 속성은 만들지 않습니다.
 
 ## Remaining 150 APIs
 
-아래 모든 이름은 issue 이전의 인수 계약과 구현을 유지합니다. `?`는 이미 optional인 인수,
+기존 section은 원래 150개 API 묶음을 기록하며 #3738 이후 149개가 남습니다.
+Core 행은 이후 통합을 반영하고 다른 행의 인수 계약은 유지합니다. `?`는 이미 optional인 인수,
 `...`는 기존 variadic 입력입니다. 표에서 괄호를 생략한 이름도 모두 factory입니다.
 
 | 소유 패키지 | API | 개수 | 보존 계약 |
@@ -62,7 +66,7 @@ metadata의 `options` 속성은 만들지 않습니다.
 | throttler | `Throttle`, `SkipThrottle` | 2 | `Throttle(options)`의 양의 유한 정수 limit/ttl 필수; skip은 무인수 |
 | cache-manager | `CacheKey`, `CacheTTL`, `CacheEvict` | 3 | Key/resolver, 초 단위 TTL, eviction target 필수; 명시적 `CacheTTL(0)`은 무만료 |
 | passport | `UseAuth`, `UseOptionalAuth`, `RequireScopes` | 3 | `UseAuth(strategyName)`, `UseOptionalAuth(strategyName)`은 전략 필수; scopes는 variadic 합성 유지 |
-| core | `Global`, `Inject`, `Scope` | 3 | `Global()`; 명시적 variadic/legacy-array injection token과 `Inject()`의 상속 token 지우기; scope 필수 |
+| core | `Inject`, `Scope` | 2 | 명시적 variadic injection token 또는 spread 목록; `Inject()`의 상속 token 지우기; scope literal 필수 |
 | queue | `QueueWorker` | 1 | Job constructor 필수; options는 `{}` 유지 |
 | cron | `Cron`, `Interval`, `Timeout` | 3 | Expression/milliseconds 필수; options는 `{}` 유지 |
 | cqrs | `CommandHandler`, `QueryHandler`, `EventHandler`, `Saga` | 4 | Message/event constructor 필수; Saga는 비어 있지 않은 constructor 배열도 받는 class factory |

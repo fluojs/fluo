@@ -45,7 +45,7 @@ import { Inject } from '@fluojs/core';
 import {
   CircularDependencyError,
   Container,
-  optional,
+  Optional,
 } from '@fluojs/di';
 
 interface CatalogSnapshot {
@@ -92,7 +92,7 @@ interface AuditSink {
   record(event: string): void;
 }
 
-@Inject(optional(AUDIT_SINK))
+@Inject(Optional.create(AUDIT_SINK))
 class PreviewAudit {
   constructor(readonly sink: AuditSink | undefined) {}
 }
@@ -230,7 +230,7 @@ test('rejects a cycle between separate pending resolutions', { timeout: 2000 }, 
 
 깊이 우선 탐색에서 이미 방문한 토큰이라고 모두 순환은 아니다. 다이아몬드의 두 경로가 같은 스냅샷으로 모이는 것은 정상이다. 순환 판정에 필요한 것은 “어디선가 본 적 있는가”가 아니라 “지금 완료되지 않은 생성 경로에 다시 들어오는가”다. `withTokenInChain()`은 경로 배열과 활동 중 토큰 집합에 토큰을 넣고, 성공과 실패 모두에서 `finally`로 제거한다. 전역 방문 집합 하나로 해결하면 정상 공유를 순환으로 오인하거나 실패한 경로의 흔적을 남길 수 있다.
 
-단일 호출의 `Orders → Inventory → Orders`는 이 경로 검사로 발견할 수 있다. `forwardRef(() => OrdersService)`를 넣어도 이미 생성 중인 객체를 완성할 수는 없으므로 `CircularDependencyError`다. 이때 수정할 것은 참조 문법보다 책임 분할이다. 주문 조정자가 재고 예약 포트와 주문 저장 포트를 함께 호출하게 하거나, 생성 이후의 명시적 메서드 호출로 상호작용을 옮겨야 한다. 생성자가 서로 상대의 완성된 인스턴스를 요구하는 구조를 그대로 두고 해결할 수는 없다.
+단일 호출의 `Orders → Inventory → Orders`는 이 경로 검사로 발견할 수 있다. `ForwardRef.create(() => OrdersService)`를 넣어도 이미 생성 중인 객체를 완성할 수는 없으므로 `CircularDependencyError`다. 이때 수정할 것은 참조 문법보다 책임 분할이다. 주문 조정자가 재고 예약 포트와 주문 저장 포트를 함께 호출하게 하거나, 생성 이후의 명시적 메서드 호출로 상호작용을 옮겨야 한다. 생성자가 서로 상대의 완성된 인스턴스를 요구하는 구조를 그대로 두고 해결할 수는 없다.
 
 마지막 테스트는 더 까다롭다. `ORDERS`와 `INVENTORY`가 서로 다른 최상위 `resolve()`에서 시작되어 각자의 게이트에 걸린다. 게이트를 풀면 각 경로는 다른 경로가 소유한 진행 중 Promise를 기다리게 된다. 어느 한 경로의 배열만 보아서는 자기가 시작한 토큰으로 돌아온 간선을 모두 볼 수 없다. 캐시 공유가 오히려 영원한 상호 대기가 되는 상황이다.
 

@@ -22,7 +22,7 @@ TypeScript의 `import { CATALOG_READER } from './catalog-reader.js'`는 JavaScri
 
 재공개도 명시적이다. 중간 모듈이 다른 모듈을 import했다고 그쪽 export가 자동으로 다음 소비자에게 전달되지는 않는다. 중간 모듈의 `exports`에 토큰을 다시 넣어야 한다. 그 토큰은 자기 provider이거나 import한 모듈이 실제로 export한 토큰이어야 한다. 어디선가 전역으로 보인다는 이유만으로 자기가 소유하지도 전달받지도 않은 토큰을 export할 수는 없다.
 
-`@Global()`은 그래프 안에 들어온 전역 모듈의 export를 명시적 import 없이 보이게 한다. 디스크에 클래스가 존재하는 모든 전역 모듈을 자동 검색한다는 뜻은 아니다. 공통 설정처럼 여러 기능에 일관되게 제공할 기반에는 유용하지만, 계정과 주문의 모든 내부 구현을 전역으로 만들면 경계 검증의 장점이 줄어든다. 이번 상점에서는 기능 의존성을 `imports`로 남겨 읽을 수 있게 하는 편을 선택한다.
+`@Module({ global: true })`는 그래프 안에 들어온 전역 모듈의 export를 명시적 import 없이 보이게 한다. 디스크에 클래스가 존재하는 모든 전역 모듈을 자동 검색한다는 뜻은 아니다. 공통 설정처럼 여러 기능에 일관되게 제공할 기반에는 유용하지만, 계정과 주문의 모든 내부 구현을 전역으로 만들면 경계 검증의 장점이 줄어든다. 이번 상점에서는 기능 의존성을 `imports`로 남겨 읽을 수 있게 하는 편을 선택한다.
 
 실제 앱에 적용할 때의 파일 경계는 다음처럼 정할 수 있다. 표는 이후 실험 파일의 클래스를 앱으로 옮길 위치이며, 해당 파일들이 이미 저장소에 완성되어 있다는 주장은 아니다.
 
@@ -64,7 +64,7 @@ core의 `Module()`은 모듈 정의를 메타데이터 저장소에 기록한다
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Inject, Module } from '@fluojs/core';
-import { optional } from '@fluojs/di';
+import { Optional } from '@fluojs/di';
 import {
   bootstrapModule,
   fluoFactory,
@@ -195,7 +195,7 @@ test('rejects hidden targets even through aliases or optional injection', () => 
   })
   class AliasLeakModule {}
 
-  @Inject(optional(MemoryCatalog))
+  @Inject(Optional.create(MemoryCatalog))
   class OptionalLeak {
     constructor(readonly catalog: MemoryCatalog | undefined) {}
   }

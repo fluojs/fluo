@@ -58,14 +58,14 @@ export class PostsController {
 다음은 생성된 starter 구성을 보존하면서 컨트롤러를 추가한 `src/app.ts`의 **완전한 파일**이다. `ConfigModule`과 `HealthModule`, `GreetingModule`은 CLI가 만든 기존 등록이며 이 장의 새 기능은 `controllers` 한 항목이다.
 
 ```ts
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 import { GreetingModule } from './greeting/greeting.module';
 import { PostsController } from './posts/posts.controller';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',

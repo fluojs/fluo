@@ -18,7 +18,7 @@
 
 ## Decorator Model
 
-- `@fluojs/core`의 `@Module(...)`, `@Global()`, `@Inject(...)`, `@Scope(...)`는 표준 클래스 데코레이터입니다.
+- `@fluojs/core`의 `@Module(...)`, `@Module({ global: true })`, `@Inject(...)`, `@Scope(...)`는 표준 클래스 데코레이터입니다.
 - `@fluojs/http`의 `@Controller(...)`는 표준 클래스 데코레이터입니다.
 - `@Get(...)`, `@Post(...)`, `@Put(...)`, `@Patch(...)`, `@Delete(...)`, `@Options(...)`, `@Head(...)` 및 관련 HTTP 데코레이터는 표준 메서드 데코레이터입니다.
 - `@FromBody(...)` 및 관련 HTTP 필드 데코레이터 같은 DTO 바인딩 데코레이터는 표준 필드 데코레이터입니다.
@@ -38,8 +38,10 @@
 core `Module`, OpenAPI `ApiOperation`/`ApiBody`입니다. Path는 `''`, module/operation/body
 객체는 `{}`가 기본값이며 명시적 `undefined`도 같습니다. `Route`의 method는 필수입니다.
 Bare overload, reflection 추론, 잘못된 입력의 강제 변환은 추가하지 않습니다.
-[전체 조사표](../reference/decorator-defaults.ko.md)는 API 165개를 모두 열거하고
-`UseAuth(strategyName)` 등 나머지 150개의 계약 보존을 기록합니다.
+[전체 조사표](../reference/decorator-defaults.ko.md)는 원래 API 165개를 열거합니다.
+Issue #3738의 `Global` 제거 후 164개가 남으며 `UseAuth(strategyName)` 등 나머지 149개
+factory의 계약을 유지합니다. Inject는 spread 목록을 포함한 variadic만 받습니다.
+[Migration 가이드](../getting-started/migrate-core-di-declarations.ko.md)를 참조하세요.
 
 빈 path는 controller/router prefix를 유지하고 정규화 후 명시적 `'/'` route와 충돌합니다.
 빈 Module metadata도 등록/병합하며, 빈 OpenAPI metadata는 stacked 값을 덮어쓸 수 있습니다.

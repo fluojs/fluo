@@ -134,14 +134,14 @@ The initial data now lives at the configuration boundary rather than in the cont
 The following is the **complete replacement file** for `src/app.ts`. It removes the previous chapter's direct registration of `PostsController` and imports `PostsModule` instead. Everything else is the generated starter configuration.
 
 ```ts
-import { Global, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 import { GreetingModule } from './greeting/greeting.module';
 import { PostsModule } from './posts/posts.module';
 
-@Global()
 @Module({
+  global: true,
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
@@ -157,7 +157,7 @@ export class AppModule {}
 
 The root module no longer needs to know how many controllers the posts feature contains or which seed token it uses. Do not also register `PostsService` in the root's `providers`. That is not the proper way to make a dependency visible; it duplicates ownership of the registration. If another feature needs the service, it should connect `PostsModule` through its own `imports` and use that module's export.
 
-Do not copy the starter root's `@Global()` onto every feature module either. `PostsModule` has no global declaration. Hiding missing imports with global visibility makes the direction of dependencies between features harder to see in the code. As the application grows, explicit module connections help a newcomer understand the scope of a change.
+Do not copy the starter root's `@Module({ global: true })` onto every feature module either. `PostsModule` has no global declaration. Hiding missing imports with global visibility makes the direction of dependencies between features harder to see in the code. As the application grows, explicit module connections help a newcomer understand the scope of a change.
 
 In the new structure, a request flows from the root to the posts module, then to its controller and the injected service. `INITIAL_POSTS` is read when the service is constructed. We do not reinject the seed or create a new array provider on every GET request. The default singleton service is shared within the app context, and queries create copies to return to callers.
 
@@ -267,7 +267,7 @@ The fact that a service is shared imposes a design constraint to remember. If `P
 
 Fluo distinguishes the default singleton scope, request scope for each request, and transient scope for each resolution. Changing every provider to request scope does not automatically solve shared-state problems. It increases the cost of repeated construction, and a singleton depending on a request provider is rejected with `ScopeMismatchError`. Resolving a request provider directly from the root container is also incorrect. A child boundary created with `createRequestScope()` owns the request scope.
 
-Circular dependencies cannot be fixed by renaming them either. If `PostsService` later needs `AccountsService` and a constructor dependency in the opposite direction appears as well, we must reconsider who coordinates which operation. `forwardRef()` can defer lookup of a token that has not yet been declared, but it does not break an actual constructor cycle. Rather than repeatedly attaching deferred references to a relationship that cannot work, moving coordination into a higher-level operation that uses both features makes the responsibilities easier to explain.
+Circular dependencies cannot be fixed by renaming them either. If `PostsService` later needs `AccountsService` and a constructor dependency in the opposite direction appears as well, we must reconsider who coordinates which operation. `ForwardRef.create()` can defer lookup of a token that has not yet been declared, but it does not break an actual constructor cycle. Rather than repeatedly attaching deferred references to a relationship that cannot work, moving coordination into a higher-level operation that uses both features makes the responsibilities easier to explain.
 
 The separation in this chapter is not intended to maximize the number of classes. A one-off calculation can remain a function, and small logic with no external collaborators can be tested directly with `new`. DI belongs at configuration boundaries where the application must decide which collaborators to provide and for how long. When we add a shop to the same blog in Volume 2, we will use these boundaries first rather than move every module to a new process.
 

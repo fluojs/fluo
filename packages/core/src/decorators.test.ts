@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Global, Inject, Module, Scope } from './decorators.js';
+import { Inject, Module, Scope } from './decorators.js';
 import { getClassDiMetadata, getModuleMetadata, getOwnClassDiMetadata } from './metadata.js';
 import type { ForwardRefToken, OptionalInjectToken, Token } from './types.js';
 
@@ -18,8 +18,9 @@ describe('core decorators', () => {
   it('writes module metadata through decorators', () => {
     class SharedModule {}
 
-    @Global()
     @Module({
+
+      global: true,
       exports: ['LOGGER'],
       imports: [SharedModule],
       providers: ['LoggerProvider'],
@@ -95,31 +96,31 @@ describe('core decorators', () => {
     });
   });
 
-  it('keeps the legacy array syntax working during the migration window', () => {
+  it('records multiple tokens through the canonical variadic syntax', () => {
     const LOGGER = Symbol('LOGGER');
     const CACHE = Symbol('CACHE');
 
-    @Inject([LOGGER, CACHE])
-    class LegacyArrayService {}
+    @Inject(LOGGER, CACHE)
+    class VariadicService {}
 
-    expect(getClassDiMetadata(LegacyArrayService)).toEqual({
+    expect(getClassDiMetadata(VariadicService)).toEqual({
       inject: [LOGGER, CACHE],
       scope: undefined,
     });
   });
 
-  it('normalizes legacy array inject tokens before caller-owned arrays can mutate metadata', () => {
+  it('snapshots spread tokens before caller-owned arrays can mutate metadata', () => {
     const LOGGER = Symbol('LOGGER');
     const CACHE = Symbol('CACHE');
     const tokens = [LOGGER, CACHE];
-    const decorator = Inject(tokens);
+    const decorator = Inject(...tokens);
 
     tokens.push(Symbol('MUTATED'));
     @decorator
-    class LegacyArrayService {}
+    class SpreadService {}
     tokens.push(Symbol('LATE_MUTATION'));
 
-    expect(getClassDiMetadata(LegacyArrayService)).toEqual({
+    expect(getClassDiMetadata(SpreadService)).toEqual({
       inject: [LOGGER, CACHE],
       scope: undefined,
     });
@@ -191,17 +192,17 @@ describe('core decorators', () => {
     expect(Object.isFrozen(storedOptionalToken)).toBe(true);
   });
 
-  it('keeps wrapper tokens type-compatible with the legacy array syntax', () => {
+  it('keeps wrapper tokens type-compatible with spread lists', () => {
     const LOGGER = Symbol('LOGGER');
     const optionalLogger: OptionalInjectToken = {
       __optional__: true,
       token: LOGGER,
     };
 
-    @Inject([optionalLogger])
-    class LegacyWrappedTokenService {}
+    @Inject(...[optionalLogger])
+    class WrappedTokenService {}
 
-    expect(getClassDiMetadata(LegacyWrappedTokenService)).toEqual({
+    expect(getClassDiMetadata(WrappedTokenService)).toEqual({
       inject: [optionalLogger],
       scope: undefined,
     });

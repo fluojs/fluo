@@ -48,8 +48,15 @@ Prisma·Drizzle·Mongoose의 `afterCommit`은 [트랜잭션 문맥 계약](./arc
 
 ## Decorator Default Audit
 
-[Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 소유한 공개 factory 165개를
-안전한 기본값 추가 15개와 계약 보존 150개로 대조합니다. HTTP 빈 상대 경로, `Module()` 등록,
+Core/DI 선언 통합은 [migration 목록](./getting-started/migrate-core-di-declarations.ko.md)과
+[Core](../packages/core/README.ko.md) / [DI](../packages/di/README.ko.md) API 소유 문서를
+따르세요. `@Module({ global: true })`, variadic `@Inject(...)`, literal scope,
+`ForwardRef.create(...)`, `Optional.create(...)`를 사용합니다. Own/effective metadata
+reader의 audience와 의미 구분은 유지됩니다. 기존 165개 factory 조사 이후 #3738에서
+`Global`을 제거해 164개가 되었으며 legacy array injection도 제거했습니다.
+
+[Public Decorator Defaults](./reference/decorator-defaults.ko.md)는 원래 조사한 공개 factory 165개를
+안전한 기본값 추가 15개와 나머지 계약 150개로 대조합니다. HTTP 빈 상대 경로, `Module()` 등록,
 OpenAPI 빈 write, React options 부재, 필수 `UseAuth(strategyName)`의 시작점입니다.
 공개 declaration 검증은 `tooling/governance/decorator-defaults-public-types.test.ts`이며
 runtime 증거는 각 소유 패키지에 있습니다.
@@ -258,7 +265,7 @@ CQRS dispatch context discoverability는 `packages/cqrs/README.ko.md`, [`docs/ar
 
 Core request-pipeline metadata seam discoverability는 `packages/core/README.ko.md`와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `@fluojs/core/request-pipeline`은 `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` 같은 first-party request-pipeline 패키지가 `@fluojs/core/internal`을 직접 import하지 않고 DTO validation, binding, 표준 데코레이터 metadata bag 접근을 공유하기 위한 문서화된 package-integration seam이다. 애플리케이션 코드는 package-integration 계약이 명시적으로 적용되는 경우가 아니라면 계속 root `@fluojs/core` 데코레이터와 공개 helper를 사용해야 한다.
 
-Core DI 및 NestJS migration discoverability는 `packages/core/README.ko.md`, `packages/di/README.ko.md`, `packages/runtime/README.ko.md`, [`docs/architecture/di-and-modules.ko.md`](./architecture/di-and-modules.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch04-decorators-intro.ko.md`](../book/beginner/ch04-decorators-intro.ko.md), [`book/advanced/ch16-custom-package.ko.md`](../book/advanced/ch16-custom-package.ko.md)로 나뉜다. `@Inject(...)`는 속성 또는 매개변수 데코레이터가 아니라 생성자 토큰을 매개변수 순서대로 선언하는 클래스 데코레이터다. Provider는 명시적으로 등록하므로 `@Injectable()`에 대응하는 fluo 기능은 없다. `@Scope('request')`와 `@Scope('transient')`는 Provider lifecycle을 정의하며, request-scoped resolution에는 `createRequestScope()`가 필요하고 captive singleton dependency는 `ScopeMismatchError`로 거부된다. `@Optional()`은 class-level `@Inject(...)` 또는 Provider `inject` 목록의 `optional(TOKEN)`으로 옮기며, 없는 Provider는 `undefined`로 해석한다. Module Graph compilation은 순환 Module import를 거부하므로 shared Provider를 별도 Module 또는 package로 추출해야 하며, `forwardRef(...)`는 class-level `@Inject(...)` 또는 Provider `inject` 내부에서 하나의 dependency Token lookup만 늦출 뿐 Module cycle이나 실제 constructor cycle을 해소하지 않는다. 또한 `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 static import가 bootstrap module body보다 먼저 평가되므로, preload entrypoint에서 `ensureMetadataSymbol()`을 실행한 뒤 decorated application graph를 dynamic import해야 한다.
+Core DI 및 NestJS migration discoverability는 `packages/core/README.ko.md`, `packages/di/README.ko.md`, `packages/runtime/README.ko.md`, [`docs/architecture/di-and-modules.ko.md`](./architecture/di-and-modules.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch04-decorators-intro.ko.md`](../book/beginner/ch04-decorators-intro.ko.md), [`book/advanced/ch16-custom-package.ko.md`](../book/advanced/ch16-custom-package.ko.md)로 나뉜다. `@Inject(...)`는 속성 또는 매개변수 데코레이터가 아니라 생성자 토큰을 매개변수 순서대로 선언하는 클래스 데코레이터다. Provider는 명시적으로 등록하므로 `@Injectable()`에 대응하는 fluo 기능은 없다. `@Scope('request')`와 `@Scope('transient')`는 Provider lifecycle을 정의하며, request-scoped resolution에는 `createRequestScope()`가 필요하고 captive singleton dependency는 `ScopeMismatchError`로 거부된다. `@Optional()`은 class-level `@Inject(...)` 또는 Provider `inject` 목록의 `Optional.create(TOKEN)`으로 옮기며, 없는 Provider는 `undefined`로 해석한다. Module Graph compilation은 순환 Module import를 거부하므로 shared Provider를 별도 Module 또는 package로 추출해야 하며, `ForwardRef.create(...)`는 class-level `@Inject(...)` 또는 Provider `inject` 내부에서 하나의 dependency Token lookup만 늦출 뿐 Module cycle이나 실제 constructor cycle을 해소하지 않는다. 또한 `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 static import가 bootstrap module body보다 먼저 평가되므로, preload entrypoint에서 `ensureMetadataSymbol()`을 실행한 뒤 decorated application graph를 dynamic import해야 한다.
 
 Runtime lifecycle 및 NestJS migration discoverability는 `packages/runtime/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/architecture/lifecycle-and-shutdown.ko.md`](./architecture/lifecycle-and-shutdown.ko.md), advanced [Module Graph](../book/advanced/ch08-module-graph.ko.md)와 [Application Context](../book/advanced/ch09-app-context.ko.md) chapter로 나뉜다. 공개된 네 hook 계약은 startup에서 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown에서 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행한다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 준비 작업은 문서화된 두 shutdown phase 중 하나로 옮겨야 한다. Fluo는 compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않는다.
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from './container.js';
 import { ContainerResolutionError } from './errors.js';
-import { Scope } from './types.js';
+
 
 describe('Container construction boundary', () => {
   it('supports zero-argument root construction', async () => {
@@ -59,7 +59,7 @@ describe('Container construction boundary', () => {
     const requestToken = Symbol('request-scoped');
     const root = new Container().register(
       { provide: singletonToken, useFactory: () => ({ id: 'singleton' }) },
-      { provide: requestToken, scope: Scope.REQUEST, useFactory: () => ({ id: 'request' }) },
+      { provide: requestToken, scope: 'request', useFactory: () => ({ id: 'request' }) },
     );
 
     // When

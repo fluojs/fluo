@@ -1,7 +1,7 @@
 import type { Token } from '@fluojs/core';
 
 import { Inject } from '@fluojs/core';
-import { forwardRef, optional } from '@fluojs/di';
+import { ForwardRef, Optional } from '@fluojs/di';
 import type { MiddlewareRouteConfig } from '@fluojs/http';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -183,7 +183,7 @@ describe('module graph cache-key prerequisites', () => {
         Metrics,
         {
           provide: SERVICE_TOKEN,
-          inject: [forwardRef(() => Logger), optional(Metrics)],
+          inject: [ForwardRef.create(() => Logger), Optional.create(Metrics)],
           useFactory: createService,
         },
       ],
@@ -195,7 +195,7 @@ describe('module graph cache-key prerequisites', () => {
       expect.unreachable('expected a factory provider with explicit inject metadata');
     }
 
-    const poisonedReplacement = forwardRef(() => MissingDependency);
+    const poisonedReplacement = ForwardRef.create(() => MissingDependency);
     expect(Object.isFrozen(poisonedReplacement)).toBe(true);
     expect(Reflect.set(poisonedReplacement, 'forwardRef', () => Logger)).toBe(false);
     expect(poisonedReplacement.forwardRef()).toBe(MissingDependency);
@@ -224,7 +224,7 @@ describe('module graph cache-key prerequisites', () => {
     } else {
       expect.unreachable('expected the first cached dependency to remain a forwardRef wrapper');
     }
-    expect(cachedFactoryProvider.inject[1]).toEqual(optional(Metrics));
+    expect(cachedFactoryProvider.inject[1]).toEqual(Optional.create(Metrics));
   });
 
   it('keeps cached useValue payload snapshots isolated from returned result mutations', () => {

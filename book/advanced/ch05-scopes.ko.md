@@ -61,14 +61,14 @@ export namespace Scope {
 
 이 발췌는 새 scope가 설정 파일이나 runtime branch에서 몰래 추가되지 않는다는 점을 보여 줍니다. 컨테이너가 이해하는 lifetime vocabulary는 type alias와 namespace constant에 고정됩니다.
 
-같은 파일의 namespace helper도 이를 잘 보여 줍니다. `Scope.DEFAULT`는 단지 `'singleton'`입니다. `Scope.REQUEST`와 `Scope.TRANSIENT`도 literal alias입니다. 모듈 로컬 cache 전용 네 번째 모드도 없고, provider pooling 전략도 없고, reflection이 암묵적으로 끼어드는 special case도 없습니다.
+DI의 `Scope`는 타입 전용 union이며 runtime namespace가 아닙니다. Provider와 Core `@Scope` decorator는 `'singleton'`, `'request'`, `'transient'` literal을 받습니다. 모듈 로컬 cache 전용 네 번째 모드도 없고, provider pooling 전략도 없고, reflection이 암묵적으로 끼어드는 special case도 없습니다.
 
 이 단순함은 `@Scope(...)`에도 그대로 반영됩니다.
 `path:packages/core/src/decorators.ts:79-89`의 decorator는 class DI metadata에 문자열 필드 하나만 기록합니다.
 그리고 `path:packages/core/src/metadata/class-di.ts:95-123`가 그 필드를 constructor lineage를 따라 상속 가능하게 만듭니다. 즉 scope는 explicit metadata와 container policy의 조합일 뿐입니다. 사용 패턴에서 추론되지 않습니다.
 
 이 점은 예측 가능성에 직접 연결됩니다. class가 `@Scope(...)`를 생략하면,
-`path:packages/di/src/provider-normalization.ts:168-179`의 normalization이 `Scope.DEFAULT`를 넣습니다.
+`path:packages/di/src/provider-normalization.ts:168-179`의 normalization이 `'singleton'`을 넣습니다.
 즉 Fluo는 작성자가 더 짧은 lifetime을 명시하지 않는 한 singleton-first입니다.
 
 class provider 정규화는 이 기본값을 실제 내부 record에 저장합니다.
@@ -82,7 +82,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     return freezeNormalizedProvider({
       inject: normalizeInject(metadata?.inject, provider),
       provide: provider,
-      scope: normalizeProviderScope(metadata?.scope, provider) ?? Scope.DEFAULT,
+      scope: normalizeProviderScope(metadata?.scope, provider) ?? 'singleton',
       type: 'class',
       useClass: provider,
     });
@@ -92,7 +92,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 여기서 scope 결정은 instantiation보다 먼저 끝납니다. 이후 resolve 경로는 이 `scope` 필드를 보고 cache map을 고를 뿐, class 생성 방식을 scope마다 따로 바꾸지 않습니다.
 
 테스트도 이 계약을 강화합니다.
-`path:packages/di/src/container.test.ts:125-158`는 `Scope.REQUEST`와 `Scope.TRANSIENT` 상수가 decorator와 provider object 모두에서 동작함을 검증합니다.
+`packages/di/src/container.test.ts`는 `'request'`와 `'transient'` literal이 decorator와 provider object 모두에서 동작함을 검증합니다.
 `path:packages/di/src/container.test.ts:104-122`은 같은 metadata 경로가 `@Inject`와 `@Scope` 조합에서도 정상 동작함을 보여 줍니다.
 
 고급 독자가 눈여겨봐야 할 점은, scope 선택이 instantiation 이전에 완료된다는 사실입니다. `normalizeProvider()`는 scope를 계산해 normalized record에 저장합니다. 그 이후 scope는 cache selection과 guardrail에만 영향을 줍니다. 객체 생성 코드를 바꾸지는 않습니다.
@@ -153,7 +153,7 @@ cache field와 construction boundary는 `path:packages/di/src/container.ts:300-3
   private readonly pendingDisposables: Disposable[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
-  private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
+  private readonly forwardRefTokenCache = new WeakMap<ForwardRefToken, Token>();
   private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
   private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
   private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
@@ -238,7 +238,7 @@ cache 선택 규칙은 한 번만 자세히 보겠습니다. 뒤의 request, ove
 `path:packages/di/src/container.ts:1191-1213`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
         return this.requestCacheForWrite();
       }
@@ -261,7 +261,7 @@ cache 선택 규칙은 한 번만 자세히 보겠습니다. 뒤의 request, ove
   }
 
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
         return this.multiRequestCacheForWrite();
       }
@@ -398,7 +398,7 @@ request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니�
 `path:packages/di/src/container.ts:1214-1236`
 ```typescript
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
-    if (provider.scope === Scope.DEFAULT) {
+    if (provider.scope === 'singleton') {
       if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
         return this.multiRequestCacheForWrite();
       }
@@ -575,7 +575,7 @@ singleton -> transient dependency는 허용합니다. 즉 Fluo의 lifetime 모�
 `path:packages/di/src/container.ts:1554-1571`
 ```typescript
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-    if (provider.scope !== Scope.DEFAULT) {
+    if (provider.scope !== 'singleton') {
       return;
     }
 
@@ -668,7 +668,7 @@ console.log(first === second, report.currentBuilder() instanceof QueryBuilder);
 
     if (this.requestScopeEnabled) {
       for (const [token, normalizedProviders] of normalizedByToken) {
-        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === Scope.DEFAULT);
+        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === 'singleton');
 
         if (introducesSingleton && !this.has(token)) {
           throw new ScopeMismatchError(

@@ -31,20 +31,15 @@ Fluo의 공개 데코레이터도 같은 모양으로 만들어집니다. 외부
 
 `path:packages/core/src/decorators.ts:19-33`
 ```typescript
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };
 }
 
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
 ```
 
-이 발췌에서 중요한 점은 데코레이터가 별도의 전역 레지스트리를 직접 조작하지 않는다는 것입니다. `@Module()`과 `@Global()`은 표준 데코레이터 시그니처를 유지하면서, 실제 상태 변경은 메타데이터 helper에 위임합니다.
+이 발췌에서 중요한 점은 데코레이터가 별도의 전역 레지스트리를 직접 조작하지 않는다는 것입니다. `@Module()`과 `@Module({ global: true })`는 표준 데코레이터 시그니처를 유지하면서, 실제 상태 변경은 메타데이터 helper에 위임합니다.
 
 레거시 데코레이터와 달리, 표준 데코레이터는 단순히 대상을 전달받는 함수가 아니라 매우 구조화된 트랜스포머입니다. 예를 들어 클래스에 대한 표준 데코레이터는 `(value: Function, context: ClassDecoratorContext) => void | Function` 시그니처를 가집니다. 이러한 구조를 통해 클래스를 관찰하는 것뿐만 아니라 클래스를 완전히 대체하거나 클래스가 정의될 때 실행되는 초기화 루틴을 등록할 수 있습니다.
 
@@ -99,10 +94,10 @@ Fluo의 HTTP 패키지 내부에서는 이런 데코레이터를 패키지 소�
 
 `path:packages/core/src/decorators.ts:69-76`
 ```typescript
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });

@@ -97,20 +97,16 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 
 이 책은 입문서가 아닙니다. 다음 지식에 익숙하다고 가정합니다.
 
--   **TypeScript 숙련도**: 고급 타입, 제네릭, 그리고 `tsconfig.json` 설정의 미묘한 차이를 이해해야 합니다. `path:packages/core/src/decorators.ts:11`에서 볼 수 있듯이, 우리는 `TupleOnly<T>`와 같은 유틸리티 타입을 사용하여 엄격한 가변 인자 제약을 강제합니다.
+-   **TypeScript 숙련도**: 고급 타입, 제네릭, 그리고 `tsconfig.json` 설정의 미묘한 차이를 이해해야 합니다. `packages/core/src/decorators.ts`의 variadic `InjectionToken` 목록과 `packages/core/src/types.ts`의 wrapper union을 이해해야 합니다.
 
-`TupleOnly<T>`는 타입 선언에서만 보이지만, 실제 `@Inject()` API는 그 제약과 런타임 정규화를 함께 갖습니다.
+`@Inject()`는 variadic token만 받으며, token 목록은 spread합니다. 타입 검사와 런타임 경계가 중첩 배열을 거부합니다.
 
 `path:packages/core/src/decorators.ts:53-76`
 ```typescript
-export function Inject<const TTokens extends readonly Token[]>(
-  ...tokens: TupleOnly<TTokens>
-): StandardClassDecoratorFn;
-export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
-export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
-  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+export function Inject(...tokens: readonly InjectionToken[]): StandardClassDecoratorFn {
+  if (tokens.some(Array.isArray)) {
+    throw new TypeError('Inject accepts variadic tokens; spread token arrays with Inject(...tokens).');
+  }
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });
@@ -118,7 +114,7 @@ export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecora
 }
 ```
 
-이 발췌는 고급 독자가 타입 레벨 제약과 실제 저장 형태를 같이 보게 해줍니다. `path:packages/core/src/decorators.ts:11`의 짧은 참조는 위 overload에서 `TupleOnly<TTokens>`가 어떻게 쓰이는지로 보강됩니다.
+이 발췌는 고급 독자가 타입 레벨 제약과 실제 저장 형태를 같이 보게 해줍니다. 빈 목록은 상속 token을 지우고, wrapper 내부의 token과 resolver identity는 보존됩니다.
 
 -   **fluo 기초**: 현재 튜토리얼을 완료했거나 그에 준하는 경험이 있으면 출발할 수 있습니다. 모듈, 서비스, 컨트롤러를 이해하고, 선택한 내부 주제의 배경 지식을 확인하세요.
 -   **JavaScript 내부**: 이벤트 루프, 프로미스, 그리고 JS에서 클래스가 내부적으로 어떻게 작동하는지에 대한 기본 지식이 매우 도움이 될 것입니다.
@@ -187,7 +183,7 @@ fluo 개발의 가이드 원칙은 **행동 계약(Behavioral Contract)**입니�
 export class CircularDependencyError extends FluoCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    const hint = 'Break the cycle by extracting shared logic into a separate provider, or use forwardRef() to defer one side of the dependency.';
+    const hint = 'Break the constructor cycle by extracting shared logic into a separate provider, introducing a mediator, or moving the interaction to a later boundary. ForwardRef.create() only defers declaration-time token lookup and cannot resolve a true constructor cycle.';
     super(
       (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
         `\n  Dependency chain: ${path}` +
@@ -304,21 +300,16 @@ it('collects parent and child multi providers without overriding parent registra
 ### 1. The Core Infrastructure (`packages/core`)
 이곳은 표준 데코레이터가 있는 곳입니다. `path:packages/core/src/decorators.ts:19-89`와 `path:packages/core/src/metadata/`를 분석하여 fluo가 `WeakMap`과 `Symbol.metadata`를 사용해 고성능 메타데이터 레지스트리를 어떻게 구축하는지 확인합니다. 특히 핵심 DI 메타데이터 로직이 있는 `path:packages/core/src/metadata/class-di.ts:33-83`에 주목할 것입니다.
 
-대표적으로 `@Module()`과 `@Global()`은 표준 class decorator 형태를 유지하면서 같은 metadata writer로 수렴합니다.
+대표적으로 `@Module()`과 `@Module({ global: true })`는 표준 class decorator 형태를 유지하면서 같은 metadata writer로 수렴합니다.
 
 `path:packages/core/src/decorators.ts:19-33`
 ```typescript
-export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+export function Module(definition: ModuleMetadata = {}): StandardClassDecoratorFn {
   return (target) => {
     defineModuleMetadata(target, definition);
   };
 }
 
-export function Global(): StandardClassDecoratorFn {
-  return (target) => {
-    defineModuleMetadata(target, { global: true });
-  };
-}
 ```
 
 이 작은 facade는 공개 데코레이터 API와 내부 metadata store 사이의 연결점을 보여줍니다. 나머지 metadata 디렉터리 참조는 이 장에서는 citation-only로 두고, 각 세부 장에서 필요한 구현만 발췌합니다.
@@ -337,7 +328,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
     return {
       inject: (metadata?.inject ?? []).map(normalizeInjectToken),
       provide: provider,
-      scope: metadata?.scope ?? Scope.DEFAULT,
+      scope: metadata?.scope ?? 'singleton',
       type: 'class',
       useClass: provider,
     };
