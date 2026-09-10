@@ -96,7 +96,7 @@ Verify these paths first on a local loopback listener. Without `HEALTH_TOKEN`, b
 
 After building the module graph and DI container, the runtime resolves the instances that participate in the lifecycle. It then executes their `onModuleInit()` hooks, followed by `onApplicationBootstrap()`. The readiness marker changes to ready only after platform startup succeeds. The HTTP dispatcher and listener are boundaries distinct from this preparation process.
 
-`bootstrapFastifyApplication` initializes the app but does not listen or register Node signals automatically. The default execution path, `runFastifyApplication`, returns after listen and default shutdown registration, so there is no need to call `app.listen()` again. However, `shutdownSignals: false` below disables that registration and leaves it to this entrypoint. Explicitly composing `FluoFactory.create()` and an adapter makes you responsible not only for listen and signals, but also for the helper's middleware, logger, and post-creation failure cleanup policies. `fluoFactory` is an alias of the same Factory.
+`FluoFactory.create()` owns initialization and common middleware; `app.listen()` awaits listening and the selected signal callback. Below, `createNodeShutdownSignalRegistration(false)` disables default signals so this entrypoint owns shutdown. Factory handles startup-failure cleanup without choosing admitted-request drain or host signal policy.
 
 The public `app.state` values `bootstrapped`, `ready`, and `closed` form a different model from the three HTTP body states. `app.ready()` checks critical platform readiness without opening a listener or changing state to `ready`. After that check, `app.listen()` awaits adapter activation and changes state to `ready` only if shutdown has not started. This startup check does not run Terminus indicators or custom HTTP readiness callbacks, so it is not evidence that `/ready` returns 200. In host-owned request paths such as Workers and Next.js, adapter activation may connect a dispatcher rather than bind a new socket.
 
@@ -228,9 +228,11 @@ First apply the **addition fragment for `src/app.ts`**. Keep the existing import
 The following is a **replacement for `src/main.ts`** using the existing `src/app.ts`, Chapter 22's `blogAccessObserver`, and TrafficModule above. Apply the composition changes below to AppModule while keeping all accounts, authentication, native forms, uploads, subscriptions, cache, and scheduling modules. Use `blogConfig.PORT`, the same value as Chapter 9's `AppSettings.port`, and retain the loopback host. `PUBLIC_ORIGIN`, database configuration, and authentication settings also remain under the existing AppSettingsModule validation path. Explicitly preserve Chapter 18's 6 MiB body and total multipart limits, 5 MiB file limit, and one-file limit.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
@@ -238,20 +240,24 @@ const { blogConfig } = await import('./config/app-settings.module.js');
 const { blogAccessObserver } = await import('./observability/access-log.js');
 const { TrafficGate, TrafficMiddleware } = await import('./operations/traffic.js');
 
-const app = await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: blogConfig.PORT,
-  maxBodySize: 6 * 1024 * 1024,
-  multipart: {
-    maxFileSize: 5 * 1024 * 1024,
-    maxFiles: 1,
-    maxTotalSize: 6 * 1024 * 1024,
-  },
-  shutdownSignals: false,
-  shutdownTimeoutMs: 5_000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: blogConfig.PORT,
+    maxBodySize: 6 * 1024 * 1024,
+    multipart: {
+      maxFileSize: 5 * 1024 * 1024,
+      maxFiles: 1,
+      maxTotalSize: 6 * 1024 * 1024,
+    },
+    shutdownTimeoutMs: 5_000,
+  }),
   middleware: [createCorrelationMiddleware(), TrafficMiddleware],
   observers: [blogAccessObserver],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(false),
 });
+await app.listen();
 const gate = await app.get(TrafficGate);
 let closing: Promise<void> | undefined;
 
@@ -302,12 +308,12 @@ The total shutdown budget is not simply the largest timeout. In this example, wa
 
 ## Experimenting with Lifecycle Order at the Source Boundary
 
-Instead of memorizing shutdown-hook names, inspect their invocation order directly. The following `src/operations/lifecycle-order.spec.ts` is a **standalone experiment file**. It uses the actual `bootstrapApplication`, replacing only the adapter with an event-recording test double. This tests the contract that the runtime executes hooks before adapter close, not HTTP transport conformance.
+Instead of memorizing shutdown-hook names, inspect their invocation order directly. The following `src/operations/lifecycle-order.spec.ts` is a **standalone experiment file**. It uses the actual `FluoFactory.create`, replacing only the adapter with an event-recording test double. This tests the contract that the runtime executes hooks before adapter close, not HTTP transport conformance.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import type { HttpApplicationAdapter } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 
 it('runs resource hooks before adapter close', async () => {
@@ -329,7 +335,7 @@ it('runs resource hooks before adapter close', async () => {
   }
 
   @Module({ providers: [ResourceProbe] })
-  class ProbeModule {}
+  class ProbeModule { }
 
   const adapter: HttpApplicationAdapter = {
     async listen() {
@@ -339,7 +345,7 @@ it('runs resource hooks before adapter close', async () => {
       events.push('adapter-close');
     },
   };
-  const app = await bootstrapApplication({ rootModule: ProbeModule, adapter });
+  const app = await FluoFactory.create(ProbeModule, { adapter });
   try {
     expect(events).toEqual(['init', 'bootstrap']);
     await app.listen();

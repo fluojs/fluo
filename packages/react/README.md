@@ -407,7 +407,7 @@ Use `createReactErrorRepresentationProvider(...)` when the application wants Rea
 optional HTML bytes selected by the HTTP error representation contract:
 
 ```tsx
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import {
   createReactErrorRepresentationProvider,
   createReactServerEntry,
@@ -423,9 +423,8 @@ const html = createReactErrorRepresentationProvider({
   },
 });
 
-const app = await bootstrapApplication({
+const app = await FluoFactory.create(AppModule, {
   errorRepresentation: { html },
-  rootModule: AppModule,
 });
 ```
 

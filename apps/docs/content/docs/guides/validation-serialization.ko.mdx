@@ -326,7 +326,7 @@ Query의 `repeatedQuery` 기본값은 `preserve`입니다. Scalar는 scalar로 �
 
 `InstanceType<typeof PreviewRequest>`는 변환·기본값을 반영한 schema **output** 타입입니다. 이 opaque `RequestDto` token을 생성자로 호출하면 `InvariantError`가 발생합니다. 상속하거나 mapped-class DTO helper에 넘기지 마세요. Runtime reflected class-field metadata나 자동 OpenAPI schema conversion이 아니므로 기존 클래스 계약이 필요하면 클래스 DTO를 유지하고, schema-token route의 OpenAPI는 명시적으로 작성합니다.
 
-`bootstrapApplication`도 같은 binder factory를 받습니다. Factory는 bootstrap마다 한 번 호출되고 설정된 global converter를 가진 default binder를 받습니다. `StandardSchemaBinder`는 일반 DTO를 그 fallback으로 위임하므로 기존 converter/class-validation 경로가 유지됩니다. Schema token에는 schema conversion을 사용합니다. Pure application context에는 `binder` option이 없습니다.
+`FluoFactory.create`도 같은 binder factory를 받습니다. Factory는 bootstrap마다 한 번 호출되고 설정된 global converter를 가진 default binder를 받습니다. `StandardSchemaBinder`는 일반 DTO를 그 fallback으로 위임하므로 기존 converter/class-validation 경로가 유지됩니다. Schema token에는 schema conversion을 사용합니다. Pure application context에는 `binder` option이 없습니다.
 
 HTTP 밖에서는 `@fluojs/validation`의 `parseStandardSchema(schema, value)`로 같은 성공 output을 얻습니다. Async validator도 await하며 output을 그대로 반환합니다. `issues: []`를 포함한 failure는 `DtoValidationError`이고 schema binder는 이를 HTTP 400으로 매핑합니다. Malformed result는 `TypeError`, schema 구현 예외는 그대로 전파됩니다. `ValidateClass`의 검증 전용 동작이나 `materialize(..., { undeclaredProperties: 'reject' })`의 클래스 실체화 정책을 바꾸는 API가 아닙니다.
 

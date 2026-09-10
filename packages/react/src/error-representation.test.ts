@@ -6,7 +6,7 @@ import {
   type HttpErrorRepresentationContext,
   NotFoundException,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -129,10 +129,9 @@ describe('React HTTP error representation integration', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       errorRepresentation: { html: provider },
       logger: { debug() {}, error() {}, log() {}, warn() {} },
-      rootModule: AppModule,
     });
 
     try {
@@ -176,10 +175,9 @@ describe('React HTTP error representation integration', () => {
     @Module({})
     class AppModule {}
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       errorRepresentation: { html: provider },
       logger: { debug() {}, error() {}, log() {}, warn() {} },
-      rootModule: AppModule,
     });
 
     try {
@@ -229,10 +227,9 @@ describe('React HTTP error representation integration', () => {
     @Module({ imports: [ReactModule.forRoot({ controllers: [ShellFailureRouter] })] })
     class AppModule {}
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       errorRepresentation: { html: provider },
       logger: { debug() {}, error() {}, log() {}, warn() {} },
-      rootModule: AppModule,
     });
 
     try {

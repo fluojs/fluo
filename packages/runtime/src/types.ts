@@ -1,4 +1,4 @@
-import type { Constructor, MaybePromise, Token } from '@fluojs/core';
+import type { Constructor, MaybePromise, PublicToken, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
   Binder,
@@ -18,6 +18,7 @@ import type {
 
 import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
+import type { HttpAdapterMiddlewareOptions } from './http-application-options.js';
 import type { ModuleGraphCompileCache } from './module-graph.js';
 import type { PlatformComponentInput } from './platform-contract.js';
 
@@ -144,7 +145,7 @@ export interface ExceptionFilterHandler {
 }
 
 /** High-level bootstrap options for creating an HTTP application shell. */
-export interface BootstrapApplicationOptions {
+export interface BootstrapApplicationOptions extends HttpAdapterMiddlewareOptions {
   adapter?: HttpApplicationAdapter;
   /**
    * Host-owned Studio bridge used to publish live bootstrap and request events.
@@ -196,7 +197,10 @@ export interface BootstrapApplicationOptions {
   binder?: (defaultBinder: Binder) => Binder;
   interceptors?: InterceptorLike[];
   logger?: ApplicationLogger;
-  middleware?: MiddlewareLike[];
+  /** Registers host-owned shutdown handling after listen; omission leaves signals to the host. */
+  shutdownRegistration?: HttpAdapterShutdownRegistration;
+  /** Host registration's shutdown completion bound; runtime itself owns no process timer. */
+  forceExitTimeoutMs?: number;
   observers?: RequestObserverLike[];
   providers?: Provider[];
   platform?: {
@@ -210,11 +214,27 @@ export interface BootstrapApplicationOptions {
 }
 
 /** Options accepted by `FluoFactory.create(...)`. */
-export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'logger' | 'rootModule'>;
+export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'rootModule'>;
+
+/**
+ * Host-owned shutdown registration, called once after successful adapter startup.
+ * A returned unregistration callback is attempted once before runtime teardown;
+ * its failure is retained for concurrent and later close callers.
+ *
+ * @param app The started application whose instance close method handles shutdown.
+ * @param logger Application-owned diagnostic logger.
+ * @param forceExitTimeoutMs Optional host-specific shutdown completion bound.
+ * @returns An optional synchronous callback that unregisters the host handlers.
+ */
+export type HttpAdapterShutdownRegistration = (
+  app: Application,
+  logger: ApplicationLogger,
+  forceExitTimeoutMs?: number,
+) => void | (() => void);
 
 /** Options accepted by `FluoFactory.createApplicationContext(...)`. */
 export interface CreateApplicationContextOptions
-  extends Omit<BootstrapApplicationOptions, 'adapter' | 'binder' | 'converters' | 'filters' | 'logger' | 'middleware' | 'observers' | 'rootModule'> {
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'binder' | 'converters' | 'cors' | 'filters' | 'forceExitTimeoutMs' | 'globalPrefix' | 'globalPrefixExclude' | 'logger' | 'middleware' | 'observers' | 'rootModule' | 'securityHeaders' | 'shutdownRegistration'> {
 }
 
 /** Runtime transport contract used by microservice application shells. */
@@ -273,6 +293,7 @@ export interface Application {
   close(signal?: string): Promise<void>;
   connectMicroservice(options?: CreateMicroserviceOptions): Promise<MicroserviceApplication>;
   dispatch: Dispatcher['dispatch'];
+  get<T>(token: PublicToken<T>): Promise<T>;
   get<T>(token: Token<T>): Promise<T>;
   startAllMicroservices(): Promise<void>;
   listen(): Promise<void>;

@@ -38,12 +38,12 @@ fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)
 애플리케이션을 부트스트랩하고 표준 Cloudflare Worker `fetch` 핸들러를 내보냅니다.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 

@@ -14,7 +14,7 @@ Recovery here does not mean compensation that restores an already paid order to 
 
 ## Separating Construction, Initialization, Readiness, and Listening
 
-The starting point in `packages/runtime/src/bootstrap.ts` is `bootstrapApplication()`. It first compiles the modules and creates the container. It then wires up runtime tokens for the adapter, platform shell, and runtime cleanup registration. These tokens are not global variables that an application can imitate at will. They are dependencies supplied by bootstrap so that runtime integration code can access them at defined points.
+The starting point in `packages/runtime/src/bootstrap.ts` is `FluoFactory.create()`. It first compiles the modules and creates the container. It then wires up runtime tokens for the adapter, platform shell, and runtime cleanup registration. These tokens are not global variables that an application can imitate at will. They are dependencies supplied by bootstrap so that runtime integration code can access them at defined points.
 
 Next, `resolveLifecycleInstances()` resolves the instances to initialize. Independent singleton providers are resolved using `Promise.allSettled()`. The important point is that this parallelism does not randomize hook execution order. After collecting resolution results in the declared provider order, `runBootstrapHooks()` makes two passes. The first awaits every `onModuleInit()`; only if all succeed does the next pass await `onApplicationBootstrap()`.
 
@@ -24,7 +24,7 @@ Each eligible singleton `multi: true` contribution is also an independent lifecy
 
 Once the hooks finish, `platformShell.start()` runs and the readiness marker is raised. The HTTP dispatcher is created after this bootstrap lifecycle. The public state of the `Application` returned at this point is `bootstrapped`. The `app.listen()` call that starts receiving traffic is separate: it checks critical readiness, then awaits `adapter.listen(dispatcher)`. The public state becomes `ready` only when the adapter succeeds. "Modules initialized," "platform ready," and "listening on the port" should remain distinct events in the logs as well.
 
-For work that does not need HTTP, use `fluoFactory.createApplicationContext()`. An administrative job that checks post slugs, for example, needs only the container and lifecycle. Creating an HTTP application without an adapter and expecting `listen()` to do nothing does not match the current contract. Asking it to listen without an adapter produces an error.
+For work that does not need HTTP, use `FluoFactory.createApplicationContext()`. An administrative job that checks post slugs, for example, needs only the container and lifecycle. Creating an HTTP application without an adapter and expecting `listen()` to do nothing does not match the current contract. Asking it to listen without an adapter produces an error.
 
 ## A Small Startup Experiment That Fails on Purpose
 
@@ -35,7 +35,7 @@ In this experiment, `CatalogSnapshot` owns a small resource, and `OrdersStartup`
 ```ts
 import assert from 'node:assert/strict';
 import { Inject, Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const EVENTS = Symbol('BOOTSTRAP_EVENTS');
 const FAIL_START = Symbol('FAIL_START');
@@ -44,7 +44,7 @@ const FAIL_START = Symbol('FAIL_START');
 class CatalogSnapshot {
   private items: Map<string, number> | undefined;
 
-  constructor(private readonly events: string[]) {}
+  constructor(private readonly events: string[]) { }
 
   onModuleInit(): void {
     this.items = new Map([['logo-shirt', 25_000]]);
@@ -79,7 +79,7 @@ class OrdersStartup {
     private readonly catalog: CatalogSnapshot,
     private readonly events: string[],
     private readonly failStart: boolean,
-  ) {}
+  ) { }
 
   onModuleInit(): void {
     this.events.push('orders:init');
@@ -113,18 +113,18 @@ export async function runBootstrapLab(failStart: boolean): Promise<string[]> {
       OrdersStartup,
     ],
   })
-  class OrdersModule {}
+  class OrdersModule { }
 
   @Module({ imports: [OrdersModule] })
-  class AppModule {}
+  class AppModule { }
 
   if (failStart) {
     await assert.rejects(
-      fluoFactory.createApplicationContext(AppModule),
+      FluoFactory.createApplicationContext(AppModule),
       { message: 'Order readiness failed.' },
     );
   } else {
-    const app = await fluoFactory.createApplicationContext(AppModule);
+    const app = await FluoFactory.createApplicationContext(AppModule);
     await app.close('lab-complete');
     await app.close('lab-complete');
   }
@@ -200,7 +200,7 @@ Consider a rolling replacement while the shop is taking orders. The assumption "
 
 A hook-owned resource must therefore also define how it handles incoming work and finishes work already in progress. The dispatcher and adapter remain responsible for handling HTTP requests that have already entered. The runtime blocking new direct `Application.dispatch()` calls and the disposal of connections arriving through actual sockets are separate boundaries. This distinction leads into request cancellation in Chapter 12 and the Node adapter comparison in Chapter 13.
 
-Process signals are not an implicit responsibility of the portable runtime either. When using a Node host helper, check that helper's signal registration contract; merely calling `fluoFactory.create()` does not wire up all `SIGTERM` handling. Because we chose a context experiment without a listener, we do not verify process signals or drain here. Do not supplement the meaning of the four lifecycle hooks with a name remembered from another framework, such as `beforeApplicationShutdown`. That hook is not part of Fluo's public lifecycle contract.
+Process signals are not an implicit responsibility of the portable runtime either. When using a Node host helper, check that helper's signal registration contract; merely calling `FluoFactory.create()` does not wire up all `SIGTERM` handling. Because we chose a context experiment without a listener, we do not verify process signals or drain here. Do not supplement the meaning of the four lifecycle hooks with a name remembered from another framework, such as `beforeApplicationShutdown`. That hook is not part of Fluo's public lifecycle contract.
 
 ## Breaking Production Failures into Tests
 

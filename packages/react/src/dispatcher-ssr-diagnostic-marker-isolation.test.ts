@@ -1,7 +1,7 @@
 import { Module } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -124,12 +124,8 @@ describe('React SSR diagnostic marker isolation', () => {
     const entry = createFailingEntry(async () => {
       throw sharedError;
     }, beforeFailureRethrow);
-    const firstApp = await bootstrapApplication({
-      rootModule: createAppModule('/first', entry, (diagnostic) => firstDiagnostics.push(diagnostic)),
-    });
-    const secondApp = await bootstrapApplication({
-      rootModule: createAppModule('/second', entry, (diagnostic) => secondDiagnostics.push(diagnostic)),
-    });
+    const firstApp = await FluoFactory.create(createAppModule('/first', entry, (diagnostic) => firstDiagnostics.push(diagnostic)));
+    const secondApp = await FluoFactory.create(createAppModule('/second', entry, (diagnostic) => secondDiagnostics.push(diagnostic)));
 
     try {
       // Given: two shell renders fail with the same Error before either failure reaches its request boundary.
@@ -195,7 +191,7 @@ describe('React SSR diagnostic marker isolation', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When: a later request throws the same Error identity in its HTTP pipeline.

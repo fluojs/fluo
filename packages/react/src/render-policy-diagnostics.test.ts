@@ -1,5 +1,5 @@
 import { Module } from '@fluojs/core';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -36,7 +36,7 @@ describe('React render policy diagnostics', () => {
     class AppModule {}
 
     // When: bootstrap validates the duplicate fallback declarations.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: the stable fallback-specific diagnostic rejects the declaration.
     await expect(bootstrap).rejects.toMatchObject({
@@ -63,7 +63,7 @@ describe('React render policy diagnostics', () => {
     class AppModule {}
 
     // When: bootstrap validates the existing layout policy record.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: undefined is rejected rather than treated as an absent policy.
     await expect(bootstrap).rejects.toMatchObject({
@@ -91,7 +91,7 @@ describe('React render policy diagnostics', () => {
     class AppModule {}
 
     // When: bootstrap validates the existing fallback policy record.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: undefined is rejected with the stable invalid-reference diagnostic.
     await expect(bootstrap).rejects.toMatchObject({

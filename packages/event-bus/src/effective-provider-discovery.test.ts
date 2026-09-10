@@ -1,4 +1,4 @@
-import { defineModule, bootstrapApplication } from '@fluojs/runtime';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { OnEvent } from './decorators.js';
@@ -39,7 +39,7 @@ describe('EventBusLifecycleService effective provider discovery', () => {
       providers: [{ provide: handlerToken, useClass: EffectiveHandler }],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const eventBus = await app.container.resolve(EventBusLifecycleService);

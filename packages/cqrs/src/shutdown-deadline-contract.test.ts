@@ -1,6 +1,6 @@
 import { InvariantError } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CqrsEventBusService } from './buses/event-bus.js';
@@ -79,7 +79,7 @@ describe('CQRS single shutdown deadline contract', () => {
       providers: [StuckSubscriber],
     });
 
-    const app = await bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const publishPromise = eventBus.publish(new DelegatedEvent('delegated-stuck'));
 
@@ -134,7 +134,7 @@ describe('CQRS single shutdown deadline contract', () => {
       providers: [DiscoveryRaceSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
     const ensureDiscovered = sagaBus['ensureDiscovered'].bind(sagaBus);
 
@@ -217,7 +217,7 @@ describe('CQRS single shutdown deadline contract', () => {
       providers: [LateAuthorizedHandler, LateAuthorizedSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const publishPromise = eventBus.publish(new LateAuthorizedEvent('late-authorized'));
@@ -275,7 +275,7 @@ describe('CQRS single shutdown deadline contract', () => {
       providers: [StuckDeadlineSaga],
     });
 
-    const app = await bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const publishPromise = eventBus.publish(new SagaDeadlineEvent('saga-stuck'));
 
@@ -335,7 +335,7 @@ describe('CQRS single shutdown deadline contract', () => {
       providers: [StuckDegradedHandler, StuckDegradedSaga],
     });
 
-    const app = await bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) });
     const cqrsEventBus = await app.container.resolve(CqrsEventBusService);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const handlerPublishPromise = eventBus.publish(new DegradedHandlerEvent('degraded-handler'));

@@ -1,5 +1,5 @@
 import { getModuleMetadata, Module } from '@fluojs/core';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 describe('empty decorated module bootstrap', () => {
@@ -14,7 +14,7 @@ describe('empty decorated module bootstrap', () => {
     class EmptyModule {}
 
     // When
-    const app = await bootstrapApplication({ rootModule: EmptyModule });
+    const app = await FluoFactory.create(EmptyModule);
 
     // Then
     try {

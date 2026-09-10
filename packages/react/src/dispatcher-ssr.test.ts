@@ -15,7 +15,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -173,7 +173,7 @@ describe('React SSR dispatcher integration', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const firstResponse = createStreamedResponse();
@@ -234,7 +234,7 @@ describe('React SSR dispatcher integration', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a React page route declares success-only HTTP metadata.

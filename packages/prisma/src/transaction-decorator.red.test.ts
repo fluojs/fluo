@@ -1,6 +1,6 @@
 import type { Token } from '@fluojs/core';
 import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { getPrismaServiceToken, PrismaModule, PrismaService, type PrismaServiceFacade, Transaction } from './index.js';
@@ -69,7 +69,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -153,7 +153,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -229,7 +229,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
       providers: [QueryRepository, QueryService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(QueryService);
 
     await expect(service.load()).resolves.toEqual([{ marker: 'tx' }]);
@@ -308,7 +308,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(UserService);
 
     await expect(service.outer('linus@example.com')).rejects.toThrow();
@@ -370,7 +370,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -457,7 +457,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(UserService);
 
     await expect(service.create('lin@example.com')).resolves.toEqual({
@@ -553,7 +553,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       providers: [MultiDatabaseService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(MultiDatabaseService);
 
     const result = await service.loadAnalytics();
@@ -635,7 +635,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       providers: [DualClientService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(DualClientService);
 
     await service.decoratedAnalytics();
@@ -721,7 +721,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -792,7 +792,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       providers: [AmbiguousClientService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(AmbiguousClientService);
@@ -868,7 +868,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -943,7 +943,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       providers: [UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);

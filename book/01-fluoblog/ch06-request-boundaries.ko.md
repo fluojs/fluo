@@ -242,15 +242,26 @@ export class AppModule {}
 표준 데코레이터 메타데이터 사전 설치까지 명시하려면 **`src/main.ts`는 다음 전체 파일**로 둔다. 다음 장의 직렬화 클래스는 import 부작용으로 `Symbol.metadata`를 설치하지 않으므로 decorated module보다 먼저 준비하는 순서가 중요하다.
 
 ```ts
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { runFastifyApplication } = await import('@fluojs/platform-fastify');
-await runFastifyApplication(AppModule, { host: '127.0.0.1', port: 3000 });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
-`runFastifyApplication()`은 resolve되기 전에 listen과 종료 처리 등록을 수행한다. 뒤에 `app.listen()`을 다시 호출하지 않는다. `main.ts`를 Node의 미변환 TypeScript 실행 기능에 바로 맡기는 대신 앞 장의 CLI/Vite 실행 경로로 시작한다. 데코레이터 빌드 설정을 legacy `experimentalDecorators`로 바꾸는 해결책은 사용하지 않는다.
+`FluoFactory.create()` 뒤 `app.listen()`을 기다리면 수신과 선택한 Node signal 등록이 끝난다. `main.ts`는 앞 장의 CLI/Vite 경로로 시작한다. Node의 미변환 decorator 실행이나 legacy `experimentalDecorators`로 빌드 설정을 바꾸지 않는다.
 
 ## HTTP 바인더와 독립 검증은 같은 입구가 아니다
 
@@ -420,12 +431,11 @@ Title은 기존 실습처럼 원문 길이를 먼저 제한하고 그다음 trim
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { StandardSchemaBinder } from '@fluojs/http';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 ensureMetadataSymbol();
 const { SchemaBoundaryModule } = await import('./schema-boundary-app.js');
-const app = await bootstrapApplication({
-  rootModule: SchemaBoundaryModule,
+const app = await FluoFactory.create(SchemaBoundaryModule, {
   adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });

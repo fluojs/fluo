@@ -381,7 +381,7 @@ import {
   Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
 } from '@fluojs/http';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { z } from 'zod';
 
 const DraftRequest = createSchemaDto(z.object({
@@ -409,10 +409,9 @@ class DraftController {
 }
 
 @Module({ controllers: [DraftController] })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapApplication({
-  rootModule: AppModule,
+const app = await FluoFactory.create(AppModule, {
   adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
@@ -580,7 +579,7 @@ documents without changing API clients:
 
 ```ts
 import type { HttpErrorRepresentationOptions } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 function escapeHtml(value: string): string {
   return value
@@ -602,9 +601,8 @@ const errorRepresentation = {
   },
 } satisfies HttpErrorRepresentationOptions;
 
-const app = await bootstrapApplication({
+const app = await FluoFactory.create(AppModule, {
   errorRepresentation,
-  rootModule: AppModule,
 });
 ```
 
@@ -832,7 +830,10 @@ and the [Next pipeline tests](../platform-nextjs/src/head-routing.test.ts).
 Configure `conditionalRequest` during runtime bootstrap to resolve representation existence separately from optional validators:
 
 ```ts
-const app = await bootstrapNodeApplication(AppModule, {
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({}),
   conditionalRequest: {
     resolve({ handler, request }) {
       return {
@@ -844,6 +845,7 @@ const app = await bootstrapNodeApplication(AppModule, {
       };
     },
   },
+  logger: createConsoleApplicationLogger(),
 });
 ```
 
@@ -932,3 +934,5 @@ The runtime, Next, and Workers tests consume the same wire-case fixture at
 native-body tests retain default/raw-body/multipart behavior. Public declaration
 tests build a cold isolated dependency closure and resolve package export maps.
 See the [Next usage and migration](../platform-nextjs/README.md#bounded-body-parsing).
+
+Create HTTP applications through `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime`, then use instance `listen()`/`close()`. Optional `HttpApplicationAdapter.getListenTarget?()` supplies `{ bindTarget, url }` after listen for startup logging; socketless hosts may omit it. Factory owns common middleware and failure cleanup while HTTP retains its request/input/response policies. See the [migration guide](../../docs/getting-started/migrate-http-factory.md).

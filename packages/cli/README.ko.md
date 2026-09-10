@@ -68,6 +68,16 @@ fluo -v
 
 ## 빠른 시작
 
+Node HTTP와 mixed starter는 이제 `FluoFactory.create(AppModule, { adapter })`
+다음 `app.listen()`을 생성하며 `@fluojs/platform-nodejs`에서
+`createConsoleApplicationLogger()`와 `createNodeShutdownSignalRegistration()`을
+명시적으로 import합니다. Fastify/Express starter는 transitive import에
+기대지 않고 직접 의존성을 선언합니다. Factory는 middleware 기본값과 시작 실패
+정리를 소유하고 host callback은 process signal을 소유합니다. 기존 생성 앱은
+[HTTP Factory migration](../../docs/getting-started/migrate-http-factory.ko.md)을
+따르세요. Context-only/microservice API와 미이전 host별 starter recipe는 별도
+계약을 유지합니다.
+
 ### 1. 새 프로젝트 생성
 몇 초 만에 완전한 스타터 애플리케이션을 스캐폴딩합니다.
 

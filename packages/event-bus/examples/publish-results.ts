@@ -6,7 +6,7 @@ import {
   type EventPublishResult,
   OnEvent,
 } from '@fluojs/event-bus';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 
 class TokenUsed {
   constructor(readonly tokenRecordId: string) {}
@@ -42,8 +42,7 @@ defineModule(AppModule, {
 });
 
 const logs: Array<{ message: string; error?: unknown }> = [];
-const app = await bootstrapApplication({
-  rootModule: AppModule,
+const app = await FluoFactory.create(AppModule, {
   logger: {
     debug() {},
     log() {},

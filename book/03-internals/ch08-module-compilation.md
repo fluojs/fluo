@@ -65,12 +65,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Inject, Module } from '@fluojs/core';
 import { Optional } from '@fluojs/di';
-import {
-  bootstrapModule,
-  fluoFactory,
-  ModuleGraphCompileCache,
-  ModuleVisibilityError,
-} from '@fluojs/runtime';
+import { bootstrapModule, FluoFactory, ModuleGraphCompileCache, ModuleVisibilityError } from '@fluojs/runtime';
 
 interface AccountReader {
   exists(customerId: number): boolean;
@@ -116,7 +111,7 @@ class MemoryCatalog implements CatalogReader {
   ],
   exports: [ACCOUNT_READER],
 })
-class AccountsModule {}
+class AccountsModule { }
 
 @Module({
   providers: [
@@ -125,14 +120,14 @@ class AccountsModule {}
   ],
   exports: [CATALOG_READER],
 })
-class CatalogModule {}
+class CatalogModule { }
 
 @Inject(ACCOUNT_READER, CATALOG_READER)
 class OrderPreview {
   constructor(
     private readonly accounts: AccountReader,
     private readonly catalog: CatalogReader,
-  ) {}
+  ) { }
 
   quote(customerId: number, sku: string, quantity: number) {
     if (!this.accounts.exists(customerId)) throw new Error('Account not found');
@@ -154,10 +149,10 @@ class OrderPreview {
   providers: [OrderPreview],
   exports: [OrderPreview],
 })
-class OrdersModule {}
+class OrdersModule { }
 
 @Module({ imports: [OrdersModule] })
-class AppModule {}
+class AppModule { }
 
 test('compiles visibility before instantiating providers', async () => {
   const before = MemoryCatalog.constructions;
@@ -193,18 +188,18 @@ test('rejects hidden targets even through aliases or optional injection', () => 
     imports: [CatalogModule],
     providers: [{ provide: HIDDEN_ALIAS, useExisting: MemoryCatalog }],
   })
-  class AliasLeakModule {}
+  class AliasLeakModule { }
 
   @Inject(Optional.create(MemoryCatalog))
   class OptionalLeak {
-    constructor(readonly catalog: MemoryCatalog | undefined) {}
+    constructor(readonly catalog: MemoryCatalog | undefined) { }
   }
 
   @Module({
     imports: [CatalogModule],
     providers: [OptionalLeak],
   })
-  class OptionalLeakModule {}
+  class OptionalLeakModule { }
 
   assert.throws(() => bootstrapModule(AliasLeakModule), ModuleVisibilityError);
   assert.throws(() => bootstrapModule(OptionalLeakModule), ModuleVisibilityError);
@@ -238,7 +233,7 @@ test('reuses compiled structure without sharing container instances', async () =
 });
 
 test('uses the same module boundary in an application context', async () => {
-  const context = await fluoFactory.createApplicationContext(AppModule, {
+  const context = await FluoFactory.createApplicationContext(AppModule, {
     duplicateProviderPolicy: 'throw',
   });
   try {

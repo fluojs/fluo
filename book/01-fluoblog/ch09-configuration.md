@@ -176,22 +176,29 @@ export class AppModule {}
 Now connect the actual startup port. The following is a minimal, complete `src/main.ts` using this configuration. If you added middleware or request handling options in earlier chapters, retain them in the same helper's options. The decorated application graph is imported dynamically after preparing the metadata symbol, so preparation does not happen too late for the response model decorators. Merely placing a static import below `ensureMetadataSymbol()` cannot establish this order: that import evaluates before the entrypoint body.
 
 ```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { blogConfig } = await import('./config/app-settings.module.js');
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: blogConfig.PORT,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: blogConfig.PORT,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-`runFastifyApplication` returns after creating and initializing the adapter, starting to listen for requests, and registering shutdown signals. You therefore need to pass the previously determined `blogConfig.PORT` as an option. The `AppSettings.port` read by services comes from the same snapshot. If configuration validation fails, startup stops before this helper is called. There is no operation that starts listening and then moves the port based on injected configuration.
+Configure the adapter passed to `FluoFactory.create()` with the already validated `blogConfig.PORT`. Awaiting `app.listen()` completes listening and the selected shutdown registration. Services read `AppSettings.port` from that same snapshot. Validation failure stops creation; injected configuration does not move a listener after startup.
 
-Reading configuration through DI is not a reason to replace this code with `FluoFactory.create()` and `listen()`. With explicit composition, you also own listen, signals, and the helper's middleware, logger, and post-creation failure cleanup policies. The book keeps the default run helper together with the validated snapshot. The next chapter's `BlogDatabaseModule` uses the same `AppSettings.databaseUrl`, and later authentication settings extend this validation path. This is not a new starting point that rereads the environment separately for database and authentication settings or discards accumulated middleware and upload limits.
+Keep the validated snapshot with the canonical `FluoFactory.create()` and `app.listen()` recipe. Factory composes common middleware and cleans up acquired resources when creation or startup fails. The application chooses its logger and host-owned signal registration explicitly and retains its configured middleware and adapter upload limits. The next chapter's `BlogDatabaseModule` uses the same `AppSettings.databaseUrl`, and later authentication settings extend this validation path. Do not reread the environment into a separate configuration source for database or authentication settings.
 
 ## Removing Environment Dependencies from Public Links
 

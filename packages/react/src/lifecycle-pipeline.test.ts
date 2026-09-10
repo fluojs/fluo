@@ -20,7 +20,7 @@ import {
   type MiddlewareContext,
   type Next,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { Path, Router } from './decorators.js';
@@ -127,7 +127,7 @@ describe('React page HTTP lifecycle pipeline', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a versioned React page route has module middleware, guards, and interceptors.
@@ -199,7 +199,7 @@ describe('React page HTTP lifecycle pipeline', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: one React page request is held open while a second request starts.
@@ -245,7 +245,7 @@ describe('React page HTTP lifecycle pipeline', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: one app graph contains both ordinary controllers and React routers.
@@ -287,7 +287,7 @@ describe('React page HTTP lifecycle pipeline', () => {
     })
     class AppModule {}
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(RouteConflictError);
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(RouteConflictError);
   });
 
   it('rejects invalid React route grammar through HTTP route validation', () => {

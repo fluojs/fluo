@@ -24,7 +24,7 @@ import {
 } from '@fluojs/http';
 import { Exclude, Expose, SerializerInterceptor } from '@fluojs/serialization';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapApplication, defineModule, FluoFactory } from './bootstrap.js';
+import { FluoFactory, defineModule } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
 import { bootstrapNodeApplication, NodeHttpApplicationAdapter, runNodeApplication } from '@fluojs/platform-nodejs';
@@ -207,9 +207,8 @@ describe('bootstrapApplication', () => {
       providers: [AppService],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     expect(events).toEqual(['module:init', 'app:bootstrap']);
@@ -267,9 +266,8 @@ describe('bootstrapApplication', () => {
       providers: [AppService],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     // Given: a ready application whose adapter fails its first shutdown attempt.
@@ -311,9 +309,8 @@ describe('bootstrapApplication', () => {
       providers: [AppService],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     await app.get(AppService);
 
@@ -349,9 +346,8 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     const dispatch = vi.spyOn(app.dispatcher, 'dispatch').mockImplementation(async () => {
       if (dispatch.mock.calls.length === 1) {
@@ -398,9 +394,8 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     const dispatch = vi.spyOn(app.dispatcher, 'dispatch');
 
@@ -422,9 +417,8 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     const dispatch = vi.spyOn(app.dispatcher, 'dispatch');
 
@@ -464,9 +458,8 @@ describe('bootstrapApplication', () => {
       ],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     // Given: provider resolution was admitted before application shutdown.
@@ -503,9 +496,8 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     const firstListen = app.listen();
@@ -543,9 +535,8 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     const listenPromise = app.listen();
@@ -619,9 +610,8 @@ describe('bootstrapApplication', () => {
       providers: [RuntimeCleanupProbe, AppService],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     const closePromise = app.close('SIGTERM');
@@ -710,9 +700,8 @@ describe('bootstrapApplication', () => {
       providers: [RuntimeCleanupProbe, AppService],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     const closeError = await app.close('SIGTERM').then(
       () => undefined,
@@ -764,9 +753,8 @@ describe('bootstrapApplication', () => {
       providers: [AppService],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
 
     // Given: a shutdown hook that fails before later teardown phases complete.
@@ -809,10 +797,9 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
       logger,
-      rootModule: AppModule,
     }));
 
     await expect(app.listen()).rejects.toThrow('listen failed');
@@ -833,9 +820,7 @@ describe('bootstrapApplication', () => {
       providers: [DisposableResource],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const resource = await app.container.resolve(DisposableResource);
 
     await app.close('SIGTERM');
@@ -878,9 +863,8 @@ describe('bootstrapApplication', () => {
       providers: [RuntimeTokenProbe],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     const probe = await app.container.resolve(RuntimeTokenProbe);
 
@@ -2428,9 +2412,7 @@ describe('bootstrapApplication', () => {
     });
 
     await expect(
-      bootstrapApplication({
-        rootModule: AppModule,
-      }),
+      FluoFactory.create(AppModule),
     ).rejects.toThrow(ModuleInjectionMetadataError);
   });
 
@@ -2456,9 +2438,8 @@ describe('bootstrapApplication', () => {
       },
     };
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     }));
     const request: FrameworkRequest = {
       body: undefined,
@@ -2533,9 +2514,8 @@ describe('bootstrapApplication', () => {
       providers: [SerializerInterceptor],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       interceptors: [SerializerInterceptor],
-      rootModule: AppModule,
     }));
 
     const requestOne: FrameworkRequest = {
@@ -2636,9 +2616,7 @@ describe('bootstrapApplication', () => {
       providers: [SerializerInterceptor],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const request: FrameworkRequest = {
       body: undefined,
       cookies: {},
@@ -2710,9 +2688,8 @@ describe('bootstrapApplication', () => {
       providers: [SerializerInterceptor],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       observers: [observer],
-      rootModule: AppModule,
     }));
     const request: FrameworkRequest = {
       body: undefined,
@@ -2795,9 +2772,8 @@ describe('bootstrapApplication', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         logger,
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('boom');
 
@@ -2845,10 +2821,9 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       adapter,
       logger,
-      rootModule: AppModule,
     }));
 
     expect(loggerEvents).toEqual([
@@ -2891,10 +2866,9 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       logger,
       observers: [observer],
-      rootModule: AppModule,
     }));
     const createRequestScope = app.container.createRequestScope.bind(app.container);
 

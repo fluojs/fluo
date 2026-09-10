@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { bootstrapApplication, type CompiledModule, defineModule } from '@fluojs/runtime';
+import { FluoFactory, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EventBusLifecycleService, EventBusModule, OnEvent } from './index.js';
@@ -65,7 +65,7 @@ describe('result-aware event lifecycle', () => {
       })],
       providers: [Handler],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const bus = await app.container.resolve(EventBusLifecycleService);
 
@@ -116,7 +116,7 @@ describe('result-aware event lifecycle', () => {
       })],
       providers: [Handler],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule, logger });
+    const app = await FluoFactory.create(AppModule, { logger });
     try {
       const bus = await app.container.resolve(EventBusLifecycleService);
 

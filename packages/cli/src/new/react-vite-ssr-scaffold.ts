@@ -46,6 +46,7 @@ const RUN_PREFIX_BY_PACKAGE_MANAGER = {
 const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'README.md', templatePath: 'README.md.ejs' },
   { outputPath: 'playwright.config.ts', templatePath: 'playwright.config.ts.ejs' },
+  { outputPath: 'public/favicon.svg', templatePath: 'public/favicon.svg.ejs' },
   { outputPath: 'tsconfig.json', templatePath: 'tsconfig.json.ejs' },
   { outputPath: 'vite.client.config.ts', templatePath: 'vite.client.config.ts.ejs' },
   { outputPath: 'vite.server.config.ts', templatePath: 'vite.server.config.ts.ejs' },

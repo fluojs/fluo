@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 import { MongooseModule, MongooseConnection, type TransactionRollbackObserver } from './index.js';
 
@@ -16,7 +16,7 @@ describe('mongoose rollback observation module registration', () => {
     const registration = mode === 'sync' ? MongooseModule.forRoot(options) : MongooseModule.forRootAsync({ useFactory: async () => options });
     class AppModule {}
     defineModule(AppModule, { imports: [registration] });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const wrapper = await app.container.resolve(MongooseConnection);
       let callbacks = 0;

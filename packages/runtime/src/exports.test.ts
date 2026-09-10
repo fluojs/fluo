@@ -35,7 +35,9 @@ describe('runtime export boundaries', () => {
     expect(runtime.HealthModule).toBeTypeOf('function');
     expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
     expect(runtime).toHaveProperty('createHealthModule');
-    expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
+    expect(runtime.FluoFactory.create).toBeTypeOf('function');
+    expect(runtime).not.toHaveProperty('fluoFactory');
+    expect(runtime).not.toHaveProperty('bootstrapApplication');
     expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
     expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
     expect(runtime).toHaveProperty('APPLICATION_LOGGER');

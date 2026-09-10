@@ -65,6 +65,14 @@ Use `createTestApp({ rootModule })` as the default HTTP/e2e-style path for appli
 
 ## Common Patterns
 
+`createTestApp(...)` creates its HTTP shell through `FluoFactory.create` and keeps
+the caller's middleware after its request-context middleware. It accepts Factory
+`logger` and middleware policies. Security headers now default on for the same
+baseline as real applications; use `securityHeaders: false` when a test explicitly
+needs a header-free baseline. Ordinary tests still use `app.request(...).send()`;
+they do not need to open a listener or register process signals. See the
+[HTTP Factory migration](../../docs/getting-started/migrate-http-factory.md).
+
 ### Override providers before compilation
 
 ```ts

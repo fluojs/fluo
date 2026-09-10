@@ -8,7 +8,7 @@ import {
   Post,
   type RequestContext,
 } from '@fluojs/http';
-import { defineModule, fluoFactory } from '@fluojs/runtime';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
@@ -399,7 +399,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     });
 
     const adapter = createCloudflareWorkerAdapter();
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter,
     });
 

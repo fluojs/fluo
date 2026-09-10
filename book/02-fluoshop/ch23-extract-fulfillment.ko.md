@@ -608,10 +608,10 @@ export function createFulfillmentPublisherModule(
 배송 `src/main.ts`의 시작 부분은 다음 **애플리케이션 조각**이다. `db`는 배송용으로 연결 완료된 client, `workerOptions`는 연결 완료된 두 channel로 만든 `role: 'worker'` 옵션이다. 생략된 변수에 업무 처리를 숨기는 코드가 아니라 기존 bootstrap이 소유하는 자원 입력이다.
 
 ```ts
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createFulfillmentModule } from './app.js';
 
-const application = await fluoFactory.createMicroservice(
+const application = await FluoFactory.createMicroservice(
   createFulfillmentModule(db, workerOptions),
 );
 await application.listen();

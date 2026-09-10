@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockRedisInstance {
@@ -196,7 +196,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('connect failed');
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow('connect failed');
 
     expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
   });
@@ -209,7 +209,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ name: 'cache', host: '127.0.0.1', port: 6380 })],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('named connect failed');
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow('named connect failed');
 
     expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
     expect(mockRedisState.instances[0]?.status).toBe('end');
@@ -231,7 +231,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cache = await app.container.resolve(CacheService);
 
     expect(mockRedisState.instances).toHaveLength(1);
@@ -257,7 +257,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     expect(mockRedisState.instances).toHaveLength(2);
     expect(mockRedisState.instances[0]?.options.lazyConnect).toBe(true);
@@ -284,7 +284,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapPromise = FluoFactory.create(AppModule);
     const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow('Redis client default connect timed out after 25ms.');
     await vi.advanceTimersByTimeAsync(25);
 
@@ -303,7 +303,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapPromise = FluoFactory.create(AppModule);
     const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow(
       'Redis client default connect timed out after 10000ms.',
     );
@@ -342,7 +342,7 @@ describe('@fluojs/redis', () => {
 
     try {
       // Given: bootstrap abandons the still-pending connect once its lifecycle timeout expires.
-      const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+      const bootstrapPromise = FluoFactory.create(AppModule);
       const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow(
         'Redis client default connect timed out after 25ms.',
       );
@@ -381,7 +381,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapPromise = FluoFactory.create(AppModule);
     const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow('Redis client cache connect timed out after 25ms.');
     await vi.advanceTimersByTimeAsync(25);
 
@@ -407,7 +407,7 @@ describe('@fluojs/redis', () => {
     });
 
     let bootstrapSettled = false;
-    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapPromise = FluoFactory.create(AppModule);
     bootstrapPromise.then(
       () => {
         bootstrapSettled = true;
@@ -457,7 +457,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     expect(mockRedisState.instances[0]?.options).toMatchObject({
       host: '127.0.0.1',
@@ -499,7 +499,7 @@ describe('@fluojs/redis', () => {
       providers: [CacheClientConsumer, CacheServiceConsumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const clientConsumer = await app.container.resolve(CacheClientConsumer);
     const serviceConsumer = await app.container.resolve(CacheServiceConsumer);
 
@@ -566,7 +566,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const defaultConsumer = await app.container.resolve(DefaultClientConsumer);
     const namedConsumer = await app.container.resolve(NamedClientConsumer);
     const facadeConsumer = await app.container.resolve(RedisFacadeConsumer);
@@ -621,7 +621,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
@@ -636,7 +636,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
@@ -651,7 +651,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await app.close();
 
@@ -670,7 +670,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'disconnect', 'quit', 'disconnect']);
@@ -691,7 +691,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const closePromise = app.close();
     const closeAssertion = expect(closePromise).resolves.toBeUndefined();
     await vi.advanceTimersByTimeAsync(25);
@@ -708,7 +708,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     mockRedisState.quitHangs = true;
     const closePromise = app.close();
     const closeAssertion = expect(closePromise).resolves.toBeUndefined();
@@ -735,7 +735,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const closePromise = app.close();
     const closeAssertion = expect(closePromise).resolves.toBeUndefined();
     await vi.advanceTimersByTimeAsync(25);
@@ -760,7 +760,7 @@ describe('@fluojs/redis', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     let closeSettled = false;
     const closePromise = app.close();
     closePromise.then(
@@ -790,7 +790,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await expect(app.close()).rejects.toThrow('quit failed');
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
@@ -810,7 +810,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const instance = mockRedisState.instances[0];
 
     expect(instance).toBeDefined();
@@ -830,7 +830,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const instance = mockRedisState.instances[0];
 
     expect(instance).toBeDefined();
@@ -860,7 +860,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cacheFacade = await app.container.resolve(CacheFacade);
 
     expect(cacheFacade.redisService).toBeInstanceOf(RedisService);
@@ -902,7 +902,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cacheFacade = await app.container.resolve(CacheFacade);
 
     await cacheFacade.redisService.set('ttl:key', { ttl: ttlSeconds ?? null }, ttlSeconds);
@@ -934,7 +934,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cacheFacade = await app.container.resolve(CacheFacade);
     const rawClient = cacheFacade.redisService.getRawClient();
 
@@ -977,7 +977,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cacheFacade = await app.container.resolve(CacheFacade);
 
     arrange();
@@ -1002,7 +1002,7 @@ describe('@fluojs/redis', () => {
       imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cacheFacade = await app.container.resolve(CacheFacade);
     const resolvedByClass = await app.container.resolve(RedisService);
 

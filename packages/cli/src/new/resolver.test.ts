@@ -270,6 +270,7 @@ describe('resolveBootstrapPlan', () => {
           '@fluojs/di',
           '@fluojs/http',
           '@fluojs/platform-fastify',
+          '@fluojs/platform-nodejs',
           '@fluojs/runtime',
         ],
         devDependencies: [
@@ -479,6 +480,7 @@ describe('resolveBootstrapPlan', () => {
           '@fluojs/di',
           '@fluojs/http',
           '@fluojs/platform-express',
+          '@fluojs/platform-nodejs',
           '@fluojs/runtime',
         ],
         devDependencies: [
@@ -883,6 +885,7 @@ describe('resolveBootstrapPlan', () => {
           '@fluojs/http',
           '@fluojs/microservices',
           '@fluojs/platform-fastify',
+          '@fluojs/platform-nodejs',
           '@fluojs/runtime',
         ],
         devDependencies: [

@@ -71,7 +71,9 @@ curl -i http://127.0.0.1:3000/greeting
 다음은 생성 프로젝트의 `src/main.ts`를 교체하는 **완전한 파일**이다. `AppModule`은 생성된 `src/app.ts`의 것을 그대로 사용한다.
 
 ```ts
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
 function readPort(value: string | undefined): number {
@@ -89,11 +91,16 @@ function readPort(value: string | undefined): number {
   return port;
 }
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: readPort(process.env.PORT),
-  retryLimit: 0,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: readPort(process.env.PORT),
+    retryLimit: 0,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 이 검사는 외부 문자열을 옵션으로 바꾸는 애플리케이션 경계에 있다. 숫자로 바꾼 뒤 유한한지만 확인하면 빈 문자열이나 지수 표기 같은 입력까지 의도치 않게 받아들일 수 있다. 정규식으로 허용할 표기를 정하고 정수 범위를 다시 검사하면 입력 정책이 명확하다. 포트 `0`을 거부하는 것은 책의 로컬 실행 정책이다. 어댑터 자체는 운영체제가 빈 포트를 정하도록 `0`을 허용한다. 프레임워크가 금지하는 값과 애플리케이션이 선택하지 않은 값을 혼동하지 않는다.
@@ -104,11 +111,11 @@ await runFastifyApplication(AppModule, {
 
 `retryLimit: 0`은 포트 충돌을 즉시 드러내기 위한 실습 설정이다. 개발자가 오래된 프로세스를 남겼을 때 재시도 동안 멈춘 것처럼 보이지 않게 한다. 재시도는 순간적인 충돌을 완화할 수 있지만 이미 점유된 포트의 소유권 문제를 해결하지는 않는다. 문제를 재현하는 초기 단계에서는 빠른 실패가 더 유용하다.
 
-`runFastifyApplication()`은 기본 Node/Fastify 실행 경로다. 이 helper가 반환될 때는 초기화, listening, 기본 `SIGINT`·`SIGTERM` 등록이 끝난 상태이므로 다시 `listen()`을 호출할 필요가 없다. 반대로 `bootstrapFastifyApplication()`은 초기화된 앱만 반환하고 listen과 Node signal 등록은 호출자에게 남기는 구성 경계다. 이름이 비슷하다고 서로 바꿔 쓰면 프로세스는 만들어졌는데 요청을 받지 않는 상황이 생긴다.
+`FluoFactory.create()`는 앱을 초기화하고 `app.listen()`은 adapter 활성화와 선택적 Node signal 등록까지 기다린다. 생성과 수신을 구분하고 두 호출을 모두 await한다. 새 Node/Fastify CLI starter도 같은 경로를 사용한다.
 
-직접 `FluoFactory.create()`에 `createFastifyAdapter()`를 전달하고 `app.listen()`을 기다리는 방법도 있다. 저장소의 `examples/minimal`이 이 명시적 조립 경로다. 공통 초기화는 같지만 helper가 제공하는 미들웨어 조립, logger 선택, 생성 이후 시작 실패의 close 시도와 signal 등록까지 자동으로 같아지지는 않는다. 두 Fastify helper는 설정된 CORS, 설정된 global prefix, 기본 security headers, 호출자 middleware 순으로 조립한다. `securityHeaders: false`가 아니면 security headers가 켜지지만 CORS와 prefix는 생략하면 켜지지 않는다. 뒤 장에서 옵션을 누적할 때도 이 실행 경로를 이름만 바꿔 교체하지 않는다.
+`FluoFactory.create()`에 `createFastifyAdapter()`를 전달하는 것이 공통 HTTP recipe다. Factory가 CORS, prefix, 기본 security headers, 호출자 middleware 순서를 소유하며 생성·시작 실패를 정리한다. CORS/prefix는 기본 off, security headers는 `false`로 끌 수 있는 기본 on이다. Node logger와 signal callback만 host가 명시적으로 선택한다.
 
-여기서는 Node/Fastify가 socket listener를 소유한다. Workers나 Next.js에 붙이는 앱은 호스트가 요청 전달과 종료를 소유하며, 그 경로의 활성화가 새 socket을 연다는 뜻은 아니다. 같은 `listen`이라는 이름을 모든 환경의 포트·signal 요구사항으로 확대하지 않는다. 아래 컨텍스트 실험의 `fluoFactory`도 `FluoFactory`의 alias이지 또 다른 런타임 모델이 아니다.
+여기서는 Node/Fastify가 socket listener를 소유한다. Workers나 Next.js에 붙이는 앱은 호스트가 요청 전달과 종료를 소유하며, 그 경로의 활성화가 새 socket을 연다는 뜻은 아니다. 같은 `listen`이라는 이름을 모든 환경의 포트·signal 요구사항으로 확대하지 않는다. 아래 컨텍스트 실험은 같은 class의 별도 context-only 메서드를 사용한다.
 
 ## HTTP를 열지 않고 조립만 확인하는 실험
 
@@ -116,13 +123,13 @@ await runFastifyApplication(AppModule, {
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const BLOG_NAME = Symbol('BLOG_NAME');
 
 @Inject(BLOG_NAME)
 class BlogIdentity {
-  constructor(private readonly name: string) {}
+  constructor(private readonly name: string) { }
 
   describe(): string {
     return `${this.name}: context-ready`;
@@ -135,9 +142,9 @@ class BlogIdentity {
     BlogIdentity,
   ],
 })
-class ProbeModule {}
+class ProbeModule { }
 
-const context = await fluoFactory.createApplicationContext(ProbeModule);
+const context = await FluoFactory.createApplicationContext(ProbeModule);
 try {
   const identity = await context.get(BlogIdentity);
   console.log(identity.describe());
@@ -226,7 +233,7 @@ PORT=70000 node dist/main.js
 
 두 실행 모두 listening 성공 전에 `readPort`의 오류로 종료되어야 한다. 정상 서버가 이미 실행 중일 때 두 번째 터미널에서 `PORT=3000 node dist/main.js`를 실행하면 포트 점유 실패가 나야 한다. 이때 기존 서버의 `/greeting`이 계속 응답한다고 해서 두 번째 프로세스가 성공한 것은 아니다. 요청 성공과 방금 시작한 프로세스의 성공은 서로 다른 관찰이다.
 
-`runFastifyApplication()`은 시그널 기반 종료를 등록하지만 모든 실패를 성공으로 바꾸지는 않는다. 종료 시간 초과나 실패는 로그와 `process.exitCode`로 보고하며 프로세스의 최종 종료는 주변 호스트가 소유한다. 애플리케이션이 직접 수명을 관리하는 실험에서는 `finally`에서 `close()`를 기다린다. 즉시 `process.exit()`로 끝내는 습관은 아직 끝나지 않은 정리를 관찰할 기회부터 없애 버린다.
+Node `shutdownRegistration`은 signal 기반 종료를 연결하지만 실패를 성공으로 바꾸지는 않는다. Timeout과 실패는 로그와 `process.exitCode`로 보고하고 최종 프로세스 종료는 host가 소유한다. 직접 수명을 관리하는 실험은 `finally`에서 `app.close()`를 기다린다.
 
 첫 실행을 마친 상태는 작다. `src/main.ts`에는 실행 환경과 서버 시작만 있고, `src/app.ts`에는 starter의 모듈 구성이 있으며, `/greeting`이 응답한다. 이 정도 목적에는 프레임워크 없이 Node의 HTTP 서버 하나를 쓰는 선택도 가능하다. Fluo의 조립 비용이 의미를 갖는 시점은 요청 처리와 테스트, 데이터 접근처럼 서로 다른 책임을 같은 규칙으로 연결해야 할 때다. 다음 장에서는 그 첫 제품 요구로 `/posts`와 `/posts/1`을 만들고, 실행 성공을 독자가 볼 수 있는 게시글로 바꾼다.
 

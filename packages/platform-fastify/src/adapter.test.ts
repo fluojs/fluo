@@ -33,7 +33,7 @@ import {
   Version,
   VersioningType,
 } from '@fluojs/http';
-import { type Application, createHealthModule, defineModule, FluoFactory, fluoFactory } from '@fluojs/runtime';
+import { type Application, createHealthModule, defineModule, FluoFactory } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -728,7 +728,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [ResponsesController] });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createFastifyAdapter({ port: 0 }),
     });
 
@@ -832,7 +832,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createFastifyAdapter({ port: 0 }),
     });
 
@@ -959,7 +959,7 @@ describe('@fluojs/platform-fastify', () => {
       return JSON.stringify({ keep: 'fastify-native-serializer' });
     });
 
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     const port = await listenOnEphemeralPort(app);
 
@@ -1004,7 +1004,7 @@ describe('@fluojs/platform-fastify', () => {
       port: 0,
       rawBody: true,
     });
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1398,7 +1398,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter,
       middleware: [appMiddleware],
       observers: [observer],
@@ -1556,7 +1556,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     const port = await listenOnEphemeralPort(app);
 
@@ -1753,7 +1753,7 @@ describe('@fluojs/platform-fastify', () => {
       controllers: [UploadController],
     });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createFastifyAdapter({ port: 0 }, {
         maxFileSize: 1024,
         maxTotalSize: 10,
@@ -2588,7 +2588,7 @@ describe('@fluojs/platform-fastify', () => {
       controllers: [RewriteSourceController, RewriteTargetController],
     });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createFastifyAdapter({ port: 0 }),
       middleware: [rewriteMiddleware],
     });
@@ -2749,7 +2749,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [SnapshotController] });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createFastifyAdapter({ port: 0 }),
       middleware: [mutatingMiddleware],
     });

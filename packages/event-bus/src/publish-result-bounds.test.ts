@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EventBusLifecycleService, EventBusModule, OnEvent } from './index.js';
@@ -42,7 +42,7 @@ async function createBoundedBus() {
     })],
     providers: [Handler],
   });
-  const app = await bootstrapApplication({ rootModule: AppModule, logger });
+  const app = await FluoFactory.create(AppModule, { logger });
   const bus = await app.container.resolve(EventBusLifecycleService);
   return {
     app, bus, events, logger,
@@ -65,7 +65,7 @@ describe('result-aware publication bounds', () => {
         },
       })],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     vi.useFakeTimers();
     try {
       const bus = await app.container.resolve(EventBusLifecycleService);

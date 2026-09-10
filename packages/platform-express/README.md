@@ -35,10 +35,10 @@ Express compatibility does not mean that native Express/Connect `(req, res, next
 
 ```typescript
 import { createExpressAdapter } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createExpressAdapter({ port: 3000 }),
 });
 
@@ -99,7 +99,7 @@ const compressionHeaders: Middleware = {
   },
 };
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createExpressAdapter({ port: 3000 }),
   middleware: [compressionHeaders],
 });

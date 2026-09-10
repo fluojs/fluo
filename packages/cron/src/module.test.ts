@@ -1,7 +1,7 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Cron, Interval, Timeout } from './decorators.js';
@@ -491,13 +491,13 @@ describe('@fluojs/cron', () => {
       providers: [BlankTimeoutNameTask],
     });
 
-    await expect(bootstrapApplication({ rootModule: CronAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(CronAppModule)).rejects.toThrow(
       'Scheduling task name must be a non-empty string.',
     );
-    await expect(bootstrapApplication({ rootModule: IntervalAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(IntervalAppModule)).rejects.toThrow(
       'Scheduling task name must be a non-empty string.',
     );
-    await expect(bootstrapApplication({ rootModule: TimeoutAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(TimeoutAppModule)).rejects.toThrow(
       'Scheduling task name must be a non-empty string.',
     );
     expect(scheduled.records).toHaveLength(0);
@@ -530,7 +530,7 @@ describe('@fluojs/cron', () => {
       imports: [FeatureModule, CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const store = await app.container.resolve(TickStore);
 
     expect(scheduled.records).toHaveLength(1);
@@ -574,9 +574,8 @@ describe('@fluojs/cron', () => {
       providers: [TickStore, SuccessTask, FailingTask],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const store = await app.container.resolve(TickStore);
 
@@ -609,7 +608,7 @@ describe('@fluojs/cron', () => {
       providers: [TaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     expect(scheduled.records).toHaveLength(1);
 
@@ -648,9 +647,7 @@ describe('@fluojs/cron', () => {
     });
 
     await expect(
-      bootstrapApplication({
-        rootModule: AppModule,
-      }),
+      FluoFactory.create(AppModule),
     ).rejects.toThrow('scheduler boom');
 
     expect(firstStop).toHaveBeenCalledTimes(1);
@@ -701,9 +698,8 @@ describe('@fluojs/cron', () => {
       providers: [StartupRollbackTaskService],
     });
 
-    const bootstrapResult = bootstrapApplication({
+    const bootstrapResult = FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     }).then(
       () => undefined,
       (error: unknown) => error,
@@ -743,9 +739,8 @@ describe('@fluojs/cron', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     expect(scheduled.records).toHaveLength(0);
@@ -785,9 +780,8 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     expect(scheduled.records).toHaveLength(0);
@@ -862,13 +856,11 @@ describe('@fluojs/cron', () => {
       providers: [SharedStore, DistributedTaskService],
     });
 
-    const appOne = await bootstrapApplication({
+    const appOne = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
-    const appTwo = await bootstrapApplication({
+    const appTwo = await FluoFactory.create(SecondAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: SecondAppModule,
     });
 
     const firstTick = firstScheduler.records[0]!.tick();
@@ -920,9 +912,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService, Store],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve(SCHEDULING_REGISTRY);
     const statusService = registry as CronLifecycleService;
@@ -978,7 +969,7 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Cron distributed mode requires the configured Redis client to be registered.',
     );
     expect(scheduler.records).toHaveLength(0);
@@ -1009,9 +1000,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: getRedisClientToken('locks'), useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -1161,9 +1151,8 @@ describe('@fluojs/cron', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [{ provide: REDIS_CLIENT, useValue: {} }],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('Cron distributed mode requires the configured Redis client to implement set/eval lock operations.');
     expect(scheduler.records).toHaveLength(0);
@@ -1204,9 +1193,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService, Store],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: NAMED_REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     await scheduler.records[0]!.tick();
@@ -1269,13 +1257,11 @@ describe('@fluojs/cron', () => {
       providers: [SharedStore, DistributedTaskService],
     });
 
-    const appOne = await bootstrapApplication({
+    const appOne = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
-    const appTwo = await bootstrapApplication({
+    const appTwo = await FluoFactory.create(SecondAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: SecondAppModule,
     });
 
     const firstTick = firstScheduler.records[0]!.tick();
@@ -1325,7 +1311,7 @@ describe('@fluojs/cron', () => {
       providers: [TickStore, DefaultSchedulerTaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const store = await app.container.resolve(TickStore);
 
     expect(store.count).toBe(0);
@@ -1359,7 +1345,7 @@ describe('@fluojs/cron', () => {
       providers: [PortableCronService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     expect(scheduled.records.map((record) => record.expression)).toEqual(['*/5 * * * *', '*/10 * * * * *']);
     expect(scheduled.records.map((record) => record.options)).toEqual([
@@ -1459,7 +1445,7 @@ describe('@fluojs/cron', () => {
       providers: [LocalTaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await closeApplication(app);
   });
@@ -1487,9 +1473,8 @@ describe('@fluojs/cron', () => {
       providers: [LocalTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
-      rootModule: AppModule,
     });
 
     await closeApplication(app);
@@ -1519,9 +1504,8 @@ describe('@fluojs/cron', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow(/lockTtlMs/i);
   });
@@ -1554,7 +1538,7 @@ describe('@fluojs/cron', () => {
       providers: [HookedTaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await scheduled.records[0]!.tick();
 
@@ -1592,7 +1576,7 @@ describe('@fluojs/cron', () => {
       providers: [HookedFailingTaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await scheduled.records[0]!.tick();
 
@@ -1636,9 +1620,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedFailingTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve(SCHEDULING_REGISTRY);
     const statusService = registry as CronLifecycleService;
@@ -1684,7 +1667,7 @@ describe('@fluojs/cron', () => {
       providers: [BeforeRunFailingTaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await scheduled.records[0]!.tick();
 
@@ -1722,9 +1705,8 @@ describe('@fluojs/cron', () => {
       providers: [OnErrorThrowingTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     await expect(scheduled.records[0]!.tick()).resolves.toBeUndefined();
@@ -1782,9 +1764,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const tickPromise = scheduled.records[0]!.tick();
@@ -1849,9 +1830,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const tickPromise = scheduled.records[0]!.tick();
@@ -1906,10 +1886,9 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const tickPromise = scheduled.records[0]!.tick();
@@ -1953,10 +1932,9 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve(SCHEDULING_REGISTRY);
     const statusService = registry as CronLifecycleService;
@@ -2020,9 +1998,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const tickPromise = scheduled.records[0]!.tick();
@@ -2089,9 +2066,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const tickPromise = scheduled.records[0]!.tick();
@@ -2156,9 +2132,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const tickPromise = scheduled.records[0]!.tick();
@@ -2202,7 +2177,7 @@ describe('@fluojs/cron', () => {
       providers: [TickStore, TaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const store = await app.container.resolve(TickStore);
@@ -2237,7 +2212,7 @@ describe('@fluojs/cron', () => {
       providers: [DuplicateTaskService],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(/Duplicate scheduling task name/i);
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(/Duplicate scheduling task name/i);
   });
 
   it('exposes scheduling registry runtime controls and rejects updateCronExpression for non-cron tasks', async () => {
@@ -2251,7 +2226,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
@@ -2320,7 +2295,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     const events: string[] = [];
 
@@ -2351,7 +2326,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     const events: string[] = [];
 
@@ -2386,7 +2361,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-execution-control', CronExpression.EVERY_SECOND, () => {
@@ -2426,7 +2401,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-stop-retry', CronExpression.EVERY_SECOND, () => {});
@@ -2463,7 +2438,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-disable-stop-retry', CronExpression.EVERY_SECOND, () => {});
@@ -2500,7 +2475,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addInterval('dynamic-interval-cleanup', 100, () => {
@@ -2542,7 +2517,7 @@ describe('@fluojs/cron', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: 'named-dynamic-cron' });
@@ -2575,7 +2550,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     expect(() => registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: '   ' })).toThrow(
@@ -2603,7 +2578,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('existing-cron', CronExpression.EVERY_SECOND, () => {});
@@ -2630,7 +2605,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addInterval('immutable-descriptor', 1_000, () => {});
@@ -2665,7 +2640,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     expect(() => registry.addCron('dynamic-failure', CronExpression.EVERY_SECOND, () => {})).toThrow(
@@ -2695,7 +2670,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
@@ -2729,7 +2704,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
@@ -2782,7 +2757,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('dynamic-no-overlap', CronExpression.EVERY_SECOND, async () => {
@@ -2816,7 +2791,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     let count = 0;
 
@@ -2871,7 +2846,7 @@ describe('@fluojs/cron', () => {
       providers: [TickStore, TaskService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const store = await app.container.resolve(TickStore);
 
     await vi.advanceTimersByTimeAsync(100);
@@ -2905,9 +2880,8 @@ describe('@fluojs/cron', () => {
       providers: [TaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     void scheduled.records[0]?.tick();
@@ -2963,9 +2937,8 @@ describe('@fluojs/cron', () => {
       providers: [TaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     void scheduled.records[0]?.tick();
@@ -3050,13 +3023,11 @@ describe('@fluojs/cron', () => {
       providers: [SharedStore, DistributedTaskService],
     });
 
-    const appOne = await bootstrapApplication({
+    const appOne = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
-    const appTwo = await bootstrapApplication({
+    const appTwo = await FluoFactory.create(SecondAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: SecondAppModule,
     });
     const firstStore = await appOne.container.resolve(SharedStore);
     const secondStore = await appTwo.container.resolve(SharedStore);
@@ -3113,9 +3084,8 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const scheduledTask = scheduled.records[0];
 
@@ -3189,10 +3159,9 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve(SCHEDULING_REGISTRY);
     const statusService = registry as CronLifecycleService;
@@ -3254,10 +3223,9 @@ describe('@fluojs/cron', () => {
       providers: [DistributedTaskService],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve(SCHEDULING_REGISTRY);
     const statusService = registry as CronLifecycleService;
@@ -3333,13 +3301,11 @@ describe('@fluojs/cron', () => {
       providers: [Store],
     });
 
-    const appOne = await bootstrapApplication({
+    const appOne = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
-    const appTwo = await bootstrapApplication({
+    const appTwo = await FluoFactory.create(SecondAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: SecondAppModule,
     });
 
     const registryOne = await appOne.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
@@ -3414,13 +3380,11 @@ describe('@fluojs/cron', () => {
       providers: [Store],
     });
 
-    const appOne = await bootstrapApplication({
+    const appOne = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
-    const appTwo = await bootstrapApplication({
+    const appTwo = await FluoFactory.create(SecondAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: SecondAppModule,
     });
 
     const registryOne = await appOne.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
@@ -3479,9 +3443,8 @@ describe('@fluojs/cron', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     expect(
@@ -3504,7 +3467,7 @@ describe('@fluojs/cron', () => {
       imports: [CronModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
     registry.addCron('global-duplicate', CronExpression.EVERY_SECOND, () => {});

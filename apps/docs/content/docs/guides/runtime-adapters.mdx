@@ -85,10 +85,10 @@ Fastify is the recommended high-throughput Node.js adapter.
 
 ```ts
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -173,6 +173,26 @@ const adapter = NodeHttpApplicationAdapter.create({
 
 `maxBodySize` is enforced while raw Node request bytes are still streaming. The default request body cap is `1 MiB`; invalid `port` or `maxBodySize` values throw during setup.
 
+Use Factory creation and instance listen, with explicit `shutdownRegistration` for Node graceful shutdown.
+
+```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    port: 3000,
+  }),
+  globalPrefix: 'api',
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
+});
+await app.listen();
+```
+
+If shutdown times out or fails, the helper logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
+
 `compression` defaults to `false`; range responses retain identity bytes even when compression is enabled. Omitted `multipart.maxTotalSize` inherits the effective `maxBodySize`. The standard startup is `FluoFactory.create` followed by `app.listen()` as above. The host owns `app.close()` and explicit process-signal registration/cleanup.
 
 Existing bootstrap/run helpers are not removed by this issue and use the same static creation implementation. Run-helper shutdown timeout or failure is reported through logs and `process.exitCode`, while the host owns final process termination. See the [Node adapter creation migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.md) for removed factory/type aliases and migration of existing run-helper defaults.
@@ -188,11 +208,11 @@ import {
   createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createExpressAdapter({ port: 3000 });
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
@@ -229,10 +249,10 @@ Use the Bun adapter for native `Bun.serve()` applications.
 
 ```ts
 import { createBunAdapter } from '@fluojs/platform-bun';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 
@@ -286,11 +306,11 @@ Signal listener registration does not require a separate Deno permission. The ad
 For a host-owned `Deno.serve(...)`, bootstrap without `app.listen()` and create a handler from the public dispatcher.
 
 ```ts
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,
@@ -322,11 +342,11 @@ Use the Workers adapter for edge `fetch` deployments.
 
 ```ts
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 

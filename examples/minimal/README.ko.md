@@ -2,11 +2,11 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-명시적 저수준 Node.js + Fastify 조립을 보여주는 작은 fluo 저장소 예제입니다. `createFastifyAdapter(...)`를 전달한 `FluoFactory.create(...)` 뒤에 `app.listen()`을 호출하며 생성 스타터가 아닙니다. Node.js + Fastify용 기본/명시적 HTTP v2 스타터는 `runFastifyApplication(...)`을 사용하므로 그 middleware 기본값, logger, 생성 이후 실패 정리, signal 등록이 이 조립에 자동으로 재현되지는 않습니다. Factory도 런타임 초기화 실패 정리는 공유합니다. [Bootstrap recipe](../../docs/getting-started/bootstrap-paths.ko.md)를 참고하세요.
+Node.js + Fastify의 canonical `FluoFactory.create(...)` → `app.listen()` 조립을 보여주는 저장소 예제입니다. Factory의 middleware 기본값과 실패 정리를 사용하지만 이 예제의 signal은 host가 소유합니다. 생성 스타터는 같은 생성 경로에서 Node logger와 signal callback을 명시적으로 추가합니다. [Bootstrap recipe](../../docs/getting-started/bootstrap-paths.ko.md)를 참고하세요.
 
 ## 이 예제가 보여주는 것
 
-- `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })` 기반 명시적 Fastify 부트스트랩(`fluoFactory`는 같은 factory의 alias)
+- `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })` 기반 명시적 Fastify 부트스트랩
 - `@Module`, `@Inject`, `@Controller`, `@Get`을 사용한 표준 데코레이터 DI
 - `HealthModule.forRoot(...)`의 내장 `/health` 및 `/ready` 엔드포인트
 - `/hello` 경로의 단일 스타터 컨트롤러
@@ -47,7 +47,7 @@ examples/minimal/
 
 이 예제는 `workspace:*` 의존성을 사용하는 `repository-example`이며 registry 기반 `generated-app`이 아닙니다. 생성된 `src/app.ts`는 `ConfigModule`, `GreetingModule`, `HealthModule.forRoot()`를 유지하므로 greeting을 기대하는 테스트를 남겨 둔 채 이 예제의 루트 모듈로 덮어쓰지 않습니다. 생성 lifecycle script는 이 예제의 script가 아니라 `fluo dev`, `fluo build`, `fluo start`를 사용합니다.
 
-이 예제는 전체 `fluo new` HTTP 스타터 출력보다 의도적으로 작습니다. 현재 CLI starter는 controller/service/repository 파일이 들어 있는 `src/greeting/` feature slice, unit test, slice test, `src/app.test.ts`, `test/app.e2e.test.ts`, build/test tooling config를 생성합니다. 그 전체 스타터 경험이 필요하면 기본 명령 또는 명시적 Node.js + Fastify HTTP 계약을 사용하세요.
+이 예제는 기본/명시적 HTTP v2 스타터와 같은 HTTP 생성 경로를 사용하지만, 전체 `fluo new` 출력보다 의도적으로 작습니다. 현재 CLI starter는 controller/service/repository 파일이 들어 있는 `src/greeting/` feature slice, unit test, slice test, `src/app.test.ts`, `test/app.e2e.test.ts`, build/test tooling config를 생성합니다. 그 전체 스타터 경험이 필요하면 기본 명령 또는 명시적 Node.js + Fastify HTTP 계약을 사용하세요.
 
 ```sh
 pnpm add -g @fluojs/cli

@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CronExpression } from './expressions.js';
@@ -22,7 +22,7 @@ describe('Cron scheduler cleanup during shutdown', () => {
       imports: [CronModule.forRoot({ scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron('shutdown-stop-retry', CronExpression.EVERY_SECOND, () => {});
 

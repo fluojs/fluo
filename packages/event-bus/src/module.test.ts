@@ -1,7 +1,7 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { Container } from '@fluojs/di';
-import { type ApplicationLogger, bootstrapApplication, type CompiledModule, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OnEvent } from './decorators.js';
@@ -147,7 +147,7 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, UserCreatedHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
     const event = new UserCreatedEvent('user-1');
@@ -167,7 +167,7 @@ describe('@fluojs/event-bus', () => {
       imports: [EventBusModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBusByClass = await app.container.resolve(EventBusLifecycleService);
     const eventBusByToken = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -207,9 +207,8 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, SuccessfulHandler, FailingHandler],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
@@ -268,7 +267,7 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, FirstHandler, SecondHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -323,9 +322,8 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, SuccessHandler, FailingHandler, HangingHandler],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
@@ -365,9 +363,8 @@ describe('@fluojs/event-bus', () => {
       providers: [SlowHandler],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -410,7 +407,7 @@ describe('@fluojs/event-bus', () => {
       providers: [SlowHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const publishPromise = eventBus.publish(new UserCreatedEvent('user-local-timeout-drain'));
 
@@ -462,7 +459,7 @@ describe('@fluojs/event-bus', () => {
       providers: [SlowHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const controller = new AbortController();
     const publishPromise = eventBus.publish(new UserCreatedEvent('user-local-abort-drain'), {
@@ -521,7 +518,7 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, SlowHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -572,9 +569,8 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, SlowHandler],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
@@ -614,9 +610,8 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, Handler],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
@@ -677,7 +672,7 @@ describe('@fluojs/event-bus', () => {
       imports: [FeatureModule, EventBusModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -710,7 +705,7 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, BaseEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -729,9 +724,8 @@ describe('@fluojs/event-bus', () => {
       imports: [EventBusModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -771,7 +765,7 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, UserCreatedHandler, UserPublisher],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const publisher = await app.container.resolve(UserPublisher);
     const store = await app.container.resolve(EventStore);
 
@@ -812,7 +806,7 @@ describe('@fluojs/event-bus', () => {
       providers: [{ provide: SharedHandler, useClass: WinningSharedHandler }],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const service = await app.container.resolve(EventBusLifecycleService);
 
@@ -860,7 +854,7 @@ describe('@fluojs/event-bus', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
     await eventBus.publish(new UserCreatedEvent('user-factory-value'));
@@ -970,9 +964,8 @@ describe('@fluojs/event-bus', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -1014,9 +1007,8 @@ describe('@fluojs/event-bus', () => {
       providers: [RequestScopedProvider],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -1067,9 +1059,8 @@ describe('@fluojs/event-bus', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -1125,7 +1116,7 @@ describe('@fluojs/event-bus', () => {
       imports: [EventBusHostModule, SiblingModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const publisher = await app.container.resolve(SiblingPublisher);
 
     expect(typeof publisher.eventBus.publish).toBe('function');
@@ -1154,7 +1145,7 @@ describe('@fluojs/event-bus', () => {
       imports: [EventBusHostModule, SiblingModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow();
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow();
   });
 
   it('keeps distinct singleton provider identities when the same handler class is registered under two tokens', async () => {
@@ -1184,7 +1175,7 @@ describe('@fluojs/event-bus', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -1235,7 +1226,7 @@ describe('@fluojs/event-bus', () => {
       providers: [EventStore, FirstCollidingHandler, SecondCollidingHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -1283,7 +1274,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
       await eventBus.publish(new UserCreatedEvent('transport-user-1'));
@@ -1319,7 +1310,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
       await expect(
@@ -1356,9 +1347,8 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ publish: { timeoutMs: 120 }, transport })],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
@@ -1402,9 +1392,8 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ publish: { timeoutMs: 15 }, transport })],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const service = await app.container.resolve(EventBusLifecycleService);
@@ -1448,9 +1437,8 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const controller = new AbortController();
@@ -1490,7 +1478,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-drain'));
 
@@ -1538,9 +1526,8 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ shutdown: { drainTimeoutMs: 20 }, transport })],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-stuck-drain'));
@@ -1574,7 +1561,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot()],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(EventBusLifecycleService);
 
       expect(service.createPlatformStatusSnapshot()).toMatchObject({
@@ -1610,9 +1597,8 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, Handler],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
@@ -1651,7 +1637,7 @@ describe('@fluojs/event-bus', () => {
         providers: [HandlerA, HandlerB, HandlerC],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
 
       const subscribedChannels = transport.subscribed.map((s) => s.channel).sort();
       expect(subscribedChannels).toEqual(['PasswordResetEvent', 'UserCreatedEvent']);
@@ -1690,7 +1676,7 @@ describe('@fluojs/event-bus', () => {
         providers: [FirstHandler, SecondHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
 
       expect(transport.subscribed.map((entry) => entry.channel)).toEqual(['shared.audit.v1']);
 
@@ -1719,7 +1705,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       await expect(
-        bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule }),
+        FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) }),
       ).rejects.toThrow('subscribe failed');
 
       expect(
@@ -1766,7 +1752,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       await expect(
-        bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule }),
+        FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) }),
       ).rejects.toThrow('second subscribe failed');
 
       expect(subscribedChannels).toHaveLength(2);
@@ -1800,7 +1786,7 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, TransportHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const store = await app.container.resolve(EventStore);
 
       const incomingSubscription = transport.subscribed.find((s) => s.channel === 'UserCreatedEvent');
@@ -1846,9 +1832,8 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, SuccessfulTransportHandler, FailingTransportHandler],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const store = await app.container.resolve(EventStore);
 
@@ -1897,7 +1882,7 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, BaseHandler, DerivedHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
 
@@ -1929,7 +1914,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
       await eventBus.publish(new UserPromotedEvent('transport-user-no-local-base', 'admin'));
@@ -1969,7 +1954,7 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, InventoryHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
 
@@ -2008,7 +1993,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
       await eventBus.publish(new DetailedIntegrationEvent('event-1', 'expanded'));
@@ -2067,7 +2052,7 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, BaseHandler, DetailedHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const store = await app.container.resolve(EventStore);
       const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'inventory.shared.v1');
 
@@ -2121,7 +2106,7 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, FirstHandler, SecondHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const store = await app.container.resolve(EventStore);
       const incomingSubscription = transport.subscribed.find((s) => s.channel === 'MutableTransportEvent');
 
@@ -2155,7 +2140,7 @@ describe('@fluojs/event-bus', () => {
         providers: [SlowTransportHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'UserCreatedEvent');
       expect(incomingSubscription).toBeDefined();
 
@@ -2185,6 +2170,7 @@ describe('@fluojs/event-bus', () => {
     it('ignores incoming transport messages once shutdown starts', async () => {
       const loggerEvents: string[] = [];
       const releaseClose = createDeferred<void>();
+      const enteredClose = createDeferred<void>();
       const transport = {
         published: [] as Array<{ channel: string; payload: unknown }>,
         subscribed: [] as Array<{ channel: string; handler: (payload: unknown) => Promise<void> }>,
@@ -2195,6 +2181,7 @@ describe('@fluojs/event-bus', () => {
           this.subscribed.push({ channel, handler });
         },
         async close() {
+          enteredClose.resolve();
           await releaseClose.promise;
         },
       } satisfies EventBusTransport & {
@@ -2222,16 +2209,15 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, Handler],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const store = await app.container.resolve(EventStore);
       const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'UserCreatedEvent');
       expect(incomingSubscription).toBeDefined();
 
       const closePromise = app.close();
-      await flushAsyncWork();
+      await enteredClose.promise;
       await incomingSubscription!.handler({ userId: 'ignored-during-shutdown' });
 
       expect(store.calls).toBe(0);
@@ -2254,7 +2240,7 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
 
       expect(transport.closeCalls).toBe(0);
       await closeApplication(app);
@@ -2263,10 +2249,12 @@ describe('@fluojs/event-bus', () => {
 
     it('awaits transport.close() before shutdown resolves', async () => {
       const releaseClose = createDeferred<void>();
+      const enteredClose = createDeferred<void>();
       let closeStarted = false;
       const transport = {
         async close() {
           closeStarted = true;
+          enteredClose.resolve();
           await releaseClose.promise;
         },
         async publish(_channel: string, _payload: unknown) {},
@@ -2278,13 +2266,13 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       let shutdownResolved = false;
       const closePromise = app.close().then(() => {
         shutdownResolved = true;
       });
 
-      await flushAsyncWork();
+      await enteredClose.promise;
 
       expect(closeStarted).toBe(true);
       expect(shutdownResolved).toBe(false);
@@ -2316,9 +2304,8 @@ describe('@fluojs/event-bus', () => {
         imports: [EventBusModule.forRoot({ transport })],
       });
 
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
-        rootModule: AppModule,
       });
       const service = await app.container.resolve(EventBusLifecycleService);
 
@@ -2365,7 +2352,7 @@ describe('@fluojs/event-bus', () => {
         providers: [EventStore, LocalHandler],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
 

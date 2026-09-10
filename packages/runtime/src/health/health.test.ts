@@ -10,7 +10,7 @@ import {
 } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
-import { bootstrapApplication, defineModule } from '../bootstrap.js';
+import { FluoFactory, defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
 import * as healthModuleExports from './health.js';
 import { HealthModule, type RuntimeHealthModule } from './health.js';
@@ -90,9 +90,7 @@ describe('createHealthModule', () => {
       imports: [healthModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const readyResponse = createResponse();
     await app.dispatch(createRequest('/ready'), readyResponse);
@@ -138,9 +136,7 @@ describe('createHealthModule', () => {
       imports: [healthModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const healthResponse = createResponse();
@@ -178,9 +174,7 @@ describe('createHealthModule', () => {
       imports: [healthModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     healthModule.markStarting();
 
@@ -209,9 +203,7 @@ describe('createHealthModule', () => {
       imports: [healthModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const healthResponse = createResponse();
     await app.dispatch(createRequest('/health'), healthResponse);
@@ -236,9 +228,7 @@ describe('createHealthModule', () => {
       imports: [healthModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const readyResponse = createResponse();
     await app.dispatch(createRequest('/ready'), readyResponse);
@@ -262,9 +252,7 @@ describe('createHealthModule', () => {
       imports: [healthModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const healthResponse = createResponse();
     await app.dispatch(createRequest('/health'), healthResponse);
@@ -298,9 +286,7 @@ describe('createHealthModule', () => {
       providers: [BlockingShutdownService],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const readyBeforeClose = createResponse();
     await app.dispatch(createRequest('/ready'), readyBeforeClose);
@@ -339,9 +325,7 @@ describe('createHealthModule', () => {
       providers: [FailingShutdownService],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const closePromise = app.close('SIGTERM');
     await shutdownStarted.promise;

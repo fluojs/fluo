@@ -120,6 +120,14 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
  */
 export interface HttpApplicationAdapter {
   /**
+   * Describes an activated listener for application startup logging.
+   * Hosts without a socket or public listener URL may omit this capability.
+   *
+   * @returns The public URL and bound address after listen completes.
+   */
+  getListenTarget?(): { bindTarget: string; url: string };
+
+  /**
    * Returns the underlying transport server object when the adapter exposes one.
    *
    * @returns The transport-native server instance, or `undefined` when the adapter does not expose it.

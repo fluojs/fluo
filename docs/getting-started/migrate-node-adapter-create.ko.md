@@ -54,7 +54,7 @@ await app.close();
 
 ## CLI and existing applications
 
-`fluo new --shape application --transport http --runtime node --platform nodejs`는 같은 static recipe를 생성합니다. 기존 프로젝트는 자동 수정하지 않으므로 import와 호출을 위 표대로 이전하세요. 새로운 adapter-first starter는 process signal을 자동 등록하지 않고 run-helper의 middleware/logging 설정도 암묵적으로 추가하지 않습니다. 기존 `runNodejsApplication`에서 직접 `FluoFactory`로 옮길 때 security headers 등 사용 중인 middleware와 logger를 명시하고, signal 종료가 필요하면 Node boundary에서 `registerShutdownSignals(app, logger, signals, forceExitTimeoutMs)`를 등록하고 반환된 unregister callback을 정리하세요. 기존 run helper를 그대로 쓰는 앱의 동작은 바뀌지 않습니다.
+`fluo new --shape application --transport http --runtime node --platform nodejs`는 위 static adapter와 Factory를 사용하며, `createConsoleApplicationLogger()`와 `shutdownRegistration: createNodeShutdownSignalRegistration()`도 명시적으로 생성합니다. 기존 프로젝트는 자동 수정하지 않으므로 import와 호출을 위 표대로 이전하세요. Factory는 기본 security headers를 적용하고, CORS와 prefix는 opt-in이며, signal callback을 생략하면 host가 종료를 소유합니다. 기존 `runNodejsApplication`에서 이전할 때 필요한 middleware와 logger를 보존하고 Node signal 종료가 필요하면 이 callback을 전달하세요. Factory가 listen 뒤 등록하고 close에서 해제합니다. 기존 run helper를 그대로 쓰는 앱은 기존 동작을 유지합니다. 공통 기본값과 오류·정리 정책은 [HTTP Factory migration](./migrate-http-factory.ko.md)을 따르세요.
 
 ## Evidence and release impact
 

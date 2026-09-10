@@ -242,15 +242,26 @@ If your app already has other feature modules, preserve their `imports` and conn
 To make standard-decorator metadata preinstallation explicit, use the following **complete `src/main.ts` file**. The serialization classes in the next chapter do not install `Symbol.metadata` as an import side effect, so preparing it before decorated modules matters.
 
 ```ts
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { runFastifyApplication } = await import('@fluojs/platform-fastify');
-await runFastifyApplication(AppModule, { host: '127.0.0.1', port: 3000 });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
-`runFastifyApplication()` starts listening and registers shutdown handling before it resolves. Do not call `app.listen()` again afterward. Start through the previous chapter's CLI/Vite execution path rather than handing `main.ts` directly to Node's untransformed TypeScript execution feature. Changing the decorator build configuration to legacy `experimentalDecorators` is not the solution.
+Await `app.listen()` after `FluoFactory.create()` to complete listening and the selected Node signal registration. Start `main.ts` through the previous chapter's CLI/Vite path, not untransformed Node decorator execution or a switch to legacy `experimentalDecorators`.
 
 ## The HTTP Binder and Standalone Validation Are Different Entry Points
 
@@ -420,12 +431,11 @@ The following is the complete optional **`src/schema-boundary-main.ts` file**. S
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { StandardSchemaBinder } from '@fluojs/http';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 ensureMetadataSymbol();
 const { SchemaBoundaryModule } = await import('./schema-boundary-app.js');
-const app = await bootstrapApplication({
-  rootModule: SchemaBoundaryModule,
+const app = await FluoFactory.create(SchemaBoundaryModule, {
   adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });

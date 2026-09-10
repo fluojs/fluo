@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 import { PrismaModule, PrismaService, type TransactionRollbackObserver } from './index.js';
 
@@ -15,7 +15,7 @@ describe('prisma rollback observation module registration', () => {
     const registration = mode === 'sync' ? PrismaModule.forRoot(options) : PrismaModule.forRootAsync({ useFactory: async () => options });
     class AppModule {}
     defineModule(AppModule, { imports: [registration] });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const wrapper = await app.container.resolve(PrismaService);
       let callbacks = 0;

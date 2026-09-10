@@ -1191,7 +1191,11 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('cd ./starter-app');
     expect(packageJson).toContain('@fluojs/platform-fastify');
     expect(packageJson).toContain('@fluojs/runtime');
-    expect(mainFile).toContain('runFastifyApplication(AppModule, { port })');
+    expect(mainFile).toContain('FluoFactory.create(AppModule, {');
+    expect(mainFile).toContain('adapter: createFastifyAdapter({ port })');
+    expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).not.toContain('runFastifyApplication');
   });
 
   it('scaffolds the Express HTTP starter when the Express platform is selected explicitly', async () => {
@@ -1228,7 +1232,11 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-express');
-    expect(mainFile).toContain('runExpressApplication(AppModule, { port })');
+    expect(mainFile).toContain('FluoFactory.create(AppModule, {');
+    expect(mainFile).toContain('adapter: createExpressAdapter({ port })');
+    expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).not.toContain('runExpressApplication');
   });
 
   it('scaffolds the raw Node.js HTTP starter when the nodejs platform is selected explicitly', async () => {
@@ -1265,9 +1273,10 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain("import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';");
     expect(mainFile).toContain('FluoFactory.create(AppModule, {');
     expect(mainFile).toContain('adapter: NodeHttpApplicationAdapter.create({ port })');
+    expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
+    expect(mainFile).toContain("import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';");
     expect(mainFile).toContain('await app.listen();');
     expect(mainFile).not.toContain('runNodejsApplication');
   });
@@ -5092,6 +5101,7 @@ exit 7
     });
 
     const packageJson = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
       scripts?: Record<string, string>;
     };
     const readmeContent = readFileSync(join(projectDirectory, 'README.md'), 'utf8');
@@ -5123,15 +5133,18 @@ exit 7
     expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.slice.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'test', 'app.e2e.test.ts'))).toBe(true);
-    expect(readmeContent).toContain('Starter contract: `src/main.ts` boots the selected first-class application starter: Node.js runtime + Fastify HTTP via `runFastifyApplication(...)`');
+    expect(readmeContent).toContain('FluoFactory.create');
     expect(readmeContent).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readmeContent).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
-    expect(readmeContent).not.toContain('@fluojs/platform-nodejs');
-    expect(readmeContent).not.toContain('@fluojs/platform-nodejs');
-    expect(readmeContent).toContain('runFastifyApplication');
+    expect(packageJson.dependencies).toHaveProperty('@fluojs/platform-nodejs');
+    expect(mainContent).toContain("from '@fluojs/platform-nodejs'");
+    expect(readmeContent).not.toContain('runFastifyApplication');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
     expect(mainContent).toContain("from '@fluojs/platform-fastify'");
-    expect(mainContent).toContain('runFastifyApplication(AppModule, { port })');
+    expect(mainContent).toContain('FluoFactory.create(AppModule, {');
+    expect(mainContent).toContain('adapter: createFastifyAdapter({ port })');
+    expect(mainContent).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
+    expect(mainContent).toContain('await app.listen();');
     expect(appTestContent).toContain("createRequest('/health')");
     expect(appTestContent).toContain("createRequest('/ready')");
     expect(appTestContent).toContain("createRequest('/greeting/')");

@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 import { DrizzleModule, DrizzleDatabase, type TransactionRollbackObserver } from './index.js';
 
@@ -15,7 +15,7 @@ describe('drizzle rollback observation module registration', () => {
     const registration = mode === 'sync' ? DrizzleModule.forRoot<typeof native, object>(options) : DrizzleModule.forRootAsync<typeof native, object, unknown>({ useFactory: async () => options });
     class AppModule {}
     defineModule(AppModule, { imports: [registration] });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const wrapper = await app.container.resolve(DrizzleDatabase);
       let callbacks = 0;

@@ -376,7 +376,7 @@ import {
   Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
 } from '@fluojs/http';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { z } from 'zod';
 
 const DraftRequest = createSchemaDto(z.object({
@@ -404,10 +404,9 @@ class DraftController {
 }
 
 @Module({ controllers: [DraftController] })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapApplication({
-  rootModule: AppModule,
+const app = await FluoFactory.create(AppModule, {
   adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
@@ -573,7 +572,7 @@ error/not-found document를 제공하려면 runtime bootstrap에 optional applic
 
 ```ts
 import type { HttpErrorRepresentationOptions } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 function escapeHtml(value: string): string {
   return value
@@ -595,9 +594,8 @@ const errorRepresentation = {
   },
 } satisfies HttpErrorRepresentationOptions;
 
-const app = await bootstrapApplication({
+const app = await FluoFactory.create(AppModule, {
   errorRepresentation,
-  rootModule: AppModule,
 });
 ```
 
@@ -822,7 +820,10 @@ transport body suppression과 stream cleanup을 추가합니다.
 runtime bootstrap에서 `conditionalRequest`를 구성해 representation 존재 여부와 optional validator를 분리하여 해석합니다.
 
 ```ts
-const app = await bootstrapNodeApplication(AppModule, {
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({}),
   conditionalRequest: {
     resolve({ handler, request }) {
       return {
@@ -834,6 +835,7 @@ const app = await bootstrapNodeApplication(AppModule, {
       };
     },
   },
+  logger: createConsoleApplicationLogger(),
 });
 ```
 
@@ -921,3 +923,5 @@ wire-case fixture를 소비합니다. 기존 Web portability와 Fastify native-b
 default/raw-body/multipart 동작을 유지합니다. 공개 declaration 테스트는 cold isolated
 의존성 closure를 build하고 package export map으로 해석합니다.
 [Next 사용법과 migration](../platform-nextjs/README.ko.md#bounded-body-parsing)을 참고하세요.
+
+HTTP 앱은 `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })`로 생성하고 instance `listen()`/`close()`로 실행·종료합니다. `HttpApplicationAdapter.getListenTarget?()`는 listen 뒤 `{ bindTarget, url }`을 반환하는 선택적 logging capability이며 socket 없는 host는 생략할 수 있습니다. Factory는 공통 middleware와 실패 정리를 소유하고 HTTP는 기존 request/input/response policy를 유지합니다. [Migration](../../docs/getting-started/migrate-http-factory.ko.md)을 참고하세요.

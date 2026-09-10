@@ -14,7 +14,7 @@ import {
   type MiddlewareContext,
   type Next,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { Path, Router } from './decorators.js';
@@ -104,7 +104,7 @@ describe('ReactModule', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const firstResponse = createResponse();
@@ -142,7 +142,7 @@ describe('ReactModule', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const apiResponse = createResponse();
@@ -206,7 +206,7 @@ describe('ReactModule', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();
@@ -243,6 +243,6 @@ describe('ReactModule', () => {
     })
     class AppModule {}
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(RouteConflictError);
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(RouteConflictError);
   });
 });

@@ -31,15 +31,22 @@ Verifying a signature against the result of applying `JSON.stringify()` to a par
 Fluo's `FrameworkRequest.rawBody` is an optional `Uint8Array`. This does not mean that the HTTP package automatically captures raw bodies in every adapter. On the Fastify path in Node.js 24, enable `rawBody: true`. The following is the **bootstrap option change** in the existing `src/main.ts`. Merge these options while preserving the existing AppModule and the host, port, and lifecycle policies read from configuration.
 
 ```ts
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 65_536,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 65_536,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 Here, the size limit applies to the entire adapter. If the blog's upload policy allows larger bodies, do not overwrite the global limit with this number. Keep the existing limit and apply separate webhook ingress and verifier limits. A length check inside a controller checks a body that has already arrived, so it cannot replace a memory limit during receipt. Fastify does not apply raw-body capture to multipart requests, so this entry point accepts JSON only.

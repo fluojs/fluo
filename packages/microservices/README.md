@@ -46,7 +46,7 @@ Define a message handler and bootstrap the microservice using the TCP transport.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { MicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@fluojs/microservices';
 
 class MathHandler {
@@ -64,9 +64,9 @@ class MathHandler {
   ],
   providers: [MathHandler]
 })
-class AppModule {}
+class AppModule { }
 
-const microservice = await fluoFactory.createMicroservice(AppModule);
+const microservice = await FluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 

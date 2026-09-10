@@ -34,13 +34,7 @@ import {
   Version,
   VersioningType,
 } from '@fluojs/http';
-import {
-  type Application,
-  createHealthModule,
-  defineModule,
-  FluoFactory,
-  fluoFactory,
-} from '@fluojs/runtime';
+import { type Application, createHealthModule, defineModule, FluoFactory } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
@@ -676,7 +670,7 @@ describe('@fluojs/platform-express', () => {
       nativeMiddleware: [nativeMiddleware],
       port: 0,
     });
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter,
       middleware: [fluoMiddleware],
     });
@@ -708,7 +702,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createExpressAdapter({
         nativeMiddleware: [nativeMiddleware],
         port: 0,
@@ -909,7 +903,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [ResponsesController] });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createExpressAdapter({ port: 0 }),
     });
 
@@ -984,7 +978,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createExpressAdapter({ port: 0 }),
     });
 
@@ -1282,7 +1276,7 @@ describe('@fluojs/platform-express', () => {
       port: 0,
       rawBody: true,
     });
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1340,7 +1334,7 @@ describe('@fluojs/platform-express', () => {
       port: 0,
       rawBody: true,
     });
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1539,7 +1533,7 @@ describe('@fluojs/platform-express', () => {
       { host: '127.0.0.1', port: 0 },
       { strategy: 'stream' },
     ) as ExpressHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1592,7 +1586,7 @@ describe('@fluojs/platform-express', () => {
       { host: '127.0.0.1', port: 0 },
       { strategy: 'stream' },
     ) as ExpressHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1662,7 +1656,7 @@ describe('@fluojs/platform-express', () => {
       { host: '127.0.0.1', port: 0 },
       { strategy: 'stream' },
     ) as ExpressHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
     let request: ReturnType<typeof httpRequest> | undefined;
 
     try {
@@ -2008,7 +2002,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter,
       middleware: [appMiddleware],
       observers: [observer],
@@ -2199,7 +2193,7 @@ describe('@fluojs/platform-express', () => {
       host: '127.0.0.1',
       port: 0,
     }) as ExpressHttpApplicationAdapter;
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     await app.listen();
 
@@ -2564,7 +2558,7 @@ describe('@fluojs/platform-express', () => {
       controllers: [RewriteSourceController, RewriteTargetController],
     });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createExpressAdapter({ port: 0 }),
       middleware: [rewriteMiddleware],
     });
@@ -2637,7 +2631,7 @@ describe('@fluojs/platform-express', () => {
       controllers: [RewriteMethodSourceController, RewriteMethodTargetController],
     });
 
-    const app = await fluoFactory.create(AppModule, {
+    const app = await FluoFactory.create(AppModule, {
       adapter: createExpressAdapter({ port: 0 }),
       middleware: [rewriteMiddleware],
     });

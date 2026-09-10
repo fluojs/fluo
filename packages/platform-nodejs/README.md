@@ -87,14 +87,38 @@ const adapter = NodeHttpApplicationAdapter.create({
 Defaults are `compression: false`, `rawBody: false`, `retryDelayMs: 150`, `retryLimit: 20`, and `shutdownTimeoutMs: 10_000`. Node chooses the bind address when `host` is omitted. Multipart defaults to buffered parsing, and omitted `multipart.maxTotalSize` inherits the effective `maxBodySize` (`1_048_576` bytes when both are omitted). Explicit `0` is preserved. Even with compression enabled, range responses retain identity representation bytes and range metadata without recompression.
 
 ### Direct Application Execution
-The standard startup is `FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`. Creation neither binds the port nor registers process signals. The host calls `app.close(signal?)` on shutdown. If signals are needed, explicitly call `registerShutdownSignals(...)` at the Node boundary and dispose its returned unregister callback.
+Creation neither binds the port nor registers process signals.
+
+Create through `FluoFactory.create(AppModule, { adapter })` and start through `app.listen()`. The Node logger and shutdown callback below are explicit selections at this host boundary.
 
 ```typescript
-const adapter = NodeHttpApplicationAdapter.create({
-  port: 3000,
-  shutdownTimeoutMs: 10_000,
+import { FluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    port: 3000,
+    shutdownTimeoutMs: 10_000,
+  }),
+  globalPrefix: 'api',
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
-const app = await FluoFactory.create(AppModule, { adapter });
+await app.listen();
+```
+
+To configure before listening, create through the same Factory, finish configuration, then call `app.listen()`. Omitting the signal callback leaves `app.close()` with the host.
+
+```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen();
 
 // When the host requests shutdown:
@@ -136,6 +160,8 @@ The same regression targets also cover the package-specific public surface, cano
 
 ## Multipart streaming
 
+`multipart` remains adapter-owned; Factory itself has no `multipart` option.
+
 Set `multipart: { strategy: 'stream' }` in `NodeHttpApplicationAdapter.create(...)` to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. The Node listener creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
 
 Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
@@ -152,3 +178,5 @@ Runtime route dispatch owns an iterator created for a route and automatically ca
 - `packages/platform-nodejs/src/lifecycle.test.ts`
 - `packages/platform-nodejs/src/lifecycle.integration.test.ts`
 - `book/intermediate/ch21-express-node.md`
+
+`createNodeShutdownSignalRegistration(...)` rolls back partially installed handlers on registration failure and attempts every removal after an individual failure. Factory close retains unregistration failure for concurrent/later callers without skipping runtime cleanup; `factory-signals.test.ts` covers this boundary. Existing `bootstrapNodejsApplication`/`runNodejsApplication` remain for consumers awaiting platform migration. New apps use the Factory recipe above and the [migration guide](../../docs/getting-started/migrate-http-factory.md).

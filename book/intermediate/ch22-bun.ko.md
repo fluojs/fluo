@@ -51,7 +51,7 @@ Bun에서 FluoShop을 실행하려면 `main.ts` 진입점에서 `createBunAdapte
 ```typescript
 // apps/fluoshop-api/src/main.ts
 import { createBunAdapter } from '@fluojs/platform-bun';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -61,15 +61,15 @@ async function bootstrap() {
   const hostname = '127.0.0.1';
   const port = 3000;
 
-  const adapter = createBunAdapter({ 
+  const adapter = createBunAdapter({
     port,
     // Bun 전용 옵션
     hostname,
     development: runtimeConfig.development
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
-  
+  const app = await FluoFactory.create(AppModule, { adapter });
+
   await app.listen();
   console.log(`FluoShop running on Bun at http://${hostname}:${port}`);
 }

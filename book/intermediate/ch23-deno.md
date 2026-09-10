@@ -77,11 +77,11 @@ Deno is built on Web standards, so it fits naturally with fluo's internal Dispat
 
 ```typescript
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,
@@ -153,7 +153,7 @@ For `@fluojs/config`, keep Deno environment reads at the application entrypoint:
 
 1. **Imports**: Include file extensions in all local imports, for example `./user.service.ts`. Deno does not allow extensionless imports.
 2. **NPM Compatibility**: Most npm packages work through `npm:` imports, but packages that depend on complex Node-native C++ APIs that Deno's Node compatibility layer may not support yet require verification.
-3. **Async Initialization**: Deno favors top-level `await`, which fits well with `fluoFactory.create()`.
+3. **Async Initialization**: Deno favors top-level `await`, which fits well with `FluoFactory.create()`.
 4. **Environment Variables**: Use `Deno.env.get()` only at the Deno entrypoint, then map the selected values into `ConfigModule.forRoot({ processEnv })` or `runtimeOverrides`. Keep package and service code on `ConfigService` instead of direct Deno environment access.
 
 ## 23.7 Conclusion
@@ -224,12 +224,12 @@ Deno's built-in test runner can be used without separate Jest or Vitest dependen
 ```typescript
 import { assertEquals } from "jsr:@std/assert";
 import { createDenoAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
-import { fluoFactory } from "npm:@fluojs/runtime";
+import { FluoFactory } from "npm:@fluojs/runtime";
 import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
   const adapter = createDenoAdapter();
-  const app = await fluoFactory.create(AppModule, { adapter });
+  const app = await FluoFactory.create(AppModule, { adapter });
   const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });
 
   try {

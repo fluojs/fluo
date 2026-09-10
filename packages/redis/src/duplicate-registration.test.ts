@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockRedisInstance {
@@ -56,7 +56,7 @@ describe('@fluojs/redis duplicate registration identities', () => {
       ],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Duplicate @fluojs/redis registration identity "default". Every RedisModule.forRoot(...) registration owns one lifecycle-managed client, so pass a distinct name to each additional registration.',
     );
 
@@ -73,7 +73,7 @@ describe('@fluojs/redis duplicate registration identities', () => {
       ],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Duplicate @fluojs/redis registration identity "cache". Every RedisModule.forRoot(...) registration owns one lifecycle-managed client, so pass a distinct name to each additional registration.',
     );
 
@@ -90,7 +90,7 @@ describe('@fluojs/redis duplicate registration identities', () => {
       ],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Duplicate @fluojs/redis registration identity "cache".',
     );
   });
@@ -105,7 +105,7 @@ describe('@fluojs/redis duplicate registration identities', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     expect(mockRedisState.instances).toHaveLength(3);
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'connect']);

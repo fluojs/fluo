@@ -27,37 +27,37 @@ This chapter explains how Fluo branches only at package surfaces and adapter sea
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 The first fact to notice in Chapter 10 is that Fluo's runtime portability is not implemented as one giant `if (isNode) ... else if (isEdge) ...` block. The branch points are much narrower and sit in more architectural locations.
 
-Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1583-1607` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
+Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1648-1672` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:1583-1607`
+`path:packages/runtime/src/bootstrap.ts:1648-1672`
 ```typescript
-export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
-  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
-  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
-  let lifecycleInstances: unknown[] = [];
-  let bootstrappedContainer: Container | undefined;
-  let bootstrappedModules: CompiledModule[] = [];
-  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
-  const adapter = effectiveOptions.adapter ?? {
-    async close() {},
-    async listen() {},
-  };
-  const runtimeCleanup: RuntimeCleanupCallback[] = [];
-  if (studioDevtools) {
-    runtimeCleanup.push(() => studioDevtools.close());
-  }
-  const bootstrapReadySignal = createBootstrapReadySignal();
-  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
-  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
-  const timingStart = timingEnabled ? runtimePerformance.now() : 0;
-  const timingPhases: BootstrapTimingPhase[] = [];
+  static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
+    const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
+    const effectiveOptions = applyStudioDevtoolsApplicationOptions({ ...options, rootModule }, studioDevtools);
+    const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
+    let lifecycleInstances: unknown[] = [];
+    let bootstrappedContainer: Container | undefined;
+    let bootstrappedModules: CompiledModule[] = [];
+    const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+    const adapter = effectiveOptions.adapter ?? {
+      async close() {},
+      async listen() {},
+    };
+    const runtimeCleanup: RuntimeCleanupCallback[] = [];
+    if (studioDevtools) {
+      runtimeCleanup.push(() => studioDevtools.close());
+    }
+    const bootstrapReadySignal = createBootstrapReadySignal();
+    const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+    const timingEnabled = effectiveOptions.diagnostics?.timing === true;
+    const timingStart = timingEnabled ? runtimePerformance.now() : 0;
+    const timingPhases: BootstrapTimingPhase[] = [];
 
-  try {
-    logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
+    try {
+      logger.log('Starting fluo application...', 'FluoFactory');
+      const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
 The root default is `createDefaultApplicationLogger()`, which keeps the shared bootstrap surface transport-neutral. Choose `createConsoleApplicationLogger()` only for an explicit Node-only setup imported from `@fluojs/platform-nodejs`.
@@ -68,11 +68,11 @@ Actual branching happens only at seams that need host-specific capabilities. Tho
 
 That is why the chapter title says "runtime branching," not "runtime fork." Fluo does not duplicate the whole runtime per host. It keeps the shared runtime shell in the center and branches only at explicit surface boundaries.
 
-This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:18-45`. The contiguous root-boundary tests enforce that the root runtime barrel must be transport-neutral, keep Bootstrap defaults detached from Node-only logger modules, and expose only Bootstrap-scoped operational helpers. Node-only helpers live in `@fluojs/platform-nodejs`, Web helpers live under `@fluojs/runtime/web`, and lower-level portable adapter seams remain under `@fluojs/runtime/internal/...`.
+This philosophy is encoded in `path:packages/runtime/src/exports.test.ts:18-47`. The contiguous root-boundary tests enforce that the root runtime barrel must be transport-neutral, keep Bootstrap defaults detached from Node-only logger modules, and expose only Bootstrap-scoped operational helpers. Node-only helpers live in `@fluojs/platform-nodejs`, Web helpers live under `@fluojs/runtime/web`, and lower-level portable adapter seams remain under `@fluojs/runtime/internal/...`.
 
 The root boundary starts with a deny list. The root barrel must not directly contain dispatch helpers, Web factories, Node shutdown helpers, or adapter Bootstrap helpers.
 
-`path:packages/runtime/src/exports.test.ts:18-45`
+`path:packages/runtime/src/exports.test.ts:18-47`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -94,7 +94,9 @@ it('keeps only bootstrap-scoped operational helpers on the runtime root barrel',
   expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
   expect(runtime).toHaveProperty('createHealthModule');
-  expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
+  expect(runtime.FluoFactory.create).toBeTypeOf('function');
+  expect(runtime).not.toHaveProperty('fluoFactory');
+  expect(runtime).not.toHaveProperty('bootstrapApplication');
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
   expect(runtime).toHaveProperty('APPLICATION_LOGGER');
@@ -183,7 +185,7 @@ This list contains no Node server helpers or Web dispatch helpers. A reader look
 
 That omission is not accidental. `path:packages/runtime/src/exports.test.ts:19-25` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.
 
-So the root runtime API is curated around portable Bootstrap concerns. It exposes only what every host can share. Runtime Tokens such as `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, and `PLATFORM_SHELL`, along with the shared runtime type system, belong here.
+So the root runtime API is curated around portable Bootstrap concerns. It exposes only what every host can share. Runtime Tokens such as `FluoFactory`, `APPLICATION_LOGGER`, and `PLATFORM_SHELL`, along with the shared runtime type system, belong here.
 
 The package export map in `path:packages/runtime/package.json:23-50` enforces this curation at the package resolution stage. The explicit runtime subpaths are `.`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, and `./internal/request-response-factory`; Node-owned entrypoints are intentionally absent.
 
@@ -227,11 +229,11 @@ This matters because an export map is stronger than documentation. It prevents a
 
 `path:packages/platform-nodejs/src/node/node.test.ts:8-54` keeps Node lifecycle helpers outside the runtime root. Adapter creation uses `NodeHttpApplicationAdapter.create(options)` from `@fluojs/platform-nodejs`; the old free factories are removed from both root and internal entrypoints.
 
-`path:packages/runtime/src/exports.test.ts:87-106` also checks that the package export map retains the portable entrypoints, including the `./devtools` host bridge, while omitting `./node` and `./internal-node`. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
+`path:packages/runtime/src/exports.test.ts:89-108` also checks that the package export map retains the portable entrypoints, including the `./devtools` host bridge, while omitting `./node` and `./internal-node`. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
 
 The test reads package.json and confirms that Node-owned entrypoints cannot resolve through the runtime package.
 
-`path:packages/runtime/src/exports.test.ts:87-106`
+`path:packages/runtime/src/exports.test.ts:89-108`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -623,7 +625,7 @@ host-specific factory
   -> shared error handling shape
 ```
 
-Because this seam exists, the rest of the runtime can remain surprisingly stable. `bootstrapApplication()` does not care whether the final host is Node or an Edge worker. It only cares that a compatible adapter or dispatch seam exists.
+Because this seam exists, the rest of the runtime can remain surprisingly stable. `FluoFactory.create()` does not care whether the final host is Node or an Edge worker. It only cares that a compatible adapter or dispatch seam exists.
 
 This also explains the export boundary seen earlier. Because the truly host-specific code lives below the request/response factory, the root barrel can stay portable.
 

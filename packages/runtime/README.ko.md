@@ -42,7 +42,7 @@ npm install @fluojs/runtime
 
 ### 최소 HTTP 애플리케이션
 
-`fluoFactory`는 애플리케이션 생성을 위한 주요 진입점입니다.
+`FluoFactory`는 애플리케이션 생성을 위한 주요 진입점입니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -61,7 +61,7 @@ class AppController {
 @Module({
   controllers: [AppController],
 })
-class AppModule {}
+class AppModule { }
 
 // 애플리케이션 생성 및 시작
 const app = await FluoFactory.create(AppModule, {
@@ -76,6 +76,16 @@ prefix를 무시하지 않고 `/cats`를 제공합니다. 빈 `@Module()`도 pro
 않고 bootstrap하고 close할 수 있습니다.
 
 ## 주요 패턴
+
+### Canonical HTTP Factory
+
+`FluoFactory.create(AppModule, { adapter })` → `app.listen()` → `app.close()`가 유일한 HTTP 생성 경로입니다. `logger`는 전달한 객체 자체를 `APPLICATION_LOGGER`로 등록하며 생략하면 portable console logger를 사용합니다. Factory가 설정된 CORS → global prefix/exclusion → 기본 security headers → 호출자 middleware를 조합하고, module middleware는 route matching 뒤에 실행됩니다. CORS/prefix는 기본 off, security headers는 기본 on이며 `securityHeaders: false`로 끕니다.
+
+Readiness/listen/시작 로그/host 등록 실패는 `close('bootstrap-failed')`로 확보 자원을 정리하고 최초 오류를 보존합니다. 다시 시작하려면 새 앱을 만드세요. `shutdownRegistration`은 host가 전달하는 선택적 callback이며 listen 뒤에만 실행됩니다. 생략하거나 listen 전에 close하면 signal을 설치하지 않습니다. Node에서는 `@fluojs/platform-nodejs`의 `createNodeShutdownSignalRegistration()`을 전달하세요.
+
+Signal 해제는 한 번 시도하고 실패해도 runtime teardown을 계속합니다. 동시·이후 close는 해제 실패를 공유하며 다른 teardown 실패와 aggregate합니다. Runtime 자원 정리가 끝나면 signal 해제 실패가 있어도 `state`는 `closed`입니다. `app.get(PublicToken<T>)`는 `Promise<T>`를 추론하고 shutdown 시작 전후 admission을 확인합니다. 일반 요청은 `app.dispatch()`를 사용하세요. `container`와 `dispatcher`의 직접 접근은 동일한 gate를 제공하지 않는 저수준 integration surface입니다.
+
+[HTTP Factory migration](../../docs/getting-started/migrate-http-factory.ko.md)과 [lifecycle 계약](../../docs/architecture/lifecycle-and-shutdown.ko.md)을 참고하세요.
 
 ### 헬스 엔드포인트 미들웨어
 
@@ -127,11 +137,16 @@ Node.js, Express, Fastify, Web 애플리케이션 dispatch에서는 bootstrap의
 pull 또는 buffering을 수행하지 않습니다.
 
 ```typescript
-const app = await bootstrapNodejsApplication(AppModule, {
-  multipart: {
-    strategy: 'stream',
-    maxTotalSize: 25 * 1024 * 1024,
-  },
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    multipart: {
+      strategy: 'stream',
+      maxTotalSize: 25 * 1024 * 1024,
+    },
+  }),
+  logger: createConsoleApplicationLogger(),
 });
 
 @Controller('/uploads')
@@ -200,7 +215,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`bootstrapApplication({ rootModule: AppModule, ...options })`도 같은 factory를
+`FluoFactory.create(AppModule, options)`도 같은 factory를
 받습니다. 기존 `converters`는 `binder`와 함께 지정할 수 있고 일반 DTO의
 fallback을 통해 계속 실행됩니다. Schema token은 대신 schema의
 conversion/default rule을 사용합니다. 이 callback 자리에 binder instance나
@@ -224,9 +239,9 @@ application boundary 회귀의 확인 위치입니다.
 백그라운드 워커나 스크립트의 경우, `createApplicationContext`를 사용하여 HTTP 설정을 건너뛸 수 있습니다.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
-const context = await fluoFactory.createApplicationContext(AppModule);
+const context = await FluoFactory.createApplicationContext(AppModule);
 
 // 컨테이너에서 직접 서비스 해석
 const userService = await context.get(UserService);
@@ -247,7 +262,7 @@ await context.close();
 
 종료 준비 작업은 소유하는 문서화된 phase로 옮기세요. Application-wide signal phase보다 먼저 끝나야 하는 module resource teardown에는 `onModuleDestroy()`를 사용하고, signal-aware application cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. `@fluojs/runtime`은 `beforeApplicationShutdown` compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않습니다.
 
-NestJS `app.enableShutdownHooks()`는 모든 fluo bootstrap path에서 암묵적으로 적용되지 않습니다. 기본 Node `SIGINT` / `SIGTERM` wiring에는 `@fluojs/platform-nodejs`의 `runNodeApplication(...)`을 사용하세요. 이 helper가 기본 Node shutdown registration을 설치합니다. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, adapter-first Node bootstrap은 signal ownership을 명시적으로 남겨 두므로 signal handling이 필요하면 해당 Node application boundary에서 `createNodeShutdownSignalRegistration(...)` 또는 `registerShutdownSignals(...)`를 사용하세요. Bun, Deno, Cloudflare Workers 같은 Fetch-style host는 자체 shutdown boundary를 소유합니다. 그 환경에 Node process signal을 설치하지 말고 host가 shutdown event를 받으면 `app.close(signal?)`를 호출하세요.
+NestJS `app.enableShutdownHooks()`는 암묵적 기본값이 아닙니다. Node에서는 `FluoFactory.create(AppModule, { adapter, shutdownRegistration: createNodeShutdownSignalRegistration() })`로 `SIGINT`/`SIGTERM`을 opt-in하세요. Fetch host에서는 Node signal을 설치하지 않고 host가 `app.close(signal?)`을 호출합니다.
 
 Lifecycle hook은 listener close 또는 connection drain phase가 아닙니다. `app.close(signal?)` 중 fluo는 `adapter.close(signal?)`보다 먼저 shutdown hook을 실행합니다. 닫힌 listener 또는 완료된 adapter drain이 필요한 migrated cleanup은 같은 이름의 lifecycle hook이 아니라 close 이후의 adapter 또는 host shutdown boundary에 두세요.
 
@@ -255,10 +270,10 @@ Lifecycle hook은 listener close 또는 connection drain phase가 아닙니다. 
 
 `@fluojs/runtime`은 `process.env`를 직접 읽지 않고 live Studio snapshot과 request trace를 publish할 수 있습니다. `fluo dev --studio`는 기본 Node 경로로 유지됩니다. CLI가 sidecar를 시작하고 tokenized Studio config를 만든 뒤 앱이 runtime을 import하기 전에 주입합니다. Runtime은 주입된 field를 한 번씩 읽고 HTTP(S) endpoint를 검증한 후 freeze된 private snapshot을 유지하므로 legacy process-global이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다.
 
-Package integration은 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`과 transport contract를 import하고, host가 소유한 bridge를 `bootstrapApplication(...)`, `fluoFactory.create(...)`, 또는 `fluoFactory.createApplicationContext(...)`의 `studioDevtools`로 전달할 수 있습니다. 명시적 bridge는 CLI injection보다 우선하며 process-global mutation이 필요하지 않습니다.
+Package integration은 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`과 transport contract를 import하고, host가 소유한 bridge를 `FluoFactory.create(...)`, 또는 `FluoFactory.createApplicationContext(...)`의 `studioDevtools`로 전달할 수 있습니다. 명시적 bridge는 CLI injection보다 우선하며 process-global mutation이 필요하지 않습니다.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { StudioDevtoolsRuntime } from '@fluojs/runtime/devtools';
 
 const studioDevtools = new StudioDevtoolsRuntime({
@@ -267,7 +282,7 @@ const studioDevtools = new StudioDevtoolsRuntime({
   transport: { publish: (event) => hostStudioTransport.send(event) },
 });
 
-const app = await fluoFactory.create(AppModule, { studioDevtools });
+const app = await FluoFactory.create(AppModule, { studioDevtools });
 ```
 
 이 package는 transport-neutral seam을 publish하며 Bun, Deno, Cloudflare Workers sidecar 구현을 제공하지는 않습니다. Non-Node host는 소유자가 bridge와 executable host integration evidence를 제공한 경우에만 live Studio를 지원합니다. 그렇지 않으면 inspect/static artifact path를 사용하세요. Live route descriptor는 해당 route node의 정확한 `graphNodeId`를 포함합니다. Runtime은 기존 node-ID 형식을 유지하고 Studio는 이를 다시 구현하는 대신 명시적 correlation을 소비합니다. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다. Failed-request event는 고정된 `Request failed` message만 사용하며 raw exception text, name, stack, cause, stringified value를 포함하지 않습니다.
@@ -296,13 +311,13 @@ const app = await FluoFactory.create(AppModule, {
 
 ### Content negotiation
 
-`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `contentNegotiation`을 받아 HTTP
+`FluoFactory.create(...)`는 `contentNegotiation`을 받아 HTTP
 dispatcher에 변경 없이 전달합니다. Application boundary에서 formatter를 한 번 구성하고 route의 허용
 representation은 `@Produces(...)`로 선택하세요.
 
 ```typescript
 import { Controller, Get, Produces } from '@fluojs/http';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 @Controller('/reports')
 class ReportController {
@@ -313,7 +328,7 @@ class ReportController {
   }
 }
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   contentNegotiation: {
     defaultMediaType: 'application/json',
     formatters: [
@@ -332,7 +347,8 @@ canonical `Vary: Accept`를 작성합니다. Standalone application context는 H
 
 ### Optional HTML Error Representations
 
-`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `errorRepresentation`을 받아 HTTP dispatcher에
+`FluoFactory.create(...)`는 `BootstrapApplicationOptions.errorRepresentation`에서
+상속한 `CreateApplicationOptions.errorRepresentation`을 받아 HTTP dispatcher에
 변경 없이 전달합니다. JSON을 canonical representation으로 유지하면서 negotiated browser request에 complete
 HTML error/not-found document를 제공하려면 application-owned provider를 등록하세요.
 
@@ -406,7 +422,7 @@ class UsersModule {}
 - `Application.listen()`과 microservice `listen()`은 shutdown과 직렬화됩니다. 겹치는 startup 호출은 같은 in-flight startup을 공유하고, shutdown은 진행 중인 startup이 끝날 때까지 기다리며, shutdown과 경합한 startup은 close 시작 이후 shell을 다시 `ready`로 전이할 수 없습니다. 공개 `Application.state` 계약은 teardown이 pending인 동안 `bootstrapped` 또는 `ready`를 유지하고 teardown이 성공적으로 완료된 뒤에만 `closed`로 바뀝니다. 이 상태와 별개로 application 또는 context close 시작은 terminal operation gate를 동기적으로 닫습니다. 따라서 `Application.get()`, `ApplicationContext.get()`, `connectMicroservice()`, `startAllMicroservices()`, application `listen()`은 teardown이 pending인 동안 reject되고 close 시도가 실패한 뒤에도 계속 reject됩니다. Close 직전에 admission된 provider lookup도 asynchronous resolution 뒤 이 gate를 다시 검사하므로 shutdown 시작 이후 stale value를 반환할 수 없습니다. 이후 `close()`는 완료된 runtime teardown phase를 건너뛰고 incomplete adapter 또는 lifecycle-hook stage를 각자의 retry contract에 따라 다시 실행합니다. Container-managed `onDestroy()` hook은 terminal best-effort cleanup입니다. 첫 container disposal에서 materialize된 hook을 모두 시도하고, 실패한 hook만 이후 명시적 application 또는 context `close()`에서 재시도하며, 성공한 hook은 다시 실행하지 않습니다. Microservice close가 시작되면 terminal ingress gate가 새 `send()`와 `emit()` 호출을 `listen()`이 아직 pending 상태이거나 close 시도가 실패한 뒤에도 runtime 또는 transport handoff 전에 reject합니다.
 - `Application.dispatch()`도 같은 동기 terminal admission gate를 사용합니다. `Application.close()`가 시작된 뒤의 direct dispatch는 HTTP dispatcher에 들어가기 전에 reject되며, teardown이 pending인 동안, close가 실패한 뒤, 성공적으로 close된 뒤에도 마찬가지입니다. Gate가 닫히기 전에 admission된 dispatch는 dispatcher가 소유하며 close가 소급해 취소하지 않습니다.
 - `@fluojs/platform-nodejs`는 pending 상태인 각 raw Node listen 작업과 해당 `EADDRINUSE` retry timer를 소유합니다. Startup이 retry 중일 때 adapter `close()`를 호출하면 retry를 취소하고 pending listen이 settle될 때까지 기다리며, shutdown 완료가 보고된 뒤 listener가 bind되지 않도록 보장합니다.
-- 종료 시그널 등록 실패는 사용자가 관찰할 수 있습니다. `runNodeApplication(...)`, `bootstrapNodeApplication(...)`, adapter 소유 runtime helper는 이미 시작된 애플리케이션을 `bootstrap-failed`로 닫고, close 실패가 있으면 별도로 로그로 남기며, 원래 registration error로 reject합니다.
+- Factory의 post-listen `shutdownRegistration` 실패는 이미 생성된 앱을 `bootstrap-failed`로 닫고 cleanup 실패와 무관하게 원래 등록 오류로 reject합니다. Node host callback은 부분 설치된 handler를 rollback합니다.
 - 종료 시그널 등록 해제 실패는 애플리케이션 close를 건너뛰지 않습니다. `app.close()`는 항상 adapter shutdown, lifecycle hook, runtime cleanup callback, container dispose까지 계속 진행합니다. close 자체가 성공하면 unregistration error로 reject하고, close도 실패하면 두 실패를 모두 담은 aggregate로 reject합니다.
 - 연결된 microservice는 부모 `Application`이 소유하는 child입니다. `startAllMicroservices()`는 순차적으로 시작하며 이후 child 시작이 실패하면 이미 시작된 child를 `bootstrap-failed`로 rollback하고, `Application.close(signal)`은 부모 lifecycle hook, adapter 종료, container dispose보다 먼저 연결된 child를 닫습니다.
 - `FluoFactory.createMicroservice()`는 cleanup이 실패해도 원래 bootstrap/runtime 해석 오류를 보존하고 cleanup 실패는 별도로 로그로 남깁니다.
@@ -434,7 +450,6 @@ class UsersModule {}
 
 ## 공개 API 개요
 
-- `fluoFactory`: 패키지 예제에서 사용하는 런타임 부트스트랩 파사드의 lower-camel-case 별칭입니다.
 - `FluoFactory`: 명시적 static 접근을 제공하는 클래스 기반 런타임 부트스트랩 파사드입니다.
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`, `modules`, bootstrap diagnostics에 접근할 수 있습니다.
@@ -445,7 +460,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
-- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하고 `BootstrapApplicationOptions.conditionalRequest`는 representation validation을 구성하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 두 field를 노출합니다.
+- `CreateApplicationOptions`: `logger`, middleware 정책, optional host `shutdownRegistration`과 HTTP dispatcher option을 받습니다. 기존 integration용 `BootstrapApplicationOptions` type은 유지하지만 별도 생성 함수는 없습니다.
 - `@fluojs/runtime/devtools`: `StudioDevtoolsRuntime`, transport contract, live Studio event contract를 위한 package-integration subpath입니다. 생성한 bridge를 application 또는 context bootstrap의 `studioDevtools`로 전달합니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `ModuleGraphCompileCache`: Bounded caller-owned module graph compile cache입니다. `moduleGraphCache`로 instance를 전달하고 application 또는 host lifetime이 끝날 때 `dispose()`를 호출하세요.
@@ -511,7 +526,7 @@ const adapter = NodeHttpApplicationAdapter.create({
 - `createNodeFileSystemAssetSource(options)`: `@fluojs/http`의 `StaticAssetSource` contract를 구현하는 Node 전용 filesystem source입니다. `NodeFileSystemAssetSourceOptions`는 `{ root, precompressed }` 경계를 이름 붙이고 `NodeFileSystemAssetPrecompression`은 `.br` / `.gz` sibling 선택을 제어합니다. 허용된 각 representation은 안전하게 열어 immutable in-memory byte snapshot으로 즉시 복사하고 middleware response write 전에 `FileHandle`을 닫습니다. 반환된 `source()`는 그 snapshot만 replay하며 pathname을 다시 열지 않습니다. 따라서 애플리케이션 owner는 선택된 asset 크기로 memory를 제한하고, `size`와 strong `ETag`는 정확히 그 snapshot byte를 설명합니다.
 - `NodeHttpApplicationAdapter.create()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`는 0 이상의 정수만 받습니다.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: 직접 Node runtime flow에서 사용하는 Node 전용 부트스트랩 헬퍼.
-- `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.
+- `createNodeShutdownSignalRegistration(...)`, `defaultNodeShutdownSignals()`, `registerShutdownSignals(...)`: Node가 소유하는 signal API입니다. Registration callback을 Factory에 전달하며 저수준 host integration은 직접 등록할 수 있습니다.
 
 런타임 애플리케이션 로깅은 CLI lifecycle reporting과 별개입니다. 애플리케이션/런타임 자체가 내는 로그를 바꾸고 싶을 때 `ApplicationLogger`를 설정하세요:
 

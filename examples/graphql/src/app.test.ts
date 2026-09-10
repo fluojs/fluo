@@ -1,20 +1,12 @@
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
-import {
-  bootstrapNodeApplication,
-  NodeHttpApplicationAdapter,
-} from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 
 import { AppModule, AuthorBatchRecorder, LiveUpdates } from './app';
-import {
-  fetchWithin,
-  parseSubscriptionData,
-  parseSubscriptionFrame,
-  readSubscriptionPayload,
-  waitWithin,
-} from './test-helpers';
+import { fetchWithin, parseSubscriptionData, parseSubscriptionFrame, readSubscriptionPayload, waitWithin } from './test-helpers';
 
 describe('GraphQL example application', () => {
   it('rejects a pending external operation at the test deadline', async () => {
@@ -131,7 +123,11 @@ describe('GraphQL example application', () => {
 
   it('serves a DataLoader-backed query and an SSE subscription after startup', async () => {
     // Given: the official GraphQL module registration and an OS-assigned listener.
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
+    const app = await FluoFactory.create(AppModule, {
+      adapter: NodeHttpApplicationAdapter.create({ port: 0 }),
+      cors: false,
+      logger: createConsoleApplicationLogger(),
+    });
     const abortController = new AbortController();
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let updates: LiveUpdates | undefined;

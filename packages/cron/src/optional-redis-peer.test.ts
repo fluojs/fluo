@@ -31,7 +31,7 @@ describe('optional Redis peer contract', () => {
       throw createMissingRedisPeerError();
     });
 
-    const [{ bootstrapApplication, defineModule }, { CronModule }] = await Promise.all([
+    const [{ FluoFactory, defineModule }, { CronModule }] = await Promise.all([
       import('@fluojs/runtime'),
       import('./module.js'),
     ]);
@@ -41,7 +41,7 @@ describe('optional Redis peer contract', () => {
       imports: [CronModule.forRoot({ distributed: { enabled: false } })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     await app.close();
   });
@@ -52,7 +52,7 @@ describe('optional Redis peer contract', () => {
     });
 
     const [
-      { bootstrapApplication, defineModule },
+      { FluoFactory, defineModule },
       { CronModule },
       { CronLifecycleService },
       { SCHEDULING_REGISTRY },
@@ -68,7 +68,7 @@ describe('optional Redis peer contract', () => {
       imports: [CronModule.forRoot({ distributed: { enabled: false } })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const registry = await app.container.resolve(SCHEDULING_REGISTRY);
@@ -98,7 +98,7 @@ describe('optional Redis peer contract', () => {
       };
     });
 
-    const [{ bootstrapApplication, defineModule }, { CronModule }] = await Promise.all([
+    const [{ FluoFactory, defineModule }, { CronModule }] = await Promise.all([
       import('@fluojs/runtime'),
       import('./module.js'),
     ]);
@@ -108,7 +108,7 @@ describe('optional Redis peer contract', () => {
       imports: [CronModule.forRoot({ distributed: { enabled: true } })],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Cron distributed mode requires the configured Redis client to be registered.',
     );
     expect(redisTokenRequests).toEqual(['default']);

@@ -152,7 +152,7 @@ The following `src/trace-main.ts` is a **complete experiment entry point**. The 
 ```ts
 import assert from 'node:assert/strict';
 import { ensureMetadataSymbol, getModuleMetadata } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
@@ -167,7 +167,7 @@ assert.ok(
   getModuleMetadata(OrdersModule)?.controllers?.includes(OrdersController),
 );
 
-const app = await fluoFactory.create(TraceAppModule, {
+const app = await FluoFactory.create(TraceAppModule, {
   middleware: [{
     handle(context, next) {
       context.requestContext.principal = {
@@ -218,7 +218,7 @@ try {
 
 This run passes through real module compilation, DI, HTTP mapping, DTO binding, controller invocation, and exception responses. It does not pass through TCP reception, Fastify's request conversion, or proxy path rewriting. `http://trace.local` is an identifier used to construct a `Request` value, not a network destination. `createWebFrameworkRequest()` converts the standard Web request into a framework request, and `app.dispatch()` writes to the response created by the Web response factory. This verifies more of the real response boundary than a response mock that imitates only a few fields, while still opening no port.
 
-Omitting an adapter from `fluoFactory.create()` is intentional in this experiment. Calling `listen()` in this state does not create a server; it raises an error because no adapter is present. `createApplicationContext()` is more suitable for testing DI alone, but here we use the application shell because we also need the HTTP dispatcher. We fully await `app.dispatch()` before reading the response and close the application in `finally`, so we do not move on to the next experiment with asynchronous work still pending.
+Omitting an adapter from `FluoFactory.create()` is intentional in this experiment. Calling `listen()` in this state does not create a server; it raises an error because no adapter is present. `createApplicationContext()` is more suitable for testing DI alone, but here we use the application shell because we also need the HTTP dispatcher. We fully await `app.dispatch()` before reading the response and close the application in `finally`, so we do not move on to the next experiment with asynchronous work still pending.
 
 The first two requests reach the store. The malformed order ID stops at the service's format check, and the incorrect singular path stops at route matching. The final array assertion observes that difference. If every error check only asks whether "a 404 was returned," an incorrect route can be mistaken for a missing order. Look at both pieces of evidence: the status code and the boundary that was called.
 

@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import type { DiscordChannel } from './channel.js';
@@ -55,7 +55,7 @@ describe('DiscordModule async visibility', () => {
       imports: [AsyncDiscordOwnerModule, AsyncNotificationsOwnerModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AsyncAppModule });
+    const app = await FluoFactory.create(AsyncAppModule);
 
     try {
       const consumer = await app.container.resolve(AsyncDiscordConsumer);
@@ -94,7 +94,7 @@ describe('DiscordModule async visibility', () => {
     class LocalAsyncAppModule {}
     defineModule(LocalAsyncAppModule, { imports: [LocalAsyncDiscordFeatureModule] });
 
-    const localApp = await bootstrapApplication({ rootModule: LocalAsyncAppModule });
+    const localApp = await FluoFactory.create(LocalAsyncAppModule);
 
     try {
       const consumer = await localApp.container.resolve(LocalAsyncDiscordConsumer);
@@ -128,7 +128,7 @@ describe('DiscordModule async visibility', () => {
       imports: [HiddenAsyncDiscordOwnerModule, HiddenAsyncConsumerModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: HiddenAsyncAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(HiddenAsyncAppModule)).rejects.toThrow(
       /not visible through a global module|DiscordService/,
     );
   });

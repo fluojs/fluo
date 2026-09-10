@@ -1,7 +1,7 @@
 import { Inject, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CacheInterceptor } from './interceptor.js';
@@ -101,9 +101,8 @@ describe('CacheModule.forRootAsync', () => {
       providers: [CacheConsumer],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: CacheSettingsService, useValue: new CacheSettingsService() }],
-      rootModule: AppModule,
     });
 
     try {
@@ -145,7 +144,7 @@ describe('CacheModule.forRootAsync', () => {
       ],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(/local-cache-settings/);
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(/local-cache-settings/);
   });
 
   it('owns global visibility from the async registration option instead of an untrusted factory property', () => {
@@ -174,7 +173,7 @@ describe('CacheModule.forRootAsync', () => {
       providers: [CacheConsumer],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'cache configuration source unavailable',
     );
   });
@@ -197,12 +196,11 @@ describe('CacheModule.forRootAsync', () => {
     });
 
     const redisClient = new MemoryRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [
         { provide: REDIS_KEY_PREFIX, useValue: 'tenant-async:cache:' },
         { provide: REDIS_CLIENT, useValue: redisClient },
       ],
-      rootModule: AppModule,
     });
 
     try {
@@ -227,7 +225,7 @@ describe('CacheModule.forRootAsync', () => {
       providers: [CacheConsumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(CacheConsumer);
@@ -253,7 +251,7 @@ describe('CacheModule.forRootAsync', () => {
       imports: [CacheModule.forRootAsync({ useFactory: () => ({ observer, store: 'memory' }) })],
       providers: [CacheConsumer],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(CacheConsumer);

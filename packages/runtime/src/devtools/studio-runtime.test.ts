@@ -8,7 +8,7 @@ import type {
 } from '@fluojs/studio/contracts';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
-import { bootstrapApplication, bootstrapModule, FluoFactory } from '../bootstrap.js';
+import { FluoFactory, bootstrapModule } from '../bootstrap.js';
 import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../internal/core-metadata.js';
 import type { ApplicationLogger } from '../types.js';
 import type {
@@ -339,7 +339,7 @@ describe('Studio devtools runtime bridge', () => {
     class AppModule {}
     defineRuntimeModuleMetadata(AppModule, {});
 
-    const app = await bootstrapApplication({ logger, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { logger });
 
     expect(app.bootstrapTiming).toBeDefined();
     await vi.waitFor(() => {
@@ -390,9 +390,8 @@ describe('Studio devtools runtime bridge', () => {
     class AppModule {}
     defineRuntimeModuleMetadata(AppModule, {});
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger,
-      rootModule: AppModule,
       studioDevtools: createBridge('bun'),
     });
     await app.close();
@@ -449,9 +448,8 @@ describe('Studio devtools runtime bridge', () => {
       } satisfies Pick<RequestContext, 'request' | 'response'>,
     } as unknown as Parameters<NonNullable<typeof studioDevtools.requestObserver.onRequestStart>>[0];
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger,
-      rootModule: AppModule,
       studioDevtools,
     });
     await app.close();
@@ -520,9 +518,8 @@ describe('Studio devtools runtime bridge', () => {
 
     try {
       // When
-      const app = await bootstrapApplication({
+      const app = await FluoFactory.create(AppModule, {
         logger,
-        rootModule: AppModule,
         studioDevtools,
       });
       studioDevtools.requestObserver.onRequestStart?.(observerContext);

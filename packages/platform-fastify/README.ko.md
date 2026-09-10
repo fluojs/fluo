@@ -38,25 +38,34 @@ fluo 애플리케이션을 위한 고성능 HTTP 어댑터가 필요한 경우 �
 
 ## 빠른 시작
 
-기본 CLI Node/Fastify 애플리케이션에는 run helper를 사용합니다. 이 진입점 부분 코드는 생성된 `src/app.ts`의 `AppModule`, config/greeting/health 등록과 테스트, 설치된 의존성, 생성된 표준 decorator 도구 설정을 전제로 합니다.
+기본 CLI Node/Fastify 앱도 Factory recipe를 사용합니다. 아래 fragment는 생성된 `src/app.ts`의 `AppModule`, config/greeting/health 등록, 설치한 의존성, standard decorator tooling을 전제로 합니다.
 
 ```typescript
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
-await runFastifyApplication(AppModule, { port: 3000 });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
-Helper는 초기화, listen, shutdown 등록 뒤 resolve되므로 `listen()`을 다시 호출하지 않습니다. 생성 CLI 진입점은 여기에 자신의 `PORT` parseInt/fallback 정책을 적용합니다. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)이 해당 recipe, 환경 구분, metadata 평가 순서, config 검증 시점을 소유합니다.
+`app.listen()`은 adapter 수신과 선택된 shutdown 등록까지 기다립니다. CLI entrypoint는 기존 `PORT` parseInt/fallback 정책도 유지합니다. 환경·metadata·설정 검증 시점은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)이 소유합니다.
 
-아래 기존 예제는 애플리케이션이 소유하는 `./app.module` 모듈을 사용하는 **명시적 저수준 조립**입니다. `fluoFactory`는 `FluoFactory`의 alias입니다. 이 경로도 런타임 초기화와 초기화 실패 정리를 공유하지만 helper의 middleware나 Node logger 선택, run-helper의 생성 이후 실패 정리, signal 등록까지 자동으로 재현하지는 않습니다.
+아래 예제는 애플리케이션이 소유한 `./app.module`을 사용하는 canonical Factory recipe입니다. Factory가 middleware 조합과 생성·시작 실패 정리를 소유하고 `logger`와 host signal callback은 선택적으로 전달합니다.
 
 ```typescript
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -69,7 +78,7 @@ await app.listen();
 
 `bootstrapFastifyApplication(AppModule, options)`는 자동 listen이나 Node signal 등록 없이 초기화된 앱을 반환합니다. 아래 bootstrap-only snippet은 앱을 구성하며 이후 활성화와 shutdown은 호출자가 소유합니다. 두 Fastify helper는 `securityHeaders: false`가 아니면 security headers를 활성화하고, CORS/global-prefix middleware는 설정된 경우에만 추가하며, `logger`를 전달하지 않으면 Node framework console logger를 선택합니다. Middleware 순서는 설정된 CORS, 설정된 prefix, security headers, 호출자 middleware입니다.
 
-`runFastifyApplication`은 기본적으로 `SIGINT`/`SIGTERM`을 등록합니다(`shutdownSignals: false`로 해제). Listen 또는 shutdown 등록 실패 시 `app.close('bootstrap-failed')`를 시도하고 원래 실패를 보존하며 cleanup 오류는 로그에 남깁니다. 반환된 close wrapper는 runtime close 전에 signal을 한 번 해제하고, 해제가 실패해도 close하며, unregister/close 오류가 함께 발생하면 집계합니다. 이는 공통 초기화 실패 정리에 추가되는 보장입니다. [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.ko.md)를 참고하세요.
+기존 `runFastifyApplication`은 미이전 소비자를 위해 유지하며 같은 Factory lifecycle을 사용합니다. Factory가 listen/시작 로그/signal 등록 실패를 정리하고 원래 오류를 보존합니다. Signal 해제는 한 번 시도하고 모든 runtime 정리를 계속하며 동시·이후 close에 해제 실패를 유지합니다. [Lifecycle 계약](../../docs/architecture/lifecycle-and-shutdown.ko.md)을 참고하세요.
 
 ### Early Hints
 
@@ -83,7 +92,7 @@ Fastify는 공유 `@fluojs/http` 단일 byte-range 및 `If-Range` contract를 �
 Fastify 프로세스가 TLS를 직접 소유할 때는 Node.js `https.ServerOptions`를 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, 또는 `runFastifyApplication(...)`의 `https` option으로 전달하세요. Adapter는 Fastify를 HTTPS listener로 시작하며 startup log는 `https://host:port` URL을 보고합니다.
 
 ```typescript
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({
     host: '0.0.0.0',
     port: 3443,
@@ -102,14 +111,22 @@ Adapter를 만들기 전에 certificate는 애플리케이션 configuration 또�
 `bootstrapFastifyApplication(...)`과 `runFastifyApplication(...)`도 같은 `https`, `host`, `port` option을 받습니다. `runFastifyApplication(...)`은 resolve되기 전에 listening을 시작하고 shutdown registration을 설치한 다음 실행 중인 application shell을 반환합니다.
 
 ```typescript
-const app = await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  https: {
-    cert: tlsCertificate,
-    key: tlsPrivateKey,
-  },
-  port: 3443,
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    https: {
+      cert: tlsCertificate,
+      key: tlsPrivateKey,
+    },
+    port: 3443,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 ### 멀티파트 및 Raw Body
@@ -152,25 +169,37 @@ Fastify 기반 응답 스트림은 SSE 및 기타 스트리밍 writer가 사용�
 CORS는 부트스트랩 옵션을 통해 처리됩니다. fluo는 별도의 Fastify 플러그인에 의존하지 않고 내부 CORS 로직을 관리합니다.
 
 ```typescript
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // 단순 origin 문자열 설정
-await bootstrapFastifyApplication(AppModule, {
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   cors: 'https://my-frontend.com',
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 
 // 세부 설정
-await bootstrapFastifyApplication(AppModule, {
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   cors: {
     origin: ['https://a.com', 'https://b.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 
 // 명시적으로 비활성화
-await bootstrapFastifyApplication(AppModule, {
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   cors: false,
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 ```
 
@@ -178,10 +207,16 @@ await bootstrapFastifyApplication(AppModule, {
 라우팅 접두사를 전역으로 설정하고, 헬스 체크와 같은 특정 경로는 제외할 수 있습니다.
 
 ```typescript
-await bootstrapFastifyApplication(AppModule, {
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   globalPrefix: '/api',
   globalPrefixExclude: ['/health'],
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 ```
 
@@ -192,9 +227,15 @@ fluo는 자체 로깅 시스템을 사용합니다. 어댑터는 Fastify 인스�
 요청이 핸들러에 도달하기 전에 실행되는 런타임 레벨의 미들웨어를 등록할 수 있습니다. 이는 Fastify 전용 플러그인이 아닌 표준 `MiddlewareLike` 함수라는 점에 유의하세요.
 
 ```typescript
-await bootstrapFastifyApplication(AppModule, {
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   middleware: [myCustomMiddleware],
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 ```
 

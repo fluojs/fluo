@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -325,9 +325,8 @@ describe('@fluojs/websockets/deno', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter,
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/deno');
   });
@@ -375,9 +374,8 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
@@ -434,7 +432,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [RoomGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const service = await app.container.resolve<DenoWebSocketGatewayLifecycleService>(DenoWebSocketGatewayLifecycleService);
     service.joinRoom('socket-unknown', 'room-stale');
     expect(Array.from(service.getRooms('socket-unknown'))).toEqual([]);
@@ -526,7 +524,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ReturnOnlyGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
     try {
@@ -583,7 +581,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -622,7 +620,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -658,7 +656,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -692,7 +690,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [LimitedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
 
     const server = adapter.getServer();
@@ -735,7 +733,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [LimitedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
 
     const server = adapter.getServer();
@@ -779,7 +777,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
 
     const server = adapter.getServer();
@@ -834,7 +832,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     const service = await app.container.resolve(DenoWebSocketGatewayLifecycleService);
     await app.listen();
@@ -891,7 +889,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -959,7 +957,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1013,7 +1011,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1076,7 +1074,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const service = await app.container.resolve<DenoWebSocketGatewayLifecycleService>(DenoWebSocketGatewayLifecycleService);
     let closePromise: Promise<void> | undefined;
 
@@ -1159,7 +1157,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1215,7 +1213,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1272,7 +1270,7 @@ describe('@fluojs/websockets/deno', () => {
         providers: [GatewayState, BinaryGateway],
       });
 
-      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule, { adapter });
 
       try {
         const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1328,7 +1326,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1385,7 +1383,7 @@ describe('@fluojs/websockets/deno', () => {
         providers: [GatewayState, PayloadGateway],
       });
 
-      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule, { adapter });
 
       try {
         const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1443,7 +1441,7 @@ describe('@fluojs/websockets/deno', () => {
       providers: [GatewayState, BinaryPayloadGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1477,7 +1475,7 @@ describe('@fluojs/websockets/deno', () => {
     class BindingGateway {}
     class AppModule {}
     defineModule(AppModule, { imports: [DenoWebSocketModule.forRoot()], providers: [BindingGateway] });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
 
     // When
@@ -1502,7 +1500,7 @@ describe('@fluojs/websockets/deno', () => {
     }
     class AppModule {}
     defineModule(AppModule, { imports: [DenoWebSocketModule.forRoot()], providers: [TerminalGateway] });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const server = adapter.getServer();
     await server?.fetch(new Request('https://runtime.test/terminal-error', { headers: { upgrade: 'websocket' } }));
@@ -1541,7 +1539,7 @@ describe('@fluojs/websockets/deno', () => {
       imports: [DenoWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
       providers: [ReplyGateway],
     });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const server = adapter.getServer();
     await server?.fetch(new Request('https://runtime.test/replies', { headers: { upgrade: 'websocket' } }));
@@ -1593,7 +1591,7 @@ describe('@fluojs/websockets/deno', () => {
       imports: [DenoWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
       providers: [ReplyGateway],
     });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const service = await app.container.resolve(DenoWebSocketGatewayLifecycleService);
     await app.listen();
     const server = adapter.getServer();
@@ -1654,7 +1652,7 @@ describe('@fluojs/websockets/deno', () => {
       imports: [DenoWebSocketModule.forRoot({ buffer: { maxPendingMessagesPerSocket: 1, overflowPolicy } })],
       providers: [BufferGateway],
     });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const server = adapter.getServer();
     await server?.fetch(new Request('https://runtime.test/buffer', { headers: { upgrade: 'websocket' } }));

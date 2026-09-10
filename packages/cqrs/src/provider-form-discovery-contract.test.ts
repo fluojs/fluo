@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
@@ -54,7 +54,7 @@ describe('CQRS provider-form discovery contracts', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
@@ -93,7 +93,7 @@ describe('CQRS provider-form discovery contracts', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
@@ -150,7 +150,7 @@ describe('CQRS provider-form discovery contracts', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await eventBus.publish(new UserArchivedEvent('carol'));
@@ -176,7 +176,7 @@ describe('CQRS provider-form discovery contracts', () => {
       providers: [{ provide: ArchiveUserHandler, useFactory: () => new ArchiveUserHandler('from-factory') }],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('dave'))).resolves.toBe(

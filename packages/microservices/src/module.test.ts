@@ -2,7 +2,7 @@ import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata, defineModuleMetadata } from '@fluojs/core/internal';
 import type { Provider } from '@fluojs/di';
 import type { CompiledModule } from '@fluojs/runtime';
-import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
@@ -303,7 +303,7 @@ describe('@fluojs/microservices', () => {
       imports: [MicroservicesModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const microserviceByClass = await app.container.resolve(MicroserviceLifecycleService);
     const microserviceByToken = await app.container.resolve(MICROSERVICE);
 
@@ -325,7 +325,7 @@ describe('@fluojs/microservices', () => {
       imports: [MicroservicesModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const microservice = await app.container.resolve(MicroserviceLifecycleService);
 
     await microservice.send('signal.send', { ok: true }, controller.signal);
@@ -350,7 +350,7 @@ describe('@fluojs/microservices', () => {
       imports: [MicroservicesModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
     const microservice = await app.container.resolve<{ close(signal?: string): Promise<void> }>(MICROSERVICE);
     const closeSpy = vi.spyOn(lifecycleService, 'close');
@@ -371,7 +371,7 @@ describe('@fluojs/microservices', () => {
       imports: [MicroservicesModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
 
     await lifecycleService.close('SIGTERM');
@@ -389,7 +389,7 @@ describe('@fluojs/microservices', () => {
       imports: [MicroservicesModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
     const closeSpy = vi.spyOn(lifecycleService, 'close');
 
@@ -426,7 +426,7 @@ describe('@fluojs/microservices', () => {
       imports: [FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const exportedValue = await app.container.resolve(EXTRA_MICROSERVICE_EXPORT);
     const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
     const compiledMicroserviceModule = app.modules.find((compiledModule: CompiledModule) => compiledModule.type === microserviceModule);
@@ -463,7 +463,7 @@ describe('@fluojs/microservices', () => {
       imports: [HelperModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
     const compatibilityToken = await app.container.resolve(MICROSERVICE);
     const configuredOptions = await app.container.resolve(MICROSERVICE_OPTIONS);
@@ -492,7 +492,7 @@ describe('@fluojs/microservices', () => {
       providers: [Handler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const microservice = await app.container.resolve<{ listen(): Promise<void>; send(pattern: string, payload: unknown): Promise<unknown>; close(): Promise<void> }>(MICROSERVICE);
 
     await microservice.listen();

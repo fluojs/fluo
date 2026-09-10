@@ -1,5 +1,5 @@
 import { InvariantError } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, QueryHandler } from './decorators.js';
@@ -23,7 +23,7 @@ describe('CQRS malformed handler dispatch contracts', () => {
       providers: [MalformedCommandHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
 
     try {
@@ -55,7 +55,7 @@ describe('CQRS malformed handler dispatch contracts', () => {
       providers: [MalformedQueryHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
     try {

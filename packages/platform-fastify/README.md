@@ -38,25 +38,34 @@ Use this package when you need a high-performance HTTP adapter for your fluo app
 
 ## Quick Start
 
-For the default CLI Node/Fastify application, use the run helper. This entrypoint fragment assumes the generated `AppModule` in `src/app.ts`, its config/greeting/health registrations and tests, installed dependencies, and the generated standard decorator tooling:
+The default CLI Node/Fastify application uses the Factory recipe. This fragment assumes generated `src/app.ts`, its config/greeting/health registrations, installed dependencies, and standard decorator tooling:
 
 ```typescript
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
-await runFastifyApplication(AppModule, { port: 3000 });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
-The helper resolves after initialization, listen, and shutdown registration; do not call `listen()` again. The generated CLI entrypoint additionally applies its `PORT` parseInt/fallback policy. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) owns that recipe, environment distinctions, metadata evaluation order, and config validation timing.
+`app.listen()` awaits adapter listening and the selected shutdown registration. The CLI entrypoint also preserves its `PORT` parseInt/fallback policy. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) owns the environment, metadata, and configuration-validation boundaries.
 
-The existing example below is **explicit low-level composition**, with an application-owned module at `./app.module`. `fluoFactory` is an alias of `FluoFactory`. This path shares runtime initialization and its failure cleanup, but does not automatically reproduce the helpers' middleware or Node logger selection, run-helper post-creation failure cleanup, or signal registration:
+The example below uses the canonical Factory recipe with the application-owned `./app.module`. Factory owns middleware composition and creation/startup failure cleanup; pass an optional `logger` and host signal callback.
 
 ```typescript
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -69,7 +78,7 @@ await app.listen();
 
 `bootstrapFastifyApplication(AppModule, options)` returns an initialized app without automatic listen or Node signal registration. The bootstrap-only snippets below configure that app; their caller owns later activation and shutdown. Both Fastify helpers enable security headers unless `securityHeaders: false`, add CORS/global-prefix middleware only when configured, and select the Node framework console logger unless `logger` is provided. Their middleware order is configured CORS, configured prefix, security headers, then caller middleware.
 
-`runFastifyApplication` registers `SIGINT`/`SIGTERM` by default (`shutdownSignals: false` opts out). A listen or shutdown-registration failure triggers an `app.close('bootstrap-failed')` attempt and preserves the original failure; cleanup errors are logged. The returned close wrapper unregisters signals once before runtime close, still closes if unregistering fails, and aggregates concurrent unregister/close errors. These are additional guarantees beyond shared initialization-failure cleanup; see [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.md).
+The retained `runFastifyApplication` serves unmigrated consumers through this same Factory lifecycle. Factory cleans listen/startup-log/signal-registration failures while preserving the initiating error. Signal unregistration is attempted once without skipping runtime teardown; its failure is retained for concurrent and later closes. See [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.md).
 
 ### Early Hints
 
@@ -83,7 +92,7 @@ Fastify preserves the shared `@fluojs/http` single-byte-range and `If-Range` con
 When the Fastify process owns TLS directly, pass Node.js `https.ServerOptions` through the `https` option on `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, or `runFastifyApplication(...)`. The adapter starts Fastify with an HTTPS listener, and startup logs report the `https://host:port` URL.
 
 ```typescript
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({
     host: '0.0.0.0',
     port: 3443,
@@ -102,14 +111,22 @@ Load certificates from your application configuration or secret-management bound
 `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https`, `host`, and `port` options. `runFastifyApplication(...)` starts listening before it resolves, installs shutdown registration, and returns the running application shell:
 
 ```typescript
-const app = await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  https: {
-    cert: tlsCertificate,
-    key: tlsPrivateKey,
-  },
-  port: 3443,
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    https: {
+      cert: tlsCertificate,
+      key: tlsPrivateKey,
+    },
+    port: 3443,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 ### Multipart and Raw Body
@@ -152,25 +169,37 @@ Fastify-backed response streams support the shared fluo stream contract used by 
 CORS is handled via bootstrap options. fluo manages the underlying CORS logic rather than relying on a separate Fastify plugin.
 
 ```typescript
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // Simple origin string
-await bootstrapFastifyApplication(AppModule, {
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   cors: 'https://my-frontend.com',
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 
 // Fine-grained control
-await bootstrapFastifyApplication(AppModule, {
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   cors: {
     origin: ['https://a.com', 'https://b.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 
 // Explicitly disabled
-await bootstrapFastifyApplication(AppModule, {
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   cors: false,
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 ```
 
@@ -178,10 +207,16 @@ await bootstrapFastifyApplication(AppModule, {
 Configure a global routing prefix and exclude specific paths like health checks.
 
 ```typescript
-await bootstrapFastifyApplication(AppModule, {
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   globalPrefix: '/api',
   globalPrefixExclude: ['/health'],
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 ```
 
@@ -192,9 +227,15 @@ fluo uses its own logging system. The adapter creates the Fastify instance with 
 You can register runtime-level middleware that runs before the request reaches the handlers. Note that these are standard `MiddlewareLike` functions, not Fastify-specific plugins.
 
 ```typescript
-await bootstrapFastifyApplication(AppModule, {
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
   middleware: [myCustomMiddleware],
-  port: 3000,
+  logger: createConsoleApplicationLogger(),
 });
 ```
 

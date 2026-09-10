@@ -138,19 +138,25 @@ export class AppModule {}
 처음에는 Fastify 실행 파일 하나로 충분하다. 다음 `src/main.ts`는 위 실험 모듈의 완전한 실행 파일이다.
 
 ```typescript
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
-export const app = await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 256,
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+export const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 256,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
-256바이트 제한은 실패를 쉽게 재현하기 위한 실험값이다. 본문을 포함하는 실제 게시글 작성 API의 운영 제한으로 권하지 않는다. `runFastifyApplication()`이 반환되면 이미 listening과 shutdown registration이 끝난 상태다. 뒤에 `app.listen()`을 다시 붙일 이유가 없다. 반대로 `bootstrapFastifyApplication()`은 리스너를 시작하지 않으므로 호스트가 별도로 `listen()`을 호출한다.
+256바이트는 실패 재현용 실험값이며 실제 게시글 API의 운영 제한으로 권하지 않는다. `FluoFactory.create()`가 초기화하고 `app.listen()`이 수신과 선택된 shutdown 등록을 마친다. 설정은 adapter에 전달하고 정상 종료는 instance `app.close()`로 수행한다.
 
 세 어댑터를 비교할 때는 신호 처리보다 요청·응답을 관찰하는 작은 프로그램이 낫다. 다음은 완전한 `src/adapter-probe.ts`다. 세 adapter package를 애플리케이션의 직접 의존성으로 설치하고 기존 표준 데코레이터 빌드 경로로 이 파일과 앞의 두 파일을 함께 변환한다. 출력 위치가 `dist`인 구성에서는 `node dist/adapter-probe.js`로 실행한다.
 

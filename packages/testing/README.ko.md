@@ -67,6 +67,14 @@ try {
 
 ## 주요 패턴
 
+`createTestApp(...)`는 `FluoFactory.create`로 HTTP shell을 만들며 request-context
+middleware 뒤에 호출자의 middleware를 유지합니다. Factory의 `logger`와
+middleware policy를 받습니다. 실제 앱과 같은 기본값으로 security headers가
+켜지므로, header 없는 baseline을 명시적으로 시험할 때는 `securityHeaders: false`를
+사용하세요. 일반 테스트는 계속 `app.request(...).send()`를 사용하며 listener를
+열거나 process signal을 등록할 필요가 없습니다.
+[HTTP Factory migration](../../docs/getting-started/migrate-http-factory.ko.md)을 참고하세요.
+
 ### 컴파일 전 프로바이더 오버라이드
 
 ```typescript

@@ -33,7 +33,7 @@ Fluo runtime internals를 오해하는 가장 쉬운 방법은 `Application`, `A
 
 이것은 우연한 API 대칭이 아닙니다. 구현 순서의 반영입니다. Fluo는 먼저 transport-neutral한 DI/lifecycle baseline을 만든 뒤, 각 shell type이 약속한 capability만 래핑해 노출합니다.
 
-source에서도 분기 지점이 직접 보입니다. `path:packages/runtime/src/bootstrap.ts:1531-1711`의 `bootstrapApplication()`은 `new FluoApplication(...)`을 반환합니다. `path:packages/runtime/src/bootstrap.ts:1754-1885`의 `FluoFactory.createApplicationContext()`는 `new FluoApplicationContext(...)`를 반환합니다. `path:packages/runtime/src/bootstrap.ts:1898-1931`의 `FluoFactory.createMicroservice()`는 먼저 application context를 만든 다음, resolve된 runtime token을 `FluoMicroserviceApplication`으로 감쌉니다.
+source에서도 분기 지점이 직접 보입니다. `path:packages/runtime/src/bootstrap.ts:1531-1711`의 `FluoFactory.create()`은 `new FluoApplication(...)`을 반환합니다. `path:packages/runtime/src/bootstrap.ts:1754-1885`의 `FluoFactory.createApplicationContext()`는 `new FluoApplicationContext(...)`를 반환합니다. `path:packages/runtime/src/bootstrap.ts:1898-1931`의 `FluoFactory.createMicroservice()`는 먼저 application context를 만든 다음, resolve된 runtime token을 `FluoMicroserviceApplication`으로 감쌉니다.
 
 full application branch의 대표 지점은 반환부입니다. 앞선 module bootstrap과 lifecycle 실행은 공유하지만, 이 branch만 dispatcher, adapter, adapter 보유 여부, platform shell reference를 함께 넣어 `FluoApplication`을 만듭니다.
 
@@ -133,7 +133,7 @@ bootstrap graph + container + lifecycle baseline
 
 context shell 자체도 그 의도를 그대로 드러냅니다. 저장하는 값은 compiled module baseline과 lifecycle cleanup에 필요한 값이고, public 동작은 DI lookup과 close입니다.
 
-`path:packages/runtime/src/bootstrap.ts:860-900`
+`path:packages/runtime/src/bootstrap.ts:921-955`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
@@ -169,12 +169,6 @@ class FluoApplicationContext implements ApplicationContext {
     this.assertProviderResolutionAllowed();
 
     return resolved;
-  }
-
-  private assertProviderResolutionAllowed(): void {
-    if (this.closeStarted) {
-      throw new InvariantError('Application context cannot resolve providers after shutdown has started.');
-    }
   }
 ```
 
@@ -282,7 +276,7 @@ async function resolveContextToken<T>(
 
 Regression coverage가 이 경계를 실행 가능한 형태로 고정합니다. `path:packages/runtime/src/bootstrap.test.ts:687-885`는 direct singleton memoization, duplicate winner eligibility, transient override, multi-provider 위임을 다룹니다. `path:packages/runtime/src/application.test.ts:2783-2886`은 transient/request-scoped alias, singleton override invalidation, 그리고 `ApplicationContext.get()`과 `Application.get()` 양쪽의 post-close failure를 다룹니다.
 
-실제 bootstrap path는 `path:packages/runtime/src/bootstrap.ts:1619-1740`의 `FluoFactory.createApplicationContext()`입니다. 이 함수를 `bootstrapApplication()`과 비교하면, 대부분의 순서가 동일합니다. 여전히 logger, platform shell, runtime provider list, compiled module, runtime context token, lifecycle instance, timing diagnostics를 만듭니다.
+실제 bootstrap path는 `path:packages/runtime/src/bootstrap.ts:1619-1740`의 `FluoFactory.createApplicationContext()`입니다. 이 함수를 `FluoFactory.create()`과 비교하면, 대부분의 순서가 동일합니다. 여전히 logger, platform shell, runtime provider list, compiled module, runtime context token, lifecycle instance, timing diagnostics를 만듭니다.
 
 핵심 차이는 token registration입니다. Full application에서는 `registerRuntimeBootstrapTokens()`가 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 모두 추가합니다. Context는 같은 platform, cleanup-registration, bootstrap-ready, container, compiled-module baseline을 등록하지만 `HTTP_APPLICATION_ADAPTER`는 생략합니다.
 
@@ -468,11 +462,11 @@ bootstrap-failure cleanup은 lifecycle hook, adapter, container disposal로 넘�
 aggregate하여 완료되지 않은 phase를 명시적으로 retry하게 하고, bootstrap은 원래 error를 보존하며
 cleanup failure를 `ApplicationLogger`로 보고합니다.
 
-가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:654-660`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
+가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:668-674`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 
 `ready()`는 transport bind가 아니라 platform readiness gate입니다. adapter로 요청을 받기 전에 critical component 상태를 확인하는 단계로 분리되어 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:654-660`
+`path:packages/runtime/src/bootstrap.ts:668-674`
 ```typescript
   async ready(): Promise<void> {
     if (this.applicationState === 'closed') {
@@ -485,36 +479,13 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 즉 Fluo에서 readiness는 "server socket이 bind되었다"의 동의어가 아닙니다. platform shell에 기반한 pre-listen gate입니다. critical platform component가 ready라고 보고해야만 transport startup이 허용됩니다.
 
-`path:packages/runtime/src/bootstrap.ts:741-789`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
+`path:packages/runtime/src/bootstrap.ts:755-831`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
 
 그 다음 `listen()`이 adapter 정책을 적용합니다. adapter 없는 application bootstrap은 허용되지만, adapter 없이 listen하는 것은 이 guard에서 막힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:741-789`
+`path:packages/runtime/src/bootstrap.ts:755-831`
 ```typescript
   async listen(): Promise<void> {
-    if (this.closeStarted) {
-      throw new InvariantError('Application cannot listen after it has been closed.');
-    }
-
-    if (this.applicationState === 'ready') {
-      return;
-    }
-
-    if (this.listenPromise) {
-      await this.listenPromise;
-      return;
-    }
-
-    this.listenPromise = this.startListening();
-
-    try {
-      await this.listenPromise;
-    } finally {
-      this.listenPromise = undefined;
-    }
-  }
-
-  private async startListening(): Promise<void> {
     if (this.closeStarted) {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
@@ -525,11 +496,39 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
       );
     }
 
+    if (!this.startupPromise) {
+      // Publish the transition before adapter or host callbacks can re-enter.
+      // Close waits only for raw startup, never for startup's failure cleanup.
+      this.listenPromise = Promise.resolve().then(() => this.startListening()).finally(() => {
+        this.listenPromise = undefined;
+      });
+      this.startupPromise = this.listenPromise.catch(async (error: unknown) => {
+        try {
+          await this.close('bootstrap-failed');
+        } catch (cleanupError) {
+          try {
+            this.logger.error('Failed to close application after startup failure.', cleanupError, 'FluoFactory');
+          } catch {
+            throw error;
+          }
+        }
+        throw error;
+      });
+    }
+
+    await this.startupPromise;
+  }
+
+  private async startListening(): Promise<void> {
     await this.ready();
     try {
       await this.adapter.listen(this.dispatcher);
     } catch (error: unknown) {
-      this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
+      try {
+        this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
+      } catch {
+        throw error;
+      }
       throw error;
     }
 
@@ -539,6 +538,29 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
     this.applicationState = 'ready';
     this.logger.log('fluo application successfully started.', 'FluoApplication');
+    const target = this.adapter.getListenTarget?.();
+    if (target) {
+      this.logger.log(formatHttpAdapterListenMessage(target), 'FluoFactory');
+    }
+
+    try {
+      this.unregisterShutdownSignals = this.startupOptions.shutdownRegistration?.(
+        this,
+        this.logger,
+        this.startupOptions.forceExitTimeoutMs,
+      ) ?? undefined;
+    } catch (error) {
+      try {
+        this.logger.error('Failed to register shutdown signals.', error, 'FluoFactory');
+      } catch {
+        throw error;
+      }
+      throw error;
+    }
+
+    if (this.closeStarted) {
+      throw new InvariantError('Application startup was interrupted by shutdown.');
+    }
   }
 ```
 
@@ -548,11 +570,11 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 이 guard를 통과한 뒤에야 `listen()`은 `await this.ready()`를 호출하고, 그 다음 `await this.adapter.listen(this.dispatcher)`를 실행합니다. 성공하면 state를 `'ready'`로 바꾸고 startup log를 남깁니다. 즉 transport adapter가 application state transition을 단독으로 소유하지 않습니다. 더 큰 runtime shell policy의 일부로 참여합니다.
 
-dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:1553-1573`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
+dispatcher 조립은 그보다 앞서 `path:packages/runtime/src/bootstrap.ts:1614-1634`의 `createRuntimeDispatcher()`에서 일어납니다. runtime은 compiled module controller로부터 handler mapping을 만들고, route mapping을 로그로 남기며, middleware, converters, interceptors, observers, optional exception filter로 dispatcher를 생성합니다.
 
 dispatcher 생성은 full application branch에만 필요한 request-facing 단계입니다. compiled module baseline에서 handler source를 만들고, HTTP pipeline 옵션을 묶은 뒤 dispatcher를 반환합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1553-1573`
+`path:packages/runtime/src/bootstrap.ts:1614-1634`
 ```typescript
 function createRuntimeDispatcher(
   bootstrapped: BootstrapResult,

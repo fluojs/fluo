@@ -77,11 +77,11 @@ Deno는 웹 표준을 기반으로 구축되었기 때문에 fluo의 내부 디�
 
 ```typescript
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,
@@ -153,7 +153,7 @@ Deno에서 마이크로서비스를 구축할 때는 최소 권한의 원칙을 
 
 1. **Imports**: 모든 로컬 임포트에 파일 확장자를 포함하세요(예: `./user.service.ts`). Deno는 확장자 없는 임포트를 허용하지 않습니다.
 2. **NPM Compatibility**: 대부분의 npm 패키지는 `npm:` 임포트를 통해 작동하지만, Deno의 Node 호환 계층에서 아직 지원되지 않을 수 있는 복잡한 Node 네이티브 C++ API에 의존하는 패키지는 확인이 필요합니다.
-3. **Async Initialization**: Deno는 `fluoFactory.create()`와 잘 맞는 최상위 `await`를 선호합니다.
+3. **Async Initialization**: Deno는 `FluoFactory.create()`와 잘 맞는 최상위 `await`를 선호합니다.
 4. **Environment Variables**: `Deno.env.get()`은 Deno entrypoint에서만 사용하고, 선택한 값을 `ConfigModule.forRoot({ processEnv })` 또는 `runtimeOverrides`로 매핑하세요. Package와 service code는 직접 Deno environment에 접근하지 말고 `ConfigService`를 유지합니다.
 
 ## 23.7 Conclusion
@@ -224,12 +224,12 @@ Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용
 ```typescript
 import { assertEquals } from "jsr:@std/assert";
 import { createDenoAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
-import { fluoFactory } from "npm:@fluojs/runtime";
+import { FluoFactory } from "npm:@fluojs/runtime";
 import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
   const adapter = createDenoAdapter();
-  const app = await fluoFactory.create(AppModule, { adapter });
+  const app = await FluoFactory.create(AppModule, { adapter });
   const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });
 
   try {

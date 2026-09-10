@@ -59,7 +59,7 @@ This excerpt shows that `Container` creation comes after graph compilation but b
 
 So the runtime views Bootstrap as two stacked graphs. The outer graph is the Module Graph. Inside it is the Provider graph of the DI container. If the outer graph is wrong, the inner graph never starts.
 
-The same phase boundary appears in higher-level application Bootstrap. `bootstrapApplication()` at `path:packages/runtime/src/bootstrap.ts:920-1029` creates the dispatcher only after Module Bootstrap, runtime Token registration, lifecycle singleton resolution, and hook execution are complete. The runtime does not place request handling state on top of unresolved Module topology.
+The same phase boundary appears in higher-level application Bootstrap. `FluoFactory.create()` at `path:packages/runtime/src/bootstrap.ts:920-1029` creates the dispatcher only after Module Bootstrap, runtime Token registration, lifecycle singleton resolution, and hook execution are complete. The runtime does not place request handling state on top of unresolved Module topology.
 
 The broader application Bootstrap flow repeats the same order. Here, the Module Graph step is also separated as a timing phase, which makes the later Token registration and lifecycle execution phases visible as separate steps.
 
@@ -633,7 +633,7 @@ So the middle conclusion of Chapter 8 is this. The graph compiler decides legal 
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 Module Graph order is only half of initialization order. After registration, the runtime still has to decide which singleton instances to eagerly create, which hooks to run, and when the app becomes ready.
 
-This continuous phase lives in `bootstrapApplication()` and `FluoFactory.createApplicationContext()`. Both flows share the same lifecycle skeleton.
+This continuous phase lives in `FluoFactory.create()` and `FluoFactory.createApplicationContext()`. Both flows share the same lifecycle skeleton.
 
 First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()` adds `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL` for a full application. `registerRuntimeApplicationContextTokens()` adds `PLATFORM_SHELL` but not the HTTP adapter for context-only Bootstrap.
 

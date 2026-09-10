@@ -605,20 +605,20 @@ The following is the complete `test/post-storage.integration.test.ts` file. The 
 ```ts
 import { randomUUID } from 'node:crypto';
 import { PrismaModule } from '@fluojs/prisma';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { PrismaClient } from '@prisma/client';
 import { expect, it } from 'vitest';
 import { PostsRepository } from '../src/posts/posts.repository.js';
 
 async function openStore(url: string) {
   const client = new PrismaClient({ datasources: { db: { url } } });
-  class TestModule {}
+  class TestModule { }
   defineModule(TestModule, {
     imports: [PrismaModule.forRoot({ client, strictTransactions: true })],
     providers: [PostsRepository],
     exports: [PostsRepository],
   });
-  const app = await bootstrapApplication({ rootModule: TestModule });
+  const app = await FluoFactory.create(TestModule);
   const store = await app.container.resolve(PostsRepository);
   return { app, store };
 }

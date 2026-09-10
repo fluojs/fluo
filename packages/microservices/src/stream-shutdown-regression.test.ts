@@ -1,5 +1,5 @@
 import { defineModuleMetadata } from '@fluojs/core/internal';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 
 import { MicroservicesModule } from './module.js';
@@ -83,7 +83,7 @@ it.each(streamingOperations)('rejects a new facade $name after close starts', as
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
   const closePromise = microservice.close();

@@ -52,7 +52,7 @@ The scrape endpoint returns the active `prom-client` registry output with that r
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Wires the Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, and registry ownership. | `provider` currently accepts only `'prometheus'`; `path: false` disables the scrape route and route-scoped endpoint middleware. |
 | `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | `MetricsService` is non-global: inject it from a module that directly imports a `MetricsModule.forRoot(...)` registration or imports a module that re-exports `MetricsService`; unrelated sibling modules do not receive it automatically. Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `METRICS_REGISTRY` at bootstrap. |
-| `METRICS_REGISTRY` | Bootstrap provider token for a shared `prom-client` Registry. | A provider supplied to `bootstrapApplication()` takes ownership over the module's legacy `registry` option. |
+| `METRICS_REGISTRY` | Bootstrap provider token for a shared `prom-client` Registry. | A provider supplied to `FluoFactory.create()` takes ownership over the module's legacy `registry` option. |
 | `Registry` | Re-export of `prom-client`'s `Registry` constructor for shared-registry setups. | It is the same Prometheus registry implementation; duplicate metric names still fail according to Prometheus semantics. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` / meter types | Low-level meter bridge for first-party package integrations that need a provider token or backend-neutral counter/gauge/histogram facade. | Application code usually does not need this token unless it is composing package-level integrations; the only bundled provider backend today is Prometheus. |
 | `middleware` | Module-level middleware that participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware. | It is not route-scoped; use `endpointMiddleware` when only the scrape route should be protected. |
@@ -170,17 +170,16 @@ direct dependency.
 ```ts
 import { Module } from '@fluojs/core';
 import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const registry = new Registry();
 
 @Module({
   imports: [MetricsModule.forRoot({ http: true })],
 })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapApplication({
-  rootModule: AppModule,
+const app = await FluoFactory.create(AppModule, {
   providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
 });
 ```

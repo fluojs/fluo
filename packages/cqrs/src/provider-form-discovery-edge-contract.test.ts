@@ -1,6 +1,6 @@
 import { Scope } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { type ApplicationLogger, bootstrapApplication, type CompiledModule, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, QueryHandler } from './decorators.js';
@@ -130,9 +130,8 @@ describe('CQRS provider-form discovery edge contracts', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(warnings),
-      rootModule: AppModule,
     });
 
     expect(warnings).toEqual([
@@ -176,7 +175,7 @@ describe('CQRS provider-form discovery edge contracts', () => {
       providers: [ArchiveUserHandler, { provide: ALIAS_TOKEN, useExisting: ArchiveUserHandler }],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('frank'))).resolves.toBe(

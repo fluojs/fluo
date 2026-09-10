@@ -25,6 +25,7 @@
     "@fluojs/core": "workspace:*",
     "@fluojs/http": "workspace:*",
     "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/platform-nodejs": "workspace:*",
     "@fluojs/runtime": "workspace:*",
     "@fluojs/validation": "workspace:*"
   },

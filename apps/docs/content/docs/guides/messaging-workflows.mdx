@@ -367,7 +367,7 @@ Use `@fluojs/microservices` when the handler lives behind a transport boundary i
 ```ts
 import { Module } from '@fluojs/core';
 import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -384,9 +384,9 @@ class MathHandler {
   ],
   providers: [MathHandler],
 })
-class AppModule {}
+class AppModule { }
 
-const microservice = await fluoFactory.createMicroservice(AppModule);
+const microservice = await FluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 

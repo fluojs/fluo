@@ -60,7 +60,7 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
 
 따라서 runtime은 bootstrap을 두 겹의 graph로 봅니다. 바깥에는 module graph가 있고, 그 안에 DI container의 provider graph가 있습니다. 바깥 graph가 잘못되면 안쪽 graph는 시작하지 않습니다.
 
-같은 phase boundary는 더 높은 application bootstrap에서도 보입니다. `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`은 module bootstrap, runtime token registration, lifecycle singleton resolution, hook execution을 끝낸 뒤에야 dispatcher를 만듭니다. runtime은 unresolved module topology 위에 request handling state를 얹지 않습니다.
+같은 phase boundary는 더 높은 application bootstrap에서도 보입니다. `path:packages/runtime/src/bootstrap.ts:920-1029`의 `FluoFactory.create()`은 module bootstrap, runtime token registration, lifecycle singleton resolution, hook execution을 끝낸 뒤에야 dispatcher를 만듭니다. runtime은 unresolved module topology 위에 request handling state를 얹지 않습니다.
 
 application bootstrap의 큰 흐름도 같은 순서를 반복합니다. 여기서는 module graph 단계가 timing phase로도 분리되어 있어, 이후 token 등록과 lifecycle 실행이 별도 단계임을 읽을 수 있습니다.
 
@@ -649,7 +649,7 @@ function registerModuleMiddleware(container: Container, modules: CompiledModule[
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 module graph order는 initialization order의 절반에 불과합니다. registration 이후 runtime은 어떤 singleton instance를 eager하게 만들지, 어떤 hook을 실행할지, 언제 app이 ready해지는지도 결정해야 합니다.
 
-이 연속 단계는 `bootstrapApplication()`과 `FluoFactory.createApplicationContext()`에 있습니다. 두 흐름은 같은 lifecycle skeleton을 공유합니다.
+이 연속 단계는 `FluoFactory.create()`과 `FluoFactory.createApplicationContext()`에 있습니다. 두 흐름은 같은 lifecycle skeleton을 공유합니다.
 
 첫째, runtime context token이 등록됩니다. `registerRuntimeBootstrapTokens()`는 full application에 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 추가합니다. `registerRuntimeApplicationContextTokens()`는 context-only bootstrap에 `PLATFORM_SHELL`을 추가하지만 HTTP adapter는 추가하지 않습니다.
 

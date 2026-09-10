@@ -6,7 +6,7 @@ import {
   CloudflareWorkerHttpApplicationAdapter,
   type CloudflareWorkerWebSocketPair,
 } from '@fluojs/platform-cloudflare-workers';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -312,9 +312,8 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter,
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/cloudflare-workers');
   });
@@ -362,9 +361,8 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
@@ -428,7 +426,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [RoomGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const service = await app.container.resolve<CloudflareWorkersWebSocketGatewayLifecycleService>(
       CloudflareWorkersWebSocketGatewayLifecycleService,
     );
@@ -502,7 +500,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -541,7 +539,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -577,7 +575,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -632,7 +630,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ReturnOnlyGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
     try {
@@ -689,7 +687,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [LimitedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
 
@@ -734,7 +732,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [LimitedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
 
     const server = adapter.getServer();
@@ -778,7 +776,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GuardedGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
 
     const server = adapter.getServer();
@@ -839,7 +837,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [ChatGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     let closePromise: Promise<void> | undefined;
 
     try {
@@ -917,7 +915,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     const service = await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService);
     await app.listen();
@@ -974,7 +972,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1042,7 +1040,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1096,7 +1094,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
@@ -1159,7 +1157,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const service = await app.container.resolve<CloudflareWorkersWebSocketGatewayLifecycleService>(
       CloudflareWorkersWebSocketGatewayLifecycleService,
     );
@@ -1244,7 +1242,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1300,7 +1298,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
     await app.listen();
 
@@ -1356,7 +1354,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1411,7 +1409,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, BinaryPayloadGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1468,7 +1466,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, BinaryPayloadGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1525,7 +1523,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, BinaryEventGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1581,7 +1579,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       providers: [GatewayState, BlobPayloadGateway],
     });
 
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1622,7 +1620,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     }
     class AppModule {}
     defineModule(AppModule, { imports: [CloudflareWorkersWebSocketModule.forRoot()], providers: [TerminalGateway] });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const server = adapter.getServer();
     await server?.fetch(new Request('https://worker.test/terminal-error', { headers: { upgrade: 'websocket' } }));
@@ -1661,7 +1659,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       imports: [CloudflareWorkersWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
       providers: [ReplyGateway],
     });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const server = adapter.getServer();
     await server?.fetch(new Request('https://worker.test/replies', { headers: { upgrade: 'websocket' } }));
@@ -1713,7 +1711,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       imports: [CloudflareWorkersWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
       providers: [ReplyGateway],
     });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const service = await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService);
     await app.listen();
     const server = adapter.getServer();
@@ -1774,7 +1772,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       imports: [CloudflareWorkersWebSocketModule.forRoot({ buffer: { maxPendingMessagesPerSocket: 1, overflowPolicy } })],
       providers: [BufferGateway],
     });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const server = adapter.getServer();
     await server?.fetch(new Request('https://worker.test/buffer', { headers: { upgrade: 'websocket' } }));

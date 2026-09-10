@@ -1,5 +1,5 @@
 import { Inject, type Token } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { NotificationsModule } from './module.js';
@@ -54,7 +54,7 @@ describe('NotificationsModule.forRootAsync application contexts', () => {
     defineModule(AppModule, { imports: [NotificationsOwnerModule] });
 
     const [firstApp, secondApp] = await Promise.all([
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [
           {
             provide: APPLICATION_NOTIFICATION_SETTINGS,
@@ -71,9 +71,8 @@ describe('NotificationsModule.forRootAsync application contexts', () => {
             },
           },
         ],
-        rootModule: AppModule,
       }),
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [
           {
             provide: APPLICATION_NOTIFICATION_SETTINGS,
@@ -90,7 +89,6 @@ describe('NotificationsModule.forRootAsync application contexts', () => {
             },
           },
         ],
-        rootModule: AppModule,
       }),
     ]);
 
@@ -142,7 +140,7 @@ describe('NotificationsModule.forRootAsync application contexts', () => {
     defineModule(AppModule, { imports: [NotificationsOwnerModule] });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [
           {
             provide: APPLICATION_NOTIFICATION_SETTINGS,
@@ -158,11 +156,10 @@ describe('NotificationsModule.forRootAsync application contexts', () => {
             },
           },
         ],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('notification settings failed:failed');
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [
         {
           provide: APPLICATION_NOTIFICATION_SETTINGS,
@@ -177,7 +174,6 @@ describe('NotificationsModule.forRootAsync application contexts', () => {
           },
         },
       ],
-      rootModule: AppModule,
     });
 
     try {

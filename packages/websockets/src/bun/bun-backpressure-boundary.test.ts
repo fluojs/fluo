@@ -1,5 +1,5 @@
 import type { HttpApplicationAdapter } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { OnMessage, WebSocketGateway } from '../decorators.js';
@@ -63,7 +63,7 @@ describe('@fluojs/websockets/bun backpressure boundary', () => {
     });
 
     // When: the Bun lifecycle service installs its native binding.
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
       // Then: Node-only room backpressure options do not reach the Bun host.

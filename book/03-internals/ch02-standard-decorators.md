@@ -88,7 +88,7 @@ The following `src/decorators-main.ts` is a **complete experiment entry point**.
 ```ts
 import assert from 'node:assert/strict';
 import { ensureMetadataSymbol, getModuleMetadata } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const metadataSymbol = ensureMetadataSymbol();
 const { events, MARKS, OrdersModule, OrdersService } =
@@ -106,7 +106,7 @@ const bag: unknown = Reflect.get(OrdersService, metadataSymbol);
 assert.ok(typeof bag === 'object' && bag !== null);
 assert.deepEqual(Reflect.get(bag, MARKS), ['inner', 'outer']);
 
-const app = await fluoFactory.createApplicationContext(OrdersModule);
+const app = await FluoFactory.createApplicationContext(OrdersModule);
 try {
   const orders = await app.get(OrdersService);
   assert.equal(orders.describe('order-1001'), 'order-summary:order-1001');

@@ -1,5 +1,5 @@
 import { Controller, type FrameworkRequest, type FrameworkResponse, Post, Redirect, UseInterceptors } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CacheEvict } from './decorators.js';
@@ -79,7 +79,7 @@ describe('CacheInterceptor response dispatch regressions', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const cache = await app.container.resolve(CacheService);
@@ -115,7 +115,7 @@ describe('CacheInterceptor response dispatch regressions', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const cache = await app.container.resolve(CacheService);
@@ -157,7 +157,7 @@ describe('CacheInterceptor response dispatch regressions', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const cache = await app.container.resolve(CacheService);
@@ -193,7 +193,7 @@ describe('CacheInterceptor response dispatch regressions', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const cache = await app.container.resolve(CacheService);
@@ -231,7 +231,7 @@ describe('CacheInterceptor response dispatch regressions', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const unref = vi.fn();

@@ -9,7 +9,7 @@ import {
   type Interceptor,
   type InterceptorContext,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -97,7 +97,7 @@ describe('React page pre-render HTTP failures', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a React page route would render HTML if its guard allowed the request.
@@ -164,7 +164,7 @@ describe('React page pre-render HTTP failures', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a React page route would render HTML if its interceptor continued to the handler.

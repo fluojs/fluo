@@ -13,7 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -164,7 +164,7 @@ describe('experimental React Server Function dispatch', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When: two authorized calls overlap in the existing HTTP dispatcher.
@@ -224,7 +224,7 @@ describe('experimental React Server Function dispatch', () => {
 
     @Module({ controllers: [ActionController], providers: [DenyGuard] })
     class AppModule {}
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();

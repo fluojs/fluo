@@ -54,7 +54,7 @@ await app.close();
 
 ## CLI and existing applications
 
-`fluo new --shape application --transport http --runtime node --platform nodejs` generates the same static recipe. Existing projects are not rewritten; migrate their imports and calls using the table above. The new adapter-first starter does not automatically register process signals or implicitly add run-helper middleware/logging configuration. When moving directly from `runNodejsApplication` to `FluoFactory`, explicitly configure middleware such as security headers and your logger. If signal-driven shutdown is needed, call `registerShutdownSignals(app, logger, signals, forceExitTimeoutMs)` at the Node boundary and dispose the returned unregister callback. Applications retaining the existing run helper keep their behavior.
+`fluo new --shape application --transport http --runtime node --platform nodejs` uses the static adapter and Factory above, and explicitly emits `createConsoleApplicationLogger()` and `shutdownRegistration: createNodeShutdownSignalRegistration()`. Existing projects are not rewritten; migrate their imports and calls using the table above. Factory applies default security headers, keeps CORS and prefix opt-in, and leaves shutdown with the host when the signal callback is omitted. When migrating from `runNodejsApplication`, preserve required middleware and logging, and pass this callback for Node signal-driven shutdown. Factory registers it after listen and unregisters it during close. Applications retaining the existing run helper keep their behavior. Follow the [HTTP Factory migration](./migrate-http-factory.md) for shared defaults and error/cleanup policy.
 
 ## Evidence and release impact
 

@@ -21,7 +21,7 @@ export function defaultNodeShutdownSignals(): readonly NodeShutdownSignal[] {
  * final process termination ownership to the surrounding host/runtime.
  *
  * @param signals Signals to register, or `false` to disable signal handling.
- * @returns Registration callback consumed by HTTP adapter startup helpers.
+ * @returns Registration callback supplied to `FluoFactory.create(..., { shutdownRegistration })`.
  */
 export function createNodeShutdownSignalRegistration(
   signals: false | readonly NodeShutdownSignal[] = defaultNodeShutdownSignals(),
@@ -57,21 +57,41 @@ export function registerShutdownSignals(
   }
 
   const bindings: Array<{ signal: NodeShutdownSignal; handler: () => void }> = [];
+  const unregister = () => {
+    const errors: unknown[] = [];
+    for (const binding of bindings) {
+      try {
+        process.off(binding.signal, binding.handler);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Failed to unregister Node shutdown signals.');
+  };
 
-  for (const signal of signals) {
-    const handler = () => {
-      void closeFromSignal(app, logger, signal, forceExitTimeoutMs);
-    };
-
-    bindings.push({ signal, handler });
-    process.once(signal, handler);
+  try {
+    for (const signal of signals) {
+      const handler = () => {
+        void closeFromSignal(app, logger, signal, forceExitTimeoutMs);
+      };
+      bindings.push({ signal, handler });
+      process.once(signal, handler);
+    }
+  } catch (error) {
+    try {
+      unregister();
+    } catch (cleanupError) {
+      try {
+        logger.error('Failed to roll back Node shutdown signal registration.', cleanupError, 'FluoFactory');
+      } catch {
+        throw error;
+      }
+    }
+    throw error;
   }
 
-  return () => {
-    for (const binding of bindings) {
-      process.off(binding.signal, binding.handler);
-    }
-  };
+  return unregister;
 }
 
 async function closeFromSignal(app: Application, logger: ApplicationLogger, signal: NodeShutdownSignal, forceExitTimeoutMs: number): Promise<void> {

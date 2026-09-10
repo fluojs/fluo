@@ -87,14 +87,38 @@ const adapter = NodeHttpApplicationAdapter.create({
 기본값: `compression: false`, `rawBody: false`, `retryDelayMs: 150`, `retryLimit: 20`, `shutdownTimeoutMs: 10_000`입니다. `host` 생략 시 Node가 bind address를 선택합니다. Multipart는 buffered parsing을 기본으로 하고, `multipart.maxTotalSize`를 생략하면 유효 `maxBodySize`를 따릅니다(둘 다 생략하면 `1_048_576` bytes). 명시한 `0`도 보존합니다. Compression을 켜도 range 응답은 원본 representation byte와 range metadata를 유지하며 다시 압축하지 않습니다.
 
 ### 직접 애플리케이션 실행
-표준 시작 경로는 `FluoFactory.create(AppModule, { adapter })` 다음 `app.listen()`입니다. 생성은 port를 bind하거나 process signal을 등록하지 않습니다. Host가 종료 시 `app.close(signal?)`를 호출하고, signal이 필요하면 Node boundary에서 `registerShutdownSignals(...)`로 명시적으로 등록한 뒤 반환된 unregister callback도 정리합니다.
+생성은 port를 bind하거나 process signal을 등록하지 않습니다.
+
+`FluoFactory.create(AppModule, { adapter })`로 생성하고 `app.listen()`으로 시작합니다. 아래 Node logger와 shutdown callback은 이 host boundary에서 명시적으로 선택합니다.
 
 ```typescript
-const adapter = NodeHttpApplicationAdapter.create({
-  port: 3000,
-  shutdownTimeoutMs: 10_000,
+import { FluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    port: 3000,
+    shutdownTimeoutMs: 10_000,
+  }),
+  globalPrefix: 'api',
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
-const app = await FluoFactory.create(AppModule, { adapter });
+await app.listen();
+```
+
+Listen 전 설정이 필요하면 같은 Factory 생성 뒤 설정을 마치고 `app.listen()`을 호출하세요. Signal callback을 생략하면 host가 `app.close()`를 직접 소유합니다.
+
+```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen();
 
 // When the host requests shutdown:
@@ -136,6 +160,8 @@ await app.close();
 
 ## Multipart 스트리밍
 
+`multipart`는 계속 adapter가 소유하며 Factory 자체에는 `multipart` option이 없습니다.
+
 `NodeHttpApplicationAdapter.create(...)`에 `multipart: { strategy: 'stream' }`을 설정하면 multipart part가 `RequestContext.request.body`의 `AsyncIterable`로 노출됩니다. Node listener는 iterator를 미리 읽거나 버퍼링하지 않으며, file part를 소비할 때만 바이트를 가져옵니다. 버퍼링 multipart parsing은 기본값이며 fields와 `request.files`를 노출하고, 하나의 request body에서 stream 소비와 함께 사용할 수 없습니다.
 
 Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해 active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접 집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
@@ -152,3 +178,5 @@ Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handle
 - `packages/platform-nodejs/src/lifecycle.test.ts`
 - `packages/platform-nodejs/src/lifecycle.integration.test.ts`
 - `book/intermediate/ch21-express-node.ko.md`
+
+`createNodeShutdownSignalRegistration(...)`은 부분 등록 실패 시 설치된 handler를 rollback하며 개별 해제가 실패해도 나머지를 모두 시도합니다. Factory close는 해제 실패를 동시·이후 caller에 유지하지만 runtime 자원 정리는 계속합니다. `factory-signals.test.ts`가 이를 검증합니다. 기존 `bootstrapNodejsApplication`/`runNodejsApplication`은 platform migration 전의 소비자를 위해 유지합니다. 새 앱은 위 Factory recipe와 [migration 안내](../../docs/getting-started/migrate-http-factory.ko.md)를 사용하세요.

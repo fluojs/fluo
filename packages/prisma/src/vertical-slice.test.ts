@@ -9,7 +9,7 @@ import {
   RequestDto,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -171,7 +171,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse(events);
@@ -277,7 +277,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse(events);
@@ -347,7 +347,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       imports: [PrismaModule.forRoot({ client })],
       providers: [OrdersService],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse(events);

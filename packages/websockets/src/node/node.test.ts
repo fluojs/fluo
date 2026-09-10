@@ -1,7 +1,7 @@
 import type { AddressInfo } from 'node:net';
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
@@ -179,9 +179,8 @@ describe('@fluojs/websockets/node', () => {
     });
 
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve(GatewayState);
 
@@ -238,9 +237,8 @@ describe('@fluojs/websockets/node', () => {
     });
 
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve(GatewayState);
 
@@ -276,9 +274,8 @@ describe('@fluojs/websockets/node', () => {
     });
 
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const service = await app.container.resolve(NodeWebSocketGatewayLifecycleService);
     let shutdownPromise: Promise<void> | undefined;
@@ -349,9 +346,8 @@ describe('@fluojs/websockets/node', () => {
     });
 
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
 
     try {
@@ -407,7 +403,7 @@ describe('@fluojs/websockets/node', () => {
       providers: [ReplyGateway],
     });
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule, { adapter });
     await app.listen();
     const socket = new WebSocket(`ws://127.0.0.1:${String(getAdapterPort(adapter))}/replies`);
 

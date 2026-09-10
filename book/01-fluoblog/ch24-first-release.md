@@ -179,10 +179,12 @@ The ReadProbeController above verifies only the operational boundary. The follow
 Before running, prepare a migrated **empty, dedicated PostgreSQL database**, an **isolated practice Redis instance** at local `127.0.0.1:6379`, and the RecordingEmailTransport retained in Chapter 22. Do not run this test in an app that has been switched to a real SMTP transport. Set the existing `DATABASE_URL`, `JWT_SECRET`, `PUBLIC_ORIGIN`, and `PORT` according to the validation contracts in Chapters 9, 14, and 17, and supply non-empty test values for the optional `METRICS_TOKEN` and `HEALTH_TOKEN` as well. If `NODE_ENV=production`, provide all existing required configuration through process input instead of file input. The fixture leaves accounts, posts, attachments, and unconfirmed subscriptions in the dedicated database for inspection; it does not delete production data.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { randomUUID } from 'node:crypto';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { PrismaService } from '@fluojs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { expect, it } from 'vitest';
@@ -201,25 +203,29 @@ it('keeps auth, uploads, subscriptions and operations in the assembled app', asy
   if (!metricsToken || !healthToken) throw new Error('Set both test operations tokens.');
 
   const listening = Promise.withResolvers<string>();
-  const app = await bootstrapFastifyApplication(AppModule, {
-    host: '127.0.0.1', port: 0,
-    maxBodySize: 6 * 1024 * 1024,
-    multipart: {
-      maxFileSize: 5 * 1024 * 1024, maxFiles: 1, maxTotalSize: 6 * 1024 * 1024,
-    },
-    shutdownTimeoutMs: 5_000,
+  const app = await FluoFactory.create(AppModule, {
+    adapter: createFastifyAdapter({
+      host: '127.0.0.1',
+      port: 0,
+      maxBodySize: 6 * 1024 * 1024,
+      multipart: {
+        maxFileSize: 5 * 1024 * 1024, maxFiles: 1, maxTotalSize: 6 * 1024 * 1024,
+      },
+      shutdownTimeoutMs: 5_000,
+      configureFastify(server) {
+        server.addHook('onListen', async () => {
+          const address = server.server.address();
+          if (!address || typeof address === 'string') {
+            listening.reject(new Error('Expected a TCP listen address.'));
+            return;
+          }
+          listening.resolve(`http://127.0.0.1:${address.port}`);
+        });
+      },
+    }),
     middleware: [createCorrelationMiddleware(), TrafficMiddleware],
     observers: [blogAccessObserver],
-    configureFastify(server) {
-      server.addHook('onListen', async () => {
-        const address = server.server.address();
-        if (!address || typeof address === 'string') {
-          listening.reject(new Error('Expected a TCP listen address.'));
-          return;
-        }
-        listening.resolve(`http://127.0.0.1:${address.port}`);
-      });
-    },
+    logger: createConsoleApplicationLogger(),
   });
   try {
     await app.listen();

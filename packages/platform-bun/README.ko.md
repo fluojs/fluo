@@ -34,10 +34,10 @@ fluo 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 
 
 ```typescript
 import { createBunAdapter } from '@fluojs/platform-bun';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 

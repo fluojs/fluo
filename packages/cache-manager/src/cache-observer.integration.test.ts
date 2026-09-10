@@ -1,5 +1,5 @@
 import { Controller, type FrameworkRequest, type FrameworkResponse, Get, UseInterceptors } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CacheInterceptor } from './interceptor.js';
@@ -97,7 +97,7 @@ describe('CacheModule observer wiring', () => {
       imports: [CacheModule.forRoot({ observer, store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When: the same route is dispatched twice.
@@ -135,7 +135,7 @@ describe('CacheModule observer wiring', () => {
       imports: [CacheModule.forRoot({ observer, store: new FailingStore() })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When: one request is dispatched against the failing store.

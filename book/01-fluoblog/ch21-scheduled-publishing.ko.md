@@ -768,7 +768,7 @@ export class PostsModule {}
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { Cron, CronModule, type CronScheduler } from '@fluojs/cron';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 
 it('skips an overlapping publishing tick', async () => {
@@ -780,12 +780,12 @@ it('skips an overlapping publishing tick', async () => {
 
   const scheduler: CronScheduler = (_expression, _options, callback) => {
     callbacks.push(callback);
-    return { stop() {} };
+    return { stop() { } };
   };
 
   @Inject(WORK)
   class ScheduleProbe {
-    constructor(private readonly work: () => Promise<void>) {}
+    constructor(private readonly work: () => Promise<void>) { }
 
     @Cron('*/30 * * * * *', { name: 'posts.publish-due' })
     async tick(): Promise<void> {
@@ -807,9 +807,9 @@ it('skips an overlapping publishing tick', async () => {
       },
     ],
   })
-  class ProbeModule {}
+  class ProbeModule { }
 
-  const app = await bootstrapApplication({ rootModule: ProbeModule });
+  const app = await FluoFactory.create(ProbeModule);
   let first: Promise<void> | undefined;
   try {
     expect(callbacks).toHaveLength(1);

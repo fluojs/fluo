@@ -476,14 +476,18 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
   const adapterCreation = starter.adapterCall?.split('(')[0];
   const entrypointLabel = starter.entrypoint;
-  const starterContract = starter.runHelper
+  const starterContract = options.runtime === 'node'
+    ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`FluoFactory.create(..., { adapter })\` then \`app.listen()\``
+    : starter.runHelper
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${starter.runHelper}(...)\``
     : options.runtime === 'deno'
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`runDenoApplication(...)\``
     : options.runtime === 'cloudflare-workers'
       ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`createCloudflareWorkerEntrypoint(...)\``
       : `\`${entrypointLabel}\` wires the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${adapterCreation}(...)\`, then \`FluoFactory.create(AppModule, { adapter })\` and \`app.listen()\`. The application owner calls \`app.close()\`; process-signal registration is explicit.`;
-  const corsLine = options.runtime === 'cloudflare-workers'
+  const corsLine = options.runtime === 'node'
+    ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `FluoFactory.create(AppModule, { adapter, cors })` to configure it'
+    : options.runtime === 'cloudflare-workers'
     ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `createCloudflareWorkerEntrypoint(..., { cors })` to configure it'
     : options.runtime === 'deno'
       ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `runDenoApplication(..., { cors })` to configure it'
@@ -505,7 +509,7 @@ ${createHttpPackageManagerLine(options)}
 - Runtime dependency set: generated manifest entries match the selected runtime contract instead of inheriting the Node-only starter recipe
 ${corsLine}
 - Observability: /health and /ready endpoints are included by default
-- Runtime path: bootstrapApplication -> handler mapping -> dispatcher -> middleware -> guard -> interceptor -> controller
+- Runtime path: FluoFactory.create -> handler mapping -> dispatcher -> middleware -> guard -> interceptor -> controller
 - Naming policy: runtime module entrypoints use governed canonical names (\`forRoot(...)\`, optional \`forRootAsync(...)\`, \`register(...)\`, \`forFeature(...)\`); helper/builders stay \`create*\` (for example \`createTestingModule(...)\`)
 
 ## Commands
@@ -946,6 +950,28 @@ export default {
   const portExpression = options.runtime === 'bun'
     ? "Bun.env.PORT ?? '3000'"
     : "process.env.PORT ?? '3000'";
+
+  if (options.runtime === 'node') {
+    const platformImports = starter.packageName === '@fluojs/platform-nodejs'
+      ? `import { ${starter.adapterFactory}, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';`
+      : `import { ${starter.adapterFactory} } from '${starter.packageName}';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';`;
+    return `${platformImports}
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app';
+
+const parsedPort = Number.parseInt(${portExpression}, 10);
+const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: ${starter.adapterCall},
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
+`;
+  }
 
   if (starter.runHelper) {
     return `import { ${starter.runHelper} } from '${starter.packageName}';
@@ -1893,14 +1919,20 @@ export class AppModule {}
 }
 
 function createMixedMainFile(): string {
-  return `import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
+  return `import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';
 
 const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
-const app = await bootstrapFastifyApplication(AppModule, { port });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
 await app.connectMicroservice();
 await app.startAllMicroservices();
 await app.listen();

@@ -13,7 +13,7 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { Path, Router } from './decorators.js';
@@ -101,7 +101,7 @@ describe('React page HTTP lifecycle binding', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a React page route is registered through ReactModule and declares HTTP DTO bindings.
@@ -157,7 +157,7 @@ describe('React page HTTP lifecycle binding', () => {
     @Module({ imports: [ReactModule.forRoot({ controllers: [SearchRouter] })] })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a React page route uses an HTTP field converter.
@@ -206,7 +206,7 @@ describe('React page HTTP lifecycle binding', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: an ordinary controller and a React page share the same validated request DTO.

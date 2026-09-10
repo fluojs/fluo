@@ -241,7 +241,7 @@ transport 수명도 발송 기능의 일부다. factory가 생성하고 소유�
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { NotificationsService } from '@fluojs/notifications';
 import { createNotificationLab } from './notification-lab.js';
 import {
@@ -251,7 +251,7 @@ import {
 describe('order notification delivery', () => {
   it('preserves successful channels and retries only the failure', async () => {
     const { rootModule, probe } = createNotificationLab();
-    const app = await bootstrapApplication({ rootModule });
+    const app = await FluoFactory.create(rootModule);
     const order: PaidNotice = {
       eventId: 'payment-event-1',
       id: 'order-1',

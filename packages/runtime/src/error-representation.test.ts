@@ -1,12 +1,12 @@
 import { Module } from '@fluojs/core';
-import {
-  type FrameworkRequest,
-  type FrameworkResponse,
-  type HttpErrorRepresentationOptions,
+import type {
+  FrameworkRequest,
+  FrameworkResponse,
+  HttpErrorRepresentationOptions,
 } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
-import { bootstrapApplication } from './bootstrap.js';
+import { FluoFactory } from './bootstrap.js';
 import type { BootstrapApplicationOptions } from './types.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -60,7 +60,7 @@ describe('runtime HTTP error representation registration', () => {
       errorRepresentation: { html: { render } },
       rootModule: AppModule,
     };
-    const app = await bootstrapApplication(options);
+    const app = await FluoFactory.create(options.rootModule, options);
 
     try {
       const htmlResponse = createResponse();

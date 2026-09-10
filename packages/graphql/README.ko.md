@@ -64,8 +64,9 @@ Async registration 전용 example application은 추가하지 않습니다. 이 
 Code-first resolver discovery 대신 schema-first 통합을 원하면 executable `GraphQLSchema`를 `schema`로 전달할 수도 있습니다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
 class HelloInput {
@@ -89,10 +90,13 @@ class HelloResolver {
   ],
   providers: [HelloResolver]
 })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapNodeApplication(AppModule);
-await app.listen(3000);
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
+  logger: createConsoleApplicationLogger(),
+});
+await app.listen();
 // curl -X POST http://localhost:3000/graphql \
 //   -H "Content-Type: application/json" \
 //   -d '{"query": "{ hello(name: \"fluo\") }"}'

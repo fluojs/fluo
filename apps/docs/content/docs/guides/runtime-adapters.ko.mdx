@@ -85,10 +85,10 @@ Fastify는 권장 high-throughput Node.js adapter입니다.
 
 ```ts
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -173,6 +173,26 @@ const adapter = NodeHttpApplicationAdapter.create({
 
 `maxBodySize`는 raw Node request byte가 아직 streaming 중일 때 적용됩니다. 기본 request body cap은 `1 MiB`이고, 잘못된 `port` 또는 `maxBodySize`는 setup 중 throw합니다.
 
+Factory 생성과 instance listen을 사용하고 Node의 graceful shutdown은 명시적 `shutdownRegistration` callback으로 연결합니다.
+
+```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    port: 3000,
+  }),
+  globalPrefix: 'api',
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
+});
+await app.listen();
+```
+
+Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `process.exitCode`를 설정하지만, 최종 process termination은 host process가 소유합니다.
+
 `compression` 기본값은 `false`이며 range 응답은 compression을 켜도 identity byte를 유지합니다. `multipart.maxTotalSize` 생략은 유효 `maxBodySize`를 따릅니다. 표준 startup은 위 `FluoFactory.create` 다음 `app.listen()`입니다. Host는 `app.close()`와 명시적인 process signal 등록/해제를 소유합니다.
 
 기존 bootstrap/run helper는 이 이슈에서 제거하지 않으며 같은 static 생성 구현을 사용합니다. Run helper의 shutdown timeout이나 failure는 log와 `process.exitCode`로 보고하고 최종 process termination은 host가 소유합니다. 삭제된 factory/type alias와 기존 run-helper 기본값 이전은 [Node adapter 생성 마이그레이션](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.ko.md)을 참고하세요.
@@ -188,11 +208,11 @@ import {
   createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createExpressAdapter({ port: 3000 });
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
@@ -229,10 +249,10 @@ Native `Bun.serve()` application에는 Bun adapter를 사용합니다.
 
 ```ts
 import { createBunAdapter } from '@fluojs/platform-bun';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 
@@ -286,11 +306,11 @@ Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니
 Host-owned `Deno.serve(...)`에는 `app.listen()` 없이 bootstrap하고 public dispatcher에서 handler를 생성합니다.
 
 ```ts
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,
@@ -322,11 +342,11 @@ Edge `fetch` deployment에는 Workers adapter를 사용합니다.
 
 ```ts
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 

@@ -402,7 +402,7 @@ Application이 HTTP error representation contract가 선택한 optional HTML byt
 `createReactErrorRepresentationProvider(...)`를 사용한다.
 
 ```tsx
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import {
   createReactErrorRepresentationProvider,
   createReactServerEntry,
@@ -418,9 +418,8 @@ const html = createReactErrorRepresentationProvider({
   },
 });
 
-const app = await bootstrapApplication({
+const app = await FluoFactory.create(AppModule, {
   errorRepresentation: { html },
-  rootModule: AppModule,
 });
 ```
 

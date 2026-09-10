@@ -74,10 +74,10 @@ If your application owns `Deno.serve(...)`, bootstrap the fluo application witho
 
 ```typescript
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,

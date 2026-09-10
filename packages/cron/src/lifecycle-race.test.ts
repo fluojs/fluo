@@ -1,5 +1,5 @@
 import { REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CronExpression } from './expressions.js';
@@ -113,7 +113,7 @@ describe('Cron lifecycle race safety', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron('active-during-shutdown', CronExpression.EVERY_SECOND, async () => {
       activeTaskStarted.resolve();
@@ -159,7 +159,7 @@ describe('Cron lifecycle race safety', () => {
       imports: [CronModule.forRoot({ scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron('transactional-replacement', CronExpression.EVERY_SECOND, () => {
       runs += 1;
@@ -190,7 +190,7 @@ describe('Cron lifecycle race safety', () => {
       imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron('successful-replacement', CronExpression.EVERY_SECOND, () => {
       runs += 1;
@@ -224,9 +224,8 @@ describe('Cron lifecycle race safety', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron('acquired-after-shutdown', CronExpression.EVERY_SECOND, () => {

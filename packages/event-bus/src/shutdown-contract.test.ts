@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OnEvent } from './decorators.js';
@@ -55,7 +55,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
       providers: [SlowHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
     await eventBus.publish(new ShutdownEvent('background-handler'), { waitForHandlers: false });
@@ -96,7 +96,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
       imports: [EventBusModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
     await eventBus.publish(new ShutdownEvent('background-transport'), { waitForHandlers: false });
@@ -137,7 +137,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
       imports: [EventBusModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const controller = new AbortController();
     const publishPromise = eventBus.publish(new ShutdownEvent('aborted-transport'), {
@@ -194,7 +194,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
       providers: [PendingHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     if (!subscription) {
       throw new TypeError('Expected EventBus transport subscription to be registered during bootstrap.');
     }

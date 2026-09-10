@@ -1,5 +1,5 @@
 import { REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CronExpression } from './expressions.js';
@@ -123,9 +123,8 @@ describe('Cron stopped-state release retry race safety', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron(

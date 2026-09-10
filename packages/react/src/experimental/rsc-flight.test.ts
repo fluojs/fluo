@@ -14,7 +14,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { REACT_RSC_FLIGHT_CONTENT_TYPE, createReactFlightResponse } from './rsc.js';
@@ -142,7 +142,7 @@ describe('experimental RSC Flight response dispatch', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: an ordinary HTTP controller returns an experimental Flight response entry.

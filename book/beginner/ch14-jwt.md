@@ -455,7 +455,7 @@ not visible. The database module in your application owns these objects and
 their transaction semantics.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AuthModule } from './auth/auth.module.js';
 import {
   CREDENTIALS_REPOSITORY,
@@ -468,7 +468,7 @@ import {
   refreshTokenRepository,
 } from './database/auth.repositories.js';
 
-const context = await fluoFactory.createApplicationContext(AuthModule, {
+const context = await FluoFactory.createApplicationContext(AuthModule, {
   providers: [
     {
       provide: REFRESH_TOKEN_REPOSITORY,

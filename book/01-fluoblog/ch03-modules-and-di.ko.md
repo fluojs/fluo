@@ -220,13 +220,13 @@ node dist-di-probe/main.js
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { PostsModule } from './posts/posts.module';
 import { PostsService } from './posts/posts.service';
 
 @Inject(PostsService)
 class PostsSummary {
-  constructor(private readonly posts: PostsService) {}
+  constructor(private readonly posts: PostsService) { }
 
   render(): string {
     const rows = this.posts.list();
@@ -241,9 +241,9 @@ class PostsSummary {
   imports: [PostsModule],
   providers: [PostsSummary],
 })
-class SummaryModule {}
+class SummaryModule { }
 
-const context = await fluoFactory.createApplicationContext(SummaryModule);
+const context = await FluoFactory.createApplicationContext(SummaryModule);
 try {
   const summary = await context.get(PostsSummary);
   console.log(summary.render());

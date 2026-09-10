@@ -138,19 +138,25 @@ JSON containing spaces and line breaks may parse to the same result as JSON with
 At first, one Fastify entry file is enough. The following `src/main.ts` is the complete entry file for the experimental module above.
 
 ```typescript
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
-export const app = await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 256,
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+export const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 256,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
-The 256-byte limit is an experimental value chosen to make failures easy to reproduce. It is not a recommended production limit for a real post-creation API that accepts post content. When `runFastifyApplication()` returns, listening and shutdown registration are already complete. There is no reason to add another `app.listen()` afterward. In contrast, `bootstrapFastifyApplication()` does not start a listener, so the host calls `listen()` separately.
+The 256-byte limit is an experimental failure-reproduction value, not a production recommendation for a post API. `FluoFactory.create()` initializes the app and `app.listen()` completes listening and the selected shutdown registration. Pass transport settings to the adapter and shut down through instance `app.close()`.
 
 To compare the three adapters, a small program that observes requests and responses is better than one focused on signal handling. The following is the complete `src/adapter-probe.ts`. Install all three adapter packages as direct dependencies of the application, and transform this file together with the two preceding module files through the existing standard-decorator build path. If your output directory is `dist`, run it with `node dist/adapter-probe.js`.
 

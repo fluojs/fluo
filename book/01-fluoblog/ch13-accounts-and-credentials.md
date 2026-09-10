@@ -353,7 +353,7 @@ This is the **complete `src/accounts/initialize-operator.ts`**, to be run locall
 ```ts
 import { Inject, Module } from '@fluojs/core';
 import { PrismaService } from '@fluojs/prisma';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import type { PrismaClient } from '@prisma/client';
 import { AppSettingsModule } from '../config/app-settings.module.js';
 import { BlogDatabaseModule } from '../database/blog-database.module.js';
@@ -365,7 +365,7 @@ export class OperatorInitializer {
   constructor(
     private readonly prisma: PrismaService<PrismaClient>,
     private readonly passwords: PasswordHasher,
-  ) {}
+  ) { }
 
   async initialize(input: { email: unknown; displayName: unknown; password: unknown }) {
     const emailKey = normalizeEmail(input.email);
@@ -391,10 +391,10 @@ export class OperatorInitializer {
   imports: [AppSettingsModule, BlogDatabaseModule],
   providers: [PasswordHasher, OperatorInitializer],
 })
-class OperatorInitializationModule {}
+class OperatorInitializationModule { }
 
 export async function initializeOperator() {
-  const app = await bootstrapApplication({ rootModule: OperatorInitializationModule });
+  const app = await FluoFactory.create(OperatorInitializationModule);
   try {
     const initializer = await app.container.resolve(OperatorInitializer);
     await initializer.initialize({

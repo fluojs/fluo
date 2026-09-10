@@ -124,14 +124,21 @@ export class AppModule {}
 
 {/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/main.ts */}
 ```ts title="00-start/src/main.ts"
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 import { AppModule } from './app';
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: Number(process.env.PORT ?? '3000'),
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: Number(process.env.PORT ?? '3000'),
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 `AppModule`은 애플리케이션을 설명하고 `main.ts`는 Fastify 리스너를 시작합니다. 둘을 분리하면 요청 테스트가 네트워크 소켓을 열지 않고 모듈을 import할 수 있습니다.

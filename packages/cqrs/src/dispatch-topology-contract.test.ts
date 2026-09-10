@@ -1,11 +1,6 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import {
-  type ApplicationLogger,
-  bootstrapApplication,
-  defineModule,
-  type RuntimeCleanupRegistration,
-} from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
@@ -73,7 +68,7 @@ describe('CQRS dispatch topology contracts', () => {
       providers: [LoopSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -127,7 +122,7 @@ describe('CQRS dispatch topology contracts', () => {
       providers: [MultiRouteSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -191,7 +186,7 @@ describe('CQRS dispatch topology contracts', () => {
       providers: [InheritedRouteSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -258,7 +253,7 @@ describe('CQRS dispatch topology contracts', () => {
       providers: [RecoverableSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -322,7 +317,7 @@ describe('CQRS dispatch topology contracts', () => {
       providers: sagaProviders,
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
