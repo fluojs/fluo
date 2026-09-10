@@ -11,7 +11,7 @@ import { Readable, Writable } from 'node:stream';
 import type { FrameworkRequest } from '@fluojs/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createNextAdapter, type NextHttpApplicationAdapter } from './adapter.js';
+import { NextHttpApplicationAdapter } from './index.js';
 import { dispatchNextPagesRequest } from './pages-bridge.js';
 import { createNextPagesRouterHandler } from './pages-router.js';
 
@@ -136,7 +136,7 @@ describe('Pages transport cancellation and input ownership', () => {
     const entered = deferred<AbortSignal>();
     const release = deferred<void>();
     cleanups.push(() => { release.resolve(); });
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
     await adapter.listen({
       async dispatch(request, response) {
         if (!request.signal) {
@@ -170,7 +170,7 @@ describe('Pages transport cancellation and input ownership', () => {
     // Given
     const entered = deferred<FrameworkRequest>();
     const cancelled = deferred<void>();
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
     await adapter.listen({
       async dispatch(request, response) {
         entered.resolve(request);
@@ -209,7 +209,7 @@ describe('Pages transport cancellation and input ownership', () => {
     // Given
     const bootstrap = deferred<NextHttpApplicationAdapter>();
     const loaded = deferred<void>();
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
     const dispatch = vi.fn(async () => undefined);
     await adapter.listen({ dispatch });
     const loader = vi.fn(() => {
@@ -255,7 +255,7 @@ describe('Pages transport cancellation and input ownership', () => {
     const consumed = deferred<void>();
     const release = deferred<void>();
     cleanups.push(() => { release.resolve(); });
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
     vi.spyOn(adapter, 'fetch').mockImplementation(async (request) => {
       const reader = request.body?.getReader();
       if (!reader) {
@@ -285,7 +285,7 @@ describe('Pages transport cancellation and input ownership', () => {
 
   it('returns real HTTP 413 for chunked oversized input before the client finishes uploading', async () => {
     // Given
-    const adapter = createNextAdapter({ maxBodySize: 8 });
+    const adapter = NextHttpApplicationAdapter.create({ maxBodySize: 8 });
     const dispatch = vi.fn(async () => undefined);
     await adapter.listen({ dispatch });
     const server = await serve((request, response) =>
@@ -320,7 +320,7 @@ describe('Pages transport cancellation and input ownership', () => {
   it('consumes the original body and preserves exact bytes without treating completion as abort', async () => {
     // Given
     const bytes = Buffer.from([0, 0xff, 0xc3, 0x28, 13, 10, 0xe2, 0x82, 0xac]);
-    const adapter = createNextAdapter({ rawBody: true });
+    const adapter = NextHttpApplicationAdapter.create({ rawBody: true });
     const dispatched = deferred<FrameworkRequest>();
     await adapter.listen({
       async dispatch(request, response) {

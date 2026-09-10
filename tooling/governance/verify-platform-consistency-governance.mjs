@@ -29,6 +29,7 @@ import {
 } from './microservices-safety-guidance.mjs';
 import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
 import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
+import { enforceNextjsPublicImports, nextjsRecipePaths } from './nextjs-public-imports.mjs';
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforcePrismaNestjsMigrationDocs } from './prisma-nestjs-migration-docs.mjs';
@@ -722,6 +723,7 @@ const ssotPairs = [
 ];
 
 const contractGateTriggers = new Set([
+  ...nextjsRecipePaths,
   'docs/architecture/auth-and-jwt.md',
   'docs/architecture/auth-and-jwt.ko.md',
   'docs/architecture/http-catch-all-route-grammar.md',
@@ -4459,6 +4461,7 @@ export async function main() {
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceGraphqlNestjsMigrationBoundaries();
   enforceRequestPipelineImportBoundary();
+  enforceNextjsPublicImports();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();

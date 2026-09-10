@@ -17,11 +17,8 @@ import {
 } from '@fluojs/runtime';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import {
-  createNextAdapter,
-  createNextAppRouterHandler,
-  type NextHttpApplicationAdapter,
-} from './index.js';
+import { createNextAppRouterHandler } from './app-router.js';
+import { NextHttpApplicationAdapter } from './index.js';
 
 interface TestBackend {
   readonly adapter: NextHttpApplicationAdapter;
@@ -95,7 +92,7 @@ class ApiController {
 class AppModule {}
 
 async function createTestBackend(): Promise<TestBackend> {
-  const adapter = createNextAdapter();
+  const adapter = NextHttpApplicationAdapter.create();
   const app = await FluoFactory.create(AppModule, { adapter });
   await app.listen();
   activeApplications.push(app);
@@ -111,15 +108,16 @@ afterEach(async () => {
 
 describe('@fluojs/platform-nextjs', () => {
   it('exports one Next handler across every supported HTTP method', async () => {
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
+    const handlers = createNextAppRouterHandler(async () => adapter);
     const exportedHandlers = [
-      adapter.GET,
-      adapter.POST,
-      adapter.PUT,
-      adapter.PATCH,
-      adapter.DELETE,
-      adapter.HEAD,
-      adapter.OPTIONS,
+      handlers.GET,
+      handlers.POST,
+      handlers.PUT,
+      handlers.PATCH,
+      handlers.DELETE,
+      handlers.HEAD,
+      handlers.OPTIONS,
     ];
 
     expect(new Set(exportedHandlers)).toHaveLength(1);
@@ -129,7 +127,7 @@ describe('@fluojs/platform-nextjs', () => {
   it('dispatches a decorated module through FluoFactory', async () => {
     const { adapter } = await createTestBackend();
 
-    const response = await adapter.GET(
+    const response = await adapter.fetch(
       new Request('https://next.test/api/health'),
     );
 
@@ -140,17 +138,17 @@ describe('@fluojs/platform-nextjs', () => {
   it('materializes JSON bodies and preserves malformed-body and not-found errors', async () => {
     const { adapter } = await createTestBackend();
 
-    const created = await adapter.POST(new Request('https://next.test/api/echo', {
+    const created = await adapter.fetch(new Request('https://next.test/api/echo', {
       body: JSON.stringify({ message: 'hello' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     }));
-    const malformed = await adapter.POST(new Request('https://next.test/api/echo', {
+    const malformed = await adapter.fetch(new Request('https://next.test/api/echo', {
       body: '{',
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     }));
-    const missing = await adapter.GET(new Request('https://next.test/api/missing'));
+    const missing = await adapter.fetch(new Request('https://next.test/api/missing'));
 
     expect(created.status).toBe(201);
     await expect(created.json()).resolves.toEqual({ message: 'hello' });
@@ -171,7 +169,7 @@ describe('@fluojs/platform-nextjs', () => {
   it('preserves cookies, middleware, converters, and multiple Set-Cookie headers', async () => {
     const { adapter } = await createTestBackend();
 
-    const response = await adapter.GET(
+    const response = await adapter.fetch(
       new Request('https://next.test/api/pipeline', {
         headers: {
           cookie: 'session=hello%20next; theme=light',
@@ -191,7 +189,7 @@ describe('@fluojs/platform-nextjs', () => {
   });
 
   it('lets FluoFactory own idempotent application startup', async () => {
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
     const app = await FluoFactory.create(AppModule, { adapter });
     activeApplications.push(app);
 
@@ -203,7 +201,7 @@ describe('@fluojs/platform-nextjs', () => {
 
     expect(app.state).toBe('ready');
     await expect(
-      adapter.GET(new Request('https://next.test/api/health')),
+      adapter.fetch(new Request('https://next.test/api/health')),
     ).resolves.toMatchObject({ status: 200 });
   });
 
@@ -272,7 +270,7 @@ describe('@fluojs/platform-nextjs', () => {
 
     await app.close('test shutdown');
 
-    const response = await adapter.GET(
+    const response = await adapter.fetch(
       new Request('https://next.test/api/health'),
     );
 

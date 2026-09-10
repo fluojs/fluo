@@ -19,6 +19,14 @@ description: HTTP semantics, platform adapters, and OpenAPI publication.
 
 Read [HTTP API](../guides/http-api) and [Runtime Adapters](../guides/runtime-adapters) for task-oriented guidance.
 
+Next adapter creation uses root `NextHttpApplicationAdapter.create(options)`.
+Import App/Pages lazy callbacks only from `/app-router` and `/pages-router`;
+`/next-config` owns compiler configuration. Keep the seven Next route exports
+from the App facade, not method aliases on the adapter. The
+[package migration guide](https://github.com/fluojs/fluo/blob/main/packages/platform-nextjs/README.md#api-migration)
+lists removed imports and preserves the distinct Web Request, Node stream,
+closure-cache, and process-local keyed-cache contracts.
+
 Next's `defineNextApplication({ key, load })` optionally shares one application
 Promise across RSC/auth/route bundles in the same JS global. Failure is retained,
 with no HMR replacement or automatic retry; the application owner manages
@@ -35,7 +43,7 @@ behavior. The package README owns exact path conditions and Turbopack-only
 limitations; `packages/platform-nextjs/e2e/README.md` describes the real
 dev/build/start regressions.
 
-Next's `createNextAdapter({ bodyParser: 'text' })` opts into bounded text without
+Next's `NextHttpApplicationAdapter.create({ bodyParser: 'text' })` opts into bounded text without
 changing Content-Type or reconstructing Requests. HTTP owns the policy, runtime
 implements Web reads, and Next exposes it. Parsing still precedes middleware and
 guards; authentication must be explicitly ordered before later application JSON

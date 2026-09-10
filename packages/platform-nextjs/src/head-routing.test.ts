@@ -17,10 +17,10 @@ import {
 import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
+import { createNextAppRouterHandler } from './app-router.js';
 import {
-  createNextAdapter,
-  createNextAppRouterHandler,
   type NextAdapterOptions,
+  NextHttpApplicationAdapter,
 } from './index.js';
 
 function deferred() {
@@ -43,12 +43,12 @@ it('selects GET once for an opted-in HEAD request without rewriting its method',
   }
   @Module({ controllers: [ArticlesController] })
   class AppModule {}
-  const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+  const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
   const app = await FluoFactory.create(AppModule, { adapter });
   try {
     await app.listen();
     // When Next invokes GET with the original HEAD request.
-    const response = await adapter.GET(new Request('https://next.test/articles/42', {
+    const response = await createNextAppRouterHandler(async () => adapter).GET(new Request('https://next.test/articles/42', {
       method: 'HEAD',
     }));
     // Then one GET handler supplies metadata without a response body.
@@ -115,7 +115,7 @@ describe('HEAD route selection and single execution', () => {
     }
     @Module({ controllers: [Routes], middleware: [ModuleMiddleware], providers: [Guard] })
     class AppModule {}
-    const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+    const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
     const app = await FluoFactory.create(AppModule, {
       adapter,
       middleware: [{
@@ -130,7 +130,7 @@ describe('HEAD route selection and single execution', () => {
     try {
       await app.listen();
       // When a direct HEAD export receives the request.
-      const response = await adapter.HEAD(request);
+      const response = await createNextAppRouterHandler(async () => adapter).HEAD(request);
       // Then the complete pipeline runs at most once, including handler-produced 404s.
       expect(response.status).toBe(status);
       expect(response.body).toBeNull();
@@ -154,12 +154,12 @@ describe('HEAD route selection and single execution', () => {
     }
     @Module({ controllers: [Routes] })
     class AppModule {}
-    const adapter = createNextAdapter();
+    const adapter = NextHttpApplicationAdapter.create();
     const app = await FluoFactory.create(AppModule, { adapter });
     try {
       await app.listen();
       // When HEAD has no explicit handler.
-      const response = await adapter.HEAD(new Request('https://next.test/default', { method: 'HEAD' }));
+      const response = await createNextAppRouterHandler(async () => adapter).HEAD(new Request('https://next.test/default', { method: 'HEAD' }));
       // Then the ordinary route miss is preserved.
       expect(response.status).toBe(404);
     } finally {
@@ -185,7 +185,7 @@ describe('HEAD route selection and single execution', () => {
     }
     @Module({ controllers: [Routes] })
     class AppModule {}
-    const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+    const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
     const app = await FluoFactory.create(AppModule, { adapter });
     let loads = 0;
     const handlers = createNextAppRouterHandler(async () => { loads += 1; return adapter; });
@@ -243,7 +243,7 @@ describe('HEAD metadata and resource ownership', () => {
     }
     @Module({ controllers: [Routes] })
     class AppModule {}
-    const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+    const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
     const app = await FluoFactory.create(AppModule, {
       adapter,
       conditionalRequest: {
@@ -257,7 +257,7 @@ describe('HEAD metadata and resource ownership', () => {
     try {
       await app.listen();
       // When HEAD falls back to the GET representation.
-      const response = await adapter.HEAD(new Request('https://next.test/bytes', {
+      const response = await createNextAppRouterHandler(async () => adapter).HEAD(new Request('https://next.test/bytes', {
         method: 'HEAD', headers,
       }));
       // Then conditional evaluation and range metadata remain HTTP-owned.
@@ -322,7 +322,7 @@ describe('HEAD metadata and resource ownership', () => {
       }
       @Module({ controllers: [Routes] })
       class AppModule {}
-      const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+      const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
       const app = await FluoFactory.create(AppModule, {
         adapter,
         observers: [{
@@ -333,7 +333,7 @@ describe('HEAD metadata and resource ownership', () => {
       try {
         await app.listen();
         // When HEAD cancellation closes the real stream and awaits iterator cleanup.
-        const pending = adapter.HEAD(new Request('https://next.test/lifecycle', { method: 'HEAD' }));
+        const pending = createNextAppRouterHandler(async () => adapter).HEAD(new Request('https://next.test/lifecycle', { method: 'HEAD' }));
         if (kind === 'managed' || kind === 'cleanup-error') {
           await cleanupStarted.promise;
           expect(events).toEqual(['handler', 'iterator-return']);
@@ -372,7 +372,7 @@ describe('HEAD metadata and resource ownership', () => {
     }
     @Module({ controllers: [Routes] })
     class AppModule {}
-    const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+    const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
     const app = await FluoFactory.create(AppModule, {
       adapter,
       observers: [{
@@ -384,7 +384,7 @@ describe('HEAD metadata and resource ownership', () => {
     try {
       await app.listen();
       // When cancellation occurs after handler entry, before its result.
-      const pending = adapter.HEAD(new Request('https://next.test/abort', {
+      const pending = createNextAppRouterHandler(async () => adapter).HEAD(new Request('https://next.test/abort', {
         method: 'HEAD', signal: abort.signal,
       }));
       await entered.promise;
@@ -402,10 +402,10 @@ describe('HEAD metadata and resource ownership', () => {
 
   it.each(['not-ready', 'closed'] as const)('returns bodyless 503 when %s', async (state) => {
     // Given an unavailable opt-in adapter.
-    const adapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+    const adapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
     if (state === 'closed') await adapter.close();
     // When HEAD reaches the adapter boundary.
-    const response = await adapter.HEAD(new Request('https://next.test/unavailable', { method: 'HEAD' }));
+    const response = await createNextAppRouterHandler(async () => adapter).HEAD(new Request('https://next.test/unavailable', { method: 'HEAD' }));
     // Then failure metadata is preserved without its JSON body.
     expect(response.status).toBe(503);
     expect(response.headers.get('content-type')).toBe('application/problem+json');
