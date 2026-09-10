@@ -42,7 +42,7 @@ class TestBunAdapter implements HttpApplicationAdapter {
     return undefined;
   }
 
-  configureRealtimeBinding(binding: unknown | undefined): void {
+  setRealtimeBinding(binding: unknown | undefined): void {
     if (binding === undefined) {
       if (this.binding !== undefined) {
         this.bindingClearCount += 1;
@@ -73,7 +73,7 @@ class TestBunAdapter implements HttpApplicationAdapter {
       'Test adapter supports Bun-style Socket.IO binding.',
       {
         bindingInstallation: {
-          install: (binding) => this.configureRealtimeBinding(binding),
+          install: (binding) => this.setRealtimeBinding(binding),
         },
         support: 'supported',
       },

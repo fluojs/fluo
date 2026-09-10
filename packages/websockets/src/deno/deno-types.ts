@@ -1,4 +1,8 @@
 import type {
+  DenoServerWebSocket,
+} from '@fluojs/platform-deno';
+
+import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
   WebSocketUpgradeContext,
@@ -6,53 +10,7 @@ import type {
 } from '../types.js';
 
 /**
- * Defines the Deno websocket inbound message contract.
- *
- * @remarks
- * Deno deployments may surface binary frames as `ArrayBuffer`, typed array views, or
- * `Blob` values depending on the host and compatibility layer. The adapter accepts
- * each binary representation and normalizes it before dispatching gateway handlers.
- */
-export type DenoWebSocketMessage = ArrayBuffer | ArrayBufferView | Blob | string;
-
-/**
- * Describes the deno server web socket contract.
- */
-export interface DenoServerWebSocket extends Pick<WebSocket, 'addEventListener' | 'close' | 'removeEventListener' | 'send'> {
-  readonly readyState: number;
-}
-
-/**
- * Describes the deno web socket upgrade result contract.
- */
-export interface DenoWebSocketUpgradeResult<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
-  response: Response;
-  socket: TSocket;
-}
-
-/**
- * Describes the deno web socket upgrade host contract.
- */
-export interface DenoWebSocketUpgradeHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
-  upgrade(request: Request): DenoWebSocketUpgradeResult<TSocket>;
-}
-
-/**
- * Describes the deno web socket binding contract.
- */
-export interface DenoWebSocketBinding<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
-  fetch(request: Request, host: DenoWebSocketUpgradeHost<TSocket>): Response | Promise<Response>;
-}
-
-/**
- * Describes the deno web socket binding host contract.
- */
-export interface DenoWebSocketBindingHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
-  configureWebSocketBinding(binding: DenoWebSocketBinding<TSocket> | undefined): void;
-}
-
-/**
- * Defines the typed on message handler type.
+ * Defines the typed Deno gateway message handler signature.
  */
 export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = import('../types.js').TypedOnMessageHandler<
   TEvents,
@@ -62,7 +20,7 @@ export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K ext
 >;
 
 /**
- * Describes the web socket gateway context contract.
+ * Describes the Deno request and socket context passed to gateway handlers.
  */
 export interface WebSocketGatewayContext {
   request: Request;
@@ -77,6 +35,6 @@ export type WebSocketUpgradeGuard = SharedWebSocketUpgradeGuard<Request>;
 export type { WebSocketUpgradeContext, WebSocketUpgradeRejection };
 
 /**
- * Defines the web socket module options type.
+ * Defines the Deno websocket module options type.
  */
 export type WebSocketModuleOptions = SharedWebSocketModuleOptions<Request>;

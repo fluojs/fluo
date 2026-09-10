@@ -1,6 +1,13 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { HttpApplicationAdapter } from '@fluojs/http';
+import { resolveFetchStyleHttpAdapterRealtimeBindingInstallation } from '@fluojs/http/internal';
+import type {
+  CloudflareWorkerWebSocket,
+  CloudflareWorkerWebSocketBinding,
+  CloudflareWorkerWebSocketMessage,
+  CloudflareWorkerWebSocketUpgradeHost,
+} from '@fluojs/platform-cloudflare-workers';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -19,9 +26,6 @@ import {
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type { WebSocketGatewayDescriptor, WebSocketRoomService, WebSocketUpgradeRejection } from '../types.js';
 import type {
-  CloudflareWorkerWebSocket,
-  CloudflareWorkerWebSocketBinding,
-  CloudflareWorkerWebSocketMessage,
   WebSocketModuleOptions,
 } from './cloudflare-workers-types.js';
 
@@ -130,13 +134,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       runtimeName: 'Cloudflare Workers',
     });
 
-    if (!capability.bindingInstallation) {
-      throw new Error(
-        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose websocket binding installation through its realtime capability. Use @fluojs/platform-cloudflare-workers with @fluojs/websockets/cloudflare-workers.',
-      );
-    }
-
-    capability.bindingInstallation.install(this.createBinding(descriptors));
+    resolveFetchStyleHttpAdapterRealtimeBindingInstallation(capability).install(this.createBinding(descriptors));
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -159,7 +157,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
   private async handleUpgradeRequest(
     request: Request,
-    host: import('./cloudflare-workers-types.js').CloudflareWorkerWebSocketUpgradeHost,
+    host: CloudflareWorkerWebSocketUpgradeHost,
     descriptorsByPath: ReadonlyMap<string, readonly WebSocketGatewayDescriptor[]>,
   ): Promise<Response> {
     if (!isWebSocketUpgradeRequest(request)) {

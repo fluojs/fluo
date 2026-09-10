@@ -15,6 +15,13 @@ import {
 const WEBSOCKET_RECONFIGURATION_MESSAGE =
   'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.';
 
+function installRealtimeBinding(
+  adapter: CloudflareWorkerHttpApplicationAdapter,
+  binding: CloudflareWorkerWebSocketBinding | undefined,
+): void {
+  adapter.getRealtimeCapability().bindingInstallation?.install(binding);
+}
+
 function createExecutionContext(
   waitUntil: (promise: Promise<unknown>) => void = () => undefined,
 ): CloudflareWorkerExecutionContext {
@@ -102,7 +109,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
       fetch: vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async () => new Response(null, { status: 426 })),
     };
 
-    adapter.configureWebSocketBinding(initialBinding);
+    installRealtimeBinding(adapter, initialBinding);
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(204);
@@ -110,11 +117,11 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     });
     await adapter.close();
 
-    expect(() => adapter.configureWebSocketBinding(replacementBinding)).toThrow(
+    expect(() => installRealtimeBinding(adapter, replacementBinding)).toThrow(
       WEBSOCKET_RECONFIGURATION_MESSAGE,
     );
-    expect(() => adapter.configureWebSocketBinding(undefined)).toThrow(WEBSOCKET_RECONFIGURATION_MESSAGE);
-    expect(() => adapter.configureWebSocketBinding(initialBinding)).not.toThrow();
+    expect(() => installRealtimeBinding(adapter, undefined)).toThrow(WEBSOCKET_RECONFIGURATION_MESSAGE);
+    expect(() => installRealtimeBinding(adapter, initialBinding)).not.toThrow();
   });
 
   it('releases waitUntil and close drains when an SSE response body is canceled', async () => {
@@ -290,7 +297,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
       return upgraded.response;
     });
 
-    adapter.configureWebSocketBinding({ fetch: bindingFetch });
+    installRealtimeBinding(adapter, { fetch: bindingFetch });
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(200);

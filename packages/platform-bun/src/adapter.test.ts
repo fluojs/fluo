@@ -59,6 +59,14 @@ function captureError(operation: () => unknown): Error {
   throw new TypeError('Expected the operation to throw.');
 }
 
+function installRealtimeBinding(
+  adapter: BunHttpApplicationAdapter,
+  binding: BunWebSocketBinding | undefined,
+): void {
+  const capability = adapter.getRealtimeCapability();
+  capability.bindingInstallation?.install(binding);
+}
+
 async function captureRejectedError(operation: Promise<unknown>): Promise<Error> {
   try {
     await operation;
@@ -2282,8 +2290,8 @@ describe('@fluojs/platform-bun', () => {
     });
 
     try {
-      const realtimeFailure = captureError(() => adapter.configureRealtimeBinding(undefined));
-      const websocketFailure = captureError(() => adapter.configureWebSocketBinding({
+      const realtimeFailure = captureError(() => installRealtimeBinding(adapter, undefined));
+      const websocketFailure = captureError(() => installRealtimeBinding(adapter, {
         fetch: async () => undefined,
         websocket: {},
       }));
@@ -2412,7 +2420,7 @@ describe('@fluojs/platform-bun', () => {
       return undefined;
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
       websocket: {},
     });
@@ -2451,7 +2459,7 @@ describe('@fluojs/platform-bun', () => {
     const order: string[] = [];
     let closeSettled = false;
 
-    adapter.configureRealtimeBinding({
+    installRealtimeBinding(adapter, {
       fetch: async () => {
         bindingStarted.resolve();
         await bindingRelease.promise;
@@ -2503,7 +2511,7 @@ describe('@fluojs/platform-bun', () => {
     let closeSettled = false;
     let responsePromise: Promise<Response | undefined> | undefined;
 
-    adapter.configureRealtimeBinding({
+    installRealtimeBinding(adapter, {
       fetch: async () => {
         bindingStarted.resolve();
         await bindingRelease.promise;
@@ -2575,7 +2583,7 @@ describe('@fluojs/platform-bun', () => {
     let closePromise: Promise<void> | undefined;
     let responsePromise: Promise<Response | undefined> | undefined;
 
-    adapter.configureRealtimeBinding({
+    installRealtimeBinding(adapter, {
       fetch: async (request, server) => {
         bindingStarted.resolve();
         await bindingRelease.promise;
@@ -2651,7 +2659,7 @@ describe('@fluojs/platform-bun', () => {
     const order: string[] = [];
     let closeSettled = false;
 
-    adapter.configureRealtimeBinding({
+    installRealtimeBinding(adapter, {
       fetch: async () => {
         bindingStarted.resolve();
         await bindingRelease.promise;
@@ -2706,7 +2714,7 @@ describe('@fluojs/platform-bun', () => {
     };
     const bindingFetch = vi.fn<BunWebSocketBinding['fetch']>(async () => undefined);
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
       websocket: {},
     });
@@ -2743,7 +2751,7 @@ describe('@fluojs/platform-bun', () => {
       return new Response('handled by websocket binding', { status: 418 });
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
       websocket: {},
     });

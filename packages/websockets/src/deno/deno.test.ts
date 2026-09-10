@@ -1,6 +1,11 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
+import type {
+  DenoServerWebSocket,
+  DenoWebSocketBinding,
+  DenoWebSocketUpgradeResult,
+} from '@fluojs/platform-deno';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,20 +13,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as denoPublicApi from './deno.js';
 import {
-  type DenoServerWebSocket,
-  type DenoWebSocketBinding,
-  type DenoWebSocketBindingHost,
   DenoWebSocketGatewayLifecycleService,
-  type DenoWebSocketMessage,
   DenoWebSocketModule,
-  type DenoWebSocketUpgradeResult,
 } from './deno.js';
 
 type MockDenoSocketListenerMap = {
   close: Array<(event: Event) => void>;
   error: Array<(event: Event) => void>;
-  message: Array<(event: MessageEvent<DenoWebSocketMessage>) => void>;
+  message: Array<(event: MessageEvent<DenoGatewayTestMessage>) => void>;
 };
+
+type DenoGatewayTestMessage = ArrayBuffer | ArrayBufferView | Blob | string;
 
 const WEBSOCKET_OPEN_READY_STATE = 1;
 const WEBSOCKET_CLOSED_READY_STATE = 3;
@@ -63,7 +65,7 @@ class MockDenoSocket implements DenoServerWebSocket {
       return;
     }
 
-    this.#listeners.message.push(callback as (event: MessageEvent<DenoWebSocketMessage>) => void);
+    this.#listeners.message.push(callback as (event: MessageEvent<DenoGatewayTestMessage>) => void);
   }
 
   close(code?: number, reason?: string): void {
@@ -101,8 +103,8 @@ class MockDenoSocket implements DenoServerWebSocket {
     }
   }
 
-  emitMessage(data: DenoWebSocketMessage): void {
-    const event = new MessageEvent<DenoWebSocketMessage>('message', { data });
+  emitMessage(data: DenoGatewayTestMessage): void {
+    const event = new MessageEvent<DenoGatewayTestMessage>('message', { data });
 
     for (const listener of this.#listeners.message) {
       listener(event);
@@ -128,7 +130,7 @@ class MockDenoSocket implements DenoServerWebSocket {
       return;
     }
 
-    this.removeMessageListener(callback as (event: MessageEvent<DenoWebSocketMessage>) => void);
+    this.removeMessageListener(callback as (event: MessageEvent<DenoGatewayTestMessage>) => void);
   }
 
   send(data: string): void {
@@ -149,7 +151,7 @@ class MockDenoSocket implements DenoServerWebSocket {
     }
   }
 
-  private removeMessageListener(callback: (event: MessageEvent<DenoWebSocketMessage>) => void): void {
+  private removeMessageListener(callback: (event: MessageEvent<DenoGatewayTestMessage>) => void): void {
     const index = this.#listeners.message.indexOf(callback);
     if (index >= 0) {
       this.#listeners.message.splice(index, 1);
@@ -183,12 +185,12 @@ class TestDenoServer {
   }
 }
 
-class TestDenoAdapter implements HttpApplicationAdapter, DenoWebSocketBindingHost {
+class TestDenoAdapter implements HttpApplicationAdapter {
   private binding?: DenoWebSocketBinding;
   readonly bindingConfigurations: Array<DenoWebSocketBinding | undefined> = [];
   private server?: TestDenoServer;
 
-  configureWebSocketBinding(binding: DenoWebSocketBinding | undefined): void {
+  private installRealtimeBinding(binding: DenoWebSocketBinding | undefined): void {
     this.binding = binding;
     this.bindingConfigurations.push(binding);
   }
@@ -201,6 +203,10 @@ class TestDenoAdapter implements HttpApplicationAdapter, DenoWebSocketBindingHos
       reason: DENO_WEBSOCKET_CAPABILITY_REASON,
       support: 'supported' as const,
       version: 1 as const,
+      bindingInstallation: {
+        install: (binding: unknown | undefined) => this.installRealtimeBinding(binding as DenoWebSocketBinding | undefined),
+        version: 1 as const,
+      },
     };
   }
 
@@ -245,13 +251,13 @@ function observeShutdownEntry(service: object): Promise<void> {
 
 type BinaryMessageCase = readonly [
   label: string,
-  message: DenoWebSocketMessage,
+  message: DenoGatewayTestMessage,
   expectedPayload: { value: string },
 ];
 
 type OversizedBinaryMessageCase = readonly [
   label: string,
-  message: DenoWebSocketMessage,
+  message: DenoGatewayTestMessage,
 ];
 
 const binaryMessageCases: BinaryMessageCase[] = [

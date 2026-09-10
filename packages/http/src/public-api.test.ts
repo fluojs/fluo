@@ -334,6 +334,7 @@ describe('@fluojs/http public API surface', () => {
       'registerFrameworkResponseValueFinalizer',
       'registerFrameworkResponseWriter',
       'resolveClientIdentity',
+      'resolveFetchStyleHttpAdapterRealtimeBindingInstallation',
     ]);
   });
 

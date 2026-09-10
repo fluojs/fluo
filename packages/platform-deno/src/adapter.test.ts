@@ -19,6 +19,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DenoHttpApplicationAdapter, type DenoServeController, type DenoServeFunction, type DenoServeHandler, type DenoServeOptions, type DenoServerWebSocket, type DenoUpgradeWebSocketFunction, type DenoWebSocketBinding, type DenoWebSocketMessage } from './adapter.js';
 
+function installRealtimeBinding(
+  adapter: DenoHttpApplicationAdapter,
+  binding: DenoWebSocketBinding | undefined,
+): void {
+  adapter.getRealtimeCapability().bindingInstallation?.install(binding);
+}
+
 // allow: SIZE_OK — Package-local Deno adapter contract regressions share serve, dispatch, signal, websocket, and README fixtures.
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -1613,7 +1620,7 @@ describe('@fluojs/platform-deno', () => {
     });
     const bindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
     });
 
@@ -1687,7 +1694,7 @@ describe('@fluojs/platform-deno', () => {
       return result.response;
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
     });
 
@@ -1717,14 +1724,14 @@ describe('@fluojs/platform-deno', () => {
     const originalBindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
     const replacementBindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: originalBindingFetch,
     });
     await adapter.listen({
       dispatch: vi.fn(async () => undefined),
     });
 
-    expect(() => adapter.configureWebSocketBinding({
+    expect(() => installRealtimeBinding(adapter, {
       fetch: replacementBindingFetch,
     })).toThrow('Deno websocket binding must be configured before Deno adapter listen() starts the server.');
 
@@ -1775,7 +1782,7 @@ describe('@fluojs/platform-deno', () => {
       const adapter = DenoHttpApplicationAdapter.create();
       const bindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
 
-      adapter.configureWebSocketBinding({
+      installRealtimeBinding(adapter, {
         fetch: bindingFetch,
       });
 

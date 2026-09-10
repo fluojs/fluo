@@ -31,11 +31,10 @@ import {
   getWebSocketGatewayMetadata,
   getWebSocketHandlerMetadataEntries,
 } from './metadata.js';
-import { WebSocketModule } from './module.js';
+import { NodeWebSocketModule as WebSocketModule } from './node/node-module.js';
 import { NodeWebSocketGatewayLifecycleServiceImplementation } from './node/node-service.js';
 import { NodeWebSocketGatewayLifecycleService } from './node/node-service-token.js';
 import type { WebSocketModuleOptions } from './node/node-types.js';
-import { WebSocketGatewayLifecycleService } from './service.js';
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -353,7 +352,7 @@ describe('@fluojs/websockets', () => {
     expect(publicApi).not.toHaveProperty('WEBSOCKET_OPTIONS');
   });
 
-  it('wires lifecycle service with a lazy root provider', () => {
+  it('wires the existing Node lifecycle token through the Node module', () => {
     const options: WebSocketModuleOptions = {
       shutdown: { timeoutMs: 1234 },
     };
@@ -366,12 +365,11 @@ describe('@fluojs/websockets', () => {
         typeof provider === 'object'
         && provider !== null
         && 'provide' in provider
-        && provider.provide === WebSocketGatewayLifecycleService,
+        && provider.provide === NodeWebSocketGatewayLifecycleService,
     );
 
     expect(lifecycleProvider).toBeDefined();
-    expect(lifecycleProvider).toHaveProperty('useFactory');
-    expect(WebSocketGatewayLifecycleService).toBe(NodeWebSocketGatewayLifecycleService);
+    expect(lifecycleProvider).toHaveProperty('useClass', NodeWebSocketGatewayLifecycleServiceImplementation);
     expect(optionsProvider).toBeDefined();
     expect(optionsProvider).toHaveProperty('useValue', options);
   });
@@ -920,7 +918,7 @@ describe('@fluojs/websockets', () => {
         port: 0,
       });
       const state = await app.container.resolve(GatewayState);
-      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
+      const service = await app.container.resolve(NodeWebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
       try {
         await app.listen();
@@ -2246,7 +2244,7 @@ describe('@fluojs/websockets', () => {
       port: 0,
       shutdownTimeoutMs: 200,
     });
-    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
+    const service = await app.container.resolve(NodeWebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     await app.listen();
     const port = await getApplicationPort(app);
@@ -2299,7 +2297,7 @@ describe('@fluojs/websockets', () => {
 
     await app.listen();
     const port = await getApplicationPort(app);
-      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
+    const service = await app.container.resolve(NodeWebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     const responsePromise = readUpgradeResponse(port, createUpgradeRequest('/shutdown-guard-race'));
     await guardStarted.promise;

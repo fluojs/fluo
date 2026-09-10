@@ -116,6 +116,47 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 
 /**
+ * Validates and returns the versioned fetch-style realtime binding installation capability.
+ *
+ * @param capability Untrusted realtime capability returned by an HTTP adapter boundary.
+ * @returns The callable version-1 binding installer.
+ * @throws {TypeError} When the capability does not expose the versioned fetch-style installer contract.
+ */
+export function resolveFetchStyleHttpAdapterRealtimeBindingInstallation(
+  capability: unknown,
+): HttpAdapterRealtimeBindingInstallation {
+  if (typeof capability !== 'object' || capability === null) {
+    throw new TypeError('Expected a fetch-style realtime binding installation capability.');
+  }
+
+  const candidate = capability as Partial<FetchStyleHttpAdapterRealtimeCapability>;
+
+  if (
+    candidate.kind !== 'fetch-style'
+    || candidate.contract !== 'raw-websocket-expansion'
+    || candidate.mode !== 'request-upgrade'
+    || candidate.support !== 'supported'
+    || candidate.version !== 1
+    || typeof candidate.reason !== 'string'
+  ) {
+    throw new TypeError('Expected a supported version-1 fetch-style realtime binding installation capability.');
+  }
+
+  const installation = candidate.bindingInstallation;
+
+  if (
+    typeof installation !== 'object'
+    || installation === null
+    || installation.version !== 1
+    || typeof installation.install !== 'function'
+  ) {
+    throw new TypeError('Expected a callable version-1 fetch-style realtime binding installation.');
+  }
+
+  return installation;
+}
+
+/**
  * Minimal HTTP adapter contract that binds the application lifecycle to a transport implementation.
  */
 export interface HttpApplicationAdapter {

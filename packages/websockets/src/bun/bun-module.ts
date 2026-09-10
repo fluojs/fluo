@@ -1,19 +1,8 @@
-import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import { BunWebSocketGatewayLifecycleService } from './bun-service.js';
 import type { WebSocketModuleOptions } from './bun-types.js';
-
-function createBunWebSocketProviders(options: WebSocketModuleOptions = {}): Provider[] {
-  return [
-    {
-      provide: WEBSOCKET_OPTIONS_INTERNAL,
-      useValue: options,
-    },
-    BunWebSocketGatewayLifecycleService,
-  ];
-}
 
 /**
  * Explicit Bun websocket module entrypoint.
@@ -29,7 +18,13 @@ export class BunWebSocketModule {
     class BunWebSocketRuntimeModule extends BunWebSocketModule {}
 
     return defineModule(BunWebSocketRuntimeModule, {
-      providers: createBunWebSocketProviders(options),
+      providers: [
+        {
+          provide: WEBSOCKET_OPTIONS_INTERNAL,
+          useValue: options,
+        },
+        BunWebSocketGatewayLifecycleService,
+      ],
     });
   }
 }

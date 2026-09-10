@@ -91,16 +91,6 @@ export interface BunWebSocketUpgradeHost {
   ): boolean;
 }
 
-/** Host contract exposed by Bun adapters that can install a realtime binding. */
-export interface BunRealtimeBindingHost {
-  configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
-}
-
-/** Backward-compatible host contract for Bun websocket-specific bindings. */
-export interface BunWebSocketBindingHost extends BunRealtimeBindingHost {
-  configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
-}
-
 /** Subset of `Bun.serve()` options used by the adapter and its tests. */
 export interface BunServeOptions {
   development?: boolean;
@@ -209,7 +199,7 @@ function isBunWebSocketBinding(value: unknown): value is BunWebSocketBinding<unk
 }
 
 /** HTTP application adapter backed by native `Bun.serve()`. */
-export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
+export class BunHttpApplicationAdapter implements HttpApplicationAdapter {
   /**
    * Creates the canonical Bun adapter for `FluoFactory.create(...)`.
    *
@@ -279,7 +269,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
   private installRealtimeBinding(binding: unknown | undefined): void {
     if (binding === undefined) {
-      this.configureRealtimeBinding(undefined);
+      this.setRealtimeBinding(undefined);
       return;
     }
 
@@ -290,11 +280,10 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
       );
     }
 
-    this.configureRealtimeBinding(binding);
+    this.setRealtimeBinding(binding);
   }
 
-  /** Configures the official realtime binding before the Bun server starts. */
-  configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
+  private setRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
     if (this.server) {
       throw attachBunAdapterDiagnosticCode(
         new Error('Bun websocket binding must be configured before Bun adapter listen() starts the server.'),
@@ -303,11 +292,6 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     }
 
     this.realtimeBinding = binding;
-  }
-
-  /** Configures a Bun websocket binding through the legacy websocket host name. */
-  configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
-    this.configureRealtimeBinding(binding);
   }
 
   /** Starts the Bun server and binds framework dispatch to native fetch requests. */

@@ -178,7 +178,7 @@ describe('real Bun native routing conformance', () => {
       stopActiveConnections: true,
     });
     activeAdapters.add(adapter);
-    adapter.configureRealtimeBinding({
+    adapter.getRealtimeCapability().bindingInstallation.install({
       fetch(request, server) {
         if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
           return undefined;

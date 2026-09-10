@@ -47,6 +47,7 @@
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
     "@fluojs/http": "workspace:^",
+    "@fluojs/platform-bun": "workspace:^",
     "@fluojs/runtime": "workspace:^",
     "@fluojs/websockets": "workspace:^"
   },
@@ -55,7 +56,6 @@
   },
   "devDependencies": {
     "@fluojs/platform-express": "workspace:^",
-    "@fluojs/platform-bun": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
     "@fluojs/platform-nodejs": "workspace:^",
     "socket.io": "^4.8.3",
