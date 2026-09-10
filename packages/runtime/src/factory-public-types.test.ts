@@ -1,13 +1,20 @@
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const packageRoot = fileURLToPath(new URL('..', import.meta.url));
-const fixture = fileURLToPath(new URL('../factory-consumer.mts', import.meta.url));
+import { resolveWorkspaceBuildOrder } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
+
+const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+let fixtureRoot: string;
+let packageRoot: string;
+let fixture: string;
 const execFileAsync = promisify(execFile);
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const subpaths: string[] = Object.keys(manifest.exports).map((path) =>
@@ -36,10 +43,43 @@ function compile(source: string): readonly ts.Diagnostic[] {
   );
   expect(packageFiles.length).toBeGreaterThan(0);
   expect(packageFiles.every((file) => file.isDeclarationFile)).toBe(true);
+  expect(packageFiles.every((file) => file.fileName.startsWith(join(fixtureRoot, 'packages/')))).toBe(true);
   return ts.getPreEmitDiagnostics(program);
 }
 
 describe('published canonical HTTP factory surface', () => {
+  afterAll(async () => {
+    if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
+  });
+
+  beforeAll(async () => {
+    fixtureRoot = await realpath(await mkdtemp(join(tmpdir(), 'fluo-factory-declarations-')));
+    packageRoot = join(fixtureRoot, 'packages/runtime');
+    fixture = join(packageRoot, 'factory-consumer.mts');
+    const packages = resolveWorkspaceBuildOrder('@fluojs/runtime', repositoryRoot);
+    const script = 'tooling/scripts/run-workspace-build-closure.mjs';
+    for (const entry of [
+      'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+      'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+      'tooling/scripts/clean-dist.mjs', script,
+      'packages/testing/src/babel-decorators-plugin.ts',
+      ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+    ]) {
+      await cp(join(repositoryRoot, entry), join(fixtureRoot, entry), {
+        recursive: true,
+        verbatimSymlinks: true,
+        filter: (source) => !['dist', '.vite', '.vite-temp', '.omo'].includes(basename(source)),
+      });
+    }
+    await symlink(join(repositoryRoot, 'node_modules'), join(fixtureRoot, 'node_modules'), 'dir');
+    await execFileAsync(process.execPath, [join(fixtureRoot, script), '@fluojs/runtime'], {
+      cwd: fixtureRoot,
+      env: process.env,
+      timeout: 240_000,
+      killSignal: 'SIGTERM',
+    });
+  }, 300_000);
+
   it('infers public tokens, class instances, logger, middleware and host shutdown options from emitted declarations', () => {
     // Given / When
     const diagnostics = compile(`
@@ -83,7 +123,9 @@ await app.close();
       `import { bootstrapApplication as bootstrap${index}, fluoFactory as alias${index} } from '${path}';`,
     ).join('\n'));
     // Then
-    expect(diagnostics).toHaveLength(subpaths.length * 2);
+    expect(diagnostics, diagnostics.map((entry) =>
+      ts.flattenDiagnosticMessageText(entry.messageText, '\n'),
+    ).join('\n')).toHaveLength(subpaths.length * 2);
     expect(diagnostics.every((entry) => entry.code === 2305 || entry.code === 2724)).toBe(true);
   });
 
