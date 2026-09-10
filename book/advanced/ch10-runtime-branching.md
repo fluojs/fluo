@@ -506,7 +506,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 The Node host callback connects signal registration and removal to the Factory lifecycle. Application creation belongs to the Factory recipe below, not to a separate platform bootstrap helper.
 
-`path:packages/platform-nodejs/src/node/internal-node-shutdown.ts:27-36`
+`path:packages/platform-nodejs/src/node/internal-node-shutdown.ts:26-35`
 ```typescript
 export function createNodeShutdownSignalRegistration(
   signals: false | readonly NodeShutdownSignal[] = defaultNodeShutdownSignals(),

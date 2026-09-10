@@ -760,8 +760,8 @@ describe('advanced runtime branching source excerpts', () => {
     },
     {
       sourcePath: 'packages/platform-nodejs/src/node/internal-node-shutdown.ts',
-      startLine: 27,
-      endLine: 36,
+      startLine: 26,
+      endLine: 35,
       fenceLanguage: 'typescript',
     },
     {
