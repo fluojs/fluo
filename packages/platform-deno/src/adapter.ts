@@ -1,11 +1,8 @@
 import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http/internal';
 import type { MultipartOptions } from '@fluojs/runtime';
-import {
-  type HttpAdapterListenTarget,
-} from '@fluojs/runtime/internal/http-adapter';
+import type { HttpAdapterListenTarget } from '@fluojs/runtime/internal/http-adapter';
 import {
   createWebRequestResponseFactory,
-  dispatchWebRequest,
   startWebRequestDispatch,
 } from '@fluojs/runtime/web';
 

@@ -1,5 +1,6 @@
-import { createBunTestApplication } from '../../../platform-bun/test-support/application.js';
-import { createDenoTestApplication } from '../../../platform-deno/test-support/application.js';
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureBunPlatform from '@fluojs/platform-bun';
+import * as FixtureDenoPlatform from '@fluojs/platform-deno';
 import {
   appendVaryHeader,
   Controller,
@@ -9,12 +10,12 @@ import {
   type RequestContext,
   type StaticAssetSource,
 } from '@fluojs/http';
-import { type BunServeOptions, type BunServerLike } from '@fluojs/platform-bun';
+import type { BunServeOptions, BunServerLike } from '@fluojs/platform-bun';
 import {
   bootstrapCloudflareWorkerApplication,
   type CloudflareWorkerExecutionContext,
 } from '@fluojs/platform-cloudflare-workers';
-import { type DenoServeController, type DenoServeHandler, type DenoServeOptions } from '@fluojs/platform-deno';
+import type { DenoServeController, DenoServeHandler, DenoServeOptions } from '@fluojs/platform-deno';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -639,3 +640,32 @@ registerWebRuntimeStaticAssetsPortabilitySuite('cloudflare-workers', async (root
     },
   };
 });
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type BunTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureBunPlatform.BunAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureBunPlatform.BunShutdownSignal[];
+};
+
+function createBunTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: BunTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureBunPlatform.BunHttpApplicationAdapter.create(options),
+  });
+}
+
+type DenoTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureDenoPlatform.DenoAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureDenoPlatform.DenoShutdownSignal[];
+};
+
+function createDenoTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: DenoTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureDenoPlatform.DenoHttpApplicationAdapter.create(options),
+  });
+}

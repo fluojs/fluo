@@ -43,7 +43,6 @@ import {
   createHealthModule,
   defineModule,
   FluoFactory,
-  type MultipartOptions,
 } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
@@ -51,7 +50,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  type FastifyAdapterOptions,
   FastifyHttpApplicationAdapter,
   isFastifyMultipartTooLargeError,
 } from './adapter.js';

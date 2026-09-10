@@ -1,5 +1,5 @@
 import { type DenoTestApplicationOptions, createDenoTestApplication, startDenoTestApplication } from './test-support/application.js';
-import { type DenoShutdownSignal } from './shutdown.js';
+import type { DenoShutdownSignal } from './shutdown.js';
 import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';

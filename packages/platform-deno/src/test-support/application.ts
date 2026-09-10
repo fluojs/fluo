@@ -3,10 +3,17 @@ import { FluoFactory, type CreateApplicationOptions, type ModuleType } from '@fl
 import { DenoHttpApplicationAdapter, type DenoAdapterOptions } from '../adapter.js';
 import { createDenoShutdownSignalRegistration, type DenoShutdownSignal } from '../shutdown.js';
 
+/** Application and transport options used only by package-local tests. */
 export type DenoTestApplicationOptions = Omit<CreateApplicationOptions, 'adapter'> & DenoAdapterOptions & {
   shutdownSignals?: false | readonly DenoShutdownSignal[];
 };
 
+/**
+ * Creates a test application through the canonical Factory and concrete adapter.
+ * @param rootModule Root module for the test application.
+ * @param options Application and transport configuration.
+ * @returns The initialized application without implicit listening.
+ */
 export function createDenoTestApplication(
   rootModule: ModuleType,
   options: DenoTestApplicationOptions = {},
@@ -17,6 +24,12 @@ export function createDenoTestApplication(
   });
 }
 
+/**
+ * Starts a test application with explicitly selected host shutdown registration.
+ * @param rootModule Root module for the test application.
+ * @param options Application, transport, and host signal configuration.
+ * @returns The application after listening and host registration complete.
+ */
 export async function startDenoTestApplication(
   rootModule: ModuleType,
   options: DenoTestApplicationOptions = {},

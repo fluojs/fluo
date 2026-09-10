@@ -1,5 +1,4 @@
-import type { Application, ApplicationLogger } from '@fluojs/runtime';
-import type { HttpAdapterShutdownRegistration } from '@fluojs/runtime/internal/http-adapter';
+import type { Application, ApplicationLogger, HttpAdapterShutdownRegistration } from '@fluojs/runtime';
 
 /** Signals accepted by the Node host shutdown registration. */
 export type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';

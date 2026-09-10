@@ -1,4 +1,5 @@
-import { createNodeTestApplication } from '../../platform-nodejs/test-support/application.js';
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureNodePlatform from '@fluojs/platform-nodejs';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -321,11 +322,11 @@ const supportedSocketIoAdapterScenarios: readonly SupportedSocketIoAdapterScenar
     name: 'platform-nodejs',
   },
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => FastifyHttpApplicationAdapter.create({ port, shutdownTimeoutMs }) as ReturnType<typeof NodeHttpApplicationAdapter.create>,
+    createAdapter: ({ port, shutdownTimeoutMs }) => FastifyHttpApplicationAdapter.create({ port, shutdownTimeoutMs }),
     name: 'platform-fastify',
   },
   {
-    createAdapter: ({ port, shutdownTimeoutMs }) => ExpressHttpApplicationAdapter.create({ port, shutdownTimeoutMs }) as ReturnType<typeof NodeHttpApplicationAdapter.create>,
+    createAdapter: ({ port, shutdownTimeoutMs }) => ExpressHttpApplicationAdapter.create({ port, shutdownTimeoutMs }),
     name: 'platform-express',
   },
 ];
@@ -2715,3 +2716,19 @@ describe('@fluojs/socket.io', () => {
     }
   });
 });
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type NodeTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureNodePlatform.NodeHttpAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createNodeTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: NodeTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}

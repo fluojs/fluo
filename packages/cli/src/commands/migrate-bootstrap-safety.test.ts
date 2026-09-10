@@ -67,10 +67,10 @@ void bootstrapCallback();
       /async function bootstrapCallback\(\) \{\s+const callbackApp = await NestFactory\.create\(CallbackModule\);\s+await callbackApp\.listen\(4000, \(\) => \{\s+console\.log\('listening'\);\s+\}\);\s+\}/,
     );
     expect(transformed).toContain('import { FluoFactory } from "@fluojs/runtime";');
-    expect(transformed).toContain('adapter: createExpressAdapter({');
+    expect(transformed).toContain('adapter: ExpressHttpApplicationAdapter.create({');
     expect(transformed).toMatch(/port:\s*3000/);
     expect(transformed).toContain('await safeApp.listen();');
-    expect(transformed.match(/adapter: createExpressAdapter/g)).toHaveLength(1);
+    expect(transformed.match(/adapter: ExpressHttpApplicationAdapter\.create/g)).toHaveLength(1);
     expect(report.changedFiles).toBe(1);
     expect(report.warningCount).toBe(1);
     expect(report.files).toContainEqual(

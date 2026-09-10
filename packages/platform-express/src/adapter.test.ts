@@ -44,7 +44,6 @@ import {
   createHealthModule,
   defineModule,
   FluoFactory,
-  type MultipartOptions,
 } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import * as runtimeWeb from '@fluojs/runtime/web';
@@ -58,7 +57,6 @@ import type {
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  type ExpressAdapterOptions,
   ExpressHttpApplicationAdapter,
   isExpressMultipartTooLargeError,
 } from './adapter.js';

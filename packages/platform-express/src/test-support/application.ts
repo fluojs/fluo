@@ -5,10 +5,17 @@ import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } 
 
 type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';
 
+/** Application and transport options used only by package-local tests. */
 export type ExpressTestApplicationOptions = Omit<CreateApplicationOptions, 'adapter'> & ExpressAdapterOptions & {
   shutdownSignals?: false | readonly NodeShutdownSignal[];
 };
 
+/**
+ * Creates a test application through the canonical Factory and concrete adapter.
+ * @param rootModule Root module for the test application.
+ * @param options Application and transport configuration.
+ * @returns The initialized application without implicit listening.
+ */
 export function createExpressTestApplication(
   rootModule: ModuleType,
   options: ExpressTestApplicationOptions = {},
@@ -20,6 +27,12 @@ export function createExpressTestApplication(
   });
 }
 
+/**
+ * Starts a test application with explicitly selected host shutdown registration.
+ * @param rootModule Root module for the test application.
+ * @param options Application, transport, and host signal configuration.
+ * @returns The application after listening and host registration complete.
+ */
 export async function startExpressTestApplication(
   rootModule: ModuleType,
   options: ExpressTestApplicationOptions = {},

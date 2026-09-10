@@ -1,6 +1,7 @@
-import { createExpressTestApplication } from '../../platform-express/test-support/application.js';
-import { createFastifyTestApplication } from '../../platform-fastify/test-support/application.js';
-import { createNodeTestApplication } from '../../platform-nodejs/test-support/application.js';
+import * as FixtureRuntime from '@fluojs/runtime';
+import * as FixtureExpressPlatform from '@fluojs/platform-express';
+import * as FixtureNodePlatform from '@fluojs/platform-nodejs';
+import * as FixtureFastifyPlatform from '@fluojs/platform-fastify';
 import {
   createStaticAssetsMiddleware,
   type StaticAssetSource,
@@ -19,7 +20,7 @@ type BootstrapStaticAssetsApplication = (
   rootModule: ModuleType,
   options: {
     compression: true;
-    configureFastify?: Parameters<typeof createFastifyTestApplication>[1]['configureFastify'];
+    configureFastify?: FixtureFastifyPlatform.FastifyAdapterOptions['configureFastify'];
     cors: false;
     middleware: [ReturnType<typeof createStaticAssetsMiddleware>];
     port: 0;
@@ -243,3 +244,49 @@ describe('static asset real-listener portability', () => {
     true);
   });
 });
+
+// Test-local setup uses only public APIs and remains outside shipped artifacts.
+type ExpressTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureExpressPlatform.ExpressAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createExpressTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: ExpressTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureExpressPlatform.ExpressHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+type FastifyTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureFastifyPlatform.FastifyAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createFastifyTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: FastifyTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureFastifyPlatform.FastifyHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}
+
+type NodeTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureNodePlatform.NodeHttpAdapterOptions & {
+  shutdownSignals?: false | readonly FixtureNodePlatform.NodeShutdownSignal[];
+};
+
+function createNodeTestApplication(
+  rootModule: FixtureRuntime.ModuleType,
+  options: NodeTestApplicationOptions = {},
+) {
+  return FixtureRuntime.FluoFactory.create(rootModule, {
+    ...options,
+    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create(options),
+    logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
+  });
+}

@@ -6,12 +6,19 @@ import {
 } from '@fluojs/platform-nodejs';
 
 import { FluoFactory } from '../bootstrap.js';
-import type { CreateApplicationOptions, HttpAdapterShutdownRegistration, ModuleType } from '../types.js';
+import type { CreateApplicationOptions, ModuleType } from '../types.js';
 
+/** Application and transport options used only by package-local tests. */
 export type RuntimeNodeTestApplicationOptions = Omit<CreateApplicationOptions, 'adapter'> & NodeHttpAdapterOptions & {
   shutdownSignals?: false | readonly ('SIGINT' | 'SIGTERM')[];
 };
 
+/**
+ * Creates a test application through the canonical Factory and concrete adapter.
+ * @param rootModule Root module for the test application.
+ * @param options Application and transport configuration.
+ * @returns The initialized application without implicit listening.
+ */
 export function createNodeTestApplication(
   rootModule: ModuleType,
   options: RuntimeNodeTestApplicationOptions = {},
@@ -22,6 +29,12 @@ export function createNodeTestApplication(
   });
 }
 
+/**
+ * Starts a test application with explicitly selected host shutdown registration.
+ * @param rootModule Root module for the test application.
+ * @param options Application, transport, and host signal configuration.
+ * @returns The application after listening and host registration complete.
+ */
 export async function startNodeTestApplication(
   rootModule: ModuleType,
   options: RuntimeNodeTestApplicationOptions = {},
@@ -30,7 +43,7 @@ export async function startNodeTestApplication(
     ...options,
     shutdownRegistration: options.shutdownSignals === false
       ? undefined
-      : createNodeShutdownSignalRegistration(options.shutdownSignals) as unknown as HttpAdapterShutdownRegistration,
+      : createNodeShutdownSignalRegistration(options.shutdownSignals),
   });
   await app.listen();
   return app;

@@ -4,8 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as platform from './index.js';
 import { createBunShutdownSignalRegistration } from './shutdown.js';
 
+const originalExitCode = process.exitCode;
+
 afterEach(() => {
   vi.restoreAllMocks();
+  process.exitCode = originalExitCode;
 });
 
 function createLogger(): ApplicationLogger {
@@ -42,6 +45,7 @@ describe('Bun host shutdown registration', () => {
     } as unknown as Application;
 
     const unregister = createBunShutdownSignalRegistration(['SIGINT', 'SIGTERM'])(app, createLogger());
+    if (typeof unregister !== 'function') throw new TypeError('Expected Bun signal cleanup.');
     expect(bindings).toHaveLength(2);
     bindings.get('SIGTERM')?.();
     await closeObserved;
@@ -73,17 +77,18 @@ describe('Bun host shutdown registration', () => {
     const exit = vi.spyOn(process, 'exit');
     let resolveError!: () => void;
     const errorLogged = new Promise<void>((resolve) => { resolveError = resolve; });
+    const closeError = new Error('close failed');
     const logger: ApplicationLogger = {
       debug() {},
-      error(message) {
-        expect(message).toContain('Failed to shut down the application cleanly.');
+      error(_message, error) {
+        expect(error).toBe(closeError);
         resolveError();
       },
       log() {},
       warn() {},
     };
     const app = {
-      async close() { throw new Error('close failed'); },
+      async close() { throw closeError; },
       state: 'bootstrapped',
     } as unknown as Application;
 

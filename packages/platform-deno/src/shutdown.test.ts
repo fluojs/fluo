@@ -49,6 +49,7 @@ describe('Deno host shutdown registration', () => {
       app,
       createLogger(),
     );
+    if (typeof unregister !== 'function') throw new TypeError('Expected Deno signal cleanup.');
     expect(addSignalListener).toHaveBeenCalledTimes(2);
     bindings.get('SIGTERM')?.();
     await closeObserved;
@@ -90,17 +91,18 @@ describe('Deno host shutdown registration', () => {
     });
     let resolveError!: () => void;
     const errorLogged = new Promise<void>((resolve) => { resolveError = resolve; });
+    const closeError = new Error('close failed');
     const logger: ApplicationLogger = {
       debug() {},
-      error(message) {
-        expect(message).toContain('Failed to shut down the application cleanly.');
+      error(_message, error) {
+        expect(error).toBe(closeError);
         resolveError();
       },
       log() {},
       warn() {},
     };
     const app = {
-      async close() { throw new Error('close failed'); },
+      async close() { throw closeError; },
       state: 'bootstrapped',
     } as unknown as Application;
 

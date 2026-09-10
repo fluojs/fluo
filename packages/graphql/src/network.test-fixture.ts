@@ -8,6 +8,10 @@ type GraphqlTestApplication = Awaited<ReturnType<typeof createNodeTestApplicatio
 type GraphqlTestApplications = Map<number, GraphqlTestApplication | undefined>;
 type Closeable = { close: () => Promise<void> };
 
+/**
+ * Owns GraphQL test applications and maps logical port tokens to bound ports.
+ * @returns Application creation, port-token allocation, and bound-port resolution helpers.
+ */
 export function createGraphqlNetworkFixture(): {
   readonly bootstrapNodeApplication: (
     ...args: Parameters<typeof createNodeTestApplication>
@@ -53,6 +57,11 @@ export function createGraphqlNetworkFixture(): {
   };
 }
 
+/**
+ * Closes every owned application while retaining failed owners for cleanup evidence.
+ * @param applications Applications indexed by their logical port tokens.
+ * @returns Completion after every close settles, or an aggregate of close failures.
+ */
 export async function closeGraphqlTestApplications<T extends Closeable>(
   applications: Map<number, T | undefined>,
 ): Promise<void> {
@@ -76,6 +85,11 @@ export async function closeGraphqlTestApplications<T extends Closeable>(
   }
 }
 
+/**
+ * Resolves the native port bound by a test application's Node adapter.
+ * @param app Application exposing its registered HTTP adapter.
+ * @returns The numeric port of the listening server.
+ */
 export async function getBoundPort(app: { get<T>(token: unknown): Promise<T> }): Promise<number> {
   const adapter = await app.get<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
 

@@ -1,5 +1,5 @@
 import { type NodeTestApplicationOptions, createNodeTestApplication, startNodeTestApplication } from './test-support/application.js';
-import { type NodeShutdownSignal } from './node/internal-node-shutdown.js';
+import type { NodeShutdownSignal } from './node/internal-node-shutdown.js';
 import { readFileSync } from 'node:fs';
 import { type ServerOptions as HttpServerOptions, type IncomingHttpHeaders, request as requestHttp } from 'node:http';
 import type { ServerOptions as HttpsServerOptions } from 'node:https';
