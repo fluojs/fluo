@@ -766,7 +766,9 @@ class FluoApplication implements Application {
     if (!this.startupPromise) {
       // Publish the transition before adapter or host callbacks can re-enter.
       // Close waits only for raw startup, never for startup's failure cleanup.
-      this.listenPromise = Promise.resolve().then(() => this.startListening());
+      this.listenPromise = Promise.resolve().then(() => this.startListening()).finally(() => {
+        this.listenPromise = undefined;
+      });
       this.startupPromise = this.listenPromise.catch(async (error: unknown) => {
         try {
           await this.close('bootstrap-failed');
@@ -851,7 +853,13 @@ class FluoApplication implements Application {
 
     this.closeStarted = true;
 
-    this.closingPromise = Promise.resolve().then(async () => {
+    let resolveClose: () => void = () => undefined;
+    let rejectClose: (reason?: unknown) => void = () => undefined;
+    this.closingPromise = new Promise<void>((resolve, reject) => {
+      resolveClose = resolve;
+      rejectClose = reject;
+    });
+    void (async () => {
       const errors: unknown[] = [];
 
       if (this.listenPromise) {
@@ -899,7 +907,7 @@ class FluoApplication implements Application {
       if (this.signalCleanupErrors.length > 0) {
         throw createLifecycleCloseError(this.signalCleanupErrors);
       }
-    });
+    })().then(resolveClose, rejectClose);
 
     try {
       await this.closingPromise;
