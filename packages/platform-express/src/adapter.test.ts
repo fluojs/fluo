@@ -54,6 +54,7 @@ import type {
   Response as ExpressResponse,
   RequestHandler,
 } from 'express';
+import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -535,37 +536,53 @@ describe('@fluojs/platform-express', () => {
     expect(migrationGuide).toContain('explicit `nativeMiddleware` option');
   });
 
-  it('separates shared bootstrap options from run-only signal options in both package READMEs', () => {
-    const packageReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-    const packageReadmeKo = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
-    const sharedOptionNames = [
-      'cors',
-      'globalPrefix',
-      'globalPrefixExclude',
-      'middleware',
-      'multipart',
-      'nativeMiddleware',
-      'securityHeaders',
-      'logger',
-    ] as const;
-
-    for (const readme of [packageReadme, packageReadmeKo]) {
-      const lines = readme.split('\n');
-      const sharedOptionsLines = lines.filter(
-        (line) => line.includes('`BootstrapExpressApplicationOptions`') && line.includes('`RunExpressApplicationOptions`') && line.includes('`cors`') && line.includes('`logger`'),
-      );
-      const runOnlyOptionsLines = lines.filter(
-        (line) => line.includes('`RunExpressApplicationOptions`') && line.includes('`forceExitTimeoutMs`') && line.includes('`shutdownSignals`'),
-      );
-
-      expect(sharedOptionsLines).toHaveLength(1);
-      for (const optionName of sharedOptionNames) {
-        expect(sharedOptionsLines[0]).toContain(`\`${optionName}\``);
+  it('separates Factory, adapter and host options in both package README examples', () => {
+    const applicationOptions = new Set(['cors', 'globalPrefix', 'globalPrefixExclude', 'middleware', 'securityHeaders', 'logger', 'forceExitTimeoutMs', 'shutdownRegistration', 'shutdownSignals']);
+    const transportOptions = new Set(['port', 'host', 'https', 'rawBody', 'maxBodySize', 'multipart', 'nativeMiddleware', 'shutdownTimeoutMs', 'retryDelayMs', 'retryLimit', 'shutdownSignals']);
+    const inspectOptions = (readme: string) => {
+      let adapterCalls = 0;
+      let factoryCalls = 0;
+      const violations: string[] = [];
+      for (const block of readme.matchAll(/```(?:ts|typescript)\n([\s\S]*?)\n```/g)) {
+        const source = ts.createSourceFile('readme.ts', block[1]!, ts.ScriptTarget.Latest, true);
+        const visit = (node: ts.Node): void => {
+          if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+            const receiver = node.expression.expression.getText(source);
+            if (node.expression.name.text === 'create' && (receiver === 'ExpressHttpApplicationAdapter' || receiver === 'FluoFactory')) {
+              const isAdapter = receiver === 'ExpressHttpApplicationAdapter';
+              if (isAdapter) {
+                adapterCalls += 1;
+                if (node.arguments.length > 1) violations.push('adapter-arguments');
+              } else { factoryCalls += 1; }
+              const options = node.arguments[isAdapter ? 0 : 1];
+              if (options && ts.isObjectLiteralExpression(options)) {
+                for (const property of options.properties) {
+                  if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) {
+                    const name = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : property.name.getText(source);
+                    if ((isAdapter ? applicationOptions : transportOptions).has(name)) violations.push(`${receiver}:${name}`);
+                  }
+                }
+              }
+            }
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(source);
       }
-      expect(sharedOptionsLines[0]).not.toContain('`forceExitTimeoutMs`');
-      expect(sharedOptionsLines[0]).not.toContain('`shutdownSignals`');
-      expect(runOnlyOptionsLines).toHaveLength(1);
-      expect(runOnlyOptionsLines[0]).not.toContain('`BootstrapExpressApplicationOptions`');
+      return { adapterCalls, factoryCalls, violations };
+    };
+    for (const locale of ['README.md', 'README.ko.md']) {
+      const readme = readFileSync(new URL(`../${locale}`, import.meta.url), 'utf8');
+      const valid = inspectOptions(readme);
+      expect(valid.adapterCalls).toBeGreaterThan(0);
+      expect(valid.factoryCalls).toBeGreaterThan(0);
+      expect(valid.violations).toEqual([]);
+      const misplacedLogger = readme.replace('ExpressHttpApplicationAdapter.create({', 'ExpressHttpApplicationAdapter.create({ logger: undefined,');
+      expect(misplacedLogger).not.toBe(readme);
+      expect(inspectOptions(misplacedLogger).violations).toContain('ExpressHttpApplicationAdapter:logger');
+      const misplacedMultipart = readme.replace('FluoFactory.create(AppModule, {', 'FluoFactory.create(AppModule, { multipart: {},');
+      expect(misplacedMultipart).not.toBe(readme);
+      expect(inspectOptions(misplacedMultipart).violations).toContain('FluoFactory:multipart');
     }
   });
 
