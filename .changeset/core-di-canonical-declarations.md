@@ -1,6 +1,6 @@
 ---
-"@fluojs/core": major
-"@fluojs/di": major
+"@fluojs/core": patch
+"@fluojs/di": patch
 ---
 
 Consolidate Core and DI declarations and migrate first-party consumers and generated starters.
