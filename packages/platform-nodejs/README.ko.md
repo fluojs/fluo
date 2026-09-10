@@ -150,7 +150,7 @@ await app.close();
 - `app.listen()`의 retry는 `retryLimit`/`retryDelayMs`를 따릅니다. Adapter close는 bounded drain 전에 idle keep-alive connection을 닫습니다.
 - `NodeShutdownSignal`: Node shutdown callback이 지원하는 `SIGINT`와 `SIGTERM` 타입입니다.
 - `NodeHttpApplicationAdapter`: `create(...)`의 구체적인 반환 타입이자 기존 DI class token입니다. `instanceof`, 상속, public positional constructor 및 instance `listen`/`close`는 유지됩니다.
-- Node bootstrap/run, logger, signal, filesystem export는 유지됩니다. 삭제된 adapter factory와 타입 별칭은 migration guide를 참고하세요.
+- Node logger, signal registration, filesystem export는 유지됩니다. Bootstrap/run export, 중복 adapter factory, 해당 타입 별칭은 제거되므로 migration guide를 따르세요.
 - `@fluojs/platform-nodejs/internal`: `@fluojs/runtime/internal-node`를 대체하는 first-party Node adapter integration seam이며 저수준 compression 및 request/response helper를 포함합니다.
 
 ## Multipart 스트리밍

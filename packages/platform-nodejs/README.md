@@ -150,7 +150,7 @@ The same regression targets also cover the package-specific public surface, cano
 - `app.listen()` retries honor `retryLimit`/`retryDelayMs`. Adapter close stops idle keep-alive connections before bounded drain.
 - `NodeShutdownSignal`: The `SIGINT` and `SIGTERM` names accepted by the Node shutdown callback.
 - `NodeHttpApplicationAdapter`: The concrete `create(...)` return type and existing DI class token. `instanceof`, inheritance, the public positional constructor, and instance `listen`/`close` remain supported.
-- Node bootstrap/run, logger, signal, and filesystem exports remain. See the migration guide for the removed adapter factories and type aliases.
+- Node logger, signal registration, and filesystem exports remain. Bootstrap/run exports, duplicate adapter factories, and their type aliases are removed; follow the migration guide.
 - `@fluojs/platform-nodejs/internal`: First-party Node adapter integration seam replacing `@fluojs/runtime/internal-node`; it includes lower-level compression and request/response helpers.
 
 ## Multipart streaming
