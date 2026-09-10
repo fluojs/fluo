@@ -112,6 +112,7 @@ describe('React SSR + Vite scaffold', () => {
       'babel.config.cjs',
       'package.json',
       'playwright.config.ts',
+      'public/favicon.svg',
       'src/app.test.ts',
       'src/app.ts',
       'src/entry-client.tsx',
@@ -140,6 +141,8 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/entry-server.tsx']).toContain('const renderPage: ReactPageRenderer');
     expect(snapshot['src/entry-server.tsx']).toContain('createReactServerEntry(');
     expect(snapshot['src/react-app.tsx']).toContain('ReactClientRouterProvider');
+    expect(snapshot['src/react-app.tsx']).toContain("href='/assets/favicon.svg'");
+    expect(snapshot['public/favicon.svg']).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
     expect(snapshot['src/page.tsx']).toContain("<Link href='/products/sku-84?preview=false'>");
     expect(snapshot['src/page.tsx']).toContain("router.push('/products/sku-126?preview=true')");
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");

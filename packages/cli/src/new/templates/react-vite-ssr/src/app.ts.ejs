@@ -22,7 +22,7 @@ import { createElement, type ReactElement } from 'react';
 
 import { ProductPage } from './page';
 
-const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
+const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
   readonly clientDirectory: URL;
@@ -69,7 +69,9 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
         const body = await readFile(new URL(input.file, options.clientDirectory));
         context.response.setHeader(
           'Content-Type',
-          input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
+          input.file.endsWith('.svg')
+            ? 'image/svg+xml'
+            : input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
         );
         return body;
       } catch (error) {
