@@ -1,11 +1,47 @@
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
+import { cp, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import ts from 'typescript';
-import { expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 
-const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+import { resolveWorkspaceBuildOrder } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
+
+const execFileAsync = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
+let fixtureRoot: string;
+let packageRoot: string;
+
+afterAll(async () => {
+  if (fixtureRoot) await rm(fixtureRoot, { force: true, recursive: true });
+});
+
+beforeAll(async () => {
+  fixtureRoot = await realpath(await mkdtemp(join(tmpdir(), 'fluo-di-declarations-')));
+  packageRoot = join(fixtureRoot, 'packages/di');
+  const buildClosureScript = 'tooling/scripts/run-workspace-build-closure.mjs';
+  const packages = resolveWorkspaceBuildOrder('@fluojs/di', repositoryRoot);
+  for (const entry of [
+    'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
+    'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
+    'tooling/scripts/clean-dist.mjs', buildClosureScript,
+    'packages/testing/src/babel-decorators-plugin.ts',
+    ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
+  ]) {
+    await cp(join(repositoryRoot, entry), join(fixtureRoot, entry), {
+      recursive: true,
+      verbatimSymlinks: true,
+      filter: (source) => !['dist', '.vite', '.vite-temp', '.omo'].includes(basename(source)),
+    });
+  }
+  await symlink(join(repositoryRoot, 'node_modules'), join(fixtureRoot, 'node_modules'), 'dir');
+  await execFileAsync(process.execPath, [
+    join(fixtureRoot, buildClosureScript), '@fluojs/di',
+  ], { cwd: fixtureRoot, env: process.env });
+}, 300_000);
 
 it('removes compatibility names from the complete emitted declaration export graph', () => {
   const entrypoints = [
@@ -14,7 +50,7 @@ it('removes compatibility names from the complete emitted declaration export gra
     'core/dist/request-pipeline.d.ts',
     'di/dist/index.d.ts',
     'di/dist/internal.d.ts',
-  ].map((path) => fileURLToPath(new URL(`../../${path}`, import.meta.url)));
+  ].map((path) => join(fixtureRoot, 'packages', path));
   const program = ts.createProgram(entrypoints, {
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -43,7 +79,7 @@ it('compiles canonical consumers against emitted public declarations', () => {
     '--noEmit', '--strict', '--skipLibCheck', '--target', 'ES2022',
     '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--ignoreConfig',
     'packages/di/typecheck/canonical-injection.ts',
-  ], { cwd: repositoryRoot, encoding: 'utf8' });
+  ], { cwd: fixtureRoot, encoding: 'utf8' });
 
   expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
 });
