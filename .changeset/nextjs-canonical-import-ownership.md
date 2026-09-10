@@ -1,5 +1,5 @@
 ---
-"@fluojs/platform-nextjs": major
+"@fluojs/platform-nextjs": patch
 ---
 
 Consolidate Next adapter creation into root `NextHttpApplicationAdapter.create(options)`
