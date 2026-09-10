@@ -47,7 +47,7 @@ examples/minimal/
 
 This is a `repository-example` with `workspace:*` dependencies, not a registry-based `generated-app`. The generated `src/app.ts` keeps `ConfigModule`, `GreetingModule`, and `HealthModule.forRoot()`; do not overwrite it with this example's root module while retaining tests that expect greeting. Generated lifecycle scripts use `fluo dev`, `fluo build`, and `fluo start`, not scripts supplied by this example.
 
-This example is intentionally smaller than the full `fluo new` HTTP starter output. The CLI starter now emits a `src/greeting/` feature slice with controller/service/repository files, unit tests, slice tests, `src/app.test.ts`, `test/app.e2e.test.ts`, and build/test tooling config. If you want that complete starter experience, run either the default command or the explicit Node.js + Fastify HTTP contract:
+This example uses the same HTTP creation path as the default and explicit HTTP v2 starter, but is intentionally smaller than the full `fluo new` output. The CLI starter now emits a `src/greeting/` feature slice with controller/service/repository files, unit tests, slice tests, `src/app.test.ts`, `test/app.e2e.test.ts`, and build/test tooling config. If you want that complete starter experience, run either the default command or the explicit Node.js + Fastify HTTP contract:
 
 ```sh
 pnpm add -g @fluojs/cli

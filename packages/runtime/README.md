@@ -348,7 +348,8 @@ create an HTTP dispatcher, so they do not use this option. See the
 
 ### Optional HTML Error Representations
 
-`FluoFactory.create(...)` accepts `errorRepresentation` and pass it
+`FluoFactory.create(...)` accepts `CreateApplicationOptions.errorRepresentation`,
+inherited from `BootstrapApplicationOptions.errorRepresentation`, and passes it
 unchanged to the HTTP dispatcher. Register an application-owned provider when negotiated browser
 requests should receive complete HTML error or not-found documents while JSON remains canonical:
 

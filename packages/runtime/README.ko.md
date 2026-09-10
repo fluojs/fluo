@@ -347,7 +347,8 @@ canonical `Vary: Accept`를 작성합니다. Standalone application context는 H
 
 ### Optional HTML Error Representations
 
-`FluoFactory.create(...)`는 `errorRepresentation`을 받아 HTTP dispatcher에
+`FluoFactory.create(...)`는 `BootstrapApplicationOptions.errorRepresentation`에서
+상속한 `CreateApplicationOptions.errorRepresentation`을 받아 HTTP dispatcher에
 변경 없이 전달합니다. JSON을 canonical representation으로 유지하면서 negotiated browser request에 complete
 HTML error/not-found document를 제공하려면 application-owned provider를 등록하세요.
 

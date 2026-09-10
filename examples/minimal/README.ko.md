@@ -47,7 +47,7 @@ examples/minimal/
 
 이 예제는 `workspace:*` 의존성을 사용하는 `repository-example`이며 registry 기반 `generated-app`이 아닙니다. 생성된 `src/app.ts`는 `ConfigModule`, `GreetingModule`, `HealthModule.forRoot()`를 유지하므로 greeting을 기대하는 테스트를 남겨 둔 채 이 예제의 루트 모듈로 덮어쓰지 않습니다. 생성 lifecycle script는 이 예제의 script가 아니라 `fluo dev`, `fluo build`, `fluo start`를 사용합니다.
 
-이 예제는 전체 `fluo new` HTTP 스타터 출력보다 의도적으로 작습니다. 현재 CLI starter는 controller/service/repository 파일이 들어 있는 `src/greeting/` feature slice, unit test, slice test, `src/app.test.ts`, `test/app.e2e.test.ts`, build/test tooling config를 생성합니다. 그 전체 스타터 경험이 필요하면 기본 명령 또는 명시적 Node.js + Fastify HTTP 계약을 사용하세요.
+이 예제는 기본/명시적 HTTP v2 스타터와 같은 HTTP 생성 경로를 사용하지만, 전체 `fluo new` 출력보다 의도적으로 작습니다. 현재 CLI starter는 controller/service/repository 파일이 들어 있는 `src/greeting/` feature slice, unit test, slice test, `src/app.test.ts`, `test/app.e2e.test.ts`, build/test tooling config를 생성합니다. 그 전체 스타터 경험이 필요하면 기본 명령 또는 명시적 Node.js + Fastify HTTP 계약을 사용하세요.
 
 ```sh
 pnpm add -g @fluojs/cli
