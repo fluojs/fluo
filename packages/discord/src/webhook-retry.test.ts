@@ -9,6 +9,7 @@ describe('Discord webhook retries', () => {
     vi.useFakeTimers();
 
     try {
+      const rawResponseBody = '{ "channel_id": "chan-1", "guild_id": "guild-1", "id": "msg-retried" }';
       const fetchLike = vi
         .fn<DiscordFetchLike>()
         .mockResolvedValueOnce({
@@ -29,7 +30,7 @@ describe('Discord webhook retries', () => {
           ok: true,
           status: 200,
           async text() {
-            return JSON.stringify({ id: 'msg-retried' });
+            return rawResponseBody;
           },
         });
       const transport = createDiscordWebhookTransport({
@@ -38,7 +39,7 @@ describe('Discord webhook retries', () => {
       });
 
       const pending = transport.send(
-        { attachments: [], components: [], content: 'Retry HTTP backoff boundaries', embeds: [] },
+        { attachments: [], components: [], content: 'Retry HTTP backoff boundaries', embeds: [], threadId: 'thread-ops' },
         {},
       );
 
@@ -59,7 +60,9 @@ describe('Discord webhook retries', () => {
       await expect(pending).resolves.toMatchObject({
         messageId: 'msg-retried',
         ok: true,
+        response: rawResponseBody,
         statusCode: 200,
+        threadId: 'thread-ops',
       });
       expect(fetchLike).toHaveBeenCalledTimes(3);
     } finally {
@@ -337,7 +340,7 @@ describe('Discord webhook retries', () => {
           ok: true,
           status: 200,
           async text() {
-            return JSON.stringify({ id: `msg-${String(status)}` });
+            return JSON.stringify({ id: `msg-${String(status)}`, thread_id: 'thread-ops' });
           },
         });
       const transport = createDiscordWebhookTransport({
@@ -346,13 +349,14 @@ describe('Discord webhook retries', () => {
       });
 
       const pending = transport.send(
-        { attachments: [], components: [], content: `Retry HTTP ${String(status)}`, embeds: [] },
+        { attachments: [], components: [], content: `Retry HTTP ${String(status)}`, embeds: [], threadId: 'thread-ops' },
         {},
       );
       const expectation = expect(pending).resolves.toMatchObject({
         messageId: `msg-${String(status)}`,
         ok: true,
         statusCode: 200,
+        threadId: 'thread-ops',
       });
       await vi.runAllTimersAsync();
 
@@ -363,51 +367,56 @@ describe('Discord webhook retries', () => {
     }
   });
 
-  it('retries transport-level exceptions before succeeding', async () => {
+  it.each([1, 2])('retries %i transport-level exceptions before succeeding', async (failureCount) => {
     vi.useFakeTimers();
 
     try {
-      const fetchLike = vi
-        .fn<DiscordFetchLike>()
-        .mockRejectedValueOnce(new Error('provider response contained a secret'))
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          async text() {
-            return JSON.stringify({ id: 'msg-retried' });
-          },
-        });
+      const fetchLike = vi.fn<DiscordFetchLike>();
+      for (let attempt = 0; attempt < failureCount; attempt += 1) {
+        fetchLike.mockRejectedValueOnce(new Error('provider response contained a secret'));
+      }
+      fetchLike.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ channel_id: 'chan-1', guild_id: 'guild-1', id: 'msg-retried' });
+        },
+      });
       const transport = createDiscordWebhookTransport({
         fetch: fetchLike,
         webhookUrl: 'https://discord.com/api/webhooks/123/abc',
       });
 
       const pending = transport.send(
-        { attachments: [], components: [], content: 'Retry transport failure', embeds: [] },
+        { attachments: [], components: [], content: 'Retry transport failure', embeds: [], threadId: 'thread-ops' },
         {},
       );
       const expectation = expect(pending).resolves.toMatchObject({
         messageId: 'msg-retried',
         ok: true,
         statusCode: 200,
+        threadId: 'thread-ops',
       });
       await vi.runAllTimersAsync();
 
       await expectation;
-      expect(fetchLike).toHaveBeenCalledTimes(2);
+      expect(fetchLike).toHaveBeenCalledTimes(failureCount + 1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('surfaces a sanitized status error after transient retries are exhausted', async () => {
+  it.each([
+    { status: 500, statusText: 'Internal Server Error' },
+    { status: 503, statusText: 'Service Unavailable' },
+  ])('surfaces a sanitized $status error after transient retries are exhausted', async ({ status, statusText }) => {
     vi.useFakeTimers();
 
     try {
       const fetchLike = vi.fn<DiscordFetchLike>().mockResolvedValue({
         ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
+        status,
+        statusText,
         async text() {
           return '{"token":"secret","detail":"provider unavailable"}';
         },
@@ -418,12 +427,12 @@ describe('Discord webhook retries', () => {
       });
 
       const pending = transport.send(
-        { attachments: [], components: [], content: 'Retry exhausted status', embeds: [] },
+        { attachments: [], components: [], content: 'Retry exhausted status', embeds: [], threadId: 'thread-ops' },
         {},
       );
       const expectation = expect(pending).rejects.toThrowError(
         new DiscordTransportError(
-          'Discord webhook delivery failed with status 503 Service Unavailable after 3 attempt(s). Upstream response body was omitted from the caller-visible error.',
+          `Discord webhook delivery failed with status ${status} ${statusText} after 3 attempt(s). Upstream response body was omitted from the caller-visible error.`,
         ),
       );
       await vi.runAllTimersAsync();
@@ -450,7 +459,7 @@ describe('Discord webhook retries', () => {
     });
 
     await expect(
-      transport.send({ attachments: [], components: [], content: 'Permanent failure', embeds: [] }, {}),
+      transport.send({ attachments: [], components: [], content: 'Permanent failure', embeds: [], threadId: 'thread-ops' }, {}),
     ).rejects.toThrowError(
       new DiscordTransportError(
         'Discord webhook delivery failed with status 400 Bad Request after 1 attempt(s). Upstream response body was omitted from the caller-visible error.',
