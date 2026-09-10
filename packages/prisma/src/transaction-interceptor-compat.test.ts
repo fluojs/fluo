@@ -8,7 +8,7 @@ import {
   type InterceptorContext,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
@@ -72,7 +72,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
       controllers: [CompatibilityController],
       imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const response = createResponse();
 
@@ -175,7 +175,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
       ],
       providers: [CallerProbeInterceptor],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(
       PrismaService<typeof client, typeof transactionClient, { signal?: AbortSignal }>,
     );

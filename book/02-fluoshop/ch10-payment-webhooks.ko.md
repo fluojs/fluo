@@ -31,15 +31,22 @@
 Fluo의 `FrameworkRequest.rawBody`는 선택적인 `Uint8Array`다. HTTP 패키지가 모든 어댑터에서 원문을 자동 수집한다는 뜻은 아니다. Node.js 24의 Fastify 경로에서는 `rawBody: true`를 켜야 한다. 다음은 기존 `src/main.ts`의 **부트스트랩 옵션 변경 부분**이다. 기존 AppModule과 설정에서 읽은 host·port·수명주기 정책을 유지하면서 해당 옵션을 병합한다.
 
 ```ts
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 65_536,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 65_536,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 크기 제한은 여기서는 전체 어댑터에 적용된다. 블로그 업로드 정책이 더 큰 본문을 허용한다면 이 숫자를 전역으로 덮어쓰지 말고 기존 제한을 유지하면서 웹훅의 별도 ingress 제한과 검증기 제한을 적용한다. 컨트롤러 안의 길이 검사는 이미 수신한 본문에 대한 검사이므로 수신 단계의 메모리 제한을 대신하지 못한다. Fastify의 multipart 요청에는 raw-body capture가 적용되지 않으므로 이 입구는 JSON만 받는다.

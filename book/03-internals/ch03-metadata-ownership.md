@@ -29,7 +29,7 @@ The following `src/metadata-lab.ts` is a **complete, isolated experiment file**.
 ```ts
 import assert from 'node:assert/strict';
 import { Inject, Module, getModuleMetadata } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 interface OrderViewOptions {
   label: string;
@@ -44,7 +44,7 @@ const descriptor = {
 
 @Inject(ORDER_VIEW_OPTIONS)
 class OrdersService {
-  constructor(private readonly view: OrderViewOptions) {}
+  constructor(private readonly view: OrderViewOptions) { }
 
   labelFor(id: string) {
     return `${this.view.label}: ${id}`;
@@ -57,9 +57,9 @@ const declarations = [descriptor, OrdersService];
   providers: declarations,
   exports: [OrdersService],
 })
-class OrdersModule {}
+class OrdersModule { }
 
-class ChildOrdersModule extends OrdersModule {}
+class ChildOrdersModule extends OrdersModule { }
 
 const snapshot = getModuleMetadata(OrdersModule);
 assert.ok(snapshot);
@@ -80,7 +80,7 @@ assert.equal(snapshot.providers?.length, 2);
 assert.equal(stored.useValue, options);
 assert.equal(getModuleMetadata(ChildOrdersModule), undefined);
 
-const app = await fluoFactory.createApplicationContext(OrdersModule);
+const app = await FluoFactory.createApplicationContext(OrdersModule);
 try {
   const orders = await app.get(OrdersService);
   assert.equal(orders.labelFor('order-1001'), 'Order summary: order-1001');

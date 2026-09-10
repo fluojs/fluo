@@ -2,42 +2,47 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./bootstrap-paths.ko.md"><kbd>한국어</kbd></a></p>
 
-This page owns the bootstrap recipe selection for the current checkout. The default CLI application is Node.js + Fastify and uses `runFastifyApplication`, not a textual substitution with Factory + adapter + listen. Node hosts must satisfy `>=24.0.0 <27`; other runtime/platform combinations follow the [starter support matrix](../reference/fluo-new-support-matrix.md).
+This page owns HTTP application creation for the current checkout: `FluoFactory.create(AppModule, { adapter })` → `app.listen()` → `app.close()`. The default CLI application remains Node.js + Fastify. Node hosts must satisfy `>=24.0.0 <27`; other runtime/platform combinations follow the [starter support matrix](../reference/fluo-new-support-matrix.md). Follow the [HTTP Factory migration guide](./migrate-http-factory.md) for removed imports and changed defaults.
 
 | Public entry point | Choose it when | Completion and ownership |
 | --- | --- | --- |
-| `runFastifyApplication` from `@fluojs/platform-fastify` | Running the default Node/Fastify application | Resolves with the application after initialization, listen, and shutdown registration. Do not listen a second time. |
-| `bootstrapFastifyApplication` from `@fluojs/platform-fastify` | Configuring a Fastify application before activation | Returns the initialized application without listening or registering Node signals; the caller owns later listen and shutdown registration. |
-| `FluoFactory.create` from `@fluojs/runtime` + `createFastifyAdapter` from `@fluojs/platform-fastify` + `app.listen()` | Explicit low-level composition | Shares runtime initialization, but the caller composes middleware and owns post-creation failure handling and signals. Factory has no public logger option and is not automatically equivalent to the run helper. |
+| `FluoFactory.create` from `@fluojs/runtime` with an adapter | Creating any HTTP application shell | Returns after module/lifecycle/dispatcher initialization without listening. Factory owns middleware composition and failure cleanup. Pass `logger` and a host-owned `shutdownRegistration` explicitly when needed. |
 | `FluoFactory.createApplicationContext` from `@fluojs/runtime` | DI and lifecycle work without HTTP | Returns an application context without an HTTP listener; the caller closes it. |
 | Workers/Next.js host-owned entry points | Connecting Fluo to a host request dispatcher | Activation does not necessarily bind a socket. The host retains request and shutdown ownership; follow the [Workers](../../packages/platform-cloudflare-workers/README.md) or [Next.js](../../packages/platform-nextjs/README.md) contract. |
 
-`fluoFactory` is an alias of `FluoFactory`, not a different runtime model.
+`fluoFactory` and `bootstrapApplication` are removed from all runtime entrypoints. Existing platform bootstrap/run helpers still call the canonical Factory internally so consumers awaiting their host-specific migration continue working. They are not a second HTTP creation implementation. Application contexts and microservices remain distinct capabilities.
 
 ### Default Node/Fastify recipe
 
 This is the CLI-generated `src/main.ts` shape. It requires the generated `src/app.ts`, its registered config/greeting/health modules, installed registry dependencies, and the generated decorator build/test configuration:
 
 ```ts
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';
 
 const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
-await runFastifyApplication(AppModule, { port });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
-Both Fastify helpers create the adapter and compose middleware in this order: configured CORS, configured global prefix (with `globalPrefixExclude`), security headers, then caller middleware. Security headers are enabled unless `securityHeaders: false`; CORS and a prefix are not enabled when omitted. Both select `options.logger` or the Node framework console logger. `FluoFactory.create` uses the runtime's transport-neutral default logger and has no public logger option: [`CreateApplicationOptions`](../../packages/runtime/src/types.ts) explicitly omits `logger`. Native Fastify logging remains disabled.
+Factory composes configured CORS, configured global prefix (with `globalPrefixExclude`), security headers, then caller middleware. Module middleware follows route matching. Security headers are enabled unless `securityHeaders: false`; CORS and a prefix are disabled when omitted. The caller's middleware array is copied, not mutated. Factory selects `options.logger` or the transport-neutral console logger. The Node recipe explicitly selects the same Node logger previously used by the run helper. Native Fastify logging remains disabled.
 
-For a custom `ApplicationLogger`, use `bootstrapApplication({ rootModule, adapter, logger })` from `@fluojs/runtime`, or the `logger` option on `bootstrapFastifyApplication` / `runFastifyApplication`.
+Supply a custom `ApplicationLogger` through `FluoFactory.create(AppModule, { adapter, logger })`; the same object is injectable through `APPLICATION_LOGGER`. `app.get(publicToken<T>(...))` infers `Promise<T>`, and class tokens preserve class identity. Use `app.dispatch(...)` for ordinary programmatic HTTP dispatch: its shutdown admission gate is not provided by direct `app.dispatcher.dispatch(...)` or `app.container.resolve(...)` access.
 
-The run helper additionally listens, logs the listen target, and registers `SIGINT`/`SIGTERM` by default. `shutdownSignals: false` leaves signals to the host; an explicit signal list replaces the defaults. On listen/startup logging failure it attempts `app.close('bootstrap-failed')` unless already closed. On shutdown-registration failure it also attempts that close. Cleanup failures are logged while the original failure is rethrown. Its returned `app.close()` unregisters signals once before runtime close, still attempts close if unregistering throws, and reports both errors with `AggregateError` if both fail. Factory and the bootstrap helper still share `bootstrapApplication` initialization-failure cleanup; they do not add this run-helper wrapper around a later caller-owned listen.
+Omitting `shutdownRegistration` installs no Node signals. The Node callback above registers `SIGINT`/`SIGTERM` after listen; pass `false` or an explicit signal list to change that selection. Its default `forceExitTimeoutMs` is `30_000`. Close attempts signal unregistration once before runtime teardown, and concurrent closes share the result. An unregistration failure is retained for later close calls and aggregates with any runtime teardown failure. Once runtime resources finish closing, `state` is `closed` even if signal unregistration failed.
 
 ### Environment and evaluation prerequisites
 
-Initialization cleanup covers acquired runtime resources, lifecycle instances, and the container; it is not a promise to close the HTTP adapter on every initialization failure. If signal registration throws after partially installing handlers, the run helper has no returned unregister callback to roll those registrations back. Signal-driven timeout/failure is reported through logs and `process.exitCode`; final process termination remains host-owned. See the [existing lifecycle contract](../architecture/lifecycle-and-shutdown.md).
+Factory creation failure closes acquired runtime resources, lifecycle instances, the supplied adapter, and the container. Readiness, listen, startup logging, or shutdown-registration failures trigger `app.close('bootstrap-failed')` and preserve the original error even if cleanup or its logger fails. Node registration rolls back partially installed handlers; a custom host registration owns rollback before it returns an unregister callback. Signal-driven timeout/failure is reported through logs and `process.exitCode`; final process termination remains host-owned. See the [lifecycle contract](../architecture/lifecycle-and-shutdown.md).
 
 - `generated-app`: use [setup commands](./quick-start.md) inside the generated project with registry dependencies and its `fluo dev`/`fluo build`/`fluo start` scripts. Preserve `ConfigModule`, `GreetingModule`, `HealthModule.forRoot()`, and their tests when adding a feature.
 - `repository-example`: `examples/fluo-blog/00-start` uses workspace dependencies, repository package builds, and numbered checkpoint scripts. `examples/minimal` is separate explicit composition. Neither is a whole-file replacement for the generated starter.
@@ -49,22 +54,22 @@ Initialization cleanup covers acquired runtime resources, lifecycle instances, a
 
 The shared initialization sequence below is used by both Factory and the Fastify helpers. Creation, lifecycle readiness, and request admission are distinct boundaries; [Lifecycle & Shutdown Guarantees](../architecture/lifecycle-and-shutdown.md) owns their detailed contract.
 
-1. `FluoFactory.create(rootModule, options)` delegates to `bootstrapApplication(...)` in `packages/runtime/src/bootstrap.ts`.
+1. `FluoFactory.create(rootModule, options)` owns HTTP creation directly in `packages/runtime/src/bootstrap.ts`; there is no forwarding free-function implementation.
 2. `bootstrapModule(...)` compiles the reachable module graph from the root module and validates imports, exports, provider visibility, and injection metadata.
 3. `registerRuntimeBootstrapTokens(...)` registers the selected HTTP adapter under `HTTP_APPLICATION_ADAPTER` and the runtime platform shell under `PLATFORM_SHELL`.
 4. `resolveBootstrapLifecycleInstances(...)` resolves runtime providers and module providers that expose lifecycle hooks.
 5. `runBootstrapHooks(...)` executes every `onModuleInit()` hook first, then every `onApplicationBootstrap()` hook.
 6. `platformShell.start()` runs after lifecycle hooks succeed. Readiness is marked only after that start phase completes.
-7. `createRuntimeDispatcher(...)` builds the dispatcher and `bootstrapApplication(...)` returns a `FluoApplication` instance.
+7. `createRuntimeDispatcher(...)` builds the dispatcher with Factory-composed middleware, and `FluoFactory.create(...)` returns a `FluoApplication` instance.
 8. `app.listen()` checks readiness and activates the adapter. The run helper awaits this internally; Factory/bootstrap callers invoke it later. For Node/Fastify this binds the server, while host-owned Workers/Next.js activate a dispatcher rather than a new socket listener.
 
 ## Entry Points
 
 | Path | Role |
 | --- | --- |
-| `packages/cli/src/new/scaffold.ts` | Generates the default Node/Fastify `runFastifyApplication(...)` entrypoint and config/greeting/health registrations. |
+| `packages/cli/src/new/scaffold.ts` | Generates Node HTTP Factory entrypoints with explicit Node logger/signal dependencies and config/greeting/health registrations. |
 | `examples/minimal/src/main.ts` | Explicit low-level composition: `FluoFactory.create(...)` with a Fastify adapter, then `app.listen()`. Not the generated starter. |
-| `packages/runtime/src/bootstrap.ts` | Source of `bootstrapApplication(...)`, `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, and `FluoFactory.createMicroservice(...)`. |
+| `packages/runtime/src/bootstrap.ts` | Actual implementations of `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, and `FluoFactory.createMicroservice(...)`. |
 | `packages/platform-nodejs/src/index.ts` | Platform-owned raw Node adapter, bootstrap, logging, filesystem, and shutdown signal helpers. |
 | `packages/platform-fastify/src/adapter.ts` | Exposes `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, and `runFastifyApplication(...)` for the Fastify path. |
 | `packages/platform-cloudflare-workers/src/adapter.ts` | Exposes `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, and `createCloudflareWorkerEntrypoint(...)` for the Worker fetch path. |
@@ -93,7 +98,7 @@ The shared initialization sequence below is used by both Factory and the Fastify
 - `ModuleVisibilityError`: thrown when a provider, controller, or module export references a token that is not visible from the current module.
 - `ModuleInjectionMetadataError`: thrown when constructor injection metadata does not cover required parameters.
 - Lifecycle hook failures: any rejection from `onModuleInit()` or `onApplicationBootstrap()` aborts bootstrap before readiness is marked.
-- Adapter or platform startup failures: platform-shell and dispatcher failures reject shared initialization. A later listen failure rejects that listen; the run helper adds the post-creation close attempt described above.
+- Adapter or platform startup failures: platform-shell and dispatcher failures reject creation. A later readiness/listen/setup failure rejects after Factory-owned close; create a new app rather than retrying startup on the terminal shell. Adapterless `listen()` is a usage error and preserves the unstarted shell for dispatch or explicit close.
 - `InvariantError`: thrown by `FluoFactory.createMicroservice(...)` when the resolved runtime token does not implement `listen()`.
 - Bootstrap failure cleanup uses the synthetic signal `bootstrap-failed` and runs shutdown hooks plus container disposal before rethrowing the original error.
 

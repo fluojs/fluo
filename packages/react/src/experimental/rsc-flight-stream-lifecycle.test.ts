@@ -6,7 +6,7 @@ import {
   type FrameworkResponseStream,
   Get,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createReactFlightResponse } from './rsc.js';
@@ -118,14 +118,13 @@ async function bootstrapStreamingFlightApp(
   @Module({ controllers: [StreamingFlightController] })
   class StreamingFlightAppModule {}
 
-  return bootstrapApplication({
+  return FluoFactory.create(StreamingFlightAppModule, {
     filters: [{
       catch(error: unknown) {
         observeError(error);
         return true;
       },
     }],
-    rootModule: StreamingFlightAppModule,
   });
 }
 

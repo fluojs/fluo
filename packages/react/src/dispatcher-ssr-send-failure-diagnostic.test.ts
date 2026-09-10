@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -117,7 +117,7 @@ describe('React SSR response-writer diagnostics', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: React produces a complete buffered shell before the response writer runs.

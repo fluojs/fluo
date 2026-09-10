@@ -1,4 +1,4 @@
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 import {
   createRequestBuilder,
@@ -55,7 +55,7 @@ function normalizeRequestInput(
  * ```
  */
 export async function createTestApp(options: TestingApplicationOptions): Promise<TestApp> {
-  const app = await bootstrapApplication({
+  const app = await FluoFactory.create(options.rootModule, {
     ...options,
     middleware: [createTestRequestContextMiddleware(), ...(options.middleware ?? [])],
   });

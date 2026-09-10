@@ -569,21 +569,21 @@ describe('scaffoldBootstrapApp', () => {
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
 
-    expect(readme).toContain('Starter contract: `src/main.ts` boots the selected first-class application starter: Node.js runtime + Fastify HTTP via `runFastifyApplication(...)`');
+    expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
     expect(readme).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readme).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
     expect(readme).not.toContain('Bun');
     expect(readme).not.toContain('Deno');
     expect(readme).not.toContain('Cloudflare');
     expect(readme).not.toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain("import { runFastifyApplication } from '@fluojs/platform-fastify';");
-    expect(mainFile).toContain('await runFastifyApplication(AppModule, { port });');
-    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).toContain("import { createFastifyAdapter } from '@fluojs/platform-fastify';");
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');
     expect(mainFile).not.toContain('Bun');
     expect(mainFile).not.toContain('Deno');
     expect(mainFile).not.toContain('Cloudflare');
-    expect(mainFile).not.toContain('@fluojs/platform-nodejs');
+    expect(mainFile).toContain("import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';");
   });
 
   it('generates the Express application starter scaffold', async () => {
@@ -610,7 +610,6 @@ describe('scaffoldBootstrapApp', () => {
       dependencies?: Record<string, string>;
       engines?: Record<string, string>;
     };
-    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
 
     expect(packageJson.dependencies).toMatchObject({
@@ -619,11 +618,11 @@ describe('scaffoldBootstrapApp', () => {
     });
     expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
-    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-nodejs');
-    expect(readme).toContain('Node.js runtime + Express HTTP via `runExpressApplication(...)`');
-    expect(mainFile).toContain("import { runExpressApplication } from '@fluojs/platform-express';");
-    expect(mainFile).toContain('await runExpressApplication(AppModule, { port });');
-    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(packageJson.dependencies).toHaveProperty('@fluojs/platform-nodejs');
+    expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
+    expect(mainFile).toContain("import { createExpressAdapter } from '@fluojs/platform-express';");
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');
   });
 
@@ -709,7 +708,6 @@ describe('scaffoldBootstrapApp', () => {
       dependencies?: Record<string, string>;
       engines?: Record<string, string>;
     };
-    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
 
     expect(packageJson.dependencies).toMatchObject({
@@ -719,10 +717,10 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
-    expect(readme).toContain('Node.js runtime + raw Node.js HTTP via `runNodejsApplication(...)`');
-    expect(mainFile).toContain("import { runNodejsApplication } from '@fluojs/platform-nodejs';");
-    expect(mainFile).toContain('await runNodejsApplication(AppModule, { port });');
-    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
+    expect(mainFile).toContain("import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';");
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');
   });
 
@@ -1220,9 +1218,9 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
     expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).not.toContain('createHealthModule');
-    expect(mainFile).toContain("import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';");
-    expect(mainFile).toContain('const app = await bootstrapFastifyApplication(AppModule, { port });');
-    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).toContain("import { createFastifyAdapter } from '@fluojs/platform-fastify';");
+    expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
+    expect(mainFile).toContain('logger: createConsoleApplicationLogger(),');
     expect(mainFile).not.toContain('logger,');
     expect(mainFile).toContain('await app.connectMicroservice();');
     expect(mainFile).toContain('await app.startAllMicroservices();');

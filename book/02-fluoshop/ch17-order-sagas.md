@@ -548,11 +548,11 @@ A crash after saving a packing result but before notification is recovered throu
 
 ## Observe the Execution Order Directly
 
-The following is the **complete test file** `src/orders/saga/order-saga.test.ts`. It uses Node24 and pnpm10 and requires the first two files above and the project's existing Vitest configuration. It does not call a real payment provider, mail service, or broker. `bootstrapApplication` expresses that this experiment does not need an HTTP listener.
+The following is the **complete test file** `src/orders/saga/order-saga.test.ts`. It uses Node24 and pnpm10 and requires the first two files above and the project's existing Vitest configuration. It does not call a real payment provider, mail service, or broker. `FluoFactory.create` expresses that this experiment does not need an HTTP listener.
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { CqrsEventBusService } from '@fluojs/cqrs';
 import {
   MemorySagaStore, OrderFact, OrderSagaLabModule, SAGA_STORE,
@@ -560,7 +560,7 @@ import {
 
 describe('order saga decisions', () => {
   it('requests packing before fulfillment and deduplicates facts', async () => {
-    const app = await bootstrapApplication({ rootModule: OrderSagaLabModule });
+    const app = await FluoFactory.create(OrderSagaLabModule);
     try {
       const bus = await app.container.resolve(CqrsEventBusService);
       const store = await app.container.resolve<MemorySagaStore>(SAGA_STORE);

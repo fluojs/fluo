@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 
 import { PrismaModule, PrismaService } from './index.js';
 
@@ -108,7 +108,7 @@ describe('Prisma lifecycle transition races', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When

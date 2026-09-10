@@ -49,17 +49,17 @@ import {
   createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const adapter = createExpressAdapter({ 
+  const adapter = createExpressAdapter({
     port: 3000,
-    rawBody: true 
+    rawBody: true
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
-  
+  const app = await FluoFactory.create(AppModule, { adapter });
+
   await app.listen();
 
   if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
@@ -79,7 +79,7 @@ The adapter constructs and owns its Express application rather than adopting or 
 
 ### 21.1.3 Handling Middleware
 
-One of the biggest reasons to choose Express is its proven operational ecosystem. In fluo, that compatibility is an adapter and hosting boundary: Express owns the underlying Node.js request listener, but the application pipeline remains dispatcher-owned. fluo's application-level `middleware` option still expects fluo middleware: an object or provider that implements `handle(context, next)` over the shared `MiddlewareContext`. Do not pass an Express/Connect `(req, res, next)` function such as `compression()` directly to `fluoFactory.create(...)`; wrap that behavior behind the fluo contract or keep it in an Express-owned integration layer.
+One of the biggest reasons to choose Express is its proven operational ecosystem. In fluo, that compatibility is an adapter and hosting boundary: Express owns the underlying Node.js request listener, but the application pipeline remains dispatcher-owned. fluo's application-level `middleware` option still expects fluo middleware: an object or provider that implements `handle(context, next)` over the shared `MiddlewareContext`. Do not pass an Express/Connect `(req, res, next)` function such as `compression()` directly to `FluoFactory.create(...)`; wrap that behavior behind the fluo contract or keep it in an Express-owned integration layer.
 
 ```typescript
 import type { Middleware } from '@fluojs/http';
@@ -92,7 +92,7 @@ const compressionHeaders: Middleware = {
 };
 
 const adapter = createExpressAdapter();
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter,
   middleware: [compressionHeaders],
 });
@@ -132,7 +132,7 @@ When you need to minimize footprint as much as possible, or when you need to des
 
 ```typescript
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 
@@ -146,7 +146,7 @@ async function bootstrap() {
     maxBodySize: 2_097_152,
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
+  const app = await FluoFactory.create(AppModule, { adapter });
   await app.listen();
 }
 ```
@@ -248,17 +248,22 @@ Portability does not mean giving up the tools you prefer. fluo's adapter system 
 When moving FluoShop to Express, the key host change point is `main.ts`, but only after controllers, providers, and modules have already moved to standard decorators and explicit DI/module wiring. With those runtime-independent contracts in place, changing the HTTP adapter should not spill into application logic changes.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // apps/fluoshop-api/src/main.ts
-import { bootstrapExpressApplication } from '@fluojs/platform-express';
+import { createExpressAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   const host = '127.0.0.1';
   const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
-  const app = await bootstrapExpressApplication(AppModule, {
+  const app = await FluoFactory.create(AppModule, {
+    adapter: createExpressAdapter({
+      host,
+      port,
+    }),
     globalPrefix: 'v1',
-    host,
-    port,
+    logger: createConsoleApplicationLogger(),
   });
 
   await app.listen();
@@ -275,17 +280,23 @@ The route prefix belongs to the Express bootstrap configuration rather than muta
 
 ## 21.6 Advanced: The `run` Helpers
 
-To reduce repeated bootstrap code, fluo provides the `runExpressApplication` and `runNodejsApplication` helpers, which handle signal wiring (SIGINT/SIGTERM) and graceful shutdown.
+Unify HTTP creation through `FluoFactory.create(AppModule, { adapter })` and connect Node signals with `createNodeShutdownSignalRegistration()`. Existing platform run helpers remain for unmigrated consumers; the following recipe uses Factory.
 
 ```typescript
-import { runExpressApplication } from '@fluojs/platform-express';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createExpressAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app.module';
 
-await runExpressApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createExpressAdapter({
+    port: 3000,
+  }),
   globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
 This helper wires process signals to the standard fluo shutdown lifecycle and helps clean up active connections before the host exits. Put application cleanup in lifecycle-aware providers, such as `onApplicationShutdown(signal)`, so the same cleanup path works across platform adapters. In deployment environments, this shutdown boundary is important for reducing lost logs, interrupted requests, and resource leaks.

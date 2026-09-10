@@ -53,7 +53,7 @@ function normalizeSource(sourceText) {
 function enforceBootstrapRepositoryBindings(relativePath, markdown) {
   const normalizedMarkdown = normalizeSource(markdown);
   const requiredFragments = [
-    'fluoFactory.createApplicationContext(AuthModule',
+    'FluoFactory.createApplicationContext(AuthModule',
     'provide: REFRESH_TOKEN_REPOSITORY, useValue: refreshTokenRepository satisfies RefreshTokenRepository',
     'provide: CREDENTIALS_REPOSITORY, useValue: credentialsRepository satisfies CredentialsRepository',
   ];

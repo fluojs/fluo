@@ -1,5 +1,5 @@
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockRedisConnection {
@@ -116,7 +116,7 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const result = await bootstrapApplication({
+    const result = await FluoFactory.create(AppModule, {
       logger: {
         debug() {},
         error() {},
@@ -126,7 +126,6 @@ describe('queue worker ownership', () => {
         },
       } satisfies ApplicationLogger,
       providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
-      rootModule: AppModule,
     }).then(
       (app) => ({ app, kind: 'started' } as const),
       (error: unknown) => ({ error, kind: 'failed' } as const),
@@ -191,7 +190,7 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const result = await bootstrapApplication({
+    const result = await FluoFactory.create(AppModule, {
       logger: {
         debug() {},
         error() {},
@@ -201,7 +200,6 @@ describe('queue worker ownership', () => {
         },
       } satisfies ApplicationLogger,
       providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
-      rootModule: AppModule,
     }).then(
       (app) => ({ app, kind: 'started' } as const),
       (error: unknown) => ({ error, kind: 'failed' } as const),
@@ -260,9 +258,8 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const result = await bootstrapApplication({
+    const result = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
-      rootModule: AppModule,
     }).then(
       (app) => ({ app, kind: 'started' } as const),
       (error: unknown) => ({ error, kind: 'failed' } as const),
@@ -344,9 +341,8 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const result = await bootstrapApplication({
+    const result = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
-      rootModule: AppModule,
     }).then(
       (app) => ({ app, kind: 'started' } as const),
       (error: unknown) => ({ error, kind: 'failed' } as const),
@@ -393,7 +389,7 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: {
         debug() {},
         error() {},
@@ -403,7 +399,6 @@ describe('queue worker ownership', () => {
         },
       } satisfies ApplicationLogger,
       providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
-      rootModule: AppModule,
     });
 
     try {
@@ -482,7 +477,7 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const result = await bootstrapApplication({ rootModule: AppModule }).then(
+    const result = await FluoFactory.create(AppModule).then(
       (app) => ({ app, kind: 'started' } as const),
       (error: unknown) => ({ error, kind: 'failed' } as const),
     );
@@ -571,7 +566,7 @@ describe('queue worker ownership', () => {
     });
 
     // When
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Then

@@ -2,7 +2,7 @@ import { type Constructor, getModuleMetadata, Inject, type Token } from '@fluojs
 import { Container, type Provider } from '@fluojs/di';
 import type { NotificationChannel } from '@fluojs/notifications';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordChannel } from './channel.js';
@@ -269,7 +269,7 @@ describe('DiscordModule', () => {
       imports: [DiscordOwnerModule, NotificationsOwnerModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(DiscordVisibilityConsumer);
@@ -319,7 +319,7 @@ describe('DiscordModule', () => {
       imports: [LocalDiscordFeatureModule],
     });
 
-    const localApp = await bootstrapApplication({ rootModule: LocalAppModule });
+    const localApp = await FluoFactory.create(LocalAppModule);
 
     try {
       const consumer = await localApp.container.resolve(LocalDiscordConsumer);
@@ -358,7 +358,7 @@ describe('DiscordModule', () => {
       imports: [HiddenDiscordOwnerModule, HiddenConsumerModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: HiddenAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(HiddenAppModule)).rejects.toThrow(
       /not visible through a global module|DiscordService/,
     );
   });

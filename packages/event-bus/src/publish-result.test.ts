@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EVENT_BUS, EventBusLifecycleService, EventBusModule, type EventBusWithResults, OnEvent } from './index.js';
@@ -29,7 +29,7 @@ describe('explicit event publication results', () => {
       imports: [EventBusModule.forRoot()],
       providers: [FailingHandler, SuccessfulHandler],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule, logger });
+    const app = await FluoFactory.create(AppModule, { logger });
     try {
       const bus = await app.container.resolve(EventBusLifecycleService);
 
@@ -104,7 +104,7 @@ describe('explicit event publication results', () => {
         { provide: Symbol('other'), useClass: Handler },
       ],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule, logger });
+    const app = await FluoFactory.create(AppModule, { logger });
     try {
       const facade = await app.container.resolve<EventBusWithResults>(EVENT_BUS);
       const bus = await app.container.resolve(EventBusLifecycleService);
@@ -139,7 +139,7 @@ describe('explicit event publication results', () => {
     // Given
     class AppModule {}
     defineModule(AppModule, { imports: [EventBusModule.forRoot()] });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const bus = await app.container.resolve(EventBusLifecycleService);
 
@@ -162,7 +162,7 @@ describe('explicit event publication results', () => {
     }
     class AppModule {}
     defineModule(AppModule, { imports: [EventBusModule.forRoot()], providers: [Handler] });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const bus = await app.container.resolve(EventBusLifecycleService);
       Reflect.set(await app.container.resolve(Handler), 'handle', undefined);

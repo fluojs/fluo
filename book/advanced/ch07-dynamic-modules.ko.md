@@ -618,19 +618,19 @@ defineModule() 또는 defineModuleMetadata()로 새로운 모듈 클래스에 �
 ```typescript
 const prismaModule = PrismaModule.forRoot({ client });
 
-class ManualPrismaModule {}
+class ManualPrismaModule { }
 
 defineModule(ManualPrismaModule, {
   imports: [prismaModule],
 });
 
-class AppModule {}
+class AppModule { }
 
 defineModule(AppModule, {
   imports: [ManualPrismaModule],
 });
 
-const app = await bootstrapApplication({ rootModule: AppModule });
+const app = await FluoFactory.create(AppModule);
 const prisma = await app.container.resolve(PrismaService<typeof client>);
 const rawClient = await app.container.resolve(PRISMA_CLIENT);
 const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);

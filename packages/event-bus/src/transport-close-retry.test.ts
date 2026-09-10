@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { EventBusModule } from './module.js';
@@ -24,7 +24,7 @@ describe('EventBusLifecycleService transport close retry', () => {
       imports: [EventBusModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       await expect(app.close()).rejects.toThrow('transport close failed');

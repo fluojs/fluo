@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -62,7 +62,7 @@ describe('PrismaModule.forRootAsync global visibility', () => {
     });
 
     // When
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const providerConsumer = await app.container.resolve(ProviderConsumer);

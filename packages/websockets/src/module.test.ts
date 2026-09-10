@@ -14,7 +14,7 @@ import {
 } from '@fluojs/http';
 import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/platform-nodejs';
 import { describe, expect, it, vi } from 'vitest';
@@ -450,9 +450,8 @@ describe('@fluojs/websockets', () => {
       providers: [RequestGateway],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
 
     expect(
@@ -523,12 +522,11 @@ describe('@fluojs/websockets', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter: {
           async close() {},
           async listen() {},
         },
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability()');
   });
@@ -547,9 +545,8 @@ describe('@fluojs/websockets', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter: createNoopHttpApplicationAdapter(),
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('WebSocket gateway bootstrap requires a server-backed realtime capability');
   });
@@ -613,9 +610,8 @@ describe('@fluojs/websockets', () => {
     });
 
     const adapter = createNodeHttpAdapter({ port: 0 });
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve(GatewayState);
 
@@ -684,9 +680,8 @@ describe('@fluojs/websockets', () => {
     });
 
     const adapter = createNodeHttpAdapter({ port: 0 });
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve(GatewayState);
 

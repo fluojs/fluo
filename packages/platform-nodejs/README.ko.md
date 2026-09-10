@@ -46,10 +46,10 @@ Express나 Fastify와 같은 중간 프레임워크의 오버헤드 없이 Node.
 
 ```typescript
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -83,27 +83,39 @@ const adapter = createNodejsAdapter({
 `createNodejsAdapter()`는 기본 port로 `3000`을 사용하고 `process.env.PORT`를 무시하며, `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, adapter-level `shutdownTimeoutMs`가 잘못되면 throw합니다. 기본 request body cap은 `1 MiB`입니다.
 
 ### 직접 애플리케이션 실행
-`runNodejsApplication`을 사용하여 graceful shutdown 및 로깅이 포함된 보일러플레이트 없는 시작이 가능합니다.
+`FluoFactory.create(AppModule, { adapter })`로 생성하고 `app.listen()`으로 시작합니다. 아래 Node logger와 shutdown callback은 이 host boundary에서 명시적으로 선택합니다.
 
 시그널 기반 종료가 run-helper `forceExitTimeoutMs`를 넘기거나 실패하면 헬퍼는 해당 상태를 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료는 호스트 프로세스 소유자에게 맡깁니다. Connection drain bound에는 adapter-level `shutdownTimeoutMs`를, signal handler completion bound에는 run-helper `forceExitTimeoutMs`를 사용하세요.
 
 `bootstrapNodejsApplication(...)`과 `runNodejsApplication(...)`은 framework console logger를 기본으로 사용합니다. host나 portability test가 startup/shutdown diagnostics를 주입된 `ApplicationLogger`로 캡처해야 할 때는 `logger`를 전달하세요.
 
 ```typescript
-import { runNodejsApplication } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
-await runNodejsApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({
+    port: 3000,
+  }),
   globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
-Listener를 시작하지 않고 애플리케이션만 만들고 싶다면 `bootstrapNodejsApplication(...)`을 사용하세요:
+Listen 전 설정이 필요하면 같은 Factory 생성 뒤 설정을 마치고 `app.listen()`을 호출하세요. Signal callback을 생략하면 host가 `app.close()`를 직접 소유합니다.
 
 ```typescript
-const app = await bootstrapNodejsApplication(AppModule, { port: 3000 });
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodejsAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen();
 ```
 
@@ -140,6 +152,8 @@ await app.listen();
 
 ## Multipart 스트리밍
 
+`multipart`는 계속 adapter가 소유합니다. Multipart policy를 선택하려면 `createNodeHttpAdapter(options, false, multipartOptions)`를 Factory adapter로 전달하세요(`false`는 compression 비활성화). Factory 자체에는 `multipart` option이 없습니다.
+
 애플리케이션 생성 시 `multipart: { strategy: 'stream' }`을 설정하면 multipart part가 `RequestContext.request.body`의 `AsyncIterable`로 노출됩니다. Node listener는 iterator를 미리 읽거나 버퍼링하지 않으며, file part를 소비할 때만 바이트를 가져옵니다. 버퍼링 multipart parsing은 기본값이며 fields와 `request.files`를 노출하고, 하나의 request body에서 stream 소비와 함께 사용할 수 없습니다.
 
 Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handler가 끝난 뒤 자동으로 `return()`을 호출해 active source를 cancel하고 release합니다. Standalone `parseMultipartStream(...)` consumer는 이 책임을 직접 집니다. iterator를 끝까지 소비하거나 일찍 끝낼 때 `return()`을 호출하세요.
@@ -156,3 +170,5 @@ Runtime route dispatch는 route를 위해 만든 iterator를 소유하며 handle
 - `packages/platform-nodejs/src/lifecycle.test.ts`
 - `packages/platform-nodejs/src/lifecycle.integration.test.ts`
 - `book/intermediate/ch21-express-node.ko.md`
+
+`createNodeShutdownSignalRegistration(...)`은 부분 등록 실패 시 설치된 handler를 rollback하며 개별 해제가 실패해도 나머지를 모두 시도합니다. Factory close는 해제 실패를 동시·이후 caller에 유지하지만 runtime 자원 정리는 계속합니다. `factory-signals.test.ts`가 이를 검증합니다. 기존 `bootstrapNodejsApplication`/`runNodejsApplication`은 platform migration 전의 소비자를 위해 유지합니다. 새 앱은 위 Factory recipe와 [migration 안내](../../docs/getting-started/migrate-http-factory.ko.md)를 사용하세요.

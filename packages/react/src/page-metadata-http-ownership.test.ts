@@ -6,7 +6,7 @@ import {
   Get,
   NotFoundException,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -18,7 +18,7 @@ import { createReactServerEntry } from './server-entry.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 type OwnershipFixture = {
-  readonly app: Awaited<ReturnType<typeof bootstrapApplication>>;
+  readonly app: Awaited<ReturnType<typeof FluoFactory.create>>;
   readonly metadataCalls: () => number;
   readonly rendererCalls: () => number;
 };
@@ -101,7 +101,7 @@ async function createOwnershipFixture(): Promise<OwnershipFixture> {
   class AppModule {}
 
   return {
-    app: await bootstrapApplication({ rootModule: AppModule }),
+    app: await FluoFactory.create(AppModule),
     metadataCalls: () => metadataCalls,
     rendererCalls: () => rendererCalls,
   };

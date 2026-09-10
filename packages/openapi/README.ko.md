@@ -35,9 +35,10 @@ pnpm add @fluojs/openapi
 `OpenApiModule`을 등록하고 `sources`, 미리 만든 `descriptors`, 또는 둘 다를 전달해 문서에 포함할 HTTP 핸들러를 명시합니다. 두 입력을 모두 제공하면 병합됩니다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+import { createNodejsAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')
@@ -62,9 +63,12 @@ class UsersController {
   ],
   controllers: [UsersController]
 })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapNodeApplication(AppModule);
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({}),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen(3000);
 // OpenAPI JSON: http://localhost:3000/openapi.json
 // Swagger UI: http://localhost:3000/docs

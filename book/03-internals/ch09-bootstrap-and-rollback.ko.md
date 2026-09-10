@@ -14,7 +14,7 @@ FluoBlog에 붙인 상점의 판매 개시일이다. 기존 계정과 게시글 
 
 ## 생성, 초기화, 준비, 수신을 나누어 읽기
 
-`packages/runtime/src/bootstrap.ts`에서 출발점은 `bootstrapApplication()`이다. 먼저 모듈을 컴파일하고 컨테이너를 만든다. 다음으로 어댑터, 플랫폼 셸, 런타임 정리 등록 같은 런타임 토큰을 연결한다. 이 토큰들은 애플리케이션이 임의로 흉내 내는 전역 변수와 다르다. 런타임 통합 코드가 정해진 시점에 접근할 수 있도록 bootstrap이 공급하는 의존성이다.
+`packages/runtime/src/bootstrap.ts`에서 출발점은 `FluoFactory.create()`이다. 먼저 모듈을 컴파일하고 컨테이너를 만든다. 다음으로 어댑터, 플랫폼 셸, 런타임 정리 등록 같은 런타임 토큰을 연결한다. 이 토큰들은 애플리케이션이 임의로 흉내 내는 전역 변수와 다르다. 런타임 통합 코드가 정해진 시점에 접근할 수 있도록 bootstrap이 공급하는 의존성이다.
 
 그다음 `resolveLifecycleInstances()`가 초기화 대상 인스턴스를 해석한다. 독립적인 singleton provider 해석에는 `Promise.allSettled()`가 사용된다. 중요한 점은 병렬성이 훅의 실행 순서를 무작위로 만들지 않는다는 것이다. 해석 결과를 선언된 provider 순서에 맞춰 수집한 뒤 `runBootstrapHooks()`가 두 번 순회한다. 첫 순회에서 모든 `onModuleInit()`을 기다리고, 그것이 모두 성공하면 다음 순회에서 `onApplicationBootstrap()`을 기다린다.
 
@@ -24,7 +24,7 @@ FluoBlog에 붙인 상점의 판매 개시일이다. 기존 계정과 게시글 
 
 훅이 끝나면 `platformShell.start()`가 실행되고 readiness marker가 올라간다. HTTP dispatcher는 이 bootstrap lifecycle 뒤에 생성된다. 이 시점에 반환되는 `Application`의 공개 상태는 `bootstrapped`다. 실제 수신을 시작하는 `app.listen()`은 별도의 호출이며, critical readiness를 확인한 다음 `adapter.listen(dispatcher)`를 기다린다. 어댑터가 성공해야 공개 상태가 `ready`가 된다. “모듈 준비 완료”, “플랫폼 준비 가능”, “포트에서 수신 중”은 로그에서도 서로 다른 사건으로 남겨야 한다.
 
-HTTP가 필요 없는 작업에는 `fluoFactory.createApplicationContext()`를 사용한다. 예를 들어 게시글 slug 검사를 수행하는 관리 작업은 컨테이너와 lifecycle만 필요하다. 어댑터 없는 HTTP application을 만든 뒤 `listen()`이 아무 일도 하지 않을 것이라고 기대하는 것은 현재 계약과 맞지 않는다. 어댑터 없이 수신을 요청하면 오류가 난다.
+HTTP가 필요 없는 작업에는 `FluoFactory.createApplicationContext()`를 사용한다. 예를 들어 게시글 slug 검사를 수행하는 관리 작업은 컨테이너와 lifecycle만 필요하다. 어댑터 없는 HTTP application을 만든 뒤 `listen()`이 아무 일도 하지 않을 것이라고 기대하는 것은 현재 계약과 맞지 않는다. 어댑터 없이 수신을 요청하면 오류가 난다.
 
 ## 실패를 의도적으로 만드는 작은 시작 실험
 
@@ -35,7 +35,7 @@ HTTP가 필요 없는 작업에는 `fluoFactory.createApplicationContext()`를 �
 ```ts
 import assert from 'node:assert/strict';
 import { Inject, Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const EVENTS = Symbol('BOOTSTRAP_EVENTS');
 const FAIL_START = Symbol('FAIL_START');
@@ -44,7 +44,7 @@ const FAIL_START = Symbol('FAIL_START');
 class CatalogSnapshot {
   private items: Map<string, number> | undefined;
 
-  constructor(private readonly events: string[]) {}
+  constructor(private readonly events: string[]) { }
 
   onModuleInit(): void {
     this.items = new Map([['logo-shirt', 25_000]]);
@@ -79,7 +79,7 @@ class OrdersStartup {
     private readonly catalog: CatalogSnapshot,
     private readonly events: string[],
     private readonly failStart: boolean,
-  ) {}
+  ) { }
 
   onModuleInit(): void {
     this.events.push('orders:init');
@@ -113,18 +113,18 @@ export async function runBootstrapLab(failStart: boolean): Promise<string[]> {
       OrdersStartup,
     ],
   })
-  class OrdersModule {}
+  class OrdersModule { }
 
   @Module({ imports: [OrdersModule] })
-  class AppModule {}
+  class AppModule { }
 
   if (failStart) {
     await assert.rejects(
-      fluoFactory.createApplicationContext(AppModule),
+      FluoFactory.createApplicationContext(AppModule),
       { message: 'Order readiness failed.' },
     );
   } else {
-    const app = await fluoFactory.createApplicationContext(AppModule);
+    const app = await FluoFactory.createApplicationContext(AppModule);
     await app.close('lab-complete');
     await app.close('lab-complete');
   }
@@ -200,7 +200,7 @@ HTTP `Application.listen()`의 겹치는 호출은 진행 중인 startup을 공�
 
 따라서 hook이 소유한 자원은 자신에게 들어오는 작업과 진행 중인 작업을 어떻게 마무리할지도 함께 정의해야 한다. 이미 진입한 HTTP 요청의 처리 책임은 dispatcher와 adapter에 남는다. 런타임이 direct `Application.dispatch()`의 신규 진입을 막는 것과 실제 소켓에서 들어오는 연결을 정리하는 것은 별도 경계다. 이 차이는 12장의 요청 취소, 13장의 Node 어댑터 비교로 이어진다.
 
-프로세스 signal도 portable runtime의 암묵적 책임이 아니다. Node host helper를 쓸 때 해당 helper의 signal 등록 계약을 확인해야 하며, `fluoFactory.create()`를 호출했다는 사실만으로 `SIGTERM` 처리가 모두 연결되지는 않는다. 여기서는 listener 없는 context 실험을 선택했으므로 프로세스 signal과 drain을 검증하지 않는다. 시작 훅 네 개의 의미를 다른 프레임워크에서 기억한 `beforeApplicationShutdown` 같은 이름으로 보충해서도 안 된다. 그 훅은 Fluo의 공개 lifecycle 계약에 없다.
+프로세스 signal도 portable runtime의 암묵적 책임이 아니다. Node host helper를 쓸 때 해당 helper의 signal 등록 계약을 확인해야 하며, `FluoFactory.create()`를 호출했다는 사실만으로 `SIGTERM` 처리가 모두 연결되지는 않는다. 여기서는 listener 없는 context 실험을 선택했으므로 프로세스 signal과 drain을 검증하지 않는다. 시작 훅 네 개의 의미를 다른 프레임워크에서 기억한 `beforeApplicationShutdown` 같은 이름으로 보충해서도 안 된다. 그 훅은 Fluo의 공개 lifecycle 계약에 없다.
 
 ## 운영 실패를 테스트로 분해하기
 

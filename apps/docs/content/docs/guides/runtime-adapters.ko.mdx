@@ -84,10 +84,10 @@ Fastify는 권장 high-throughput Node.js adapter입니다.
 
 ```ts
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -145,10 +145,10 @@ Express나 Fastify 없이 built-in `http`/`https` server primitive를 직접 사
 
 ```ts
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -170,17 +170,22 @@ const adapter = createNodejsAdapter({
 
 `maxBodySize`는 raw Node request byte가 아직 streaming 중일 때 적용됩니다. 기본 request body cap은 `1 MiB`이고, 잘못된 `port` 또는 `maxBodySize`는 setup 중 throw합니다.
 
-Graceful shutdown을 포함한 one-call startup에는 `runNodejsApplication(...)`을 사용합니다.
+Factory 생성과 instance listen을 사용하고 Node의 graceful shutdown은 명시적 `shutdownRegistration` callback으로 연결합니다.
 
 ```ts
-import { runNodejsApplication } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
-await runNodejsApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({
+    port: 3000,
+  }),
   globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
 Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `process.exitCode`를 설정하지만, 최종 process termination은 host process가 소유합니다.
@@ -196,11 +201,11 @@ import {
   createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createExpressAdapter({ port: 3000 });
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
@@ -237,10 +242,10 @@ Native `Bun.serve()` application에는 Bun adapter를 사용합니다.
 
 ```ts
 import { createBunAdapter } from '@fluojs/platform-bun';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 
@@ -294,11 +299,11 @@ Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니
 Host-owned `Deno.serve(...)`에는 `app.listen()` 없이 bootstrap하고 public dispatcher에서 handler를 생성합니다.
 
 ```ts
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,
@@ -330,11 +335,11 @@ Edge `fetch` deployment에는 Workers adapter를 사용합니다.
 
 ```ts
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 

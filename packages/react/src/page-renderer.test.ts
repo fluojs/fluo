@@ -1,7 +1,7 @@
 import { Inject, Module } from '@fluojs/core';
 import type { RequestScopeContainer } from '@fluojs/di';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -103,7 +103,7 @@ describe('ReactPageRenderer', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();
@@ -143,7 +143,7 @@ describe('ReactPageRenderer', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();
@@ -189,7 +189,7 @@ describe('ReactPageRenderer', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When: the matched Path result reaches the application page renderer.

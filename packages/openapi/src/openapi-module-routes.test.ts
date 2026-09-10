@@ -3,7 +3,7 @@ import {
   type FrameworkResponse,
   RouteConflictError,
 } from '@fluojs/http';
-import { bootstrapApplication, defineModule, type ModuleType } from '@fluojs/runtime';
+import { FluoFactory, defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { OpenApiModule } from './openapi-module.js';
@@ -55,7 +55,7 @@ async function captureBootstrapError(imports: readonly ModuleType[]): Promise<un
   defineModule(AppModule, { imports: [...imports] });
 
   try {
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     await app.close();
     return undefined;
   } catch (error: unknown) {
@@ -78,7 +78,7 @@ describe('OpenApiModule routes', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const documentResponse = createResponse();
@@ -125,7 +125,7 @@ describe('OpenApiModule routes', () => {
       imports: [publicOpenApiModule, adminOpenApiModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const publicDocumentResponse = createResponse();

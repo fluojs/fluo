@@ -2,11 +2,11 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-A small fluo repository example of explicit low-level Node.js + Fastify composition: `FluoFactory.create(...)` with `createFastifyAdapter(...)`, followed by `app.listen()`. It is not the generated starter. The default and explicit HTTP v2 starter for Node.js + Fastify uses `runFastifyApplication(...)`, whose middleware defaults, logger, post-creation failure cleanup, and signal registration are not automatically reproduced by this composition. Factory still shares runtime initialization-failure cleanup. See the [bootstrap recipe](../../docs/getting-started/bootstrap-paths.md).
+A repository example of canonical Node.js + Fastify `FluoFactory.create(...)` → `app.listen()` composition. It uses Factory middleware defaults and failure cleanup while leaving signals host-owned. Generated starters use the same creation path with explicit Node logger and signal callbacks. See the [bootstrap recipe](../../docs/getting-started/bootstrap-paths.md).
 
 ## what this example demonstrates
 
-- Explicit Fastify bootstrap via `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })` (`fluoFactory` is the same factory's alias)
+- Explicit Fastify bootstrap via `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })`
 - Standard decorator DI with `@Module`, `@Inject`, `@Controller`, `@Get`
 - Built-in `/health` and `/ready` endpoints from `HealthModule.forRoot(...)`
 - A single starter controller at `/hello`

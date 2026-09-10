@@ -240,7 +240,7 @@ import { Inject, Module } from '@fluojs/core';
 import {
   Cron, CronModule, type CronScheduler, type CronScheduleOptions,
 } from '@fluojs/cron';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 
 it('skips an overlapping tick and stops on close', async () => {
@@ -260,7 +260,7 @@ it('skips an overlapping tick and stops on close', async () => {
 
   @Inject(WORK)
   class BlockingReconciliationTask {
-    constructor(private readonly work: Work) {}
+    constructor(private readonly work: Work) { }
 
     @Cron('* * * * *', { name: 'payments.reconcile', timezone: 'UTC' })
     async run(): Promise<void> {
@@ -282,9 +282,9 @@ it('skips an overlapping tick and stops on close', async () => {
       BlockingReconciliationTask,
     ],
   })
-  class TestModule {}
+  class TestModule { }
 
-  const app = await bootstrapApplication({ rootModule: TestModule });
+  const app = await FluoFactory.create(TestModule);
   let active: Promise<void> | undefined;
   try {
     expect(captured).toMatchObject({ protect: true, timezone: 'UTC' });

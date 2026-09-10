@@ -2,7 +2,7 @@ import { type Constructor, Inject, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SlackChannel } from './channel.js';
@@ -332,7 +332,7 @@ describe('SlackModule', () => {
       imports: [SlackOwnerModule, NotificationsOwnerModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(SlackVisibilityConsumer);
@@ -382,7 +382,7 @@ describe('SlackModule', () => {
       imports: [LocalSlackFeatureModule],
     });
 
-    const localApp = await bootstrapApplication({ rootModule: LocalAppModule });
+    const localApp = await FluoFactory.create(LocalAppModule);
 
     try {
       const consumer = await localApp.container.resolve(LocalSlackConsumer);
@@ -421,7 +421,7 @@ describe('SlackModule', () => {
       imports: [HiddenSlackOwnerModule, HiddenConsumerModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: HiddenAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(HiddenAppModule)).rejects.toThrow(
       /not visible through a global module|SlackService/,
     );
   });
@@ -469,7 +469,7 @@ describe('SlackModule', () => {
       imports: [AsyncSlackOwnerModule, AsyncNotificationsOwnerModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AsyncAppModule });
+    const app = await FluoFactory.create(AsyncAppModule);
 
     try {
       const consumer = await app.container.resolve(AsyncSlackVisibilityConsumer);
@@ -522,7 +522,7 @@ describe('SlackModule', () => {
       imports: [LocalAsyncSlackFeatureModule],
     });
 
-    const localApp = await bootstrapApplication({ rootModule: LocalAsyncAppModule });
+    const localApp = await FluoFactory.create(LocalAsyncAppModule);
 
     try {
       const consumer = await localApp.container.resolve(LocalAsyncSlackConsumer);
@@ -563,7 +563,7 @@ describe('SlackModule', () => {
       imports: [HiddenAsyncSlackOwnerModule, HiddenAsyncConsumerModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: HiddenAsyncAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(HiddenAsyncAppModule)).rejects.toThrow(
       /not visible through a global module|SlackService/,
     );
   });

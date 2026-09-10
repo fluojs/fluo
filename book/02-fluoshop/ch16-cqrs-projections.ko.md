@@ -670,7 +670,7 @@ expect(await query.execute(
 
 전체 인계 시험에서는 격리 DB와 Redis를 준비하고 14장의 원장 성공 후 relay, dispatcher, 실제 worker를 차례로 통과시킨다. worker의 완료 신호를 enqueue 전에 구독하고, 같은 사건 ID의 Outbox·Inbox·ReceiptRequest가 각각 하나인지 확인한다. projection에는 버스에서 추측한 상태가 아니라 원본의 현재 버전이 들어가야 한다. 다음 변형은 relay의 `CqrsEventBusService.publish()`만 실패시키고 영속 인계가 남는지, 독립 `ReceiptDispatchTask`와 `OrderSummaryRepairTask`가 각각 영수증과 요약을 복구하는지 확인한다. 고정 지연으로 실행 순서를 맞추지 않고 실제 메서드 완료와 명시적인 실패 주입을 사용한다.
 
-등록 실험은 실제 `bootstrapApplication({ rootModule })`로 CQRS graph를 시작해 query bus로 위 query를 실행한다. 단순히 handler를 직접 생성한 앞 실험과 목적이 다르다. Query handler를 provider에서 제거하면 `QueryHandlerNotFoundException`으로 실패해야 하고, 같은 query를 두 provider가 소유하면 부트스트랩에서 중복 오류가 나야 한다. CQRS는 controller에 붙은 handler 데코레이터를 provider 등록의 대체물로 탐색하지 않으므로 HTTP controller 안에 처리자 구현을 숨기지 않는다.
+등록 실험은 실제 `FluoFactory.create(rootModule)`로 CQRS graph를 시작해 query bus로 위 query를 실행한다. 단순히 handler를 직접 생성한 앞 실험과 목적이 다르다. Query handler를 provider에서 제거하면 `QueryHandlerNotFoundException`으로 실패해야 하고, 같은 query를 두 provider가 소유하면 부트스트랩에서 중복 오류가 나야 한다. CQRS는 controller에 붙은 handler 데코레이터를 provider 등록의 대체물로 탐색하지 않으므로 HTTP controller 안에 처리자 구현을 숨기지 않는다.
 
 HTTP 경계의 request 실험과 실제 DB 정합성 검증을 구분한다. 독자의 Prisma 스키마 생성·마이그레이션·PostgreSQL 통합 실험은 이 원고에서 실행한 결과가 아니다. 실제 DB 검증에는 Node24와 pnpm10, 생성된 PrismaClient와 격리 DB가 필요하다. 저장소 대역을 사용한 HTTP 테스트가 PostgreSQL의 `ON CONFLICT`나 잠금 동작까지 증명하지는 않는다.
 

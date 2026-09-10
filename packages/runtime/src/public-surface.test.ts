@@ -6,8 +6,10 @@ import type { LifecycleHooks } from './types.js';
 function acceptLifecycleHook(_hook: LifecycleHooks): void {}
 
 describe('runtime public surface', () => {
-  it('keeps the documented runtime facade alias on the root barrel', () => {
-    expect(runtimeApi.fluoFactory).toBe(runtimeApi.FluoFactory);
+  it('exposes only the canonical static HTTP creation entrypoint', () => {
+    expect(runtimeApi.FluoFactory.create).toBeTypeOf('function');
+    expect(runtimeApi).not.toHaveProperty('fluoFactory');
+    expect(runtimeApi).not.toHaveProperty('bootstrapApplication');
   });
 
   it('exports the documented LifecycleHooks convenience type', () => {

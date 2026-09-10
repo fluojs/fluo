@@ -69,8 +69,9 @@ No separate example application is added for async registration: this Quick Star
 You can also pass an executable `GraphQLSchema` via `schema` when you want schema-first integration instead of code-first resolver discovery.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+import { createNodejsAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
 class HelloInput {
@@ -94,9 +95,12 @@ class HelloResolver {
   ],
   providers: [HelloResolver]
 })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapNodeApplication(AppModule);
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({}),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen(3000);
 // curl -X POST http://localhost:3000/graphql \
 //   -H "Content-Type: application/json" \

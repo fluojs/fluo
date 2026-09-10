@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { DrizzleDatabase, type DrizzleDatabaseFacade, DrizzleModule, Transaction } from './index.js';
@@ -92,7 +92,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(UserService);
 
@@ -183,7 +183,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(UserService);
 
@@ -269,7 +269,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(UserService);
 
@@ -311,7 +311,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
       providers: [UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(UserService);
 
@@ -500,7 +500,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
       providers: [MultiDatabaseService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(MultiDatabaseService);
 
     await service.loadAnalytics();
@@ -619,7 +619,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
       providers: [IsolatedService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(IsolatedService);
 
     await service.analyticsWork();

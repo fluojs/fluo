@@ -8,7 +8,7 @@ import {
   type InterceptorContext,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MongooseConnection, MongooseModule, MongooseTransactionInterceptor } from './index.js';
@@ -75,7 +75,7 @@ describe('MongooseTransactionInterceptor compatibility', () => {
       controllers: [CompatibilityController],
       imports: [MongooseModule.forRoot({ connection })],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const response = createResponse();
 
@@ -160,7 +160,7 @@ describe('MongooseTransactionInterceptor compatibility', () => {
       imports: [MongooseModule.forRoot({ connection })],
       providers: [CallerProbeInterceptor],
     });
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
     const controller = new AbortController();
 

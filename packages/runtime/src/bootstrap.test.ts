@@ -3,7 +3,7 @@ import { optional } from '@fluojs/di';
 import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, Produces, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
-import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
+import { FluoFactory, bootstrapModule } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import { defineRuntimeModuleMetadata } from './internal/core-metadata.js';
 import { clearModuleGraphCompileCacheForTesting, getModuleGraphCompileCacheSizeForTesting } from './module-graph.js';
@@ -397,7 +397,7 @@ describe('bootstrapModule', () => {
       controllers: [OptionalControllerConsumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();
@@ -462,7 +462,7 @@ describe('bootstrapModule', () => {
       imports: [DependencyModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();
@@ -597,7 +597,7 @@ describe('bootstrapModule', () => {
       imports: [FirstGlobalModule, SecondGlobalModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createResponse();
@@ -1296,7 +1296,7 @@ describe('FluoFactory.createApplicationContext', () => {
     });
 
     let bootstrapSettled = false;
-    const bootstrapResult = bootstrapApplication({ logger, rootModule: AppModule });
+    const bootstrapResult = FluoFactory.create(AppModule, { logger });
     const observedBootstrapResult = bootstrapResult.then(
       () => {
         bootstrapSettled = true;
@@ -1397,10 +1397,9 @@ describe('FluoFactory.createApplicationContext', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         logger,
         platform: { components: [platformComponent] },
-        rootModule: AppModule,
       }),
     ).rejects.toBe(bootstrapFailure);
 
@@ -1781,9 +1780,8 @@ describe('FluoFactory.createApplicationContext', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         logger,
-        rootModule: AppModule,
       }),
     ).rejects.toBe(bootstrapFailure);
 
@@ -1830,9 +1828,8 @@ describe('FluoFactory.createApplicationContext', () => {
 
     // When
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         logger,
-        rootModule: AppModule,
       }),
     ).rejects.toBe(bootstrapFailure);
 
@@ -3056,9 +3053,8 @@ describe('moduleGraphCache bootstrap wiring', () => {
       providers: [AppService],
     });
 
-    const directApp = await bootstrapApplication({
+    const directApp = await FluoFactory.create(AppModule, {
       moduleGraphCache: true,
-      rootModule: AppModule,
     });
 
     expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);

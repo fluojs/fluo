@@ -1,5 +1,5 @@
 import { REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CronExpression } from './expressions.js';
@@ -179,13 +179,11 @@ describe('Cron distributed lease race safety', () => {
       ],
     });
 
-    const firstApp = await bootstrapApplication({
+    const firstApp = await FluoFactory.create(FirstAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: FirstAppModule,
     });
-    const secondApp = await bootstrapApplication({
+    const secondApp = await FluoFactory.create(SecondAppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: SecondAppModule,
     });
     const firstRegistry = await firstApp.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     const secondRegistry = await secondApp.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
@@ -245,9 +243,8 @@ describe('Cron distributed lease race safety', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
     registry.addCron(

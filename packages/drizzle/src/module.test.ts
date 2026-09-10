@@ -1,5 +1,5 @@
 import { Global, Inject, Module } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import type { DrizzleHandleProvider } from './index.js';
 import {
@@ -51,7 +51,7 @@ describe('@fluojs/drizzle', () => {
     class AppModule {}
     defineModule(AppModule, { imports: [FeatureModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const consumer = await app.container.resolve(ConsumerService);
 
@@ -87,7 +87,7 @@ describe('@fluojs/drizzle', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const consumer = await app.container.resolve(ConsumerService);
 
@@ -165,9 +165,7 @@ describe('@fluojs/drizzle', () => {
       providers: [UserService],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(UserService);
 
@@ -224,9 +222,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
 
     const openTransaction = drizzle.requestTransaction(
@@ -280,9 +276,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const requestAbortController = new AbortController();
     const openTransaction = drizzle.requestTransaction(
@@ -362,9 +356,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const openTransaction = drizzle.requestTransaction(async () => new Promise<never>(() => undefined));
     let rollbackReleased = false;
@@ -433,9 +425,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
 
     const openTransaction = drizzle.transaction(async () => 'manual-result');
@@ -493,9 +483,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
     let transactionReleased = false;
     let shutdownPromise: Promise<void> | undefined;
@@ -624,9 +612,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, Record<string, never>>);
 
     const shutdownPromise = app.close();
@@ -829,9 +815,7 @@ describe('@fluojs/drizzle', () => {
       imports: [StrictSyncModule],
     });
 
-    const syncApp = await bootstrapApplication({
-      rootModule: StrictSyncAppModule,
-    });
+    const syncApp = await FluoFactory.create(StrictSyncAppModule);
     try {
       const syncDrizzle = await syncApp.container.resolve(DrizzleDatabase<typeof database>);
 
@@ -855,9 +839,7 @@ describe('@fluojs/drizzle', () => {
       imports: [StrictAsyncModule],
     });
 
-    const asyncApp = await bootstrapApplication({
-      rootModule: StrictAsyncAppModule,
-    });
+    const asyncApp = await FluoFactory.create(StrictAsyncAppModule);
     try {
       const asyncDrizzle = await asyncApp.container.resolve(DrizzleDatabase<typeof database>);
 
@@ -882,9 +864,7 @@ describe('@fluojs/drizzle', () => {
       imports: [SyncModule],
     });
 
-    const syncApp = await bootstrapApplication({
-      rootModule: SyncAppModule,
-    });
+    const syncApp = await FluoFactory.create(SyncAppModule);
     const syncDrizzle = await syncApp.container.resolve(DrizzleDatabase<typeof database>);
     const syncOptions = await syncApp.container.resolve<{ strictTransactions: boolean }>(DRIZZLE_OPTIONS);
 
@@ -906,9 +886,7 @@ describe('@fluojs/drizzle', () => {
       imports: [AsyncModule],
     });
 
-    const asyncApp = await bootstrapApplication({
-      rootModule: AsyncAppModule,
-    });
+    const asyncApp = await FluoFactory.create(AsyncAppModule);
     const asyncDrizzle = await asyncApp.container.resolve(DrizzleDatabase<typeof database>);
     const asyncOptions = await asyncApp.container.resolve<{ strictTransactions: boolean }>(DRIZZLE_OPTIONS);
 
@@ -934,7 +912,7 @@ describe('@fluojs/drizzle', () => {
 
     defineModule(AppModule, { imports: [drizzleModule] });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'DrizzleModule requires a database option.',
     );
   });
@@ -960,9 +938,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     await app.close();
 
@@ -1042,9 +1018,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
 
     // Given: fail-open direct execution that remains active after its caller is aborted.
@@ -1263,9 +1237,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const nestedStarted = createDeferred();
     const nestedBarrier = createDeferred();
@@ -1338,7 +1310,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const nestedStarted = createDeferred();
     const nestedBarrier = createDeferred();
@@ -1582,7 +1554,7 @@ describe('@fluojs/drizzle', () => {
       imports: [drizzleModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
     let disposeReleased = false;
     let shutdownPromise: Promise<void> | undefined;
@@ -1723,7 +1695,7 @@ describe('DrizzleModule.forRootAsync', () => {
       imports: [drizzleModule, FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(ConsumerService);
@@ -1758,7 +1730,7 @@ describe('DrizzleModule.forRootAsync', () => {
       imports: [ConfigModule, drizzleModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const db = await app.container.resolve(DrizzleDatabase);
 
     expect(factory).toHaveBeenCalledOnce();
@@ -1779,7 +1751,7 @@ describe('DrizzleModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [drizzleModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const drizzle = await app.container.resolve(DrizzleDatabase);
     try {
       const handleProvider = await app.container.resolve<DrizzleHandleProvider<typeof database, typeof transactionDatabase>>(
@@ -1804,7 +1776,7 @@ describe('DrizzleModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [drizzleModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const db = await app.container.resolve(DrizzleDatabase);
 
@@ -1850,11 +1822,11 @@ describe('DrizzleModule.forRootAsync', () => {
     defineModule(FirstAppModule, { imports: [drizzleModule] });
     defineModule(SecondAppModule, { imports: [drizzleModule] });
 
-    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstApp = await FluoFactory.create(FirstAppModule);
     const firstDatabase = await firstApp.container.resolve<{ id: string }>(DRIZZLE_DATABASE);
     const firstDrizzle = await firstApp.container.resolve(DrizzleDatabase);
 
-    const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+    const secondApp = await FluoFactory.create(SecondAppModule);
     const secondDatabase = await secondApp.container.resolve<{ id: string }>(DRIZZLE_DATABASE);
     const secondDrizzle = await secondApp.container.resolve(DrizzleDatabase);
 
@@ -1882,7 +1854,7 @@ describe('DrizzleModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [drizzleModule] });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('db config fetch failed');
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow('db config fetch failed');
   });
 });
 
@@ -1937,7 +1909,7 @@ describe('DrizzleModule named registrations', () => {
     class AppModule {}
     defineModule(AppModule, { imports: [FeatureModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const consumer = await app.container.resolve(NamedClientConsumer);
 
@@ -1978,7 +1950,7 @@ describe('DrizzleModule named registrations', () => {
       providers: [AnalyticsConsumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const consumer = await app.container.resolve(AnalyticsConsumer);
 
@@ -2045,7 +2017,7 @@ describe('DrizzleModule named registrations', () => {
       providers: [MultiClientService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(MultiClientService);
 
@@ -2112,7 +2084,7 @@ describe('DrizzleModule named registrations', () => {
       providers: [NamedLifecycleConsumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const consumer = await app.container.resolve(NamedLifecycleConsumer);
     const openPrimaryRequest = consumer.primary.requestTransaction(async () => {
       primaryStarted.resolve();
@@ -2167,7 +2139,7 @@ describe('DrizzleModule named registrations', () => {
       ],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Duplicate @fluojs/drizzle registration identity "analytics".',
     );
   });
@@ -2186,7 +2158,7 @@ describe('DrizzleModule named registrations', () => {
       ],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'Duplicate @fluojs/drizzle registration identity "analytics".',
     );
     expect(firstFactory).not.toHaveBeenCalled();

@@ -45,7 +45,7 @@ gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요�
 ```ts
 import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
 import { Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -62,9 +62,9 @@ class MathHandler {
   ],
   providers: [MathHandler],
 })
-class AppModule {}
+class AppModule { }
 
-const microservice = await fluoFactory.createMicroservice(AppModule);
+const microservice = await FluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 

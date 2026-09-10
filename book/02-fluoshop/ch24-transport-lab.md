@@ -47,7 +47,7 @@ import {
   MicroservicesModule,
   TcpMicroserviceTransport,
 } from '@fluojs/microservices';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 class ReceiptLedger {
   calls = 0;
@@ -62,7 +62,7 @@ class ReceiptLedger {
 
 @Inject(ReceiptLedger)
 class ReceiptHandler {
-  constructor(private readonly ledger: ReceiptLedger) {}
+  constructor(private readonly ledger: ReceiptLedger) { }
 
   @MessagePattern('fulfillment.acceptance-probe.v1')
   accept(value: unknown) {
@@ -90,9 +90,9 @@ export async function tcpProbe(): Promise<void> {
       ReceiptHandler,
     ],
   })
-  class ProbeModule {}
+  class ProbeModule { }
 
-  const application = await fluoFactory.createMicroservice(ProbeModule);
+  const application = await FluoFactory.createMicroservice(ProbeModule);
   try {
     await application.listen();
     for (let attempt = 0; attempt < 2; attempt += 1) {

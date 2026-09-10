@@ -1,22 +1,24 @@
 import type { Converter, Dispatcher, Middleware } from '@fluojs/http';
 import type { Application } from '@fluojs/runtime';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestApp } from './app.js';
 
 vi.mock('@fluojs/runtime', () => ({
-  bootstrapApplication: vi.fn(async () => ({
-    close: vi.fn(async () => {}),
-    dispatcher: {} as Dispatcher,
-  } satisfies Pick<Application, 'close' | 'dispatcher'>)),
+  FluoFactory: {
+    create: vi.fn(async () => ({
+      close: vi.fn(async () => {}),
+      dispatcher: {} as Dispatcher,
+    } satisfies Pick<Application, 'close' | 'dispatcher'>)),
+  },
 }));
 
-const mockedBootstrapApplication = vi.mocked(bootstrapApplication);
+const mockedCreate = vi.mocked(FluoFactory.create);
 
 describe('createTestApp bootstrap forwarding', () => {
   beforeEach(() => {
-    mockedBootstrapApplication.mockClear();
+    mockedCreate.mockClear();
   });
 
   it('forwards converters and diagnostics options while prepending request-context middleware', async () => {
@@ -42,13 +44,13 @@ describe('createTestApp bootstrap forwarding', () => {
 
     await app.close();
 
-    expect(mockedBootstrapApplication).toHaveBeenCalledTimes(1);
-    expect(mockedBootstrapApplication).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockedCreate).toHaveBeenCalledTimes(1);
+    expect(mockedCreate).toHaveBeenCalledWith(AppModule, expect.objectContaining({
       converters: [converter],
       diagnostics: { timing: true },
       rootModule: AppModule,
     }));
-    const forwardedOptions = mockedBootstrapApplication.mock.calls[0]?.[0];
+    const forwardedOptions = mockedCreate.mock.calls[0]?.[1];
     expect(forwardedOptions?.middleware?.at(0)).not.toBe(callerMiddleware);
     expect(forwardedOptions?.middleware?.at(1)).toBe(callerMiddleware);
   });

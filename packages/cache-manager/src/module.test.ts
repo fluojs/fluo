@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Controller, type FrameworkRequest, type FrameworkResponse, Get, getCurrentRequestContext, Post, UseInterceptors } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CacheEvict } from './decorators.js';
@@ -135,7 +135,7 @@ describe('CacheModule.forRoot', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const consumer = await app.container.resolve(Consumer);
 
     await consumer.cache.set('/manual', { ok: true }, 30);
@@ -157,7 +157,7 @@ describe('CacheModule.forRoot', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const consumer = await app.container.resolve(Consumer);
 
     await consumer.cache.set('/health', { ok: true });
@@ -202,7 +202,7 @@ describe('CacheModule.forRoot', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const consumer = await app.container.resolve(Consumer);
 
     await consumer.cache.set('/resource', { ok: true });
@@ -278,7 +278,7 @@ describe('CacheModule.forRoot', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(Consumer);
@@ -326,7 +326,7 @@ describe('CacheModule.forRoot', () => {
       imports: [CacheModule.forRoot({ store: 'redis' })],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       '@fluojs/cache-manager redis store requires a Redis client at bootstrap.',
     );
   });
@@ -344,9 +344,8 @@ describe('CacheModule.forRoot', () => {
     });
 
     const redisClient = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redisClient }],
-      rootModule: AppModule,
     });
     const consumer = await app.container.resolve(Consumer);
 
@@ -370,9 +369,8 @@ describe('CacheModule.forRoot', () => {
     });
 
     const redisClient = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redisClient }],
-      rootModule: AppModule,
     });
     const consumer = await app.container.resolve(Consumer);
 
@@ -406,9 +404,8 @@ describe('CacheModule.forRoot', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: namedRedisToken, useValue: redisClient }],
-      rootModule: AppModule,
     });
     const consumer = await app.container.resolve(Consumer);
 
@@ -444,9 +441,8 @@ describe('CacheModule.forRoot', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: namedRedisToken, useValue: namedClient }],
-      rootModule: AppModule,
     });
     const consumer = await app.container.resolve(Consumer);
 
@@ -466,7 +462,7 @@ describe('CacheModule.forRoot', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const byClass = await app.container.resolve(CacheService);
 
     expect(byClass).toBeInstanceOf(CacheService);
@@ -480,7 +476,7 @@ describe('CacheModule.forRoot', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const byClass = await app.container.resolve(CacheInterceptor);
 
     expect(byClass).toBeInstanceOf(CacheInterceptor);
@@ -513,7 +509,7 @@ describe('CacheModule.forRoot', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     const firstGetResponse = createResponse();
     await app.dispatch(createRequest('/products', 'GET', '/products?page=1'), firstGetResponse);
@@ -560,7 +556,7 @@ describe('CacheModule.forRoot', () => {
       imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     const firstUserResponse = createResponse();
     await app.dispatch(createRequest('/users/1', 'GET'), firstUserResponse);

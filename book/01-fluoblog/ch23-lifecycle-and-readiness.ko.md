@@ -96,7 +96,7 @@ export const OperationsModule = createOperationsModule(
 
 Runtime은 모듈 그래프와 DI 컨테이너를 구성한 뒤 lifecycle 대상 인스턴스를 해석한다. 그다음 대상들의 `onModuleInit()`을 실행하고, 이어 `onApplicationBootstrap()`을 실행한다. 플랫폼 시작이 성공해야 readiness marker가 ready로 바뀐다. HTTP dispatcher와 listener는 이 준비 과정과 구분되는 경계다.
 
-`bootstrapFastifyApplication`은 앱을 초기화하지만 자동 listen이나 Node signal 등록은 하지 않는다. 기본 실행 경로인 `runFastifyApplication`은 listen과 기본 shutdown 등록까지 마친 뒤 앱을 반환하므로 다시 `app.listen()`을 호출할 필요가 없다. 다만 아래의 `shutdownSignals: false`는 그 등록을 끄고 이 진입점에 맡긴다. 직접 `FluoFactory.create()`와 adapter를 조립하면 listen·signal뿐 아니라 helper의 미들웨어·logger·생성 이후 실패 정리 정책도 직접 소유한다. `fluoFactory`는 같은 Factory의 alias다.
+`FluoFactory.create()`가 초기화와 공통 middleware를 소유하고 `app.listen()`이 수신 및 선택한 signal callback을 기다린다. 아래 `createNodeShutdownSignalRegistration(false)`는 기본 signal 설치를 끄고 이 진입점에 종료를 맡긴다. Factory는 시작 실패 정리를 담당하지만 이미 수용된 요청의 drain과 host signal policy를 대신 정하지 않는다.
 
 공개 `app.state`의 `bootstrapped`, `ready`, `closed`는 HTTP body의 세 상태와 다른 모델이다. `app.ready()`는 critical platform readiness를 검사할 뿐 listener를 열거나 state를 `ready`로 바꾸지 않는다. `app.listen()`은 그 검사 뒤 adapter 활성화를 기다리고 shutdown이 시작되지 않았을 때 state를 `ready`로 바꾼다. 이 시작 검사는 Terminus indicator나 custom HTTP readiness callback을 실행하지 않으므로 `/ready`가 200이라는 증거는 아니다. Workers·Next.js처럼 호스트가 요청을 소유하는 경로에서는 adapter 활성화도 새 socket bind가 아니라 dispatcher 연결일 수 있다.
 
@@ -228,9 +228,11 @@ Gate의 종료 결정은 되돌리지 않는다. drain 중 요청 하나가 실�
 다음은 기존 `src/app.ts`, 22장의 `blogAccessObserver`, 위 TrafficModule을 사용하는 **`src/main.ts` 교체 파일**이다. AppModule에는 아래 조립 변경을 적용하며 계정·인증·네이티브 폼·업로드·구독·캐시·예약 모듈을 모두 남긴다. 포트는 9장의 `AppSettings.port`와 같은 `blogConfig.PORT`를 사용하고 loopback host를 유지한다. `PUBLIC_ORIGIN`, DB와 인증 설정도 기존 AppSettingsModule의 검증 경로에 남는다. 18장의 6 MiB 본문·총 multipart, 5 MiB 파일 한도와 파일 1개 제한을 명시적으로 보존한다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
@@ -238,20 +240,24 @@ const { blogConfig } = await import('./config/app-settings.module.js');
 const { blogAccessObserver } = await import('./observability/access-log.js');
 const { TrafficGate, TrafficMiddleware } = await import('./operations/traffic.js');
 
-const app = await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: blogConfig.PORT,
-  maxBodySize: 6 * 1024 * 1024,
-  multipart: {
-    maxFileSize: 5 * 1024 * 1024,
-    maxFiles: 1,
-    maxTotalSize: 6 * 1024 * 1024,
-  },
-  shutdownSignals: false,
-  shutdownTimeoutMs: 5_000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: blogConfig.PORT,
+    maxBodySize: 6 * 1024 * 1024,
+    multipart: {
+      maxFileSize: 5 * 1024 * 1024,
+      maxFiles: 1,
+      maxTotalSize: 6 * 1024 * 1024,
+    },
+    shutdownTimeoutMs: 5_000,
+  }),
   middleware: [createCorrelationMiddleware(), TrafficMiddleware],
   observers: [blogAccessObserver],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(false),
 });
+await app.listen();
 const gate = await app.get(TrafficGate);
 let closing: Promise<void> | undefined;
 
@@ -302,12 +308,12 @@ Fastify의 `shutdownTimeoutMs`는 adapter close를 기다리는 상한이다. 0�
 
 ## 수명주기 순서를 소스 경계에서 실험하기
 
-종료 hook의 이름을 외우기보다 호출 순서를 직접 확인해 보자. 다음 `src/operations/lifecycle-order.spec.ts`는 **독립 실험 파일**이다. 실제 `bootstrapApplication`을 사용하고, adapter만 사건 기록용 대역으로 바꾼다. HTTP 전송 적합성 시험이 아니라 runtime이 adapter close보다 hook을 먼저 실행한다는 계약의 시험이다.
+종료 hook의 이름을 외우기보다 호출 순서를 직접 확인해 보자. 다음 `src/operations/lifecycle-order.spec.ts`는 **독립 실험 파일**이다. 실제 `FluoFactory.create`을 사용하고, adapter만 사건 기록용 대역으로 바꾼다. HTTP 전송 적합성 시험이 아니라 runtime이 adapter close보다 hook을 먼저 실행한다는 계약의 시험이다.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import type { HttpApplicationAdapter } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 
 it('runs resource hooks before adapter close', async () => {
@@ -329,7 +335,7 @@ it('runs resource hooks before adapter close', async () => {
   }
 
   @Module({ providers: [ResourceProbe] })
-  class ProbeModule {}
+  class ProbeModule { }
 
   const adapter: HttpApplicationAdapter = {
     async listen() {
@@ -339,7 +345,7 @@ it('runs resource hooks before adapter close', async () => {
       events.push('adapter-close');
     },
   };
-  const app = await bootstrapApplication({ rootModule: ProbeModule, adapter });
+  const app = await FluoFactory.create(ProbeModule, { adapter });
   try {
     expect(events).toEqual(['init', 'bootstrap']);
     await app.listen();

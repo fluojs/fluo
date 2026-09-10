@@ -1,7 +1,7 @@
 import { Module } from '@fluojs/core';
 import type { RequestScopeContainer } from '@fluojs/di';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Path, Router } from './decorators.js';
@@ -107,7 +107,7 @@ describe('React page metadata renderer consumption', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // When: authoritative HTTP matching dispatches the page to the application renderer.

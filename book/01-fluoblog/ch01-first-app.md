@@ -71,7 +71,9 @@ Let us make the first operational mishap a small one. The operator mistypes `POR
 The following is a **complete file** to replace `src/main.ts` in the generated project. It continues to use `AppModule` from the generated `src/app.ts`.
 
 ```ts
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
 function readPort(value: string | undefined): number {
@@ -89,11 +91,16 @@ function readPort(value: string | undefined): number {
   return port;
 }
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: readPort(process.env.PORT),
-  retryLimit: 0,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: readPort(process.env.PORT),
+    retryLimit: 0,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 This check belongs at the application boundary where an external string becomes an option. Converting to a number and checking only whether it is finite can unintentionally accept inputs such as an empty string or exponential notation. Defining the permitted notation with a regular expression and then checking the integer range makes the input policy explicit. Rejecting port `0` is the book's local execution policy. The adapter itself allows `0` so that the operating system can choose an available port. Do not confuse values the framework forbids with values the application chooses not to use.
@@ -104,11 +111,11 @@ This file makes FluoBlog's input policy stricter; it does not describe the CLI's
 
 `retryLimit: 0` is an exercise setting that exposes port conflicts immediately. It avoids the appearance of a hang during retries when a developer has left an old process running. Retries can ease a transient conflict, but they do not resolve ownership of an occupied port. While initially reproducing a problem, failing fast is more useful.
 
-`runFastifyApplication()` is the default Node/Fastify execution path. By the time it returns, initialization, listening, and default `SIGINT` and `SIGTERM` registration are complete, so there is no need to call `listen()` again. In contrast, `bootstrapFastifyApplication()` returns only the initialized app, leaving listen and Node signal registration to the caller. Treating the two as interchangeable because their names are similar can leave you with a process that exists but does not accept requests.
+`FluoFactory.create()` initializes the app; `app.listen()` awaits adapter activation and optional Node signal registration. Keep creation distinct from listening and await both calls. New Node/Fastify CLI starters use this same path.
 
-You can also pass `createFastifyAdapter()` to `FluoFactory.create()` and await `app.listen()` yourself. The repository's `examples/minimal` uses this explicit composition path. It shares initialization, but does not automatically reproduce the helper's middleware composition, logger choice, close attempt after post-creation startup failure, or signal registration. Both Fastify helpers compose configured CORS, a configured global prefix, default security headers, and caller middleware in that order. Security headers are enabled unless `securityHeaders: false`, while CORS and a prefix are not enabled when omitted. As later chapters accumulate options, do not replace this execution path merely by changing API names.
+Passing `createFastifyAdapter()` to `FluoFactory.create()` is the common HTTP recipe. Factory owns the CORS, prefix, default security headers, and caller middleware order and cleans creation/startup failures. CORS/prefix default off; security headers default on with a `false` opt-out. The host explicitly selects only the Node logger and signal callback.
 
-Here, Node/Fastify owns the socket listener. In apps attached to Workers or Next.js, the host owns request forwarding and shutdown, and activation does not necessarily open a new socket. Do not turn the shared name `listen` into a port or signal requirement for every environment. The context experiment's `fluoFactory` below is also an alias of `FluoFactory`, not another runtime model.
+Here, Node/Fastify owns the socket listener. In apps attached to Workers or Next.js, the host owns request forwarding and shutdown, and activation does not necessarily open a new socket. Do not turn the shared name `listen` into a port or signal requirement for every environment. The context experiment uses the same class with its distinct context-only method.
 
 ## An Experiment That Checks Assembly Without Opening HTTP
 
@@ -116,13 +123,13 @@ When the server will not start, separating a DI failure from a port failure make
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 const BLOG_NAME = Symbol('BLOG_NAME');
 
 @Inject(BLOG_NAME)
 class BlogIdentity {
-  constructor(private readonly name: string) {}
+  constructor(private readonly name: string) { }
 
   describe(): string {
     return `${this.name}: context-ready`;
@@ -135,9 +142,9 @@ class BlogIdentity {
     BlogIdentity,
   ],
 })
-class ProbeModule {}
+class ProbeModule { }
 
-const context = await fluoFactory.createApplicationContext(ProbeModule);
+const context = await FluoFactory.createApplicationContext(ProbeModule);
 try {
   const identity = await context.get(BlogIdentity);
   console.log(identity.describe());
@@ -226,7 +233,7 @@ PORT=70000 node dist/main.js
 
 Both runs should exit with the `readPort` error before listening succeeds. If a normal server is already running, executing `PORT=3000 node dist/main.js` in a second terminal should fail because the port is occupied. The existing server continuing to answer `/greeting` does not mean that the second process succeeded. A successful request and a successful start of the process you just launched are different observations.
 
-`runFastifyApplication()` registers signal-based shutdown, but it does not turn every failure into success. Shutdown timeouts and failures are reported through logs and `process.exitCode`, while the surrounding host owns final process termination. In experiments where the application manages its own lifetime, await `close()` in `finally`. Habitually calling `process.exit()` immediately removes the chance to observe disposal that has not yet finished.
+Node `shutdownRegistration` connects signal-based shutdown without turning failure into success. Timeouts and failures are reported through logs and `process.exitCode`; the host owns final process termination. Experiments that manage their own lifetime await `app.close()` in `finally`.
 
 The state after this first run is small. `src/main.ts` contains only the execution environment and server startup, `src/app.ts` holds the starter's module configuration, and `/greeting` responds. For a goal this modest, using a single Node HTTP server without a framework is also a valid choice. Fluo's assembly cost becomes worthwhile when different responsibilities, such as request handling, testing, and data access, need to be connected under the same rules. In the next chapter, we will address the first product requirement by creating `/posts` and `/posts/1`, turning a successful run into a post readers can see.
 

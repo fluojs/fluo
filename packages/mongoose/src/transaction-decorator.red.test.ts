@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { MongooseConnection, MongooseModule, Transaction } from './index.js';
@@ -158,7 +158,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -206,7 +206,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -257,7 +257,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -312,7 +312,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -360,7 +360,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -409,7 +409,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -461,7 +461,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -514,7 +514,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -583,7 +583,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -633,7 +633,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -683,7 +683,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -733,7 +733,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -783,7 +783,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -833,7 +833,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -883,7 +883,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -927,7 +927,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -977,7 +977,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1028,7 +1028,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1077,7 +1077,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1202,7 +1202,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1251,7 +1251,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1301,7 +1301,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1384,7 +1384,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1434,7 +1434,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1485,7 +1485,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1538,7 +1538,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1594,7 +1594,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1642,7 +1642,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1695,7 +1695,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         providers: [UserRepository, UserService],
       });
 
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await FluoFactory.create(AppModule);
       const service = await app.container.resolve(UserService);
 
       try {
@@ -1750,7 +1750,7 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
       providers: [MultiConnectionService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(MultiConnectionService);
 
     try {
@@ -1811,7 +1811,7 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
       providers: [DualConnectionService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(DualConnectionService);
 
     try {

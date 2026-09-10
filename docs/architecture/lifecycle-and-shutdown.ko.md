@@ -9,7 +9,7 @@
 | 항목 | 전제와 공개 표면 |
 | --- | --- |
 | 실행 환경 | 아래 검증 명령은 의존성을 설치한 repository checkout에서 Node `>=24 <27`, `pnpm@10.4.1`을 사용합니다. 생성 앱은 registry 의존성과 생성된 scripts를 유지하고, `examples/fluo-blog` 같은 repository example은 workspace 의존성과 자체 빌드 전제를 따릅니다. 이 문서는 두 앱 디렉터리를 서로 덮어쓰는 recipe가 아닙니다. |
-| 모듈과 DI | `@fluojs/runtime`의 `defineModule`, `FluoFactory`, `fluoFactory`, `bootstrapApplication`을 사용합니다. Root module과 provider를 등록하고, 모듈 간 의존성은 imports/exports로 공개해야 합니다. 생성자 의존성에는 `@fluojs/core`의 `Inject` 또는 provider의 명시적 `inject` 목록이 필요합니다. Decorator를 쓰면 module 평가 전에 `Symbol.metadata` 준비와 표준 decorator 변환이 필요합니다. [metadata 계약](./decorators-and-metadata.ko.md)을 따릅니다. |
+| 모듈과 DI | `@fluojs/runtime`의 `defineModule`, `FluoFactory`을 사용합니다. Root module과 provider를 등록하고, 모듈 간 의존성은 imports/exports로 공개해야 합니다. 생성자 의존성에는 `@fluojs/core`의 `Inject` 또는 provider의 명시적 `inject` 목록이 필요합니다. Decorator를 쓰면 module 평가 전에 `Symbol.metadata` 준비와 표준 decorator 변환이 필요합니다. [metadata 계약](./decorators-and-metadata.ko.md)을 따릅니다. |
 | Lifecycle API | `@fluojs/runtime`에서 type으로 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, `ApplicationContext`를 import합니다. 훅은 동기 `void` 또는 `Promise<void>`를 반환합니다. Interface 선언만으로 등록되지는 않습니다. Hook-bearing `useValue` 또는 적격 singleton class/factory provider가 lifecycle 대상이며, `useExisting` alias와 request/transient provider는 독립 startup hook 대상으로 root-resolve하지 않습니다. |
 | HTTP 경로 | `@fluojs/platform-fastify`의 `runFastifyApplication`, `bootstrapFastifyApplication`, `createFastifyAdapter`; `@fluojs/platform-nodejs`의 `runNodeApplication`, `bootstrapNodeApplication`, `createNodeHttpAdapter`가 공개 API입니다. 직접 adapter를 구현할 때는 `@fluojs/http/portable`의 `HttpApplicationAdapter` 계약을 따릅니다. 이 문서의 `src/` 경로는 구현 근거이지 consumer import 경로가 아닙니다. |
 | 외부 자원 | 순수 DI 예제에는 서버, 환경 파일, 외부 서비스가 필요하지 않습니다. DB·queue·socket·background job을 추가하면 해당 자원의 연결 설정, 오류 처리, drain, close 소유권도 애플리케이션이나 해당 package에 지정해야 합니다. |
@@ -18,13 +18,12 @@
 
 | API 또는 입력 | 기본값, 반환과 경계 |
 | --- | --- |
-| `FluoFactory.create(RootModule, options = {})` | Bootstrap과 HTTP dispatcher 생성을 await한 `Promise<Application>`이며 초기 `state`는 `bootstrapped`입니다. 자동 listen과 signal 등록은 없습니다. Adapter 없이 shell을 만들 수 있지만 `listen()`은 `InvariantError`로 reject합니다. `fluoFactory`는 같은 `FluoFactory`의 alias입니다. |
-| `bootstrapApplication({ rootModule, ...options })` | 같은 HTTP shell 생성 경로이며 `logger`를 직접 받을 수 있습니다. `rootModule`은 필수입니다. Graph/visibility/injection validation과 provider resolution 또는 startup hook 실패는 bootstrap을 reject합니다. |
+| `FluoFactory.create(RootModule, options = {})` | Bootstrap과 HTTP dispatcher 생성 뒤 `Promise<Application>`으로 반환하며 초기 상태는 `bootstrapped`입니다. 생성 시 listen/signal 등록은 하지 않습니다. `logger`와 middleware 정책을 받고 선택적 `shutdownRegistration`은 listen 뒤 실행합니다. Adapterless shell의 `listen()`은 `InvariantError`로 reject하지만 shell은 보존합니다. |
 | `FluoFactory.createApplicationContext(RootModule, options = {})` | DI와 lifecycle 초기화가 끝난 `Promise<ApplicationContext>`입니다. HTTP adapter/dispatcher/listener 및 공개 `state`, `ready()`, `listen()`은 없습니다. `get(token): Promise<T>`, `close(signal?): Promise<void>`를 사용합니다. |
 | Bootstrap 옵션 | `providers`는 생략 시 추가 등록 없음, `duplicateProviderPolicy`는 `warn`이며 `throw`/`ignore`도 받습니다. `moduleGraphCache`와 `diagnostics.timing`은 기본 off입니다. Timing을 켜면 `bootstrapTiming`을 제공하며 context에는 `create_dispatcher` phase가 없습니다. |
 | `app.ready()` | `Promise<void>`로 critical platform readiness를 검사할 뿐 adapter를 활성화하거나 `state`를 `ready`로 바꾸지 않습니다. HTTP health route를 자동 생성하지도 않습니다. 성공한 close 뒤에는 reject합니다. 종료 admission 판정에는 이 메서드나 `state` 대신 아래 operation gate 계약을 적용합니다. |
-| `app.listen()` | 인수 없이 adapter 설정을 사용합니다. `ready()` 다음 `adapter.listen(dispatcher)`를 await하고, shutdown이 시작되지 않았을 때만 `state = 'ready'`로 전환합니다. 겹친 호출은 진행 중인 시작 작업을 공유하고 이미 ready이면 다시 시작하지 않습니다. Readiness/adapter 실패만으로 close하지 않으며, close가 시작되지 않았다면 caller가 adapter 계약에 따라 listen을 재시도할 수 있습니다. |
-| `bootstrapFastifyApplication(RootModule, options)` | 기본 미들웨어를 조립한 bootstrapped 앱을 반환하지만 listen과 Node signal 등록은 하지 않습니다. `runFastifyApplication`은 이어서 listen, 시작 로그, signal 등록까지 성공한 뒤 반환합니다. 직접 Factory 조립은 이 helper의 미들웨어·logger·실패 정리·signal 정책과 자동으로 동등하지 않습니다. [시작 경로](../getting-started/bootstrap-paths.ko.md)를 참고합니다. |
+| `app.listen()` | `ready()` → `adapter.listen(dispatcher)` → 시작 로그 → 선택적 host signal 등록을 기다립니다. 동시 호출은 startup과 실패 cleanup을 공유합니다. Readiness/listen/setup 실패는 원래 오류를 보존하며 `close('bootstrap-failed')`를 호출합니다. 새 startup에는 새 앱이 필요합니다. |
+| `bootstrapFastifyApplication(RootModule, options)` | 미이전 소비자를 위해 유지되는 platform helper이며 같은 Factory의 middleware와 cleanup을 사용합니다. Native logger와 host signal 선택은 platform option으로 전달합니다. 새 HTTP 앱은 [Factory recipe](../getting-started/bootstrap-paths.ko.md)를 사용하세요. |
 | Node/Fastify 종료 설정 | `shutdownSignals`는 run helper에서 기본 `['SIGINT', 'SIGTERM']`, `false`로 비활성화하거나 지원 신호 목록으로 지정합니다. `forceExitTimeoutMs = 30_000`은 signal 종료 실패를 표시하는 시간이며, adapter의 `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify의 종료 제한은 non-negative safe integer로 setup에서 검증됩니다. |
 | `close(signal?)` | 생략한 signal은 `undefined`이며 runtime이 임의로 `SIGTERM`을 붙이지 않습니다. 진행 중 teardown을 공유하고 성공 뒤 반복 close는 no-op입니다. 실패 후 명시적 재시도는 아래 phase별 소유권을 따릅니다. |
 
@@ -32,12 +31,12 @@
 
 | 순서 | 단계 | 런타임 사실 | 근거 소스 |
 | --- | --- | --- | --- |
-| 1 | 모듈 부트스트랩 | `bootstrapApplication(...)`은 어떤 라이프사이클 훅보다 먼저 모듈 그래프를 컴파일하고 DI 컨테이너를 생성합니다. | `packages/runtime/src/bootstrap.ts:bootstrapApplication()` |
+| 1 | 모듈 부트스트랩 | `FluoFactory.create(...)`은 어떤 라이프사이클 훅보다 먼저 모듈 그래프를 컴파일하고 DI 컨테이너를 생성합니다. | `packages/runtime/src/bootstrap.ts:FluoFactory.create()` |
 | 2 | 런타임 토큰 등록 | 모듈 컴파일이 성공한 뒤 `HTTP_APPLICATION_ADAPTER`, `PLATFORM_SHELL`, `RUNTIME_CONTAINER`, `COMPILED_MODULES` 같은 런타임 토큰이 등록됩니다. | `packages/runtime/src/bootstrap.ts:registerRuntimeBootstrapTokens()`, `packages/runtime/src/bootstrap.ts:registerRuntimeApplicationContextTokens()` |
 | 3 | 라이프사이클 인스턴스 해석 | 공개 라이프사이클 계약을 구현한 런타임 공급자와 모듈 공급자를 라이프사이클 실행 전에 해석합니다. 모든 적격 singleton `multi: true` contribution은 contribution 순서에 따른 별도 lifecycle instance로 유지되며, class/factory contribution은 request/transient sibling을 root에서 해석하지 않고 개별 해석됩니다. | `packages/runtime/src/bootstrap.ts:resolveLifecycleInstances()`, `packages/di/src/internal.ts:resolveMultiContribution()` |
 | 4 | 부트스트랩 라이프사이클 | `runBootstrapHooks(...)`는 먼저 모든 해석된 라이프사이클 인스턴스의 `onModuleInit()`를 실행하고, 이어서 같은 인스턴스들의 `onApplicationBootstrap()`를 실행합니다. | `packages/runtime/src/bootstrap.ts:runBootstrapHooks()` |
 | 5 | 플랫폼 시작 | `platformShell.start()`는 부트스트랩 훅이 완료된 뒤 실행됩니다. 이 단계가 성공하기 전까지 readiness 표시는 시작 중 상태에 머뭅니다. | `packages/runtime/src/bootstrap.ts:runBootstrapLifecycle()` |
-| 6 | 디스패처 생성 | HTTP 디스패처는 부트스트랩 라이프사이클 경로가 끝난 뒤 생성됩니다. 타이밍 진단을 켜면 이 단계는 `create_dispatcher` phase로 노출됩니다. | `packages/runtime/src/bootstrap.ts:bootstrapApplication()`, `packages/runtime/src/health/diagnostics.ts` |
+| 6 | 디스패처 생성 | HTTP 디스패처는 부트스트랩 라이프사이클 경로가 끝난 뒤 생성됩니다. 타이밍 진단을 켜면 이 단계는 `create_dispatcher` phase로 노출됩니다. | `packages/runtime/src/bootstrap.ts:FluoFactory.create()`, `packages/runtime/src/health/diagnostics.ts` |
 
 타이밍 진단을 `diagnostics.timing`으로 활성화하면 부트스트랩 phase 이름은 `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, `create_dispatcher`로 고정됩니다.
 
@@ -94,9 +93,9 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 3. Runtime cleanup과 shutdown hook의 개별 실패는 나머지 callback/hook과 이후 adapter/container 정리를 건너뛰지 않습니다. 단일 실패는 error로, 여러 실패는 `AggregateError`로 reject합니다. 완료된 phase는 재시도에서 건너뜁니다. **Runtime cleanup phase가 실패하면 등록된 callback 전체를, lifecycle hook phase가 실패하면 두 hook pass 전체를 다시 실행**하므로 이 훅들은 성공했던 작업의 재진입도 처리해야 합니다. 이는 container의 실패한 `onDestroy()`만 재시도하는 정책과 다릅니다. Readiness reset 자체가 throw하면 그 시도의 이후 phase로 진행하지 않습니다.
 4. DI disposal은 materialize된 container-managed instance와 소유한 child scope를 정리하며 성공한 `onDestroy()`는 다시 호출하지 않습니다. 실패 뒤에도 container의 register/override/resolve/createRequestScope는 terminal입니다. 직접 dispose한 child의 후속 재시도는 그 caller가, parent가 시작한 실패한 child disposal은 parent hierarchy가 소유합니다. Lifecycle `onModuleDestroy()`/`onApplicationShutdown()`와 DI `onDestroy()`는 별도 계약이며 하나의 hook으로 합쳐지지 않습니다.
 5. Adapter retry는 adapter 소유입니다. Runtime은 incomplete adapter phase에서 `close(signal)`을 다시 호출할 뿐 모든 adapter를 재시작하거나 같은 drain을 보장하지 않습니다. `MicroserviceApplication.close()`는 성공/실패 결과를 terminal하게 보존하므로 부모 close 재시도가 child transport teardown을 재실행하지 않습니다. `startAllMicroservices()` 실패는 먼저 시작된 child만 역순 rollback하며 원래 시작 오류를 유지합니다.
-6. Bootstrap 자체의 실패 경로는 readiness reset, 등록된 runtime cleanup, 확보한 instance의 shutdown hooks, 확보한 container disposal을 시도하고 정리 오류를 logger로 보고한 뒤 원래 startup 오류를 rethrow합니다. 이 경로는 HTTP adapter close를 호출하지 않습니다. 이미 앱을 반환받은 run helper의 listen/시작 로그/signal 등록 실패는 `app.close('bootstrap-failed')`를 시도하고 원래 오류를 유지합니다. 수동 Factory 경로의 시작 실패 및 bootstrap 이전 caller-created 자원은 caller가 정리 정책을 소유합니다.
-7. Node run helper는 listen 뒤 signal handler를 등록하고 수동 close에서도 등록 해제를 한 번 시도한 뒤 runtime close를 수행합니다. 등록 해제가 실패해도 runtime close를 시도하며 둘 다 실패하면 aggregate합니다. Signal timeout/close 실패는 로그와 `process.exitCode = 1`로 표시할 뿐 `process.exit()`를 호출하거나 cleanup을 취소하지 않습니다. Timeout 전에 정상 종료하면 exit code는 `0`입니다. 최종 프로세스 종료는 host 소유입니다.
-8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 run helper의 `shutdownSignals: false`로 이중 소유권을 피합니다.
+6. Bootstrap 실패 시 확보한 readiness/runtime cleanup/hook/HTTP adapter/container 정리를 시도하고 원래 오류를 보존합니다. 반환된 앱의 readiness/listen/시작 로그/signal 등록 실패도 `app.close('bootstrap-failed')`를 거칩니다. Cleanup이나 logger 실패가 원래 오류를 바꾸지 않습니다. Factory 호출 이전에 생성한 외부 자원은 여전히 application이 소유합니다.
+7. Node signal은 `shutdownRegistration` callback으로 listen 후 등록합니다. 부분 등록 실패는 Node 소유자가 rollback합니다. Manual close는 해제를 한 번 시도하고 모든 runtime 정리를 계속합니다. 동시 close와 이후 close는 해제 실패를 공유하며 teardown 실패와 aggregate됩니다. Runtime teardown이 끝나면 해제 실패가 있어도 state는 `closed`입니다. Node timeout/close 실패는 로그와 `process.exitCode = 1`로 보고하며 `process.exit()`를 호출하지 않습니다.
+8. Node adapter는 server drain 및 timeout 뒤 남은 연결 종료를 소유합니다. Fastify는 `app.close()` settlement를 기다리며 close 대기 시간이 제한을 넘으면 reject하지만 underlying close는 계속됩니다. `Application.dispatch()` gate는 이미 admission된 요청을 취소하지 않을 뿐, 모든 요청·DB 작업·background job의 완료를 보장하는 universal drain이 아닙니다. 애플리케이션 custom drain과 host signal handler를 쓰면 Factory `shutdownRegistration` 생략(기존 run helper에서는 `shutdownSignals: false`)으로 이중 소유권을 피합니다.
 
 ## 범위를 명시한 예제
 
@@ -124,7 +123,7 @@ try {
 // events: ['init', 'bootstrap', 'destroy', 'shutdown:manual']
 ```
 
-기본 Node/Fastify 실행은 `runFastifyApplication`, 활성화 전 구성이 필요하면 `bootstrapFastifyApplication`, adapter를 명시적으로 조립하면 Factory 경로를 선택합니다. Host-owned 요청은 해당 adapter의 연결 recipe를 따릅니다. 사람을 위한 적용 설명은 Book 1권 23장 `ch23-lifecycle-and-readiness`, legacy `book/advanced/ch09-app-context`에 있습니다.
+HTTP 앱은 `FluoFactory.create(AppModule, { adapter })` 뒤 `app.listen()`과 `app.close()`를 사용합니다. Host-owned 요청은 해당 adapter 연결 recipe를 따릅니다. 적용 설명은 Book 1권 23장 `ch23-lifecycle-and-readiness`와 legacy `book/advanced/ch09-app-context`에 있습니다.
 
 ## 기계 소비 계약과 실행 근거
 
@@ -134,7 +133,11 @@ try {
 ```json
 {
   "schemaVersion": 1,
-  "states": ["bootstrapped", "ready", "closed"],
+  "states": [
+    "bootstrapped",
+    "ready",
+    "closed"
+  ],
   "admissionCloses": "close-start",
   "blockedOperations": [
     "Application.get()",
@@ -145,7 +148,7 @@ try {
     "Application.startAllMicroservices()"
   ],
   "stateDuringCloseOrFailure": "unchanged",
-  "closedAfter": "successful-teardown",
+  "closedAfter": "successful-runtime-teardown",
   "admittedDispatch": "not-cancelled-by-gate",
   "shutdownOrder": [
     "readiness-reset",
@@ -164,11 +167,34 @@ try {
     "admissionReopens": false
   },
   "nodeSignals": {
-    "defaults": ["SIGINT", "SIGTERM"],
+    "defaults": [
+      "SIGINT",
+      "SIGTERM"
+    ],
     "forceExitTimeoutMs": 30000,
     "callsProcessExit": false
   },
-  "nodeAdapterShutdownTimeoutMs": 10000
+  "nodeAdapterShutdownTimeoutMs": 10000,
+  "httpCreation": {
+    "entrypoint": "FluoFactory.create",
+    "removedExports": [
+      "bootstrapApplication",
+      "fluoFactory"
+    ],
+    "middleware": [
+      "cors:opt-in",
+      "prefix:opt-in",
+      "security-headers:default-on",
+      "caller",
+      "module:after-match"
+    ],
+    "logger": "option-or-portable-console",
+    "creationFailure": "original-error-after-adapter-and-runtime-cleanup",
+    "listenFailure": "terminal-shutdown",
+    "shutdownRegistration": "host-owned-opt-in-after-listen",
+    "unregistration": "attempt-once-retain-failure"
+  },
+  "signalCleanupFailureState": "closed-after-runtime-teardown"
 }
 ```
 <!-- fluo:lifecycle-shutdown:end -->

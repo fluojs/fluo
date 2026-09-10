@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { PrismaModule, PrismaService } from './index.js';
@@ -118,7 +118,7 @@ describe('Prisma request transaction shutdown status', () => {
       imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
     const openTransaction = prisma.requestTransaction(async () => new Promise<never>(() => undefined));
     const openTransactionResult = expect(openTransaction).rejects.toThrow(

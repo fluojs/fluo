@@ -1,4 +1,4 @@
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OnEvent } from './decorators.js';
@@ -52,7 +52,7 @@ describe('EventBusLifecycleService late shutdown work', () => {
       providers: [SlowHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const eventBus = await app.container.resolve(EventBusLifecycleService);
@@ -101,7 +101,7 @@ describe('EventBusLifecycleService late shutdown work', () => {
       imports: [EventBusModule.forRoot({ transport })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const eventBus = await app.container.resolve(EventBusLifecycleService);

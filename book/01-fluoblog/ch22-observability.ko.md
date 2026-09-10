@@ -375,27 +375,34 @@ export const blogAccessObserver = createAccessLogObserver({
 요청 ID 생성은 observer와 별개의 책임이다. `src/main.ts`의 기존 Fastify 실행 옵션에 다음 **옵션 부분 구현**을 합친다. `AppModule`은 기존 계정·게시글·관측 모듈을 조합한 `src/app.ts`의 앱이다. 이 블록은 그 앱의 나머지 설정이나 등록을 대체하지 않는다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { blogConfig } = await import('./config/app-settings.module.js');
 const { blogAccessObserver } = await import('./observability/access-log.js');
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: blogConfig.PORT,
-  maxBodySize: 6 * 1024 * 1024,
-  multipart: {
-    maxFileSize: 5 * 1024 * 1024,
-    maxFiles: 1,
-    maxTotalSize: 6 * 1024 * 1024,
-  },
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: blogConfig.PORT,
+    maxBodySize: 6 * 1024 * 1024,
+    multipart: {
+      maxFileSize: 5 * 1024 * 1024,
+      maxFiles: 1,
+      maxTotalSize: 6 * 1024 * 1024,
+    },
+  }),
   middleware: [createCorrelationMiddleware()],
   observers: [blogAccessObserver],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 Correlation middleware는 들어온 `x-request-id` 또는 이전 형식의 `x-correlation-id`를 채택하고, 없으면 시작 기록 전에 ID를 생성한다. 같은 ID는 응답 header에도 이어진다. 이 ID는 상관관계를 찾기 위한 값이지 인증된 사용자 식별자나 전역 고유성을 증명하는 값이 아니다. 고객이 보낸 ID를 권한이나 멱등성 키로 대신 사용하지 않는다.

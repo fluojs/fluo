@@ -1,7 +1,7 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT, RedisModule } from '@fluojs/redis';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTimeout } from './helpers.js';
 
@@ -724,7 +724,7 @@ describe('@fluojs/queue', () => {
       imports: [RedisTestModule, QueueModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const queueByClass = await app.container.resolve(QueueLifecycleService);
     const queueByHelperToken = await app.container.resolve<QueueLifecycleService>(getQueueLifecycleServiceToken());
     const queueByToken = await app.container.resolve<Queue>(QUEUE);
@@ -782,9 +782,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     try {
       const userService = await app.container.resolve(UserService);
@@ -819,9 +818,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -871,9 +869,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -923,9 +920,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -969,9 +965,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -1013,9 +1008,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -1082,9 +1076,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: NAMED_REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const userService = await app.container.resolve(UserService);
     const workerStore = await app.container.resolve(WorkerStore);
@@ -1122,9 +1115,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     const service = await app.container.resolve(QueueLifecycleService);
@@ -1175,10 +1167,9 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const queueCloseStarted = withTimeout(
@@ -1231,10 +1222,9 @@ describe('@fluojs/queue', () => {
 
     const redis = new MockRedisClient();
     redis.hangQuitOnDuplicate = 1;
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const duplicateQuitStarted = withTimeout(
@@ -1290,9 +1280,8 @@ describe('@fluojs/queue', () => {
     const redis = new MockRedisClient();
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('Duplicate @fluojs/queue scope "default" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.');
   });
@@ -1316,9 +1305,8 @@ describe('@fluojs/queue', () => {
     const redis = new MockRedisClient();
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('Duplicate @fluojs/queue scope "jobs" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.');
   });
@@ -1355,9 +1343,8 @@ describe('@fluojs/queue', () => {
 
     const redis = new MockRedisClient();
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     await expect(app.container.resolve(getQueueToken('jobs'))).resolves.toBeDefined();
@@ -1440,9 +1427,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -1531,9 +1517,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: getRedisClientToken('jobs'), useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -1577,7 +1562,7 @@ describe('@fluojs/queue', () => {
       imports: [HiddenRedisModule, QueueFeatureModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       '@fluojs/queue cannot access Redis client token Symbol(fluo.redis.client:hidden) from queue scope "hidden-redis". Import and export the matching RedisModule.forRoot(...) registration through the same module graph.',
     );
   });
@@ -1627,9 +1612,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     const service = await app.container.resolve(QueueLifecycleService);
@@ -1678,10 +1662,9 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
 
@@ -1732,9 +1715,8 @@ describe('@fluojs/queue', () => {
       const redis = new MockRedisClient();
 
       await expect(
-        bootstrapApplication({
+        FluoFactory.create(AppModule, {
           providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-          rootModule: AppModule,
         }),
       ).rejects.toThrow('Duplicate @QueueWorker() registration for job type DuplicateJob.');
       expect(bullmqState.queues).toHaveLength(0);
@@ -1775,9 +1757,8 @@ describe('@fluojs/queue', () => {
       const redis = new MockRedisClient();
 
       await expect(
-        bootstrapApplication({
+        FluoFactory.create(AppModule, {
           providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-          rootModule: AppModule,
         }),
       ).rejects.toThrow('Duplicate queue job name shared-job.');
       expect(bullmqState.queues).toHaveLength(0);
@@ -1811,10 +1792,9 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     try {
       const queue = await app.container.resolve<Queue>(QUEUE);
@@ -1870,9 +1850,8 @@ describe('@fluojs/queue', () => {
       }),
     ];
     redis.deadLetters.set(key, storedRecords);
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     try {
@@ -1913,9 +1892,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await waitForApplicationQueueWorkers(app);
@@ -1954,9 +1932,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await waitForApplicationQueueWorkers(app);
@@ -1992,9 +1969,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     try {
       const queue = await app.container.resolve<Queue>(QUEUE);
@@ -2033,9 +2009,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await waitForApplicationQueueWorkers(app);
@@ -2092,9 +2067,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     try {
       const workerStore = await app.container.resolve(WorkerStore);
@@ -2156,9 +2130,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const workerStore = await app.container.resolve(WorkerStore);
 
@@ -2271,10 +2244,9 @@ describe('@fluojs/queue', () => {
     bullmqState.failWorkerRun.add('RunFailureJob');
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const service = await app.container.resolve(QueueLifecycleService);
 
@@ -2333,10 +2305,9 @@ describe('@fluojs/queue', () => {
     bullmqState.pendingWorkerRunRejections.add('AsyncRunFailureJob');
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const service = await app.container.resolve(QueueLifecycleService);
 
@@ -2422,10 +2393,9 @@ describe('@fluojs/queue', () => {
     bullmqState.failWorkerRun.add('FirstFailureJob');
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const service = await app.container.resolve(QueueLifecycleService);
 
@@ -2480,9 +2450,8 @@ describe('@fluojs/queue', () => {
       return originalRpush(key, value);
     };
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await waitForApplicationQueueWorkers(app);
@@ -2618,9 +2587,8 @@ describe('@fluojs/queue', () => {
     redis.failConnectOnDuplicate = 2;
 
     // When
-    const bootstrap = bootstrapApplication({
+    const bootstrap = FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     // Then
@@ -2661,9 +2629,8 @@ describe('@fluojs/queue', () => {
     const redis = new MockRedisClient();
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('worker construct fail:StartupSecondJob');
 
@@ -2847,9 +2814,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     const queue = await app.container.resolve<Queue>(QUEUE);
@@ -2883,10 +2849,9 @@ describe('@fluojs/queue', () => {
     const redis = new MockRedisClient();
     redis.rpush = () => new Promise<number>(() => undefined);
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await vi.advanceTimersByTimeAsync(0);
@@ -2926,10 +2891,9 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     const service = await app.container.resolve(QueueLifecycleService);
@@ -2979,10 +2943,9 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await vi.advanceTimersByTimeAsync(0);
@@ -3034,10 +2997,9 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     try {
       const queue = await app.container.resolve<Queue>(QUEUE);
@@ -3088,9 +3050,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await waitForApplicationQueueWorkers(app);
@@ -3117,9 +3078,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     await waitForApplicationQueueWorkers(app);
@@ -3153,14 +3113,13 @@ describe('@fluojs/queue', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         providers: [
           {
             provide: REDIS_CLIENT,
             useValue: { lrange: async () => [], ltrim: async () => 'OK', rpush: async () => 1 },
           },
         ],
-        rootModule: AppModule,
       }),
     ).rejects.toThrow(
       '@fluojs/queue requires a Redis client with duplicate(), lrange(), rpush(), and ltrim() methods.',
@@ -3184,9 +3143,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     await app.container.resolve<Queue>(QUEUE);
@@ -3217,9 +3175,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     await app.container.resolve<Queue>(QUEUE);
@@ -3250,9 +3207,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
 
     await app.container.resolve<Queue>(QUEUE);
@@ -3289,9 +3245,8 @@ describe('@fluojs/queue', () => {
     });
 
     const redis = new MockRedisClient();
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-      rootModule: AppModule,
     });
     try {
       const queue = await app.container.resolve<Queue>(QUEUE);

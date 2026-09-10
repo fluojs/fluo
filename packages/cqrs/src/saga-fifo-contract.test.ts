@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
@@ -94,7 +94,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
       providers: [ReentrantSaga, NestedEventSubscriber],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -175,7 +175,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
       providers: [FifoSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
 

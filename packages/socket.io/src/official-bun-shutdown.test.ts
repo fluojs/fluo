@@ -1,5 +1,5 @@
 import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SocketIoLifecycleService } from './adapter.js';
@@ -21,7 +21,7 @@ describe('SocketIoLifecycleService official Bun shutdown', () => {
       providers: [FailingBootstrapHook],
     });
 
-    await expect(bootstrapApplication({
+    await expect(FluoFactory.create(AppModule, {
       adapter,
       logger: {
         debug() {},
@@ -29,7 +29,6 @@ describe('SocketIoLifecycleService official Bun shutdown', () => {
         log() {},
         warn() {},
       },
-      rootModule: AppModule,
     })).rejects.toThrow('later bootstrap hook failed');
 
     expect(adapter.getServer()).toBeUndefined();

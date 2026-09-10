@@ -608,10 +608,10 @@ export function createFulfillmentPublisherModule(
 The beginning of the fulfillment `src/main.ts` is the following **application fragment**. `db` is the connected fulfillment client, and `workerOptions` is the `role: 'worker'` options built from two connected channels. These are resource inputs owned by the existing bootstrap, not omitted variables hiding business processing.
 
 ```ts
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createFulfillmentModule } from './app.js';
 
-const application = await fluoFactory.createMicroservice(
+const application = await FluoFactory.createMicroservice(
   createFulfillmentModule(db, workerOptions),
 );
 await application.listen();

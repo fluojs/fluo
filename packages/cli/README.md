@@ -68,6 +68,16 @@ The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-af
 
 ## Quick Start
 
+Node HTTP and mixed starters now generate `FluoFactory.create(AppModule, { adapter })`
+followed by `app.listen()`, with explicit `createConsoleApplicationLogger()` and
+`createNodeShutdownSignalRegistration()` imports from `@fluojs/platform-nodejs`.
+Fastify/Express starters declare that direct dependency rather than relying on a
+transitive import. Factory owns middleware defaults and startup-failure cleanup;
+the host callback owns process signals. Existing generated apps can follow the
+[HTTP Factory migration](../../docs/getting-started/migrate-http-factory.md).
+Context-only/microservice APIs and not-yet-migrated host-specific starter recipes
+retain their separate contracts.
+
 ### 1. Create a new project
 Scaffold a complete starter application in seconds.
 

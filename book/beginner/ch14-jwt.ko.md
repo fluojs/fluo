@@ -454,7 +454,7 @@ dependency를 볼 수 없으므로 `AuthPersistenceModule`을 올바르게 거�
 application의 database module이 이 객체와 transaction semantics를 소유합니다.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AuthModule } from './auth/auth.module.js';
 import {
   CREDENTIALS_REPOSITORY,
@@ -467,7 +467,7 @@ import {
   refreshTokenRepository,
 } from './database/auth.repositories.js';
 
-const context = await fluoFactory.createApplicationContext(AuthModule, {
+const context = await FluoFactory.createApplicationContext(AuthModule, {
   providers: [
     {
       provide: REFRESH_TOKEN_REPOSITORY,

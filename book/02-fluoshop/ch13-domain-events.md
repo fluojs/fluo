@@ -220,7 +220,7 @@ Let us ask the actual package about this distinction. The following is a complet
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { EventBusLifecycleService, EventBusModule, OnEvent } from '@fluojs/event-bus';
-import { bootstrapApplication, type ApplicationLogger } from '@fluojs/runtime';
+import { FluoFactory, type ApplicationLogger } from '@fluojs/runtime';
 import { expect, test } from 'vitest';
 import { OrderPaidEvent } from './events/order-paid.event.js';
 import { PaidPreviewListener, PaidPreviewStore } from './paid-preview.js';
@@ -231,7 +231,7 @@ class Attempts {
 
 @Inject(Attempts)
 class BrokenReceiptListener {
-  constructor(private readonly attempts: Attempts) {}
+  constructor(private readonly attempts: Attempts) { }
 
   @OnEvent(OrderPaidEvent)
   handle(): void {
@@ -243,9 +243,9 @@ class BrokenReceiptListener {
 test('distinguishes publication completion from reaction success', async () => {
   const failures: unknown[] = [];
   const logger: ApplicationLogger = {
-    debug() {},
-    log() {},
-    warn() {},
+    debug() { },
+    log() { },
+    warn() { },
     error(_message, error) { failures.push(error); },
   };
   @Module({
@@ -254,9 +254,9 @@ test('distinguishes publication completion from reaction success', async () => {
       Attempts, BrokenReceiptListener, PaidPreviewStore, PaidPreviewListener,
     ],
   })
-  class ExperimentModule {}
+  class ExperimentModule { }
 
-  const app = await bootstrapApplication({ rootModule: ExperimentModule, logger });
+  const app = await FluoFactory.create(ExperimentModule, { logger });
   try {
     const bus = await app.container.resolve(EventBusLifecycleService);
     const store = await app.container.resolve(PaidPreviewStore);

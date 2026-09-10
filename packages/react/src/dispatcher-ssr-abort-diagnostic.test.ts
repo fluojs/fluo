@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import type { FrameworkRequest, FrameworkResponse, FrameworkResponseStream } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -136,7 +136,7 @@ describe('React SSR abort diagnostics', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: the active request aborts after React starts shell rendering.
@@ -202,7 +202,7 @@ describe('React SSR abort diagnostics', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a streaming React response aborts after its first committed chunk.

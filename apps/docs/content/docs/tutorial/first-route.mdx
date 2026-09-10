@@ -124,14 +124,21 @@ The complete entrypoint is `00-start/src/main.ts`:
 
 {/* fluo-tutorial-source: examples/fluo-blog/01-first-route/src/main.ts */}
 ```ts title="00-start/src/main.ts"
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 import { AppModule } from './app';
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: Number(process.env.PORT ?? '3000'),
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: Number(process.env.PORT ?? '3000'),
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 `AppModule` describes the application. `main.ts` starts its Fastify listener. This separation lets request tests import the module without opening a listening socket.

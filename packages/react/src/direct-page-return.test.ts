@@ -5,7 +5,7 @@ import {
   Header,
   HttpCode,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -91,7 +91,7 @@ describe('direct React page returns', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: an application page renderer is configured for a React router.
@@ -147,7 +147,7 @@ describe('direct React page returns', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: ordinary values are returned from @Path handlers while renderPage is configured.
@@ -195,7 +195,7 @@ describe('direct React page returns', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a @Path handler can return JSX but its React module has no renderPage callback.

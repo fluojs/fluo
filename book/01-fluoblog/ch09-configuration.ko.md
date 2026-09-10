@@ -176,20 +176,27 @@ export class AppModule {}
 이제 실제 시작 포트도 연결한다. 아래는 이 설정을 사용하는 `src/main.ts`의 최소 완전한 파일이다. 앞 장에서 추가한 미들웨어나 요청 처리 옵션이 있다면 같은 helper의 옵션에 유지한다. 메타데이터 심벌을 준비한 뒤 장식된 앱 그래프를 동적으로 가져오므로 응답 모델의 데코레이터보다 준비가 늦어지지 않는다. `ensureMetadataSymbol()` 아래에 static import를 놓는 것만으로는 이 순서를 만들 수 없다. 그 import는 진입점 본문보다 먼저 평가된다.
 
 ```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { blogConfig } = await import('./config/app-settings.module.js');
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: blogConfig.PORT,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: blogConfig.PORT,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-`runFastifyApplication`은 어댑터 생성, 초기화, 요청 수신, 종료 시그널 등록까지 마치고 반환한다. 따라서 시작 전에 결정한 `blogConfig.PORT`를 옵션으로 전달해야 한다. 서비스에서 읽는 `AppSettings.port`도 같은 스냅샷의 값이다. 설정 검증이 실패하면 이 helper를 부르기 전에 멈추고, 수신을 시작한 뒤 주입된 설정으로 포트를 옮기는 동작은 없다.
+`FluoFactory.create()`에 전달할 adapter는 이미 검증한 `blogConfig.PORT`로 구성한다. `app.listen()`을 기다리면 수신과 선택한 shutdown 등록이 끝난다. 서비스의 `AppSettings.port`도 같은 snapshot을 사용한다. 검증 실패는 생성 전에 멈추며, 수신 뒤 주입된 설정으로 port를 옮기는 동작은 없다.
 
 설정을 DI에서 읽는다는 이유로 이 코드를 `FluoFactory.create()`와 `listen()`으로 바꿀 필요는 없다. 직접 조립을 선택하면 listen과 signal, helper의 미들웨어·logger·생성 이후 실패 정리 정책도 직접 책임져야 한다. 이 책은 기본 실행 helper와 검증된 snapshot을 함께 유지한다. 다음 장의 `BlogDatabaseModule`은 같은 `AppSettings.databaseUrl`을 사용하고, 뒤에서 인증 설정을 확장할 때도 이 검증 경로를 이어 간다. DB·인증을 위해 환경을 다시 읽는 별도 설정 원본을 만들거나 누적한 middleware·업로드 제한을 버리는 출발점이 아니다.
 

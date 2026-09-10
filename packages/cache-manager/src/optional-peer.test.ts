@@ -1,5 +1,5 @@
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CacheModule } from './module.js';
@@ -90,7 +90,7 @@ describe('optional Redis peer contract', () => {
     });
 
     // When
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const cache = await app.container.resolve(CacheService);
     const cached = await (async () => {
       try {

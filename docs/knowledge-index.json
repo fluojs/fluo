@@ -25,13 +25,17 @@
       },
       "packages": [
         "@fluojs/runtime",
-        "@fluojs/platform-fastify"
+        "@fluojs/platform-fastify",
+        "@fluojs/platform-nodejs"
       ],
       "sourcePaths": [
         "packages/platform-fastify/src/adapter.ts",
-        "packages/runtime/src/http-adapter-shared.ts"
+        "packages/runtime/src/bootstrap.ts",
+        "packages/platform-nodejs/src/node/internal-node-shutdown.ts"
       ],
       "testPaths": [
+        "packages/runtime/src/factory-lifecycle.test.ts",
+        "packages/platform-nodejs/src/factory-signals.test.ts",
         "packages/runtime/src/http-adapter-shared.test.ts",
         "packages/platform-fastify/src/adapter.test.ts"
       ]
@@ -52,8 +56,33 @@
         "packages/platform-fastify/src/adapter.ts"
       ],
       "testPaths": [
+        "packages/runtime/src/factory-public-types.test.ts",
         "packages/runtime/src/bootstrap.test.ts",
         "packages/platform-fastify/src/adapter.test.ts"
+      ]
+    },
+    {
+      "id": "bootstrap.http-factory-migration",
+      "kind": "recipe",
+      "owner": {
+        "en": "docs/getting-started/migrate-http-factory.md",
+        "ko": "docs/getting-started/migrate-http-factory.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime",
+        "@fluojs/http",
+        "@fluojs/platform-nodejs",
+        "@fluojs/cli"
+      ],
+      "sourcePaths": [
+        "packages/runtime/src/bootstrap.ts",
+        "packages/runtime/src/http-application-options.ts",
+        "packages/cli/src/new/scaffold.ts"
+      ],
+      "testPaths": [
+        "packages/runtime/src/factory-lifecycle.test.ts",
+        "packages/runtime/src/factory-public-types.test.ts",
+        "packages/cli/src/new/factory-scaffold.test.ts"
       ]
     },
     {

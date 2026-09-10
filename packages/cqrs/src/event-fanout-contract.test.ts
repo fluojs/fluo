@@ -1,6 +1,6 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { EventHandler, Saga } from './decorators.js';
@@ -35,7 +35,7 @@ describe('CQRS event fan-out contracts', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -75,7 +75,7 @@ describe('CQRS event fan-out contracts', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -135,7 +135,7 @@ describe('CQRS event fan-out contracts', () => {
       providers: [PipelineStore, PipelineHandler, PipelineSaga, DelegatedSubscriber],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(PipelineStore);
 
@@ -170,7 +170,7 @@ describe('CQRS event fan-out contracts', () => {
       providers: [InvalidEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {
@@ -199,7 +199,7 @@ describe('CQRS event fan-out contracts', () => {
       providers: [InvalidSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     try {

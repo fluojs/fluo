@@ -1,7 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { type EventBus, type EventBusTransport, EVENT_BUS as FLUO_EVENT_BUS, OnEvent } from '@fluojs/event-bus';
-import { type ApplicationLogger, bootstrapApplication, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
+import { type ApplicationLogger, FluoFactory, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
@@ -197,7 +197,7 @@ describe('@fluojs/cqrs', () => {
       providers: [Store, CreateUserHandler, GetUserHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
@@ -242,7 +242,7 @@ describe('@fluojs/cqrs', () => {
       providers: [StatusCreateUserHandler, StatusDeleteUserHandler, StatusGetUserHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const eventBus = await app.container.resolve(CqrsEventBusService);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
@@ -318,7 +318,7 @@ describe('@fluojs/cqrs', () => {
       imports: [CqrsModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
@@ -379,9 +379,8 @@ describe('@fluojs/cqrs', () => {
       ],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
@@ -416,7 +415,7 @@ describe('@fluojs/cqrs', () => {
       imports: [CqrsModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
@@ -432,7 +431,7 @@ describe('@fluojs/cqrs', () => {
       imports: [CqrsModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBusByClass = await app.container.resolve(CommandBusLifecycleService);
     const commandBusByToken = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBusByClass = await app.container.resolve(QueryBusLifecycleService);
@@ -472,7 +471,7 @@ describe('@fluojs/cqrs', () => {
       providers: [FirstCreateUserHandler, SecondCreateUserHandler],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
+    await expect(FluoFactory.create(AppModule)).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
   });
 
   it('fails bootstrap when one command handler class is registered under different singleton tokens', async () => {
@@ -495,7 +494,7 @@ describe('@fluojs/cqrs', () => {
       ],
     });
 
-    const error = await bootstrapApplication({ rootModule: AppModule }).catch((caught: unknown) => caught);
+    const error = await FluoFactory.create(AppModule).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(DuplicateCommandHandlerError);
     expect(error).toEqual(expect.objectContaining({ message: expect.stringContaining('Symbol(FIRST_CREATE_USER_HANDLER)') }));
@@ -523,7 +522,7 @@ describe('@fluojs/cqrs', () => {
       providers: [FirstGetUserHandler, SecondGetUserHandler],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
+    await expect(FluoFactory.create(AppModule)).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
   });
 
   it('fails bootstrap when one query handler class is registered under different singleton tokens', async () => {
@@ -546,7 +545,7 @@ describe('@fluojs/cqrs', () => {
       ],
     });
 
-    const error = await bootstrapApplication({ rootModule: AppModule }).catch((caught: unknown) => caught);
+    const error = await FluoFactory.create(AppModule).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(DuplicateQueryHandlerError);
     expect(error).toEqual(expect.objectContaining({ message: expect.stringContaining('Symbol(FIRST_GET_USER_HANDLER)') }));
@@ -584,7 +583,7 @@ describe('@fluojs/cqrs', () => {
       imports: [CqrsModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     expect(typeof eventBus.publish).toBe('function');
@@ -614,7 +613,7 @@ describe('@fluojs/cqrs', () => {
       imports: [CqrsHostModule, SiblingModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow();
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow();
   });
 
   it('honors an explicit delegated event-bus global override when CQRS global is false', async () => {
@@ -638,7 +637,7 @@ describe('@fluojs/cqrs', () => {
       imports: [CqrsHostModule, SiblingModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const consumer = await app.container.resolve(SiblingEventBusConsumer);
 
     expect(typeof consumer.eventBus.publish).toBe('function');
@@ -682,7 +681,7 @@ describe('@fluojs/cqrs', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
@@ -729,7 +728,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownCommandHandler, ShutdownQueryHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const commandBusService = await app.container.resolve(CommandBusLifecycleService);
@@ -791,7 +790,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownCommandHandler, ShutdownQueryHandler, ShutdownBlocker],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const commandBusService = await app.container.resolve(CommandBusLifecycleService);
@@ -1017,7 +1016,7 @@ describe('@fluojs/cqrs', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(ProcessStore);
 
@@ -1061,7 +1060,7 @@ describe('@fluojs/cqrs', () => {
       providers: [AccountActivationSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await eventBus.publish(new AccountActivatedEvent('acct-1'));
@@ -1091,7 +1090,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ExternalContextSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const callerShapedContext = {
       activeRoutes: [{ eventType: ExternalContextEvent, token: ExternalContextSaga }],
@@ -1124,7 +1123,7 @@ describe('@fluojs/cqrs', () => {
       providers: [FailingSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await expect(eventBus.publish(new PaymentFailedEvent('order-2'))).rejects.toBeInstanceOf(SagaExecutionError);
@@ -1154,7 +1153,7 @@ describe('@fluojs/cqrs', () => {
       providers: [SelfTriggeringSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await expect(eventBus.publish(new LoopEvent('loop-1'))).rejects.toBeInstanceOf(SagaTopologyError);
@@ -1198,7 +1197,7 @@ describe('@fluojs/cqrs', () => {
       providers: [StepOneSaga, StepTwoSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await expect(eventBus.publish(new StepOneEvent('wf-1'))).rejects.toBeInstanceOf(SagaTopologyError);
@@ -1246,7 +1245,7 @@ describe('@fluojs/cqrs', () => {
       providers: sagaProviders,
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await expect(eventBus.publish(new eventTypes[0]!())).rejects.toBeInstanceOf(SagaTopologyError);
@@ -1280,7 +1279,7 @@ describe('@fluojs/cqrs', () => {
       providers: [FailingEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await expect(eventBus.publish(new UserCreatedEvent('alice'))).rejects.toThrow('handler exploded');
@@ -1312,7 +1311,7 @@ describe('@fluojs/cqrs', () => {
       providers: [FirstEventHandler, SecondEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await eventBus.publish(new UserCreatedEvent('alice'));
@@ -1358,7 +1357,7 @@ describe('@fluojs/cqrs', () => {
       providers: [BaseAuditEventHandler, BaseAuditSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await eventBus.publish(new DetailedAuditEvent('audit-1', 'full-detail'));
@@ -1446,7 +1445,7 @@ describe('@fluojs/cqrs', () => {
       providers: [MutationStore, MutatingEventHandler, ObservingEventHandler, MutatingSaga, DelegatedEventBusProjection],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(MutationStore);
     const event = new MutableProfileEvent('user-1', {
@@ -1506,7 +1505,7 @@ describe('@fluojs/cqrs', () => {
       providers: [SequenceStore, SequencingSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(SequenceStore);
 
@@ -1550,7 +1549,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownStore, ShutdownSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(ShutdownStore);
 
@@ -1593,9 +1592,8 @@ describe('@fluojs/cqrs', () => {
       providers: [StuckShutdownSaga],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const publishPromise = eventBus.publish(new ShutdownEvent('shutdown-stuck-saga'));
@@ -1648,7 +1646,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownStore, ShutdownEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(ShutdownStore);
 
@@ -1693,9 +1691,8 @@ describe('@fluojs/cqrs', () => {
       providers: [StuckShutdownEventHandler],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
-      rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const publishPromise = eventBus.publish(new HandlerShutdownEvent('shutdown-stuck-handler'));
@@ -1753,7 +1750,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownStore, BatchShutdownEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(ShutdownStore);
 
@@ -1808,7 +1805,7 @@ describe('@fluojs/cqrs', () => {
       providers: [CapturedContextEventHandler, GuardedShutdownEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const eventBusService = await app.container.resolve(CqrsEventBusService);
 
@@ -1886,7 +1883,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownStore, ParentShutdownEventHandler, NestedShutdownEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const eventBusService = await app.container.resolve(CqrsEventBusService);
     const store = await app.container.resolve(ShutdownStore);
@@ -1960,7 +1957,7 @@ describe('@fluojs/cqrs', () => {
       providers: [ShutdownStore, NestedPublishingSaga, SagaNestedShutdownEventHandler],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const eventBusService = await app.container.resolve(CqrsEventBusService);
     const store = await app.container.resolve(ShutdownStore);
@@ -2007,7 +2004,7 @@ describe('@fluojs/cqrs', () => {
       providers: [GuardedSaga],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
     const dispatchPromise = sagaBus.dispatch(new GuardedSagaEvent('active'));
 
@@ -2053,7 +2050,7 @@ describe('@fluojs/cqrs', () => {
       providers: [DelegatedSubscriber],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await eventBus.publish(new DelegatedEvent('delegated'));
@@ -2127,7 +2124,7 @@ describe('@fluojs/cqrs', () => {
       providers: [Store, CreateUserHandler, GetUserHandler, UserCreatedEventRecorder, UserCreatedOnEventProjection],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);

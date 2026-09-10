@@ -618,19 +618,19 @@ To explain the testing point, the real Prisma Module test verifies which Provide
 ```typescript
 const prismaModule = PrismaModule.forRoot({ client });
 
-class ManualPrismaModule {}
+class ManualPrismaModule { }
 
 defineModule(ManualPrismaModule, {
   imports: [prismaModule],
 });
 
-class AppModule {}
+class AppModule { }
 
 defineModule(AppModule, {
   imports: [ManualPrismaModule],
 });
 
-const app = await bootstrapApplication({ rootModule: AppModule });
+const app = await FluoFactory.create(AppModule);
 const prisma = await app.container.resolve(PrismaService<typeof client>);
 const rawClient = await app.container.resolve(PRISMA_CLIENT);
 const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);

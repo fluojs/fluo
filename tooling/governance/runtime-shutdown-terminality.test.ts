@@ -39,7 +39,8 @@ const expectedContract = {
     'Application.startAllMicroservices()',
   ],
   stateDuringCloseOrFailure: 'unchanged',
-  closedAfter: 'successful-teardown',
+  closedAfter: 'successful-runtime-teardown',
+  signalCleanupFailureState: 'closed-after-runtime-teardown',
   admittedDispatch: 'not-cancelled-by-gate',
   shutdownOrder: [
     'readiness-reset',
@@ -63,6 +64,16 @@ const expectedContract = {
     callsProcessExit: false,
   },
   nodeAdapterShutdownTimeoutMs: 10_000,
+  httpCreation: {
+    entrypoint: 'FluoFactory.create',
+    removedExports: ['bootstrapApplication', 'fluoFactory'],
+    middleware: ['cors:opt-in', 'prefix:opt-in', 'security-headers:default-on', 'caller', 'module:after-match'],
+    logger: 'option-or-portable-console',
+    creationFailure: 'original-error-after-adapter-and-runtime-cleanup',
+    listenFailure: 'terminal-shutdown',
+    shutdownRegistration: 'host-owned-opt-in-after-listen',
+    unregistration: 'attempt-once-retain-failure',
+  },
 };
 
 function readLifecycleContract(content: string): unknown {
@@ -126,6 +137,10 @@ describe('lifecycle Docs contract ownership', () => {
     { ...expectedContract, nodeSignals: { ...expectedContract.nodeSignals, callsProcessExit: true } },
     { ...expectedContract, nodeSignals: { ...expectedContract.nodeSignals, forceExitTimeoutMs: 10_000 } },
     { ...expectedContract, nodeAdapterShutdownTimeoutMs: 30_000 },
+    ...Object.keys(expectedContract.httpCreation).map((key) => ({
+      ...expectedContract,
+      httpCreation: { ...expectedContract.httpCreation, [key]: 'changed' },
+    })),
   ])('rejects lifecycle contract loss or mutation (%#)', (contract) => {
     expect(() => expectLifecycleContract(contractDocument(contract))).toThrow();
   });
@@ -284,10 +299,10 @@ describe('legacy Book runtime source consumers', () => {
   ])('keeps Chapter 9 runtime source excerpts byte-aligned with bootstrap.ts in %s', (relativePath) => {
     const content = read(relativePath);
     const runtimeSource = read('packages/runtime/src/bootstrap.ts');
-    const contextMarker = 'path:packages/runtime/src/bootstrap.ts:860-900';
-    const listenMarker = 'path:packages/runtime/src/bootstrap.ts:741-789';
-    const readyMarker = 'path:packages/runtime/src/bootstrap.ts:654-660';
-    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1553-1573';
+    const contextMarker = 'path:packages/runtime/src/bootstrap.ts:913-947';
+    const listenMarker = 'path:packages/runtime/src/bootstrap.ts:755-829';
+    const readyMarker = 'path:packages/runtime/src/bootstrap.ts:668-674';
+    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1606-1626';
     const contextGet = sourceExample(content, contextMarker);
     const applicationListen = sourceExample(content, listenMarker);
 
@@ -303,7 +318,7 @@ describe('legacy Book runtime source consumers', () => {
     expect(contextGet.match(/this\.assertProviderResolutionAllowed\(\);/gu)).toHaveLength(2);
     expect(contextGet).not.toContain('return resolveContextToken(');
     expect(applicationListen).toContain('if (this.closeStarted)');
-    expect(applicationListen).toContain('this.listenPromise = this.startListening();');
+    expect(applicationListen).toContain('this.listenPromise = Promise.resolve().then(() => this.startListening());');
     expect(applicationListen).toContain('Application startup was interrupted by shutdown.');
     expect(applicationListen).not.toContain("if (this.applicationState === 'closed')");
   });
@@ -313,7 +328,7 @@ describe('legacy Book runtime source consumers', () => {
     'book/advanced/ch09-app-context.ko.md',
   ])('rejects a changed source excerpt without governing narrative in %s', (relativePath) => {
     const content = read(relativePath);
-    const marker = 'path:packages/runtime/src/bootstrap.ts:860-900';
+    const marker = 'path:packages/runtime/src/bootstrap.ts:913-947';
     const excerpt = sourceExample(content, marker);
     const changed = content.replace(excerpt, `${excerpt}\n// source drift`);
 

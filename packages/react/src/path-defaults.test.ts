@@ -10,7 +10,7 @@ import {
   ReactModule,
   Router,
 } from '@fluojs/react';
-import { bootstrapApplication, createRuntimeRouteCatalog } from '@fluojs/runtime';
+import { FluoFactory, createRuntimeRouteCatalog } from '@fluojs/runtime';
 import { getRuntimeRouteInspectionMetadata } from '@fluojs/runtime/internal';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -62,7 +62,7 @@ describe('React Path defaults', () => {
         })],
       })
       class App {}
-      const app = await bootstrapApplication({ rootModule: App });
+      const app = await FluoFactory.create(App);
       const response: FrameworkResponse & { body?: unknown } = {
         headers: {},
         committed: false,

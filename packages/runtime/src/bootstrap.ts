@@ -1,4 +1,4 @@
-import { InvariantError, type Token } from '@fluojs/core';
+import { InvariantError, type PublicToken, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
 import { resolveMultiContribution } from '@fluojs/di/internal';
 import {
@@ -19,6 +19,7 @@ import {
 } from './devtools/studio-runtime.js';
 import { DuplicateProviderError } from './errors.js';
 import { type BootstrapTimingPhase, createBootstrapTimingDiagnostics } from './health/diagnostics.js';
+import { createHttpAdapterMiddleware, formatHttpAdapterListenMessage } from './http-application-options.js';
 import { getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
@@ -235,6 +236,7 @@ async function closeRuntimeResources(options: {
 }
 
 async function runBootstrapFailureCleanup(options: {
+  adapter?: HttpApplicationAdapter;
   container?: Container;
   lifecycleInstances: readonly unknown[];
   logger: ApplicationLogger;
@@ -254,6 +256,12 @@ async function runBootstrapFailureCleanup(options: {
     } catch (error) {
       errors.push(error);
     }
+  }
+
+  try {
+    await options.adapter?.close('bootstrap-failed');
+  } catch (error) {
+    errors.push(error);
   }
 
   if (options.container) {
@@ -603,6 +611,9 @@ class FluoApplication implements Application {
   private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private listenPromise: Promise<void> | undefined;
+  private startupPromise: Promise<void> | undefined;
+  private unregisterShutdownSignals: (() => void) | undefined;
+  private readonly signalCleanupErrors: unknown[] = [];
   private connectedMicroservicesClosed = false;
   private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
@@ -622,6 +633,7 @@ class FluoApplication implements Application {
     private readonly logger: ApplicationLogger,
     private readonly runtimeCleanup: Array<() => void>,
     private readonly contextCacheableTokens: ContextCacheableTokens,
+    private readonly startupOptions: Pick<CreateApplicationOptions, 'shutdownRegistration' | 'forceExitTimeoutMs'>,
   ) {
     this.lifecycleInstances = lifecycleInstances;
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -631,6 +643,8 @@ class FluoApplication implements Application {
     return this.applicationState;
   }
 
+  get<T>(token: PublicToken<T>): Promise<T>;
+  get<T>(token: Token<T>): Promise<T>;
   async get<T>(token: Token<T>): Promise<T> {
     if (this.closed) {
       return this.container.resolve(token);
@@ -743,40 +757,43 @@ class FluoApplication implements Application {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
-    if (this.applicationState === 'ready') {
-      return;
-    }
-
-    if (this.listenPromise) {
-      await this.listenPromise;
-      return;
-    }
-
-    this.listenPromise = this.startListening();
-
-    try {
-      await this.listenPromise;
-    } finally {
-      this.listenPromise = undefined;
-    }
-  }
-
-  private async startListening(): Promise<void> {
-    if (this.closeStarted) {
-      throw new InvariantError('Application cannot listen after it has been closed.');
-    }
-
     if (!this.hasHttpAdapter) {
       throw new InvariantError(
         'Application cannot listen without an HTTP adapter. Provide options.adapter for HTTP startup, or use createApplicationContext() for adapterless DI-only bootstrap.',
       );
     }
 
+    if (!this.startupPromise) {
+      // Publish the transition before adapter or host callbacks can re-enter.
+      // Close waits only for raw startup, never for startup's failure cleanup.
+      this.listenPromise = Promise.resolve().then(() => this.startListening());
+      this.startupPromise = this.listenPromise.catch(async (error: unknown) => {
+        try {
+          await this.close('bootstrap-failed');
+        } catch (cleanupError) {
+          try {
+            this.logger.error('Failed to close application after startup failure.', cleanupError, 'FluoFactory');
+          } catch {
+            throw error;
+          }
+        }
+        throw error;
+      });
+    }
+
+    await this.startupPromise;
+  }
+
+  private async startListening(): Promise<void> {
     await this.ready();
     try {
       await this.adapter.listen(this.dispatcher);
     } catch (error: unknown) {
-      this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
+      try {
+        this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
+      } catch {
+        throw error;
+      }
       throw error;
     }
 
@@ -786,6 +803,29 @@ class FluoApplication implements Application {
 
     this.applicationState = 'ready';
     this.logger.log('fluo application successfully started.', 'FluoApplication');
+    const target = this.adapter.getListenTarget?.();
+    if (target) {
+      this.logger.log(formatHttpAdapterListenMessage(target), 'FluoFactory');
+    }
+
+    try {
+      this.unregisterShutdownSignals = this.startupOptions.shutdownRegistration?.(
+        this,
+        this.logger,
+        this.startupOptions.forceExitTimeoutMs,
+      ) ?? undefined;
+    } catch (error) {
+      try {
+        this.logger.error('Failed to register shutdown signals.', error, 'FluoFactory');
+      } catch {
+        throw error;
+      }
+      throw error;
+    }
+
+    if (this.closeStarted) {
+      throw new InvariantError('Application startup was interrupted by shutdown.');
+    }
   }
 
   dispatch = async (...args: Parameters<Dispatcher['dispatch']>): Promise<void> => {
@@ -798,6 +838,9 @@ class FluoApplication implements Application {
    */
   async close(signal?: string): Promise<void> {
     if (this.closed) {
+      if (this.signalCleanupErrors.length > 0) {
+        throw createLifecycleCloseError(this.signalCleanupErrors);
+      }
       return;
     }
 
@@ -808,13 +851,20 @@ class FluoApplication implements Application {
 
     this.closeStarted = true;
 
-    this.closingPromise = (async () => {
+    this.closingPromise = Promise.resolve().then(async () => {
       const errors: unknown[] = [];
 
       if (this.listenPromise) {
-        try {
-          await this.listenPromise;
-        } catch {}
+        // Startup's caller receives its failure; teardown must still proceed.
+        await this.listenPromise.then(() => undefined, () => undefined);
+      }
+
+      const unregister = this.unregisterShutdownSignals;
+      this.unregisterShutdownSignals = undefined;
+      try {
+        unregister?.();
+      } catch (error) {
+        this.signalCleanupErrors.push(error);
       }
 
       if (!this.connectedMicroservicesClosed) {
@@ -841,12 +891,15 @@ class FluoApplication implements Application {
       }
 
       if (errors.length > 0) {
-        throw createLifecycleCloseError(errors);
+        throw createLifecycleCloseError([...this.signalCleanupErrors, ...errors]);
       }
 
       this.closed = true;
       this.applicationState = 'closed';
-    })();
+      if (this.signalCleanupErrors.length > 0) {
+        throw createLifecycleCloseError(this.signalCleanupErrors);
+      }
+    });
 
     try {
       await this.closingPromise;
@@ -1573,177 +1626,169 @@ function createRuntimeDispatcher(
 }
 
 /**
- * Creates the runtime application shell by composing bootstrap-level providers,
- * module bootstrap, and lifecycle hook execution.
- *
- * @param options Runtime bootstrap contract including root module, adapter, and global runtime hooks.
- * @returns A fully bootstrapped `Application` shell ready for `ready()`/`listen()`.
- * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
- */
-export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
-  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
-  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
-  let lifecycleInstances: unknown[] = [];
-  let bootstrappedContainer: Container | undefined;
-  let bootstrappedModules: CompiledModule[] = [];
-  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
-  const adapter = effectiveOptions.adapter ?? {
-    async close() {},
-    async listen() {},
-  };
-  const runtimeCleanup: RuntimeCleanupCallback[] = [];
-  if (studioDevtools) {
-    runtimeCleanup.push(() => studioDevtools.close());
-  }
-  const bootstrapReadySignal = createBootstrapReadySignal();
-  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
-  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
-  const timingStart = timingEnabled ? runtimePerformance.now() : 0;
-  const timingPhases: BootstrapTimingPhase[] = [];
-
-  try {
-    logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
-
-    const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
-    const bootstrapped = bootstrapModule(effectiveOptions.rootModule, {
-      duplicateProviderPolicy: effectiveOptions.duplicateProviderPolicy,
-      logger,
-      moduleGraphCache: effectiveOptions.moduleGraphCache,
-      providers: runtimeProviders,
-      validationTokens: [
-        RUNTIME_CONTAINER,
-        COMPILED_MODULES,
-        HTTP_APPLICATION_ADAPTER,
-        RUNTIME_CLEANUP_REGISTRATION,
-        BOOTSTRAP_READY_SIGNAL,
-      ],
-    });
-    if (timingEnabled) {
-      timingPhases.push({
-        durationMs: runtimePerformance.now() - moduleBootstrapStart,
-        name: 'bootstrap_module',
-      });
-    }
-
-    const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
-    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell, runtimeCleanup, bootstrapReadySignal);
-    if (timingEnabled) {
-      timingPhases.push({
-        durationMs: runtimePerformance.now() - registerTokensStart,
-        name: 'register_runtime_tokens',
-      });
-    }
-
-    bootstrappedContainer = bootstrapped.container;
-    bootstrappedModules = bootstrapped.modules;
-
-    const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
-    lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-    lifecycleInstances.unshift({
-      onModuleDestroy() {
-        return platformShell.stop();
-      },
-    });
-    if (timingEnabled) {
-      timingPhases.push({
-        durationMs: runtimePerformance.now() - resolveLifecycleStart,
-        name: 'resolve_lifecycle_instances',
-      });
-    }
-
-    const lifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
-    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell, bootstrapReadySignal);
-    if (timingEnabled) {
-      timingPhases.push({
-        durationMs: runtimePerformance.now() - lifecycleStart,
-        name: 'run_bootstrap_lifecycle',
-      });
-    }
-
-    const dispatcherStart = timingEnabled ? runtimePerformance.now() : 0;
-    const dispatcher = createRuntimeDispatcher(bootstrapped, effectiveOptions, logger);
-    if (timingEnabled) {
-      timingPhases.push({
-        durationMs: runtimePerformance.now() - dispatcherStart,
-        name: 'create_dispatcher',
-      });
-    }
-
-    const bootstrapTiming = timingEnabled
-      ? createBootstrapTimingDiagnostics(timingPhases, runtimePerformance.now() - timingStart)
-      : undefined;
-
-    publishStudioBootstrapSnapshot(studioDevtools, {
-      modules: bootstrapped.modules,
-      rootModule: effectiveOptions.rootModule,
-      routes: dispatcher.describeRoutes?.() ?? [],
-      timing: bootstrapTiming,
-    });
-
-    return new FluoApplication(
-      bootstrapped.container,
-      bootstrapped.modules,
-      effectiveOptions.rootModule,
-      dispatcher,
-      bootstrapTiming,
-      adapter,
-      hasHttpAdapter,
-      platformShell,
-      lifecycleInstances,
-      logger,
-      runtimeCleanup,
-      createContextCacheableTokenSet(
-        bootstrapped.effectiveProviders,
-        [
-          RUNTIME_CONTAINER,
-          COMPILED_MODULES,
-          HTTP_APPLICATION_ADAPTER,
-          PLATFORM_SHELL,
-          RUNTIME_CLEANUP_REGISTRATION,
-          BOOTSTRAP_READY_SIGNAL,
-        ],
-      ),
-    );
-  } catch (error: unknown) {
-    bootstrapReadySignal.markFailed(error);
-    logger.error(
-      'Failed to bootstrap the fluo application. Check the error below for what failed and how to fix it.',
-      error,
-      'FluoFactory',
-    );
-
-    await runBootstrapFailureCleanup({
-      container: bootstrappedContainer,
-      lifecycleInstances,
-      logger,
-      modules: bootstrappedModules,
-      runtimeCleanup,
-      scope: 'application',
-    });
-
-    throw error;
-  }
-}
-
-/**
  * Canonical runtime bootstrap facade for HTTP, context-only, and microservice startup.
  */
 export class FluoFactory {
   /**
-   * Creates a full HTTP-capable application from the root module.
+   * Creates an HTTP application and owns its module, dispatcher, and lifecycle assembly.
    *
    * @param rootModule Root module type used as the application composition entrypoint.
-   * @param options Optional HTTP-runtime bootstrap options.
-   * @returns A bootstrapped HTTP-capable `Application`.
-   * @throws {Error} Propagates bootstrap failures from `bootstrapApplication(...)`.
+   * @param options HTTP options, portable logging, middleware, and host shutdown registration.
+   * @returns A bootstrapped application; call its instance listen() and close() methods.
+   * @throws {Error} Propagates the original creation failure after acquired-resource cleanup.
    */
   static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
-    return bootstrapApplication({
-      ...options,
-      rootModule,
-    });
+    const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
+    const effectiveOptions = applyStudioDevtoolsApplicationOptions({ ...options, rootModule }, studioDevtools);
+    const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
+    let lifecycleInstances: unknown[] = [];
+    let bootstrappedContainer: Container | undefined;
+    let bootstrappedModules: CompiledModule[] = [];
+    const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+    const adapter = effectiveOptions.adapter ?? {
+      async close() {},
+      async listen() {},
+    };
+    const runtimeCleanup: RuntimeCleanupCallback[] = [];
+    if (studioDevtools) {
+      runtimeCleanup.push(() => studioDevtools.close());
+    }
+    const bootstrapReadySignal = createBootstrapReadySignal();
+    const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+    const timingEnabled = effectiveOptions.diagnostics?.timing === true;
+    const timingStart = timingEnabled ? runtimePerformance.now() : 0;
+    const timingPhases: BootstrapTimingPhase[] = [];
+
+    try {
+      logger.log('Starting fluo application...', 'FluoFactory');
+      const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
+
+      const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
+      const bootstrapped = bootstrapModule(effectiveOptions.rootModule, {
+        duplicateProviderPolicy: effectiveOptions.duplicateProviderPolicy,
+        logger,
+        moduleGraphCache: effectiveOptions.moduleGraphCache,
+        providers: runtimeProviders,
+        validationTokens: [
+          RUNTIME_CONTAINER,
+          COMPILED_MODULES,
+          HTTP_APPLICATION_ADAPTER,
+          RUNTIME_CLEANUP_REGISTRATION,
+          BOOTSTRAP_READY_SIGNAL,
+        ],
+      });
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: runtimePerformance.now() - moduleBootstrapStart,
+          name: 'bootstrap_module',
+        });
+      }
+
+      const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
+      registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell, runtimeCleanup, bootstrapReadySignal);
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: runtimePerformance.now() - registerTokensStart,
+          name: 'register_runtime_tokens',
+        });
+      }
+
+      bootstrappedContainer = bootstrapped.container;
+      bootstrappedModules = bootstrapped.modules;
+
+      const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
+      lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
+      lifecycleInstances.unshift({
+        onModuleDestroy() {
+          return platformShell.stop();
+        },
+      });
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: runtimePerformance.now() - resolveLifecycleStart,
+          name: 'resolve_lifecycle_instances',
+        });
+      }
+
+      const lifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
+      await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell, bootstrapReadySignal);
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: runtimePerformance.now() - lifecycleStart,
+          name: 'run_bootstrap_lifecycle',
+        });
+      }
+
+      const dispatcherStart = timingEnabled ? runtimePerformance.now() : 0;
+      const dispatcher = createRuntimeDispatcher(bootstrapped, {
+        ...effectiveOptions,
+        middleware: createHttpAdapterMiddleware(effectiveOptions),
+      }, logger);
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: runtimePerformance.now() - dispatcherStart,
+          name: 'create_dispatcher',
+        });
+      }
+
+      const bootstrapTiming = timingEnabled
+        ? createBootstrapTimingDiagnostics(timingPhases, runtimePerformance.now() - timingStart)
+        : undefined;
+
+      publishStudioBootstrapSnapshot(studioDevtools, {
+        modules: bootstrapped.modules,
+        rootModule: effectiveOptions.rootModule,
+        routes: dispatcher.describeRoutes?.() ?? [],
+        timing: bootstrapTiming,
+      });
+
+      return new FluoApplication(
+        bootstrapped.container,
+        bootstrapped.modules,
+        effectiveOptions.rootModule,
+        dispatcher,
+        bootstrapTiming,
+        adapter,
+        hasHttpAdapter,
+        platformShell,
+        lifecycleInstances,
+        logger,
+        runtimeCleanup,
+        createContextCacheableTokenSet(
+          bootstrapped.effectiveProviders,
+          [
+            RUNTIME_CONTAINER,
+            COMPILED_MODULES,
+            HTTP_APPLICATION_ADAPTER,
+            PLATFORM_SHELL,
+            RUNTIME_CLEANUP_REGISTRATION,
+            BOOTSTRAP_READY_SIGNAL,
+          ],
+        ),
+        effectiveOptions,
+      );
+    } catch (error: unknown) {
+      bootstrapReadySignal.markFailed(error);
+      try {
+        await runBootstrapFailureCleanup({
+          adapter,
+          container: bootstrappedContainer,
+          lifecycleInstances,
+          logger,
+          modules: bootstrappedModules,
+          runtimeCleanup,
+          scope: 'application',
+        });
+        logger.error(
+          'Failed to bootstrap the fluo application. Check the error below for what failed and how to fix it.',
+          error,
+          'FluoFactory',
+        );
+      } catch {
+        throw error;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1921,15 +1966,3 @@ export class FluoFactory {
     }
   }
 }
-
-/**
- * Lower-camel-case compatibility alias that matches the documented runtime entrypoint.
- *
- * @example
- * ```ts
- * import { fluoFactory } from '@fluojs/runtime';
- *
- * const app = await fluoFactory.create(AppModule);
- * ```
- */
-export const fluoFactory = FluoFactory;

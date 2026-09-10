@@ -38,12 +38,12 @@ During application shutdown, the adapter stops accepting new ingress immediately
 Bootstrap your application and export a standard Cloudflare Worker `fetch` handler.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 

@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -111,14 +111,10 @@ describe('React SSR diagnostic request isolation', () => {
       });
     };
     const entry = createSharedEntry(renderToReadableStream);
-    const firstApp = await bootstrapApplication({
-      rootModule: createAppModule('/first', entry, (diagnostic) => {
+    const firstApp = await FluoFactory.create(createAppModule('/first', entry, (diagnostic) => {
         firstDiagnostics.push(diagnostic.request.url);
-      }),
-    });
-    const secondApp = await bootstrapApplication({
-      rootModule: createAppModule('/second', entry),
-    });
+      }));
+    const secondApp = await FluoFactory.create(createAppModule('/second', entry));
 
     try {
       // Given: one shared entry is first rendered by a module with diagnostics enabled.
@@ -165,16 +161,12 @@ describe('React SSR diagnostic request isolation', () => {
       });
     };
     const entry = createSharedEntry(renderToReadableStream);
-    const firstApp = await bootstrapApplication({
-      rootModule: createAppModule('/first', entry, (diagnostic) => {
+    const firstApp = await FluoFactory.create(createAppModule('/first', entry, (diagnostic) => {
         firstDiagnostics.push(diagnostic.request.url);
-      }),
-    });
-    const secondApp = await bootstrapApplication({
-      rootModule: createAppModule('/second', entry, (diagnostic) => {
+      }));
+    const secondApp = await FluoFactory.create(createAppModule('/second', entry, (diagnostic) => {
         secondDiagnostics.push(diagnostic.request.url);
-      }),
-    });
+      }));
 
     try {
       // Given: the first shared-entry render is paused after its request-local handler is selected.

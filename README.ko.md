@@ -40,9 +40,11 @@
 다음은 HTTP 라우트, 서비스 주입, 모듈 등록, Fastify 시작을 한 파일에 모은 최소 예시입니다. 데코레이터 변환과 빌드 설정은 아래 CLI 스타터가 제공합니다.
 
 ```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { Inject, Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 class GreetingService {
   greet() {
@@ -53,7 +55,7 @@ class GreetingService {
 @Inject(GreetingService)
 @Controller('/greeting')
 class GreetingController {
-  constructor(private readonly service: GreetingService) {}
+  constructor(private readonly service: GreetingService) { }
 
   @Get('/')
   getGreeting() {
@@ -65,9 +67,16 @@ class GreetingController {
   controllers: [GreetingController],
   providers: [GreetingService],
 })
-class AppModule {}
+class AppModule { }
 
-await runFastifyApplication(AppModule, { port: 3000 });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
 이 예시의 `GET /greeting`은 `{"message":"Hello from fluo"}`를 반환합니다. 생성된 프로젝트는 이 구성을 여러 파일로 나누고 repository, 헬스 체크, 테스트를 추가합니다. 예시를 따로 실행하려면 생성된 프로젝트의 `src/main.ts`를 위 코드로 교체하세요. 아래 빠른 시작은 교체하지 않은 스타터를 기준으로 합니다.

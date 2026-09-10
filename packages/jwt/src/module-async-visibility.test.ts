@@ -1,5 +1,5 @@
 import { Inject, type Constructor } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { JwtModule } from './module.js';
@@ -35,7 +35,7 @@ describe('JwtModule.forRootAsync provider visibility', () => {
     }));
 
     // When
-    const app = await bootstrapApplication({ rootModule: graph.rootModule });
+    const app = await FluoFactory.create(graph.rootModule);
 
     try {
       const consumer = await app.container.resolve(graph.consumer);
@@ -57,7 +57,7 @@ describe('JwtModule.forRootAsync provider visibility', () => {
     }));
 
     // When
-    const compileModuleGraph = bootstrapApplication({ rootModule: graph.rootModule });
+    const compileModuleGraph = FluoFactory.create(graph.rootModule);
 
     // Then
     await expect(compileModuleGraph).rejects.toThrow(/not visible through a global module|JwtService/);
@@ -74,7 +74,7 @@ describe('JwtModule.forRootAsync provider visibility', () => {
     }));
 
     // When
-    const compileModuleGraph = bootstrapApplication({ rootModule: graph.rootModule });
+    const compileModuleGraph = FluoFactory.create(graph.rootModule);
 
     // Then
     await expect(compileModuleGraph).rejects.toThrow(/not visible through a global module|JwtService/);

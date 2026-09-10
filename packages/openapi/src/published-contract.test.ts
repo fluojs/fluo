@@ -43,7 +43,7 @@ function normalizeRuntimeAst(sourceText: string, filePath: string): string {
 
 const publishedContractProbe = `
   const { OpenApiModule } = await import('@fluojs/openapi');
-  const { bootstrapApplication, defineModule } = await import('@fluojs/runtime');
+  const { FluoFactory, defineModule } = await import('@fluojs/runtime');
 
   const createRequest = (path) => ({
     body: undefined,
@@ -102,7 +102,7 @@ const publishedContractProbe = `
     ],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
 
   try {
     const documentResponse = createResponse();

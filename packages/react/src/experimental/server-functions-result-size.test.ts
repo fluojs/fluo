@@ -6,7 +6,7 @@ import {
   Post,
   type RequestContext,
 } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -90,7 +90,7 @@ async function dispatchResult(input: DispatchResultInput): Promise<TestResponse>
   @Module({ controllers: [ActionController] })
   class AppModule {}
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const response = createResponse();
   try {
     await app.dispatch(createRequest(reference), response);

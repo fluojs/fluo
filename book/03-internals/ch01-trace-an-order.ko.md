@@ -152,7 +152,7 @@ export class TraceAppModule {}
 ```ts
 import assert from 'node:assert/strict';
 import { ensureMetadataSymbol, getModuleMetadata } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
@@ -167,7 +167,7 @@ assert.ok(
   getModuleMetadata(OrdersModule)?.controllers?.includes(OrdersController),
 );
 
-const app = await fluoFactory.create(TraceAppModule, {
+const app = await FluoFactory.create(TraceAppModule, {
   middleware: [{
     handle(context, next) {
       context.requestContext.principal = {
@@ -218,7 +218,7 @@ try {
 
 이 실행은 실제 모듈 컴파일, DI, HTTP 매핑, DTO 바인딩, 컨트롤러 호출, 예외 응답을 통과한다. 반면 TCP 수신, Fastify의 요청 변환, 프록시 경로 재작성은 통과하지 않는다. `http://trace.local`은 `Request` 값을 만드는 식별자이며 네트워크 접속 대상이 아니다. `createWebFrameworkRequest()`가 표준 Web 요청을 프레임워크 요청으로 바꾸고, Web 응답 factory가 만들어 준 응답에 `app.dispatch()`가 쓴다. 따라서 필드 몇 개만 흉내 낸 응답 mock보다 실제 응답 경계를 더 많이 검증하면서도 포트를 열지 않는다.
 
-`fluoFactory.create()`에 어댑터를 생략하는 것은 이 실험의 의도다. 이 상태에서 `listen()`하면 서버가 생기는 것이 아니라 어댑터가 없다는 오류가 난다. DI만 시험하려면 `createApplicationContext()`가 더 적합하지만, 이번에는 HTTP 디스패처까지 필요하므로 애플리케이션 셸을 사용한다. `app.dispatch()`를 끝까지 await한 뒤 응답을 읽고 `finally`에서 닫아, 비동기 처리가 남은 상태에서 다음 실험으로 넘어가지 않도록 했다.
+`FluoFactory.create()`에 어댑터를 생략하는 것은 이 실험의 의도다. 이 상태에서 `listen()`하면 서버가 생기는 것이 아니라 어댑터가 없다는 오류가 난다. DI만 시험하려면 `createApplicationContext()`가 더 적합하지만, 이번에는 HTTP 디스패처까지 필요하므로 애플리케이션 셸을 사용한다. `app.dispatch()`를 끝까지 await한 뒤 응답을 읽고 `finally`에서 닫아, 비동기 처리가 남은 상태에서 다음 실험으로 넘어가지 않도록 했다.
 
 처음 두 요청은 저장소까지 도달한다. 잘못된 주문 ID는 서비스의 형식 검사에서 멈추고, 잘못된 단수형 경로는 라우트 매칭에서 멈춘다. 마지막 배열 단언은 이 차이를 관찰한다. 모든 오류를 “404가 나왔다”로만 검사하면 잘못된 라우트를 주문 부재로 착각할 수 있다. 상태 코드와 호출된 경계라는 두 증거를 함께 봐야 한다.
 

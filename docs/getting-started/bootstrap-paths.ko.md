@@ -2,42 +2,47 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./bootstrap-paths.md"><kbd>English</kbd></a></p>
 
-이 페이지는 현재 checkout의 bootstrap recipe 선택 기준을 소유합니다. 기본 CLI 애플리케이션은 Node.js + Fastify이며 `runFastifyApplication`을 사용합니다. Factory + adapter + listen으로 이름만 치환하는 경로가 아닙니다. Node 호스트는 `>=24.0.0 <27`을 충족해야 하며, 다른 runtime/platform 조합은 [스타터 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 따릅니다.
+이 페이지는 현재 checkout의 HTTP 앱 생성 계약을 소유합니다. `FluoFactory.create(AppModule, { adapter })` → `app.listen()` → `app.close()`를 사용합니다. 기본 CLI 앱은 Node.js + Fastify를 유지합니다. Node 호스트는 `>=24.0.0 <27`을 충족해야 하며 다른 조합은 [스타터 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 따릅니다. 제거된 import와 기본값 변경은 [HTTP Factory migration guide](./migrate-http-factory.ko.md)를 참고하세요.
 
 | 공개 진입점 | 선택 조건 | 완료 시점과 소유권 |
 | --- | --- | --- |
-| `@fluojs/platform-fastify`의 `runFastifyApplication` | 기본 Node/Fastify 애플리케이션 실행 | 초기화, listen, shutdown 등록이 끝난 뒤 애플리케이션으로 resolve됩니다. listen을 다시 호출하지 않습니다. |
-| `@fluojs/platform-fastify`의 `bootstrapFastifyApplication` | 활성화 전에 Fastify 애플리케이션 구성 | listen이나 Node signal 등록 없이 초기화된 애플리케이션을 반환합니다. 이후 listen과 shutdown 등록은 호출자 책임입니다. |
-| `@fluojs/runtime`의 `FluoFactory.create` + `@fluojs/platform-fastify`의 `createFastifyAdapter` + `app.listen()` | 명시적 저수준 조립 | 런타임 초기화는 공유하지만 미들웨어 조립, 생성 이후 실패 처리와 signal은 호출자가 소유합니다. Factory에는 공개 logger 옵션이 없으며 run helper와 자동으로 동등하지 않습니다. |
+| adapter를 전달하는 `@fluojs/runtime`의 `FluoFactory.create` | 모든 HTTP application shell 생성 | 모듈·lifecycle·dispatcher 초기화 후 listen 없이 반환합니다. Factory가 middleware 조합과 실패 정리를 소유합니다. 필요한 경우 `logger`와 host-owned `shutdownRegistration`을 명시하세요. |
 | `@fluojs/runtime`의 `FluoFactory.createApplicationContext` | HTTP 없는 DI와 라이프사이클 작업 | HTTP listener 없이 application context를 반환하며 호출자가 닫습니다. |
 | Workers/Next.js host-owned 진입점 | Fluo를 호스트 요청 dispatcher에 연결 | 활성화가 반드시 socket bind를 뜻하지는 않습니다. 요청과 shutdown은 호스트가 소유하며 [Workers](../../packages/platform-cloudflare-workers/README.ko.md) 또는 [Next.js](../../packages/platform-nextjs/README.ko.md) 계약을 따릅니다. |
 
-`fluoFactory`는 `FluoFactory`의 alias이며 다른 런타임 모델이 아닙니다.
+`fluoFactory`와 `bootstrapApplication`은 모든 runtime entrypoint에서 제거됩니다. 기존 platform bootstrap/run helper는 내부에서 canonical Factory를 호출하므로 host별 migration을 기다리는 소비자를 깨뜨리지 않습니다. 별도의 HTTP 생성 구현은 남기지 않습니다. Application context와 microservice는 계속 별도 기능입니다.
 
 ### Default Node/Fastify recipe
 
 다음은 CLI가 생성하는 `src/main.ts` 형태입니다. 생성된 `src/app.ts`, 등록된 config/greeting/health 모듈, 설치한 registry 의존성, 생성된 decorator build/test 설정이 필요합니다.
 
 ```ts
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';
 
 const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
-await runFastifyApplication(AppModule, { port });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
-두 Fastify helper는 adapter를 만들고, 설정된 CORS, 설정된 global prefix(`globalPrefixExclude` 포함), security headers, 호출자 middleware 순으로 미들웨어를 조립합니다. Security headers는 `securityHeaders: false`가 아니면 활성화되며, CORS와 prefix는 생략하면 활성화되지 않습니다. 두 helper는 `options.logger` 또는 Node framework console logger를 선택합니다. `FluoFactory.create`는 런타임의 transport-neutral 기본 logger를 사용하며 공개 logger 옵션이 없습니다. [`CreateApplicationOptions`](../../packages/runtime/src/types.ts)에서 `logger`를 명시적으로 제외합니다. Native Fastify logging은 비활성화 상태입니다.
+Factory는 설정된 CORS, global prefix(`globalPrefixExclude` 포함), security headers, 호출자 middleware 순으로 조합합니다. Module middleware는 route matching 뒤에 실행됩니다. Security headers는 `securityHeaders: false`가 아니면 활성화되며 CORS와 prefix는 생략하면 꺼집니다. 호출자 middleware 배열은 변경하지 않고 복사합니다. Factory는 `options.logger` 또는 transport-neutral console logger를 선택합니다. 위 Node recipe는 기존 run helper가 사용하던 Node logger를 명시적으로 선택합니다. Native Fastify logging은 계속 비활성화됩니다.
 
-사용자 지정 `ApplicationLogger`가 필요하면 `@fluojs/runtime`의 `bootstrapApplication({ rootModule, adapter, logger })` 또는 `bootstrapFastifyApplication` / `runFastifyApplication`의 `logger` 옵션을 사용합니다.
+사용자 지정 `ApplicationLogger`는 `FluoFactory.create(AppModule, { adapter, logger })`로 전달하며 같은 객체를 `APPLICATION_LOGGER`로 주입받을 수 있습니다. `app.get(publicToken<T>(...))`는 `Promise<T>`를 추론하고 class token은 class identity를 보존합니다. 일반 programmatic HTTP dispatch는 `app.dispatch(...)`를 사용하세요. 직접 `app.dispatcher.dispatch(...)`나 `app.container.resolve(...)`에 접근하면 같은 shutdown admission gate를 거치지 않습니다.
 
-run helper는 추가로 listen하고, listen target을 기록하며, 기본적으로 `SIGINT`/`SIGTERM`을 등록합니다. `shutdownSignals: false`는 signal을 호스트에 맡기고, 명시적 signal 목록은 기본값을 대체합니다. Listen/startup logging 실패 시 이미 닫힌 상태가 아니면 `app.close('bootstrap-failed')`를 시도합니다. Shutdown 등록 실패 시에도 같은 close를 시도합니다. Cleanup 실패는 로그로 남기고 원래 실패를 다시 던집니다. 반환된 `app.close()`는 runtime close 전에 signal을 한 번 해제하며, 해제가 throw해도 close를 시도하고, 둘 다 실패하면 `AggregateError`로 두 오류를 보고합니다. Factory와 bootstrap helper도 `bootstrapApplication`의 초기화 실패 정리를 공유하지만 이후 호출자가 수행하는 listen에 이 run-helper wrapper를 추가하지는 않습니다.
+`shutdownRegistration`을 생략하면 Node signal은 등록되지 않습니다. 위 recipe의 Node callback은 listen 뒤 기본 `SIGINT`/`SIGTERM`을 등록합니다. `false` 또는 명시적 signal 목록으로 바꿀 수 있으며 `forceExitTimeoutMs`의 Node 기본값은 `30_000`입니다. `close()`는 signal 해제를 한 번 시도한 뒤 모든 runtime 정리를 진행합니다. 동시 close는 같은 결과를 받습니다. 해제 오류는 이후 close에도 유지되며 runtime 정리까지 실패하면 두 오류를 aggregate합니다. Runtime 자원 정리가 끝나면 signal 해제 오류가 있어도 `state`는 `closed`입니다.
 
 ### Environment and evaluation prerequisites
 
-초기화 cleanup은 확보한 런타임 자원, lifecycle instance, container를 대상으로 하며 모든 초기화 실패에서 HTTP adapter까지 닫는다는 보장이 아닙니다. Signal 등록이 일부 handler를 설치한 뒤 throw하면 run helper는 unregister callback을 반환받지 못하므로 그 등록을 rollback할 수 없습니다. Signal 기반 timeout/실패는 로그와 `process.exitCode`로 보고하며 최종 프로세스 종료는 호스트가 소유합니다. [기존 lifecycle 계약](../architecture/lifecycle-and-shutdown.ko.md)을 참고하세요.
+Factory 생성 실패는 확보한 runtime 자원, lifecycle instance, 전달된 adapter, container를 정리합니다. Readiness, listen, startup logging, shutdown registration 실패 시 `app.close('bootstrap-failed')`를 호출하며 cleanup이나 logger가 실패해도 원래 오류를 보존합니다. Node registration은 부분 설치된 handler를 rollback합니다. Custom host registration은 unregister callback을 반환하기 전의 rollback을 직접 소유합니다. Signal 기반 timeout/실패는 로그와 `process.exitCode`로 보고하며 최종 프로세스 종료는 호스트가 소유합니다. [Lifecycle 계약](../architecture/lifecycle-and-shutdown.ko.md)을 참고하세요.
 
 - `generated-app`: 생성 프로젝트 안에서 registry 의존성과 `fluo dev`/`fluo build`/`fluo start` script를 사용해 [설정 명령](./quick-start.ko.md)을 실행합니다. 기능 추가 시 `ConfigModule`, `GreetingModule`, `HealthModule.forRoot()`와 테스트를 보존합니다.
 - `repository-example`: `examples/fluo-blog/00-start`는 workspace 의존성, 저장소 패키지 빌드, 번호별 checkpoint script를 사용합니다. `examples/minimal`은 별도의 명시적 조립 예제입니다. 어느 쪽도 생성 스타터를 통째로 교체하는 파일이 아닙니다.
@@ -49,22 +54,22 @@ run helper는 추가로 listen하고, listen target을 기록하며, 기본적�
 
 아래 공통 초기화 순서는 Factory와 Fastify helper가 함께 사용합니다. 생성, lifecycle readiness, 요청 수용은 서로 다른 경계이며 상세 계약은 [Lifecycle & Shutdown Guarantees](../architecture/lifecycle-and-shutdown.ko.md)가 소유합니다.
 
-1. `FluoFactory.create(rootModule, options)`는 `packages/runtime/src/bootstrap.ts`의 `bootstrapApplication(...)`으로 위임됩니다.
+1. `FluoFactory.create(rootModule, options)`가 `packages/runtime/src/bootstrap.ts`에서 HTTP 생성 구현을 직접 소유하며 forwarding 자유 함수는 없습니다.
 2. `bootstrapModule(...)`는 루트 모듈에서 도달 가능한 모듈 그래프를 컴파일하고 import, export, provider visibility, injection metadata를 검증합니다.
 3. `registerRuntimeBootstrapTokens(...)`는 선택된 HTTP 어댑터를 `HTTP_APPLICATION_ADAPTER` 토큰으로 등록하고, 런타임 platform shell을 `PLATFORM_SHELL` 토큰으로 등록합니다.
 4. `resolveBootstrapLifecycleInstances(...)`는 라이프사이클 훅을 노출하는 런타임 provider와 모듈 provider를 resolve합니다.
 5. `runBootstrapHooks(...)`는 모든 `onModuleInit()` 훅을 먼저 실행한 뒤, 모든 `onApplicationBootstrap()` 훅을 실행합니다.
 6. `platformShell.start()`는 라이프사이클 훅이 모두 성공한 뒤에 실행됩니다. readiness는 이 start 단계가 끝난 후에만 표시됩니다.
-7. `createRuntimeDispatcher(...)`가 dispatcher를 만들고, `bootstrapApplication(...)`은 `FluoApplication` 인스턴스를 반환합니다.
+7. `createRuntimeDispatcher(...)`가 Factory에서 조합한 middleware로 dispatcher를 만들고 `FluoFactory.create(...)`가 `FluoApplication` 인스턴스를 반환합니다.
 8. `app.listen()`은 readiness를 검사하고 adapter를 활성화합니다. run helper는 내부에서 이를 await하고, Factory/bootstrap 호출자는 이후 직접 호출합니다. Node/Fastify에서는 서버를 bind하지만 host-owned Workers/Next.js에서는 새 socket listener 대신 dispatcher를 활성화합니다.
 
 ## Entry Points
 
 | Path | Role |
 | --- | --- |
-| `packages/cli/src/new/scaffold.ts` | 기본 Node/Fastify `runFastifyApplication(...)` 진입점과 config/greeting/health 등록을 생성합니다. |
+| `packages/cli/src/new/scaffold.ts` | Node logger/signal 의존성을 명시한 Node HTTP Factory 진입점과 config/greeting/health 등록을 생성합니다. |
 | `examples/minimal/src/main.ts` | Fastify adapter를 전달한 `FluoFactory.create(...)` 이후 `app.listen()`을 호출하는 명시적 저수준 조립입니다. 생성 스타터가 아닙니다. |
-| `packages/runtime/src/bootstrap.ts` | `bootstrapApplication(...)`, `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, `FluoFactory.createMicroservice(...)`의 구현 소스입니다. |
+| `packages/runtime/src/bootstrap.ts` | `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, `FluoFactory.createMicroservice(...)`의 실제 구현입니다. |
 | `packages/platform-nodejs/src/index.ts` | 플랫폼이 소유하는 raw Node adapter, bootstrap, logging, filesystem, shutdown signal helper의 구현 소스입니다. |
 | `packages/platform-fastify/src/adapter.ts` | Fastify 경로의 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, `runFastifyApplication(...)`를 노출합니다. |
 | `packages/platform-cloudflare-workers/src/adapter.ts` | Worker fetch 경로의 `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, `createCloudflareWorkerEntrypoint(...)`를 노출합니다. |
@@ -93,7 +98,7 @@ run helper는 추가로 listen하고, listen target을 기록하며, 기본적�
 - `ModuleVisibilityError`: provider, controller, 또는 module export가 현재 모듈에서 보이지 않는 토큰을 참조할 때 발생합니다.
 - `ModuleInjectionMetadataError`: 생성자 주입 metadata가 필수 파라미터를 모두 설명하지 못할 때 발생합니다.
 - 라이프사이클 훅 실패: `onModuleInit()` 또는 `onApplicationBootstrap()`의 rejection은 readiness 표시 전에 부트스트랩을 중단합니다.
-- 어댑터 또는 플랫폼 시작 실패: platform shell과 dispatcher 실패는 공통 초기화를 reject합니다. 이후 listen 실패는 해당 listen을 reject하며, run helper는 앞에서 설명한 생성 이후 close 시도를 추가합니다.
+- 어댑터 또는 플랫폼 시작 실패: platform shell과 dispatcher 실패는 생성을 reject합니다. 이후 readiness/listen/setup 실패는 Factory가 close한 뒤 reject하므로 terminal shell에서 시작을 재시도하지 말고 새 앱을 만드세요. Adapterless `listen()`은 사용 오류이며 미시작 shell을 보존하므로 dispatch나 명시적 close가 가능합니다.
 - `InvariantError`: `FluoFactory.createMicroservice(...)`가 resolve된 런타임 토큰에서 `listen()` 구현을 찾지 못하면 발생합니다.
 - 부트스트랩 실패 정리는 synthetic signal인 `bootstrap-failed`를 사용하며, 원래 오류를 다시 던지기 전에 shutdown hook과 container dispose를 실행합니다.
 

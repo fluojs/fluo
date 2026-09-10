@@ -10,7 +10,7 @@ import {
   assertRequestContext,
   UseInterceptors,
 } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -160,7 +160,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const response = createResponse(events);
 
@@ -261,7 +261,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const service = await app.container.resolve(UserService);
       const failure = new Error('write failed after staging');
@@ -363,7 +363,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const response = createResponse(events);
 
@@ -462,7 +462,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       const response = createResponse(events);
 
@@ -566,7 +566,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       providers: [UserRepository],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       // Given: a real dispatched route wrapped by the deprecated compatibility interceptor.
       const response = createResponse(events);
@@ -691,7 +691,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       providers: [UserRepository],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     try {
       // Given: a dispatched request whose route has subscribed to its exact abort event.
       const controller = new AbortController();

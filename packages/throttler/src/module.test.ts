@@ -2,7 +2,7 @@ import { Inject, Module } from '@fluojs/core';
 import { getModuleMetadata, metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, Middleware, MiddlewareContext, Next, RequestContext } from '@fluojs/http';
 import { Controller, Get, UseGuards } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { createTestApp } from '@fluojs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
@@ -192,7 +192,7 @@ describe('ThrottlerModule.forRoot', () => {
       providers: [GlobalGuardConsumer],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const consumer = await app.container.resolve(GlobalGuardConsumer);
@@ -217,7 +217,7 @@ describe('ThrottlerModule.forRoot', () => {
       providers: [LocalGuardConsumer],
     });
 
-    await expect(bootstrapApplication({ rootModule: LocalAppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(LocalAppModule)).rejects.toThrow(
       /not visible through a global module|ThrottlerGuard/,
     );
   });

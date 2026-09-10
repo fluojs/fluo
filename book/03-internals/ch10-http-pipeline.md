@@ -164,16 +164,16 @@ The following `src/orders/pipeline-lab.test.ts` is a **complete test file**. Cal
 ```ts
 import { expect, it } from 'vitest';
 import { Module } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { OrdersModule, RequestTrail } from './pipeline-lab.js';
 
 async function execute(authenticated: boolean) {
   const observed: string[][] = [];
   @Module({ imports: [OrdersModule] })
-  class AppModule {}
+  class AppModule { }
 
-  const app = await fluoFactory.create(AppModule, {
+  const app = await FluoFactory.create(AppModule, {
     middleware: [{
       async handle({ requestContext }, next) {
         if (authenticated) {

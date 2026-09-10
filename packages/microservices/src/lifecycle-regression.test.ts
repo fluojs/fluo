@@ -1,6 +1,6 @@
 import { InvariantError } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
-import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { expect, it } from 'vitest';
 
 import { MessagePattern } from './decorators.js';
@@ -36,7 +36,7 @@ it('rejects facade listen re-entry after close completes', async () => {
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
   await microservice.close();
@@ -80,7 +80,7 @@ it('rejects facade listen re-entry after close starts', async () => {
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
   const closePromise = microservice.close();
@@ -127,7 +127,7 @@ it('rejects facade send before transport admission when close races with listen'
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   const listenPromise = microservice.listen();
   await listenStarted.promise;
@@ -177,7 +177,7 @@ it('rejects facade emit before transport admission when close races with listen'
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   const listenPromise = microservice.listen();
   await listenStarted.promise;
@@ -218,7 +218,7 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
 
@@ -259,7 +259,7 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
   const firstClose = microservice.close();
@@ -307,7 +307,7 @@ it('shares one close promise when transport close synchronously reenters', async
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
 
@@ -419,7 +419,7 @@ it('shares close and drains admitted inbound work before transport teardown', as
     providers: [OrdersHandler],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
 
@@ -492,7 +492,7 @@ it('drains a rejected admitted handler before transport teardown', async () => {
     providers: [OrdersHandler],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
 
@@ -545,7 +545,7 @@ it('rejects a transport callback invoked after shutdown admission closes', async
     imports: [MicroservicesModule.forRoot({ transport })],
   });
 
-  const app = await bootstrapApplication({ rootModule: AppModule });
+  const app = await FluoFactory.create(AppModule);
   const microservice = await app.container.resolve(MicroserviceLifecycleService);
   await microservice.listen();
 

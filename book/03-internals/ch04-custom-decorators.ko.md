@@ -202,7 +202,7 @@ export class OrdersModule {}
 ```ts
 import assert from 'node:assert/strict';
 import { ensureMetadataSymbol } from '@fluojs/core';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 ensureMetadataSymbol();
 const { getOrderActions } = await import('./orders/order-action.js');
@@ -214,7 +214,7 @@ assert.deepEqual(getOrderActions(OrdersService), [{
   method: 'readSummary',
 }]);
 
-const app = await fluoFactory.createApplicationContext(OrdersModule);
+const app = await FluoFactory.createApplicationContext(OrdersModule);
 try {
   const runner = await app.get(OrderActionRunner);
   const [first, second] = await Promise.all([

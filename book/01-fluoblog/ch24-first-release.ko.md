@@ -179,10 +179,12 @@ it('keeps diagnostics available while admitted work drains', async () => {
 실행 전 조건은 마이그레이션한 **빈 전용 PostgreSQL**, 로컬 `127.0.0.1:6379`의 **격리된 연습용 Redis**, 22장에서 유지한 RecordingEmailTransport다. 실제 SMTP transport로 바꾼 앱에서는 이 시험을 실행하지 않는다. 기존 `DATABASE_URL`, `JWT_SECRET`, `PUBLIC_ORIGIN`, `PORT`를 9·14·17장의 검증 계약대로 설정하고, 선택적 `METRICS_TOKEN`, `HEALTH_TOKEN`도 비어 있지 않은 테스트 값으로 전달한다. `NODE_ENV=production`이면 파일 입력 대신 프로세스 입력으로 기존 필수 설정을 모두 준비한다. fixture는 계정·글·첨부·미확인 구독을 전용 DB에 남겨 검사하게 하며 운영 데이터를 지우지 않는다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { randomUUID } from 'node:crypto';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { PrismaService } from '@fluojs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { expect, it } from 'vitest';
@@ -201,25 +203,29 @@ it('keeps auth, uploads, subscriptions and operations in the assembled app', asy
   if (!metricsToken || !healthToken) throw new Error('Set both test operations tokens.');
 
   const listening = Promise.withResolvers<string>();
-  const app = await bootstrapFastifyApplication(AppModule, {
-    host: '127.0.0.1', port: 0,
-    maxBodySize: 6 * 1024 * 1024,
-    multipart: {
-      maxFileSize: 5 * 1024 * 1024, maxFiles: 1, maxTotalSize: 6 * 1024 * 1024,
-    },
-    shutdownTimeoutMs: 5_000,
+  const app = await FluoFactory.create(AppModule, {
+    adapter: createFastifyAdapter({
+      host: '127.0.0.1',
+      port: 0,
+      maxBodySize: 6 * 1024 * 1024,
+      multipart: {
+        maxFileSize: 5 * 1024 * 1024, maxFiles: 1, maxTotalSize: 6 * 1024 * 1024,
+      },
+      shutdownTimeoutMs: 5_000,
+      configureFastify(server) {
+        server.addHook('onListen', async () => {
+          const address = server.server.address();
+          if (!address || typeof address === 'string') {
+            listening.reject(new Error('Expected a TCP listen address.'));
+            return;
+          }
+          listening.resolve(`http://127.0.0.1:${address.port}`);
+        });
+      },
+    }),
     middleware: [createCorrelationMiddleware(), TrafficMiddleware],
     observers: [blogAccessObserver],
-    configureFastify(server) {
-      server.addHook('onListen', async () => {
-        const address = server.server.address();
-        if (!address || typeof address === 'string') {
-          listening.reject(new Error('Expected a TCP listen address.'));
-          return;
-        }
-        listening.resolve(`http://127.0.0.1:${address.port}`);
-      });
-    },
+    logger: createConsoleApplicationLogger(),
   });
   try {
     await app.listen();

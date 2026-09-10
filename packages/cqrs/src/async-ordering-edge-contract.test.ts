@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { EventHandler, Saga } from './decorators.js';
@@ -83,7 +83,7 @@ describe('CQRS asynchronous ordering contracts', () => {
       providers: [StageStore, StagedHandler, StagedSaga, StagedSubscriber],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(StageStore);
 
@@ -175,7 +175,7 @@ describe('CQRS asynchronous ordering contracts', () => {
       providers: [TailStore, TailHandler, TailSubscriber],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(TailStore);
 

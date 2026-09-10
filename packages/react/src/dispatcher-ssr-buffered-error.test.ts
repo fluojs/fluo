@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import { type FrameworkRequest, type FrameworkResponse, Header, HttpCode } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -121,7 +121,7 @@ describe('React SSR buffered error handling', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const response = createBufferedResponse();
@@ -187,7 +187,7 @@ describe('React SSR buffered error handling', () => {
     })
     class AppModule {}
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       // Given: a React entry reports a recoverable render error while producing a valid shell.

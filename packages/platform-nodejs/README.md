@@ -46,10 +46,10 @@ Use this package when you want to run a fluo application directly on the Node.js
 
 ```typescript
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -83,27 +83,39 @@ const adapter = createNodejsAdapter({
 `createNodejsAdapter()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, or adapter-level `shutdownTimeoutMs` are invalid. The default request body cap is `1 MiB`.
 
 ### Direct Application Execution
-You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
+Create through `FluoFactory.create(AppModule, { adapter })` and start through `app.listen()`. The Node logger and shutdown callback below are explicit selections at this host boundary.
 
 When signal-driven shutdown exceeds the run-helper `forceExitTimeoutMs` or fails, the helper logs the condition and sets `process.exitCode`, but leaves final process termination to the host process owner. Use adapter-level `shutdownTimeoutMs` for connection drain bounds and run-helper `forceExitTimeoutMs` for signal handler completion bounds.
 
 `bootstrapNodejsApplication(...)` and `runNodejsApplication(...)` use the framework console logger by default. Pass `logger` when a host or portability test needs startup/shutdown diagnostics captured through an injected `ApplicationLogger`.
 
 ```typescript
-import { runNodejsApplication } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
-await runNodejsApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({
+    port: 3000,
+  }),
   globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
-Use `bootstrapNodejsApplication(...)` when you want to create the application without starting the listener:
+To configure before listening, create through the same Factory, finish configuration, then call `app.listen()`. Omitting the signal callback leaves `app.close()` with the host.
 
 ```typescript
-const app = await bootstrapNodejsApplication(AppModule, { port: 3000 });
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodejsAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen();
 ```
 
@@ -140,6 +152,8 @@ The same regression targets also cover the package-specific public surface, type
 
 ## Multipart streaming
 
+`multipart` remains adapter-owned: pass `createNodeHttpAdapter(options, false, multipartOptions)` as the Factory adapter when selecting multipart policy (`false` disables compression). Factory itself has no `multipart` option.
+
 Set `multipart: { strategy: 'stream' }` when creating the application to expose multipart parts through `RequestContext.request.body` as an `AsyncIterable`. The Node listener creates the iterator without pre-reading or buffering it; consuming a file part pulls its bytes on demand. Buffered multipart parsing remains the default, exposes fields and `request.files`, and cannot be combined with stream consumption for the same request body.
 
 Runtime route dispatch owns an iterator created for a route and automatically calls `return()` after the handler finishes, cancelling and releasing an active source. Standalone `parseMultipartStream(...)` consumers own that responsibility: consume the iterator to completion or call `return()` when ending early.
@@ -156,3 +170,5 @@ Runtime route dispatch owns an iterator created for a route and automatically ca
 - `packages/platform-nodejs/src/lifecycle.test.ts`
 - `packages/platform-nodejs/src/lifecycle.integration.test.ts`
 - `book/intermediate/ch21-express-node.md`
+
+`createNodeShutdownSignalRegistration(...)` rolls back partially installed handlers on registration failure and attempts every removal after an individual failure. Factory close retains unregistration failure for concurrent/later callers without skipping runtime cleanup; `factory-signals.test.ts` covers this boundary. Existing `bootstrapNodejsApplication`/`runNodejsApplication` remain for consumers awaiting platform migration. New apps use the Factory recipe above and the [migration guide](../../docs/getting-started/migrate-http-factory.md).

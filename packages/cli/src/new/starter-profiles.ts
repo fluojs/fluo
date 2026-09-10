@@ -192,6 +192,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
         '@fluojs/di',
         '@fluojs/http',
         '@fluojs/platform-fastify',
+        '@fluojs/platform-nodejs',
         '@fluojs/runtime',
       ],
       devDependencies: [
@@ -257,6 +258,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
         '@fluojs/di',
         '@fluojs/http',
         '@fluojs/platform-express',
+        '@fluojs/platform-nodejs',
         '@fluojs/runtime',
       ],
       devDependencies: [
@@ -515,6 +517,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
         '@fluojs/http',
         '@fluojs/microservices',
         '@fluojs/platform-fastify',
+        '@fluojs/platform-nodejs',
         '@fluojs/runtime',
       ],
       devDependencies: [

@@ -8,7 +8,7 @@ import {
   Post,
   RequestDto,
 } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { MongooseConnection, MongooseModule, Transaction } from './index.js';
@@ -175,7 +175,7 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const response = createResponse(events);
 
     try {
@@ -302,7 +302,7 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
       providers: [UserRepository, UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const response = createResponse(events);
 
     try {

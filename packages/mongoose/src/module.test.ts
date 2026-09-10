@@ -1,5 +1,5 @@
 import { Global, Inject, Module } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -76,9 +76,7 @@ describe('@fluojs/mongoose', () => {
       providers: [UserService],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const service = await app.container.resolve(UserService);
 
     try {
@@ -136,7 +134,7 @@ describe('@fluojs/mongoose', () => {
       imports: [ManualMongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
     const rawConnection = await app.container.resolve(MONGOOSE_CONNECTION);
     const moduleOptions = await app.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
@@ -290,7 +288,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const openTransaction = mongoose.requestTransaction(
@@ -358,7 +356,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const openTransaction = mongoose.requestTransaction(async () => new Promise<never>(() => undefined));
@@ -419,7 +417,7 @@ describe('@fluojs/mongoose', () => {
 
     defineModule(AppModule, { imports: [mongooseModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
     const controller = new AbortController();
     const requestTransaction = mongoose.requestTransaction(async () => {
@@ -521,7 +519,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const openTransaction = mongoose.requestTransaction(async () => {
@@ -608,9 +606,7 @@ describe('@fluojs/mongoose', () => {
       imports: [SyncModule],
     });
 
-    const syncApp = await bootstrapApplication({
-      rootModule: SyncAppModule,
-    });
+    const syncApp = await FluoFactory.create(SyncAppModule);
     const syncMongoose = await syncApp.container.resolve(MongooseConnection<typeof connection>);
     const syncOptions = await syncApp.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
 
@@ -641,9 +637,7 @@ describe('@fluojs/mongoose', () => {
       imports: [AsyncModule],
     });
 
-    const asyncApp = await bootstrapApplication({
-      rootModule: AsyncAppModule,
-    });
+    const asyncApp = await FluoFactory.create(AsyncAppModule);
     const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<typeof connection>);
     const asyncOptions = await asyncApp.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
 
@@ -694,9 +688,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     const closePromise = app.close();
 
@@ -724,9 +716,7 @@ describe('@fluojs/mongoose', () => {
       imports: [StrictSyncModule],
     });
 
-    const syncApp = await bootstrapApplication({
-      rootModule: StrictSyncAppModule,
-    });
+    const syncApp = await FluoFactory.create(StrictSyncAppModule);
     const syncMongoose = await syncApp.container.resolve(MongooseConnection<typeof connection>);
 
     await expect(syncMongoose.transaction(async () => 'ok')).rejects.toThrow(
@@ -748,9 +738,7 @@ describe('@fluojs/mongoose', () => {
       imports: [StrictAsyncModule],
     });
 
-    const asyncApp = await bootstrapApplication({
-      rootModule: StrictAsyncAppModule,
-    });
+    const asyncApp = await FluoFactory.create(StrictAsyncAppModule);
     const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<typeof connection>);
 
     await expect(asyncMongoose.requestTransaction(async () => 'ok')).rejects.toThrow(
@@ -800,7 +788,7 @@ describe('@fluojs/mongoose', () => {
 
     defineModule(AppModule, { imports: [mongooseModule] });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'MongooseModule requires a connection option.',
     );
   });
@@ -857,7 +845,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const openTransaction = mongoose.transaction(() =>
@@ -1391,7 +1379,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const closePromise = app.close();
@@ -1442,7 +1430,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const transaction = mongoose.transaction(async () => {
@@ -1554,7 +1542,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const openTransaction = mongoose.requestTransaction(async () => {
@@ -1790,7 +1778,7 @@ describe('@fluojs/mongoose', () => {
       imports: [mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const transaction = mongoose.transaction(async () => {
@@ -1917,7 +1905,7 @@ describe('MongooseModule.forRootAsync', () => {
       imports: [mongooseModule, FeatureModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const consumer = await app.container.resolve(ConsumerService);
 
     try {
@@ -1951,7 +1939,7 @@ describe('MongooseModule.forRootAsync', () => {
       imports: [ConfigModule, mongooseModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const conn = await app.container.resolve(MongooseConnection);
 
     try {
@@ -1976,7 +1964,7 @@ describe('MongooseModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [mongooseModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const conn = await app.container.resolve(MongooseConnection);
 
     try {
@@ -2019,11 +2007,11 @@ describe('MongooseModule.forRootAsync', () => {
     defineModule(FirstAppModule, { imports: [mongooseModule] });
     defineModule(SecondAppModule, { imports: [mongooseModule] });
 
-    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstApp = await FluoFactory.create(FirstAppModule);
     const firstConnection = await firstApp.container.resolve<AsyncIsolationConnection>(MONGOOSE_CONNECTION);
     const firstMongoose = await firstApp.container.resolve(MongooseConnection);
 
-    const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+    const secondApp = await FluoFactory.create(SecondAppModule);
     const secondConnection = await secondApp.container.resolve<AsyncIsolationConnection>(MONGOOSE_CONNECTION);
     const secondMongoose = await secondApp.container.resolve(MongooseConnection);
 
@@ -2063,6 +2051,6 @@ describe('MongooseModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [mongooseModule] });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('mongo config fetch failed');
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow('mongo config fetch failed');
   });
 });

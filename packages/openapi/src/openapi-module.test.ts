@@ -9,7 +9,7 @@ import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/valid
 import * as httpPublicApi from '@fluojs/http';
 import { Controller, Get, Post, Produces, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, type HandlerSource } from '@fluojs/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { bootstrapHttpAdapterApplication } from '@fluojs/runtime/internal/http-adapter';
 import { createNodeHttpAdapter } from '@fluojs/platform-nodejs';
 
@@ -354,9 +354,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -507,7 +505,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -566,9 +564,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/docs'), response);
@@ -607,7 +603,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/docs'), response);
@@ -651,7 +647,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/docs'), response);
@@ -769,9 +765,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -843,9 +837,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -925,9 +917,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1068,9 +1058,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1167,9 +1155,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1241,9 +1227,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1364,9 +1348,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1441,9 +1423,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1556,9 +1536,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1660,9 +1638,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1761,9 +1737,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1810,9 +1784,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1895,9 +1867,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1961,9 +1931,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
-      rootModule: AppModule,
-    }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2027,9 +1995,8 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule, {
       providers: [{ provide: OPENAPI_TITLE, useValue: 'Async OpenAPI' }],
-      rootModule: AppModule,
     }));
     const response = createResponse();
 
@@ -2090,7 +2057,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2165,7 +2132,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2218,7 +2185,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2268,7 +2235,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2381,7 +2348,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const documentResponse = createResponse();
     const docsResponse = createResponse();
 
@@ -2459,7 +2426,7 @@ describe('OpenApiModule', () => {
       ],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const firstResponse = createResponse();
     const secondResponse = createResponse();
 
@@ -2514,7 +2481,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
 
     resolvedOptions.title = 'Async Mutated API';
     resolvedOptions.swaggerUiAssets.cssUrl = 'https://assets.example.test/async-mutated.css';
@@ -2578,7 +2545,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2627,7 +2594,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2681,7 +2648,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2734,7 +2701,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const app = registerAppForCleanup(await FluoFactory.create(AppModule));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -2769,9 +2736,7 @@ describe('OpenApiModule', () => {
     });
 
     await expect(
-      bootstrapApplication({
-        rootModule: AppModule,
-      }),
+      FluoFactory.create(AppModule),
     ).rejects.toThrow('openapi async options failed');
   });
 });

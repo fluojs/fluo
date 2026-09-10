@@ -1,5 +1,5 @@
 import { REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Cron } from './decorators.js';
@@ -127,9 +127,8 @@ async function createShutdownReleaseScenario(): Promise<ShutdownReleaseScenario>
     providers: [DistributedTaskService],
   });
 
-  const app = await bootstrapApplication({
+  const app = await FluoFactory.create(AppModule, {
     providers: [{ provide: REDIS_CLIENT, useValue: redis }],
-    rootModule: AppModule,
   });
   const registry = await app.container.resolve(SCHEDULING_REGISTRY);
 

@@ -40,9 +40,11 @@
 This minimal example puts an HTTP route, service injection, module registration, and Fastify startup in one file. The CLI starter below supplies the decorator transform and build configuration.
 
 ```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { Inject, Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 class GreetingService {
   greet() {
@@ -53,7 +55,7 @@ class GreetingService {
 @Inject(GreetingService)
 @Controller('/greeting')
 class GreetingController {
-  constructor(private readonly service: GreetingService) {}
+  constructor(private readonly service: GreetingService) { }
 
   @Get('/')
   getGreeting() {
@@ -65,9 +67,16 @@ class GreetingController {
   controllers: [GreetingController],
   providers: [GreetingService],
 })
-class AppModule {}
+class AppModule { }
 
-await runFastifyApplication(AppModule, { port: 3000 });
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
 ```
 
 Here, `GET /greeting` returns `{"message":"Hello from fluo"}`. Generated projects split this structure into separate files and add a repository, health checks, and tests. To run this example separately, replace the generated project's `src/main.ts` with the code above. The quick start below uses the unmodified starter.

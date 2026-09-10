@@ -13,7 +13,7 @@ import {
 import { createExpressAdapter } from '@fluojs/platform-express';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { type Application, type ApplicationLogger, bootstrapApplication, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
+import { type Application, type ApplicationLogger, FluoFactory, defineModule, type ModuleType } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
 import {
   OnConnect,
@@ -433,7 +433,7 @@ describe('@fluojs/socket.io', () => {
       providers: [RootServerProbe],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('not visible through a global module');
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow('not visible through a global module');
   });
 
   it('injects the Socket.IO server token into singleton providers', async () => {
@@ -473,9 +473,8 @@ describe('@fluojs/socket.io', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter: createNoopHttpApplicationAdapter(),
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
@@ -487,9 +486,8 @@ describe('@fluojs/socket.io', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter: createNoopHttpApplicationAdapter(),
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
@@ -508,9 +506,8 @@ describe('@fluojs/socket.io', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter: createNodejsAdapter({ port: 0 }),
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
   });
@@ -531,9 +528,8 @@ describe('@fluojs/socket.io', () => {
     });
 
     await expect(
-      bootstrapApplication({
+      FluoFactory.create(AppModule, {
         adapter,
-        rootModule: AppModule,
       }),
     ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
   });
@@ -583,9 +579,8 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve(GatewayState);
 
@@ -629,9 +624,8 @@ describe('@fluojs/socket.io', () => {
       imports: [SocketIoModule.forRoot({ transports: ['polling'] })],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
 
     let socket: ClientSocket | undefined;
@@ -831,9 +825,8 @@ describe('@fluojs/socket.io', () => {
       providers: [RequestShapeGateway],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     let socket: ClientSocket | undefined;
 
@@ -1682,9 +1675,8 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const app = await bootstrapApplication({
+    const app = await FluoFactory.create(AppModule, {
       adapter,
-      rootModule: AppModule,
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 

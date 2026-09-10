@@ -375,27 +375,34 @@ export const blogAccessObserver = createAccessLogObserver({
 Generating a request ID is a separate responsibility from the observer. Merge the following **partial options implementation** into the existing Fastify run options in `src/main.ts`. `AppModule` is the application in `src/app.ts` that combines the existing accounts, posts, and observability modules. This block does not replace that application's other settings or registrations.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { runFastifyApplication } from '@fluojs/platform-fastify';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { blogConfig } = await import('./config/app-settings.module.js');
 const { blogAccessObserver } = await import('./observability/access-log.js');
 
-await runFastifyApplication(AppModule, {
-  host: '127.0.0.1',
-  port: blogConfig.PORT,
-  maxBodySize: 6 * 1024 * 1024,
-  multipart: {
-    maxFileSize: 5 * 1024 * 1024,
-    maxFiles: 1,
-    maxTotalSize: 6 * 1024 * 1024,
-  },
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '127.0.0.1',
+    port: blogConfig.PORT,
+    maxBodySize: 6 * 1024 * 1024,
+    multipart: {
+      maxFileSize: 5 * 1024 * 1024,
+      maxFiles: 1,
+      maxTotalSize: 6 * 1024 * 1024,
+    },
+  }),
   middleware: [createCorrelationMiddleware()],
   observers: [blogAccessObserver],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 Correlation middleware adopts an incoming `x-request-id` or the older `x-correlation-id`; if neither exists, it generates an ID before the start record. The same ID is carried into the response header. This ID is for finding correlations, not an authenticated user identifier or proof of global uniqueness. Do not substitute a customer-supplied ID for authorization or an idempotency key.

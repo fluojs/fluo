@@ -27,37 +27,37 @@
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 좁고, 더 아키텍처적인 위치에 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1583-1607`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
+`path:packages/runtime/src/bootstrap.ts:1640-1664`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
 
 그 중심부는 host 이름을 판별하는 대신 이미 준비된 adapter와 platform shell을 받아 조립합니다. 아래 발췌에서 runtime은 module graph, provider, token, lifecycle 순서를 다루고, Node나 Web이라는 이름을 조건으로 삼지 않습니다.
 
-`path:packages/runtime/src/bootstrap.ts:1583-1607`
+`path:packages/runtime/src/bootstrap.ts:1640-1664`
 ```typescript
-export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
-  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
-  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
-  let lifecycleInstances: unknown[] = [];
-  let bootstrappedContainer: Container | undefined;
-  let bootstrappedModules: CompiledModule[] = [];
-  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
-  const adapter = effectiveOptions.adapter ?? {
-    async close() {},
-    async listen() {},
-  };
-  const runtimeCleanup: RuntimeCleanupCallback[] = [];
-  if (studioDevtools) {
-    runtimeCleanup.push(() => studioDevtools.close());
-  }
-  const bootstrapReadySignal = createBootstrapReadySignal();
-  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
-  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
-  const timingStart = timingEnabled ? runtimePerformance.now() : 0;
-  const timingPhases: BootstrapTimingPhase[] = [];
+  static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
+    const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();
+    const effectiveOptions = applyStudioDevtoolsApplicationOptions({ ...options, rootModule }, studioDevtools);
+    const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
+    let lifecycleInstances: unknown[] = [];
+    let bootstrappedContainer: Container | undefined;
+    let bootstrappedModules: CompiledModule[] = [];
+    const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+    const adapter = effectiveOptions.adapter ?? {
+      async close() {},
+      async listen() {},
+    };
+    const runtimeCleanup: RuntimeCleanupCallback[] = [];
+    if (studioDevtools) {
+      runtimeCleanup.push(() => studioDevtools.close());
+    }
+    const bootstrapReadySignal = createBootstrapReadySignal();
+    const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+    const timingEnabled = effectiveOptions.diagnostics?.timing === true;
+    const timingStart = timingEnabled ? runtimePerformance.now() : 0;
+    const timingPhases: BootstrapTimingPhase[] = [];
 
-  try {
-    logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
+    try {
+      logger.log('Starting fluo application...', 'FluoFactory');
+      const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 ```
 
 root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하는 `createDefaultApplicationLogger()`입니다. `createConsoleApplicationLogger()`는 `@fluojs/platform-nodejs`에서 import하는 명시적인 Node 전용 구성에서만 선택하세요.
@@ -68,11 +68,11 @@ root 기본값은 shared bootstrap surface를 transport-neutral하게 유지하�
 
 그래서 장 제목이 "runtime fork"가 아니라 "runtime branching"입니다. Fluo는 host마다 runtime 전체를 복제하지 않습니다. 공통 runtime shell은 중앙에 두고, 명시적인 surface boundary에서만 분기합니다.
 
-이 철학은 `path:packages/runtime/src/exports.test.ts:18-45`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `@fluojs/platform-nodejs`에 있고, Web helper는 `@fluojs/runtime/web`에 있으며, lower-level portable adapter seam은 `@fluojs/runtime/internal/...`에 남습니다.
+이 철학은 `path:packages/runtime/src/exports.test.ts:18-47`에 코드로 박혀 있습니다. 연속된 root-boundary 테스트는 root runtime barrel이 transport-neutral해야 하고, Bootstrap default가 Node-only logger module과 분리되어야 하며, Bootstrap 범위의 operational helper만 노출해야 한다고 강제합니다. Node-only helper는 `@fluojs/platform-nodejs`에 있고, Web helper는 `@fluojs/runtime/web`에 있으며, lower-level portable adapter seam은 `@fluojs/runtime/internal/...`에 남습니다.
 
 root boundary부터 보면 금지 목록이 먼저 나옵니다. root barrel은 dispatch helper, Web factory, Node shutdown helper, adapter bootstrap helper를 직접 담지 않아야 합니다.
 
-`path:packages/runtime/src/exports.test.ts:18-45`
+`path:packages/runtime/src/exports.test.ts:18-47`
 ```typescript
 it('keeps the root barrel transport-neutral', () => {
   expect(runtime).not.toHaveProperty('parseMultipart');
@@ -94,7 +94,9 @@ it('keeps only bootstrap-scoped operational helpers on the runtime root barrel',
   expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
   expect(runtime).toHaveProperty('createHealthModule');
-  expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
+  expect(runtime.FluoFactory.create).toBeTypeOf('function');
+  expect(runtime).not.toHaveProperty('fluoFactory');
+  expect(runtime).not.toHaveProperty('bootstrapApplication');
   expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
   expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
   expect(runtime).toHaveProperty('APPLICATION_LOGGER');
@@ -183,7 +185,7 @@ root barrel은 의도적으로 `renderRuntimeDiagnosticsMermaid()`를 생략합�
 
 이 omission은 우연이 아닙니다. `path:packages/runtime/src/exports.test.ts:19-25`가 직접 검증합니다. root barrel에는 `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, `bootstrapHttpAdapterApplication`이 있으면 안 됩니다.
 
-즉 root runtime API는 portable bootstrap concern만 중심에 두고 큐레이션됩니다. 모든 host가 공유할 수 있는 것만 노출합니다. `FluoFactory`, `fluoFactory`, `APPLICATION_LOGGER`, `PLATFORM_SHELL` 같은 runtime token, 그리고 공유 runtime type system이 여기에 속합니다.
+즉 root runtime API는 portable bootstrap concern만 중심에 두고 큐레이션됩니다. 모든 host가 공유할 수 있는 것만 노출합니다. `FluoFactory`, `APPLICATION_LOGGER`, `PLATFORM_SHELL` 같은 runtime token, 그리고 공유 runtime type system이 여기에 속합니다.
 
 `path:packages/runtime/package.json:23-50`의 package export map은 이 큐레이션을 package-resolution 단계에서 강제합니다. 명시적인 runtime subpath는 `.`, `./web`, `./devtools`, `./internal`, `./internal/http-adapter`, `./internal/request-response-factory`이며 Node-owned entrypoint는 의도적으로 없습니다.
 
@@ -227,11 +229,11 @@ JSON export map도 같은 경계를 반복합니다. root entrypoint와 Node, We
 
 `path:packages/platform-nodejs/src/node/node.test.ts:8-55`도 consumer 관점에서 같은 규칙을 강화합니다. 이 테스트는 root runtime API에 `bootstrapNodeApplication`, `createNodeHttpAdapter`, `runNodeApplication`이 없어야 한다고 단언합니다. 이 helper들은 `@fluojs/platform-nodejs`에서만 합법입니다.
 
-`path:packages/runtime/src/exports.test.ts:87-106`은 package export map이 `./devtools` host bridge를 포함한 portable entrypoint를 유지하면서 `./node`와 `./internal-node`를 생략하는지도 검사합니다. 바로 여기서 runtime branching은 구현 세부를 넘어 안정적인 published contract가 됩니다.
+`path:packages/runtime/src/exports.test.ts:89-108`은 package export map이 `./devtools` host bridge를 포함한 portable entrypoint를 유지하면서 `./node`와 `./internal-node`를 생략하는지도 검사합니다. 바로 여기서 runtime branching은 구현 세부를 넘어 안정적인 published contract가 됩니다.
 
 테스트는 Node-owned entrypoint가 runtime package를 통해 해석되지 않는지 package.json에서 확인합니다.
 
-`path:packages/runtime/src/exports.test.ts:87-106`
+`path:packages/runtime/src/exports.test.ts:89-108`
 ```typescript
 it('declares the narrowed package export map', () => {
   const packageJson = JSON.parse(
@@ -612,7 +614,7 @@ host-specific factory
   -> shared error handling shape
 ```
 
-이 seam이 존재하기 때문에, runtime의 나머지 부분은 놀랄 만큼 안정적으로 남을 수 있습니다. `bootstrapApplication()`은 최종 host가 Node인지 Edge worker인지 자체에는 관심이 없습니다. 호환 가능한 adapter나 dispatch seam이 있는지만 중요합니다.
+이 seam이 존재하기 때문에, runtime의 나머지 부분은 놀랄 만큼 안정적으로 남을 수 있습니다. `FluoFactory.create()`은 최종 host가 Node인지 Edge worker인지 자체에는 관심이 없습니다. 호환 가능한 adapter나 dispatch seam이 있는지만 중요합니다.
 
 이 점은 앞서 본 export boundary도 설명해 줍니다. 진짜 host-specific code가 request/response factory 아래쪽에 있기 때문에, root barrel은 portable하게 유지될 수 있습니다.
 

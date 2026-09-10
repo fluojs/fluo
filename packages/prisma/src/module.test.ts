@@ -1,5 +1,5 @@
 import { Global, Inject, Module } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -204,9 +204,7 @@ describe('@fluojs/prisma', () => {
       providers: [UserService],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -265,7 +263,7 @@ describe('@fluojs/prisma', () => {
       imports: [ManualPrismaModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client>);
@@ -315,7 +313,7 @@ describe('@fluojs/prisma', () => {
       providers: [MultiClientProbe],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const probe = await app.container.resolve(MultiClientProbe);
@@ -342,7 +340,7 @@ describe('@fluojs/prisma', () => {
       imports: [PrismaModule.forRoot({ name: '  users  ', client })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(client);
@@ -394,7 +392,7 @@ describe('@fluojs/prisma', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       expect(events).toEqual(['users:connect', 'analytics:connect']);
@@ -459,7 +457,7 @@ describe('@fluojs/prisma', () => {
       providers: [MultiClientTransactions],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const transactions = await app.container.resolve(MultiClientTransactions);
@@ -645,9 +643,7 @@ describe('@fluojs/prisma', () => {
       imports: [prismaModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
 
     const openTransaction = prisma.requestTransaction(
@@ -717,9 +713,7 @@ describe('@fluojs/prisma', () => {
       imports: [prismaModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(
       PrismaService<typeof client, typeof transactionClient, { signal?: AbortSignal }>,
     );
@@ -779,9 +773,7 @@ describe('@fluojs/prisma', () => {
       imports: [prismaModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
 
     await expect(
@@ -1045,7 +1037,7 @@ describe('@fluojs/prisma', () => {
       imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
@@ -1121,7 +1113,7 @@ describe('@fluojs/prisma', () => {
       imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
@@ -1177,7 +1169,7 @@ describe('@fluojs/prisma', () => {
       imports: [PrismaModule.forRoot({ client, strictTransactions: false })],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client>);
@@ -1249,7 +1241,7 @@ describe('@fluojs/prisma', () => {
       providers: [UserService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const service = await app.container.resolve(UserService);
@@ -1362,9 +1354,7 @@ describe('@fluojs/prisma', () => {
       imports: [prismaModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService<typeof client>);
 
     await expect(prisma.transaction(async () => 'fallback-transaction')).resolves.toBe('fallback-transaction');
@@ -1390,9 +1380,7 @@ describe('@fluojs/prisma', () => {
       imports: [prismaModule],
     });
 
-    const app = await bootstrapApplication({
-      rootModule: AppModule,
-    });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService<typeof client>);
 
     await expect(prisma.transaction(async () => 'never')).rejects.toThrow(
@@ -1583,7 +1571,7 @@ describe('PrismaModule.forRootAsync', () => {
       imports: [ConfigModule, prismaModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       const prisma = await app.container.resolve(PrismaService);
@@ -1633,10 +1621,10 @@ describe('PrismaModule.forRootAsync', () => {
     defineModule(FirstAppModule, { imports: [prismaModule] });
     defineModule(SecondAppModule, { imports: [prismaModule] });
 
-    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstApp = await FluoFactory.create(FirstAppModule);
     const firstClient = await firstApp.container.resolve(PRISMA_CLIENT);
 
-    const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+    const secondApp = await FluoFactory.create(SecondAppModule);
     const secondClient = await secondApp.container.resolve(PRISMA_CLIENT);
 
     expect(firstClient).not.toBe(secondClient);
@@ -1681,10 +1669,10 @@ describe('PrismaModule.forRootAsync', () => {
     defineModule(FirstAppModule, { imports: [prismaModule] });
     defineModule(SecondAppModule, { imports: [prismaModule] });
 
-    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstApp = await FluoFactory.create(FirstAppModule);
 
     try {
-      const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+      const secondApp = await FluoFactory.create(SecondAppModule);
 
       try {
         const firstPrisma = await firstApp.container.resolve(PrismaService);
@@ -1733,7 +1721,7 @@ describe('PrismaModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [prismaModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService);
 
     expect(prisma).toBeInstanceOf(PrismaService);
@@ -1755,7 +1743,7 @@ describe('PrismaModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [prismaModule] });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(PrismaService<typeof client>);
 
     await expect(prisma.transaction(async () => 'never')).rejects.toThrow(
@@ -1774,7 +1762,7 @@ describe('PrismaModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [prismaModule] });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('secret fetch failed');
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow('secret fetch failed');
   });
 
   it('rejects async factories that resolve without a Prisma client', async () => {
@@ -1786,7 +1774,7 @@ describe('PrismaModule.forRootAsync', () => {
 
     defineModule(AppModule, { imports: [prismaModule] });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
       'PrismaModule requires a client option.',
     );
   });

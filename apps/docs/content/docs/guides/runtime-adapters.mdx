@@ -84,10 +84,10 @@ Fastify is the recommended high-throughput Node.js adapter.
 
 ```ts
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -145,10 +145,10 @@ Use the raw Node.js adapter when you want the built-in `http` or `https` server 
 
 ```ts
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -170,17 +170,22 @@ const adapter = createNodejsAdapter({
 
 `maxBodySize` is enforced while raw Node request bytes are still streaming. The default request body cap is `1 MiB`; invalid `port` or `maxBodySize` values throw during setup.
 
-For one-call startup with graceful shutdown, use `runNodejsApplication(...)`.
+Use Factory creation and instance listen, with explicit `shutdownRegistration` for Node graceful shutdown.
 
 ```ts
-import { runNodejsApplication } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { createNodejsAdapter, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
-await runNodejsApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({
+    port: 3000,
+  }),
   globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
 If shutdown times out or fails, the helper logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
@@ -196,11 +201,11 @@ import {
   createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createExpressAdapter({ port: 3000 });
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
@@ -237,10 +242,10 @@ Use the Bun adapter for native `Bun.serve()` applications.
 
 ```ts
 import { createBunAdapter } from '@fluojs/platform-bun';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 
@@ -294,11 +299,11 @@ Signal listener registration does not require a separate Deno permission. The ad
 For a host-owned `Deno.serve(...)`, bootstrap without `app.listen()` and create a handler from the public dispatcher.
 
 ```ts
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
 const adapter = createDenoAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
   rawBody: true,
@@ -330,11 +335,11 @@ Use the Workers adapter for edge `fetch` deployments.
 
 ```ts
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await fluoFactory.create(AppModule, { adapter });
+const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 

@@ -1,5 +1,5 @@
 import { Controller, type FrameworkRequest, type FrameworkResponse, Get, UseInterceptors } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CacheInterceptor } from './interceptor.js';
@@ -117,7 +117,7 @@ describe('CacheInterceptor — TTL jitter on the HTTP cache path', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await FluoFactory.create(AppModule);
 
     try {
       await app.dispatch(createRequest('/products'), createResponse());

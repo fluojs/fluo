@@ -1,7 +1,7 @@
 import { Module, type Token } from '@fluojs/core';
 import type { RequestScopeContainer } from '@fluojs/di';
 import { type FrameworkRequest, type FrameworkResponse, Get } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createElement, Fragment } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -169,7 +169,7 @@ describe('React page metadata policy', () => {
     class AppModule {}
 
     // When: module bootstrap validates the metadata policy sites.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: the duplicate has a stable metadata-specific diagnostic code.
     await expect(bootstrap).rejects.toMatchObject({
@@ -195,7 +195,7 @@ describe('React page metadata policy', () => {
     class AppModule {}
 
     // When: bootstrap checks the declaration owner against the React page seam.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: the metadata policy cannot attach to an ordinary HTTP handler.
     await expect(bootstrap).rejects.toMatchObject({
@@ -221,7 +221,7 @@ describe('React page metadata policy', () => {
     class AppModule {}
 
     // When: module bootstrap validates that each render policy has a consumer.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: unused metadata fails before request dispatch.
     await expect(bootstrap).rejects.toMatchObject({
@@ -249,7 +249,7 @@ describe('React page metadata policy', () => {
     class AppModule {}
 
     // When: bootstrap validates the recorded metadata factory reference.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: undefined is rejected rather than treated as an absent declaration.
     await expect(bootstrap).rejects.toMatchObject({

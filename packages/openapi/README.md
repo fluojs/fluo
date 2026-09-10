@@ -35,9 +35,10 @@ pnpm add @fluojs/openapi
 Register the `OpenApiModule` and pass `sources`, prebuilt `descriptors`, or both so the document builder knows which HTTP handlers to include. When both inputs are provided, they are merged.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
-import { bootstrapNodeApplication } from '@fluojs/platform-nodejs';
+import { createNodejsAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')
@@ -62,9 +63,12 @@ class UsersController {
   ],
   controllers: [UsersController]
 })
-class AppModule {}
+class AppModule { }
 
-const app = await bootstrapNodeApplication(AppModule);
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({}),
+  logger: createConsoleApplicationLogger(),
+});
 await app.listen(3000);
 // OpenAPI JSON: http://localhost:3000/openapi.json
 // Swagger UI: http://localhost:3000/docs

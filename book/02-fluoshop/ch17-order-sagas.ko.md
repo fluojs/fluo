@@ -548,11 +548,11 @@ packing 결과 저장 뒤 통지 전 중단은 미전달 `LocalOrderFact`로 복
 
 ## 실행 순서를 직접 관찰한다
 
-다음은 `src/orders/saga/order-saga.test.ts`의 **완전한 테스트 파일**이다. Node24와 pnpm10을 사용하며, 앞의 두 파일 및 프로젝트의 기존 Vitest 구성이 필요하다. 실제 결제·메일·브로커를 호출하지 않는다. `bootstrapApplication`은 이 실험에 HTTP listener가 필요하지 않음을 표현한다.
+다음은 `src/orders/saga/order-saga.test.ts`의 **완전한 테스트 파일**이다. Node24와 pnpm10을 사용하며, 앞의 두 파일 및 프로젝트의 기존 Vitest 구성이 필요하다. 실제 결제·메일·브로커를 호출하지 않는다. `FluoFactory.create`은 이 실험에 HTTP listener가 필요하지 않음을 표현한다.
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { CqrsEventBusService } from '@fluojs/cqrs';
 import {
   MemorySagaStore, OrderFact, OrderSagaLabModule, SAGA_STORE,
@@ -560,7 +560,7 @@ import {
 
 describe('order saga decisions', () => {
   it('requests packing before fulfillment and deduplicates facts', async () => {
-    const app = await bootstrapApplication({ rootModule: OrderSagaLabModule });
+    const app = await FluoFactory.create(OrderSagaLabModule);
     try {
       const bus = await app.container.resolve(CqrsEventBusService);
       const store = await app.container.resolve<MemorySagaStore>(SAGA_STORE);

@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import { Get } from '@fluojs/http';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -79,7 +79,7 @@ describe('React render policy decorators', () => {
     class AppModule {}
 
     // When: the application resolves React module lifecycle providers.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: a stable bootstrap diagnostic rejects the duplicate declaration.
     await expect(bootstrap).rejects.toMatchObject({
@@ -104,7 +104,7 @@ describe('React render policy decorators', () => {
     class AppModule {}
 
     // When: application bootstrap validates the registered React routers.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: unused render policy metadata fails before any request dispatch.
     await expect(bootstrap).rejects.toMatchObject({
@@ -129,7 +129,7 @@ describe('React render policy decorators', () => {
     class AppModule {}
 
     // When: application bootstrap validates render policy targets.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: the policy does not silently join an ordinary HTTP handler.
     await expect(bootstrap).rejects.toMatchObject({
@@ -156,7 +156,7 @@ describe('React render policy decorators', () => {
     class AppModule {}
 
     // When: bootstrap validates the owner of every inherited policy declaration.
-    const bootstrap = bootstrapApplication({ rootModule: AppModule });
+    const bootstrap = FluoFactory.create(AppModule);
 
     // Then: a derived Router marker does not legalize a policy declared on a plain base class.
     await expect(bootstrap).rejects.toMatchObject({

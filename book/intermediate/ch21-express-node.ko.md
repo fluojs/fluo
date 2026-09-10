@@ -49,17 +49,17 @@ import {
   createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const adapter = createExpressAdapter({ 
+  const adapter = createExpressAdapter({
     port: 3000,
-    rawBody: true 
+    rawBody: true
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
-  
+  const app = await FluoFactory.create(AppModule, { adapter });
+
   await app.listen();
 
   if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
@@ -79,7 +79,7 @@ Adapter는 기존 Express application을 채택하거나 재사용하지 않고 
 
 ### 21.1.3 Handling Middleware
 
-Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 운영 생태계입니다. fluo에서 이 호환성은 adapter와 hosting boundary입니다. Express는 underlying Node.js request listener를 소유하지만 application pipeline은 계속 dispatcher가 소유합니다. fluo의 애플리케이션 레벨 `middleware` 옵션은 여전히 공유 `MiddlewareContext` 위에서 `handle(context, next)`를 구현한 fluo 미들웨어 객체나 provider를 기대합니다. `compression()` 같은 Express/Connect `(req, res, next)` 함수는 `fluoFactory.create(...)`에 직접 전달하지 마세요. 해당 동작을 fluo 계약 뒤에 감싸거나 Express가 소유하는 통합 계층에 두어야 합니다.
+Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 운영 생태계입니다. fluo에서 이 호환성은 adapter와 hosting boundary입니다. Express는 underlying Node.js request listener를 소유하지만 application pipeline은 계속 dispatcher가 소유합니다. fluo의 애플리케이션 레벨 `middleware` 옵션은 여전히 공유 `MiddlewareContext` 위에서 `handle(context, next)`를 구현한 fluo 미들웨어 객체나 provider를 기대합니다. `compression()` 같은 Express/Connect `(req, res, next)` 함수는 `FluoFactory.create(...)`에 직접 전달하지 마세요. 해당 동작을 fluo 계약 뒤에 감싸거나 Express가 소유하는 통합 계층에 두어야 합니다.
 
 ```typescript
 import type { Middleware } from '@fluojs/http';
@@ -92,7 +92,7 @@ const compressionHeaders: Middleware = {
 };
 
 const adapter = createExpressAdapter();
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter,
   middleware: [compressionHeaders],
 });
@@ -132,7 +132,7 @@ const adapter = createExpressAdapter({
 
 ```typescript
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 
@@ -146,7 +146,7 @@ async function bootstrap() {
     maxBodySize: 2_097_152,
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
+  const app = await FluoFactory.create(AppModule, { adapter });
   await app.listen();
 }
 ```
@@ -248,17 +248,22 @@ File open, `stat`, seek, 정확한 size 계산, close는 애플리케이션이 �
 FluoShop을 Express로 옮길 때 핵심 host 변경 지점은 `main.ts`이지만, controller, provider, module이 standard decorator와 명시적 DI/module wiring으로 이미 이동한 뒤여야 합니다. 이러한 runtime-independent 계약을 갖추면 HTTP adapter 교체가 application logic 변경으로 번지지 않습니다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // apps/fluoshop-api/src/main.ts
-import { bootstrapExpressApplication } from '@fluojs/platform-express';
+import { createExpressAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   const host = '127.0.0.1';
   const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
-  const app = await bootstrapExpressApplication(AppModule, {
+  const app = await FluoFactory.create(AppModule, {
+    adapter: createExpressAdapter({
+      host,
+      port,
+    }),
     globalPrefix: 'v1',
-    host,
-    port,
+    logger: createConsoleApplicationLogger(),
   });
 
   await app.listen();
@@ -275,17 +280,23 @@ Route prefix는 변경 가능한 `Application` state가 아니라 Express bootst
 
 ## 21.6 Advanced: The `run` Helpers
 
-반복되는 부트스트랩 코드를 줄이기 위해 fluo는 신호 연결(SIGINT/SIGTERM)과 정상 종료를 처리하는 `runExpressApplication` 및 `runNodejsApplication` 헬퍼를 제공합니다.
+HTTP 앱 생성은 `FluoFactory.create(AppModule, { adapter })`로 통일하고 Node signal은 `createNodeShutdownSignalRegistration()`으로 연결한다. 기존 platform run helper는 미이전 소비자를 위해 유지되지만 아래 새 예제는 Factory를 사용한다.
 
 ```typescript
-import { runExpressApplication } from '@fluojs/platform-express';
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { createExpressAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app.module';
 
-await runExpressApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: createExpressAdapter({
+    port: 3000,
+  }),
   globalPrefix: 'api',
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
 });
+await app.listen();
 ```
 
 이 헬퍼는 process signal을 표준 fluo shutdown lifecycle에 연결하고, host가 종료되기 전에 활성 연결을 정리하도록 돕습니다. 애플리케이션 cleanup은 `onApplicationShutdown(signal)` 같은 lifecycle-aware provider에 두어야 같은 cleanup 경로가 platform adapter 전반에서 동작합니다. 배포 환경에서는 이런 종료 경계가 로그 유실, 요청 중단, 리소스 누수를 줄이는 데 중요합니다.

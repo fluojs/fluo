@@ -42,12 +42,12 @@ Use this package when you need to:
 
 ### Minimal HTTP Application
 
-The `fluoFactory` is the primary entrypoint for creating applications.
+The `FluoFactory` is the primary entrypoint for creating applications.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
 
 @Controller('/')
@@ -61,10 +61,10 @@ class AppController {
 @Module({
   controllers: [AppController],
 })
-class AppModule {}
+class AppModule { }
 
 // Create and start the application
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -76,6 +76,16 @@ With `@Controller('cats')` it would serve `/cats`, not bypass the prefix. An emp
 `@Module()` can also bootstrap and close without inventing providers.
 
 ## Common Patterns
+
+### Canonical HTTP Factory
+
+Use `FluoFactory.create(AppModule, { adapter })` → `app.listen()` → `app.close()` as the only HTTP creation path. `logger` registers the exact supplied object as `APPLICATION_LOGGER`; omission selects the portable console logger. Factory composes configured CORS → global prefix/exclusions → default security headers → caller middleware; module middleware follows route matching. CORS/prefix default off, security headers default on, and `securityHeaders: false` opts out.
+
+Readiness/listen/startup-log/host-registration failures clean acquired resources through `close('bootstrap-failed')` and preserve the initiating error. Create a new app to start again. Optional `shutdownRegistration` is supplied by the host and runs only after listen. Omission or close before listen installs no signals. Node callers can supply `createNodeShutdownSignalRegistration()` from `@fluojs/platform-nodejs`.
+
+Signal unregistration is attempted once and never skips runtime teardown on failure. Concurrent and later closes share its failure, aggregating with other teardown failures. Once runtime resources close, `state` is `closed` even if signal unregistration failed. `app.get(PublicToken<T>)` infers `Promise<T>` and checks admission around asynchronous resolution. Use `app.dispatch()` for ordinary requests; direct `container` and `dispatcher` access remains a low-level integration surface without that same gate.
+
+See the [HTTP Factory migration](../../docs/getting-started/migrate-http-factory.md) and [lifecycle contract](../../docs/architecture/lifecycle-and-shutdown.md).
 
 ### Health endpoint middleware
 
@@ -127,11 +137,14 @@ For Node.js, Express, Fastify, and Web application dispatch, opt in at applicati
 before the route consumes it.
 
 ```typescript
-const app = await bootstrapNodejsApplication(AppModule, {
-  multipart: {
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeHttpAdapter } from '@fluojs/platform-nodejs';
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodeHttpAdapter({}, false, {
     strategy: 'stream',
     maxTotalSize: 25 * 1024 * 1024,
-  },
+  }),
+  logger: createConsoleApplicationLogger(),
 });
 
 @Controller('/uploads')
@@ -201,7 +214,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`bootstrapApplication({ rootModule: AppModule, ...options })` accepts the same
+`FluoFactory.create(AppModule, options)` accepts the same
 factory. Existing `converters` can be supplied alongside `binder`; they continue
 to run through the fallback for ordinary DTOs. Schema tokens instead use their
 schema's conversion/default rules. Do not pass a binder instance or an async
@@ -225,9 +238,9 @@ and application-boundary regression locations.
 For background workers or scripts, use `createApplicationContext` to skip HTTP setup.
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
-const context = await fluoFactory.createApplicationContext(AppModule);
+const context = await FluoFactory.createApplicationContext(AppModule);
 
 // Resolve a service directly from the container
 const userService = await context.get(UserService);
@@ -248,7 +261,7 @@ The public runtime lifecycle contract has four hooks: startup runs `onModuleInit
 
 Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
 
-NestJS `app.enableShutdownHooks()` is not an implicit result of every fluo bootstrap path. For the default Node `SIGINT` / `SIGTERM` wiring, use `runNodeApplication(...)` from `@fluojs/platform-nodejs`; it installs the default Node shutdown registration. `FluoFactory.create(...)`, `bootstrapNodeApplication(...)`, and adapter-first Node bootstrap leave signal ownership explicit, so use `createNodeShutdownSignalRegistration(...)` or `registerShutdownSignals(...)` at that Node application boundary when signal handling is required. Fetch-style hosts such as Bun, Deno, and Cloudflare Workers own their own shutdown boundary: do not install Node process signals there, and have the host call `app.close(signal?)` when it receives its shutdown event.
+NestJS `app.enableShutdownHooks()` is not an implicit default. On Node, opt into `SIGINT`/`SIGTERM` with `FluoFactory.create(AppModule, { adapter, shutdownRegistration: createNodeShutdownSignalRegistration() })`. Fetch hosts do not install Node signals; the host calls `app.close(signal?)`.
 
 Lifecycle hooks are not the listener-close or connection-drain phase. During `app.close(signal?)`, fluo runs the shutdown hooks before `adapter.close(signal?)`; migrated cleanup that requires a closed listener or completed adapter drain belongs at the adapter or host shutdown boundary after close, not in a same-named lifecycle hook.
 
@@ -256,10 +269,10 @@ Lifecycle hooks are not the listener-close or connection-drain phase. During `ap
 
 `@fluojs/runtime` can publish live Studio snapshots and request traces without reading `process.env` directly. `fluo dev --studio` remains the default Node path: the CLI starts the sidecar, creates tokenized Studio config, and injects it before the app imports runtime. Runtime reads those injected fields once, validates the HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the legacy process-global cannot change instrumentation inputs.
 
-Package integrations can instead import `StudioDevtoolsRuntime` and its transport contracts from `@fluojs/runtime/devtools`, then pass a host-owned bridge through `studioDevtools` to `bootstrapApplication(...)`, `fluoFactory.create(...)`, or `fluoFactory.createApplicationContext(...)`. An explicit bridge takes precedence over CLI injection and needs no process-global mutation:
+Package integrations can instead import `StudioDevtoolsRuntime` and its transport contracts from `@fluojs/runtime/devtools`, then pass a host-owned bridge through `studioDevtools` to `FluoFactory.create(...)`, or `FluoFactory.createApplicationContext(...)`. An explicit bridge takes precedence over CLI injection and needs no process-global mutation:
 
 ```typescript
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 import { StudioDevtoolsRuntime } from '@fluojs/runtime/devtools';
 
 const studioDevtools = new StudioDevtoolsRuntime({
@@ -268,7 +281,7 @@ const studioDevtools = new StudioDevtoolsRuntime({
   transport: { publish: (event) => hostStudioTransport.send(event) },
 });
 
-const app = await fluoFactory.create(AppModule, { studioDevtools });
+const app = await FluoFactory.create(AppModule, { studioDevtools });
 ```
 
 This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Live route descriptors include the exact `graphNodeId` of their route node; Runtime retains the existing node-ID format while Studio consumes this explicit correlation instead of reproducing it. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history. Failed-request events use only the fixed `Request failed` message and never include raw exception text, names, stacks, causes, or stringified values.
@@ -278,7 +291,7 @@ This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Wo
 Handle cross-cutting errors by registering filters during bootstrap.
 
 ```typescript
-import { fluoFactory, type ExceptionFilterHandler } from '@fluojs/runtime';
+import { FluoFactory, type ExceptionFilterHandler } from '@fluojs/runtime';
 
 class GlobalErrorFilter implements ExceptionFilterHandler {
   async catch(error, { response }) {
@@ -289,7 +302,7 @@ class GlobalErrorFilter implements ExceptionFilterHandler {
   }
 }
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
   filters: [new GlobalErrorFilter()],
 });
@@ -297,13 +310,13 @@ const app = await fluoFactory.create(AppModule, {
 
 ### Content negotiation
 
-`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `contentNegotiation` and forward
+`FluoFactory.create(...)` accepts `contentNegotiation` and forward
 it unchanged to the HTTP dispatcher. Configure formatters once at the application boundary and use
 `@Produces(...)` on routes to select their allowed representations:
 
 ```typescript
 import { Controller, Get, Produces } from '@fluojs/http';
-import { fluoFactory } from '@fluojs/runtime';
+import { FluoFactory } from '@fluojs/runtime';
 
 @Controller('/reports')
 class ReportController {
@@ -314,7 +327,7 @@ class ReportController {
   }
 }
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   contentNegotiation: {
     defaultMediaType: 'application/json',
     formatters: [
@@ -333,7 +346,7 @@ create an HTTP dispatcher, so they do not use this option. See the
 
 ### Optional HTML Error Representations
 
-`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `errorRepresentation` and pass it
+`FluoFactory.create(...)` accepts `errorRepresentation` and pass it
 unchanged to the HTTP dispatcher. Register an application-owned provider when negotiated browser
 requests should receive complete HTML error or not-found documents while JSON remains canonical:
 
@@ -347,7 +360,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-const app = await fluoFactory.create(AppModule, {
+const app = await FluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
   errorRepresentation: {
     html: {
@@ -407,7 +420,7 @@ class UsersModule {}
 - `Application.listen()` and microservice `listen()` are serialized with shutdown: overlapping startup calls share the same in-flight startup, shutdown waits for in-flight startup to settle, and a startup that races with shutdown cannot transition the shell back to `ready` after close begins. The public `Application.state` contract remains `bootstrapped` or `ready` while teardown is pending and changes to `closed` only after teardown completes successfully. Independently, starting application or context close synchronously closes a terminal operation gate: `Application.get()`, `ApplicationContext.get()`, `connectMicroservice()`, `startAllMicroservices()`, and application `listen()` reject while teardown is pending and stay rejected after a failed close attempt. Provider lookups admitted immediately before close recheck that gate after asynchronous resolution and cannot return a stale value after shutdown starts. A later `close()` skips completed runtime teardown phases and re-enters incomplete adapter or lifecycle-hook stages according to their own retry contracts. Container-managed `onDestroy()` hooks are terminal best-effort cleanup: every materialized hook is attempted on the first container disposal, failed hooks are retried by a later explicit application or context `close()`, and hooks that completed successfully are never run again. Once microservice close starts, a terminal ingress gate rejects new `send()` and `emit()` calls before runtime or transport handoff, including while `listen()` is still pending and after a failed close attempt.
 - `Application.dispatch()` uses that same synchronous terminal admission gate. A direct dispatch started after `Application.close()` begins rejects before entering the HTTP dispatcher, including while teardown is pending, after a failed close, and after successful close. A dispatch admitted before the gate closes remains dispatcher-owned and is not retroactively cancelled by close.
 - `@fluojs/platform-nodejs` owns each pending raw Node listen operation and its `EADDRINUSE` retry timer. Calling adapter `close()` while startup is retrying cancels the retry, waits for the pending listen to settle, and prevents the listener from binding after shutdown reports completion.
-- Shutdown signal registration failures are user-observable: `runNodeApplication(...)`, `bootstrapNodeApplication(...)`, and adapter-owned runtime helpers close the already-started application with `bootstrap-failed`, log any close failure separately, and reject with the original registration error.
+- Factory post-listen `shutdownRegistration` failure closes the created application with `bootstrap-failed` and rejects with the original registration failure independently of cleanup errors. The Node host callback rolls back partially installed handlers.
 - Shutdown signal unregistration failures do not skip application close: `app.close()` always continues through adapter shutdown, lifecycle hooks, runtime cleanup callbacks, and container disposal; if close otherwise succeeds it rejects with the unregistration error, and if close also fails it rejects with an aggregate containing both failures.
 - Connected microservices are owned children of their parent `Application`: `startAllMicroservices()` starts them sequentially and rolls back already-started children with `bootstrap-failed` if a later child fails, while `Application.close(signal)` closes connected children before parent lifecycle hooks, adapter shutdown, and container disposal.
 - `FluoFactory.createMicroservice()` preserves the original bootstrap/runtime-resolution error when cleanup fails and logs cleanup failures separately.
@@ -435,7 +448,6 @@ class UsersModule {}
 
 ## Public API Overview
 
-- `fluoFactory`: Lower-camel-case alias for the runtime bootstrap facade used in the package examples.
 - `FluoFactory`: Class-based runtime bootstrap facade with explicit static access.
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container`, `modules`, and bootstrap diagnostics.
@@ -446,7 +458,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
-- `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider and `BootstrapApplicationOptions.conditionalRequest` configures representation validation; `CreateApplicationOptions` exposes both fields through `FluoFactory.create(...)`.
+- `CreateApplicationOptions`: Accepts `logger`, middleware policies, optional host `shutdownRegistration`, and HTTP dispatcher options. `BootstrapApplicationOptions` remains an existing integration type, not another creation function.
 - `@fluojs/runtime/devtools`: Package-integration subpath for `StudioDevtoolsRuntime`, its transport contracts, and live Studio event contracts. Pass the created bridge as `studioDevtools` during application or context bootstrap.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `ModuleGraphCompileCache`: Bounded caller-owned module graph compile cache. Pass an instance as `moduleGraphCache` and call `dispose()` when its application or host lifetime ends.
@@ -512,7 +524,7 @@ For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`
 - `createNodeFileSystemAssetSource(options)`: Node-only filesystem implementation of the `@fluojs/http` `StaticAssetSource` contract. `NodeFileSystemAssetSourceOptions` names its `{ root, precompressed }` boundary and `NodeFileSystemAssetPrecompression` selects `.br` / `.gz` siblings. Each accepted representation is securely opened, eagerly copied into an immutable in-memory byte snapshot, and its `FileHandle` is closed before middleware response writing. The returned `source()` only replays that snapshot; it never reopens the pathname. Application owners therefore bound memory by the selected asset size, while `size` and the strong `ETag` describe those exact snapshot bytes.
 - `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
-- `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
+- `createNodeShutdownSignalRegistration(...)`, `defaultNodeShutdownSignals()`, `registerShutdownSignals(...)`: Node-owned signal APIs. Supply the registration callback to Factory; lower-level host integrations can register directly.
 
 Runtime app logging is separate from CLI lifecycle reporting. Configure `ApplicationLogger` when you want to change logs emitted by the application/runtime itself:
 
