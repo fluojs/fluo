@@ -1,10 +1,9 @@
 ---
-"@fluojs/runtime": major
-"@fluojs/cron": major
-"@fluojs/platform-nodejs": major
-"@fluojs/cli": major
-"@fluojs/testing": major
-"@fluojs/http": minor
+"@fluojs/runtime": patch
+"@fluojs/cron": patch
+"@fluojs/platform-nodejs": patch
+"@fluojs/testing": patch
+"@fluojs/http": patch
 "@fluojs/graphql": patch
 "@fluojs/openapi": patch
 "@fluojs/metrics": patch
@@ -33,9 +32,8 @@ new application instead of retrying listen on the failed shell. A signal
 unregistration failure is retained for concurrent and later closes without
 skipping runtime teardown.
 
-Upgrade `@fluojs/cron` together with `@fluojs/runtime`. Cron has a mandatory
-Runtime dependency, so the stable release lane requires a coordinated Cron major
-when Runtime releases a major. Scheduling behavior is otherwise unchanged.
+Upgrade `@fluojs/cron` together with `@fluojs/runtime`. Cron retains its mandatory
+Runtime dependency, and these coordinated updates leave scheduling behavior unchanged.
 
 Node CLI HTTP and mixed starters now emit Factory creation, the explicit Node
 console logger, and Node shutdown registration. Add a direct
