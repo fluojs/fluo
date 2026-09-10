@@ -10,14 +10,14 @@ This page owns HTTP application creation for the current checkout: `FluoFactory.
 | `FluoFactory.createApplicationContext` from `@fluojs/runtime` | DI and lifecycle work without HTTP | Returns an application context without an HTTP listener; the caller closes it. |
 | Workers/Next.js host-owned entry points | Connecting Fluo to a host request dispatcher | Activation does not necessarily bind a socket. The host retains request and shutdown ownership; follow the [Workers](../../packages/platform-cloudflare-workers/README.md) or [Next.js](../../packages/platform-nextjs/README.md) contract. |
 
-`fluoFactory` and `bootstrapApplication` are removed from all runtime entrypoints. Existing platform bootstrap/run helpers still call the canonical Factory internally so consumers awaiting their host-specific migration continue working. They are not a second HTTP creation implementation. Application contexts and microservices remain distinct capabilities.
+`fluoFactory`, `bootstrapApplication`, platform bootstrap/run helpers, and adapter creation free functions are removed from public entrypoints. Application contexts and microservices remain distinct capabilities.
 
 ### Default Node/Fastify recipe
 
 This is the CLI-generated `src/main.ts` shape. It requires the generated `src/app.ts`, its registered config/greeting/health modules, installed registry dependencies, and the generated decorator build/test configuration:
 
 ```ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -27,7 +27,7 @@ const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port }),
+  adapter: FastifyHttpApplicationAdapter.create({ port }),
   logger: createConsoleApplicationLogger(),
   shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
@@ -61,7 +61,7 @@ The shared initialization sequence below is used by both Factory and the Fastify
 5. `runBootstrapHooks(...)` executes every `onModuleInit()` hook first, then every `onApplicationBootstrap()` hook.
 6. `platformShell.start()` runs after lifecycle hooks succeed. Readiness is marked only after that start phase completes.
 7. `createRuntimeDispatcher(...)` builds the dispatcher with Factory-composed middleware, and `FluoFactory.create(...)` returns a `FluoApplication` instance.
-8. `app.listen()` checks readiness and activates the adapter. The run helper awaits this internally; Factory/bootstrap callers invoke it later. For Node/Fastify this binds the server, while host-owned Workers/Next.js activate a dispatcher rather than a new socket listener.
+8. `app.listen()` checks readiness and activates the adapter. Factory callers invoke it after creation. For Node/Fastify this binds the server, while host-owned Workers/Next.js activate a dispatcher rather than a new socket listener.
 
 ## Entry Points
 
@@ -70,22 +70,22 @@ The shared initialization sequence below is used by both Factory and the Fastify
 | `packages/cli/src/new/scaffold.ts` | Generates Node HTTP Factory entrypoints with explicit Node logger/signal dependencies and config/greeting/health registrations. |
 | `examples/minimal/src/main.ts` | Explicit low-level composition: `FluoFactory.create(...)` with a Fastify adapter, then `app.listen()`. Not the generated starter. |
 | `packages/runtime/src/bootstrap.ts` | Actual implementations of `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, and `FluoFactory.createMicroservice(...)`. |
-| `packages/platform-nodejs/src/index.ts` | Platform-owned raw Node adapter, bootstrap, logging, filesystem, and shutdown signal helpers. |
-| `packages/platform-fastify/src/adapter.ts` | Exposes `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, and `runFastifyApplication(...)` for the Fastify path. |
+| `packages/platform-nodejs/src/index.ts` | Platform-owned raw Node adapter, logging, filesystem, and shutdown signal helpers. |
+| `packages/platform-fastify/src/adapter.ts` | Exposes `FastifyHttpApplicationAdapter.create(...)` for the Fastify path. |
 | `packages/platform-cloudflare-workers/src/adapter.ts` | Exposes `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, and `createCloudflareWorkerEntrypoint(...)` for the Worker fetch path. |
 
 ## Platform Registration
 
 - Application bootstrap accepts the platform binding through the `adapter` option passed to `FluoFactory.create(...)`.
 - Runtime bootstrap stores that adapter instance under the `HTTP_APPLICATION_ADAPTER` token and stores the platform shell under `PLATFORM_SHELL`.
-- Platform packages live under `@fluojs/platform-*` and provide the adapter factories used at the application boundary, for example `createFastifyAdapter(...)` and `createCloudflareWorkerAdapter(...)`.
+- Platform packages live under `@fluojs/platform-*` and provide adapter classes used at the application boundary, for example `FastifyHttpApplicationAdapter.create(...)` and `CloudflareWorkerHttpApplicationAdapter.create(...)`.
 - The platform shell starts after lifecycle hooks complete and stops during shutdown cleanup.
 - `FluoFactory.createApplicationContext(...)` follows the same module graph and lifecycle path but skips HTTP adapter registration and returns an application context instead of an HTTP application.
 - Starter shapes, runtime/platform combinations, and published microservice transport variants are listed in the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
 ## Shutdown Sequence
 
-1. Shutdown begins when the application closes explicitly or when a host specific helper registers and receives a shutdown signal.
+1. Shutdown begins when the application closes explicitly or when a host-owned registration receives a shutdown signal.
 2. `runShutdownHooks(...)` walks lifecycle instances in reverse order.
 3. Every `onModuleDestroy()` hook runs before any `onApplicationShutdown(signal)` hook.
 4. The platform shell stops through a lifecycle cleanup entry that is appended during bootstrap.

@@ -34,18 +34,18 @@ Express 호환성은 native Express/Connect `(req, res, next)` middleware를 flu
 ## 빠른 시작
 
 ```typescript
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
+  adapter: ExpressHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-`createExpressAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 shutdown이 timer queue로 양보되는 즉시 connection을 force-close합니다.
+`ExpressHttpApplicationAdapter.create()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 shutdown이 timer queue로 양보되는 즉시 connection을 force-close합니다.
 
 ## 주요 패턴
 
@@ -70,10 +70,10 @@ async streamEvents(_input: undefined, ctx: RequestContext) {
 ```
 
 ### 바디 파싱 및 멀티파트
-`rawBody` 보존은 opt-in(`rawBody: true`)이며 multipart request는 `rawBody`를 노출하지 않습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapExpressApplication(...)` 및 `runExpressApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다. `multipart.maxTotalSize`를 지정하지 않으면 `maxBodySize`가 기본 총 멀티파트 payload 제한으로 사용되어 HTTP 어댑터 간 바디 크기 제한 동작이 portable하게 유지됩니다.
+`rawBody` 보존은 opt-in(`rawBody: true`)이며 multipart request는 `rawBody`를 노출하지 않습니다. Static adapter factory의 `options.multipart`에 멀티파트 제한을 전달하세요. `multipart.maxTotalSize`를 생략하면 `maxBodySize`가 기본 총 payload 제한입니다.
 
 ```typescript
-const adapter = createExpressAdapter(
+const adapter = ExpressHttpApplicationAdapter.create(
   {
     port: 3000,
     rawBody: true,
@@ -100,7 +100,7 @@ const compressionHeaders: Middleware = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
+  adapter: ExpressHttpApplicationAdapter.create({ port: 3000 }),
   middleware: [compressionHeaders],
 });
 ```
@@ -115,7 +115,7 @@ const legacyRequestTag: RequestHandler = (_request, response, next) => {
   next();
 };
 
-const adapter = createExpressAdapter({
+const adapter = ExpressHttpApplicationAdapter.create({
   nativeMiddleware: [legacyRequestTag],
   port: 3000,
 });
@@ -155,18 +155,14 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 
 ## 공개 API 개요
 
-- `createExpressAdapter(options)`: Express HTTP 어댑터를 위한 팩토리입니다.
-- `bootstrapExpressApplication(module, options)`: 수동 제어를 위한 고급 부트스트랩 헬퍼입니다.
-- `runExpressApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
+- `ExpressHttpApplicationAdapter.create(options)`: Express HTTP 어댑터를 위한 팩토리입니다.
 - `isExpressMultipartTooLargeError(error)`: adapter error shape 전반에서 multipart limit 감지를 정규화합니다.
 - `ExpressServer`: `ExpressHttpApplicationAdapter.getServer()`가 infrastructure boundary에서 반환하는 adapter-owned `node:http` `Server` 또는 `node:https` `Server` union의 공개 type alias입니다.
 - `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다. `getServer()`는 좁은 platform integration을 위해 underlying Node HTTP/HTTPS server를 노출하며 `ExpressServer`를 반환하고, `getListenTarget()`은 startup 이후 resolved bind target과 public URL을 보고하며, `getRealtimeCapability()`는 realtime package가 사용하는 server-backed capability를 반환합니다. 이러한 helper는 모두 일반 애플리케이션 코드에 native server object를 퍼뜨리기보다 infrastructure boundary에만 두세요.
-- Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `ExpressNativeMiddleware`, `CorsInput`, `ExpressApplicationSignal`.
+- Option type: `ExpressAdapterOptions`, `ExpressNativeMiddleware`.
 
-`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다.
+`ExpressHttpApplicationAdapter.create(options)`는 `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다.
 
-- `BootstrapExpressApplicationOptions`와 `RunExpressApplicationOptions`는 위의 adapter option과 함께 `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `nativeMiddleware`, `securityHeaders`, `logger`를 공통으로 받습니다.
-- `RunExpressApplicationOptions`만 signal-driven shutdown을 위한 `forceExitTimeoutMs`와 `shutdownSignals`를 추가로 받습니다.
 
 두 helper는 startup/shutdown diagnostics에 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
 

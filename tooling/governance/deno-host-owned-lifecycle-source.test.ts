@@ -254,21 +254,21 @@ describe('Deno host-owned lifecycle source contract', () => {
 		expect(runGovernanceGuard).toThrow(/managed listen\(\) must not install shutdown signal handlers/);
 	});
 
-	it('requires runDenoApplication to pass signal registration through the runtime shutdownRegistration seam', () => {
+	it('requires the independent shutdown callback to register host signals', () => {
 		// Given
-		const readWithoutShutdownRegistrationProperty = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
-			content.replace('    shutdownRegistration: options.shutdownSignals === false', '    ignoredRegistration: options.shutdownSignals === false'));
+		const readWithoutShutdownRegistrationProperty = overrideFile('packages/platform-deno/src/shutdown.ts', (content) =>
+			content.replace('host.addSignalListener(signal, handler);', 'void signal;'));
 
 		// When
 		const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithoutShutdownRegistrationProperty);
 
 		// Then
-		expect(runGovernanceGuard).toThrow(/runDenoApplication\(\.\.\.\) must pass Deno signal registration as shutdownRegistration/);
+		expect(runGovernanceGuard).toThrow(/Deno signal registration must invoke addSignalListener/);
 	});
 
 	it('rejects exit-status handoff from a signal-triggered application close failure', () => {
 		// Given
-		const readWithSignalCloseExit = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+		const readWithSignalCloseExit = overrideFile('packages/platform-deno/src/shutdown.ts', (content) =>
 			content.replace(
 				"    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');",
 				"    Deno.exit(1);\n    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');",
@@ -283,7 +283,7 @@ describe('Deno host-owned lifecycle source contract', () => {
 
 	it('rejects rethrowing a signal-triggered application close failure', () => {
 		// Given
-		const readWithRethrownSignalClose = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+		const readWithRethrownSignalClose = overrideFile('packages/platform-deno/src/shutdown.ts', (content) =>
 			content.replace(
 				"    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');",
 				"    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');\n    throw error;",

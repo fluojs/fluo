@@ -50,11 +50,11 @@ await app.close();
 - `http`와 `https`는 각각 Node server construction options이며 동시에 제공하면 server 생성 전에 throw합니다. `rawBody` 기본값은 `false`이고 multipart raw-body 제외는 유지됩니다.
 - Retry 기본값은 `retryDelayMs: 150`, `retryLimit: 20`이며 adapter drain 기본값은 `shutdownTimeoutMs: 10_000`입니다. 모두 0 이상의 정수이고 잘못된 값은 생성 시 throw합니다. Adapter instance가 listener와 socket을 소유하고 `close()`가 idle connection 정리와 bounded drain을 수행합니다.
 - 기존 public positional constructor의 인수 순서, subclassing, DI class token, `instanceof`, instance `listen`/`close`/server 접근은 유지됩니다. Static 반환 타입은 이제 portable interface로 좁혀지지 않는 `NodeHttpApplicationAdapter`입니다. Constructor의 기존 저수준 호환 경로를 private으로 바꾸거나 instance 상태를 static으로 옮기지 않습니다.
-- Node/Nodejs bootstrap/run helper, logger, filesystem, signal API는 이 이슈에서 제거하지 않습니다. Bootstrap/run helper는 같은 static 생성 구현을 사용하되 기존 lifecycle과 signal 소유권을 유지합니다. `forceExitTimeoutMs`는 run-helper signal 완료 bound이며 adapter drain bound가 아닙니다.
+- Node/Nodejs bootstrap/run helper와 helper 전용 option alias는 제거됩니다. Logger, filesystem, signal API는 유지하며 Node host가 signal을 소유할 때는 `createNodeShutdownSignalRegistration()`을 Factory `shutdownRegistration`으로 전달하세요. Factory `forceExitTimeoutMs`는 adapter drain과 별개로 host signal 완료를 제한합니다.
 
 ## CLI and existing applications
 
-`fluo new --shape application --transport http --runtime node --platform nodejs`는 위 static adapter와 Factory를 사용하며, `createConsoleApplicationLogger()`와 `shutdownRegistration: createNodeShutdownSignalRegistration()`도 명시적으로 생성합니다. 기존 프로젝트는 자동 수정하지 않으므로 import와 호출을 위 표대로 이전하세요. Factory는 기본 security headers를 적용하고, CORS와 prefix는 opt-in이며, signal callback을 생략하면 host가 종료를 소유합니다. 기존 `runNodejsApplication`에서 이전할 때 필요한 middleware와 logger를 보존하고 Node signal 종료가 필요하면 이 callback을 전달하세요. Factory가 listen 뒤 등록하고 close에서 해제합니다. 기존 run helper를 그대로 쓰는 앱은 기존 동작을 유지합니다. 공통 기본값과 오류·정리 정책은 [HTTP Factory migration](./migrate-http-factory.ko.md)을 따르세요.
+`fluo new --shape application --transport http --runtime node --platform nodejs`는 위 static adapter와 Factory를 사용하며, `createConsoleApplicationLogger()`와 `shutdownRegistration: createNodeShutdownSignalRegistration()`도 명시적으로 생성합니다. 기존 프로젝트는 자동 수정하지 않으므로 import와 호출을 위 표대로 이전하세요. Factory는 기본 security headers를 적용하고, CORS와 prefix는 opt-in이며, signal callback을 생략하면 host가 종료를 소유합니다. 기존 `runNodejsApplication`에서 이전할 때 필요한 middleware와 logger를 보존하고 Node signal 종료가 필요하면 이 callback을 전달하세요. Factory가 listen 뒤 등록하고 close에서 해제합니다. Platform run helper와 해당 option alias는 제거되었으므로 업그레이드 전에 이 migration을 완료하세요. 공통 기본값과 오류·정리 정책은 [HTTP Factory migration](./migrate-http-factory.ko.md)을 따르세요.
 
 ## Evidence and release impact
 

@@ -104,6 +104,94 @@
       ]
     },
     {
+      "id": "bootstrap.express-static-adapter",
+      "kind": "recipe",
+      "owner": {
+        "en": "packages/platform-express/README.md",
+        "ko": "packages/platform-express/README.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime",
+        "@fluojs/platform-express",
+        "@fluojs/platform-nodejs"
+      ],
+      "sourcePaths": [
+        "packages/platform-express/src/adapter.ts",
+        "packages/platform-nodejs/src/index.ts",
+        "packages/runtime/src/bootstrap.ts"
+      ],
+      "testPaths": [
+        "packages/platform-express/src/adapter.test.ts",
+        "packages/runtime/src/factory-lifecycle.test.ts"
+      ]
+    },
+    {
+      "id": "bootstrap.bun-static-adapter",
+      "kind": "recipe",
+      "owner": {
+        "en": "packages/platform-bun/README.md",
+        "ko": "packages/platform-bun/README.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime",
+        "@fluojs/platform-bun"
+      ],
+      "sourcePaths": [
+        "packages/platform-bun/src/adapter.ts",
+        "packages/platform-bun/src/shutdown.ts",
+        "packages/runtime/src/bootstrap.ts"
+      ],
+      "testPaths": [
+        "packages/platform-bun/src/adapter.test.ts",
+        "packages/runtime/src/factory-lifecycle.test.ts"
+      ]
+    },
+    {
+      "id": "bootstrap.deno-static-adapter",
+      "kind": "recipe",
+      "owner": {
+        "en": "packages/platform-deno/README.md",
+        "ko": "packages/platform-deno/README.ko.md"
+      },
+      "packages": [
+        "@fluojs/runtime",
+        "@fluojs/platform-deno"
+      ],
+      "sourcePaths": [
+        "packages/platform-deno/src/adapter.ts",
+        "packages/platform-deno/src/shutdown.ts",
+        "packages/runtime/src/bootstrap.ts"
+      ],
+      "testPaths": [
+        "packages/platform-deno/src/adapter.test.ts",
+        "packages/platform-deno/src/fetch-handler.test.ts",
+        "tooling/governance/deno-host-owned-lifecycle-source.test.ts"
+      ]
+    },
+    {
+      "id": "bootstrap.cli-static-adapter",
+      "kind": "recipe",
+      "owner": {
+        "en": "docs/getting-started/bootstrap-paths.md",
+        "ko": "docs/getting-started/bootstrap-paths.ko.md"
+      },
+      "packages": [
+        "@fluojs/cli",
+        "@fluojs/runtime",
+        "@fluojs/platform-fastify",
+        "@fluojs/platform-nodejs"
+      ],
+      "sourcePaths": [
+        "packages/cli/src/new/scaffold.ts",
+        "packages/platform-fastify/src/adapter.ts",
+        "packages/platform-nodejs/src/index.ts"
+      ],
+      "testPaths": [
+        "packages/cli/src/new/factory-scaffold.test.ts",
+        "packages/platform-fastify/src/adapter.test.ts"
+      ]
+    },
+    {
       "id": "operations.health-readiness",
       "kind": "contract",
       "owner": {

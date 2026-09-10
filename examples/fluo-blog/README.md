@@ -132,8 +132,8 @@ All stages bind to `127.0.0.1:3000`. To choose another port:
 PORT=3100 pnpm --filter @fluojs/example-fluo-blog start:00
 ```
 
-Each `main.ts` calls `runFastifyApplication(...)`. The helper starts listening
-and installs SIGINT/SIGTERM shutdown handling. Ctrl+C closes the application and
+Each `main.ts` creates a static Fastify adapter and calls `FluoFactory.create(...)`
+with an explicit Node shutdown callback, then awaits `app.listen()`. Ctrl+C closes the application and
 listener; after the process exits, the port can be reused. Calling `app.close()`
 is the corresponding explicit cleanup when you own an application object.
 

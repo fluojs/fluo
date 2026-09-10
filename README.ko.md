@@ -44,7 +44,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { Inject, Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 
 class GreetingService {
   greet() {
@@ -70,7 +70,7 @@ class GreetingController {
 class AppModule { }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
   logger: createConsoleApplicationLogger(),

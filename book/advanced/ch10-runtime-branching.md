@@ -281,7 +281,7 @@ The public Node package entrypoint is `path:packages/platform-nodejs/src/index.t
 
 The Node package root does not open the whole internal file directly. As shown below, it exposes loggers, file-system asset helpers, the concrete Node adapter, and signal registration only.
 
-`path:packages/platform-nodejs/src/index.ts`
+`path:packages/platform-nodejs/src/index.ts:1-15`
 ```typescript
 export {
   createNodeShutdownSignalRegistration,
@@ -290,6 +290,7 @@ export {
   NodeHttpApplicationAdapter,
   registerShutdownSignals,
 } from './node/internal-node.js';
+export type { NodeShutdownSignal } from './node/internal-node-shutdown.js';
 export * from './node/json-logger.js';
 export * from './node/logger.js';
 export {
@@ -307,7 +308,7 @@ The real implementation lives in `path:packages/platform-nodejs/src/node/interna
 
 The constructor validates lifecycle options, creates the request-response factory, creates an HTTP or HTTPS server from `httpOptions` and `httpsOptions`, creates the `NodeListenLifecycle`, and tracks connections so lingering sockets can be force-closed later.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts`
+`path:packages/platform-nodejs/src/node/internal-node.ts:123-145`
 ```typescript
   private readonly server: NodeServer;
   private readonly listenLifecycle: NodeListenLifecycle;
@@ -336,7 +337,7 @@ The constructor validates lifecycle options, creates the request-response factor
 
 The following constructor body actually validates lifecycle policy, performs Node server creation, initializes the listener lifecycle, and tracks sockets. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, listener admission, and connection set management all belong inside the Node branch.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts`
+`path:packages/platform-nodejs/src/node/internal-node.ts:146-172`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -462,7 +463,7 @@ Shutdown is delegated through `NodeListenLifecycle.close()` before `closeNodeSer
 
 `NodeHttpApplicationAdapter.create()` in `path:packages/platform-nodejs/src/node/internal-node.ts` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. Current application startup passes that concrete adapter to `FluoFactory.create()` and awaits `app.listen()`. The host selects its Node logger and signal registration explicitly.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts`
+`path:packages/platform-nodejs/src/node/internal-node.ts:85-121`
 ```typescript
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   /**
@@ -503,6 +504,22 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 ```
 
+The Node host callback connects signal registration and removal to the Factory lifecycle. Application creation belongs to the Factory recipe below, not to a separate platform bootstrap helper.
+
+`path:packages/platform-nodejs/src/node/internal-node-shutdown.ts:27-36`
+```typescript
+export function createNodeShutdownSignalRegistration(
+  signals: false | readonly NodeShutdownSignal[] = defaultNodeShutdownSignals(),
+): HttpAdapterShutdownRegistration {
+  return (app, logger, forceExitTimeoutMs) => registerShutdownSignals(
+    app,
+    logger,
+    signals,
+    forceExitTimeoutMs,
+  );
+}
+```
+
 ```typescript
 import {
   createConsoleApplicationLogger,
@@ -525,9 +542,9 @@ await app.listen();
 
 The first excerpt is the static creation method on the existing class. It owns port/body defaults and validation, compression/multipart forwarding, and the actual constructor call rather than calling another creation factory. The following is the current recommended application recipe. `shutdownTimeoutMs: 10_000` is the Node adapter's request-drain bound, while `createNodeShutdownSignalRegistration()` has a separate 30-second host force-exit bound by default. The public constructor and instance lifecycle remain, preserving DI tokens and `instanceof`. The [migration guide](../../docs/getting-started/migrate-node-adapter-create.md) explains removed imports and option migration.
 
-The tests explain the intended public contract. `path:packages/platform-nodejs/src/node/node.test.ts:14-48` shows that the adapter's default port is `3000`, not `process.env.PORT`. This is also an explicitness choice. It prevents Node-specific convenience from silently pulling in ambient process configuration.
+The tests explain the intended public contract. `path:packages/platform-nodejs/src/node/node.test.ts:16-32` shows that the adapter's default port is `3000`, not `process.env.PORT`. This is also an explicitness choice. It prevents Node-specific convenience from silently pulling in ambient process configuration.
 
-`path:packages/platform-nodejs/src/node/node.test.ts:14-30`
+`path:packages/platform-nodejs/src/node/node.test.ts:16-32`
 ```typescript
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;

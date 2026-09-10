@@ -84,18 +84,18 @@ Fastify is the recommended high-throughput Node.js adapter.
 `@fluojs/platform-fastify` requires Node.js `>=24.0.0 <27`. Node versions below 24 and Node 27+ are unsupported.
 
 ```ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port: 3000 }),
+  adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
+`FastifyHttpApplicationAdapter.create()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
 
 Important Fastify capabilities:
 
@@ -106,15 +106,13 @@ Important Fastify capabilities:
 - safe native Fastify route registration with wildcard fallback for portability-sensitive cases.
 
 ```ts
-const adapter = createFastifyAdapter(
-  {
-    port: 3000,
-    rawBody: true,
-  },
-  {
+const adapter = FastifyHttpApplicationAdapter.create({
+  port: 3000,
+  rawBody: true,
+  multipart: {
     maxTotalSize: 10 * 1024 * 1024,
   },
-);
+});
 ```
 
 Raw-body capture is skipped for multipart requests. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
@@ -123,10 +121,10 @@ Fastify preserves the shared single-byte-range and `If-Range` policy: after cond
 
 ### Fastify HTTPS/TLS
 
-When the Fastify process terminates TLS directly, pass Node.js `https.ServerOptions` through the `https` option. `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, and `runFastifyApplication(...)` expose the same HTTPS startup surface.
+When the Fastify process terminates TLS directly, pass Node.js `https.ServerOptions` through the `https` option to `FastifyHttpApplicationAdapter.create(...)`.
 
 ```ts
-const adapter = createFastifyAdapter({
+const adapter = FastifyHttpApplicationAdapter.create({
   host: '0.0.0.0',
   https: {
     cert: tlsCertificate,
@@ -195,7 +193,7 @@ If shutdown times out or fails, the helper logs the condition and sets `process.
 
 `compression` defaults to `false`; range responses retain identity bytes even when compression is enabled. Omitted `multipart.maxTotalSize` inherits the effective `maxBodySize`. The standard startup is `FluoFactory.create` followed by `app.listen()` as above. The host owns `app.close()` and explicit process-signal registration/cleanup.
 
-Existing bootstrap/run helpers are not removed by this issue and use the same static creation implementation. Run-helper shutdown timeout or failure is reported through logs and `process.exitCode`, while the host owns final process termination. See the [Node adapter creation migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.md) for removed factory/type aliases and migration of existing run-helper defaults.
+Static adapter + `FluoFactory.create(...)` + `app.listen()` is the managed startup path. Explicit Node signal registration reports shutdown timeout/failure through logs and `process.exitCode`; the host owns final process termination. Follow the [Node adapter migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node-adapter-create.md) to replace removed aliases and run helpers.
 
 ## Express
 
@@ -205,26 +203,21 @@ An Express host swap does not retain NestJS legacy decorator or reflection-metad
 
 ```ts
 import {
-  createExpressAdapter,
   ExpressHttpApplicationAdapter,
 } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const adapter = createExpressAdapter({ port: 3000 });
+const adapter = ExpressHttpApplicationAdapter.create({ port: 3000 });
 const app = await FluoFactory.create(AppModule, { adapter });
 
 await app.listen();
-
-if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
-  throw new TypeError('Expected the Express adapter factory to return the Express implementation');
-}
 
 const { bindTarget, url } = adapter.getListenTarget();
 console.log(`Listening on ${url} (${bindTarget})`);
 ```
 
-`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before resolving the Express-only `getListenTarget()` helper after startup. Keep that helper, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries instead of passing native host details into application providers.
+`ExpressHttpApplicationAdapter.create()` returns the concrete `ExpressHttpApplicationAdapter`, so `getListenTarget()` is available after startup without narrowing. Keep `getListenTarget()`, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries while application providers use portable contracts.
 
 The adapter constructs and owns its Express application. Adopting or reusing an existing Express application is unsupported. Supply native Express handlers through construction-time `nativeMiddleware`; after bootstrap, calling `use(...)` to append to the native stack is not a supported surface. Prefer rewriting portable behavior as fluo `Middleware`.
 
@@ -248,12 +241,12 @@ Native Express Router matches still hand off to the shared fluo dispatcher. This
 Use the Bun adapter for native `Bun.serve()` applications.
 
 ```ts
-import { createBunAdapter } from '@fluojs/platform-bun';
+import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createBunAdapter({ port: 3000 }),
+  adapter: BunHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
@@ -287,12 +280,17 @@ Bun fetch dispatch preserves the shared single-byte-range and `If-Range` policy:
 Use the Deno adapter for native `Deno.serve` deployments.
 
 ```ts
-import { runDenoApplication } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
 import { AppModule } from './app.module.ts';
 
-await runDenoApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    port: 3000,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 This managed path opens the network listener and registers `SIGINT`/`SIGTERM` listeners by default, so run it with network access:
@@ -301,15 +299,15 @@ This managed path opens the network listener and registers `SIGINT`/`SIGTERM` li
 deno run --allow-net main.ts
 ```
 
-Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Signal-triggered application-close failures are logged and swallowed by the helper; it does not set an exit status. Hosts that require failure-status propagation or forced termination must set `shutdownSignals: false` in `runDenoApplication(...)` and coordinate signals and shutdown themselves.
+Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Signal-triggered application-close failures are logged and swallowed by the helper; it does not set an exit status. Hosts that require failure-status propagation or forced termination must omit Factory `shutdownRegistration` and coordinate signals and shutdown themselves.
 
 For a host-owned `Deno.serve(...)`, bootstrap without `app.listen()` and create a handler from the public dispatcher.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
-import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
+import { DenoHttpApplicationAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
-const adapter = createDenoAdapter();
+const adapter = DenoHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
@@ -324,14 +322,20 @@ Deno.serve({ port: 3000 }, handler);
 Pass TLS material through `https` to start in HTTPS mode.
 
 ```ts
-await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  https: {
-    cert: await Deno.readTextFile('./cert.pem'),
-    key: await Deno.readTextFile('./key.pem'),
-  },
-  port: 3443,
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    https: {
+      cert: await Deno.readTextFile('./cert.pem'),
+      key: await Deno.readTextFile('./key.pem'),
+    },
+    port: 3443,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 `hostname` is the Deno-native option name. `host` is accepted as a portability alias; when both are provided, `hostname` wins. `handle(...)` returns JSON `500` before `listen()` binds the dispatcher and JSON `503` while shutdown is in progress.
@@ -436,8 +440,8 @@ export class WorkerBindingsModule {}
 | Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
 | --- | --- | --- | --- | --- | --- | --- |
 | Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
-| Bootstrap helper | `runFastifyApplication` | `runNodejsApplication` | `runExpressApplication` | `runBunApplication` | `runDenoApplication` | `createCloudflareWorkerEntrypoint` |
-| Manual bootstrap | `bootstrapFastifyApplication` | `bootstrapNodejsApplication` | `bootstrapExpressApplication` | `bootstrapBunApplication` | `bootstrapDenoApplication` | `bootstrapCloudflareWorkerApplication` |
+| Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `createCloudflareWorkerEntrypoint` |
+| Adapter creation | `FastifyHttpApplicationAdapter.create` | `NodeHttpApplicationAdapter.create` | `ExpressHttpApplicationAdapter.create` | `BunHttpApplicationAdapter.create` | `DenoHttpApplicationAdapter.create` | `createCloudflareWorkerAdapter` |
 | Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
 | Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
 | SSE/streaming | Yes | Yes | Yes | Yes | Yes | Yes through fetch response contract |
@@ -449,11 +453,11 @@ export class WorkerBindingsModule {}
 
 | Package | Public API |
 | --- | --- |
-| `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
-| `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
-| `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
-| `@fluojs/platform-deno` | `createDenoAdapter`, `createDenoFetchHandler`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
+| `@fluojs/platform-fastify` | `FastifyHttpApplicationAdapter.create`, `FastifyHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, Node adapter option types |
+| `@fluojs/platform-express` | `ExpressHttpApplicationAdapter.create`, `ExpressHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-bun` | `BunHttpApplicationAdapter.create`, `createBunFetchHandler`, Bun realtime binding types |
+| `@fluojs/platform-deno` | `DenoHttpApplicationAdapter.create`, `createDenoFetchHandler`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
 | `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
 
 ## Common mistakes

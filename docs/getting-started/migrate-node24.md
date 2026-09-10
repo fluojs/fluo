@@ -99,7 +99,6 @@ or integration imports its Node helpers, then update source, tests, and tooling:
 ```ts
 import {
   NodeHttpApplicationAdapter,
-  runNodeApplication,
 } from '@fluojs/platform-nodejs';
 ```
 

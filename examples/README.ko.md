@@ -37,7 +37,7 @@
 
 ## 예제가 문서에서 맡는 역할
 
-- `minimal`은 Factory + adapter + listen을 보여주며, 기본 CLI Node/Fastify 스타터는 helper가 middleware, logging, startup cleanup, signal을 소유하는 `runFastifyApplication`을 사용합니다
+- `minimal`과 기본 CLI Node/Fastify 스타터는 static adapter + Factory + listen 경로를 공유합니다. Factory가 middleware, logging, startup cleanup을 소유하고 host가 signal callback을 명시적으로 선택합니다.
 - `realworld-api`는 그 HTTP 스타터 기준선 이후 첫 실전 module/DTO/test 경로를 보여줍니다
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다

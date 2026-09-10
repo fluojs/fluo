@@ -34,18 +34,18 @@ Express compatibility does not mean that native Express/Connect `(req, res, next
 ## Quick Start
 
 ```typescript
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
+  adapter: ExpressHttpApplicationAdapter.create({ port: 3000 }),
 });
 
 await app.listen();
 ```
 
-`createExpressAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` force-closes connections as soon as shutdown yields to the timer queue.
+`ExpressHttpApplicationAdapter.create()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` force-closes connections as soon as shutdown yields to the timer queue.
 
 ## Common Patterns
 
@@ -70,18 +70,16 @@ async streamEvents(_input: undefined, ctx: RequestContext) {
 ```
 
 ### Body Parsing and Multipart
-`rawBody` preservation is opt-in (`rawBody: true`), and multipart requests do not expose `rawBody`. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` accept the same multipart settings under `options.multipart`. When `multipart.maxTotalSize` is not set, `maxBodySize` becomes the default total multipart payload cap so body-size limits stay portable across HTTP adapters.
+`rawBody` preservation is opt-in (`rawBody: true`), and multipart requests do not expose `rawBody`. Put multipart limits in the static creation options object. When `multipart.maxTotalSize` is not set, `maxBodySize` becomes the default total multipart payload cap so body-size limits stay portable across HTTP adapters.
 
 ```typescript
-const adapter = createExpressAdapter(
-  {
-    port: 3000,
-    rawBody: true,
-  },
-  {
+const adapter = ExpressHttpApplicationAdapter.create({
+  port: 3000,
+  rawBody: true,
+  multipart: {
     maxTotalSize: 10 * 1024 * 1024,
   },
-);
+});
 ```
 
 ### Express/Connect Middleware Boundary
@@ -100,7 +98,7 @@ const compressionHeaders: Middleware = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
+  adapter: ExpressHttpApplicationAdapter.create({ port: 3000 }),
   middleware: [compressionHeaders],
 });
 ```
@@ -115,7 +113,7 @@ const legacyRequestTag: RequestHandler = (_request, response, next) => {
   next();
 };
 
-const adapter = createExpressAdapter({
+const adapter = ExpressHttpApplicationAdapter.create({
   nativeMiddleware: [legacyRequestTag],
   port: 3000,
 });
@@ -155,18 +153,14 @@ If the same adapter instance is listened again after close, its native route des
 
 ## Public API Overview
 
-- `createExpressAdapter(options)`: Factory for the Express HTTP adapter.
-- `bootstrapExpressApplication(module, options)`: Advanced bootstrap helper for manual control.
-- `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
+- `ExpressHttpApplicationAdapter.create(options)`: Factory for the Express HTTP adapter.
 - `isExpressMultipartTooLargeError(error)`: Normalizes multipart limit detection across adapter error shapes.
 - `ExpressServer`: Public type alias for the adapter-owned `node:http` `Server` or `node:https` `Server` union returned by `ExpressHttpApplicationAdapter.getServer()` at infrastructure boundaries.
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class. `getServer()` exposes the underlying Node HTTP/HTTPS server for narrow platform integrations and returns `ExpressServer`, `getListenTarget()` reports the resolved bind target and public URL after startup, and `getRealtimeCapability()` returns the server-backed capability used by realtime packages. Keep these helpers at infrastructure boundaries instead of threading native server objects through ordinary application code.
-- Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `ExpressNativeMiddleware`, `CorsInput`, `ExpressApplicationSignal`.
+- Option types: `ExpressAdapterOptions`, `ExpressNativeMiddleware`.
 
-`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory.
+`ExpressHttpApplicationAdapter.create(options)` supports `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory.
 
-- `BootstrapExpressApplicationOptions` and `RunExpressApplicationOptions` share `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `nativeMiddleware`, `securityHeaders`, and `logger` in addition to the adapter options above.
-- `RunExpressApplicationOptions` alone adds `forceExitTimeoutMs` and `shutdownSignals` for signal-driven shutdown.
 
 Both helpers use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when `logger` is provided.
 

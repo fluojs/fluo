@@ -6,7 +6,7 @@
 
 단계별 실습은 [FluoBlog 튜토리얼](../../apps/docs/content/docs/tutorial/index.ko.mdx)을 이용하세요. 이 페이지는 기존 애플리케이션을 위한 구조 레퍼런스로 유지합니다.
 
-아래 snippet은 기능 연결 예시이며 스타터 교체 파일이나 두 번째 완성 애플리케이션이 아닙니다. CLI 생성 앱에서는 기존 config, greeting, health 등록과 테스트를 유지하고 `runFastifyApplication` 진입점을 보존합니다. 분리된 `AppModule` 부분 코드는 기존 import 목록에 `UsersModule`을 추가하는 구조를 보여줍니다. 반면 `examples/minimal`은 명시적 저수준 조립 예제입니다. 이 구분과 decorated declaration 평가 전 metadata 준비 조건은 [bootstrap 경로](./bootstrap-paths.ko.md)를 참고하세요.
+아래 snippet은 기능 연결 예시이며 스타터 교체 파일이나 두 번째 완성 애플리케이션이 아닙니다. CLI 생성 앱에서는 기존 config, greeting, health 등록과 테스트를 유지하고 `FluoFactory.create(...)` + `app.listen()` 진입점을 보존합니다. 분리된 `AppModule` 부분 코드는 기존 import 목록에 `UsersModule`을 추가하는 구조를 보여줍니다. `examples/minimal`도 같은 Factory와 static adapter 경로를 사용합니다. 이 소유권과 decorated declaration 평가 전 metadata 준비 조건은 [bootstrap 경로](./bootstrap-paths.ko.md)를 참고하세요.
 
 ## Required Files
 

@@ -46,7 +46,7 @@ pnpm install
 
 이 환경은 registry 의존성을 사용하는 `generated-app`이며 저장소의 `examples/fluo-blog` workspace가 아닙니다. `src/app.ts`는 `ConfigModule`, `GreetingModule`, `HealthModule.forRoot()`를 등록하므로 기능 추가 시 이 import와 테스트를 보존합니다. Decorated declaration 평가 전 metadata 준비를 포함해 생성된 application/test decorator transform을 유지합니다.
 
-기본 `src/main.ts`는 `@fluojs/platform-fastify`의 `runFastifyApplication`과 `./app`의 `AppModule`을 import합니다. Helper는 listen과 shutdown signal 등록 후 resolve되므로 `listen()`을 다시 호출하지 않습니다. `bootstrapFastifyApplication`은 둘 다 자동 수행하지 않으며, Factory + adapter + listen은 middleware, logger, 생성 이후 cleanup/signal 책임이 다른 명시적 조립입니다. [Bootstrap 담당 문서](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.ko.md)가 이 경계와 config 검증 시점을 정의합니다.
+기본 `src/main.ts`는 `@fluojs/platform-fastify`의 `FastifyHttpApplicationAdapter`, `@fluojs/platform-nodejs`의 `createConsoleApplicationLogger`, `createNodeShutdownSignalRegistration`, 그리고 `./app`의 `AppModule`을 import합니다. `FluoFactory.create(AppModule, { adapter, logger, shutdownRegistration })`로 조립한 뒤 `app.listen()`을 await합니다. callback 실패 처리는 host가, middleware·생성 cleanup·lifecycle activation은 Factory가 소유합니다. [Bootstrap 담당 문서](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.ko.md)가 이 경계와 config 검증 시점을 정의합니다.
 
 생성된 `PORT` parser는 `Number.parseInt(..., 10)`을 사용하고 결과가 유한하지 않으면 `3000`으로 fallback합니다. 저장소 checkpoint의 `Number(...)` 변환이나 Book의 엄격한 10진수 port 정책과는 다릅니다.
 

@@ -33,16 +33,19 @@ During application shutdown, the adapter stops all new ingress, including websoc
 ## Quick Start
 
 ```typescript
-import { createBunAdapter } from '@fluojs/platform-bun';
+import { BunHttpApplicationAdapter, createBunShutdownSignalRegistration } from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createBunAdapter({ port: 3000 }),
+  adapter: BunHttpApplicationAdapter.create({ port: 3000, shutdownTimeoutMs: 30_000 }),
+  shutdownRegistration: createBunShutdownSignalRegistration(),
 });
 
 await app.listen();
 ```
+
+Direct adapter creation defaults `shutdownTimeoutMs` to 10 seconds. This managed starter explicitly preserves the former 30-second drain budget. Factory `forceExitTimeoutMs` independently bounds host signal completion and defaults to 30 seconds. Omit the callback when the host owns signals directly.
 
 ## Common Patterns
 
@@ -111,16 +114,14 @@ Validated custom routes such as `QUERY` and `PURGE` intentionally remain on the 
 
 ## Public API Overview
 
-- `createBunAdapter(options)`: Recommended factory for the Bun adapter.
+- `BunHttpApplicationAdapter.create(options)`: Recommended factory for the Bun adapter.
 - `createBunFetchHandler(options)`: Creates a native `fetch(request)` handler for custom `Bun.serve()` setups.
-- `bootstrapBunApplication(module, options)`: Advanced bootstrap without implicit startup logging.
-- `runBunApplication(module, options)`: Compatibility helper for quick startup with signal wiring.
 
 The adapter also exports the typed Bun integration seams used by realtime packages:
 
 - `BunHttpApplicationAdapter`: `HttpApplicationAdapter` implementation backed by `Bun.serve()`; its `getRealtimeCapability()` preserves fetch-style capability version 1 and includes optional `bindingInstallation`.
-- `BunAdapterOptions`: host, port, TLS, raw-body, multipart, and shutdown options accepted by `createBunAdapter()`.
-- `BootstrapBunApplicationOptions` and `RunBunApplicationOptions`: application bootstrap/run options for Bun-hosted apps.
+- `createBunShutdownSignalRegistration(signals?)`: Bun host callback supplied to Factory. Shutdown failures are reported through logs and `process.exitCode`; the host owns final process termination.
+- `BunAdapterOptions`: host, port, TLS, raw-body, multipart, and shutdown options accepted by `BunHttpApplicationAdapter.create()`.
 - `BunWebSocketBinding`, `BunWebSocketUpgradeHost`, and `BunRealtimeBindingHost`: binding contracts used by `@fluojs/websockets/bun` before normal HTTP dispatch. Bindings receive only an upgrade-capable host, not the adapter-owned Bun server lifecycle or raw fetch handler.
 - `BunWebSocketBindingHost`: Backward-compatible alias for configuring Bun realtime bindings.
 - `BunServeOptions`, `BunServerLike`, `BunWebSocketHandler`, `BunServerWebSocket`, `BunWebSocketMessage`, `BunApplicationSignal`, `BunCorsInput`, `BunTlsOptions`, and `CreateBunFetchHandlerOptions`: Lower-level Bun host, websocket, signal, CORS, TLS, and fetch-handler integration types.
@@ -134,7 +135,7 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
 - **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
 - **Lifecycle guards**: `listen()` is idempotent for an already-started adapter and keeps the original live dispatcher binding. Realtime/websocket bindings must be configured before `listen()` starts; later attempts to set or clear the binding fail fast instead of being accepted without affecting live wiring.
-- **Shutdown ownership**: `close()` stops new HTTP and websocket-upgrade ingress with a `503` shutdown response, starts `server.stop(stopActiveConnections)`, and waits for Bun server termination and every accepted request from realtime binding evaluation through HTTP response or upgrade completion. The bounded timeout only rejects the caller-facing `close()` promise: accepted work and adapter state remain retained until the underlying drain settles, after which `close()` clears adapter state. `runBunApplication()` removes its registered signal listeners when `app.close()` begins, before the adapter starts draining.
+- **Shutdown ownership**: `close()` stops new HTTP and websocket-upgrade ingress with a `503` shutdown response, starts `server.stop(stopActiveConnections)`, and waits for Bun server termination and every accepted request from realtime binding evaluation through HTTP response or upgrade completion. The bounded timeout only rejects the caller-facing `close()` promise: accepted work and adapter state remain retained until the underlying drain settles, after which `close()` clears adapter state. `createBunShutdownSignalRegistration()` removes its registered signal listeners when `app.close()` begins, before the adapter starts draining.
 - **Realtime seam**: `getRealtimeCapability()` preserves fetch-style version 1 and exposes its optional version 1 `bindingInstallation` contract. Bun websocket bindings must be configured before `listen()` starts the server. The capability installer is the canonical configuration path for protocol packages and rejects values without `fetch` and `websocket` host contracts. After startup the binding remains frozen for the live server; the adapter `close()` boundary clears its retained binding state after Bun termination and request drain settle. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch while the adapter is accepting new ingress; an accepted request keeps its dispatcher available if shutdown begins during asynchronous binding evaluation, and HTTP fallback is suppressed only after the binding returns a response or successfully upgrades the request. The binding host exposes only `upgrade(...)`, so adapter-owned `stop()` and raw `fetch()` control remain outside the realtime seam.
 - **Adapter instance helpers**: `BunHttpApplicationAdapter` exposes `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, and `close()`.
 

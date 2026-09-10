@@ -13,7 +13,7 @@ This chapter explains how to move FluoShop to the Deno runtime and work with its
 
 ## Learning Objectives
 - Understand why Deno fits well with the fluo architecture.
-- Learn how to run an application with `@fluojs/platform-deno` and `runDenoApplication`.
+- Learn how to run an application with `@fluojs/platform-deno` and `FluoFactory.create(...)` + `app.listen()`.
 - Learn how to interpret Deno permission flags in relation to FluoShop operational requirements.
 - Review the Web-standard `Request` and `Response` based dispatch flow.
 - Confirm how Deno-native WebSockets integrate with fluo gateways after the `@fluojs/websockets/deno` binding is configured.
@@ -102,7 +102,7 @@ const handler = createDenoFetchHandler({
 Deno.serve({ port: 3000 }, handler);
 ```
 
-`createDenoFetchHandler(...)` does not call `Deno.serve(...)`. It preserves the shared cookie/query, raw-body, multipart, and SSE behavior, while the surrounding host owns server shutdown, process signals, and websocket upgrades. Use `runDenoApplication(...)` or `app.listen()` instead when fluo should own the Deno server lifecycle.
+`createDenoFetchHandler(...)` does not call `Deno.serve(...)`. It preserves the shared cookie/query, raw-body, multipart, and SSE behavior, while the surrounding host owns server shutdown, process signals, and websocket upgrades. Use `app.listen()` instead when fluo should own the Deno server lifecycle.
 
 ## 23.4 Native Deno WebSockets
 
@@ -139,17 +139,21 @@ If `DenoWebSocketModule.forRoot()` is not configured, an HTTP request that carri
 The Deno adapter accepts Deno-native `hostname` and a portable `host` alias. When both are set, `hostname` wins for the `Deno.serve(...)` bind target and the listen URL reported by fluo. Pass TLS material through the `https` option when the Deno process should own HTTPS startup:
 
 ```typescript
-await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  https: {
-    cert: await Deno.readTextFile('./cert.pem'),
-    key: await Deno.readTextFile('./key.pem'),
-  },
-  port: 3443,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    https: {
+      cert: await Deno.readTextFile('./cert.pem'),
+      key: await Deno.readTextFile('./key.pem'),
+    },
+    port: 3443,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-`runDenoApplication(...)` registers `SIGINT` and `SIGTERM` listeners by default when the Deno signal APIs are available. Use `shutdownSignals: false` for hosts that own process signals themselves, or pass a custom signal list when a deployment profile needs a narrower lifecycle contract. If one signal registration fails after another listener was already attached, fluo removes the earlier listener before surfacing the failure. During close, the adapter stops new ingress, lets active handlers drain for up to 10 seconds, and then aborts the underlying Deno serve signal if shutdown has not settled. If graceful shutdown rejects, the adapter retains its active server controller until `server.finished` settles before releasing lifecycle state and rethrowing the original shutdown error.
+`createDenoShutdownSignalRegistration()` registers `SIGINT` and `SIGTERM` listeners by default when the Deno signal APIs are available. Omit Factory `shutdownRegistration` for hosts that own process signals themselves, or pass a custom signal list when a deployment profile needs a narrower lifecycle contract. If one signal registration fails after another listener was already attached, fluo removes the earlier listener before surfacing the failure. During close, the adapter stops new ingress, lets active handlers drain for up to 10 seconds, and then aborts the underlying Deno serve signal if shutdown has not settled. If graceful shutdown rejects, the adapter retains its active server controller until `server.finished` settles before releasing lifecycle state and rethrowing the original shutdown error.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 
@@ -235,12 +239,12 @@ Deno's built-in test runner can be used without separate Jest or Vitest dependen
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";
-import { createDenoAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
+import { DenoHttpApplicationAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
 import { FluoFactory } from "npm:@fluojs/runtime";
 import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
-  const adapter = createDenoAdapter();
+  const adapter = DenoHttpApplicationAdapter.create();
   const app = await FluoFactory.create(AppModule, { adapter });
   const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });
 

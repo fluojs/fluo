@@ -6,7 +6,7 @@ A repository example of canonical Node.js + Fastify `FluoFactory.create(...)` â†
 
 ## what this example demonstrates
 
-- Explicit Fastify bootstrap via `FluoFactory.create(..., { adapter: createFastifyAdapter(...) })`
+- Explicit Fastify bootstrap via `FluoFactory.create(..., { adapter: FastifyHttpApplicationAdapter.create(...) })`
 - Standard decorator DI with `@Module`, `@Inject`, `@Controller`, `@Get`
 - Built-in `/health` and `/ready` endpoints from `HealthModule.forRoot(...)`
 - A single starter controller at `/hello`

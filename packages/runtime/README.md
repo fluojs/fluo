@@ -431,7 +431,7 @@ class UsersModule {}
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
 - `@fluojs/runtime/web` exposes two mutually exclusive multipart consumption modes: `parseMultipart(...)` buffers fields and files, while `parseMultipartStream(...)` yields discriminated field/file parts and never materializes complete file payloads. Streaming mode enforces per-field, per-file, total-size, field-count, file-count, and header limits while bytes are read; abort, cancellation, and parser failures cancel the active source. A body selected by either mode rejects a second buffered or streaming selection with `MultipartBodyConsumedError`.
-- `NodeHttpApplicationAdapter.create(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
+- `NodeHttpApplicationAdapter.create(...)` accepts `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - HTTP application bootstrap passes an optional application-owned `errorRepresentation.html` provider to the dispatcher without taking representation ownership. Canonical JSON remains the default; HTTP keeps classification, negotiation, status/header, `HEAD`, abort, commit, and fallback semantics.
 - HTTP response writing is single-owner: framework-managed handler results may be transformed by interceptors before the runtime commits them. Once a handler or response helper commits `RequestContext.response`, the dispatcher skips a second success-response write. `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged, while other interceptors may still transform the chain result.
@@ -502,12 +502,10 @@ Logger factories, `createNodeFileSystemAssetSource({ root, precompressed })` for
 
 ```typescript
 import {
-  bootstrapNodeApplication,
   createConsoleApplicationLogger,
   createJsonApplicationLogger,
   createNodeFileSystemAssetSource,
   NodeHttpApplicationAdapter,
-  runNodeApplication,
   type NodeFileSystemAssetPrecompression,
   type NodeFileSystemAssetSourceOptions,
 } from '@fluojs/platform-nodejs';
@@ -526,7 +524,6 @@ For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
 - `createNodeFileSystemAssetSource(options)`: Node-only filesystem implementation of the `@fluojs/http` `StaticAssetSource` contract. `NodeFileSystemAssetSourceOptions` names its `{ root, precompressed }` boundary and `NodeFileSystemAssetPrecompression` selects `.br` / `.gz` siblings. Each accepted representation is securely opened, eagerly copied into an immutable in-memory byte snapshot, and its `FileHandle` is closed before middleware response writing. The returned `source()` only replays that snapshot; it never reopens the pathname. Application owners therefore bound memory by the selected asset size, while `size` and the strong `ETag` describe those exact snapshot bytes.
 - `NodeHttpApplicationAdapter.create()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
-- `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
 - `createNodeShutdownSignalRegistration(...)`, `defaultNodeShutdownSignals()`, `registerShutdownSignals(...)`: Node-owned signal APIs. Supply the registration callback to Factory; lower-level host integrations can register directly.
 
 Runtime app logging is separate from CLI lifecycle reporting. Configure `ApplicationLogger` when you want to change logs emitted by the application/runtime itself:

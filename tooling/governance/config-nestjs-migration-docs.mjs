@@ -73,13 +73,13 @@ const requirements = [
   ]],
   ['packages/runtime/README.md', [
     'app.enableShutdownHooks()',
-    'runNodeApplication(...)',
+    'shutdownRegistration',
     'createNodeShutdownSignalRegistration(...)',
     'adapter.close(signal?)',
   ]],
   ['packages/runtime/README.ko.md', [
     'app.enableShutdownHooks()',
-    'runNodeApplication(...)',
+    'shutdownRegistration',
     'createNodeShutdownSignalRegistration(...)',
     'adapter.close(signal?)',
   ]],
@@ -93,7 +93,7 @@ const requirements = [
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
     'app.enableShutdownHooks()',
-    'runNodeApplication(...)',
+    'shutdownRegistration',
     'adapter.close(signal?)',
   ]],
   ['docs/getting-started/migrate-from-nestjs.ko.md', [
@@ -106,7 +106,7 @@ const requirements = [
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
     'app.enableShutdownHooks()',
-    'runNodeApplication(...)',
+    'shutdownRegistration',
     'adapter.close(signal?)',
   ]],
   ['book/beginner/ch11-config.md', [
@@ -114,7 +114,7 @@ const requirements = [
     'defaults: validatedConfig',
     'schema: ConfigSchema',
     'FluoFactory.createApplicationContext(AppModule)',
-    'adapter: createFastifyAdapter({ port: validatedConfig.PORT })',
+    'adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT })',
     'await app.listen();',
   ]],
   ['book/beginner/ch11-config.ko.md', [
@@ -122,7 +122,7 @@ const requirements = [
     'defaults: validatedConfig',
     'schema: ConfigSchema',
     'FluoFactory.createApplicationContext(AppModule)',
-    'adapter: createFastifyAdapter({ port: validatedConfig.PORT })',
+    'adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT })',
     'await app.listen();',
   ]],
   ['docs/CONTEXT.md', [
@@ -132,7 +132,7 @@ const requirements = [
     'FluoFactory.createApplicationContext(AppModule)',
     'only `listen()` requires',
     'app.enableShutdownHooks()',
-    'runNodeApplication(...)',
+    'shutdownRegistration',
     'adapter.close(signal?)',
   ]],
   ['docs/CONTEXT.ko.md', [
@@ -142,7 +142,7 @@ const requirements = [
     'FluoFactory.createApplicationContext(AppModule)',
     '`listen()`에만 적용',
     'app.enableShutdownHooks()',
-    'runNodeApplication(...)',
+    'shutdownRegistration',
     'adapter.close(signal?)',
   ]],
 ];

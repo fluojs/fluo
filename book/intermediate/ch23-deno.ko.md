@@ -13,7 +13,7 @@
 
 ## Learning Objectives
 - Deno가 fluo 아키텍처와 잘 맞는 이유를 이해합니다.
-- `@fluojs/platform-deno`와 `runDenoApplication`으로 애플리케이션을 실행하는 방법을 배웁니다.
+- `@fluojs/platform-deno`와 `FluoFactory.create(...)` + `app.listen()`으로 애플리케이션을 실행하는 방법을 배웁니다.
 - Deno의 권한 플래그를 FluoShop 운영 요구와 연결해 해석하는 방법을 익힙니다.
 - 웹 표준 `Request`와 `Response` 기반 디스패치 흐름을 살펴봅니다.
 - `@fluojs/websockets/deno` 바인딩을 설정한 뒤 Deno 네이티브 WebSocket과 fluo 게이트웨이가 통합되는 방식을 확인합니다.
@@ -76,7 +76,7 @@ await app.listen();
 deno run --allow-net main.ts
 ```
 
-`runDenoApplication(...)`은 listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록하지만 signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Managed startup에는 `--allow-net`이 필요합니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Signal로 트리거된 애플리케이션 close 실패는 helper가 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하고 signal과 shutdown을 직접 조율해야 합니다.
+`DenoHttpApplicationAdapter.create()`의 `hostname`은 host 기본값보다 우선하며 `app.listen()`이 listener를 엽니다. Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. `createDenoShutdownSignalRegistration()`은 signal-close 실패를 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Host가 signal lifecycle을 직접 소유하면 `shutdownRegistration`을 생략하세요. Managed startup에는 `--allow-net`이 필요합니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요.
 
 필요한 플래그를 빠뜨리면 Deno는 실행 시 프롬프트를 띄우거나 명확한 에러와 함께 종료합니다. 권한 누락은 배포 전에 드러나는 설정 문제로 다루는 편이 안전합니다. 따라서 실행 명령 자체가 애플리케이션이 접근할 수 있는 리소스를 설명하는 문서 역할을 합니다. Canonical starter에는 파일 시스템 접근이 필요하지 않으므로 `--allow-read`를 부여하지 않습니다. 애플리케이션 코드가 인증서, 설정 파일, 정적 자산을 실제로 읽을 때만 `--allow-read=./static`처럼 대상 경로를 한정한 권한을 추가하세요.
 
@@ -102,7 +102,7 @@ const handler = createDenoFetchHandler({
 Deno.serve({ port: 3000 }, handler);
 ```
 
-`createDenoFetchHandler(...)`는 `Deno.serve(...)`를 호출하지 않습니다. Shared cookie/query, raw-body, multipart, SSE 동작을 보존하고 주변 host가 server shutdown, process signal, websocket upgrade를 소유합니다. fluo가 Deno server lifecycle을 소유해야 한다면 `runDenoApplication(...)` 또는 `app.listen()`을 사용하세요.
+`createDenoFetchHandler(...)`는 `Deno.serve(...)`를 호출하지 않습니다. Shared cookie/query, raw-body, multipart, SSE 동작을 보존하고 주변 host가 server shutdown, process signal, websocket upgrade를 소유합니다. fluo가 Deno server lifecycle을 소유해야 한다면 `app.listen()`을 사용하세요.
 
 ## 23.4 Native Deno WebSockets
 
@@ -139,17 +139,21 @@ Gateway return value는 기본적으로 await된 뒤 무시됩니다. 위 예시
 Deno 어댑터는 Deno 네이티브 `hostname`과 이식성 alias인 `host`를 모두 허용합니다. 둘 다 설정하면 `Deno.serve(...)` bind target과 fluo가 보고하는 listen URL에는 `hostname`이 우선합니다. Deno process가 HTTPS startup을 소유해야 한다면 TLS 자료를 `https` option으로 전달하세요.
 
 ```typescript
-await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  https: {
-    cert: await Deno.readTextFile('./cert.pem'),
-    key: await Deno.readTextFile('./key.pem'),
-  },
-  port: 3443,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    https: {
+      cert: await Deno.readTextFile('./cert.pem'),
+      key: await Deno.readTextFile('./key.pem'),
+    },
+    port: 3443,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-`runDenoApplication(...)`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 `shutdownSignals: false`를 사용하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다. Graceful shutdown이 reject되면 adapter는 `server.finished`가 settle될 때까지 active server controller를 유지한 뒤 lifecycle state를 해제하고 원래 shutdown error를 다시 throw합니다.
+`createDenoShutdownSignalRegistration()`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 Factory의 `shutdownRegistration`을 생략하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다. Graceful shutdown이 reject되면 adapter는 `server.finished`가 settle될 때까지 active server controller를 유지한 뒤 lifecycle state를 해제하고 원래 shutdown error를 다시 throw합니다.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 

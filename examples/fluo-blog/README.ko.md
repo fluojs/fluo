@@ -133,8 +133,8 @@ pnpm --filter @fluojs/example-fluo-blog start:03
 PORT=3100 pnpm --filter @fluojs/example-fluo-blog start:00
 ```
 
-각 `main.ts`는 `runFastifyApplication(...)`을 호출합니다. 이 helper는
-리스너를 시작하고 SIGINT/SIGTERM 종료 처리를 등록합니다. Ctrl+C를 누르면
+각 `main.ts`는 static Fastify adapter와 명시적인 Node shutdown callback을
+`FluoFactory.create(...)`에 전달하고 `app.listen()`을 await합니다. Ctrl+C를 누르면
 앱과 리스너가 닫히며, 프로세스 종료 후 포트를 다시 사용할 수 있습니다.
 앱 객체를 직접 소유하는 코드에서는 `app.close()`로 명시적으로 정리합니다.
 

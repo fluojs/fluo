@@ -10,14 +10,14 @@
 | `@fluojs/runtime`의 `FluoFactory.createApplicationContext` | HTTP 없는 DI와 라이프사이클 작업 | HTTP listener 없이 application context를 반환하며 호출자가 닫습니다. |
 | Workers/Next.js host-owned 진입점 | Fluo를 호스트 요청 dispatcher에 연결 | 활성화가 반드시 socket bind를 뜻하지는 않습니다. 요청과 shutdown은 호스트가 소유하며 [Workers](../../packages/platform-cloudflare-workers/README.ko.md) 또는 [Next.js](../../packages/platform-nextjs/README.ko.md) 계약을 따릅니다. |
 
-`fluoFactory`와 `bootstrapApplication`은 모든 runtime entrypoint에서 제거됩니다. 기존 platform bootstrap/run helper는 내부에서 canonical Factory를 호출하므로 host별 migration을 기다리는 소비자를 깨뜨리지 않습니다. 별도의 HTTP 생성 구현은 남기지 않습니다. Application context와 microservice는 계속 별도 기능입니다.
+`fluoFactory`, `bootstrapApplication`, platform bootstrap/run helper, adapter 생성 free function은 모든 public entrypoint에서 제거됩니다. 각 platform의 adapter class static `create(options)`를 Factory에 전달하고 host가 shutdown callback을 설치합니다. Application context와 microservice는 계속 별도 기능입니다.
 
 ### Default Node/Fastify recipe
 
 다음은 CLI가 생성하는 `src/main.ts` 형태입니다. 생성된 `src/app.ts`, 등록된 config/greeting/health 모듈, 설치한 registry 의존성, 생성된 decorator build/test 설정이 필요합니다.
 
 ```ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -27,7 +27,7 @@ const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port }),
+  adapter: FastifyHttpApplicationAdapter.create({ port }),
   logger: createConsoleApplicationLogger(),
   shutdownRegistration: createNodeShutdownSignalRegistration(),
 });
@@ -70,15 +70,15 @@ Factory 생성 실패는 확보한 runtime 자원, lifecycle instance, 전달된
 | `packages/cli/src/new/scaffold.ts` | Node logger/signal 의존성을 명시한 Node HTTP Factory 진입점과 config/greeting/health 등록을 생성합니다. |
 | `examples/minimal/src/main.ts` | Fastify adapter를 전달한 `FluoFactory.create(...)` 이후 `app.listen()`을 호출하는 명시적 저수준 조립입니다. 생성 스타터가 아닙니다. |
 | `packages/runtime/src/bootstrap.ts` | `FluoFactory.create(...)`, `FluoFactory.createApplicationContext(...)`, `FluoFactory.createMicroservice(...)`의 실제 구현입니다. |
-| `packages/platform-nodejs/src/index.ts` | 플랫폼이 소유하는 raw Node adapter, bootstrap, logging, filesystem, shutdown signal helper의 구현 소스입니다. |
-| `packages/platform-fastify/src/adapter.ts` | Fastify 경로의 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, `runFastifyApplication(...)`를 노출합니다. |
+| `packages/platform-nodejs/src/index.ts` | 플랫폼이 소유하는 raw Node adapter, logging, filesystem, shutdown signal helper의 구현 소스입니다. |
+| `packages/platform-fastify/src/adapter.ts` | Fastify 경로의 `FastifyHttpApplicationAdapter.create(...)`를 노출합니다. |
 | `packages/platform-cloudflare-workers/src/adapter.ts` | Worker fetch 경로의 `createCloudflareWorkerAdapter(...)`, `bootstrapCloudflareWorkerApplication(...)`, `createCloudflareWorkerEntrypoint(...)`를 노출합니다. |
 
 ## Platform Registration
 
 - 애플리케이션 부트스트랩은 `FluoFactory.create(...)`에 전달되는 `adapter` 옵션으로 플랫폼 바인딩을 받습니다.
 - 런타임 부트스트랩은 그 어댑터 인스턴스를 `HTTP_APPLICATION_ADAPTER` 토큰으로 저장하고, platform shell을 `PLATFORM_SHELL` 토큰으로 저장합니다.
-- 플랫폼 패키지는 `@fluojs/platform-*` 아래에 있으며, 애플리케이션 경계에서 사용하는 어댑터 팩터리를 제공합니다. 예시는 `createFastifyAdapter(...)`, `createCloudflareWorkerAdapter(...)`입니다.
+- 플랫폼 패키지는 `@fluojs/platform-*` 아래에 있으며, 애플리케이션 경계에서 사용하는 adapter class를 제공합니다. 예시는 `FastifyHttpApplicationAdapter.create(...)`, `CloudflareWorkerHttpApplicationAdapter.create(...)`입니다.
 - platform shell은 라이프사이클 훅이 끝난 뒤 시작되고, 종료 정리 단계에서 중지됩니다.
 - `FluoFactory.createApplicationContext(...)`는 같은 모듈 그래프와 라이프사이클 경로를 따르지만 HTTP 어댑터 등록을 생략하고 HTTP 애플리케이션 대신 application context를 반환합니다.
 - 스타터 shape, runtime/platform 조합, 공개된 microservice transport 변형은 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)에 정리되어 있습니다.

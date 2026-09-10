@@ -113,9 +113,9 @@ function appListenSignalOwnershipMessage(content, locale) {
 
 function enforceManagedMigrationGuidance(relativePath, content, locale) {
   const migrationSentences = sentences(content).filter((sentence) =>
-    sentence.includes('runDenoApplication(...)') || sentence.includes('app.listen()'));
+    sentence.includes('createDenoShutdownSignalRegistration(...)') || sentence.includes('app.listen()'));
   const appListenGuidance = migrationSentences.filter((sentence) => sentence.includes('app.listen()')).join(' ');
-  const runGuidance = migrationSentences.filter((sentence) => sentence.includes('runDenoApplication(...)')).join(' ');
+  const signalGuidance = migrationSentences.filter((sentence) => sentence.includes('createDenoShutdownSignalRegistration(...)')).join(' ');
   const startupPattern = /server|Deno\.serve/iu;
   const closePattern = locale === 'en' ? /shutdown|close|drain/iu : /shutdown|close|drain|종료/u;
   const websocketPattern = /websocket/iu;
@@ -128,8 +128,8 @@ function enforceManagedMigrationGuidance(relativePath, content, locale) {
     `${relativePath} app.listen() must not own shutdown signal registration.`,
   );
   assert(
-    runGuidance.length > 0 && sentences(runGuidance).some((sentence) => hasPositiveSignalAction(sentence, locale)),
-    `${relativePath} must attribute shutdown signal registration to runDenoApplication(...).`,
+    signalGuidance.length > 0 && sentences(signalGuidance).some((sentence) => hasPositiveSignalAction(sentence, locale)),
+    `${relativePath} must attribute shutdown signal registration to createDenoShutdownSignalRegistration(...).`,
   );
 }
 

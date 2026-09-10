@@ -58,7 +58,7 @@ examples/fluo-blog/
 | 파일 | 역할 |
 | --- | --- |
 | `00-start/src/app.ts` | `AppModule`을 export하고 starter health 라우트를 유지합니다. |
-| `00-start/src/main.ts` | `runFastifyApplication(AppModule, ...)`을 호출해 Fastify를 시작합니다. |
+| `00-start/src/main.ts` | Static Fastify adapter와 `FluoFactory.create(...)`로 앱을 생성한 뒤 `app.listen()`을 await합니다. |
 | `00-start/test/app.e2e.test.ts` | 요청 파이프라인으로 `/health`, `/ready`를 확인합니다. |
 | `vite.config.ts` | 선택한 체크포인트를 `fluoDecoratorsPlugin()`과 `node24` 대상으로 빌드합니다. |
 | `vitest.config.ts` | `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`으로 테스트를 실행합니다. |
@@ -67,7 +67,7 @@ examples/fluo-blog/
 
 기본 health 라우트는 `AppModule.imports`의 `HealthModule.forRoot()`가 제공합니다. 과정 전체에서 이 import를 유지하세요. `/health`를 위한 컨트롤러를 중복으로 만들지 않습니다.
 
-이 `repository-example`은 `examples/minimal`의 저수준 Factory recipe가 아니라 기본 CLI Node/Fastify 경로와 같은 `runFastifyApplication` helper를 사용합니다. Listen과 shutdown signal 등록 뒤 반환하므로 listen을 다시 호출하지 않습니다. [Bootstrap 담당 문서](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.ko.md)가 helper 기본값, 실패, cleanup, 호스트 소유권을 구분합니다. Decorated declaration 평가 전에 metadata가 준비되도록 공통 표준 decorator build/test 설정을 유지합니다.
+이 `repository-example`, 기본 CLI Node/Fastify 스타터, `examples/minimal`은 같은 Factory와 static adapter 경로를 사용합니다. 진입점은 Node logger와 shutdown callback을 명시적으로 선택하고 `app.listen()`을 한 번 await합니다. [Bootstrap 담당 문서](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.ko.md)가 기본값, 실패 정리, 호스트 소유권을 정의합니다. Decorated declaration 평가 전에 metadata가 준비되도록 공통 표준 decorator build/test 설정을 유지합니다.
 
 ## 3. Fastify 시작하기
 

@@ -37,7 +37,7 @@ The [Book](../book/README.md) is the primary learning path from FluoBlog through
 
 ## how these examples fit the docs
 
-- `minimal` demonstrates Factory + adapter + listen; the default CLI Node/Fastify starter instead uses `runFastifyApplication` with helper-owned middleware, logging, startup cleanup, and signals
+- `minimal` and the default CLI Node/Fastify starter share static adapter + Factory + listen. Factory owns middleware, logging, and startup cleanup; the host explicitly selects signal registration.
 - `realworld-api` proves the first practical module/DTO/test path beyond that HTTP starter baseline
 - `auth-jwt-passport` proves the current official bearer-token auth path
 - `ops-metrics-terminus` proves the current markdown-first observability/health path

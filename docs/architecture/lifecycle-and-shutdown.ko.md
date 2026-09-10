@@ -11,7 +11,7 @@
 | 실행 환경 | 아래 검증 명령은 의존성을 설치한 repository checkout에서 Node `>=24 <27`, `pnpm@10.4.1`을 사용합니다. 생성 앱은 registry 의존성과 생성된 scripts를 유지하고, `examples/fluo-blog` 같은 repository example은 workspace 의존성과 자체 빌드 전제를 따릅니다. 이 문서는 두 앱 디렉터리를 서로 덮어쓰는 recipe가 아닙니다. |
 | 모듈과 DI | `@fluojs/runtime`의 `defineModule`, `FluoFactory`을 사용합니다. Root module과 provider를 등록하고, 모듈 간 의존성은 imports/exports로 공개해야 합니다. 생성자 의존성에는 `@fluojs/core`의 `Inject` 또는 provider의 명시적 `inject` 목록이 필요합니다. Decorator를 쓰면 module 평가 전에 `Symbol.metadata` 준비와 표준 decorator 변환이 필요합니다. [metadata 계약](./decorators-and-metadata.ko.md)을 따릅니다. |
 | Lifecycle API | `@fluojs/runtime`에서 type으로 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, `ApplicationContext`를 import합니다. 훅은 동기 `void` 또는 `Promise<void>`를 반환합니다. Interface 선언만으로 등록되지는 않습니다. Hook-bearing `useValue` 또는 적격 singleton class/factory provider가 lifecycle 대상이며, `useExisting` alias와 request/transient provider는 독립 startup hook 대상으로 root-resolve하지 않습니다. |
-| HTTP 경로 | `@fluojs/platform-fastify`의 `runFastifyApplication`, `bootstrapFastifyApplication`, `createFastifyAdapter`; `@fluojs/platform-nodejs`의 `runNodeApplication`, `bootstrapNodeApplication`, `NodeHttpApplicationAdapter.create`가 공개 API입니다. 직접 adapter를 구현할 때는 `@fluojs/http/portable`의 `HttpApplicationAdapter` 계약을 따릅니다. 이 문서의 `src/` 경로는 구현 근거이지 consumer import 경로가 아닙니다. |
+| HTTP 경로 | 각 platform의 concrete `AdapterClass.create(options)`와 `@fluojs/runtime`의 `FluoFactory.create(...)`, `app.listen()`을 사용합니다. Custom adapter는 `@fluojs/http/portable`의 `HttpApplicationAdapter`를 구현합니다. `src/` 경로는 구현 근거이지 consumer import가 아닙니다. |
 | 외부 자원 | 순수 DI 예제에는 서버, 환경 파일, 외부 서비스가 필요하지 않습니다. DB·queue·socket·background job을 추가하면 해당 자원의 연결 설정, 오류 처리, drain, close 소유권도 애플리케이션이나 해당 package에 지정해야 합니다. |
 
 ## 입력, 기본값과 완료 시점
@@ -23,8 +23,8 @@
 | Bootstrap 옵션 | `providers`는 생략 시 추가 등록 없음, `duplicateProviderPolicy`는 `warn`이며 `throw`/`ignore`도 받습니다. `moduleGraphCache`와 `diagnostics.timing`은 기본 off입니다. Timing을 켜면 `bootstrapTiming`을 제공하며 context에는 `create_dispatcher` phase가 없습니다. |
 | `app.ready()` | `Promise<void>`로 critical platform readiness를 검사할 뿐 adapter를 활성화하거나 `state`를 `ready`로 바꾸지 않습니다. HTTP health route를 자동 생성하지도 않습니다. 성공한 close 뒤에는 reject합니다. 종료 admission 판정에는 이 메서드나 `state` 대신 아래 operation gate 계약을 적용합니다. |
 | `app.listen()` | `ready()` → `adapter.listen(dispatcher)` → 시작 로그 → 선택적 host signal 등록을 기다립니다. 동시 호출은 startup과 실패 cleanup을 공유합니다. Readiness/listen/setup 실패는 원래 오류를 보존하며 `close('bootstrap-failed')`를 호출합니다. 새 startup에는 새 앱이 필요합니다. |
-| `bootstrapFastifyApplication(RootModule, options)` | 미이전 소비자를 위해 유지되는 platform helper이며 같은 Factory의 middleware와 cleanup을 사용합니다. Native logger와 host signal 선택은 platform option으로 전달합니다. 새 HTTP 앱은 [Factory recipe](../getting-started/bootstrap-paths.ko.md)를 사용하세요. |
-| Node/Fastify 종료 설정 | `shutdownSignals`는 run helper에서 기본 `['SIGINT', 'SIGTERM']`, `false`로 비활성화하거나 지원 신호 목록으로 지정합니다. `forceExitTimeoutMs = 30_000`은 signal 종료 실패를 표시하는 시간이며, adapter의 `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify의 종료 제한은 non-negative safe integer로 setup에서 검증됩니다. |
+| `AdapterClass.create(options)` | Transport를 구성하지만 listen이나 signal 등록을 시작하지 않습니다. [Factory recipe](../getting-started/bootstrap-paths.ko.md)로 application과 host callback을 조립합니다. |
+| Node/Fastify shutdown options | 명시적인 `createNodeShutdownSignalRegistration()`은 기본 `SIGINT`/`SIGTERM`을 선택합니다. Callback을 생략하면 host가 signal을 소유합니다. `forceExitTimeoutMs = 30_000`은 signal 완료 bound이며 adapter `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify는 setup 시 0 이상의 safe integer 종료 제한을 검증합니다. |
 | `close(signal?)` | 생략한 signal은 `undefined`이며 runtime이 임의로 `SIGTERM`을 붙이지 않습니다. 진행 중 teardown을 공유하고 성공 뒤 반복 close는 no-op입니다. 실패 후 명시적 재시도는 아래 phase별 소유권을 따릅니다. |
 
 ## 시작 단계

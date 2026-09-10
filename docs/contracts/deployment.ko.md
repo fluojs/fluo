@@ -10,7 +10,7 @@
 | Type safety | 배포 전에 `pnpm typecheck`를 실행해야 합니다. 루트 스크립트는 tooling, examples, 각 package의 typecheck 스크립트를 검사합니다. |
 | Test gate | 전체 로컬 게이트에는 `pnpm verify`를 사용하거나, release readiness와 같은 split Vitest project 순서인 `pnpm vitest run --project packages`, `apps`, `examples`, `tooling`을 실행해야 합니다. |
 | Release gate | public release 준비 시 `pnpm verify:release-readiness`를 실행해야 합니다. 이 게이트는 `pnpm --dir packages/cli sandbox:matrix`와 `pnpm verify:platform-consistency-governance`도 함께 실행합니다. |
-| Adapter bootstrap | 애플리케이션은 명시적 adapter를 통해 배포해야 합니다. 저장소 예제는 `FluoFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` 형태로 부트스트랩합니다. |
+| Adapter bootstrap | 애플리케이션은 명시적 adapter를 통해 배포해야 합니다. 저장소 예제는 `FluoFactory.create(AppModule, { adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }) })` 후 `await app.listen()`을 실행합니다. |
 | Health registration | 프로덕션 probe가 dependency state를 보고해야 한다면 `TerminusModule.forRoot(...)`를 등록하여 `/health`와 `/ready`가 runtime 및 indicator 상태를 노출하도록 해야 합니다. |
 | Config boundary | process 기반 설정은 bootstrap 시점에 명시적 `processEnv` snapshot으로 `@fluojs/config`에 전달해야 합니다. package 코드가 ambient `process.env` 읽기에 의존하면 안 됩니다. |
 
@@ -19,7 +19,7 @@
 | 변수 또는 소스 | 요구사항 |
 | --- | --- |
 | `NODE_ENV` | 프로덕션 배포에서는 `production`으로 설정해야 합니다. 현재 배포 예제 Dockerfile과 Cloudflare Workers 예시 모두 이 값을 사용합니다. |
-| `PORT` | 배포 환경이 예제 기본값 `3000`을 사용하지 않는다면 listener port를 애플리케이션 설정으로 전달해야 합니다. 저장소 예제는 `createFastifyAdapter(...)`에 `port: 3000`을 명시적으로 전달합니다. |
+| `PORT` | 배포 환경이 예제 기본값 `3000`을 사용하지 않는다면 listener port를 애플리케이션 설정으로 전달해야 합니다. 저장소 예제는 `FastifyHttpApplicationAdapter.create(...)`에 `port: 3000`을 명시적으로 전달합니다. |
 | 명시적 `processEnv` snapshot | process 기반 설정이 필요하면 필요한 키만 `ConfigModule.forRoot({ processEnv: ... })` 또는 `loadConfig(...)`에 전달해야 합니다. `@fluojs/config`는 ambient `process.env`를 자동 스캔하지 않습니다. |
 | 애플리케이션별 secret | 데이터베이스나 외부 API 자격 증명 같은 값은 package 내부가 아니라 애플리케이션 bootstrap config에 속합니다. 필수 키가 없으면 validation이 즉시 실패해야 합니다. |
 

@@ -10,7 +10,7 @@
 | Type safety | Run `pnpm typecheck` before deployment. The root script checks tooling, examples, and each package typecheck script. |
 | Test gate | Run `pnpm verify` for a full local gate, or run the split Vitest project sequence used by release readiness: `pnpm vitest run --project packages`, `apps`, `examples`, and `tooling`. |
 | Release gate | For public release preparation, run `pnpm verify:release-readiness`. That gate also runs `pnpm --dir packages/cli sandbox:matrix` and `pnpm verify:platform-consistency-governance`. |
-| Adapter bootstrap | Deploy applications through an explicit adapter. Repository examples bootstrap with `FluoFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })`. |
+| Adapter bootstrap | Deploy applications through an explicit adapter. Repository examples bootstrap with `FluoFactory.create(AppModule, { adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }) })`, then await `app.listen()`. |
 | Health registration | If production probes must report dependency state, register `TerminusModule.forRoot(...)` so `/health` and `/ready` expose runtime and indicator status. |
 | Config boundary | Pass process-backed settings through `@fluojs/config` as an explicit `processEnv` snapshot at bootstrap. Package code must not rely on ambient `process.env` reads. |
 
@@ -19,7 +19,7 @@
 | Variable or source | Requirement |
 | --- | --- |
 | `NODE_ENV` | Set to `production` for production deployments. The existing deployment example Dockerfile and Cloudflare Workers snippet both use that value. |
-| `PORT` | Provide the listener port through application config when the deployment does not use the example default `3000`. The repository examples pass `port: 3000` explicitly to `createFastifyAdapter(...)`. |
+| `PORT` | Provide the listener port through application config when the deployment does not use the example default `3000`. The repository examples pass `port: 3000` explicitly to `FastifyHttpApplicationAdapter.create(...)`. |
 | Explicit `processEnv` snapshot | When process-backed configuration is required, pass only the needed keys into `ConfigModule.forRoot({ processEnv: ... })` or `loadConfig(...)`. `@fluojs/config` does not scan ambient `process.env` automatically. |
 | Application-specific secrets | Values such as database or API credentials belong in application bootstrap config, not in package internals. Validation should fail fast when required keys are missing. |
 

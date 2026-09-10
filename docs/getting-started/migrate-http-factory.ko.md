@@ -49,7 +49,8 @@ await app.listen();
 await app.close('manual');
 ```
 
-Fastify나 Express에서는 adapter import/configuration만 바꾸세요. Node logger나
+Fastify나 Express에서는 `FastifyHttpApplicationAdapter.create(options)` 또는
+`ExpressHttpApplicationAdapter.create(options)`로 adapter import/configuration만 바꾸세요. Node logger나
 signal callback을 import한다면 `@fluojs/platform-nodejs`를 직접 의존성에
 추가하고 transitive dependency에 기대지 마세요. Node CLI starter는 이제 이
 직접 의존성과 같은 Factory recipe를 생성합니다. Node mixed starter는 소유한
@@ -63,12 +64,47 @@ import하지 않고, signal을 임의로 만들거나 Fetch host 대신 socket�
 있습니다. 이 shell의 `listen()`은 사용 오류로 reject하지만 shell을 dispose하지
 않습니다. DI 전용 작업은 `createApplicationContext`를 사용하세요.
 
-기존 platform bootstrap/run helper와 host별 CLI recipe를 포함한 미이전
-소비자는 각 platform migration까지 유지됩니다. 이 helper도 별도 앱 구현이
-아니라 Factory를 사용하며 transport option과 host shutdown policy를 보존합니다.
+Platform bootstrap/run helper와 adapter 생성 자유 함수는 제거됩니다.
+각 platform의 공개 adapter class에서 static `create(options)`를 호출하고
+Factory에 전달한 뒤 `app.listen()`을 호출하세요. Host callback은 명시적으로 선택합니다.
 Body parsing, multipart/compression 설정, native middleware, connection drain,
 realtime binding은 계속 adapter가 소유합니다. Transport 전용 option을
 Factory로 옮기지 마세요.
+
+## Platform startup migration
+
+아래는 제거된 이전 API이며 호환 alias가 아닙니다.
+
+| Platform | Removed entrypoints | Adapter creation |
+| --- | --- | --- |
+| Fastify | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication` | `FastifyHttpApplicationAdapter.create(options)` |
+| Express | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication` | `ExpressHttpApplicationAdapter.create(options)` |
+| Node | `bootstrapNodeApplication`, `bootstrapNodejsApplication`, `runNodeApplication`, `runNodejsApplication` | `NodeHttpApplicationAdapter.create(options)` |
+| Bun | `createBunAdapter`, `bootstrapBunApplication`, `runBunApplication` | `BunHttpApplicationAdapter.create(options)` |
+| Deno | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication` | `DenoHttpApplicationAdapter.create(options)` |
+
+Adapter를 Factory에 전달합니다. Bootstrap-only 생성을 대체할 때는 listen을
+생략하고, run 호출을 대체할 때는 `app.listen()`까지 명시적으로 await합니다.
+Helper 전용 `Bootstrap*ApplicationOptions`, `Run*ApplicationOptions`, platform
+signal alias 대신 adapter options, `CreateApplicationOptions`, `NodeShutdownSignal`,
+`BunShutdownSignal`, `DenoShutdownSignal`을 사용합니다. Static factory는 concrete
+class를 반환하므로 adapter 고유 기능에 접근하기 위한 cast가 필요하지 않습니다.
+
+- Fastify/Express의 이전 두 번째 multipart 인자는 `options.multipart`로 옮깁니다.
+  TLS, raw-body, body limit, native middleware, drain 설정은 adapter에 유지하고,
+  CORS, prefix, application middleware, security headers, logger는 Factory로 옮깁니다.
+- Node/Fastify/Express는 `createNodeShutdownSignalRegistration(signals?)`, Bun은
+  `createBunShutdownSignalRegistration(signals?)`, Deno는
+  `createDenoShutdownSignalRegistration(signals?)`을 `shutdownRegistration`에 전달합니다.
+  이전 `shutdownSignals: false`처럼 host가 직접 소유하려면 callback을 생략합니다.
+- Bun direct adapter의 `shutdownTimeoutMs` 기본값은 10초입니다. 이전 managed
+  run의 기본 drain을 유지하려면 `shutdownTimeoutMs: 30_000`을 명시합니다.
+  이전 `forceExitTimeoutMs: t`를 보존하려면 adapter의 `shutdownTimeoutMs: t`와
+  Factory의 `forceExitTimeoutMs: t`를 각각 설정합니다. 두 bound는 별개입니다.
+  Node-family drain은 기본 10초, signal 완료는 30초이며 Deno drain은 10초입니다.
+  Deno의 `hostname`은 계속 `host`보다 우선합니다.
+- Bun/Deno standalone fetch handler와 Workers/Next.js host bridge는 유지하며
+  socket을 여는 managed starter로 바꾸지 않습니다.
 
 ## Defaults, order, and failures
 
@@ -126,7 +162,7 @@ Instance `listen`, `close`, `send`, `publish`를 static으로 옮기지 않습�
 provider/token 단계는 `create`와 `createApplicationContext`가 공유합니다.
 `bootstrapModule`은 두 메서드와 testing module builder가 사용하는 기존
 저수준 graph seam으로 유지됩니다. `http-adapter-shared.ts`의 integration
-함수는 Node, Fastify, Express, Bun, Deno, Workers, Next.js helper가 사용하며,
+함수는 Workers와 Next.js의 hosted lifecycle이 사용하며,
 이름을 바꿔 재노출한 public runtime HTTP 생성 대안이 아닙니다.
 
 자동 회귀는 `factory-lifecycle.test.ts`, `factory-public-types.test.ts`,

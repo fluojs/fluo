@@ -50,7 +50,9 @@ await app.listen();
 await app.close('manual');
 ```
 
-For Fastify or Express, change only the adapter import/configuration. Add a direct
+For Fastify or Express, change only the adapter import/configuration: use
+`FastifyHttpApplicationAdapter.create(options)` or
+`ExpressHttpApplicationAdapter.create(options)`. Add a direct
 `@fluojs/platform-nodejs` dependency when importing its logger or signal callback;
 do not rely on a transitive platform dependency. Node CLI starters now emit these
 direct dependencies and the same Factory recipe. Generated Node mixed starters
@@ -63,13 +65,47 @@ that path never installs signals. An adapterless HTTP shell remains usable for
 `app.dispatch()` before close; calling its `listen()` rejects as a usage error
 without disposing that shell. For DI-only work use `createApplicationContext`.
 
-Existing platform bootstrap/run helpers and their not-yet-migrated consumers,
-including host-specific CLI recipes, remain available until their platform
-migrations. They use Factory for HTTP creation rather than a second application
-implementation. Their transport options and host shutdown policies are retained.
+Platform bootstrap/run helpers and adapter creation free functions are removed.
+Use each platform's public adapter class static `create(options)` method, pass the
+result to Factory, and let the host install any shutdown callback.
 Body parsing, multipart/compression settings, native middleware, connection
 drain, and realtime bindings remain adapter-owned; do not move transport-only
 options into Factory.
+
+## Platform startup migration
+
+These are removed historical APIs, not compatibility aliases:
+
+| Platform | Removed entrypoints | Adapter creation |
+| --- | --- | --- |
+| Fastify | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication` | `FastifyHttpApplicationAdapter.create(options)` |
+| Express | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication` | `ExpressHttpApplicationAdapter.create(options)` |
+| Node | `bootstrapNodeApplication`, `bootstrapNodejsApplication`, `runNodeApplication`, `runNodejsApplication` | `NodeHttpApplicationAdapter.create(options)` |
+| Bun | `createBunAdapter`, `bootstrapBunApplication`, `runBunApplication` | `BunHttpApplicationAdapter.create(options)` |
+| Deno | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication` | `DenoHttpApplicationAdapter.create(options)` |
+
+Pass the adapter to Factory. Omit listen when replacing bootstrap-only creation;
+explicitly await `app.listen()` when replacing a run call. Replace helper-only
+`Bootstrap*ApplicationOptions`, `Run*ApplicationOptions`, and platform signal aliases
+with adapter options, `CreateApplicationOptions`, `NodeShutdownSignal`,
+`BunShutdownSignal`, or `DenoShutdownSignal`. Static factories return concrete
+classes, so their adapter-specific capabilities do not require casts.
+
+- Move the former second Fastify/Express multipart argument to `options.multipart`.
+  Keep TLS, raw-body, body limits, native middleware, and drain settings on adapters.
+  Move CORS, prefix, application middleware, security headers, and logger to Factory.
+- Supply `createNodeShutdownSignalRegistration(signals?)` for Node/Fastify/Express,
+  `createBunShutdownSignalRegistration(signals?)` for Bun, or
+  `createDenoShutdownSignalRegistration(signals?)` for Deno as `shutdownRegistration`.
+  Omit that callback for the host-owned behavior formerly selected by `shutdownSignals: false`.
+- Direct Bun adapters default `shutdownTimeoutMs` to 10 seconds. Select
+  `shutdownTimeoutMs: 30_000` to preserve the former managed run's default drain.
+  To preserve an old `forceExitTimeoutMs: t`, set both adapter `shutdownTimeoutMs: t`
+  and Factory `forceExitTimeoutMs: t`; these are now independent bounds.
+  Node-family drain defaults to 10 seconds and signal completion to 30 seconds.
+  Deno drain defaults to 10 seconds, and `hostname` continues to override `host`.
+- Retain standalone Bun/Deno fetch handlers and Workers/Next.js host bridges;
+  do not replace them with managed starters that open sockets.
 
 ## Defaults, order, and failures
 
@@ -126,8 +162,8 @@ No instance `listen`, `close`, `send`, or `publish` operation becomes static.
 and alias are deleted. Private lifecycle/provider/token stages are still shared
 by `create` and `createApplicationContext`. `bootstrapModule` remains the existing
 lower-level graph seam consumed by those methods and the testing module builder.
-The retained `http-adapter-shared.ts` integration functions serve Node, Fastify,
-Express, Bun, Deno, Workers, and Next.js helpers; they are not a renamed public
+The retained `http-adapter-shared.ts` integration functions serve Workers and
+Next.js hosted lifecycles; they are not a renamed public
 runtime HTTP creation alternative.
 
 Automated evidence lives in `factory-lifecycle.test.ts`,
