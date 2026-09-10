@@ -37,6 +37,12 @@ FLUO_E2E_NEXT_ROOT="$PWD/.omo/next-16.3" pnpm --filter @fluojs/platform-nextjs t
   하나의 bootstrap을 공유하는지, SSE와 실패 시 cleanup이 완료되는지 검증합니다.
 - Next build는 `next-config.types.ts`로 배포된 public option 타입을 검사합니다.
   Rule 순서·비변이·scope 조건은 `src/next-config.test.ts`가 담당합니다.
+- `public-api.types.ts`는 root의 static adapter 생성/accessor와 각 router subpath의
+  callback 타입을 실제 Next build에서 검사합니다. Preflight는 배포 JavaScript의
+  export 이름을 비교하고 adapter method 별칭이 없음을 검증합니다. Backend fixture는
+  `NextHttpApplicationAdapter.create()`와 lazy route facade만 사용합니다.
+  삭제한 import와 instance method의 negative declaration 회귀는
+  `src/head-routing-public-types.test.ts`가 담당합니다.
 
 Consumer config는 helper와 범위 선언만 사용합니다. Custom loader 경로나
 `type: 'ecmascript'` 규칙은 작성하지 않습니다. `preserveModulePaths`는

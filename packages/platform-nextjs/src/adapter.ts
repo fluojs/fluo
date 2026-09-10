@@ -10,11 +10,6 @@ import {
   startWebRequestDispatch,
 } from '@fluojs/runtime/web';
 
-import {
-  createLazyNextAdapterResolver,
-  type NextAdapterLoader,
-} from './lazy-adapter.js';
-
 const NOT_READY_PROBLEM = {
   code: 'next_backend_adapter_not_ready',
   status: 503,
@@ -44,27 +39,6 @@ export interface NextAdapterOptions {
   readonly headRouting?: 'explicit-or-get';
   readonly maxBodySize?: number;
   readonly rawBody?: boolean;
-}
-
-/** Bound Next-compatible Web request handler. */
-export type NextAppRouteHandler = (request: Request) => Promise<Response>;
-
-/** Method-keyed handler exports consumed by one App Router route module. */
-export interface NextAppRouterMethodHandlers {
-  /** Bound handler for Next.js `DELETE` exports. */
-  readonly DELETE: NextAppRouteHandler;
-  /** Bound handler for Next.js `GET` exports. */
-  readonly GET: NextAppRouteHandler;
-  /** Bound handler for Next.js `HEAD` exports. */
-  readonly HEAD: NextAppRouteHandler;
-  /** Bound handler for Next.js `OPTIONS` exports. */
-  readonly OPTIONS: NextAppRouteHandler;
-  /** Bound handler for Next.js `PATCH` exports. */
-  readonly PATCH: NextAppRouteHandler;
-  /** Bound handler for Next.js `POST` exports. */
-  readonly POST: NextAppRouteHandler;
-  /** Bound handler for Next.js `PUT` exports. */
-  readonly PUT: NextAppRouteHandler;
 }
 
 /** Invalid Next adapter setup option. */
@@ -106,6 +80,17 @@ function createProblemResponse(
  * Web-standard Fluo HTTP adapter hosted by a Next.js Route Handler.
  */
 export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
+  /**
+   * Create an independently owned Next-hosted adapter for `FluoFactory.create()`.
+   *
+   * @param options Web request parsing and opt-in HEAD routing options.
+   * @returns A new, unbound adapter instance.
+   * @throws InvalidNextAdapterOptionError When maxBodySize is not a non-negative safe integer.
+   */
+  static create(options: NextAdapterOptions = {}): NextHttpApplicationAdapter {
+    return new NextHttpApplicationAdapter(options);
+  }
+
   private closed = false;
   private dispatcher?: Dispatcher;
   private readonly headRouting;
@@ -149,7 +134,7 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
    * @param request Native Web request created by Next.js.
    * @returns Native Web response produced by the Fluo dispatcher.
    */
-  readonly fetch: NextAppRouteHandler = async (request) => {
+  readonly fetch = async (request: Request): Promise<Response> => {
     const isHead = request.method === 'HEAD' && this.headRouting === 'explicit-or-get';
     if (this.closed) {
       return createProblemResponse(SHUTDOWN_PROBLEM, isHead);
@@ -181,21 +166,6 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
     });
   };
 
-  /** Bound handler for Next.js `DELETE` exports. */
-  readonly DELETE = this.fetch;
-  /** Bound handler for Next.js `GET` exports. */
-  readonly GET = this.fetch;
-  /** Bound handler for Next.js `HEAD` exports. */
-  readonly HEAD = this.fetch;
-  /** Bound handler for Next.js `OPTIONS` exports. */
-  readonly OPTIONS = this.fetch;
-  /** Bound handler for Next.js `PATCH` exports. */
-  readonly PATCH = this.fetch;
-  /** Bound handler for Next.js `POST` exports. */
-  readonly POST = this.fetch;
-  /** Bound handler for Next.js `PUT` exports. */
-  readonly PUT = this.fetch;
-
   /**
    * Declare that App Router handlers do not own raw WebSocket upgrades.
    *
@@ -217,45 +187,3 @@ export class NextHttpApplicationAdapter implements HttpApplicationAdapter {
     this.dispatcher = dispatcher;
   }
 }
-
-/**
- * Create a Next-hosted Fluo HTTP adapter.
- *
- * @param options Web request parsing and opt-in HEAD routing options.
- * @returns A new adapter instance.
- */
-export function createNextAdapter(
-  options: NextAdapterOptions = {},
-): NextHttpApplicationAdapter {
-  return new NextHttpApplicationAdapter(options);
-}
-
-/**
- * Create App Router method exports that lazily import a bootstrapped adapter.
- *
- * @param loadAdapter Dynamic backend module loader.
- * @returns Method-keyed handlers shared by every supported App Router method,
- * ready for destructuring into named route module exports.
- */
-export function createNextAppRouterHandler(
-  loadAdapter: NextAdapterLoader,
-): NextAppRouterMethodHandlers {
-  const resolveAdapter = createLazyNextAdapterResolver(loadAdapter);
-
-  const handler: NextAppRouteHandler = async (request) => {
-    const adapter = await resolveAdapter();
-    return adapter.fetch(request);
-  };
-
-  return {
-    DELETE: handler,
-    GET: handler,
-    HEAD: handler,
-    OPTIONS: handler,
-    PATCH: handler,
-    POST: handler,
-    PUT: handler,
-  };
-}
-
-export type { NextAdapterLoader } from './lazy-adapter.js';

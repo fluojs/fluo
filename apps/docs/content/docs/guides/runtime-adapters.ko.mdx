@@ -57,13 +57,14 @@ Next.js 16.x의 Node.js host에서 GET-only Fluo route에 HEAD를 연결하려�
 adapter가 제공하는 opt-in을 사용합니다.
 
 ```ts
-import { createNextAdapter } from '@fluojs/platform-nextjs';
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
 
-const nextAdapter = createNextAdapter({ headRouting: 'explicit-or-get' });
+const nextAdapter = NextHttpApplicationAdapter.create({ headRouting: 'explicit-or-get' });
 ```
 
-표준 lazy `createNextAppRouterHandler(...)` facade에서 `GET`만 export하면 Next가
-자동 HEAD로 호출하고, `HEAD`도 export하면 직접 호출합니다. 양쪽 모두 Fluo의
+`createNextAppRouterHandler`는 `@fluojs/platform-nextjs/app-router`에서 import합니다.
+이 표준 lazy facade에서 `GET`만 export하면 Next가 자동 HEAD로 호출하고,
+`HEAD`도 export하면 직접 호출합니다. 양쪽 모두 Fluo의
 명시적 HEAD, ALL method wildcard, GET 순서로 route를 한 번 선택하며
 handler가 반환한 404는 재시도하지 않습니다. Status와 header를 보존하면서 body를
 제거하고 stream cancellation과 request cleanup을 기다립니다.

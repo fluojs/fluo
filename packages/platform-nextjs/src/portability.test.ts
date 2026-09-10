@@ -2,13 +2,13 @@ import { type CreateApplicationOptions, FluoFactory } from '@fluojs/runtime';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { describe, it } from 'vitest';
 
-import { createNextAdapter, type NextAdapterOptions } from './adapter.js';
+import { type NextAdapterOptions, NextHttpApplicationAdapter } from './index.js';
 
 type BootstrapOptions = Omit<CreateApplicationOptions, 'adapter'> & NextAdapterOptions;
 
 const portability = createWebRuntimeHttpAdapterPortabilityHarness<BootstrapOptions>({
   async bootstrap(rootModule, { maxBodySize, rawBody, ...options }) {
-    const adapter = createNextAdapter({ maxBodySize, rawBody });
+    const adapter = NextHttpApplicationAdapter.create({ maxBodySize, rawBody });
     const app = await FluoFactory.create(rootModule, { ...options, adapter });
     await app.listen();
 

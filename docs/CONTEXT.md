@@ -118,6 +118,15 @@ See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0
 
 ## Next.js Hosting
 
+For canonical imports, start at the [Next public API and migration owner](../packages/platform-nextjs/README.md#api-migration):
+root `NextHttpApplicationAdapter.create(options)` and `defineNextApplication`,
+App/Pages lazy bridges on `/app-router` and `/pages-router`, compiler on
+`/next-config`. Adapter method aliases are removed; Next route exports remain.
+Public declaration/JavaScript ownership is exercised by
+`packages/platform-nextjs/src/head-routing-public-types.test.ts`; real App/Pages
+build/start/request evidence lives in the package E2E. Code-fence import checks
+run through `tooling/governance/nextjs-public-imports.mjs` and its regression suite.
+
 [`@fluojs/platform-nextjs`](../packages/platform-nextjs/README.md) hosts Fluo in
 Next.js 16.x App Router and Pages Router on Node.js `>=24.0.0 <27`, using
 `@fluojs/runtime` 3 and the packaged Turbopack decorator loader. Backends bootstrap

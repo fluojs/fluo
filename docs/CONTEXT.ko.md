@@ -118,6 +118,15 @@ Root와 Node-bound package의 `>=24.0.0 <27` 분류, 8개 portable omission, exa
 
 ## Next.js 호스팅
 
+Canonical import는 [Next 공개 API와 migration 소유 문서](../packages/platform-nextjs/README.ko.md#api-migration)에서 시작하세요.
+Root의 `NextHttpApplicationAdapter.create(options)`와 `defineNextApplication`,
+`/app-router`와 `/pages-router`의 lazy bridge, `/next-config`의 compiler로 나뉩니다.
+Adapter method 별칭은 제거하지만 Next route export는 유지합니다.
+공개 declaration/JavaScript 소유권은
+`packages/platform-nextjs/src/head-routing-public-types.test.ts`, 실제 App/Pages
+build/start/request는 package E2E가 검증합니다. Code fence의 import 검사는
+`tooling/governance/nextjs-public-imports.mjs`와 해당 회귀 suite로 실행합니다.
+
 [`@fluojs/platform-nextjs`](../packages/platform-nextjs/README.ko.md)는
 Node.js `>=24.0.0 <27`의 Next.js 16.x App Router와 Pages Router에서 Fluo를
 호스팅하며 `@fluojs/runtime` 3과 패키지에 포함된 Turbopack 데코레이터 로더를

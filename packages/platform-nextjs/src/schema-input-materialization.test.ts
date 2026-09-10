@@ -3,18 +3,19 @@ import {
   Controller,
   createSchemaDto,
   Get,
+  type GuardContext,
   Head,
   Post,
   RequestDto,
   StandardSchemaBinder,
   UnauthorizedException,
   UseGuards,
-  type GuardContext,
 } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createNextAdapter, createNextAppRouterHandler } from './index.js';
+import { createNextAppRouterHandler } from './app-router.js';
+import { NextHttpApplicationAdapter } from './index.js';
 
 describe('schema input through the public Next App Router adapter', () => {
   it('preserves bounded parsing, raw guards, native query arrays and original HEAD semantics', async () => {
@@ -101,7 +102,7 @@ describe('schema input through the public Next App Router adapter', () => {
     }
     @Module({ controllers: [Posts], providers: [Inspect] })
     class App {}
-    const adapter = createNextAdapter({
+    const adapter = NextHttpApplicationAdapter.create({
       headRouting: 'explicit-or-get',
       rawBody: true,
       maxBodySize: 128,

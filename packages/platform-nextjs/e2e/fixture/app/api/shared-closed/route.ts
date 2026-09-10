@@ -1,4 +1,4 @@
-import { createNextAppRouterHandler } from '@fluojs/platform-nextjs';
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 
 import { getApplication } from '../../../shared-application';
 

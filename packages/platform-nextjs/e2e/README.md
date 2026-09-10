@@ -38,6 +38,12 @@ peer range floor. This is not a claim that every 16.x patch was tested.
   one bootstrap per bundle, and SSE/error cleanup must complete.
 - Next build checks shipped public option types through `next-config.types.ts`.
   `src/next-config.test.ts` covers rule order, non-mutation, and scope conditions.
+- `public-api.types.ts` checks root static adapter creation/accessors and each
+  router subpath's callback types in the actual Next build. Preflight compares
+  distributed JavaScript export names and verifies the absence of adapter method
+  aliases. Backend fixtures use only `NextHttpApplicationAdapter.create()` and
+  lazy route facades. Negative declaration regressions for removed imports and
+  instance methods live in `src/head-routing-public-types.test.ts`.
 
 Consumer configuration uses only the helper and scope declarations. It does not
 manually resolve loaders or configure `type: 'ecmascript'`.

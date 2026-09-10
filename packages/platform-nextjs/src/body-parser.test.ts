@@ -1,12 +1,13 @@
 import { Module } from '@fluojs/core';
 import {
-  BadRequestException, Controller, type BodyParser, type BodyParserContext,
+  BadRequestException, type BodyParser, type BodyParserContext, Controller,
   type GuardContext, Post, type RequestContext, UnauthorizedException, UseGuards,
 } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import bodyParserCases from '../../../tooling/testing/body-parser-cases.json';
-import { createNextAdapter, createNextAppRouterHandler } from './adapter.js';
+import { createNextAppRouterHandler } from './app-router.js';
+import { NextHttpApplicationAdapter } from './index.js';
 
 class AuthGuard {
   canActivate({ requestContext }: GuardContext) {
@@ -36,7 +37,7 @@ class PostsModule {}
 
 describe('Next bounded body parser conformance', () => {
   it.each(bodyParserCases)('preserves %j and %s through the App Router facade', async (body, mime) => {
-    const adapter = createNextAdapter({ bodyParser: 'text', rawBody: true });
+    const adapter = NextHttpApplicationAdapter.create({ bodyParser: 'text', rawBody: true });
     const app = await FluoFactory.create(PostsModule, { adapter });
     try {
       await app.listen();
@@ -58,11 +59,11 @@ describe('Next bounded body parser conformance', () => {
   it.each([
     [undefined, undefined, 400], ['text', undefined, 401], ['text', 'Bearer test', 400],
   ] as const)('makes the auth/JSON boundary explicit for %s and %s', async (bodyParser, authorization, status) => {
-    const adapter = createNextAdapter({ bodyParser });
+    const adapter = NextHttpApplicationAdapter.create({ bodyParser });
     const app = await FluoFactory.create(PostsModule, { adapter });
     try {
       await app.listen();
-      const response = await adapter.POST(new Request('https://next.test/posts/auth', {
+      const response = await adapter.fetch(new Request('https://next.test/posts/auth', {
         method: 'POST', body: '{',
         headers: { 'content-type': 'application/json', ...(authorization ? { authorization } : {}) },
       }));
@@ -76,12 +77,12 @@ describe('Next bounded body parser conformance', () => {
       if (context.path === '/posts/auth') throw new BadRequestException('Parser precedes auth');
       return { custom: text };
     });
-    const adapter = createNextAdapter({ bodyParser, maxBodySize: 3 });
+    const adapter = NextHttpApplicationAdapter.create({ bodyParser, maxBodySize: 3 });
     const app = await FluoFactory.create(PostsModule, { adapter });
     try {
       await app.listen();
       for (const [path, body, status] of [['text', '한', 201], ['text', '한a', 413], ['auth', '{', 400]] as const) {
-        const response = await adapter.POST(new Request(`https://next.test/posts/${path}`, {
+        const response = await adapter.fetch(new Request(`https://next.test/posts/${path}`, {
           method: 'POST', body, headers: { 'content-type': 'application/json' },
         }));
         expect(response.status).toBe(status);

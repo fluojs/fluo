@@ -29,8 +29,8 @@
       "import": "./dist/index.js"
     },
     "./app-router": {
-      "types": "./dist/adapter.d.ts",
-      "import": "./dist/adapter.js"
+      "types": "./dist/app-router.d.ts",
+      "import": "./dist/app-router.js"
     },
     "./decorators-loader": "./decorators-loader.cjs",
     "./next-config": {
