@@ -15,6 +15,21 @@ function createExecutionContext(): CloudflareWorkerExecutionContext {
 }
 
 describe('CloudflareWorkerApplicationHost', () => {
+  it('keeps a module with a fromEnv static member on the fixed-module path', async () => {
+    class AppModule {
+      static fromEnv() {
+        throw new Error('A module static member is not host configuration.');
+      }
+    }
+    defineModule(AppModule, {});
+    const host = CloudflareWorkerApplicationHost.create(AppModule);
+    try {
+      await expect(host.ready()).resolves.toHaveProperty('adapter');
+    } finally {
+      await host.close();
+    }
+  });
+
   it('creates no-socket Worker generations through the canonical static factories', async () => {
     @Controller('/health')
     class HealthController {

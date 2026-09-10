@@ -402,7 +402,7 @@ export class CloudflareWorkerApplicationHost<
     rootModuleOrConfiguration: ModuleType | { readonly fromEnv: CloudflareWorkerHostFactory<Env> },
     options: CloudflareWorkerApplicationHostOptions = {},
   ): CloudflareWorkerApplicationHost<Env, CloudflareWorkerHostMode> {
-    if ('fromEnv' in rootModuleOrConfiguration) {
+    if (typeof rootModuleOrConfiguration === 'object' && 'fromEnv' in rootModuleOrConfiguration) {
       return new CloudflareWorkerApplicationHost<Env, 'environment'>(
         (env) => {
           if (env === undefined) {
