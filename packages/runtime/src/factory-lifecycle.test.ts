@@ -242,6 +242,50 @@ describe('canonical HTTP factory lifecycle', () => {
     expect(registration).not.toHaveBeenCalled();
   });
 
+  it('shares teardown and failure when host unregistration synchronously re-enters close', async () => {
+    // Given an unregister callback that re-enters before the outer close returns.
+    const entered = deferred();
+    const release = deferred();
+    const failure = new Error('host unregistration failed');
+    const calls: Promise<void>[] = [];
+    const closeAdapter = vi.fn(async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    const unregister = vi.fn((application: { close(signal?: string): Promise<void> }) => {
+      calls.push(application.close('reentrant'));
+      throw failure;
+    });
+    class AppModule {}
+    defineModule(AppModule, {});
+    const app = await FluoFactory.create(AppModule, {
+      adapter: { close: closeAdapter, listen() {} },
+      logger: logger(),
+      shutdownRegistration: (application) => () => unregister(application),
+    });
+    await app.listen();
+
+    // When the outer close synchronously triggers that callback.
+    calls.push(app.close('outer'));
+    const results = Promise.allSettled(calls);
+    try {
+      await entered.promise;
+      expect(calls).toHaveLength(2);
+      expect(closeAdapter).toHaveBeenCalledExactlyOnceWith('outer');
+    } finally {
+      release.resolve();
+    }
+
+    // Then both callers observe the same failure after one completed teardown.
+    expect(await results).toEqual([
+      { status: 'rejected', reason: failure },
+      { status: 'rejected', reason: failure },
+    ]);
+    expect(unregister).toHaveBeenCalledOnce();
+    expect(closeAdapter).toHaveBeenCalledOnce();
+    expect(app.state).toBe('closed');
+  }, 5_000);
+
   it('infers PublicToken values and preserves class identity before closing an unstarted host-owned app', async () => {
     // Given
     const token = publicToken<{ value: number }>('factory.test.value');
