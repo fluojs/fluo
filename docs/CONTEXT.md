@@ -120,7 +120,7 @@ Static delivery is a portable `@fluojs/http` middleware contract, documented in 
 
 The [Node 24 migration guide](./getting-started/migrate-node24.md) owns upcoming coordinated-release preparation and the Node, packages, then imports order. Of the actual 42 public manifests, 41 stable packages have explicit major intent and `@fluojs/react` has 0.x minor intent. Publication is maintainer-owned; #3169 remains the umbrella until the user-run release.
 
-See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0 <27` classification, eight portable omissions, exact/latest CI evidence, and consumer migration. `tooling/governance/node-support-classification.test.ts` and `pnpm test:node-floor` verify these boundaries.
+See [Node.js Support](./reference/node-support.md) for root/Node-bound `>=24.0.0 <27` classification, eight portable omissions, exact/latest CI evidence, and consumer migration. `.github/workflows/node-verification.yml` verifies the full build, typecheck, lint, sharded tests, and generated starters on all three Node versions, with one docs verification on latest `24.x`. `tooling/ci/node-verification-workflow.test.ts` verifies the execution topology, build artifact transfer, and failure-blocking aggregate gate. `tooling/governance/node-support-classification.test.ts` and the local focused `pnpm test:node-floor` command check support boundaries without replacing full CI.
 
 `@fluojs/cqrs` requires Node.js `>=24.0.0 <27` as its package-owned support contract. This is the verified Node listener support window: Node.js versions below 24 and Node.js 27+ are excluded. See [`packages/cqrs/README.md`](../packages/cqrs/README.md) and [Package Surface](./reference/package-surface.md) for the consumer contract.
 
