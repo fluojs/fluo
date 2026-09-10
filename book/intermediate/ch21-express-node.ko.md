@@ -45,15 +45,12 @@ npm install @fluojs/platform-express express
 Express 전환은 애플리케이션 계층이 NestJS metadata semantics에서 벗어난 뒤에만 진행하세요. 진입점에서 HTTP adapter를 바꾸기 전에 controller와 provider가 TC39 표준 데코레이터, class-level `@Inject(...)`, 명시적 DI/module wiring을 사용해야 합니다. 이 migration을 완료한 뒤에는 business logic을 유지하면서 host engine boundary만 교체할 수 있지만, adapter 변경만으로 NestJS legacy decorator, reflection metadata, implicit dependency discovery가 보존되지는 않습니다.
 
 ```typescript
-import {
-  createExpressAdapter,
-  ExpressHttpApplicationAdapter,
-} from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const adapter = createExpressAdapter({
+  const adapter = ExpressHttpApplicationAdapter.create({
     port: 3000,
     rawBody: true
   });
@@ -62,10 +59,6 @@ async function bootstrap() {
 
   await app.listen();
 
-  if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
-    throw new TypeError('Expected the Express adapter factory to return the Express implementation');
-  }
-
   // OS가 할당한 port까지 포함한 실제 target은 startup 뒤에 확인합니다.
   const { bindTarget, url } = adapter.getListenTarget();
   console.log(`Listening on ${url} (${bindTarget})`);
@@ -73,7 +66,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. Express 전용 `getListenTarget()` helper에 접근하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper는 startup 이후 해석된 bind target과 public URL을 보고합니다. `getServer()`는 adapter가 소유한 `node:http` `Server` 또는 `node:https` `Server` union을 반환합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
+`ExpressHttpApplicationAdapter.create()`는 concrete Express adapter를 반환하므로 `getListenTarget()`을 위해 `instanceof` narrowing이 필요하지 않습니다. 이 helper는 startup 이후 해석된 bind target과 public URL을 보고합니다. `getServer()`는 adapter가 소유한 `node:http` `Server` 또는 `node:https` `Server` union을 반환합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
 
 Adapter는 기존 Express application을 채택하거나 재사용하지 않고 Express application을 직접 생성하고 소유합니다. Existing-app adoption은 지원하지 않습니다. Native handler는 construction-time `nativeMiddleware`로 제공해야 합니다. bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않습니다. 이식 가능한 동작은 fluo `Middleware`로 재작성하는 방식을 우선하세요.
 
@@ -91,7 +84,7 @@ const compressionHeaders: Middleware = {
   },
 };
 
-const adapter = createExpressAdapter();
+const adapter = ExpressHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, {
   adapter,
   middleware: [compressionHeaders],
@@ -108,7 +101,7 @@ const legacyHeaders: RequestHandler = (_request, response, next) => {
   next();
 };
 
-const adapter = createExpressAdapter({
+const adapter = ExpressHttpApplicationAdapter.create({
   nativeMiddleware: [legacyHeaders],
   port: 3000,
 });
@@ -251,14 +244,14 @@ FluoShop을 Express로 옮길 때 핵심 host 변경 지점은 `main.ts`이지�
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 // apps/fluoshop-api/src/main.ts
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   const host = '127.0.0.1';
   const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
   const app = await FluoFactory.create(AppModule, {
-    adapter: createExpressAdapter({
+    adapter: ExpressHttpApplicationAdapter.create({
       host,
       port,
     }),
@@ -278,18 +271,18 @@ bootstrap().catch(err => {
 
 Route prefix는 변경 가능한 `Application` state가 아니라 Express bootstrap configuration에 속합니다. 또한 이 예제는 `Application`에 listener URL 탐색을 요청하는 대신 직접 설정한 고정 host와 port를 출력합니다. 여기서 중요한 점은 Fastify가 요청을 처리하든 Express가 처리하든 `@FromBody()`, `@FromPath()`, `@FromQuery()` 같은 바인딩 데코레이터가 같은 계약으로 동작한다는 것입니다. fluo의 내부 디스패처가 어댑터의 네이티브 요청 형식과 표준 fluo 컨텍스트 사이의 변환을 담당합니다. DTO 검증은 여전히 `@fluojs/validation` 계약을 따릅니다. HTTP binder가 선택한 요청 source에서 DTO instance를 구성한 뒤, validation adapter가 설정된 validator를 통해 `@fluojs/validation` rule을 적용하고 나서 비즈니스 로직이 타입 있는 DTO를 보게 합니다. Nest 스타일 전역 `ValidationPipe`를 설치하지 않습니다.
 
-## 21.6 Advanced: The `run` Helpers
+## 21.6 Canonical startup and signals
 
-HTTP 앱 생성은 `FluoFactory.create(AppModule, { adapter })`로 통일하고 Node signal은 `createNodeShutdownSignalRegistration()`으로 연결한다. 기존 platform run helper는 미이전 소비자를 위해 유지되지만 아래 새 예제는 Factory를 사용한다.
+HTTP 앱 생성은 `FluoFactory.create(AppModule, { adapter })`로 통일하고 Node signal은 `createNodeShutdownSignalRegistration()`으로 연결한다. 현재 recipe에는 platform run helper가 없다.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app.module';
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({
+  adapter: ExpressHttpApplicationAdapter.create({
     port: 3000,
   }),
   globalPrefix: 'api',

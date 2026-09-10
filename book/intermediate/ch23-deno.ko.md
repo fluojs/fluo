@@ -49,16 +49,25 @@ deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 
 ### 23.2.2 Bootstrapping FluoShop on Deno
 
-Deno의 진입점은 모듈 해석과 권한 모델 때문에 Node.js 진입점과 다르게 보입니다. fluo는 이 차이를 감추기보다 명확한 실행 경계로 다루기 위해 `runDenoApplication` 헬퍼를 제공합니다.
+Deno의 진입점은 모듈 해석과 권한 모델 때문에 Node.js 진입점과 다르게 보입니다. 현재 recipe는 이 차이를 concrete adapter와 명시적인 Factory 경계로 다룹니다.
 
 ```typescript
 // main.ts
-import { runDenoApplication } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoShutdownSignalRegistration,
+} from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-await runDenoApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '0.0.0.0',
+    port: 3000,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 이 애플리케이션을 실행하려면 필요한 권한을 명시적으로 제공해야 합니다. Deno에서는 이 권한 목록이 운영 계약의 일부가 됩니다.
@@ -76,11 +85,14 @@ deno run --allow-net main.ts
 Deno는 웹 표준을 기반으로 구축되었기 때문에 fluo의 내부 디스패처와 자연스럽게 맞물립니다. FluoShop이 커스텀 routing 또는 다른 fetch handler와 host-owned `Deno.serve(...)` process를 공유해야 한다면 `app.listen()` 없이 application을 bootstrap하고 public dispatcher에서 handler를 생성하세요.
 
 ```typescript
-import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoFetchHandler,
+} from '@fluojs/platform-deno';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-const adapter = createDenoAdapter();
+const adapter = DenoHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,
@@ -223,12 +235,15 @@ Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";
-import { createDenoAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
+import {
+  DenoHttpApplicationAdapter,
+  createDenoFetchHandler,
+} from "npm:@fluojs/platform-deno";
 import { FluoFactory } from "npm:@fluojs/runtime";
 import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
-  const adapter = createDenoAdapter();
+  const adapter = DenoHttpApplicationAdapter.create();
   const app = await FluoFactory.create(AppModule, { adapter });
   const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });
 

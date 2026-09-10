@@ -123,12 +123,12 @@ Always start bootstrap with an explicit adapter, and pass process-based configur
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.module';
 
 // Production bootstrap example in main.ts
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     port: 3000,
   }),
 });
@@ -136,7 +136,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-If the Fastify process, rather than an ingress or load balancer, owns TLS directly, pass the same certificate material through the adapter's `https` startup surface. Load certificate and private-key values through your application configuration or secret manager first, then hand the final values to `createFastifyAdapter(...)`.
+If the Fastify process, rather than an ingress or load balancer, owns TLS directly, pass the same certificate material through the adapter's `https` startup surface. Load certificate and private-key values through your application configuration or secret manager first, then hand the final values to the one options object of `FastifyHttpApplicationAdapter.create({ ... })`.
 
 ```typescript
 const tlsOptions = {
@@ -145,7 +145,7 @@ const tlsOptions = {
 };
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '0.0.0.0',
     https: tlsOptions,
     port: 3443,
@@ -155,7 +155,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https` option. If TLS terminates before the Node.js process, leave `https` unset and keep the adapter on plain HTTP behind that trusted boundary.
+If TLS terminates before the Node.js process, leave `https` unset and keep `FastifyHttpApplicationAdapter` on plain HTTP behind that trusted boundary.
 
 ## 21.6 Deep Dive: CI/CD Pipeline
 Production configuration becomes more reliable when it runs through an automated pipeline. Continuous Integration (CI) and Continuous Deployment (CD) make sure every change is tested and deployed through a consistent process.

@@ -140,11 +140,11 @@ At first, one Fastify entry file is enough. The following `src/main.ts` is the c
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app.js';
 
 export const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
     rawBody: true,
@@ -163,9 +163,9 @@ To compare the three adapters, a small program that observes requests and respon
 ```typescript
 import assert from 'node:assert/strict';
 import { Server } from 'node:http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
@@ -177,9 +177,9 @@ const options = {
 };
 
 const factories = [
-  ['fastify', () => createFastifyAdapter(options)],
+  ['fastify', () => FastifyHttpApplicationAdapter.create(options)],
   ['nodejs', () => NodeHttpApplicationAdapter.create(options)],
-  ['express', () => createExpressAdapter(options)],
+  ['express', () => ExpressHttpApplicationAdapter.create(options)],
 ] as const;
 
 for (const [name, createAdapter] of factories) {
@@ -266,7 +266,7 @@ If all you need to keep from the existing Express code is request tagging, the f
 
 ```typescript
 import type { RequestHandler } from 'express';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
@@ -276,7 +276,7 @@ const legacyTag: RequestHandler = (_request, response, next) => {
 };
 
 export const app = await FluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({
+  adapter: ExpressHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
     rawBody: true,

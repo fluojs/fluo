@@ -158,7 +158,7 @@ Here, we expose the application's single configuration globally. `ConfigModule` 
 
 This time, we need the port before creating the adapter, so we validate once with `loadConfig` and register the result. The public return type of `loadConfig` is a general configuration dictionary. The `as BlogConfig` here does not replace input validation; it expresses the correspondence between the output of the `BlogConfigSchema` just executed and its type. Do not apply the same assertion to raw environment variables. We freeze the result, whose fields are all primitive values, and pass only this snapshot to DI so the files are not read twice. Nor do we apply a string-input schema again to a port that is already a number.
 
-Registration and validation happen at different times. `ConfigModule.forRoot(...)` registers providers synchronously; in an ordinary schema registration, bootstrap loads configuration when resolving `ConfigService` and validates it synchronously before listen. Here, explicit `loadConfig(...)` runs while this module evaluates, so validation happens earlier. A schema failure is `INVALID_CONFIG`: the dynamic import below fails before reaching `runFastifyApplication`. Do not confuse this flow, which registers an already validated snapshot, with a claim that calling `forRoot` alone finishes file loading.
+Registration and validation happen at different times. `ConfigModule.forRoot(...)` registers providers synchronously; in an ordinary schema registration, bootstrap loads configuration when resolving `ConfigService` and validates it synchronously before listen. Here, explicit `loadConfig(...)` runs while this module evaluates, so validation happens earlier. A schema failure is `INVALID_CONFIG`: the dynamic import below fails before reaching `FluoFactory.create()`. Do not confuse this flow, which registers an already validated snapshot, with a claim that calling `forRoot` alone finishes file loading.
 
 Import `AppSettingsModule` into the existing `AppModule` in `src/app.ts` and add it to `imports`. The following shows composition with the existing modules, not a file that replaces all HTTP configuration. `PostsModule` is the `src/posts/posts.module.ts` built in the previous chapters. Keep the generated greeting and health registrations and existing features, and compose the original config registration into this snapshot path rather than leaving a second configuration source that reads the same keys again.
 
@@ -173,20 +173,20 @@ import { PostsModule } from './posts/posts.module.js';
 export class AppModule {}
 ```
 
-Now connect the actual startup port. The following is a minimal, complete `src/main.ts` using this configuration. If you added middleware or request handling options in earlier chapters, retain them in the same helper's options. The decorated application graph is imported dynamically after preparing the metadata symbol, so preparation does not happen too late for the response model decorators. Merely placing a static import below `ensureMetadataSymbol()` cannot establish this order: that import evaluates before the entrypoint body.
+Now connect the actual startup port. The following is a minimal, complete `src/main.ts` using this configuration. If you added middleware or request handling options in earlier chapters, retain them in the static factory's one options object. The decorated application graph is imported dynamically after preparing the metadata symbol, so preparation does not happen too late for the response model decorators. Merely placing a static import below `ensureMetadataSymbol()` cannot establish this order: that import evaluates before the entrypoint body.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { blogConfig } = await import('./config/app-settings.module.js');
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: blogConfig.PORT,
   }),
@@ -338,6 +338,6 @@ This chapter explains the Docs configuration and startup order through a single 
 - [Contract tests for multiple env files, empty lists, and watch](../../packages/config/src/load-env-file-paths.test.ts)
 - [Object and array merge contract tests](../../packages/config/src/load-merge-contract.test.ts)
 - [Startup ordering contract for configuration snapshots and HTTP adapters](../../docs/getting-started/migrate-from-nestjs.md)
-- [Fastify startup options and the `runFastifyApplication` implementation](../../packages/platform-fastify/src/adapter.ts)
+- [Fastify static factory and startup options](../../packages/platform-fastify/src/adapter.ts)
 
 [Previous: Building an API Contract Users Can Understand](./ch08-api-contracts.md) - [Volume 1 Contents](./toc.md) - [Next: Moving Posts from Memory to the Database](./ch10-prisma-persistence.md)

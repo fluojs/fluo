@@ -73,7 +73,7 @@ The following is a **complete file** to replace `src/main.ts` in the generated p
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { AppModule } from './app';
 
 function readPort(value: string | undefined): number {
@@ -92,7 +92,7 @@ function readPort(value: string | undefined): number {
 }
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: readPort(process.env.PORT),
     retryLimit: 0,
@@ -113,7 +113,7 @@ This file makes FluoBlog's input policy stricter; it does not describe the CLI's
 
 `FluoFactory.create()` initializes the app; `app.listen()` awaits adapter activation and optional Node signal registration. Keep creation distinct from listening and await both calls. New Node/Fastify CLI starters use this same path.
 
-Passing `createFastifyAdapter()` to `FluoFactory.create()` is the common HTTP recipe. Factory owns the CORS, prefix, default security headers, and caller middleware order and cleans creation/startup failures. CORS/prefix default off; security headers default on with a `false` opt-out. The host explicitly selects only the Node logger and signal callback.
+Passing `FastifyHttpApplicationAdapter.create()` to `FluoFactory.create()` is the common HTTP recipe. Factory owns the CORS, prefix, default security headers, and caller middleware order and cleans creation/startup failures. CORS/prefix default off; security headers default on with a `false` opt-out. The host explicitly selects only the Node logger and signal callback.
 
 Here, Node/Fastify owns the socket listener. In apps attached to Workers or Next.js, the host owns request forwarding and shutdown, and activation does not necessarily open a new socket. Do not turn the shared name `listen` into a port or signal requirement for every environment. The context experiment uses the same class with its distinct context-only method.
 

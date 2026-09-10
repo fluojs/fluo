@@ -379,7 +379,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { createCorrelationMiddleware } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
@@ -387,7 +387,7 @@ const { blogConfig } = await import('./config/app-settings.module.js');
 const { blogAccessObserver } = await import('./observability/access-log.js');
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: blogConfig.PORT,
     maxBodySize: 6 * 1024 * 1024,

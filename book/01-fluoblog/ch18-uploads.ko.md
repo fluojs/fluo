@@ -37,7 +37,7 @@ DTO에는 `@FromFiles('file')`을 사용한다. 단수 이름을 주어도 반�
 
 `accept`는 파일 선택기를 돕는 힌트일 뿐 검증이 아니다. 일반 첨부파일도 받기 때문에 위 입력에는 형식 제한을 두지 않았다. `Content-Type` 헤더에 multipart boundary를 수동으로 적지 않는다. 브라우저가 파일과 텍스트 part에 맞는 경계를 만든다. API 클라이언트에서도 `FormData`를 쓰면서 JSON용 헤더를 재사용하면 요청이 파싱되지 않을 수 있다.
 
-전송 단계의 제한은 컨트롤러보다 앞에 있어야 한다. 다음은 기존 Node24 `src/main.ts`의 `runFastifyApplication` 두 번째 인자 안에 합치는 **설정 부분 구현**이다. 같은 키가 이미 있으면 아래 값으로 교체하며 호출을 하나 더 만들지 않는다. 기존 `port: blogConfig.PORT`, host, 로그·종료 설정과 `ensureMetadataSymbol()` 뒤의 동적 `AppModule` import는 그대로 둔다. 포트를 3000으로 하드코딩한 새 부트스트랩으로 바꾸지 않는다. `multipart` 옵션의 위치는 helper와 `createFastifyAdapter` 직접 호출에서 다르다. 직접 생성할 때는 multipart 옵션을 두 번째 인자로 전달한다.
+전송 단계의 제한은 컨트롤러보다 앞에 있어야 한다. 다음은 기존 Node24 `src/main.ts`의 `FastifyHttpApplicationAdapter.create({ ... })` 한 options 객체에 합치는 **설정 부분 구현**이다. 같은 키가 이미 있으면 아래 값으로 교체하며 adapter를 하나 더 만들지 않는다. 기존 `port: blogConfig.PORT`, host, `createConsoleApplicationLogger()`, `shutdownRegistration: createNodeShutdownSignalRegistration()`과 `ensureMetadataSymbol()` 뒤의 동적 `AppModule` import는 그대로 둔다. 포트를 3000으로 하드코딩한 새 부트스트랩으로 바꾸지 않는다. static factory에서는 `multipart`도 같은 options 객체의 필드다.
 
 ```ts
 maxBodySize: 6 * 1024 * 1024,

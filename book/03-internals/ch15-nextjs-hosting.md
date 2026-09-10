@@ -161,7 +161,7 @@ export const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-Here, `listen()` does not open a port. Next owns the socket, and the adapter provides a bound Web handler. Putting Chapter 13's `runFastifyApplication()` in this file creates an unnecessary second server and signal owner. This is why simply importing the existing main file fails as an approach.
+Here, `listen()` does not open a port. Next owns the socket, and the adapter provides a bound Web handler. Putting a socket-owning Fastify startup recipe in this file creates an unnecessary second server and signal owner. This is why simply importing the existing main file fails as an approach.
 
 The following complete `app/api/[[...path]]/route.ts` dynamically imports the backend on the first request. The `../../../src/backend` path goes up three levels from this file's directory to the project root.
 

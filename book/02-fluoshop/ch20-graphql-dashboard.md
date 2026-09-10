@@ -434,13 +434,13 @@ The **small registration change to the existing `src/app.ts`** is to add the fol
 import { DashboardModule } from './orders/dashboard/module.js';
 ```
 
-The **small bootstrap change to the existing `src/main.ts`** is to add the following dynamic import after `ensureMetadataSymbol()` and before `runFastifyApplication`. This keeps decorated classes from being evaluated before metadata is ready.
+The **small startup change to the existing `src/main.ts`** is to add the following dynamic import after `ensureMetadataSymbol()` and before `FluoFactory.create()`. This keeps decorated classes from being evaluated before metadata is ready.
 
 ```ts
 const { DashboardAuthentication } = await import('./orders/dashboard/graphql-auth.js');
 ```
 
-In the same file, if the existing helper options have no `middleware` array, add the following entry. If the array already exists, add the `DashboardAuthentication` class token exactly once after existing CORS and correlation handling but before middleware that consumes the request. Do not change `AppModule`, `blogConfig.PORT`, the host, or existing shutdown options. Thanks to `exports: [DashboardAuthentication]`, bootstrap's application middleware can resolve this token from the application container.
+In the same file, if the existing `FluoFactory.create()` options have no `middleware` array, add the following entry. If the array already exists, add the `DashboardAuthentication` class token exactly once after existing CORS and correlation handling but before middleware that consumes the request. Do not change `AppModule`, `blogConfig.PORT`, the host, logger, or `shutdownRegistration`. Thanks to `exports: [DashboardAuthentication]`, Factory application middleware can resolve this token from the application container.
 
 ```ts
 middleware: [DashboardAuthentication],

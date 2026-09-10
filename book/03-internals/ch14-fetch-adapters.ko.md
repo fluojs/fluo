@@ -88,34 +88,49 @@ try {
 
 무리스너 실험 다음에는 실제 런타임을 선택한다. 다음 두 파일은 서로 대체하는 완전한 `src/main.ts`다. 하나의 프로세스에서 둘을 함께 실행하지 않는다. 앞 장의 `AppModule`과 표준 데코레이터 변환을 거친 JavaScript 출력물을 사용하며, 런타임이 TypeScript를 읽는다는 이유로 데코레이터 변환 단계를 삭제하지 않는다.
 
-Bun을 선택한 경우에는 다음과 같다.
+Bun을 선택한 경우에는 concrete static adapter를 만들고 Factory에 전달한다. 이전 managed helper가 사용하던 30초 application shutdown bound는 adapter에 명시하고, 30초 host force-exit bound를 유지할 signal callback도 package root에서 선택한다.
 
 ```typescript
-import { runBunApplication } from '@fluojs/platform-bun';
+import {
+  BunHttpApplicationAdapter,
+  createBunShutdownSignalRegistration,
+} from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
-export const app = await runBunApplication(AppModule, {
-  hostname: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 256,
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+export const app = await FluoFactory.create(AppModule, {
+  adapter: BunHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 256,
+    shutdownTimeoutMs: 30_000,
+  }),
+  shutdownRegistration: createBunShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
-Deno를 선택한 경우에는 다음과 같다.
+Deno를 선택한 경우에도 같은 Factory path를 쓴다. callback은 signal close 오류를 logger에 기록하고 swallow하며 exit status를 정하지 않는다. signal lifecycle을 전적으로 host가 소유하면 이 callback을 생략한다.
 
 ```typescript
-import { runDenoApplication } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoShutdownSignalRegistration,
+} from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.js';
 
-export const app = await runDenoApplication(AppModule, {
-  hostname: '127.0.0.1',
-  port: 3000,
-  rawBody: true,
-  maxBodySize: 256,
-  shutdownSignals: ['SIGINT', 'SIGTERM'],
+export const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    port: 3000,
+    rawBody: true,
+    maxBodySize: 256,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 빌드 출력이 `dist/main.js`인 애플리케이션의 실행 명령은 각각 아래와 같다. Deno 쪽은 프로젝트의 npm 의존성이 Deno에서 해석되도록 구성되어 있어야 한다. 이는 Node용 테스트 파일을 Worker 번들에 넣으라는 명령이 아니다.
@@ -130,7 +145,7 @@ deno run --allow-net dist/main.js
 
 Deno의 네트워크 권한은 실제 서버를 열기 위해 필요하다. adapter가 환경 변수를 읽는 것은 아니다. 애플리케이션에서 `PORT`를 읽기로 결정했다면 그때 해당 환경 변수 권한과 값 검증을 추가한다. Deno의 `hostname`과 이식성 별칭 `host`를 함께 주면 `hostname`이 우선한다. TLS 옵션도 Bun은 `tls`, Deno는 `https: { cert, key }`를 사용하므로 모든 런타임에 같은 옵션 객체를 무조건 넘기지 않는다.
 
-반대로 이미 `Bun.serve()`나 `Deno.serve()`를 관리하는 호스트가 있으면 앞의 Fetch handler를 그 호스트에 연결할 수 있다. 이때 helper는 요청 변환과 dispatch만 맡는다. 서버 중지, signal 처리, WebSocket upgrade와 Bun의 네이티브 `routes` 가속은 자동으로 따라오지 않는다. managed adapter의 `listen()`과 별도의 `serve()`를 둘 다 호출하면 같은 애플리케이션을 위한 리스너 소유자가 둘이 된다. 어느 한쪽을 고르고 종료 테스트도 그 소유자를 대상으로 작성한다.
+반대로 이미 `Bun.serve()`나 `Deno.serve()`를 관리하는 호스트가 있으면 앞의 Fetch handler를 그 호스트에 연결할 수 있다. 이때 bridge는 요청 변환과 dispatch만 맡는다. 서버 중지, signal 처리, WebSocket upgrade와 Bun의 네이티브 `routes` 가속은 자동으로 따라오지 않는다. adapter의 `listen()`과 별도의 `serve()`를 둘 다 호출하면 같은 애플리케이션을 위한 리스너 소유자가 둘이 된다. 어느 한쪽을 고르고 종료 테스트도 그 소유자를 대상으로 작성한다.
 
 ## Worker에서는 환경의 수명과 요청의 수명을 나눈다
 

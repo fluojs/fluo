@@ -158,7 +158,7 @@ export class AppSettingsModule {}
 
 이번에는 어댑터 생성 전에 포트를 알아야 하므로 `loadConfig`로 한 번 검증하고 그 결과를 등록한다. `loadConfig`의 공개 반환 타입은 일반 설정 딕셔너리다. 여기의 `as BlogConfig`는 입력 검증을 대신하는 단언이 아니라, 바로 앞에서 실행한 `BlogConfigSchema`의 출력과 타입 사이의 대응을 나타낸다. 원시 환경 변수에 같은 단언을 붙여서는 안 된다. 모든 필드가 원시값인 결과를 동결하고, DI에는 이 스냅샷만 넘겨 파일을 두 번 읽지 않는다. 이미 숫자가 된 포트에 문자열 입력용 스키마를 다시 적용하지도 않는다.
 
-등록과 검증의 시점은 다르다. `ConfigModule.forRoot(...)`는 동기적으로 provider를 등록하며, 일반적인 schema 등록에서는 bootstrap이 `ConfigService`를 해석할 때 설정을 로드하고 listen 전에 동기 검증한다. 여기서는 명시적 `loadConfig(...)`가 이 모듈을 평가하는 도중 실행되므로 그보다 먼저 검증한다. 스키마 실패는 `INVALID_CONFIG`이며, 아래 dynamic import가 실패해 `runFastifyApplication`까지 도달하지 않는다. 이미 검증한 snapshot을 다시 등록하는 이 흐름을 “`forRoot` 호출만으로 파일 로드가 끝났다”는 설명과 혼동하지 않는다.
+등록과 검증의 시점은 다르다. `ConfigModule.forRoot(...)`는 동기적으로 provider를 등록하며, 일반적인 schema 등록에서는 bootstrap이 `ConfigService`를 해석할 때 설정을 로드하고 listen 전에 동기 검증한다. 여기서는 명시적 `loadConfig(...)`가 이 모듈을 평가하는 도중 실행되므로 그보다 먼저 검증한다. 스키마 실패는 `INVALID_CONFIG`이며, 아래 dynamic import와 `FluoFactory.create()`까지 도달하지 않는다. 이미 검증한 snapshot을 다시 등록하는 이 흐름을 “`forRoot` 호출만으로 파일 로드가 끝났다”는 설명과 혼동하지 않는다.
 
 `src/app.ts`의 기존 `AppModule`에는 `AppSettingsModule`을 가져와 `imports`에 추가한다. 다음은 기존 모듈과의 합성 부분이며 HTTP 설정을 모두 대체하는 파일은 아니다. `PostsModule`은 앞 장까지의 `src/posts/posts.module.ts`다. 생성된 greeting·health와 기존 기능 등록은 유지하며, 생성 때의 config 등록도 같은 키를 다시 읽는 두 번째 설정 원본으로 남기지 않고 이 snapshot 경로로 합성한다.
 
@@ -173,20 +173,20 @@ import { PostsModule } from './posts/posts.module.js';
 export class AppModule {}
 ```
 
-이제 실제 시작 포트도 연결한다. 아래는 이 설정을 사용하는 `src/main.ts`의 최소 완전한 파일이다. 앞 장에서 추가한 미들웨어나 요청 처리 옵션이 있다면 같은 helper의 옵션에 유지한다. 메타데이터 심벌을 준비한 뒤 장식된 앱 그래프를 동적으로 가져오므로 응답 모델의 데코레이터보다 준비가 늦어지지 않는다. `ensureMetadataSymbol()` 아래에 static import를 놓는 것만으로는 이 순서를 만들 수 없다. 그 import는 진입점 본문보다 먼저 평가된다.
+이제 실제 시작 포트도 연결한다. 아래는 이 설정을 사용하는 `src/main.ts`의 최소 완전한 파일이다. 앞 장에서 추가한 미들웨어나 요청 처리 옵션이 있다면 같은 static factory의 한 options 객체에 유지한다. 메타데이터 심벌을 준비한 뒤 장식된 앱 그래프를 동적으로 가져오므로 응답 모델의 데코레이터보다 준비가 늦어지지 않는다. `ensureMetadataSymbol()` 아래에 static import를 놓는 것만으로는 이 순서를 만들 수 없다. 그 import는 진입점 본문보다 먼저 평가된다.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
 const { blogConfig } = await import('./config/app-settings.module.js');
 
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: blogConfig.PORT,
   }),
@@ -338,6 +338,6 @@ FluoBlog는 이제 개발용과 운영용 주소를 소스 코드에서 분리�
 - [다중 env 파일, 빈 목록, watch 계약 테스트](../../packages/config/src/load-env-file-paths.test.ts)
 - [객체와 배열의 병합 계약 테스트](../../packages/config/src/load-merge-contract.test.ts)
 - [설정 스냅샷과 HTTP 어댑터의 시작 순서 계약](../../docs/getting-started/migrate-from-nestjs.ko.md)
-- [Fastify 시작 옵션과 `runFastifyApplication` 구현](../../packages/platform-fastify/src/adapter.ts)
+- [Fastify static factory와 시작 옵션](../../packages/platform-fastify/src/adapter.ts)
 
 [이전: 사용자가 이해할 수 있는 API 계약 만들기](./ch08-api-contracts.ko.md) · [1권 목차](./toc.ko.md) · [다음: 메모리의 게시글을 데이터베이스로 옮기기](./ch10-prisma-persistence.ko.md)

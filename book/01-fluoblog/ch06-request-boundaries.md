@@ -242,16 +242,15 @@ If your app already has other feature modules, preserve their `imports` and conn
 To make standard-decorator metadata preinstallation explicit, use the following **complete `src/main.ts` file**. The serialization classes in the next chapter do not install `Symbol.metadata` as an import side effect, so preparing it before decorated modules matters.
 
 ```ts
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
 import { ensureMetadataSymbol } from '@fluojs/core';
 
 ensureMetadataSymbol();
 const { AppModule } = await import('./app.js');
-const { runFastifyApplication } = await import('@fluojs/platform-fastify');
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({
+  adapter: FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port: 3000,
   }),
@@ -430,13 +429,13 @@ The following is the complete optional **`src/schema-boundary-main.ts` file**. S
 ```ts
 import { ensureMetadataSymbol } from '@fluojs/core';
 import { StandardSchemaBinder } from '@fluojs/http';
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
 ensureMetadataSymbol();
 const { SchemaBoundaryModule } = await import('./schema-boundary-app.js');
 const app = await FluoFactory.create(SchemaBoundaryModule, {
-  adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
 await app.listen();
@@ -467,6 +466,6 @@ The request's `authorId` is no longer stored, but the object returned by the con
 - [Default binder](../../packages/http/src/adapters/binding.ts) and [binding tests](../../packages/http/src/adapters/binding.test.ts): evidence for unknown body keys, required sources, and converter resolution.
 - [Handler invocation policy](../../packages/http/src/dispatch/dispatch-handler-policy.ts), [HTTP validation adapter](../../packages/http/src/adapters/dto-validation-adapter.ts): where to confirm validation after binding and translation to `400`.
 - [`@fluojs/validation` README](../../packages/validation/README.md), [public exports](../../packages/validation/src/index.ts), [validation tests](../../packages/validation/src/validation.test.ts): the boundaries for missing values, strict materialization options, and scalar coercion.
-- [`@fluojs/core` README](../../packages/core/README.md), [`@fluojs/platform-fastify` README](../../packages/platform-fastify/README.md): evidence for explicit DI, metadata preinstallation, and the execution helper.
+- [`@fluojs/core` README](../../packages/core/README.md), [`@fluojs/platform-fastify` README](../../packages/platform-fastify/README.md): evidence for explicit DI, metadata preinstallation, and the static adapter factory.
 
 [Previous: How Drafts Differ from Published Posts](./ch05-post-domain.md) | [Volume 1 Contents](./toc.md) | [Next: Separating Stored Data from Public Data](./ch07-response-models.md)

@@ -184,13 +184,13 @@ Once registration is complete, the Module handles configuration loading, while a
 `FluoFactory.create(...)` can build an application container without an HTTP adapter, and `FluoFactory.createApplicationContext(AppModule)` is the explicit DI-only form. Configuration providers are available in either adapterless boundary. Only `listen()` requires an application created with an adapter. For one-pass HTTP startup, use the validated snapshot prepared during registration to configure the adapter and the injected `ConfigService`, then call `listen()` without a port.
 
 ```typescript
-import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule, validatedConfig } from './app.module';
 
 async function bootstrap() {
   const app = await FluoFactory.create(AppModule, {
-    adapter: createFastifyAdapter({ port: validatedConfig.PORT }),
+    adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT }),
   });
 
   await app.listen();

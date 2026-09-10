@@ -49,16 +49,25 @@ Alternatively, you can manage them in a `deno.json` file for a more structured a
 
 ### 23.2.2 Bootstrapping FluoShop on Deno
 
-Because of Deno's module resolution and permission model, its entrypoint looks different from a Node.js entrypoint. Rather than hiding that difference, fluo provides the `runDenoApplication` helper so it can be treated as an explicit execution boundary.
+Because of Deno's module resolution and permission model, its entrypoint looks different from a Node.js entrypoint. The current recipe makes that execution boundary explicit with a concrete adapter and Factory.
 
 ```typescript
 // main.ts
-import { runDenoApplication } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoShutdownSignalRegistration,
+} from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-await runDenoApplication(AppModule, {
-  port: 3000,
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '0.0.0.0',
+    port: 3000,
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
 });
+await app.listen();
 ```
 
 To run this application, you must explicitly provide the required permissions. In Deno, this permission list becomes part of the operational contract.
@@ -67,7 +76,7 @@ To run this application, you must explicitly provide the required permissions. I
 deno run --allow-net main.ts
 ```
 
-`runDenoApplication(...)` opens the listener and registers `SIGINT`/`SIGTERM` listeners by default, but signal listener registration does not require a separate Deno permission. Managed startup needs `--allow-net`. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Signal-triggered application-close failures are logged and swallowed by the helper; it does not set an exit status. Hosts that require failure-status propagation or forced termination must pass `shutdownSignals: false` to `runDenoApplication(...)` and coordinate signals and shutdown themselves.
+`DenoHttpApplicationAdapter.create()` lets its `hostname` override the host default, and `app.listen()` opens the listener. Signal listener registration does not require a separate Deno permission. `createDenoShutdownSignalRegistration()` logs and swallows signal-close failures without assigning an exit status; omit the callback when the host owns signal lifecycle completely. Managed startup needs `--allow-net`. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys.
 
 If a required flag is missing, Deno prompts at runtime or exits with a clear error. It is safer to treat missing permissions as configuration problems that should surface before deployment. The run command itself becomes documentation for the resources the application is allowed to access. The canonical starter does not need filesystem access, so it does not grant `--allow-read`. Add a scoped grant such as `--allow-read=./static` only when application code actually reads certificates, configuration files, or static assets from that path.
 
@@ -76,11 +85,14 @@ If a required flag is missing, Deno prompts at runtime or exits with a clear err
 Deno is built on Web standards, so it fits naturally with fluo's internal Dispatcher. When FluoShop must share a host-owned `Deno.serve(...)` process with custom routing or other fetch handlers, bootstrap the application without `app.listen()` and create a handler from the public dispatcher.
 
 ```typescript
-import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
+import {
+  DenoHttpApplicationAdapter,
+  createDenoFetchHandler,
+} from '@fluojs/platform-deno';
 import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-const adapter = createDenoAdapter();
+const adapter = DenoHttpApplicationAdapter.create();
 const app = await FluoFactory.create(AppModule, { adapter });
 const handler = createDenoFetchHandler({
   dispatcher: app.dispatcher,

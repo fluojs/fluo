@@ -68,7 +68,7 @@ The fixed table of contents defines the product-development scope, but it does n
 
 Outbox/Inbox, durable Saga state, webhook signature verification, idempotency storage, password hashing, and payment/file-storage adapters are application-owned implementations. Do not claim that package registration alone creates exactly-once behavior, restart recovery, or payment consistency. Code involving money, external systems, or time states who owns failures and retries.
 
-The supported Node.js range is >=24.0.0 <27; the book uses Node24 and pnpm10. Volume 1 chapter 1 sets TypeScript lib to ES2024, DOM, and ESNext.Decorators, and later configuration changes preserve it. The CLI's ES2022 target alone does not expose Promise.withResolvers types. Use standard decorators without depending on experimentalDecorators/emitDecoratorMetadata. Do not confuse a TC39 stage with native runtime support. When using current helpers such as runFastifyApplication, read their actual options and lifecycle contracts.
+The supported Node.js range is >=24.0.0 <27; the book uses Node24 and pnpm10. Volume 1 chapter 1 sets TypeScript lib to ES2024, DOM, and ESNext.Decorators, and later configuration changes preserve it. The CLI's ES2022 target alone does not expose Promise.withResolvers types. Use standard decorators without depending on experimentalDecorators/emitDecoratorMetadata. Do not confuse a TC39 stage with native runtime support. The current server recipe is `AdapterClass.create(options)`, `FluoFactory.create(AppModule, { adapter, ... })`, and `await app.listen()`; read the actual options and lifecycle contracts.
 
 ## Sources and links
 
