@@ -67,13 +67,15 @@ import {
 import { createConsoleApplicationLogger } from './logger.js';
 
 /**
- * Describes the node http adapter options contract.
+ * Settings for `NodeHttpApplicationAdapter.create`, including transport and body parsing.
  */
 export interface NodeHttpAdapterOptions {
+  compression?: boolean;
   host?: string;
   http?: HttpServerOptions;
   https?: HttpsServerOptions;
   maxBodySize?: number;
+  multipart?: MultipartOptions;
   port?: number;
   rawBody?: boolean;
   retryDelayMs?: number;
@@ -136,6 +138,43 @@ type NodeRequestListener = RequestListener;
  * Represents the node http application adapter.
  */
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
+  /**
+   * Create an unstarted Node HTTP or HTTPS adapter from one options object.
+   *
+   * @param options Transport, compression, multipart, body limit, and shutdown settings.
+   * @returns The concrete adapter instance; the caller owns listen and close.
+   * @throws If port, body limit, lifecycle bounds, or HTTP/HTTPS options are invalid.
+   * @remarks Defaults to port 3000, a 1 MiB body cap, and no compression.
+   * Multipart total size defaults to the body cap unless explicitly overridden.
+   */
+  static create(options: NodeHttpAdapterOptions = {}): NodeHttpApplicationAdapter {
+    const port = options.port ?? 3000;
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+      throw new Error(`Invalid PORT value: ${String(port)}.`);
+    }
+
+    const maxBodySize = options.maxBodySize ?? 1 * 1024 * 1024;
+    if (!Number.isInteger(maxBodySize) || maxBodySize < 0) {
+      throw new Error(
+        `Invalid maxBodySize value: ${String(maxBodySize)}. Expected a non-negative integer number of bytes.`,
+      );
+    }
+
+    return new NodeHttpApplicationAdapter(
+      port,
+      options.host,
+      options.retryDelayMs,
+      options.retryLimit,
+      options.compression,
+      options.https,
+      options.multipart,
+      maxBodySize,
+      options.rawBody,
+      options.shutdownTimeoutMs,
+      options.http,
+    );
+  }
+
   private readonly server: NodeServer;
   private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
@@ -278,30 +317,6 @@ function createNodeRequestResponseFactory(
 }
 
 /**
- * Create node http adapter.
- *
- * @param options The options.
- * @param compression The compression.
- * @param multipartOptions The multipart options.
- * @returns The create node http adapter result.
- */
-export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
-  return new NodeHttpApplicationAdapter(
-    resolveNodePort(options.port),
-    options.host,
-    options.retryDelayMs,
-    options.retryLimit,
-    compression,
-    options.https,
-    multipartOptions,
-    resolveNodeMaxBodySize(options.maxBodySize),
-    options.rawBody,
-    options.shutdownTimeoutMs,
-    options.http,
-  );
-}
-
-/**
  * Bootstrap node application.
  *
  * @param rootModule The root module.
@@ -317,7 +332,7 @@ export async function bootstrapNodeApplication(
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
-    createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    NodeHttpApplicationAdapter.create(options),
     logger,
   );
 }
@@ -334,7 +349,7 @@ export async function runNodeApplication(
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
-  const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
+  const adapter = NodeHttpApplicationAdapter.create(options);
   return runHttpAdapterApplication(rootModule, {
     ...options,
     shutdownRegistration: createNodeShutdownSignalRegistration(
@@ -469,26 +484,4 @@ function forceCloseConnections(server: import('node:http').Server, sockets: Read
   for (const socket of sockets) {
     socket.destroy();
   }
-}
-
-function resolveNodePort(value: number | undefined): number {
-  const port = value ?? 3000;
-
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid PORT value: ${String(value ?? 3000)}.`);
-  }
-
-  return port;
-}
-
-function resolveNodeMaxBodySize(value: number | undefined): number {
-  const maxBodySize = value ?? 1 * 1024 * 1024;
-
-  if (!Number.isInteger(maxBodySize) || maxBodySize < 0) {
-    throw new Error(
-      `Invalid maxBodySize value: ${String(value ?? 1 * 1024 * 1024)}. Expected a non-negative integer number of bytes.`,
-    );
-  }
-
-  return maxBodySize;
 }

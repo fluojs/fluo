@@ -22,13 +22,10 @@ import {
   type BootstrapNodejsApplicationOptions,
   bootstrapNodeApplication,
   bootstrapNodejsApplication,
-  createNodejsAdapter,
   type NodeApplicationSignal,
   type NodeHttpAdapterOptions,
   NodeHttpApplicationAdapter,
-  type NodejsAdapterOptions,
   type NodejsApplicationSignal,
-  type NodejsHttpApplicationAdapter,
   type RunNodeApplicationOptions,
   type RunNodejsApplicationOptions,
   runNodeApplication,
@@ -163,7 +160,7 @@ describe('@fluojs/platform-nodejs', () => {
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as { exports: Record<string, unknown> };
 
-    expect(platformNodejsApi).toHaveProperty('createNodeHttpAdapter');
+    expect(NodeHttpApplicationAdapter.create).toBeTypeOf('function');
     expect(platformNodejsApi).toHaveProperty('createNodeFileSystemAssetSource');
     expect(platformNodejsApi).toHaveProperty('createNodeShutdownSignalRegistration');
     expect(platformNodejsApi).toHaveProperty('createConsoleApplicationLogger');
@@ -172,7 +169,7 @@ describe('@fluojs/platform-nodejs', () => {
   });
 
   it('captures connection metadata through a real public Node listener', async () => {
-    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     let connection: RequestContext['request']['connection'];
     const dispatcher: Dispatcher = {
       async dispatch(request, response) {
@@ -270,7 +267,7 @@ describe('@fluojs/platform-nodejs', () => {
     expect(runNodejsApplication).toBe(runNodeApplication);
   });
 
-  it('publishes the complete former runtime Node value surface with platform aliases', () => {
+  it('publishes the Node value surface without duplicate adapter factories', () => {
     expect(Object.keys(platformNodejsApi).sort()).toEqual([
       'NodeHttpApplicationAdapter',
       'bootstrapNodeApplication',
@@ -278,9 +275,7 @@ describe('@fluojs/platform-nodejs', () => {
       'createConsoleApplicationLogger',
       'createJsonApplicationLogger',
       'createNodeFileSystemAssetSource',
-      'createNodeHttpAdapter',
       'createNodeShutdownSignalRegistration',
-      'createNodejsAdapter',
       'defaultNodeShutdownSignals',
       'registerShutdownSignals',
       'runNodeApplication',
@@ -290,9 +285,9 @@ describe('@fluojs/platform-nodejs', () => {
 
   it('keeps the documented Node.js type aliases aligned with the runtime adapter surface', () => {
     expectTypeOf<BootstrapNodejsApplicationOptions>().toEqualTypeOf<BootstrapNodeApplicationOptions>();
-    expectTypeOf<NodejsAdapterOptions>().toEqualTypeOf<NodeHttpAdapterOptions>();
+    expectTypeOf<Parameters<typeof NodeHttpApplicationAdapter.create>[0]>().toEqualTypeOf<NodeHttpAdapterOptions | undefined>();
     expectTypeOf<NodejsApplicationSignal>().toEqualTypeOf<NodeApplicationSignal>();
-    expectTypeOf<NodejsHttpApplicationAdapter>().toEqualTypeOf<NodeHttpApplicationAdapter>();
+    expectTypeOf<ReturnType<typeof NodeHttpApplicationAdapter.create>>().toEqualTypeOf<NodeHttpApplicationAdapter>();
     expectTypeOf<RunNodejsApplicationOptions>().toEqualTypeOf<RunNodeApplicationOptions>();
   });
 
@@ -420,7 +415,11 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [AssetController] });
 
-    const adapter = new NodeHttpApplicationAdapter(0, '127.0.0.1', 1, 2, true, undefined);
+    const adapter = NodeHttpApplicationAdapter.create({
+      compression: true,
+      host: '127.0.0.1',
+      port: 0,
+    });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -460,7 +459,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [HealthController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -479,23 +478,23 @@ describe('@fluojs/platform-nodejs', () => {
   });
 
   it('fails fast when documented Node adapter options are invalid through the platform adapter', () => {
-    expect(() => createNodejsAdapter({ port: -1 })).toThrow('Invalid PORT value: -1.');
-    expect(() => createNodejsAdapter({ maxBodySize: -1 })).toThrow(
+    expect(() => NodeHttpApplicationAdapter.create({ port: -1 })).toThrow('Invalid PORT value: -1.');
+    expect(() => NodeHttpApplicationAdapter.create({ maxBodySize: -1 })).toThrow(
       'Invalid maxBodySize value: -1. Expected a non-negative integer number of bytes.',
     );
-    expect(() => createNodejsAdapter({ retryDelayMs: -1 })).toThrow(
+    expect(() => NodeHttpApplicationAdapter.create({ retryDelayMs: -1 })).toThrow(
       'Invalid retryDelayMs value: -1. Expected a non-negative integer.',
     );
-    expect(() => createNodejsAdapter({ retryLimit: 1.5 })).toThrow(
+    expect(() => NodeHttpApplicationAdapter.create({ retryLimit: 1.5 })).toThrow(
       'Invalid retryLimit value: 1.5. Expected a non-negative integer.',
     );
-    expect(() => createNodejsAdapter({ shutdownTimeoutMs: -1 })).toThrow(
+    expect(() => NodeHttpApplicationAdapter.create({ shutdownTimeoutMs: -1 })).toThrow(
       'Invalid shutdownTimeoutMs value: -1. Expected a non-negative integer.',
     );
   });
 
   it('passes plain HTTP construction options and rejects HTTPS pairing through the platform adapter', async () => {
-    const adapter = createNodejsAdapter({
+    const adapter = NodeHttpApplicationAdapter.create({
       http: { maxHeaderSize: 32_768 },
     });
 
@@ -505,7 +504,7 @@ describe('@fluojs/platform-nodejs', () => {
       await adapter.close();
     }
 
-    expect(() => createNodejsAdapter({
+    expect(() => NodeHttpApplicationAdapter.create({
       http: { maxHeaderSize: 32_768 },
       https: {},
     })).toThrow('Plain HTTP and HTTPS server options cannot be used together.');
@@ -523,7 +522,7 @@ describe('@fluojs/platform-nodejs', () => {
     const dispatcher: Dispatcher = {
       async dispatch() {},
     };
-    const adapter = createNodejsAdapter({
+    const adapter = NodeHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port: address.port,
       retryDelayMs: 0,
@@ -548,7 +547,7 @@ describe('@fluojs/platform-nodejs', () => {
   });
 
   it('closes idle keep-alive connections during package adapter shutdown', async () => {
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const server = adapter.getServer();
     const closeIdleConnections = vi.spyOn(server, 'closeIdleConnections');
     const dispatcher: Dispatcher = {
@@ -769,7 +768,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -815,7 +814,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [RequestIdController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -851,7 +850,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [RequestIdController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -877,7 +876,7 @@ describe('@fluojs/platform-nodejs', () => {
   });
 
   it('exposes a server-backed realtime capability on the raw Node adapter', async () => {
-    const adapter = createNodejsAdapter();
+    const adapter = NodeHttpApplicationAdapter.create();
 
     try {
       expect(adapter.getRealtimeCapability?.()).toEqual({
@@ -912,7 +911,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EchoController] });
 
-    const adapter = createNodejsAdapter({ maxBodySize: 8, port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ maxBodySize: 8, port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -1048,7 +1047,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [DefaultBodyCapController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -1149,7 +1148,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EchoController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -1198,7 +1197,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [UploadController] });
 
-    const adapter = createNodejsAdapter({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });

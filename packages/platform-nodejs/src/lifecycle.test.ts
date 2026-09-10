@@ -3,7 +3,7 @@ import { Controller, type Dispatcher, Get, Post, type RequestContext } from '@fl
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createNodejsAdapter, runNodejsApplication } from './index.js';
+import { NodeHttpApplicationAdapter, runNodejsApplication } from './index.js';
 
 function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolvePromise: (() => void) | undefined;
@@ -33,7 +33,7 @@ describe('@fluojs/platform-nodejs lifecycle boundaries', () => {
     const dispatcher: Dispatcher = {
       async dispatch() {},
     };
-    const adapter = createNodejsAdapter({
+    const adapter = NodeHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port: address.port,
       retryDelayMs: 50,
@@ -87,7 +87,7 @@ describe('@fluojs/platform-nodejs lifecycle boundaries', () => {
     process.env.PORT = '4321';
 
     try {
-      const adapter = createNodejsAdapter();
+      const adapter = NodeHttpApplicationAdapter.create();
 
       expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
       await adapter.close();
@@ -112,7 +112,7 @@ describe('@fluojs/platform-nodejs lifecycle boundaries', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [ZeroBodyController] });
 
-    const adapter = createNodejsAdapter({ maxBodySize: 0, port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ maxBodySize: 0, port: 0 });
     const app = await FluoFactory.create(AppModule, { adapter });
 
     try {
@@ -156,7 +156,7 @@ describe('@fluojs/platform-nodejs lifecycle boundaries', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [DrainController] });
 
-    const adapter = createNodejsAdapter({ port: 0, shutdownTimeoutMs: 25 });
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0, shutdownTimeoutMs: 25 });
     const server = adapter.getServer();
     const closeAllConnections = vi.spyOn(server, 'closeAllConnections');
     const app = await FluoFactory.create(AppModule, { adapter });

@@ -1,10 +1,7 @@
 import {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
-  createNodeHttpAdapter,
   type NodeApplicationSignal,
-  type NodeHttpAdapterOptions,
-  type NodeHttpApplicationAdapter,
   type RunNodeApplicationOptions,
   runNodeApplication,
 } from './node/internal-node.js';
@@ -13,7 +10,6 @@ export {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
   type CorsInput,
-  createNodeHttpAdapter,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
   type NodeApplicationSignal,
@@ -37,12 +33,6 @@ export type BootstrapNodejsApplicationOptions = BootstrapNodeApplicationOptions;
 /** POSIX signals that `runNodejsApplication(...)` can subscribe to for graceful shutdown. */
 export type NodejsApplicationSignal = NodeApplicationSignal;
 
-/** Transport-level settings for the raw Node.js adapter factory. */
-export type NodejsAdapterOptions = NodeHttpAdapterOptions;
-
-/** Adapter instance returned by `createNodejsAdapter(...)`. */
-export type NodejsHttpApplicationAdapter = NodeHttpApplicationAdapter;
-
 /** Options accepted by `runNodejsApplication(...)` for one-call bootstrap, listen, and shutdown wiring. */
 export type RunNodejsApplicationOptions = RunNodeApplicationOptions;
 
@@ -54,18 +44,6 @@ export type RunNodejsApplicationOptions = RunNodeApplicationOptions;
  * @returns A fluo application instance whose listener is not started yet.
  */
 export const bootstrapNodejsApplication: typeof bootstrapNodeApplication = bootstrapNodeApplication;
-
-/**
- * Create the raw Node.js HTTP adapter exposed by `@fluojs/platform-nodejs`.
- *
- * @param options Transport-level Node.js settings such as port, retries, body-size limits, and HTTPS options.
- * @returns The Node.js HTTP adapter instance used by the Fluo runtime.
- */
-export function createNodejsAdapter(
-  options: NodejsAdapterOptions = {},
-): NodejsHttpApplicationAdapter {
-  return createNodeHttpAdapter(options) as NodejsHttpApplicationAdapter;
-}
 
 /**
  * Bootstrap and start a fluo module on the raw Node.js adapter with lifecycle shutdown wiring.

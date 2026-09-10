@@ -131,13 +131,13 @@ When you need to minimize footprint as much as possible, or when you need to des
 ### 21.2.2 Setup
 
 ```typescript
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { fluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 
 async function bootstrap() {
-  const adapter = createNodejsAdapter({
+  const adapter = NodeHttpApplicationAdapter.create({
     port: 443,
     https: {
       key: fs.readFileSync('key.pem'),
@@ -146,7 +146,7 @@ async function bootstrap() {
     maxBodySize: 2_097_152,
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
+  const app = await FluoFactory.create(AppModule, { adapter });
   await app.listen();
 }
 ```

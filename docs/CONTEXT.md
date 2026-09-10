@@ -598,3 +598,7 @@ Lifecycle publishers receive immutable observer snapshots that cannot modify the
 | `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `view`, `byteOffset`, `byteLength`, `bytes` |
 
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->
+
+## Node Adapter Creation
+
+Raw Node adapter creation follows `NodeHttpApplicationAdapter.create(options)` in the [package README](../packages/platform-nodejs/README.md). The [migration guide](./getting-started/migrate-node-adapter-create.md) covers the single options path including compression/multipart and removed factory/type aliases. `packages/platform-nodejs/src/adapter-create.test.ts`, `src/published-declaration-surface.test.ts`, and `packages/cli/src/new/scaffold.test.ts` verify listener behavior, DI identity, published imports, and generated code; `tooling/governance/node-adapter-creation.test.ts` checks discoverability/enforcement/regression companion requirements.

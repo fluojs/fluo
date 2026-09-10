@@ -225,7 +225,7 @@ This excerpt shows that the package manager and TypeScript resolver see the same
 
 This matters because an export map is stronger than documentation. It prevents arbitrary deep imports from pulling in internal files or host-specific files. The runtime branching policy is encoded in the package boundary itself.
 
-`path:packages/platform-nodejs/src/node/node.test.ts:8-55` strengthens the same rule from the consumer's perspective. The test asserts that the root runtime API must not contain `bootstrapNodeApplication`, `createNodeHttpAdapter`, or `runNodeApplication`. Those helpers are legal only from `@fluojs/platform-nodejs`.
+`path:packages/platform-nodejs/src/node/node.test.ts:8-54` keeps Node lifecycle helpers outside the runtime root. Adapter creation uses `NodeHttpApplicationAdapter.create(options)` from `@fluojs/platform-nodejs`; the old free factories are removed from both root and internal entrypoints.
 
 `path:packages/runtime/src/exports.test.ts:87-106` also checks that the package export map retains the portable entrypoints, including the `./devtools` host bridge, while omitting `./node` and `./internal-node`. This is exactly where runtime branching becomes a stable published contract instead of an implementation detail.
 
@@ -275,17 +275,16 @@ Node platform package:
 This design makes portability mistakes visible. If application code imports a Node helper, the import path itself already declares the portability cost.
 
 ## 10.3 The Node platform package owns server lifecycle, retries, compression, and shutdown
-The public Node package entrypoint is `path:packages/platform-nodejs/src/index.ts:12-32`. This file re-exports logger factories, the Node file-system asset source and its types, and selected API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
+The public Node package entrypoint is `path:packages/platform-nodejs/src/index.ts:9-28`. This file re-exports logger factories, the Node file-system asset source and its types, and selected API from `./node/internal-node.js`. The fact that the file is very small is meaningful. The Node branch is closer to a curated façade over a deeper implementation file.
 
 The Node package root does not open the whole internal file directly. As shown below, it exposes loggers, file-system asset helpers, and selected Node application helpers only.
 
-`path:packages/platform-nodejs/src/index.ts:12-32`
+`path:packages/platform-nodejs/src/index.ts:9-28`
 ```typescript
 export {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
   type CorsInput,
-  createNodeHttpAdapter,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
   type NodeApplicationSignal,
@@ -308,13 +307,12 @@ This façade answers a different question than the root boundary. The root expor
 
 The real implementation lives in `path:packages/platform-nodejs/src/node/internal-node.ts` and `path:packages/platform-nodejs/src/node/internal-node-listen.ts`. Only here does the runtime directly handle capabilities that the root runtime cannot assume. Node HTTP/HTTPS servers, sockets, listen lifecycle behavior, compression wiring, and process-signal shutdown helpers all live in this Node-only implementation.
 
-`NodeHttpApplicationAdapter` in `path:packages/platform-nodejs/src/node/internal-node.ts:138-231` is the core Node transport object. This adapter owns the native server, its `NodeListenLifecycle`, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
+`NodeHttpApplicationAdapter` in `path:packages/platform-nodejs/src/node/internal-node.ts:140-270` is the core Node transport object. This adapter owns the native server, its `NodeListenLifecycle`, the request/response factory, and the socket set used for drain-aware shutdown. Those details are outside what the root runtime's abstract adapter contract can know.
 
 The constructor validates lifecycle options, creates the request-response factory, creates an HTTP or HTTPS server from `httpOptions` and `httpsOptions`, creates the `NodeListenLifecycle`, and tracks connections so lingering sockets can be force-closed later.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:138-161`
+`path:packages/platform-nodejs/src/node/internal-node.ts:178-200`
 ```typescript
-export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
   private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
@@ -342,7 +340,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
 The following constructor body actually validates lifecycle policy, performs Node server creation, initializes the listener lifecycle, and tracks sockets. This second excerpt shows that the request/response factory, HTTP/HTTPS server selection, listener admission, and connection set management all belong inside the Node branch.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:162-188`
+`path:packages/platform-nodejs/src/node/internal-node.ts:201-227`
 ```typescript
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -466,41 +464,51 @@ The branch condition here is not a whole-runtime host choice. It is listener adm
 
 Shutdown is delegated through `NodeListenLifecycle.close()` before `closeNodeServerWithDrain()` closes the server, closes idle connections, and force-closes sockets if the drain timeout is exceeded. This is another piece of host-specific operational logic separated from the root runtime.
 
-`createNodeHttpAdapter()` in `path:packages/platform-nodejs/src/node/internal-node.ts:288-302` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/platform-nodejs/src/node/internal-node.ts:311-323` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` adds shutdown-signal registration on top.
+`NodeHttpApplicationAdapter.create()` in `path:packages/platform-nodejs/src/node/internal-node.ts:150-176` wraps these Node concerns as a portable `HttpApplicationAdapter` implementation. `bootstrapNodeApplication()` in `path:packages/platform-nodejs/src/node/internal-node.ts:326-338` injects that adapter into the shared HTTP Bootstrap path. `runNodeApplication()` adds shutdown-signal registration on top.
 
-`path:packages/platform-nodejs/src/node/internal-node.ts:280-323`
+`path:packages/platform-nodejs/src/node/internal-node.ts:140-176`
 ```typescript
-/**
- * Create node http adapter.
- *
- * @param options The options.
- * @param compression The compression.
- * @param multipartOptions The multipart options.
- * @returns The create node http adapter result.
- */
-export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
-  return new NodeHttpApplicationAdapter(
-    resolveNodePort(options.port),
-    options.host,
-    options.retryDelayMs,
-    options.retryLimit,
-    compression,
-    options.https,
-    multipartOptions,
-    resolveNodeMaxBodySize(options.maxBodySize),
-    options.rawBody,
-    options.shutdownTimeoutMs,
-    options.http,
-  );
-}
+export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
+  /**
+   * Create an unstarted Node HTTP or HTTPS adapter from one options object.
+   *
+   * @param options Transport, compression, multipart, body limit, and shutdown settings.
+   * @returns The concrete adapter instance; the caller owns listen and close.
+   * @throws If port, body limit, lifecycle bounds, or HTTP/HTTPS options are invalid.
+   * @remarks Defaults to port 3000, a 1 MiB body cap, and no compression.
+   * Multipart total size defaults to the body cap unless explicitly overridden.
+   */
+  static create(options: NodeHttpAdapterOptions = {}): NodeHttpApplicationAdapter {
+    const port = options.port ?? 3000;
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+      throw new Error(`Invalid PORT value: ${String(port)}.`);
+    }
 
-/**
- * Bootstrap node application.
- *
- * @param rootModule The root module.
- * @param options The options.
- * @returns The bootstrap node application result.
- */
+    const maxBodySize = options.maxBodySize ?? 1 * 1024 * 1024;
+    if (!Number.isInteger(maxBodySize) || maxBodySize < 0) {
+      throw new Error(
+        `Invalid maxBodySize value: ${String(maxBodySize)}. Expected a non-negative integer number of bytes.`,
+      );
+    }
+
+    return new NodeHttpApplicationAdapter(
+      port,
+      options.host,
+      options.retryDelayMs,
+      options.retryLimit,
+      options.compression,
+      options.https,
+      options.multipart,
+      maxBodySize,
+      options.rawBody,
+      options.shutdownTimeoutMs,
+      options.http,
+    );
+  }
+```
+
+`path:packages/platform-nodejs/src/node/internal-node.ts:326-338`
+```typescript
 export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
@@ -510,24 +518,24 @@ export async function bootstrapNodeApplication(
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
-    createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+    NodeHttpApplicationAdapter.create(options),
     logger,
   );
 }
 ```
 
-This excerpt narrows a 38-line source flow to adapter creation and Bootstrap handoff. The shutdown signal wiring in `runNodeApplication()` remains traceable through the citation later in the same nearby range. For this discussion, it is enough to see the boundary where Node concerns pass into the shared HTTP Bootstrap path.
+The first excerpt is the static creation method on the existing class. It owns port/body defaults and validation, compression/multipart forwarding, and the actual constructor call rather than calling another creation factory. The following bootstrap excerpt uses that same static path. The public constructor and instance lifecycle remain, preserving DI tokens and `instanceof`. The [migration guide](../../docs/getting-started/migrate-node-adapter-create.md) explains removed imports and option migration.
 
 The tests explain the intended public contract. `path:packages/platform-nodejs/src/node/node.test.ts:14-48` shows that the adapter's default port is `3000`, not `process.env.PORT`. This is also an explicitness choice. It prevents Node-specific convenience from silently pulling in ambient process configuration.
 
-`path:packages/platform-nodejs/src/node/node.test.ts:15-31`
+`path:packages/platform-nodejs/src/node/node.test.ts:14-30`
 ```typescript
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
     process.env.PORT = '4321';
 
     try {
-      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+      const adapter = publicNodeApi.NodeHttpApplicationAdapter.create();
 
       expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
       await adapter.close();
@@ -543,13 +551,13 @@ The tests explain the intended public contract. `path:packages/platform-nodejs/s
 
 This test fixes two facts at once: the Node branch can see Node environment variables, and yet its default value is not tied to ambient process state. Portability cost is visible in the import path, but runtime defaults do not implicitly lean on host globals.
 
-`path:packages/platform-nodejs/src/node/node.test.ts:51-55` in the same file verifies that Node compression internals are not exposed from the public Node subpath. Even inside the Node branch, Fluo separates supported public helpers from low-level implementation details. This short assertion reaches the same conclusion as the `node.ts` façade excerpt from another angle, so it remains citation-only instead of being repeated as another code block.
+`path:packages/platform-nodejs/src/node/node.test.ts:50-54` in the same file verifies that Node compression internals are not exposed from the public Node subpath. Even inside the Node branch, Fluo separates supported public helpers from low-level implementation details. This short assertion reaches the same conclusion as the `node.ts` façade excerpt from another angle, so it remains citation-only instead of being repeated as another code block.
 
 The Node branch can be drawn like this.
 
 ```text
 ./node public surface
-  -> createNodeHttpAdapter()
+  -> NodeHttpApplicationAdapter.create()
   -> bootstrapNodeApplication()
   -> runNodeApplication()
   -> logger + shutdown helpers
@@ -603,7 +611,7 @@ Above that interface, `dispatchWithRequestResponseFactory()` handles the rest. I
 
 This helper is the real anti-duplication seam for runtime branching. The Node branch and Web branch do not each implement dispatcher invocation, empty-response fallback, and error serialization flow. They only provide different factories.
 
-The symmetry is visible in the source. Node's `createNodeRequestResponseFactory()` lives in `path:packages/platform-nodejs/src/node/internal-node.ts:233-278`, and Web's `createWebRequestResponseFactory()` lives in `path:packages/runtime/src/web.ts:246-274`. Both return the same interface, and both are then consumed by `dispatchWithRequestResponseFactory()`.
+The symmetry is visible in the source. Node's `createNodeRequestResponseFactory()` lives in `path:packages/platform-nodejs/src/node/internal-node.ts:272-317`, and Web's `createWebRequestResponseFactory()` lives in `path:packages/runtime/src/web.ts:246-274`. Both return the same interface, and both are then consumed by `dispatchWithRequestResponseFactory()`.
 
 So host-specific divergence is narrow and explicit. Higher-level runtime behavior remains identical above it.
 

@@ -595,3 +595,7 @@ Lifecycle publisher는 channel resolution, queue job, generated identity, provid
 | `NotificationSnapshotArrayBufferView` | `kind: 'ArrayBufferView'`, `view`, `byteOffset`, `byteLength`, `bytes` |
 
 <!-- notifications-status-contract: health=eventPublisherConfigured;operationMode=eventPublicationEnabled;dependencies=eventPublicationEnabled;externalOwnership=eventPublicationEnabled;configured-but-disabled-no-channels=degraded -->
+
+## Node Adapter Creation
+
+Raw Node adapter 생성은 [package README](../packages/platform-nodejs/README.ko.md)의 `NodeHttpApplicationAdapter.create(options)`를 따릅니다. Compression·multipart를 포함하는 단일 options 경로와 삭제된 factory/type alias는 [마이그레이션](./getting-started/migrate-node-adapter-create.ko.md)에 있습니다. `packages/platform-nodejs/src/adapter-create.test.ts`, `src/published-declaration-surface.test.ts`, `packages/cli/src/new/scaffold.test.ts`가 listener·DI identity·배포 import·생성 코드를 검증하고 `tooling/governance/node-adapter-creation.test.ts`가 discoverability/enforcement/regression companion 요구를 검증합니다.

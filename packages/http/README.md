@@ -380,7 +380,7 @@ import { Module } from '@fluojs/core';
 import {
   Controller, createSchemaDto, Post, RequestDto, StandardSchemaBinder,
 } from '@fluojs/http';
-import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { bootstrapApplication } from '@fluojs/runtime';
 import { z } from 'zod';
 
@@ -413,7 +413,7 @@ class AppModule {}
 
 const app = await bootstrapApplication({
   rootModule: AppModule,
-  adapter: createNodejsAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
   binder: (defaultBinder) => new StandardSchemaBinder(defaultBinder),
 });
 await app.listen();

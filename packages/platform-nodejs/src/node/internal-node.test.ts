@@ -17,7 +17,7 @@ function createTextDispatcher(body: string): Dispatcher {
 describe('runtime internal node seam', () => {
   it('keeps the public runtime/node path focused on supported node helpers', () => {
     expect(publicNodeApi.bootstrapNodeApplication).toBe(internalNodeApi.bootstrapNodeApplication);
-    expect(publicNodeApi.createNodeHttpAdapter).toBe(internalNodeApi.createNodeHttpAdapter);
+    expect(publicNodeApi.NodeHttpApplicationAdapter.create).toBe(internalNodeApi.NodeHttpApplicationAdapter.create);
     expect(publicNodeApi.runNodeApplication).toBe(internalNodeApi.runNodeApplication);
     expect(publicNodeApi.createNodeShutdownSignalRegistration).toBe(internalNodeApi.createNodeShutdownSignalRegistration);
     expect(publicNodeApi).not.toHaveProperty('compressNodeResponse');
@@ -39,7 +39,7 @@ describe('runtime internal node seam', () => {
       throw new Error('Failed to bind a dispatcher ownership test port.');
     }
 
-    const adapter = internalNodeApi.createNodeHttpAdapter({
+    const adapter = internalNodeApi.NodeHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port: address.port,
       retryDelayMs: 0,
@@ -133,7 +133,7 @@ describe('runtime internal node seam', () => {
       throw new Error('Failed to bind a retry cancellation test port.');
     }
 
-    const adapter = internalNodeApi.createNodeHttpAdapter({
+    const adapter = internalNodeApi.NodeHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port: address.port,
       retryDelayMs: 100,

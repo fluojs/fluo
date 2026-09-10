@@ -1265,7 +1265,11 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain('runNodejsApplication(AppModule, { port })');
+    expect(mainFile).toContain("import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';");
+    expect(mainFile).toContain('FluoFactory.create(AppModule, {');
+    expect(mainFile).toContain('adapter: NodeHttpApplicationAdapter.create({ port })');
+    expect(mainFile).toContain('await app.listen();');
+    expect(mainFile).not.toContain('runNodejsApplication');
   });
 
   it('scaffolds the Bun HTTP starter when the bun runtime is selected explicitly', async () => {
