@@ -46,7 +46,8 @@ jobs:
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
       - name: Verify release readiness
-        run: pnpm verify:release-readiness
+        # Reuse the successful build above on this same checkout; all other gates still run.
+        run: pnpm verify:release-readiness --skip-build
 
       - name: Verify changeset release lane
         run: pnpm verify:changeset-release-lane -- --lane=stable --base-ref=${{ github.event.before }}
