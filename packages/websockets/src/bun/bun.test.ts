@@ -1,6 +1,12 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
+import type {
+  BunServerWebSocket,
+  BunWebSocketBinding,
+  BunWebSocketMessage,
+  BunWebSocketUpgradeHost,
+} from '@fluojs/platform-bun';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,13 +14,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as bunPublicApi from './bun.js';
 import {
-  type BunServerWebSocket,
-  type BunWebSocketBinding,
-  type BunWebSocketBindingHost,
   BunWebSocketGatewayLifecycleService,
-  type BunWebSocketMessage,
   BunWebSocketModule,
-  type BunWebSocketUpgradeHost,
 } from './bun.js';
 
 type MockSocket = BunServerWebSocket<unknown> & {
@@ -27,12 +28,12 @@ const WEBSOCKET_OPEN_READY_STATE = 1;
 const BUN_WEBSOCKET_CAPABILITY_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
-class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
+class TestBunAdapter implements HttpApplicationAdapter {
   private binding?: BunWebSocketBinding<unknown>;
   readonly bindingConfigurations: Array<BunWebSocketBinding<unknown> | undefined> = [];
   private server?: TestBunServer;
 
-  configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
+  private installRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
     this.binding = binding as BunWebSocketBinding<unknown> | undefined;
     this.bindingConfigurations.push(this.binding);
   }
@@ -45,6 +46,10 @@ class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost 
       reason: BUN_WEBSOCKET_CAPABILITY_REASON,
       support: 'supported' as const,
       version: 1 as const,
+      bindingInstallation: {
+        install: (binding: unknown | undefined) => this.installRealtimeBinding(binding as BunWebSocketBinding | undefined),
+        version: 1 as const,
+      },
     };
   }
 

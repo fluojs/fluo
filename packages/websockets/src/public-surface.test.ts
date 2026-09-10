@@ -1,55 +1,76 @@
 import { readFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
+import { fileURLToPath } from 'node:url';
 
+import ts from 'typescript';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { WebSocketModuleOptions as BunWebSocketModuleOptions } from './bun.js';
+import type { WebSocketUpgradeGuard as BunWebSocketUpgradeGuard } from './bun.js';
 import * as bun from './bun.js';
-import type { WebSocketModuleOptions as CloudflareWorkersWebSocketModuleOptions } from './cloudflare-workers.js';
+import type { WebSocketUpgradeGuard as CloudflareWorkersWebSocketUpgradeGuard } from './cloudflare-workers.js';
 import * as workers from './cloudflare-workers.js';
-import type { WebSocketModuleOptions as DenoWebSocketModuleOptions } from './deno.js';
+import type { WebSocketUpgradeGuard as DenoWebSocketUpgradeGuard } from './deno.js';
 import * as deno from './deno.js';
-import type { WebSocketModuleOptions as RootWebSocketModuleOptions } from './index.js';
+import type { WebSocketUpgradeGuard as RootWebSocketUpgradeGuard } from './index.js';
 import * as websockets from './index.js';
-import type { WebSocketModuleOptions as NodeWebSocketModuleOptions } from './node.js';
+import type { WebSocketUpgradeGuard as NodeWebSocketUpgradeGuard } from './node.js';
 import * as node from './node.js';
 
-type UpgradeGuardRequest<TOptions> = TOptions extends { upgrade?: { guard?: (request: infer TRequest, ...args: never[]) => unknown } }
-  ? TRequest
+type UpgradeGuardRequest<TGuard> = TGuard extends (...args: infer TArguments) => unknown
+  ? TArguments[0]
   : never;
 
 describe('@fluojs/websockets public surface', () => {
+  it('owns shared upgrade and reply contracts only at the root, not runtime subpaths', () => {
+    const paths = ['index', 'node', 'bun', 'deno', 'cloudflare-workers']
+      .map((name) => fileURLToPath(new URL(`./${name}.ts`, import.meta.url)));
+    const program = ts.createProgram(paths, {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+    });
+    const checker = program.getTypeChecker();
+    for (const [index, path] of paths.entries()) {
+      const source = program.getSourceFile(path);
+      if (!source) throw new Error(`Missing public entrypoint ${path}.`);
+      const symbol = checker.getSymbolAtLocation(source);
+      if (!symbol) throw new Error(`Missing public module symbol ${path}.`);
+      const names = checker.getExportsOfModule(symbol).map((entry) => entry.name);
+      for (const shared of [
+        'WebSocketUpgradeContext', 'WebSocketUpgradeRejection', 'WebSocketEventEnvelope', 'WebSocketReplyMode',
+      ]) {
+        if (index === 0) expect(names).toContain(shared);
+        else expect(names).not.toContain(shared);
+      }
+    }
+  });
+
   it('declares the patched ws dependency floor', () => {
     const packageManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
     expect(packageManifest).toContain('"ws": "^8.21.0"');
   });
 
-  it('keeps root package imports behind runtime-neutral source boundaries', () => {
+  it('keeps root package imports and declarations behind runtime-neutral source boundaries', () => {
     const rootEntrypoint = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-    const rootModule = readFileSync(new URL('./module.ts', import.meta.url), 'utf8');
-    const rootService = readFileSync(new URL('./service.ts', import.meta.url), 'utf8');
 
     expect(rootEntrypoint).not.toContain('./node.js');
-    expect(rootModule).not.toContain("from './node.js'");
-    expect(rootModule).not.toContain("from './node/node-service.js'");
-    expect(rootService).not.toContain("from './node/node-service.js'");
-    expect(rootModule).toContain("await import('./node/node-service.js')");
+    expect(rootEntrypoint).not.toContain('./node/');
+    expect(rootEntrypoint).not.toContain("from './module.js'");
+    expect(rootEntrypoint).not.toContain('WebSocketGatewayLifecycleService');
   });
 
-  it('keeps the documented root barrel focused on module-first registration', () => {
-    expect(websockets).toHaveProperty('WebSocketModule');
-    expect((websockets as { WebSocketModule: { forRoot: unknown } }).WebSocketModule).toHaveProperty('forRoot');
-    expect(websockets).toHaveProperty('WebSocketGatewayLifecycleService');
+  it('keeps the root barrel focused on runtime-neutral gateway authoring', () => {
+    expect(websockets).not.toHaveProperty('WebSocketModule');
+    expect(websockets).not.toHaveProperty('WebSocketGatewayLifecycleService');
     expect(websockets).not.toHaveProperty('createWebSocketProviders');
     expect(websockets).not.toHaveProperty('WEBSOCKET_OPTIONS_INTERNAL');
     expect(websockets).toHaveProperty('WebSocketGateway');
     expect(websockets).toHaveProperty('OnConnect');
     expect(websockets).toHaveProperty('OnDisconnect');
     expect(websockets).toHaveProperty('OnMessage');
-    expect(Object.keys(websockets).sort()).toMatchSnapshot('root');
   });
 
-  it('keeps runtime subpaths focused on explicit module and lifecycle exports', () => {
+  it('keeps runtime subpaths focused on explicit module lifecycle and projection exports', () => {
     expect(node).toHaveProperty('NodeWebSocketModule');
     expect(node).toHaveProperty('NodeWebSocketGatewayLifecycleService');
     expect(node).not.toHaveProperty('createNodeWebSocketProviders');
@@ -66,41 +87,28 @@ describe('@fluojs/websockets public surface', () => {
     expect(workers).toHaveProperty('CloudflareWorkersWebSocketGatewayLifecycleService');
     expect(workers).not.toHaveProperty('createCloudflareWorkersWebSocketProviders');
 
-    expect({
-      bun: Object.keys(bun).sort(),
-      'cloudflare-workers': Object.keys(workers).sort(),
-      deno: Object.keys(deno).sort(),
-      node: Object.keys(node).sort(),
-    }).toMatchSnapshot('runtime-subpaths');
-  });
-
-  it('preserves the root and explicit Node lifecycle-service token identity', () => {
-    expect(websockets.WebSocketGatewayLifecycleService).toBe(node.NodeWebSocketGatewayLifecycleService);
-  });
-
-  it('exposes gateway authoring primitives from every runtime subpath', () => {
     const runtimeSubpaths = [bun, deno, node, workers];
 
     for (const runtimeSubpath of runtimeSubpaths) {
-      expect(runtimeSubpath).toHaveProperty('WebSocketGateway');
-      expect(runtimeSubpath).toHaveProperty('OnConnect');
-      expect(runtimeSubpath).toHaveProperty('OnDisconnect');
-      expect(runtimeSubpath).toHaveProperty('OnMessage');
-      expect(runtimeSubpath).toHaveProperty('defineWebSocketGatewayMetadata');
-      expect(runtimeSubpath).toHaveProperty('getWebSocketGatewayMetadata');
-      expect(runtimeSubpath).toHaveProperty('defineWebSocketHandlerMetadata');
-      expect(runtimeSubpath).toHaveProperty('getWebSocketHandlerMetadata');
-      expect(runtimeSubpath).toHaveProperty('getWebSocketHandlerMetadataEntries');
-      expect(runtimeSubpath).toHaveProperty('webSocketGatewayMetadataSymbol');
-      expect(runtimeSubpath).toHaveProperty('webSocketHandlerMetadataSymbol');
+      expect(runtimeSubpath).not.toHaveProperty('WebSocketGateway');
+      expect(runtimeSubpath).not.toHaveProperty('OnConnect');
+      expect(runtimeSubpath).not.toHaveProperty('OnDisconnect');
+      expect(runtimeSubpath).not.toHaveProperty('OnMessage');
+      expect(runtimeSubpath).not.toHaveProperty('defineWebSocketGatewayMetadata');
+      expect(runtimeSubpath).not.toHaveProperty('getWebSocketGatewayMetadata');
+      expect(runtimeSubpath).not.toHaveProperty('defineWebSocketHandlerMetadata');
+      expect(runtimeSubpath).not.toHaveProperty('getWebSocketHandlerMetadata');
+      expect(runtimeSubpath).not.toHaveProperty('getWebSocketHandlerMetadataEntries');
+      expect(runtimeSubpath).not.toHaveProperty('webSocketGatewayMetadataSymbol');
+      expect(runtimeSubpath).not.toHaveProperty('webSocketHandlerMetadataSymbol');
     }
   });
 
-  it('keeps fetch-style runtime upgrade guards scoped to Request inputs', () => {
-    expectTypeOf<UpgradeGuardRequest<RootWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage>();
-    expectTypeOf<UpgradeGuardRequest<BunWebSocketModuleOptions>>().toEqualTypeOf<Request>();
-    expectTypeOf<UpgradeGuardRequest<DenoWebSocketModuleOptions>>().toEqualTypeOf<Request>();
-    expectTypeOf<UpgradeGuardRequest<CloudflareWorkersWebSocketModuleOptions>>().toEqualTypeOf<Request>();
-    expectTypeOf<UpgradeGuardRequest<NodeWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage>();
+  it('keeps root gateway authoring types and fetch-style guards scoped to runtime-neutral Request inputs', () => {
+    expectTypeOf<UpgradeGuardRequest<RootWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<BunWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<DenoWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<CloudflareWorkersWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<NodeWebSocketUpgradeGuard>>().toEqualTypeOf<IncomingMessage>();
   });
 });

@@ -59,11 +59,6 @@ export interface DenoWebSocketBinding<TSocket extends DenoServerWebSocket = Deno
   fetch(request: Request, host: DenoWebSocketUpgradeHost<TSocket>): Response | Promise<Response>;
 }
 
-/** Hook surface exposed by the Deno HTTP adapter for websocket bindings. */
-export interface DenoWebSocketBindingHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
-  configureWebSocketBinding(binding: DenoWebSocketBinding<TSocket> | undefined): void;
-}
-
 /** Native request handler shape accepted by Deno's HTTP server runtime. */
 export type DenoServeHandler = (request: Request) => Response | Promise<Response>;
 /** Function signature for a pluggable Deno serve implementation. */
@@ -169,11 +164,29 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
       'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
-      { support: 'supported' },
+      {
+        bindingInstallation: {
+          install: (binding) => this.installRealtimeBinding(binding),
+        },
+        support: 'supported',
+      },
     );
   }
 
-  configureWebSocketBinding<TSocket extends DenoServerWebSocket>(
+  private installRealtimeBinding(binding: unknown | undefined): void {
+    if (binding === undefined) {
+      this.setRealtimeBinding(undefined);
+      return;
+    }
+
+    if (!isDenoWebSocketBinding(binding)) {
+      throw new TypeError('Deno realtime binding installation requires a fetch host contract.');
+    }
+
+    this.setRealtimeBinding(binding);
+  }
+
+  private setRealtimeBinding<TSocket extends DenoServerWebSocket>(
     binding: DenoWebSocketBinding<TSocket> | undefined,
   ): void {
     if (this.server) {
@@ -375,6 +388,13 @@ function resolveDenoPort(value: number | undefined): number {
 
 function formatHostForAuthority(hostname: string): string {
   return hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname;
+}
+
+function isDenoWebSocketBinding(value: unknown): value is DenoWebSocketBinding {
+  return typeof value === 'object'
+    && value !== null
+    && 'fetch' in value
+    && typeof value.fetch === 'function';
 }
 
 function resolveServe(serve: DenoServeFunction | undefined): DenoServeFunction {

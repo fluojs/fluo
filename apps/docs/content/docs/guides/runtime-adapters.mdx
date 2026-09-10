@@ -376,10 +376,8 @@ Workers do not open a server socket: `listen()` binds the fluo dispatcher before
 
 ```ts
 import { Module } from '@fluojs/core';
-import {
-  CloudflareWorkersWebSocketModule,
-  WebSocketGateway,
-} from '@fluojs/websockets/cloudflare-workers';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
 
 @WebSocketGateway({ path: '/ws' })
 class EdgeGateway {}

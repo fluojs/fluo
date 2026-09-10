@@ -1,6 +1,13 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { HttpApplicationAdapter } from '@fluojs/http';
+import { resolveFetchStyleHttpAdapterRealtimeBindingInstallation } from '@fluojs/http/internal';
+import type {
+  DenoServerWebSocket,
+  DenoWebSocketBinding,
+  DenoWebSocketMessage,
+  DenoWebSocketUpgradeHost,
+} from '@fluojs/platform-deno';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -19,10 +26,6 @@ import {
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type { WebSocketGatewayDescriptor, WebSocketRoomService, WebSocketUpgradeRejection } from '../types.js';
 import type {
-  DenoServerWebSocket,
-  DenoWebSocketBinding,
-  DenoWebSocketBindingHost,
-  DenoWebSocketMessage,
   WebSocketModuleOptions,
 } from './deno-types.js';
 
@@ -63,12 +66,6 @@ const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
 const WEBSOCKET_OPEN_READY_STATE = 1;
 
-function hasDenoWebSocketBindingHost(
-  adapter: HttpApplicationAdapter,
-): adapter is HttpApplicationAdapter & DenoWebSocketBindingHost {
-  return 'configureWebSocketBinding' in adapter && typeof adapter.configureWebSocketBinding === 'function';
-}
-
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
@@ -78,24 +75,32 @@ function isHttpExceptionLike(error: unknown): error is { message: string; status
 }
 
 function resolveMessageByteLength(message: DenoWebSocketMessage): number {
-  if (typeof message === 'string') {
-    return new TextEncoder().encode(message).byteLength;
+  const value: unknown = message;
+
+  if (typeof value === 'string') {
+    return new TextEncoder().encode(value).byteLength;
   }
 
-  if (message instanceof Blob) {
-    return message.size;
+  if (isBlobMessage(value)) {
+    return value.size;
   }
 
-  if (message instanceof ArrayBuffer) {
-    return message.byteLength;
+  if (value instanceof ArrayBuffer) {
+    return value.byteLength;
   }
 
-  if (ArrayBuffer.isView(message)) {
-    return message.byteLength;
+  if (ArrayBuffer.isView(value)) {
+    return value.byteLength;
   }
 
-  const unreachable: never = message;
-  return unreachable;
+  throw new TypeError('Deno websocket message must be text or binary data.');
+}
+
+function isBlobMessage(value: unknown): value is Blob {
+  return typeof value === 'object'
+    && value !== null
+    && 'size' in value
+    && typeof value.size === 'number';
 }
 
 function createCompletionSignal(): { promise: Promise<void>; resolve: () => void } {
@@ -140,19 +145,13 @@ export class DenoWebSocketGatewayLifecycleService
 
     assertNoFetchStyleServerBackedGatewayOptIn(descriptors, 'deno');
 
-    resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
+    const capability = resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
       packageSubpath: 'deno',
       platformPackage: '@fluojs/platform-deno',
       runtimeName: 'Deno',
     });
 
-    if (!hasDenoWebSocketBindingHost(this.adapter)) {
-      throw new Error(
-        'Deno WebSocket gateway bootstrap requires the selected adapter to expose Deno websocket binding configuration. Use @fluojs/platform-deno with @fluojs/websockets/deno.',
-      );
-    }
-
-    this.adapter.configureWebSocketBinding(this.createBinding(descriptors));
+    resolveFetchStyleHttpAdapterRealtimeBindingInstallation(capability).install(this.createBinding(descriptors));
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -175,9 +174,7 @@ export class DenoWebSocketGatewayLifecycleService
 
   private async handleUpgradeRequest(
     request: Request,
-    host: DenoWebSocketBindingHost extends { configureWebSocketBinding(binding: DenoWebSocketBinding<infer TSocket> | undefined): void }
-      ? import('./deno-types.js').DenoWebSocketUpgradeHost<TSocket>
-      : never,
+    host: DenoWebSocketUpgradeHost,
     descriptorsByPath: ReadonlyMap<string, readonly WebSocketGatewayDescriptor[]>,
   ): Promise<Response> {
     if (!isWebSocketUpgradeRequest(request)) {

@@ -1,13 +1,11 @@
 export * from './decorators.js';
 export * from './metadata.js';
-export * from './module.js';
 export type {
   TypedOnMessageHandler,
   WebSocketGatewayContext,
   WebSocketModuleOptions,
   WebSocketUpgradeGuard,
-} from './node/node-types.js';
-export * from './service.js';
+} from './types.js';
 export type {
   WebSocketEventEnvelope,
   WebSocketEventMap,

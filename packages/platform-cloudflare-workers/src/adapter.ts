@@ -94,11 +94,6 @@ export interface CloudflareWorkerWebSocketBinding {
   fetch(request: Request, host: CloudflareWorkerWebSocketUpgradeHost): Response | Promise<Response>;
 }
 
-/** Hook surface exposed by the Worker adapter for websocket bindings. */
-export interface CloudflareWorkerWebSocketBindingHost {
-  configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void;
-}
-
 /** Parsing and transport options for the Cloudflare Worker adapter. */
 export interface CloudflareWorkerAdapterOptions extends CreateWebRequestResponseFactoryOptions {
   createWebSocketPair?: CloudflareWorkerWebSocketPairFactory;
@@ -147,7 +142,7 @@ export type CloudflareWorkerHostFactory<Env = unknown> = (
  * Cloudflare Workers HTTP adapter with waitUntil-aware request tracking and graceful close behavior.
  */
 export class CloudflareWorkerHttpApplicationAdapter
-  implements HttpApplicationAdapter, CloudflareWorkerWebSocketBindingHost {
+  implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private inFlightDrain?: Deferred<void>;
@@ -210,7 +205,7 @@ export class CloudflareWorkerHttpApplicationAdapter
               throw new Error(WEBSOCKET_BINDING_INSTALLATION_MESSAGE);
             }
 
-            this.configureWebSocketBinding(binding);
+            this.setWebSocketBinding(binding);
           },
         },
         support: 'supported',
@@ -218,7 +213,7 @@ export class CloudflareWorkerHttpApplicationAdapter
     );
   }
 
-  configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {
+  private setWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {
     if (this.isWebSocketBindingFrozen && binding !== this.websocketBinding) {
       throw new Error(WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE);
     }

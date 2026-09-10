@@ -1159,6 +1159,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/platform-bun':
+        specifier: workspace:^
+        version: link:../platform-bun
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -1169,9 +1172,6 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(typescript@6.0.2)
     devDependencies:
-      '@fluojs/platform-bun':
-        specifier: workspace:^
-        version: link:../platform-bun
       '@fluojs/platform-express':
         specifier: workspace:^
         version: link:../platform-express
@@ -1382,6 +1382,15 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/platform-bun':
+        specifier: workspace:^
+        version: link:../platform-bun
+      '@fluojs/platform-cloudflare-workers':
+        specifier: workspace:^
+        version: link:../platform-cloudflare-workers
+      '@fluojs/platform-deno':
+        specifier: workspace:^
+        version: link:../platform-deno
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -1389,12 +1398,6 @@ importers:
         specifier: 8.21.1
         version: 8.21.1
     devDependencies:
-      '@fluojs/platform-bun':
-        specifier: workspace:^
-        version: link:../platform-bun
-      '@fluojs/platform-cloudflare-workers':
-        specifier: workspace:^
-        version: link:../platform-cloudflare-workers
       '@fluojs/platform-express':
         specifier: workspace:^
         version: link:../platform-express

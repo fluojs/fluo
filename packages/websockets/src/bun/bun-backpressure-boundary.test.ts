@@ -1,21 +1,20 @@
 import type { HttpApplicationAdapter } from '@fluojs/http';
+import type { BunWebSocketBinding } from '@fluojs/platform-bun';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { OnMessage, WebSocketGateway } from '../decorators.js';
 import {
-  type BunWebSocketBinding,
-  type BunWebSocketBindingHost,
   BunWebSocketModule,
 } from './bun.js';
 
 const BUN_WEBSOCKET_CAPABILITY_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
-class TestBunBindingAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
+class TestBunBindingAdapter implements HttpApplicationAdapter {
   nativeBackpressureConfigured = false;
 
-  configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
+  private installRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
     this.nativeBackpressureConfigured = binding?.websocket.backpressureLimit !== undefined
       || binding?.websocket.closeOnBackpressureLimit !== undefined;
   }
@@ -28,6 +27,10 @@ class TestBunBindingAdapter implements HttpApplicationAdapter, BunWebSocketBindi
       reason: BUN_WEBSOCKET_CAPABILITY_REASON,
       support: 'supported' as const,
       version: 1 as const,
+      bindingInstallation: {
+        install: (binding: unknown | undefined) => this.installRealtimeBinding(binding as BunWebSocketBinding | undefined),
+        version: 1 as const,
+      },
     };
   }
 

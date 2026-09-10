@@ -26,11 +26,12 @@ Cloudflare Workers does not send a shutdown callback through the exported `fetch
 
 ## Raw WebSocket gateways
 
-Use `WebSocketModule.forRoot()` for the default Node.js-backed WebSocket runtime.
+Import gateway decorators, metadata, and shared realtime contracts from `@fluojs/websockets`. Use `NodeWebSocketModule.forRoot()` from `@fluojs/websockets/node` for the default Node.js-backed WebSocket runtime; the root does not expose a Node registration alias.
 
 ```ts
 import { Module } from '@fluojs/core';
-import { OnConnect, OnMessage, WebSocketGateway, WebSocketModule } from '@fluojs/websockets';
+import { OnConnect, OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
@@ -46,7 +47,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [WebSocketModule.forRoot()],
+  imports: [NodeWebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -84,13 +85,13 @@ Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `
 
 ## Pre-upgrade guards and bounded defaults
 
-Use `WebSocketModule.forRoot(...)` to reject anonymous upgrades before the handshake completes and to tune connection and payload limits.
+Use `NodeWebSocketModule.forRoot(...)` to reject anonymous upgrades before the handshake completes and to tune connection and payload limits.
 
 ```ts
 import { UnauthorizedException } from '@fluojs/http';
-import { WebSocketModule } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
 
-WebSocketModule.forRoot({
+NodeWebSocketModule.forRoot({
   limits: {
     maxConnections: 500,
     maxPayloadBytes: 65_536,
@@ -134,10 +135,8 @@ Register the Workers module and gateway in the application graph before bootstra
 
 ```ts
 import { Module } from '@fluojs/core';
-import {
-  CloudflareWorkersWebSocketModule,
-  WebSocketGateway,
-} from '@fluojs/websockets/cloudflare-workers';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
 
 @WebSocketGateway({ path: '/ws' })
 class EdgeGateway {}
@@ -258,7 +257,7 @@ Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime. Existi
 
 | Package | Public API |
 | --- | --- |
-| `@fluojs/websockets` | `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `WebSocketModule`, runtime subpath modules, metadata helpers |
+| `@fluojs/websockets` | Runtime-neutral `WebSocketGateway`, lifecycle decorators, metadata helpers, and shared contracts; runtime registration is imported from its subpath |
 | `@fluojs/socket.io` | `SocketIoModule`, `SOCKETIO_SERVER`, `SOCKETIO_ROOM_SERVICE`, `SocketIoRoomService`, `SocketIoLifecycleService`, guard context types |
 
 ## Common mistakes

@@ -30,6 +30,9 @@ export function mandatoryProductionImporterPackageNamesForLockfileChange(
 export function enforceCliMigrationTransformDocs(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceCanonicalRuntimeMatrixReferences(
+  readText?: (relativePath: string) => string,
+): void;
 export function parsePackageNamesFromFamilyTable(markdown: string, sectionTitle: string): string[];
 export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   relativePaths?: readonly string[],

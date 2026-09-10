@@ -8,6 +8,8 @@ import type {
   HttpAdapterRealtimeCapability,
   HttpApplicationAdapter,
 } from '@fluojs/http';
+import { resolveFetchStyleHttpAdapterRealtimeBindingInstallation } from '@fluojs/http/internal';
+import type { BunWebSocketBinding } from '@fluojs/platform-bun';
 import type {
   ApplicationLogger,
   CompiledModule,
@@ -79,18 +81,6 @@ interface NodeHttpServerLike {
   listeners(eventName: string | symbol): Function[];
   on(eventName: string | symbol, listener: (...args: unknown[]) => void): unknown;
   removeAllListeners(eventName?: string | symbol): unknown;
-}
-
-interface BunRealtimeBinding {
-  fetch(request: Request, server: unknown): Response | Promise<Response> | undefined | Promise<Response | undefined>;
-  idleTimeout?: number;
-  maxRequestBodySize?: number;
-  websocket: {
-    close?: (socket: unknown, code: number, reason: string) => void | Promise<void>;
-    maxPayloadLength?: number;
-    message?: (socket: unknown, message: unknown) => void | Promise<void>;
-    open?: (socket: unknown) => void | Promise<void>;
-  };
 }
 
 interface BunEngineCorsOptions {
@@ -299,16 +289,12 @@ function resolveSocketIoBootstrapRuntime(
     );
   }
 
-  if (capability.bindingInstallation === undefined) {
-    throw new Error(
-      'Socket.IO Bun bootstrap requires the fetch-style realtime binding installation extension. Use a current @fluojs/platform-bun adapter.',
-    );
-  }
+  const bindingInstallation = resolveFetchStyleHttpAdapterRealtimeBindingInstallation(capability);
 
   return {
     capability: {
       ...capability,
-      bindingInstallation: capability.bindingInstallation,
+      bindingInstallation,
     },
     kind: 'bun',
   };
@@ -652,7 +638,7 @@ export class SocketIoLifecycleService
     this.bunEngine = engine;
   }
 
-  private createBunSocketIoBinding(engine: BunEngineServer): BunRealtimeBinding {
+  private createBunSocketIoBinding(engine: BunEngineServer): BunWebSocketBinding {
     const handler = engine.handler();
     const maxHttpBufferSize = this.resolveMaxHttpBufferSize();
 
@@ -669,10 +655,10 @@ export class SocketIoLifecycleService
       idleTimeout: handler.idleTimeout,
       maxRequestBodySize: maxHttpBufferSize,
       websocket: {
-        close: handler.websocket.close as BunRealtimeBinding['websocket']['close'],
+        close: handler.websocket.close as BunWebSocketBinding['websocket']['close'],
         maxPayloadLength: maxHttpBufferSize,
-        message: handler.websocket.message as BunRealtimeBinding['websocket']['message'],
-        open: handler.websocket.open as BunRealtimeBinding['websocket']['open'],
+        message: handler.websocket.message as BunWebSocketBinding['websocket']['message'],
+        open: handler.websocket.open as BunWebSocketBinding['websocket']['open'],
       },
     };
   }

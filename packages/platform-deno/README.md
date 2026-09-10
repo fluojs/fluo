@@ -108,13 +108,13 @@ The adapter supports Deno's native `Deno.upgradeWebSocket` after the application
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';
-import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+  handlePing(_payload: unknown, socket) {
     socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
 }
@@ -179,7 +179,7 @@ The Deno 2 smoke lane checks the public `npm:@fluojs/platform-deno` root import 
 - `getListenTarget()`: Reports the bind target and public URL using Deno `hostname` or the portable `host` alias.
 - `getRealtimeCapability()`: Reports the fetch-style Deno websocket upgrade capability for runtime integration.
 - `getServer()`: Returns the active `Deno.serve` controller while the adapter is listening.
-- `configureWebSocketBinding(...)`: Installs the `@fluojs/websockets/deno` binding before `listen(dispatcher)` starts the server.
+- Deno realtime modules install their binding through the version-1 capability during module registration, before `listen(dispatcher)` starts the server; direct configure/setter APIs are removed.
 - `DenoWebSocketMessage`: The full inbound websocket payload union: `ArrayBuffer | ArrayBufferView | Blob | string`.
 - `https: { cert, key }`: HTTPS startup options forwarded to `Deno.serve` and reflected in the reported listen URL.
 - Option and seam types: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, `DenoAdapterOptions`, `DenoShutdownSignal`, and `DenoServeOnListenInfo`.

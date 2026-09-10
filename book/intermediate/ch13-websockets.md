@@ -13,7 +13,7 @@ This chapter adds a realtime connection layer to FluoShop and explains the gatew
 
 ## Learning Objectives
 - Understand that a WebSocket gateway has a realtime contract that differs from request-response flows.
-- Learn how to register a gateway-based realtime layer with `WebSocketModule.forRoot()`.
+- Learn how to register a gateway-based realtime layer with `NodeWebSocketModule.forRoot()`.
 - Explain the responsibilities of the `@OnConnect`, `@OnMessage`, and `@OnDisconnect` lifecycle.
 - Analyze why upgrade guards and bounded defaults matter for production stability.
 - Map domain events into gateway messages and push them to clients.
@@ -30,14 +30,14 @@ In previous chapters, FluoShop relied on the request-response cycle. The user se
 
 ## 13.2 WebSocket module wiring
 
-To enable realtime features, register `WebSocketModule`. By default, fluo uses a Node.js-based runtime, but this package is designed to be runtime-agnostic so application code does not become tightly coupled to a specific engine.
+To enable realtime features on Node.js, register `NodeWebSocketModule`. Gateway decorators remain runtime-neutral imports from `@fluojs/websockets`, so gateway authoring does not become coupled to a specific engine.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { WebSocketModule } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
 
 @Module({
-  imports: [WebSocketModule.forRoot()],
+  imports: [NodeWebSocketModule.forRoot()],
   providers: [OrderStatusGateway],
 })
 export class RealTimeModule {}
@@ -85,7 +85,7 @@ If you are migrating from NestJS, do not look for legacy message, body, or conne
 In production, you cannot leave WebSockets open without limits. WebSockets consume persistent server resources, namely memory and file descriptors. The `@fluojs/websockets` package automatically applies bounded defaults for concurrent connections and payload size, and you can tune these settings at the Module level. Starting from bounded defaults and adjusting only what the workload needs helps keep realtime features scalable and predictable.
 
 ```typescript
-WebSocketModule.forRoot({
+NodeWebSocketModule.forRoot({
   limits: {
     maxConnections: 1000,
     maxPayloadBytes: 32_768, // 32KB
@@ -103,7 +103,7 @@ WebSocketModule.forRoot({
 
 The `upgrade.guard` is especially important. This Guard runs before the WebSocket handshake completes, which makes it the right place for checks such as authentication or origin validation that must happen before the connection is accepted.
 
-The root `WebSocketModule` and `@fluojs/websockets/node` use Node's `IncomingMessage`, so header access follows the Node request shape. Fetch-style subpaths such as `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers` receive a Web-standard `Request`; reusable option objects for those runtimes should read headers with `request.headers.get('authorization')` and import the subpath-specific `WebSocketModuleOptions` type.
+`@fluojs/websockets/node` uses Node's `IncomingMessage`, so header access follows the Node request shape. Fetch-style subpaths such as `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers` receive a Web-standard `Request`; reusable option objects for those runtimes should read headers with `request.headers.get('authorization')` and import their runtime-specific options type. The root exports authoring primitives and shared contracts, not a Node registration alias.
 
 If the Guard fails, the connection is rejected immediately. It is a boundary that stops the server from allocating resources for unauthenticated clients.
 
@@ -148,13 +148,14 @@ This connection bridges the asynchronous domain and the real-time surface. The G
 
 For fan-out use cases, inject the package's room contract instead of keeping every socket in a custom map. `WebSocketRoomService` supports `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. A room join succeeds only for a currently open socket registered by the selected runtime lifecycle service; unknown or already closed socket identifiers are ignored without creating membership state. Broadcasts send a JSON frame shaped as `{ event, data }` to currently open sockets in the room. The Node.js-backed adapter applies the configured `backpressure` policy before writing to sockets; the fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) do not apply a backpressure policy to room broadcasts.
 
-`WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service. Inject the lifecycle service token with `@Inject(...)` and type the constructor parameter as `WebSocketRoomService`. The root `@fluojs/websockets` entrypoint exposes `WebSocketGatewayLifecycleService` as the DI token, while the explicit `@fluojs/websockets/node` subpath exposes `NodeWebSocketGatewayLifecycleService`; the other runtime-specific subpaths expose the matching `*WebSocketGatewayLifecycleService` token listed in the runtime table in Section 13.6.
+`WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service. Inject the runtime lifecycle token with `@Inject(...)` and type the constructor parameter as `WebSocketRoomService`. `NodeWebSocketGatewayLifecycleService` comes from the Node subpath; other runtime subpaths export the matching runtime lifecycle token listed in Section 13.6.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { WebSocketGatewayLifecycleService, type WebSocketRoomService } from '@fluojs/websockets';
+import { type WebSocketRoomService } from '@fluojs/websockets';
+import { NodeWebSocketGatewayLifecycleService } from '@fluojs/websockets/node';
 
-@Inject(WebSocketGatewayLifecycleService)
+@Inject(NodeWebSocketGatewayLifecycleService)
 export class OrderStatusGateway {
   constructor(private readonly rooms: WebSocketRoomService) {}
 
@@ -166,7 +167,7 @@ export class OrderStatusGateway {
 
 ## 13.6 Cross-runtime websocket surfaces
 
-fluo is designed around portability. The default `WebSocketModule` targets Node.js, but you may need to run FluoShop on Bun, Deno, or Cloudflare Workers. Each runtime handles WebSockets differently at the engine level, so the `@fluojs/websockets` package handles this difference through runtime-specific subpaths. Keeping runtime differences at the import boundary helps the gateway's business logic remain stable.
+fluo is designed around portability. `NodeWebSocketModule` from the Node subpath targets Node.js, while FluoShop can use Bun, Deno, or Cloudflare Workers runtime modules where needed. The root `@fluojs/websockets` import remains runtime-neutral for gateway authoring. Keeping registration and native differences at runtime import boundaries helps the gateway's business logic remain stable.
 
 | Runtime | Subpath |
 | --- | --- |
@@ -179,9 +180,9 @@ When you import from the correct subpath, the backend adapter can change to matc
 
 The root and Node entrypoints type upgrade guards with Node's `IncomingMessage`. Bun, Deno, and Cloudflare Workers subpaths use Web-standard `Request` guards. Guards can allow upgrades with `true` or no return, reject with `false` or a structured `WebSocketUpgradeRejection`, or throw an HTTP exception such as `UnauthorizedException`; fluo converts these failures into pre-handshake rejection responses before accepting the socket. Text frames are delivered as strings unless they parse as JSON event envelopes, and binary frames are decoded as UTF-8 before the same dispatch step, so payload handling stays consistent across supported runtimes.
 
-Raw WebSocket handler return values are awaited and then ignored by default. Send client replies explicitly with the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`. Applications that prefer return-based replies can opt in with `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`; in that mode, valid `{ event, data? }` handler returns are serialized and sent after completion across Node, Bun, Deno, and Cloudflare Workers.
+Raw WebSocket handler return values are awaited and then ignored by default. Send client replies explicitly with the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`. Applications that prefer return-based replies configure the selected runtime module's `forRoot({ replies: { mode: 'event-envelope' } })`; valid `{ event, data? }` handler returns are then serialized and sent after completion across Node, Bun, Deno, and Cloudflare Workers.
 
-For low-level integrations, keep the public seam names visible in code reviews: `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, gateway descriptor types, and runtime socket/binding types belong to the package or runtime subpath you import from. The root `WebSocketGatewayLifecycleService` name is a DI token alias for the lazy Node implementation, so application code resolves it from the container rather than constructing it directly.
+For low-level integrations, keep the public seam names visible in code reviews: `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, and gateway descriptor types are root contracts; runtime socket/binding types stay with their platform owner. Application code resolves `NodeWebSocketGatewayLifecycleService` from the Node subpath rather than constructing it directly.
 
 ## 13.7 Heartbeats and connection health
 
@@ -236,11 +237,11 @@ This flow reduces repeated polling by users and gives them an experience where t
 ## 13.11 Summary
 
 - `@fluojs/websockets` provides a decorator-based API for realtime communication.
-- `WebSocketModule.forRoot()` initializes the engine with bounded defaults for production stability.
+- `NodeWebSocketModule.forRoot()` initializes the Node engine with bounded defaults for production stability.
 - `@WebSocketGateway` classes manage the connection lifecycle and message routing.
 - You can use `upgrade.guard` to reject unauthenticated handshakes before they consume server resources.
 - Runtime-specific subpaths ensure realtime logic stays portable across Node, Bun, Deno, and Cloudflare Workers.
-- `WebSocketRoomService` gives gateways a documented room membership and broadcast contract; inject `WebSocketGatewayLifecycleService` from the root entrypoint, `NodeWebSocketGatewayLifecycleService` from the explicit Node subpath, or the matching `*WebSocketGatewayLifecycleService` from another runtime subpath with `@Inject(...)`, and type the parameter as `WebSocketRoomService`.
+- `WebSocketRoomService` gives gateways a documented room membership and broadcast contract; inject `NodeWebSocketGatewayLifecycleService` from the Node subpath or the matching runtime lifecycle token from another runtime subpath with `@Inject(...)`, and type the parameter as `WebSocketRoomService`.
 - Text and binary payloads are normalized before `@OnMessage()` handlers run.
 - Shutdown closes upgrade admission before acceptance and keeps already queued disconnect cleanup inside the bounded drain.
 - Heartbeat and bounded defaults prevent resource leaks and ghost connections.

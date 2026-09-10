@@ -154,10 +154,8 @@ Workers는 fetch dispatch를 통해 공유 `@fluojs/http` 단일 byte-range 및 
 
 ```typescript
 import { Module } from '@fluojs/core';
-import {
-  CloudflareWorkersWebSocketModule,
-  WebSocketGateway,
-} from '@fluojs/websockets/cloudflare-workers';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
 
 @WebSocketGateway({ path: '/ws' })
 export class EdgeGateway {}
@@ -169,7 +167,7 @@ export class EdgeGateway {}
 export class RealtimeModule {}
 ```
 
-Bootstrap 전에 application module graph에 `RealtimeModule`을 import하세요. Application bootstrap 중 `CloudflareWorkersWebSocketModule`이 gateway를 발견하고 `app.listen()`이 binding을 freeze하기 전에 versioned realtime capability를 통해 Worker adapter binding을 설치합니다. `configureWebSocketBinding()`은 compatibility facade로 유지됩니다. Listen boundary 이후에는 binding을 추가하거나 교체하지 마세요.
+Bootstrap 전에 application module graph에 `RealtimeModule`을 import하세요. Application bootstrap 중 `CloudflareWorkersWebSocketModule`이 gateway를 발견하고 `app.listen()`이 binding을 freeze하기 전에 version-1 realtime capability를 통해 Worker adapter binding을 설치합니다. Direct binding configuration은 제거됩니다. Listen boundary 이후에는 binding을 추가하거나 교체하지 마세요.
 
 ### 엣지 네이티브 미들웨어
 표준 fluo 미들웨어(CORS, Global Prefix 등)는 `FluoFactory.create(...)`를 통해
@@ -234,7 +232,7 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 - `CloudflareWorkerApplicationHost.create(AppModule, options)`: lazy fixed-module Worker host를 생성합니다.
 - `CloudflareWorkerApplicationHost.create({ fromEnv })`: 첫 명시적 Worker environment에서 env-aware lazy Worker host를 생성합니다.
 - `CloudflareWorkerApplicationGeneration<Env>`: `app`, concrete `adapter`, extractable `fetch`, `close(...)`를 갖는 host `ready(...)` 결과입니다.
-- Option 및 type: `CloudflareWorkerAdapterOptions`, `CloudflareWorkerApplicationHostOptions`, `CloudflareWorkerHostConfiguration`, `CloudflareWorkerHostFactory<Env>`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, `CloudflareWorkerWebSocketUpgradeResult`.
+- Option 및 type: `CloudflareWorkerAdapterOptions`, `CloudflareWorkerApplicationHostOptions`, `CloudflareWorkerHostConfiguration`, `CloudflareWorkerHostFactory<Env>`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, `CloudflareWorkerWebSocketUpgradeResult`.
 
 ## 관련 패키지
 

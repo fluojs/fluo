@@ -1,5 +1,6 @@
 export {
   createFetchStyleHttpAdapterRealtimeCapability,
+  resolveFetchStyleHttpAdapterRealtimeBindingInstallation,
   type HttpApplicationAdapter,
 } from './adapter.js';
 export { DefaultBinder } from './adapters/binding.js';

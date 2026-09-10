@@ -21,6 +21,13 @@ import {
   type CloudflareWorkerWebSocketPair,
 } from './adapter.js';
 
+function installRealtimeBinding(
+  adapter: CloudflareWorkerHttpApplicationAdapter,
+  binding: CloudflareWorkerWebSocketBinding | undefined,
+): void {
+  adapter.getRealtimeCapability().bindingInstallation?.install(binding);
+}
+
 function createExecutionContext(): CloudflareWorkerExecutionContext {
   return {
     waitUntil() {},
@@ -324,7 +331,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       return upgraded.response;
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
     });
 
@@ -357,7 +364,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       return upgraded.response;
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
     });
 
@@ -454,7 +461,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
         'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
       );
       expect(() => installation.install(initialBinding)).not.toThrow();
-      expect(() => adapter.configureWebSocketBinding(initialBinding)).not.toThrow();
+      expect(() => installRealtimeBinding(adapter, initialBinding)).not.toThrow();
     } finally {
       await adapter.close();
     }
@@ -783,7 +790,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       return upgraded.response;
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
     });
 
@@ -825,7 +832,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       return upgraded.response;
     });
 
-    adapter.configureWebSocketBinding({
+    installRealtimeBinding(adapter, {
       fetch: bindingFetch,
     });
 

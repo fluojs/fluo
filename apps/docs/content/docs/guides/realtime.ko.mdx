@@ -26,11 +26,12 @@ Cloudflare Workers는 exported `fetch` handler를 통해 shutdown callback을 �
 
 ## Raw WebSocket gateways
 
-기본 Node.js-backed WebSocket runtime에는 `WebSocketModule.forRoot()`를 사용합니다.
+Gateway decorator, metadata, shared realtime contract는 `@fluojs/websockets`에서 import합니다. 기본 Node.js-backed WebSocket runtime에는 `@fluojs/websockets/node`의 `NodeWebSocketModule.forRoot()`를 사용하며 root는 Node registration alias를 노출하지 않습니다.
 
 ```ts
 import { Module } from '@fluojs/core';
-import { OnConnect, OnMessage, WebSocketGateway, WebSocketModule } from '@fluojs/websockets';
+import { OnConnect, OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
@@ -46,7 +47,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [WebSocketModule.forRoot()],
+  imports: [NodeWebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -84,13 +85,13 @@ Fetch-style runtime (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluo
 
 ## Pre-upgrade guard와 bounded defaults
 
-Handshake가 완료되기 전에 anonymous upgrade를 거부하고 connection/payload limit을 조정하려면 `WebSocketModule.forRoot(...)`를 사용합니다.
+Handshake가 완료되기 전에 anonymous upgrade를 거부하고 connection/payload limit을 조정하려면 `NodeWebSocketModule.forRoot(...)`를 사용합니다.
 
 ```ts
 import { UnauthorizedException } from '@fluojs/http';
-import { WebSocketModule } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
 
-WebSocketModule.forRoot({
+NodeWebSocketModule.forRoot({
   limits: {
     maxConnections: 500,
     maxPayloadBytes: 65_536,
@@ -134,10 +135,8 @@ Bootstrap 전에 Workers module과 gateway를 application graph에 등록하세�
 
 ```ts
 import { Module } from '@fluojs/core';
-import {
-  CloudflareWorkersWebSocketModule,
-  WebSocketGateway,
-} from '@fluojs/websockets/cloudflare-workers';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
 
 @WebSocketGateway({ path: '/ws' })
 class EdgeGateway {}
@@ -258,7 +257,7 @@ Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거�
 
 | 패키지 | Public API |
 | --- | --- |
-| `@fluojs/websockets` | `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `WebSocketModule`, runtime subpath modules, metadata helpers |
+| `@fluojs/websockets` | Runtime-neutral `WebSocketGateway`, lifecycle decorator, metadata helper, shared contract; runtime registration은 각 subpath에서 import |
 | `@fluojs/socket.io` | `SocketIoModule`, `SOCKETIO_SERVER`, `SOCKETIO_ROOM_SERVICE`, `SocketIoRoomService`, `SocketIoLifecycleService`, guard context types |
 
 ## 흔한 실수

@@ -2,7 +2,12 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@fluojs/*": ["./packages/*/dist/index.d.ts"],
+      "@fluojs/websockets/*": ["./packages/websockets/dist/*.d.ts"],
+      "socket.io-client": ["./packages/socket.io/node_modules/socket.io-client"]
+    }
   },
   "include": [
     "vite.config.ts",

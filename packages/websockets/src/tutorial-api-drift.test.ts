@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const tutorialPaths = [
@@ -28,27 +29,52 @@ describe('@fluojs/websockets tutorial API alignment', () => {
   });
 
   it('keeps fetch-style runtime tutorials wired to their runtime modules', () => {
-    const bun = readTutorial('../../../book/intermediate/ch22-bun.md');
-    const bunKo = readTutorial('../../../book/intermediate/ch22-bun.ko.md');
-    const deno = readTutorial('../../../book/intermediate/ch23-deno.md');
-    const denoKo = readTutorial('../../../book/intermediate/ch23-deno.ko.md');
-    const workers = readTutorial('../../../book/intermediate/ch24-cloudflare.md');
-    const workersKo = readTutorial('../../../book/intermediate/ch24-cloudflare.ko.md');
-
-    expect(bun).toContain("import { BunWebSocketModule, OnConnect, WebSocketGateway } from '@fluojs/websockets/bun';");
-    expect(bun).toContain('BunWebSocketModule.forRoot()');
-    expect(bunKo).toContain("import { BunWebSocketModule, OnConnect, WebSocketGateway } from '@fluojs/websockets/bun';");
-    expect(bunKo).toContain('BunWebSocketModule.forRoot()');
-
-    expect(deno).toContain("import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';");
-    expect(deno).toContain('DenoWebSocketModule.forRoot()');
-    expect(denoKo).toContain("import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';");
-    expect(denoKo).toContain('DenoWebSocketModule.forRoot()');
-
-    expect(workers).toContain("import { CloudflareWorkersWebSocketModule, WebSocketGateway } from '@fluojs/websockets/cloudflare-workers';");
-    expect(workers).toContain('CloudflareWorkersWebSocketModule.forRoot()');
-    expect(workersKo).toContain("import { CloudflareWorkersWebSocketModule, WebSocketGateway } from '@fluojs/websockets/cloudflare-workers';");
-    expect(workersKo).toContain('CloudflareWorkersWebSocketModule.forRoot()');
+    const cases = [
+      { chapter: 'ch22-bun', module: 'BunWebSocketModule', subpath: 'bun', decorators: ['OnConnect', 'WebSocketGateway'] },
+      { chapter: 'ch23-deno', module: 'DenoWebSocketModule', subpath: 'deno', decorators: ['OnMessage', 'WebSocketGateway'] },
+      { chapter: 'ch24-cloudflare', module: 'CloudflareWorkersWebSocketModule', subpath: 'cloudflare-workers', decorators: ['WebSocketGateway'] },
+    ];
+    for (const testCase of cases) {
+      for (const locale of ['', '.ko']) {
+        const content = readTutorial(`../../../book/intermediate/${testCase.chapter}${locale}.md`);
+        const code = [...content.matchAll(/^```(?:ts|typescript)[^\n]*\n([\s\S]*?)^```/gm)]
+          .map((match) => match[1]).join('\n');
+        const source = ts.createSourceFile('tutorial.ts', code, ts.ScriptTarget.Latest, true);
+        const imports: { name: string; local: string; source: string }[] = [];
+        const registrations: string[] = [];
+        const visit = (node: ts.Node): void => {
+          if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+            const bindings = node.importClause?.namedBindings;
+            if (bindings && ts.isNamedImports(bindings)) {
+              for (const element of bindings.elements) {
+                imports.push({
+                  name: element.propertyName?.text ?? element.name.text,
+                  local: element.name.text,
+                  source: node.moduleSpecifier.text,
+                });
+              }
+            }
+          }
+          if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+            && node.expression.name.text === 'forRoot' && ts.isIdentifier(node.expression.expression)) {
+            registrations.push(node.expression.expression.text);
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(source);
+        const modules = imports.filter((entry) => entry.name === testCase.module);
+        expect(modules.length).toBeGreaterThan(0);
+        for (const entry of modules) {
+          expect(entry.source).toBe(`@fluojs/websockets/${testCase.subpath}`);
+          expect(registrations).toContain(entry.local);
+        }
+        for (const decorator of testCase.decorators) {
+          const declarations = imports.filter((entry) => entry.name === decorator);
+          expect(declarations.length).toBeGreaterThan(0);
+          for (const entry of declarations) expect(entry.source).toBe('@fluojs/websockets');
+        }
+      }
+    }
   });
 
   it('documents root and fetch-style pre-upgrade guards at their runtime import boundaries', () => {

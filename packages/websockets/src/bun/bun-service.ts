@@ -1,6 +1,13 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { HttpApplicationAdapter } from '@fluojs/http';
+import { resolveFetchStyleHttpAdapterRealtimeBindingInstallation } from '@fluojs/http/internal';
+import type {
+  BunServerWebSocket,
+  BunWebSocketBinding,
+  BunWebSocketMessage,
+  BunWebSocketUpgradeHost,
+} from '@fluojs/platform-bun';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import {
@@ -22,11 +29,6 @@ import type {
   WebSocketUpgradeRejection,
 } from '../types.js';
 import type {
-  BunServerWebSocket,
-  BunWebSocketBinding,
-  BunWebSocketBindingHost,
-  BunWebSocketMessage,
-  BunWebSocketUpgradeHost,
   WebSocketModuleOptions,
 } from './bun-types.js';
 
@@ -72,12 +74,6 @@ const DEFAULT_MAX_WEBSOCKET_CONNECTIONS = 1_000;
 const DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
 const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
-
-function hasBunWebSocketBindingHost(
-  adapter: HttpApplicationAdapter,
-): adapter is HttpApplicationAdapter & BunWebSocketBindingHost {
-  return 'configureWebSocketBinding' in adapter && typeof adapter.configureWebSocketBinding === 'function';
-}
 
 function isHttpExceptionLike(error: unknown): error is { message: string; status: number } {
   return typeof error === 'object' && error !== null && 'message' in error && 'status' in error;
@@ -137,20 +133,13 @@ export class BunWebSocketGatewayLifecycleService
 
     assertNoFetchStyleServerBackedGatewayOptIn(descriptors, 'bun');
 
-    resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
+    const capability = resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
       packageSubpath: 'bun',
       platformPackage: '@fluojs/platform-bun',
       runtimeName: 'Bun',
     });
 
-    if (!hasBunWebSocketBindingHost(this.adapter)) {
-      throw new Error(
-        'Bun WebSocket gateway bootstrap requires the selected adapter to expose Bun websocket binding configuration. Use @fluojs/platform-bun with @fluojs/websockets/bun.',
-      );
-    }
-
-    const bunAdapter = this.adapter as HttpApplicationAdapter & BunWebSocketBindingHost;
-    bunAdapter.configureWebSocketBinding(this.createBinding(descriptors));
+    resolveFetchStyleHttpAdapterRealtimeBindingInstallation(capability).install(this.createBinding(descriptors));
   }
 
   async onApplicationShutdown(): Promise<void> {

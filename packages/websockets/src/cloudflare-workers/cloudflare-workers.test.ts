@@ -4,7 +4,11 @@ import { Controller, Get, type HttpApplicationAdapter, UnauthorizedException } f
 import {
   type CloudflareWorkerExecutionContext,
   CloudflareWorkerHttpApplicationAdapter,
+  type CloudflareWorkerWebSocket,
+  type CloudflareWorkerWebSocketBinding,
+  type CloudflareWorkerWebSocketMessage,
   type CloudflareWorkerWebSocketPair,
+  type CloudflareWorkerWebSocketUpgradeResult,
 } from '@fluojs/platform-cloudflare-workers';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
@@ -15,10 +19,6 @@ import * as workerPublicApi from './cloudflare-workers.js';
 import {
   CloudflareWorkersWebSocketGatewayLifecycleService,
   CloudflareWorkersWebSocketModule,
-  type CloudflareWorkerWebSocket,
-  type CloudflareWorkerWebSocketBinding,
-  type CloudflareWorkerWebSocketMessage,
-  type CloudflareWorkerWebSocketUpgradeResult,
 } from './cloudflare-workers.js';
 
 type MockSocketListenerMap = {
