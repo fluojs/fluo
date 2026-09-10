@@ -48,7 +48,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-Managed startup 경로는 network listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록합니다. Network 접근 권한을 부여해 entrypoint를 실행하세요.
+Managed startup은 network listener를 엽니다. 위 예제는 `shutdownRegistration: createDenoShutdownSignalRegistration()`을 명시해 `SIGINT`/`SIGTERM`을 선택하며 callback을 생략하면 host가 signal을 소유합니다. Network 접근 권한을 부여해 entrypoint를 실행하세요.
 
 ```bash
 deno run --allow-net main.ts

@@ -102,7 +102,7 @@ Runtime은 모듈 그래프와 DI 컨테이너를 구성한 뒤 lifecycle 대상
 
 시작 실패도 부분적으로 성공한 실행이다. DB 연결은 열렸는데 나중의 초기화가 실패할 수 있다. Runtime은 이때 `bootstrap-failed`라는 signal 값으로 정리 hook을 실행하고 컨테이너 정리를 시도한다. 애플리케이션의 정리 코드는 “정상 시작을 끝낸 경우에만 호출된다”는 가정 없이 자신이 실제로 얻은 자원만 해제해야 한다. 초기화 실패를 catch해 빈 저장소로 서비스를 열어 버리는 것은 복구가 아니라 데이터 계약의 변경이다.
 
-Runtime bootstrap 자체가 실패하는 경로에서 HTTP adapter까지 항상 닫는다는 보장은 없다. 이미 앱을 반환받은 run helper가 listen·시작 로그·signal 등록에서 실패하면 `app.close('bootstrap-failed')`를 추가로 시도하고 원래 실패를 유지한다. 초기화 중 확보한 자원 정리와 생성 이후 helper의 정리를 같은 범위로 설명하지 않는다.
+Factory 생성 실패는 전달된 HTTP adapter의 `bootstrap-failed` close를 포함해 확보한 자원 정리를 시도하고 최초 오류를 보존한다. Readiness, listen, 시작 로그, 명시적 host 등록 실패도 `app.close('bootstrap-failed')`를 시도한다. 이는 정리 시도의 보장이지 모든 자원의 성공적 dispose를 보장하지 않는다. HTTP startup 실패는 terminal이므로 새 애플리케이션이 필요하다.
 
 시작 hook에 대규모 데이터 마이그레이션을 넣는 것도 피한다. 인스턴스 두 대가 함께 시작하면 같은 변경을 경쟁할 수 있고, 수 분 걸리는 작업이 listener 준비 시간을 지배한다. 스키마 변경과 데이터 변환은 배포 절차의 별도 단계로 소유하고, 앱의 시작은 필요한 의존성을 사용할 수 있는지 확인하는 정도로 제한한다. 예약 발행의 밀린 작업은 시작 hook에서 무한히 모두 처리하지 않고 정상적인 작은 배치로 따라잡는다.
 
@@ -398,5 +398,5 @@ FluoBlog는 이제 시작 성공과 listener 개방을 구분하고, DB와 앱�
 - [Runtime lifecycle와 signal 소유권](../../packages/runtime/README.ko.md)
 - [시작·종료 순서의 아키텍처 계약](../../docs/architecture/lifecycle-and-shutdown.md)
 - [Runtime bootstrap과 종료 phase 구현](../../packages/runtime/src/bootstrap.ts)
-- [Fastify helper와 제한된 close 계약](../../packages/platform-fastify/README.ko.md)
+- [Fastify adapter와 제한된 close 계약](../../packages/platform-fastify/README.ko.md)
 - [Fastify 실행 옵션과 adapter close 구현](../../packages/platform-fastify/src/adapter.ts)

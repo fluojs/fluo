@@ -526,7 +526,7 @@ NestJS `forRootAsync(...)`와 `load` namespace factory에는 직접 대응하는
 
 ### Fastify 네이티브 확장 마이그레이션
 
-이식 가능한 request 동작에는 fluo `middleware`를 사용하세요. 이는 Fastify plugin API가 아닙니다. NestJS 마이그레이션에서 Fastify 전용 plugin, hook 또는 instance customisation을 유지해야 한다면 listen 전에 `FastifyHttpApplicationAdapter.create({ configureFastify })`(또는 같은 bootstrap/run option)로 전달합니다.
+이식 가능한 request 동작에는 fluo `middleware`를 사용하세요. 이는 Fastify plugin API가 아닙니다. NestJS 마이그레이션에서 Fastify 전용 plugin, hook 또는 instance customisation을 유지해야 한다면 listen 전에 `FastifyHttpApplicationAdapter.create({ configureFastify })`로 전달합니다.
 
 ```typescript
 const adapter = FastifyHttpApplicationAdapter.create({

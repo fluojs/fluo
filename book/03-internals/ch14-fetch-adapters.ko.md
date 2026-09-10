@@ -305,7 +305,7 @@ Workers의 `adapter.fetch(request, env, executionContext)`에는 세 번째 인�
 
 Worker close는 새 유입을 503으로 막고 활성 작업을 최대 10초 기다린다. timeout은 underlying drain이 끝났다는 뜻이 아니다. 아직 drain 중인 adapter의 `listen()`은 재개를 거절하며, lazy entrypoint는 이 시간 동안 새 application으로 우회하지 않는다. 이후 underlying drain이 실제로 끝나면 lazy 경로는 복구할 수 있다. 성공한 lazy close 뒤 다음 fetch가 새 application을 만드는 동작과, raw adapter가 명시적 listen 전까지 503을 유지하는 동작을 구분해야 한다.
 
-Bun도 종료 시작 시 새 유입을 막고 `server.stop(stopActiveConnections)`를 시작한다. bounded timeout은 호출자의 close 대기를 실패시킬 뿐, 진행 중인 작업을 버리고 adapter 상태를 즉시 비우는 신호가 아니다. Deno는 새 유입을 중단하고 active handler를 drain하며 필요하면 serve signal을 abort한다. Deno run helper의 signal-driven close 실패는 로그에 남지만 exit status를 설정하지 않는다. 실패 상태 전파를 직접 소유해야 하는 호스트는 `shutdownSignals: false`로 자동 등록을 끄고 별도로 조율한다.
+Bun도 종료 시작 시 새 유입을 막고 `server.stop(stopActiveConnections)`를 시작한다. bounded timeout은 호출자의 close 대기를 실패시킬 뿐, 진행 중인 작업을 버리고 adapter 상태를 즉시 비우는 신호가 아니다. Deno는 새 유입을 중단하고 active handler를 drain하며 필요하면 serve signal을 abort한다. 명시적으로 전달한 Deno shutdown callback의 signal-driven close 실패는 로그에 남지만 exit status를 설정하지 않는다. 실패 상태 전파를 직접 소유하는 호스트는 `shutdownRegistration`을 생략하고 signal을 별도로 조율한다.
 
 ## 이식성은 최소 공약수와 선택 기능을 함께 기록한다
 

@@ -55,7 +55,7 @@ The [Book](../book/README.md) is the primary learning path from FluoBlog through
 
 The examples also anchor the canonical fluo TDD ladder from `../docs/contracts/testing-guide.md`: write fast unit tests near `src/**`, add slice/module tests with `createTestingModule({ rootModule })` when DI wiring or provider overrides matter, and use `createTestApp({ rootModule })` with `app.request(...).send()` for app-level e2e-style request-pipeline checks. Existing files such as `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, and `ops-metrics-terminus/src/app.test.ts` show the app-level end of that ladder.
 
-The [bootstrap owner](../docs/getting-started/bootstrap-paths.md) distinguishes shared initialization cleanup from run-helper cleanup and signal handling. FluoBlog uses that run helper but retains workspace package builds and numbered checkpoint scripts; it does not supply the generated app's config/greeting registrations. Preserve those registrations and tests when extending a generated app rather than copying a repository root module over it.
+The [bootstrap owner](../docs/getting-started/bootstrap-paths.md) defines Factory creation/startup cleanup and explicit host signal ownership. FluoBlog uses the same static adapter, Factory, and listen path while retaining workspace package builds and numbered checkpoint scripts; it does not supply the generated app's config/greeting registrations. Preserve those registrations and tests when extending a generated app rather than copying a repository root module over it.
 
 For the other v2 starter contracts, see the CLI README for commands and the contract matrix for the full specification:
 

@@ -485,11 +485,11 @@ Migration is direct and intentionally has no compatibility shim:
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-Every moved symbol keeps its existing name at the replacement entrypoint; `@fluojs/platform-nodejs` also retains its established `Nodejs*` aliases.
+Use the supported Node adapter, logger, filesystem, and shutdown registration exports at the replacement entrypoint. Duplicate Nodejs aliases and platform bootstrap/run exports are removed.
 
 | Subpath | Purpose |
 | :--- | :--- |
-| `@fluojs/platform-nodejs` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
+| `@fluojs/platform-nodejs` | Supported Node.js entrypoint for logger factories, the concrete Node adapter, and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, and streaming `parseMultipartStream`. |
 | `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens, runtime-owned metadata and route-inspection helpers, plus `defineModule(...)` and `createRuntimeRouteInspection(...)` for first-party runtime-neutral integrations that must align with compiled runtime descriptors. |
 | `@fluojs/platform-nodejs/internal` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/platform-nodejs` in application code. |

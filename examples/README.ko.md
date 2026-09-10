@@ -55,7 +55,7 @@
 
 예제는 `../docs/contracts/testing-guide.ko.md`의 canonical fluo TDD ladder도 고정합니다. 빠른 unit 테스트는 `src/**` 가까이에 작성하고, DI wiring이나 provider override가 중요할 때는 `createTestingModule({ rootModule })` 기반 slice/module 테스트를 추가하며, app-level e2e 스타일 request-pipeline 점검에는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용합니다. `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, `ops-metrics-terminus/src/app.test.ts` 같은 기존 파일은 그 ladder의 app-level 끝단을 보여줍니다.
 
-[Bootstrap 담당 문서](../docs/getting-started/bootstrap-paths.ko.md)는 공통 초기화 정리와 run-helper cleanup/signal 처리를 구분합니다. FluoBlog는 해당 run helper를 사용하지만 workspace 패키지 빌드와 번호별 checkpoint script를 유지하며 생성 앱의 config/greeting 등록을 제공하지 않습니다. 생성 앱을 확장할 때는 저장소 루트 모듈을 덮어쓰지 말고 그 등록과 테스트를 보존합니다.
+[Bootstrap 담당 문서](../docs/getting-started/bootstrap-paths.ko.md)는 Factory 생성·시작 정리와 명시적 host signal 소유권을 정의합니다. FluoBlog는 같은 static adapter, Factory, listen 경로를 사용하면서 workspace 패키지 빌드와 번호별 checkpoint script를 유지하며 생성 앱의 config/greeting 등록을 제공하지 않습니다. 생성 앱을 확장할 때는 저장소 루트 모듈을 덮어쓰지 말고 그 등록과 테스트를 보존합니다.
 
 다른 v2 스타터 계약은 CLI README에서 명령을 확인하고, 전체 계약 명세는 매트릭스 문서를 참고하세요.
 

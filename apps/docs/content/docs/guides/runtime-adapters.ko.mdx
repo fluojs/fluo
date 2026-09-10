@@ -293,7 +293,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-이 managed 경로는 network listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록하므로 network 접근 권한을 부여해 실행하세요.
+이 managed 경로는 network listener를 엽니다. 예제는 `createDenoShutdownSignalRegistration()`을 `shutdownRegistration`으로 명시하며, host가 signal을 직접 소유하면 이를 생략합니다. Network 접근 권한을 부여해 실행하세요.
 
 ```bash
 deno run --allow-net main.ts

@@ -484,11 +484,11 @@ Migration은 직접적이며 의도적으로 compatibility shim을 제공하지 
 | `@fluojs/runtime/node` | `@fluojs/platform-nodejs` |
 | `@fluojs/runtime/internal-node` | `@fluojs/platform-nodejs/internal` |
 
-이동한 모든 symbol은 대체 entrypoint에서 기존 이름을 유지하며, `@fluojs/platform-nodejs`는 기존 `Nodejs*` alias도 유지합니다.
+대체 entrypoint의 지원되는 Node adapter, logger, filesystem, shutdown registration export를 사용하세요. 중복 Nodejs alias와 platform bootstrap/run export는 제거됩니다.
 
 | 서브경로 | 용도 |
 | :--- | :--- |
-| `@fluojs/platform-nodejs` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
+| `@fluojs/platform-nodejs` | 로거 팩토리, concrete Node 어댑터, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, streaming `parseMultipartStream`을 포함합니다. |
 | `@fluojs/runtime/internal` | runtime wiring token, runtime-owned metadata 및 route-inspection helper와 함께 compiled runtime descriptor에 정렬되어야 하는 first-party runtime-neutral integration을 위한 `defineModule(...)`, `createRuntimeRouteInspection(...)`을 제공하는 internal package-integration seam입니다. |
 | `@fluojs/platform-nodejs/internal` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/platform-nodejs`를 우선 사용하세요. |

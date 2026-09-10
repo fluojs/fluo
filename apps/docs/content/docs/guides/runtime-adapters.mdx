@@ -293,7 +293,7 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-This managed path opens the network listener and registers `SIGINT`/`SIGTERM` listeners by default, so run it with network access:
+This managed path opens the network listener. The example explicitly supplies `createDenoShutdownSignalRegistration()` as `shutdownRegistration`; omit it when the host owns signals. Run it with network access:
 
 ```bash
 deno run --allow-net main.ts
