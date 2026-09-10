@@ -2482,13 +2482,13 @@ export function enforceExpressRuntimeMigrationDocsSync(
   }
 }
 
-function enforceCanonicalRuntimeMatrixReferences() {
-  const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
-  const packageSurfaceKo = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
+  const packageSurface = readText('docs/reference/package-surface.md');
+  const packageSurfaceKo = readText('docs/reference/package-surface.ko.md');
   const packageChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
   const packageChooserKo = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
-  const docsContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
-  const docsContextKo = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const docsContext = readText('docs/CONTEXT.md');
+  const docsContextKo = readText('docs/CONTEXT.ko.md');
   const rootReadme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
   const rootReadmeKo = readFileSync(join(repoRoot, 'README.ko.md'), 'utf8');
   const coreReadme = readFileSync(join(repoRoot, 'packages/core/README.md'), 'utf8');
@@ -3083,48 +3083,64 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('bounded accepted-work drain과 force-disconnect/retry semantic'),
     'docs/CONTEXT.ko.md must keep Socket.IO runtime limits, public guard request typing, ACK, guard, Bun caveat, and shutdown retry guidance discoverable when package-surface.ko.md documents them.',
   );
+  const [websocketSurface, websocketSurfaceKo, websocketContext, websocketContextKo] = [
+    ['docs/reference/package-surface.md', packageSurface],
+    ['docs/reference/package-surface.ko.md', packageSurfaceKo],
+    ['docs/CONTEXT.md', docsContext],
+    ['docs/CONTEXT.ko.md', docsContextKo],
+  ].map(([path, content]) => {
+    const pattern = path.includes('CONTEXT')
+      ? /^Realtime WebSockets discoverability[^\r\n]*$/gm
+      : /^- \*\*`@fluojs\/websockets`\*\*:[^\r\n]*$/gm;
+    const matches = content.match(pattern) ?? [];
+    assert(
+      matches.length === 1,
+      `${path} must contain exactly one WebSocket contract paragraph; found ${matches.length}.`,
+    );
+    return matches[0];
+  });
   assert(
-    packageSurface.includes('@fluojs/websockets/bun') &&
-      packageSurface.includes('shared decorator and metadata authoring primitives') &&
-      packageSurface.includes('ignored raw handler return values') &&
-      packageSurface.includes('(payload, socket, request, socketId)') &&
-      packageSurface.includes("replies: { mode: 'event-envelope' }") &&
-      packageSurface.includes('thrown HTTP exceptions') &&
-      packageSurface.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
-      packageSurface.includes('terminal Node shutdown admission gate') &&
-      packageSurface.includes('retained per-connection lifecycle state') &&
-      docsContext.includes('packages/websockets/README.md') &&
-      docsContext.includes('@fluojs/websockets/cloudflare-workers') &&
-      docsContext.includes('metadata authoring primitives') &&
-      docsContext.includes('thrown HTTP exceptions') &&
-      docsContext.includes('ignored raw WebSocket handler return values') &&
-      docsContext.includes('(payload, socket, request, socketId)') &&
-      docsContext.includes("replies: { mode: 'event-envelope' }") &&
-      docsContext.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
-      docsContext.includes('terminal Node shutdown admission') &&
-      docsContext.includes('retained per-connection lifecycle state'),
+    websocketSurface.includes('@fluojs/websockets/bun') &&
+      websocketSurface.includes('shared decorator and metadata authoring primitives') &&
+      websocketSurface.includes('ignored raw handler return values') &&
+      websocketSurface.includes('(payload, socket, request, socketId)') &&
+      websocketSurface.includes("replies: { mode: 'event-envelope' }") &&
+      websocketSurface.includes('thrown HTTP exceptions') &&
+      websocketSurface.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
+      websocketSurface.includes('terminal Node shutdown admission gate') &&
+      websocketSurface.includes('retained per-connection lifecycle state') &&
+      websocketContext.includes('packages/websockets/README.md') &&
+      websocketContext.includes('@fluojs/websockets/cloudflare-workers') &&
+      websocketContext.includes('metadata authoring primitives') &&
+      websocketContext.includes('thrown HTTP exceptions') &&
+      websocketContext.includes('ignored raw WebSocket handler return values') &&
+      websocketContext.includes('(payload, socket, request, socketId)') &&
+      websocketContext.includes("replies: { mode: 'event-envelope' }") &&
+      websocketContext.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
+      websocketContext.includes('terminal Node shutdown admission') &&
+      websocketContext.includes('retained per-connection lifecycle state'),
     'docs/CONTEXT.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface.md documents them.',
   );
   assert(
-    packageSurfaceKo.includes('@fluojs/websockets/bun') &&
-      packageSurfaceKo.includes('metadata authoring primitive') &&
-      packageSurfaceKo.includes('await 완료 뒤 무시되는 raw handler return value') &&
-      packageSurfaceKo.includes('(payload, socket, request, socketId)') &&
-      packageSurfaceKo.includes("replies: { mode: 'event-envelope' }") &&
-      packageSurfaceKo.includes('throw된 HTTP exception') &&
-      packageSurfaceKo.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
-      packageSurfaceKo.includes('upgrade accept 직전에') &&
-      packageSurfaceKo.includes('connection별 lifecycle state retention') &&
-      docsContextKo.includes('packages/websockets/README.ko.md') &&
-      docsContextKo.includes('@fluojs/websockets/cloudflare-workers') &&
-      docsContextKo.includes('metadata authoring primitive') &&
-      docsContextKo.includes('throw된 HTTP exception') &&
-      docsContextKo.includes('raw WebSocket handler return value') &&
-      docsContextKo.includes('(payload, socket, request, socketId)') &&
-      docsContextKo.includes("replies: { mode: 'event-envelope' }") &&
-      docsContextKo.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
-      docsContextKo.includes('upgrade accept 직전에') &&
-      docsContextKo.includes('connection별 lifecycle state retention'),
+    websocketSurfaceKo.includes('@fluojs/websockets/bun') &&
+      websocketSurfaceKo.includes('metadata authoring primitive') &&
+      websocketSurfaceKo.includes('await 완료 뒤 무시되는 raw handler return value') &&
+      websocketSurfaceKo.includes('(payload, socket, request, socketId)') &&
+      websocketSurfaceKo.includes("replies: { mode: 'event-envelope' }") &&
+      websocketSurfaceKo.includes('throw된 HTTP exception') &&
+      websocketSurfaceKo.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
+      websocketSurfaceKo.includes('upgrade accept 직전에') &&
+      websocketSurfaceKo.includes('connection별 lifecycle state retention') &&
+      websocketContextKo.includes('packages/websockets/README.ko.md') &&
+      websocketContextKo.includes('@fluojs/websockets/cloudflare-workers') &&
+      websocketContextKo.includes('metadata authoring primitive') &&
+      websocketContextKo.includes('throw된 HTTP exception') &&
+      websocketContextKo.includes('raw WebSocket handler return value') &&
+      websocketContextKo.includes('(payload, socket, request, socketId)') &&
+      websocketContextKo.includes("replies: { mode: 'event-envelope' }") &&
+      websocketContextKo.includes('token-only `NodeWebSocketGatewayLifecycleService`') &&
+      websocketContextKo.includes('upgrade accept 직전에') &&
+      websocketContextKo.includes('connection별 lifecycle state retention'),
     'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface.ko.md documents them.',
   );
   assert(

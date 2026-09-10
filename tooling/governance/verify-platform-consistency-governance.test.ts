@@ -19,6 +19,7 @@ import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.m
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCanonicalRuntimeMatrixReferences,
   enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceContractCompanionUpdates as enforceContractCompanionUpdatesFromSources,
@@ -5729,6 +5730,97 @@ describe('WebSockets runtime subpath discoverability', () => {
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
   const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+  const regions = [
+    ['docs/CONTEXT.md', englishContext],
+    ['docs/CONTEXT.ko.md', koreanContext],
+    ['docs/reference/package-surface.md', englishSurface],
+    ['docs/reference/package-surface.ko.md', koreanSurface],
+  ].map(([path, content]) => {
+    const pattern = path.includes('CONTEXT')
+      ? /^Realtime WebSockets discoverability[^\r\n]*$/gm
+      : /^- \*\*`@fluojs\/websockets`\*\*:[^\r\n]*$/gm;
+    const matches = content.match(pattern) ?? [];
+    expect(matches).toHaveLength(1);
+    const locale = path.includes('.ko.') ? '.ko' : '';
+    return {
+      path,
+      content,
+      paragraph: matches[0],
+      failure: `Platform consistency governance check failed: docs/CONTEXT${locale}.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface${locale}.md documents them.`,
+    };
+  });
+
+  function readWithMutation(path: string, content: string): (relativePath: string) => string {
+    return (relativePath) => relativePath === path
+      ? content
+      : readFileSync(join(repoRoot, relativePath), 'utf8');
+  }
+
+  it('enforces the current bilingual WebSocket contract through the real guard', () => {
+    expect(() => enforceCanonicalRuntimeMatrixReferences()).not.toThrow();
+  });
+
+  for (const region of regions) {
+    it.each([
+      ['token', 'token-only `NodeWebSocketGatewayLifecycleService`', 'token-only `WebSocketGatewayLifecycleService`'],
+      ['authoring', 'metadata authoring primitive', 'retired metadata surface'],
+    ])(`rejects a mutated %s contract in ${region.path}`, (_name, from, to) => {
+      expect(region.paragraph).toContain(from);
+      const content = region.content.replace(region.paragraph, region.paragraph.replace(from, to));
+      expect(() => enforceCanonicalRuntimeMatrixReferences(readWithMutation(region.path, content)))
+        .toThrowError(region.failure);
+    });
+
+    it(`rejects duplicate WebSocket contract anchors in ${region.path}`, () => {
+      const content = `${region.content}\n${region.paragraph}\n`;
+      expect(() => enforceCanonicalRuntimeMatrixReferences(readWithMutation(region.path, content)))
+        .toThrowError(`Platform consistency governance check failed: ${region.path} must contain exactly one WebSocket contract paragraph; found 2.`);
+    });
+
+    it(`rejects a missing WebSocket contract anchor in ${region.path}`, () => {
+      const content = region.content.replace(region.paragraph, `> ${region.paragraph}`);
+      expect(() => enforceCanonicalRuntimeMatrixReferences(readWithMutation(region.path, content)))
+        .toThrowError(`Platform consistency governance check failed: ${region.path} must contain exactly one WebSocket contract paragraph; found 0.`);
+    });
+
+    it(`does not accept a quoted decoy token outside the contract in ${region.path}`, () => {
+      const content = `${region.content.replace(
+        region.paragraph,
+        region.paragraph.replace('token-only `NodeWebSocketGatewayLifecycleService`', 'token-only `WebSocketGatewayLifecycleService`'),
+      )}\n> token-only \`NodeWebSocketGatewayLifecycleService\`\n`;
+      expect(() => enforceCanonicalRuntimeMatrixReferences(readWithMutation(region.path, content)))
+        .toThrowError(region.failure);
+    });
+  }
+
+  function hasDirectMatrixRegistration(text: string): boolean {
+    const source = createSourceFile('governance.mjs', text, ScriptTarget.Latest, true, ScriptKind.JS);
+    const mains = source.statements.filter(isFunctionDeclaration)
+      .filter((statement) => statement.name?.text === 'main');
+    if (mains.length !== 1 || !mains[0].body) return false;
+    return mains[0].body.statements.filter((statement) =>
+      isExpressionStatement(statement) && isCallExpression(statement.expression)
+      && isIdentifier(statement.expression.expression)
+      && statement.expression.expression.text === 'enforceCanonicalRuntimeMatrixReferences').length === 1;
+  }
+
+  it('registers the matrix guard directly and exactly once in main', () => {
+    const source = readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8');
+    expect(hasDirectMatrixRegistration(source)).toBe(true);
+  });
+
+  it.each([
+    '// enforceCanonicalRuntimeMatrixReferences();',
+    'const unused = () => { enforceCanonicalRuntimeMatrixReferences(); };',
+    'if (false) { enforceCanonicalRuntimeMatrixReferences(); }',
+    'enforceCanonicalRuntimeMatrixReferences(); enforceCanonicalRuntimeMatrixReferences();',
+  ])('rejects inactive or duplicate registration: %s', (replacement) => {
+    const source = readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8');
+    const changed = source.replace('  enforceCanonicalRuntimeMatrixReferences();', `  ${replacement}`);
+    expect(changed).not.toBe(source);
+    expect(hasDirectMatrixRegistration(changed)).toBe(false);
+  });
 
   it('keeps fetch-style authoring primitives discoverable from the context hub', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
