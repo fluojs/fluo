@@ -140,10 +140,11 @@ Package check 전에 dependency closure를 build하고 runtime/Node/CLI 집중
 실행하세요. 구현 receipt가 실제 명령과 exit code를 기록하며 이 안내 자체가
 배포 release나 외부 host 검증을 주장하지는 않습니다.
 
-Changeset은 breaking runtime/Node/CLI/testing 동작에 major 의도를 기록합니다.
+모든 Changeset은 maintainer의 명시적 요청에 따라 patch 의도를 기록합니다.
+이 분류가 위의 breaking runtime/Node/CLI/testing 변경에 필요한 migration을
+없애지는 않습니다.
 `@fluojs/cron`도 `@fluojs/runtime`과 함께 업그레이드하세요. 필수 Runtime
-의존성 때문에 stable release 규칙상 동시 major가 필요하며 scheduling 계약
-자체는 바꾸지 않습니다.
+의존성은 유지하며 scheduling 계약 자체는 바꾸지 않습니다.
 선택적 HTTP capability는 additive 변경입니다. 다른 package README 변경은
 제거된 runtime import를 이전할 뿐 독립적인 동작 변경은 없으며, tarball에
 포함되는 README를 patch entry로 반영합니다. Book과 Docs companion 자체는

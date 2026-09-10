@@ -141,10 +141,11 @@ tests, `pnpm verify:docs`, and `pnpm verify:platform-consistency-governance`.
 The implementation receipt records actual commands and exit codes; these
 instructions alone do not claim published-release or external-host verification.
 
-The Changeset carries major intent for breaking runtime/Node/CLI/testing behavior.
-Upgrade `@fluojs/cron` with `@fluojs/runtime`: its mandatory Runtime dependency
-requires a coordinated major under the stable release rule, without changing
-the scheduling contract.
+All Changesets use patch intent at the maintainer's explicit request. This
+classification does not remove the migration requirements for the breaking
+runtime/Node/CLI/testing changes described above.
+Upgrade `@fluojs/cron` with `@fluojs/runtime`; its mandatory Runtime dependency
+is retained without changing the scheduling contract.
 The optional HTTP capability is additive. Other package README edits only migrate
 the removed runtime imports and have no independent behavior change; their patch
 entries account for the README files shipped in package tarballs. Book and Docs
