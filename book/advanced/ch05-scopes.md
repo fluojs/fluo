@@ -26,40 +26,20 @@ This chapter explains how the Fluo DI container implements the three lifecycles,
 
 ## 5.1 The scope vocabulary is small on purpose
 Fluo's scope system is intentionally small.
-`path:packages/di/src/types.ts:3-26` defines only three lifetime labels.
+`path:packages/di/src/types.ts:5-8` defines only three lifetime labels.
 `singleton`, `request`, and `transient` are the whole set. This small vocabulary is not a missing feature. It is a design constraint chosen to keep provider lifetime understandable across packages.
 
-This limit is clearer because the public type and helper literals live in the same place.
+This limit is explicit in the public type union.
 
-`path:packages/di/src/types.ts:3-26`
+`path:packages/di/src/types.ts:5-8`
 ```typescript
 /**
  * Lifetime policy understood by the DI container.
  */
 export type Scope = 'singleton' | 'request' | 'transient';
-
-/**
- * Namespace helpers for the public DI scope literals.
- */
-export namespace Scope {
-  /**
-   * Default lifetime used when a provider omits an explicit scope.
-   */
-  export const DEFAULT: Scope = 'singleton';
-
-  /**
-   * Scope literal for providers that should be recreated per request container.
-   */
-  export const REQUEST: Scope = 'request';
-
-  /**
-   * Scope literal for providers that should be recreated on every resolution.
-   */
-  export const TRANSIENT: Scope = 'transient';
-}
 ```
 
-This excerpt shows that new scopes are not added secretly through configuration files or runtime branches. The lifetime vocabulary understood by the container is fixed in the type alias and namespace constants.
+This excerpt shows that new scopes are not added secretly through configuration files or runtime branches. The lifetime vocabulary understood by the container is fixed in the type union and its three literal values.
 
 DI's `Scope` is a type-only union, not a runtime namespace. Providers and the Core `@Scope` decorator accept the `'singleton'`, `'request'`, and `'transient'` literals. There is no fourth mode for module-local caches, no provider pooling strategy, and no special case where reflection implicitly joins the decision.
 

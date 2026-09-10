@@ -26,40 +26,20 @@
 
 ## 5.1 The scope vocabulary is small on purpose
 Fluo의 scope 시스템은 의도적으로 작습니다.
-`path:packages/di/src/types.ts:3-26`은 세 가지 lifetime label만 정의합니다.
+`path:packages/di/src/types.ts:5-8`은 세 가지 lifetime label만 정의합니다.
 `singleton`, `request`, `transient`가 전부입니다. 이 작은 vocabulary는 기능 부족이 아니라 설계 제약입니다. 여러 패키지에 걸쳐 provider lifetime을 이해 가능하게 유지하기 위한 선택입니다.
 
-이 제한은 public type과 helper literal이 같은 위치에 묶여 있어서 더 분명합니다.
+이 제한은 public type union에 명시되어 있습니다.
 
-`path:packages/di/src/types.ts:3-26`
+`path:packages/di/src/types.ts:5-8`
 ```typescript
 /**
  * Lifetime policy understood by the DI container.
  */
 export type Scope = 'singleton' | 'request' | 'transient';
-
-/**
- * Namespace helpers for the public DI scope literals.
- */
-export namespace Scope {
-  /**
-   * Default lifetime used when a provider omits an explicit scope.
-   */
-  export const DEFAULT: Scope = 'singleton';
-
-  /**
-   * Scope literal for providers that should be recreated per request container.
-   */
-  export const REQUEST: Scope = 'request';
-
-  /**
-   * Scope literal for providers that should be recreated on every resolution.
-   */
-  export const TRANSIENT: Scope = 'transient';
-}
 ```
 
-이 발췌는 새 scope가 설정 파일이나 runtime branch에서 몰래 추가되지 않는다는 점을 보여 줍니다. 컨테이너가 이해하는 lifetime vocabulary는 type alias와 namespace constant에 고정됩니다.
+이 발췌는 새 scope가 설정 파일이나 runtime branch에서 몰래 추가되지 않는다는 점을 보여 줍니다. 컨테이너가 이해하는 lifetime vocabulary는 type union과 세 가지 literal 값에 고정됩니다.
 
 DI의 `Scope`는 타입 전용 union이며 runtime namespace가 아닙니다. Provider와 Core `@Scope` decorator는 `'singleton'`, `'request'`, `'transient'` literal을 받습니다. 모듈 로컬 cache 전용 네 번째 모드도 없고, provider pooling 전략도 없고, reflection이 암묵적으로 끼어드는 special case도 없습니다.
 
