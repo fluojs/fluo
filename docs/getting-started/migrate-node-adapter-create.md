@@ -4,7 +4,7 @@
 
 ## Scope
 
-This major change consolidates duplicate `@fluojs/platform-nodejs` adapter creation APIs into `create(options)` on the existing `NodeHttpApplicationAdapter` class. The supported Node.js range remains `>=24.0.0 <27`; the [Node README](../../packages/platform-nodejs/README.md) owns the package API. Other runtimes and Express/Fastify server implementations are not combined.
+This API-breaking change consolidates duplicate `@fluojs/platform-nodejs` adapter creation APIs into `create(options)` on the existing `NodeHttpApplicationAdapter` class. The supported Node.js range remains `>=24.0.0 <27`; the [Node README](../../packages/platform-nodejs/README.md) owns the package API. Other runtimes and Express/Fastify server implementations are not combined.
 
 ## Imports and calls
 
@@ -73,4 +73,4 @@ pnpm verify:platform-consistency-governance
 pnpm verify:docs
 ```
 
-API removal carries a platform-nodejs major Changeset; the generated starter bootstrap ownership change carries a CLI major Changeset. HTTP/runtime README consumer updates carry patch metadata for shipped README alignment without changing those packages' runtime behavior. Other Docs/Book and other-package test-only edits do not independently change a shipped API. The command list is a verification procedure, not an execution receipt.
+The API removal and generated starter bootstrap ownership change carry platform-nodejs and CLI patch Changesets at the maintainer's explicit request. The patch classification does not remove the migration requirements or preserve the deleted APIs. HTTP/runtime README consumer updates also carry patch metadata for shipped README alignment without changing those packages' runtime behavior. Other Docs/Book and other-package test-only edits do not independently change a shipped API. The command list is a verification procedure, not an execution receipt.

@@ -4,7 +4,7 @@
 
 ## Scope
 
-이 major 변경은 `@fluojs/platform-nodejs`의 중복 adapter 생성 API를 기존 `NodeHttpApplicationAdapter` 클래스의 `create(options)`로 통합합니다. 지원 Node.js 범위는 `>=24.0.0 <27`이며, 패키지 API 소유 문서는 [Node README](../../packages/platform-nodejs/README.ko.md)입니다. 다른 runtime이나 Express/Fastify server 구현은 합치지 않습니다.
+이 API 호환성을 깨는 변경은 `@fluojs/platform-nodejs`의 중복 adapter 생성 API를 기존 `NodeHttpApplicationAdapter` 클래스의 `create(options)`로 통합합니다. 지원 Node.js 범위는 `>=24.0.0 <27`이며, 패키지 API 소유 문서는 [Node README](../../packages/platform-nodejs/README.ko.md)입니다. 다른 runtime이나 Express/Fastify server 구현은 합치지 않습니다.
 
 ## Imports and calls
 
@@ -73,4 +73,4 @@ pnpm verify:platform-consistency-governance
 pnpm verify:docs
 ```
 
-API 삭제는 platform-nodejs major Changeset, 생성 starter의 bootstrap 소유권 변경은 CLI major Changeset으로 기록합니다. HTTP/runtime README 소비자 변경은 배포 README 정합을 위한 patch이며 해당 package runtime 동작은 변경하지 않습니다. 나머지 Docs/Book 및 타 package test-only 변경은 독립적인 배포 API 변경이 아닙니다. 이 명령 목록은 검증 절차이며 실행 결과 자체가 아닙니다.
+API 삭제와 생성 starter의 bootstrap 소유권 변경은 maintainer의 명시적 요청에 따라 platform-nodejs와 CLI patch Changeset으로 기록합니다. patch 분류가 migration 요구 사항을 없애거나 삭제된 API를 보존한다는 뜻은 아닙니다. HTTP/runtime README 소비자 변경도 배포 README 정합을 위한 patch이며 해당 package runtime 동작은 변경하지 않습니다. 나머지 Docs/Book 및 타 package test-only 변경은 독립적인 배포 API 변경이 아닙니다. 이 명령 목록은 검증 절차이며 실행 결과 자체가 아닙니다.
