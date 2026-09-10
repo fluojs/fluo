@@ -84,7 +84,7 @@ terminal behavior, it must own and enforce that state explicitly.
 ### Env-Aware Lazy Host
 Use the `{ fromEnv }` overload of the same `CloudflareWorkerApplicationHost.create`
 method when the first Worker `env` must select the root module or bootstrap
-options. The factory runs once per isolate before module registration; its
+options. The factory runs once per host instance before module registration; its
 configuration remains cached while each running application generation reuses it.
 
 ```typescript
@@ -125,6 +125,8 @@ supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Read,
 validate, and narrow request-varying bindings, then pass application-shaped
 values to provider methods. Choose the `{ fromEnv }` overload only when the first
 environment must configure the application before module registration.
+
+Once the factory returns a configuration, that host instance caches it. If the factory itself throws, no configuration is cached and a later call may retry. Separate host instances do not share configuration or generations.
 
 ## Common Patterns
 
@@ -194,7 +196,7 @@ const worker = CloudflareWorkerApplicationHost.create(AppModule, {
 - `close()` returns JSON `503` responses for new HTTP and WebSocket upgrade requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error. Lazy hosts do not permanently cache that timeout once the adapter's underlying drain later finishes.
 - The Worker `fetch(...)` dispatch path preserves body-bearing RFC `QUERY` routes and uppercase extension methods such as `PURGE`; their method token and parsed body reach the registered route through the same fetch dispatch seam.
 - Multipart requests do not preserve `rawBody`.
-- The Worker `env` object is attached to each `FrameworkRequest` as `request.cloudflare.env`, with the Worker execution context available as `request.cloudflare.executionContext`. Direct `FluoFactory.create(...)` completes module registration before its exported `fetch(...)` handles traffic. `CloudflareWorkerApplicationHost.create(AppModule, options)` keeps its predeclared root module and options, so its fetch-time `env` attaches only during request dispatch. The `{ fromEnv }` overload is the opt-in alternative when the first explicit Worker environment must select the root module or final bootstrap options before module registration. Its `ready(env)` method requires that environment, caches the first environment's module and options once per isolate, and builds one application per application generation from that configuration. A successful close restarts the application without rerunning the factory or accepting later environments as bootstrap configuration. In either path, use request-bound `request.cloudflare.env` for bindings that are intentionally per-request.
+- The Worker `env` object is attached to each `FrameworkRequest` as `request.cloudflare.env`, with the Worker execution context available as `request.cloudflare.executionContext`. Direct `FluoFactory.create(...)` completes module registration before its exported `fetch(...)` handles traffic. `CloudflareWorkerApplicationHost.create(AppModule, options)` keeps its predeclared root module and options, so its fetch-time `env` attaches only during request dispatch. The `{ fromEnv }` overload is the opt-in alternative when the first explicit Worker environment must select the root module or final bootstrap options before module registration. Its `ready(env)` method requires that environment, caches the first environment's module and options once per host instance, and builds one application per application generation from that configuration. A successful close restarts the application without rerunning the factory or accepting later environments as bootstrap configuration. In either path, use request-bound `request.cloudflare.env` for bindings that are intentionally per-request.
 
 ## Lifecycle and Public Seam Notes
 

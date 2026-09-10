@@ -88,7 +88,7 @@ export default {
 
 ### 24.3.1 Env-Aware Lazy Bootstrapping
 
-첫 번째 Worker `env`가 `ConfigModule`, singleton provider, D1, KV, service binding 또는 deployment별 bootstrap option을 구성해야 하면 `CloudflareWorkerApplicationHost.create(...)`의 `{ fromEnv }` overload를 사용하세요. 이 factory는 module registration 전에 하나의 명시적 environment를 받고 root module과 final bootstrap option을 반환하며 isolate마다 한 번 실행됩니다. 반환한 configuration은 해당 isolate에 유지되고 application은 application generation마다 생성됩니다.
+첫 번째 Worker `env`가 `ConfigModule`, singleton provider, D1, KV, service binding 또는 deployment별 bootstrap option을 구성해야 하면 `CloudflareWorkerApplicationHost.create(...)`의 `{ fromEnv }` overload를 사용하세요. 이 factory는 module registration 전에 하나의 명시적 environment를 받고 root module과 final bootstrap option을 반환하며 host instance마다 한 번 실행됩니다. 반환한 configuration은 해당 host instance에 유지되고 application은 application generation마다 생성됩니다.
 
 ```typescript
 import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
@@ -136,7 +136,7 @@ Cloudflare Workers는 전통적인 Node.js 환경과 다른 제약을 갖습니�
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. 직접 `FluoFactory.create(...)`는 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `CloudflareWorkerApplicationHost.create(AppModule, options)`는 미리 선언한 root module과 option만 받으므로 fetch-time `env`는 dispatch 중에 연결됩니다. 이 fixed-module 경로에서는 fetch-time binding으로 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. `{ fromEnv }` overload가 명시적인 예외입니다. 첫 environment가 registration 전에 root module과 final option을 선택하고 isolate마다 한 번 cache하며, 성공한 close 후 재시작을 포함한 각 application generation이 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 이를 재사용합니다. Bootstrap-owned binding에는 이 host overload를 사용하고 request마다 달라지는 binding에는 request-bound mapping을 유지하세요.
+fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. 직접 `FluoFactory.create(...)`는 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `CloudflareWorkerApplicationHost.create(AppModule, options)`는 미리 선언한 root module과 option만 받으므로 fetch-time `env`는 dispatch 중에 연결됩니다. 이 fixed-module 경로에서는 fetch-time binding으로 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. `{ fromEnv }` overload가 명시적인 예외입니다. 첫 environment가 registration 전에 root module과 final option을 선택하고 host instance마다 한 번 cache하며, 성공한 close 후 재시작을 포함한 각 application generation이 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 이를 재사용합니다. Bootstrap-owned binding에는 이 host overload를 사용하고 request마다 달라지는 binding에는 request-bound mapping을 유지하세요.
 
 Mapping은 application-owned request boundary에 두세요. Handler의 `RequestContext`에서 필요한 binding을 읽고 좁힌 뒤 application-shaped 값으로 바꾸어 injected provider method에 전달합니다. `CatalogService`는 provider로, `WorkerController`는 controller로 owning module에 등록합니다.
 
@@ -313,7 +313,7 @@ export class DatabaseModule {}
 - `@fluojs/platform-cloudflare-workers`는 fluo 생명주기와 통합되는 표준 `fetch` 기반 어댑터를 제공합니다.
 - Worker 런타임에 맞추기 위해 서버 소켓을 열지 말고 `fetch` 핸들러를 내보내세요. 단, Worker handler가 traffic을 받기 전에 `app.listen()`은 fluo dispatcher를 binding합니다.
 - KV, D1, WebSockets와 같은 네이티브 엣지 기능은 전용 fluo 바인딩과 프로바이더 경계로 연결할 수 있습니다.
-- 첫 fetch binding이 bootstrap configuration이 되어야 하면 `CloudflareWorkerApplicationHost.create({ fromEnv })`를 사용하세요. 이 factory는 isolate마다 한 번 실행되고 모든 application generation이 첫 environment의 cache된 module과 option을 사용합니다. 그 외에는 application request boundary에서 `context.request.cloudflare?.env`를 읽고 좁힌 뒤 application-shaped 값만 provider method에 전달하세요.
+- 첫 fetch binding이 bootstrap configuration이 되어야 하면 `CloudflareWorkerApplicationHost.create({ fromEnv })`를 사용하세요. 이 factory는 host instance마다 한 번 실행되고 모든 application generation이 첫 environment의 cache된 module과 option을 사용합니다. 그 외에는 application request boundary에서 `context.request.cloudflare?.env`를 읽고 좁힌 뒤 application-shaped 값만 provider method에 전달하세요.
 - 배포와 환경 관리를 일관되게 유지하려면 `wrangler`를 사용하세요.
 - `ctx.waitUntil`은 fluo에 의해 처리되어 엣지에서 요청 lifecycle tracking과 SSE(`text/event-stream`) response drain을 유지합니다.
 - 엣지는 단순한 호스팅 플랫폼이 아니라, 글로벌 애플리케이션 아키텍처에 대해 생각하는 다른 방식입니다.

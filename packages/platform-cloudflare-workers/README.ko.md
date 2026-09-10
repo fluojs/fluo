@@ -84,7 +84,7 @@ shutdown signal로 취급하지 마세요. Application에 terminal behavior가 �
 ### Env-aware lazy host
 첫 번째 Worker `env`로 root module 또는 bootstrap option을 선택해야 하면 같은
 `CloudflareWorkerApplicationHost.create` 메서드의 `{ fromEnv }` overload를
-사용하세요. 이 factory는 isolate마다 module registration 전에 한 번 실행되며
+사용하세요. 이 factory는 host instance마다 module registration 전에 한 번 실행되며
 configuration은 cache되고 실행 중인 각 application generation이 이를 재사용합니다.
 
 ```typescript
@@ -124,6 +124,8 @@ fixed-module host의 request-bound `env` 경로에서는 fetch-time binding으�
 Request별 binding을 읽고 검증한 뒤 좁혀서 application-shaped 값으로 provider
 method에 전달하세요. 첫 environment가 module registration 전에 application을
 구성해야 할 때만 `{ fromEnv }` overload를 선택하세요.
+
+Factory가 configuration을 반환하면 해당 host instance에 cache합니다. Factory 자체가 throw하면 cache하지 않으므로 다음 호출에서 다시 시도할 수 있습니다. 서로 다른 host instance는 configuration과 generation을 공유하지 않습니다.
 
 ## 주요 패턴
 
@@ -193,7 +195,7 @@ const worker = CloudflareWorkerApplicationHost.create(AppModule, {
 - `close()`는 shutdown 중 및 shutdown 이후 새 HTTP 및 WebSocket upgrade request에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다. Lazy host는 adapter의 underlying drain이 나중에 끝나면 이 timeout을 영구적으로 캐시하지 않습니다.
 - Worker `fetch(...)` dispatch path는 body를 포함하는 RFC `QUERY` route와 `PURGE` 같은 uppercase extension method를 보존하며, method token과 parsed body는 동일한 fetch dispatch seam을 통해 등록된 route에 도달합니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
-- Worker `env` 객체는 각 `FrameworkRequest`에 `request.cloudflare.env`로 연결되고 Worker execution context는 `request.cloudflare.executionContext`로 제공됩니다. 직접 `FluoFactory.create(...)`는 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `CloudflareWorkerApplicationHost.create(AppModule, options)`는 미리 선언한 root module과 option을 유지하므로 fetch-time `env`는 request dispatch 중에만 연결됩니다. 첫 명시적 Worker environment가 module registration 전에 root module 또는 final bootstrap option을 선택해야 하면 `{ fromEnv }` overload를 사용하세요. 이 API의 `ready(env)`는 environment를 요구하고 첫 environment의 module과 option을 isolate마다 한 번 cache하며, 그 configuration에서 application generation마다 하나의 application을 생성합니다. 성공한 close 뒤에는 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 application을 재시작합니다. 어느 경로든 의도적으로 request별인 binding에는 request-bound `request.cloudflare.env`를 사용하세요.
+- Worker `env` 객체는 각 `FrameworkRequest`에 `request.cloudflare.env`로 연결되고 Worker execution context는 `request.cloudflare.executionContext`로 제공됩니다. 직접 `FluoFactory.create(...)`는 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `CloudflareWorkerApplicationHost.create(AppModule, options)`는 미리 선언한 root module과 option을 유지하므로 fetch-time `env`는 request dispatch 중에만 연결됩니다. 첫 명시적 Worker environment가 module registration 전에 root module 또는 final bootstrap option을 선택해야 하면 `{ fromEnv }` overload를 사용하세요. 이 API의 `ready(env)`는 environment를 요구하고 첫 environment의 module과 option을 host instance마다 한 번 cache하며, 그 configuration에서 application generation마다 하나의 application을 생성합니다. 성공한 close 뒤에는 factory를 다시 실행하거나 이후 environment를 bootstrap configuration으로 수용하지 않고 application을 재시작합니다. 어느 경로든 의도적으로 request별인 binding에는 request-bound `request.cloudflare.env`를 사용하세요.
 
 ## Lifecycle 및 public seam 참고
 
