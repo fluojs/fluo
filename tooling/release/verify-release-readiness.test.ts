@@ -243,6 +243,39 @@ describe('runReleaseReadinessVerification', () => {
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
   });
 
+  it('reuses an explicit prior build without skipping any other readiness gate', () => {
+    // Given
+    const fullDependencies = createDependencies();
+    const fullResult = runReleaseReadinessVerification({}, fullDependencies);
+    const dependencies = createDependencies();
+
+    // When
+    const result = runReleaseReadinessVerification({ skipBuild: true }, dependencies);
+
+    // Then
+    expect(dependencies.run.mock.calls).toEqual(fullDependencies.run.mock.calls.slice(1));
+    expect(result).toEqual(fullResult);
+    expect(dependencies.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 1, 2, 3, 4, 5])('stops on remaining readiness command failure %i after reusing a build', (failureIndex) => {
+    // Given
+    const dependencies = createDependencies();
+    let calls = 0;
+    dependencies.run.mockImplementation(() => {
+      if (calls++ === failureIndex) {
+        throw new Error('verification command failed');
+      }
+    });
+
+    // When / Then
+    expect(() => runReleaseReadinessVerification({ skipBuild: true }, dependencies))
+      .toThrow('verification command failed');
+    expect(dependencies.run.mock.calls[0]).toEqual(['pnpm', ['typecheck']]);
+    expect(dependencies.run).toHaveBeenCalledTimes(failureIndex + 1);
+    expect(dependencies.writeFileSync).not.toHaveBeenCalled();
+  });
+
   it('accepts split starter adapter shape in release-readiness checks', () => {
     const dependencies = createDependencies();
     const baseRead = dependencies.read;

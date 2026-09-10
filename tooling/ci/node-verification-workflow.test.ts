@@ -29,22 +29,60 @@ it('runs all supported Node targets through one sharded verification workflow', 
   expect(workflow).not.toMatch(/^ {2}(build-and-typecheck|lint|test):$/m);
 });
 
-it('keeps all four Vitest projects and a complete non-overlapping package shard matrix', () => {
+it('keeps all four Vitest projects with complete package and tooling shards', () => {
   // Given
   const tests = job(nodeWorkflow, 'test');
 
   // When
-  const shards = [...tests.matchAll(/^\s+shard: (\d+)\/(\d+)$/gm)].map((match) => match.slice(1));
+  const shards = [...tests.matchAll(/project: (\w+)\n\s+shard: (\d+)\/(\d+)/gu)].map((match) => match.slice(1));
   const projects = [...tests.matchAll(/run: pnpm vitest run --project (\w+)/g)].map((match) => match[1]);
 
   // Then
-  expect(shards).toEqual([['1', '4'], ['2', '4'], ['3', '4'], ['4', '4']]);
+  expect(shards).toEqual([
+    ['packages', '1', '4'], ['packages', '2', '4'], ['packages', '3', '4'], ['packages', '4', '4'],
+    ['tooling', '1', '2'], ['tooling', '2', '2'],
+  ]);
   expect(projects.sort()).toEqual(['apps', 'examples', 'packages', 'tooling']);
   expect(tests).toMatch(/--shard=\$\{\{ matrix.shard \}\}/u);
   expect(tests).toContain("if: matrix.project == 'packages'");
-  expect(tests.match(/if: matrix.project == 'other'/g)).toHaveLength(3);
+  expect(tests.match(/if: matrix.lane == 'tooling-1'/g)).toHaveLength(2);
+  expect(tests).toContain("if: matrix.project == 'tooling'");
+  expect(tests).toMatch(/run: pnpm vitest run --project tooling --shard=\$\{\{ matrix\.shard \}\} --maxWorkers=1/u);
   expect(tests).not.toMatch(/mode|scoped|test:node-floor/u);
   expect(tests).toContain('fail-fast: false');
+});
+
+it('runs all portable adapter cases once without repeating project setup per adapter', () => {
+  // Given
+  const portability = job(workflow, 'official-web-runtime-adapter-portability');
+
+  // When
+  const commands = [...portability.matchAll(/run: (pnpm vitest run .+)/gu)].map((match) => match[1]);
+
+  // Then
+  expect(commands).toEqual([
+    'pnpm vitest run packages/testing/src/portability/web-runtime-adapter-portability.test.ts --maxWorkers=1',
+  ]);
+  expect(portability).not.toContain('matrix:');
+  expect(job(workflow, 'verify')).toContain('      - official-web-runtime-adapter-portability\n');
+});
+
+it('shares one cookie helper build while exercising every native runtime', () => {
+  // Given
+  const cookies = job(workflow, 'native-response-cookie-conformance');
+
+  // When
+  const builds = [...cookies.matchAll(/run: pnpm --filter @fluojs\/http\.\.\. build/gu)];
+  const commands = [...cookies.matchAll(/run: (.+)/gu)].map((match) => match[1]);
+
+  // Then
+  expect(builds).toHaveLength(1);
+  expect(cookies).not.toContain('matrix:');
+  expect(cookies).not.toContain('if:');
+  expect(commands).toContain('bun test tooling/native-runtime/response-cookie-conformance.test.mjs');
+  expect(commands).toContain('deno test --allow-read tooling/native-runtime/response-cookie-conformance.test.mjs');
+  expect(commands).toContain('node --test tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs');
+  expect(job(workflow, 'verify')).toContain('      - native-response-cookie-conformance\n');
 });
 
 it.each(['checks', 'test', 'starters'])('starts %s after its versioned build, without waiting for sibling checks', (id) => {

@@ -4431,7 +4431,11 @@ describe('repository governance contracts', () => {
     );
     expect(nodeWorkflow).toContain('run: pnpm vitest run --project apps --maxWorkers=1');
     expect(nodeWorkflow).toContain('run: pnpm vitest run --project examples --maxWorkers=1');
-    expect(nodeWorkflow).toContain('run: pnpm vitest run --project tooling --maxWorkers=1');
+    expect(nodeWorkflow).toContain('- lane: tooling-1');
+    expect(nodeWorkflow).toContain('- lane: tooling-2');
+    expect(nodeWorkflow).toContain(
+      'run: pnpm vitest run --project tooling --shard=$' + '{{ matrix.shard }} --maxWorkers=1',
+    );
     expect(nodeWorkflow).toContain(
       'FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/$' + '{{ matrix.lane }}',
     );
