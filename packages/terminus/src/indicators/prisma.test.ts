@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { HealthCheckError } from '../errors.js';
-import { createPrismaHealthIndicator, createPrismaHealthIndicatorProvider, PrismaHealthIndicator } from './prisma.js';
+import { createPrismaHealthIndicatorProvider, PrismaHealthIndicator } from './prisma.js';
 
 function createReadyPrismaSnapshot() {
   return {
@@ -65,7 +65,7 @@ describe('PrismaHealthIndicator', () => {
   });
 
   it('uses query-capable prisma handles and throws HealthCheckError on failures', async () => {
-    const okIndicator = createPrismaHealthIndicator({
+    const okIndicator = PrismaHealthIndicator.create({
       client: {
         $queryRawUnsafe: vi.fn(async (_query: string) => undefined),
       },
@@ -99,7 +99,7 @@ describe('PrismaHealthIndicator', () => {
 
   it('uses lifecycle-aware Prisma service facades before probing the current client', async () => {
     const query = vi.fn(async (_query: string) => undefined);
-    const indicator = createPrismaHealthIndicator({
+    const indicator = PrismaHealthIndicator.create({
       service: {
         createPlatformStatusSnapshot: createReadyPrismaSnapshot,
         current: () => ({
@@ -123,7 +123,7 @@ describe('PrismaHealthIndicator', () => {
 
   it('reports Prisma lifecycle state as down before raw probes run', async () => {
     const query = vi.fn(async (_query: string) => undefined);
-    const indicator = createPrismaHealthIndicator({
+    const indicator = PrismaHealthIndicator.create({
       service: {
         createPlatformStatusSnapshot: () => ({
           details: {
@@ -165,7 +165,7 @@ describe('PrismaHealthIndicator', () => {
   for (const state of unavailablePrismaLifecycleStates) {
     it(`reports Prisma ${state.snapshot.details.lifecycleState} lifecycle state as down before probing`, async () => {
       const query = vi.fn(async (_query: string) => undefined);
-      const indicator = createPrismaHealthIndicator({
+      const indicator = PrismaHealthIndicator.create({
         service: {
           createPlatformStatusSnapshot: () => state.snapshot,
           current: () => ({
@@ -211,7 +211,7 @@ describe('PrismaHealthIndicator', () => {
 
   it('rejects invalid timeoutMs before starting the Prisma probe', async () => {
     const ping = vi.fn(async () => undefined);
-    const indicator = createPrismaHealthIndicator({
+    const indicator = PrismaHealthIndicator.create({
       ping,
       timeoutMs: -1,
     });

@@ -139,19 +139,17 @@ Beyond a simple secret key, `JwtModule` supports explicit configuration for algo
 Fluo keeps the default experience simple and safe while still giving you the fine-grained control needed for real-world exceptions. You can also set different supported algorithms per environment, such as `HS256` for local development and `RS256` with certificates in production. For asymmetric or multi-key setups, use `privateKey` / `publicKey`, `keys`, or JWKS options rather than leaving algorithm or key selection implicit.
 
 ## 14.4 Signing Tokens
-After configuration is complete, you can inject `DefaultJwtSigner` to create tokens during login. The signer handles the complex encoding and signing logic, so service code can focus on the payload that represents the user's identity.
+After configuration is complete, inject `JwtService` to create tokens during login. It handles the encoding and signing policy, so service code can focus on the payload that represents the user's identity.
 
 A well designed payload is the key to efficient Authentication. If it includes enough information, such as the user ID and roles, downstream services can make Authorization decisions without repeated database lookups. However, anyone who possesses a token can decode it, so you must not put sensitive information such as passwords or personally identifiable information (PII) in the payload. The goal is to include only the minimum information needed to prove who the user is and what the user can do.
 
-Once the Module knows the signing and verification rules, the service layer can issue real tokens. Inject `DefaultJwtSigner` to create the token that the Controller returns.
+Once the Module knows the signing and verification rules, the service layer can issue real tokens. Inject `JwtService` to create the token that the Controller returns.
 
 ```typescript
-import { Inject } from '@fluojs/core';
-import { DefaultJwtSigner } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
-@Inject(DefaultJwtSigner)
 export class AuthService {
-  constructor(private readonly signer: DefaultJwtSigner) {}
+  constructor(private readonly jwt: JwtService) {}
 
   async generateToken(user: User) {
     const payload = {
@@ -162,14 +160,14 @@ export class AuthService {
     };
 
     // Finally, generate the base64 encoded string.
-    const accessToken = await this.signer.signAccessToken(payload);
+    const accessToken = await this.jwt.sign(payload);
     return { accessToken };
   }
 }
 ```
 
 ### Managing Token Claims Effectively
-When designing token claims, think about what the application needs to know at the edge. If an API gateway needs to know whether the user is 'admin' to route a request, include the 'admin' role in the token. But do not include the user's full profile. Keep tokens small to minimize bandwidth use, especially for mobile clients. Small tokens also reduce the overhead of cryptographic verification. With Fluo's `DefaultJwtSigner`, you can easily add or remove claims as application requirements change, and it provides a clean API for token creation. Effective claim management also means using standard claim names (`iat`, `exp`, `nbf`, and so on) whenever possible to ensure compatibility with third-party tools and libraries.
+When designing token claims, think about what the application needs to know at the edge. If an API gateway needs to know whether the user is 'admin' to route a request, include the 'admin' role in the token. But do not include the user's full profile. Keep tokens small to minimize bandwidth use, especially for mobile clients. Small tokens also reduce the overhead of cryptographic verification. With Fluo's `JwtService`, you can easily add or remove claims as application requirements change, and it provides a clean API for token creation. Effective claim management also means using standard claim names (`iat`, `exp`, `nbf`, and so on) whenever possible to ensure compatibility with third-party tools and libraries.
 
 ## 14.5 Refresh Token Rotation
 Access tokens are intentionally short lived to limit damage if they are stolen. But you cannot ask users to log in every 15 minutes. This is where **Refresh Tokens** come in.
@@ -488,22 +486,20 @@ Fluo Authentication lifecycle starts with a request to the `login` endpoint. Aft
 From that point on, the client includes the access token in the `Authorization` header of every request. When the access token expires, the client calls the `refresh` endpoint with the refresh token to obtain a new token pair. This cycle ensures continuous, safe user sessions while preserving the performance benefits of statelessness. It is the engine that keeps the application's front door both secure and welcoming. This lifecycle can also include a grace period where a slightly expired access token is still allowed for certain low-risk operations but triggers forced renewal for others.
 
 ## 14.7 Verifying Tokens Manually
-Most routes will use a Guard, covered in Chapter 15, but you can also manually verify tokens with `DefaultJwtVerifier`. This is useful for one-off work such as checking password reset tokens sent by email, verifying one-time password (OTP) tokens, or validating tokens in background jobs that run outside an HTTP request context.
+Most routes will use a Guard, covered in Chapter 15, but you can also manually verify tokens with `JwtService`. This is useful for one-off work such as checking password reset tokens sent by email, verifying one-time password (OTP) tokens, or validating tokens in background jobs that run outside an HTTP request context.
 
-In real applications, the Guard from Chapter 15 usually handles this verification for you. Still, checking it once by hand makes it clearer what the Guard will do on your behalf in the next chapter. You can inject `DefaultJwtVerifier` and verify manually.
+In real applications, the Guard from Chapter 15 usually handles this verification for you. Still, checking it once by hand makes it clearer what the Guard will do on your behalf in the next chapter. You can inject `JwtService` and verify manually.
 
 ```typescript
-import { Inject } from '@fluojs/core';
 import { UnauthorizedException } from '@fluojs/http';
-import { DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
-@Inject(DefaultJwtVerifier)
 export class TokenService {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
+  constructor(private readonly jwt: JwtService) {}
 
   async check(token: string) {
     try {
-      const principal = await this.verifier.verifyAccessToken(token);
+      const principal = await this.jwt.verify(token);
       return principal;
     } catch (e) {
       // Automatic handling for JwtExpiredTokenError or JwtInvalidTokenError
@@ -514,7 +510,7 @@ export class TokenService {
 ```
 
 ### Handling Token Errors Gracefully
-When verification fails, `DefaultJwtVerifier` throws specific error types so you can respond appropriately. `JwtExpiredTokenError` tells you the token was valid but timed out, while `JwtInvalidTokenError` indicates a malformed or invalid token.
+When verification fails, `JwtService` throws specific error types so you can respond appropriately. `JwtExpiredTokenError` tells you the token was valid but timed out, while `JwtInvalidTokenError` indicates a malformed or invalid token.
 
 By catching these specific errors, you can provide better feedback, such as telling the user to renew the session instead of simply saying "access denied," or you can trigger security alerts in monitoring systems. For example, frequent `JwtInvalidTokenError` events from a specific IP address can cause a firewall to block that address automatically. Fluo's explicit error handling lets you build these advanced security features without wrestling with vague error messages. It also helps distinguish client side bugs, such as sending an empty token, from malicious activity.
 
@@ -525,7 +521,7 @@ By catching these specific errors, you can provide better feedback, such as tell
 - **Verify token revocation**: For critical applications, maintain a denylist of revoked tokens, stored in something like Redis, to handle logout or compromised accounts before tokens naturally expire.
 - **Implement JTI (JWT ID)**: Use a unique identifier on every token to track individual tokens and enable fine-grained revocation.
 - **Audit token issuance**: Log who received tokens and when to support post-incident analysis.
-- **Never trust `decode()` output for authorization**: `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input. Use `JwtService.verify(token, options)` to obtain verified claims. To obtain a normalized `JwtPrincipal`, use `DefaultJwtVerifier.verifyAccessToken(token)` without per-call overrides, or `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` when preserving per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp`. `decode()` is for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`.
+- **Never trust `decode()` output for authorization**: `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input. Use `JwtService.verify(token, policy?)` to obtain a normalized `JwtPrincipal` and pass per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp` in `policy`. `decode()` is for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`.
 - **Treat `@fluojs/jwt` as a Node-runtime auth package**: The root import surface loads lazily and is safe to import before selecting a runtime-specific auth path, but signing, verification, JWKS key parsing, and refresh-token id generation all require a Node.js-compatible `node:crypto` implementation. Bun satisfies this through its Node compatibility layer; Deno and Cloudflare Workers are not supported JWT signing/verification runtimes.
 
 ## 14.9 Summary
@@ -547,7 +543,7 @@ For extremely sensitive systems, you can instead use a **Whitelisting** strategy
 ### Scaling Auth with Multi-Tenancy
 In a multi-tenant environment where a single Fluo application serves multiple organizations, JWT configuration must be planned around the supported module contract. `JwtModule.forRootAsync(...)` can resolve signing and verification settings from injected providers at module startup, such as a config service that loads the global JWT policy during bootstrap, but the factory does not receive per-request context such as a tenant ID in a custom header. Treat request-context tenant routing as application-level strategy or guard logic.
 
-For tenant-specific keys, keep the request-aware routing in your application auth layer and prefer token-bound key selection. A common pattern is to resolve the tenant from the request, choose the allowed issuer/audience policy in your guard or strategy, and then call `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)` with per-call claim-policy overrides. Key selection inside `@fluojs/jwt` is based on configured key sources and token-header data such as `kid`; `secretOrKeyProvider` receives the decoded JWT header, not the request object. If a tenant must map to a distinct key, encode a stable key identifier in the token header or route the request through an application-level wrapper that selects the correct verifier configuration before calling the JWT service.
+For tenant-specific keys, keep the request-aware routing in your application auth layer and prefer token-bound key selection. A common pattern is to resolve the tenant from the request, choose the allowed issuer/audience policy in your guard or strategy, and then call `JwtService.verify(token, policy)` with per-call claim-policy overrides. Key selection inside `@fluojs/jwt` is based on configured key sources and token-header data such as `kid`; `secretOrKeyProvider` receives the decoded JWT header, not the request object. If a tenant must map to a distinct key, encode a stable key identifier in the token header or route the request through an application-level wrapper that selects the correct verifier configuration before calling the JWT service.
 
 This sophistication makes Fluo a professional choice for SaaS backends. You can start simply with a single global secret and grow into a complex multi-provider, multi-tenant Authentication system without leaving the Fluo ecosystem. The `JwtPrincipal` normalization discussed earlier is especially powerful here because it gives multi-tenant business logic a stable interface no matter how many identity sources you integrate.
 

@@ -1,15 +1,47 @@
 import {
-  createMemoryHealthIndicator,
-  createMemoryHealthIndicatorProvider,
   MemoryHealthIndicator,
   type MemoryHealthIndicatorOptions,
 } from '@fluojs/terminus/node';
 import {
-  createRedisHealthIndicator,
   createRedisHealthIndicatorProvider,
   RedisHealthIndicator,
   type RedisHealthIndicatorOptions,
 } from '@fluojs/terminus/redis';
+import type * as terminusRoot from '@fluojs/terminus';
+import type * as terminusNode from '@fluojs/terminus/node';
+import type * as terminusRedis from '@fluojs/terminus/redis';
+import type * as runtime from '@fluojs/runtime';
+
+type Assert<T extends true> = T;
+type IsAbsent<Namespace, Symbol extends PropertyKey> = Symbol extends keyof Namespace ? false : true;
+type RemovedRootExportsStayAbsent = Assert<IsAbsent<
+  typeof terminusRoot,
+  | 'createHttpHealthIndicator'
+  | 'createHttpHealthIndicatorProvider'
+  | 'createDiskHealthIndicator'
+  | 'createMemoryHealthIndicator'
+  | 'createPrismaHealthIndicator'
+  | 'createDrizzleHealthIndicator'
+  | 'createRedisHealthIndicator'
+  | 'DiskHealthIndicator'
+  | 'MemoryHealthIndicator'
+  | 'RedisHealthIndicator'
+>>;
+type RemovedNodeExportsStayAbsent = Assert<IsAbsent<
+  typeof terminusNode,
+  | 'createDiskHealthIndicator'
+  | 'createDiskHealthIndicatorProvider'
+  | 'createMemoryHealthIndicator'
+  | 'createMemoryHealthIndicatorProvider'
+>>;
+type RemovedRedisExportsStayAbsent = Assert<IsAbsent<
+  typeof terminusRedis,
+  'createRedisHealthIndicator'
+>>;
+type RemovedRuntimeExportsStayAbsent = Assert<IsAbsent<
+  typeof runtime,
+  'createHealthModule'
+>>;
 
 const memoryOptions = {
   heapUsedThresholdBytes: 1_024,
@@ -23,8 +55,7 @@ const redisOptions = {
 } satisfies RedisHealthIndicatorOptions;
 
 new MemoryHealthIndicator(memoryOptions);
-createMemoryHealthIndicator(memoryOptions);
-createMemoryHealthIndicatorProvider(memoryOptions);
+MemoryHealthIndicator.create(memoryOptions);
 new RedisHealthIndicator(redisOptions);
-createRedisHealthIndicator(redisOptions);
+RedisHealthIndicator.create(redisOptions);
 createRedisHealthIndicatorProvider(redisOptions);

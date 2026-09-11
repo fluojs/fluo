@@ -49,6 +49,15 @@ from `@fluojs/metrics/integration`. Follow the [Metrics API owner](../packages/m
 and [observability architecture](./architecture/observability.md) for isolation,
 sharing, and collector ownership.
 
+## JWT Application API
+
+Use `JwtModule.forRoot(...)` or `JwtModule.forRootAsync(...)` and inject `JwtService`.
+`verify(token, policy?)` returns a normalized `JwtPrincipal`; claims-only callers
+read its `claims` field. The [JWT API owner](../packages/jwt/README.md) documents
+the removed provider helpers and override method, and
+[authentication architecture](./architecture/auth-and-jwt.md) explains the
+application and integration boundaries. `decode` remains unverified inspection.
+
 ## Persistence After-Commit Work
 
 For result-based rollback, first read the [shared transaction owner contract](./architecture/transactions.md#result-based-rollback). The separate `TransactionBoundaryOptions<T = unknown>.shouldRollback` in Prisma, Drizzle, and Mongoose is a consumer-defined synchronous predicate, not a global `Result` shape. An explicit root failure returns the same value after native rollback and cleanup succeed. A nested opted-in failure returns its original value while marking the owner sticky rollback-only; unless the root also rejects its own result, `TransactionRollbackOnlyError` carries the first nested failure as `result: unknown`. Unsupported fallback/legacy targets reject with `TransactionRollbackCapabilityError` before the callback, and native errors are not hidden. Rollback discards hooks; native callback retries use fresh owners. Ordinary caught nested exceptions retain existing commit/hook behavior. External raw transactions, Redis `MULTI/EXEC`, savepoints, and added durability guarantees are unsupported. Each package README owns exact argument positions and consumer examples.
@@ -511,6 +520,10 @@ Studio static-graph limit discoverability is split across `packages/studio/READM
 | `docs/getting-started/` | Bootstrap and setup facts for common starting paths. |
 | `docs/reference/` | Lookup-oriented tables, glossary terms, package matrices, and support snapshots. |
 
+## Terminus Health and Readiness
+
+For dependency health, import `TerminusModule` from `@fluojs/terminus` and register standalone probes with `XHealthIndicator.create(options)` in `TerminusModule.forRoot({ indicators })`. Import memory and disk probes only from `@fluojs/terminus/node`; retain the Prisma, Drizzle, and Redis DI provider factories only when Terminus must resolve those dependencies through `indicatorProviders`. Runtime-owned basic endpoints use `HealthModule.forRoot(...)`. The canonical response, readiness, timeout-settlement, and ownership contract is [`docs/contracts/health-and-readiness.md`](./contracts/health-and-readiness.md).
+
 ## Cron Scheduling Migration
 
 The scheduling migration contract spans [`packages/cron/README.md`](../packages/cron/README.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`docs/contracts/nestjs-parity-gaps.md`](./contracts/nestjs-parity-gaps.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md). `@fluojs/cron` supports `timezone`, not NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`; absolute-time `@Cron(Date)` / `@Cron(DateTime)` plans stay application-owned, as do disabled/category-specific schedules and threshold/recovery policy. Named interval/timeout decorators become `(ms, { name })`; resolve async schedule configuration before synchronous `CronModule.forRoot(...)`, use `global: true` explicitly when necessary, and do not expect NestJS category switches.
@@ -543,7 +556,7 @@ Studio bridge discoverability is split between [`packages/runtime/README.md`](..
 | Public API authoring and documentation baseline | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output modes and artifact ownership | `docs/reference/toolchain-contract-matrix.md` | `packages/cli/README.md` and `docs/reference/package-surface.md` |
 | Bootstrap path or startup sequence facts | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
-| JWT `iat` validation and verifier migration semantics | `docs/architecture/auth-and-jwt.md` | `packages/jwt/README.md` for verified claims from `JwtService.verify(...)`; use `DefaultJwtVerifier.verifyAccessToken(...)` for `JwtPrincipal`, or `verifyAccessTokenWithOverrides(...)` to preserve per-call verifier options |
+| JWT `iat` validation and verifier migration semantics | `docs/architecture/auth-and-jwt.md` | `packages/jwt/README.md` for the normalized `JwtPrincipal` from `JwtService.verify(token, policy?)`; pass per-call verification options in `policy` |
 | NestJS throttler migration boundaries | `docs/getting-started/migrate-from-nestjs.md` | `packages/throttler/README.md` and `book/beginner/ch16-throttler.md` |
 | Human learning flow or tutorial material | `book/README.md` | relevant chapters under `book/` |
 

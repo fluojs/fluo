@@ -110,8 +110,8 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
   imports: [
     TerminusModule.forRoot({
       indicators: [
-        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
-        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+        HttpHealthIndicator.create({ key: 'upstream-api', url: 'https://example.com/health' }),
+        MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
       ],
     }),
   ],
@@ -147,7 +147,7 @@ TerminusModule.forRoot({
     indicatorTimeoutMs: 1_500,
   },
   indicators: [
-    new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+    HttpHealthIndicator.create({ key: 'upstream-api', url: 'https://example.com/health' }),
   ],
 });
 ```

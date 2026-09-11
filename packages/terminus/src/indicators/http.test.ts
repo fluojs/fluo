@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { HealthCheckError } from '../errors.js';
-import { createHttpHealthIndicator, HttpHealthIndicator } from './http.js';
+import { HttpHealthIndicator } from './http.js';
 
 function createTrackedBodyResponse(status: number) {
   const cancel = vi.fn();
@@ -61,7 +61,7 @@ describe('HttpHealthIndicator', () => {
   it('throws HealthCheckError for unexpected codes and transport failures', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(undefined, { status: 500 }));
 
-    const badStatus = createHttpHealthIndicator({ url: 'https://example.com/health' });
+    const badStatus = HttpHealthIndicator.create({ url: 'https://example.com/health' });
 
     await expect(badStatus.check('upstream')).rejects.toMatchObject({
       causes: {
@@ -78,7 +78,7 @@ describe('HttpHealthIndicator', () => {
       () => Promise.reject(new Error('network down')),
     );
 
-    const networkFailure = createHttpHealthIndicator({ url: 'https://example.com/health' });
+    const networkFailure = HttpHealthIndicator.create({ url: 'https://example.com/health' });
     await expect(networkFailure.check('upstream')).rejects.toMatchObject({
       causes: {
         upstream: {
@@ -95,7 +95,7 @@ describe('HttpHealthIndicator', () => {
     const { cancel, response } = createTrackedBodyResponse(500);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
 
-    const indicator = createHttpHealthIndicator({ url: 'https://example.com/health' });
+    const indicator = HttpHealthIndicator.create({ url: 'https://example.com/health' });
 
     await expect(indicator.check('upstream')).rejects.toMatchObject({
       causes: {

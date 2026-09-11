@@ -6,7 +6,7 @@ import { createTestApp } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDrizzleHealthIndicatorProvider } from './indicators/drizzle.js';
-import { createMemoryHealthIndicatorProvider } from './indicators/memory.js';
+import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createPrismaHealthIndicatorProvider } from './indicators/prisma.js';
 import { createRedisHealthIndicatorProvider } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
@@ -271,7 +271,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     defineModule(AppModule, {
       imports: [
         TerminusModule.forRoot({
-          indicatorProviders: [createMemoryHealthIndicatorProvider({ key: 'memory' })],
+          indicators: [MemoryHealthIndicator.create({ key: 'memory' })],
         }),
       ],
     });

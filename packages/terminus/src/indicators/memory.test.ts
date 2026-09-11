@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HealthCheckError } from '../errors.js';
-import { createMemoryHealthIndicator, MemoryHealthIndicator } from './memory.js';
+import { MemoryHealthIndicator } from './memory.js';
 
 function createMemoryUsage(overrides: Partial<NodeJS.MemoryUsage>): NodeJS.MemoryUsage {
   return {
@@ -45,7 +45,7 @@ describe('MemoryHealthIndicator', () => {
       rss: 150,
     });
 
-    const ratioIndicator = createMemoryHealthIndicator({
+    const ratioIndicator = MemoryHealthIndicator.create({
       heapUsedThresholdRatio: 0.9,
       memoryUsage,
     });
@@ -61,7 +61,7 @@ describe('MemoryHealthIndicator', () => {
       name: 'HealthCheckError',
     } satisfies Partial<HealthCheckError>);
 
-    const rssIndicator = createMemoryHealthIndicator({
+    const rssIndicator = MemoryHealthIndicator.create({
       heapUsedThresholdRatio: 0.99,
       memoryUsage,
       rssThresholdBytes: 120,

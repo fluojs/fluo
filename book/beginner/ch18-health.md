@@ -91,7 +91,7 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 @Module({
   imports: [
     TerminusModule.forRoot({
-      indicators: [new MemoryHealthIndicator({ key: 'memory', rssThresholdBytes: 150 * 1024 * 1024 })],
+      indicators: [MemoryHealthIndicator.create({ key: 'memory', rssThresholdBytes: 150 * 1024 * 1024 })],
     }),
   ],
 })
@@ -162,12 +162,12 @@ Terminus makes that distinction explicit with an indicator's `readiness` setting
 ```typescript
 TerminusModule.forRoot({
   indicators: [
-    new HttpHealthIndicator({
+    HttpHealthIndicator.create({
       key: 'search',
       readiness: false,
       url: 'https://search.example.com/health',
     }),
-    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+    MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
   ],
 });
 ```
@@ -187,7 +187,7 @@ By strategically deciding which dependencies are fatal to application health, yo
 ### 18.4.4 Disk Space and I/O Monitoring
 For applications that handle file uploads or heavy logging, **disk space** is a critical resource. If the disk fills up, the application can crash or stop responding just as it would with a memory leak. Terminus includes a Node disk indicator for free-space thresholds, such as minimum free bytes or minimum free ratio. Use that signal to take action before a production emergency occurs, such as cleaning temporary files or expanding storage. If you also need I/O latency or throughput monitoring, collect those metrics through your metrics or host observability stack rather than treating them as Terminus disk-indicator output.
 
-Prefer importing Node.js resource indicators from `@fluojs/terminus/node`, and import Redis indicators from `@fluojs/terminus/redis`. Node memory/disk indicators remain root-exported for compatibility, but the subpath makes the migration boundary explicit: Node probes are runtime-specific, Redis lifecycle-aware probes are opt-in through the Redis subpath, and the root `@fluojs/terminus` import stays safe without optional Redis or Prisma peers, or the optional Drizzle peer. Prisma indicators registered through `createPrismaHealthIndicatorProvider(...)` still use `@fluojs/prisma` service lifecycle status when that provider is present, including named registrations. Drizzle indicators registered through `createDrizzleHealthIndicatorProvider(...)` prefer the lifecycle-aware `@fluojs/drizzle` wrapper and fall back to raw Drizzle handles for non-Node driver registrations.
+Import Node.js resource indicators only from `@fluojs/terminus/node`, and Redis indicators from `@fluojs/terminus/redis`. Create standalone probes with `XHealthIndicator.create(options)`; memory and disk indicators are not root exports. This subpath boundary keeps Node probes runtime-specific, Redis lifecycle-aware probes opt-in through the Redis subpath, and the root `@fluojs/terminus` import safe without optional Redis or Prisma peers, or the optional Drizzle peer. Prisma indicators registered through the retained `createPrismaHealthIndicatorProvider(...)` DI helper still use `@fluojs/prisma` service lifecycle status when that provider is present, including named registrations. Drizzle indicators registered through the retained `createDrizzleHealthIndicatorProvider(...)` DI helper prefer the lifecycle-aware `@fluojs/drizzle` wrapper and fall back to raw Drizzle handles for non-Node driver registrations.
 
 In FluoBlog, you monitor the `/tmp` directory where image uploads are processed and the main log directory. This helps ensure that storage exhaustion does not cause you to lose user data or important log events. Combining resource level health with service level health gives you a comprehensive 360 degree view of the application's operational state.
 

@@ -100,16 +100,6 @@ function createDrizzleLifecycleSnapshot(
 }
 
 /**
- * Create a Drizzle health indicator.
- *
- * @param options Optional lifecycle-aware handle provider, database handle, ping callback, timeout, query, and key override.
- * @returns A health indicator that checks Drizzle lifecycle state before executing a lightweight query.
- */
-export function createDrizzleHealthIndicator(options: DrizzleHealthIndicatorOptions = {}): HealthIndicator {
-  return new DrizzleHealthIndicator(options);
-}
-
-/**
  * Create a Terminus indicator provider collection entry that resolves a Drizzle database handle from DI.
  *
  * @param options Optional timeout, query override, key override, or custom ping callback.
@@ -126,7 +116,7 @@ export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealth
         ? handleProvider as DrizzleHandleProviderLike
         : undefined;
 
-      return new DrizzleHealthIndicator({
+      return DrizzleHealthIndicator.create({
         ...options,
         database: database as DrizzleExecuteLike | undefined,
         handleProvider: resolvedHandleProvider,
@@ -140,6 +130,16 @@ export class DrizzleHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
   private pendingProbeSettlement: Promise<void> | undefined;
+
+  /**
+   * Create a Drizzle health indicator.
+   *
+   * @param options Optional lifecycle-aware handle provider, database handle, ping callback, timeout, query, and key override.
+   * @returns A health indicator that checks Drizzle lifecycle state before executing a lightweight query.
+   */
+  static create(options: DrizzleHealthIndicatorOptions = {}): DrizzleHealthIndicator {
+    return new DrizzleHealthIndicator(options);
+  }
 
   constructor(private readonly options: DrizzleHealthIndicatorOptions = {}) {
     this.key = options.key;

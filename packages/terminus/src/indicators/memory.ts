@@ -1,5 +1,3 @@
-import type { Provider } from '@fluojs/di';
-
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
 import { readNodeMemoryUsage } from '../node-runtime.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
@@ -37,35 +35,20 @@ function exceedsRatioThreshold(used: number, total: number, threshold: number): 
   return used / total >= threshold;
 }
 
-/**
- * Create a process-memory health indicator.
- *
- * @param options Optional heap and RSS thresholds plus an indicator key override.
- * @returns A health indicator backed by the Node runtime memory sampler.
- */
-export function createMemoryHealthIndicator(options: MemoryHealthIndicatorOptions = {}): HealthIndicator {
-  return new MemoryHealthIndicator(options);
-}
-
-/**
- * Create a Terminus indicator provider collection entry for a `MemoryHealthIndicator` instance.
- *
- * @param options Optional heap and RSS thresholds plus an indicator key override.
- * @returns A value provider with a unique internal DI token for `TerminusModule` indicatorProviders.
- */
-export function createMemoryHealthIndicatorProvider(options: MemoryHealthIndicatorOptions = {}): Provider {
-  const indicatorProviderToken = Symbol('fluo.terminus.memory-health-indicator');
-
-  return {
-    provide: indicatorProviderToken,
-    useValue: new MemoryHealthIndicator(options),
-  };
-}
-
 /** Health indicator that checks local process heap and RSS usage. */
 export class MemoryHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
+
+  /**
+   * Create a process-memory health indicator.
+   *
+   * @param options Optional heap and RSS thresholds plus an indicator key override.
+   * @returns A health indicator backed by the Node runtime memory sampler.
+   */
+  static create(options: MemoryHealthIndicatorOptions = {}): MemoryHealthIndicator {
+    return new MemoryHealthIndicator(options);
+  }
 
   constructor(private readonly options: MemoryHealthIndicatorOptions = {}) {
     this.key = options.key;

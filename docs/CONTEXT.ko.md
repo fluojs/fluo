@@ -48,6 +48,15 @@ Registry 공유는 `FluoFactory.create(...)`의 `METRICS_REGISTRY` provider로�
 격리·공유와 collector 소유권은 [Metrics API 원본](../packages/metrics/README.ko.md) 및
 [관측성 아키텍처](./architecture/observability.ko.md)를 따르세요.
 
+## JWT Application API
+
+`JwtModule.forRoot(...)` 또는 `JwtModule.forRootAsync(...)`로 등록하고 `JwtService`를 주입하세요.
+`verify(token, policy?)`는 정규화된 `JwtPrincipal`을 반환하므로 claims-only 소비자는
+`claims` 필드를 읽습니다. 제거된 provider helper와 override method의 이전 방법은
+[JWT API 원본](../packages/jwt/README.ko.md)에, application과 integration 경계는
+[인증 아키텍처](./architecture/auth-and-jwt.ko.md)에 설명합니다.
+`decode`는 검증하지 않는 inspection으로 유지됩니다.
+
 ## Persistence After-Commit Work
 
 반환값 기반 rollback은 [공유 transaction owner 계약](./architecture/transactions.ko.md#반환값-기반-롤백)을 먼저 읽으세요. Prisma·Drizzle·Mongoose의 별도 `TransactionBoundaryOptions<T = unknown>.shouldRollback`은 소비자가 정의한 동기 predicate이며 전역 `Result` 형태를 만들지 않습니다. 명시적 루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환합니다. 중첩 opt-in 실패는 원래 값을 반환하되 owner를 sticky rollback-only로 만들며, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 `result: unknown`에 담은 `TransactionRollbackOnlyError`가 발생합니다. 미지원 fallback/legacy target은 callback 전에 `TransactionRollbackCapabilityError`로 거부하고 native 오류는 가리지 않습니다. rollback은 hook을 폐기하고 native callback retry는 새 owner를 사용합니다. 일반적인 잡힌 중첩 예외는 기존 commit/hook 동작을 유지하며 raw 외부 transaction·Redis `MULTI/EXEC`·savepoint·durability 확장은 지원하지 않습니다. 정확한 인자 위치와 소비자 예제는 각 패키지 README가 소유합니다.
@@ -507,6 +516,10 @@ Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`b
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
 
+## Terminus Health와 Readiness
+
+Dependency health에는 `@fluojs/terminus`의 `TerminusModule`을 import하고, 독립 probe는 `TerminusModule.forRoot({ indicators })`에서 `XHealthIndicator.create(options)`로 등록합니다. Memory와 disk probe는 `@fluojs/terminus/node`에서만 import합니다. Prisma, Drizzle, Redis DI provider factory는 Terminus가 `indicatorProviders`를 통해 해당 dependency를 resolve해야 할 때만 유지합니다. Runtime 소유 기본 endpoint에는 `HealthModule.forRoot(...)`를 사용합니다. Canonical response, readiness, timeout-settlement, ownership 계약은 [`docs/contracts/health-and-readiness.ko.md`](./contracts/health-and-readiness.ko.md)입니다.
+
 ## Cron Scheduling Migration
 
 Scheduling migration contract는 [`packages/cron/README.ko.md`](../packages/cron/README.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/contracts/nestjs-parity-gaps.ko.md`](./contracts/nestjs-parity-gaps.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에 걸쳐 있습니다. `@fluojs/cron`은 `timezone`을 지원하지만 NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 지원하지 않습니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` plan과 disabled/category-specific schedule, threshold/recovery policy는 application-owned로 유지합니다. Named interval/timeout decorator는 `(ms, { name })`로 바꾸고, async schedule configuration은 동기 `CronModule.forRoot(...)` 전에 해석하며, 필요하면 `global: true`를 명시하고 NestJS category switch를 기대하지 마세요.
@@ -539,7 +552,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
-| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(...)`의 검증된 claims는 `packages/jwt/README.ko.md`에서 확인합니다. `JwtPrincipal`에는 `DefaultJwtVerifier.verifyAccessToken(...)`을, 호출별 verifier options 보존에는 `verifyAccessTokenWithOverrides(...)`을 사용합니다. |
+| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(token, policy?)`의 정규화된 `JwtPrincipal`과 호출별 검증 options를 `policy`로 전달하는 방법은 `packages/jwt/README.ko.md`에서 확인합니다. |
 | NestJS throttler 마이그레이션 경계 | `docs/getting-started/migrate-from-nestjs.ko.md` | `packages/throttler/README.ko.md` 및 `book/beginner/ch16-throttler.ko.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 

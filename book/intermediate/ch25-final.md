@@ -86,7 +86,7 @@ For debugging and performance tuning, tracing requests across multiple runtimes 
   imports: [
     MetricsModule.forRoot(),
     TerminusModule.forRoot({
-      indicators: [new MemoryHealthIndicator({ key: 'memory', rssThresholdBytes: Number.MAX_SAFE_INTEGER })],
+      indicators: [MemoryHealthIndicator.create({ key: 'memory', rssThresholdBytes: Number.MAX_SAFE_INTEGER })],
     }),
   ],
 })

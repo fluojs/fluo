@@ -49,54 +49,6 @@ class AsyncRefreshTokenServiceRegistrar {
   }
 }
 
-function createJwtModuleProviders(
-  optionsProvider: JwtOptionsProvider,
-  includeRefreshTokenService: boolean,
-  refreshTokenServiceScope: 'singleton' | 'transient',
-  deferRefreshTokenServiceRegistration = false,
-): Provider[] {
-  const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner, JwtService];
-
-  if (includeRefreshTokenService) {
-    providers.push({
-      inject: [JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier],
-      provide: RefreshTokenService,
-      scope: refreshTokenServiceScope,
-      useFactory: (...deps: unknown[]) => {
-        const [options, signer, verifier] = deps;
-        const refreshTokenOptions = resolveRefreshTokenOptions(options);
-
-        return new RefreshTokenService(
-          refreshTokenOptions,
-          signer as DefaultJwtSigner,
-          verifier as DefaultJwtVerifier,
-        );
-      },
-    });
-
-    if (deferRefreshTokenServiceRegistration) {
-      providers.push(AsyncRefreshTokenServiceRegistrar);
-    }
-  }
-
-  return providers;
-}
-
-/**
- * Creates the core JWT providers for advanced direct module composition.
- *
- * @deprecated Prefer {@link JwtModule.forRoot} or {@link JwtModule.forRootAsync} so JWT registration stays aligned with the published module surface.
- * @param options JWT verification and signing options used for provider registration.
- * @returns Providers for the JWT verifier, signer, facade, and optional refresh-token service.
- */
-export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] {
-  return createJwtModuleProviders({
-    provide: JWT_OPTIONS,
-    scope: 'singleton',
-    useValue: options,
-  }, Boolean(options.refreshToken), 'singleton');
-}
-
 /**
  * Registers JWT services and optional refresh-token support for an application module.
  */
@@ -131,9 +83,47 @@ export class JwtModule {
     defineModuleMetadata(JwtRuntimeModule, {
       exports: [JwtService, DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenExport ? [RefreshTokenService] : [])],
       global,
-      providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenProvider, refreshTokenServiceScope, deferRefreshTokenServiceRegistration),
+      providers: this.createProviders(
+        optionsProvider,
+        includeRefreshTokenProvider,
+        refreshTokenServiceScope,
+        deferRefreshTokenServiceRegistration,
+      ),
     });
 
     return JwtRuntimeModule;
+  }
+
+  private static createProviders(
+    optionsProvider: JwtOptionsProvider,
+    includeRefreshTokenService: boolean,
+    refreshTokenServiceScope: 'singleton' | 'transient',
+    deferRefreshTokenServiceRegistration: boolean,
+  ): Provider[] {
+    const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner, JwtService];
+
+    if (includeRefreshTokenService) {
+      providers.push({
+        inject: [JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier],
+        provide: RefreshTokenService,
+        scope: refreshTokenServiceScope,
+        useFactory: (...deps: unknown[]) => {
+          const [options, signer, verifier] = deps;
+          const refreshTokenOptions = resolveRefreshTokenOptions(options);
+
+          return new RefreshTokenService(
+            refreshTokenOptions,
+            signer as DefaultJwtSigner,
+            verifier as DefaultJwtVerifier,
+          );
+        },
+      });
+
+      if (deferRefreshTokenServiceRegistration) {
+        providers.push(AsyncRefreshTokenServiceRegistrar);
+      }
+    }
+
+    return providers;
   }
 }

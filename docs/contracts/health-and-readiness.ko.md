@@ -21,14 +21,14 @@ Terminus는 dependency 진단과 readiness 조건을 구성합니다. Socket lis
 | 공개 import 경로 | API와 역할 |
 | --- | --- |
 | `@fluojs/terminus` | `TerminusModule`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`; `HealthIndicator`, `HealthIndicatorResult`, `HealthIndicatorState`, `HealthCheckReport`, `HealthCheckExecutionOptions`, `TerminusModuleOptions` 타입 |
-| `@fluojs/terminus` | `HttpHealthIndicator`, `PrismaHealthIndicator`, `DrizzleHealthIndicator` 및 각각의 `create*HealthIndicator`, `create*HealthIndicatorProvider`, `*HealthIndicatorOptions` |
-| `@fluojs/terminus/node` | `MemoryHealthIndicator`, `DiskHealthIndicator` 및 각각의 factory, provider factory, option 타입. 호환성을 위해 root에서도 export합니다. |
-| `@fluojs/terminus/redis` | `RedisHealthIndicator`, `createRedisHealthIndicator`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helper는 root export가 아닙니다. |
+| `@fluojs/terminus` | `HttpHealthIndicator.create`, `PrismaHealthIndicator.create`, `DrizzleHealthIndicator.create`, 각각의 option 타입 및 유지되는 DI helper `createPrismaHealthIndicatorProvider` / `createDrizzleHealthIndicatorProvider` |
+| `@fluojs/terminus/node` | `MemoryHealthIndicator.create`, `DiskHealthIndicator.create` 및 각각의 option 타입. 이 Node 전용 indicator는 root에서 export하지 않습니다. |
+| `@fluojs/terminus/redis` | `RedisHealthIndicator.create`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helper는 root export가 아닙니다. |
 | `@fluojs/terminus` | `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: module이 export하는 indicator 집합과 provider token 목록 |
 | `@fluojs/runtime` | `ReadinessCheck`: `(ctx: RequestContext) => boolean \| Promise<boolean>`; `HealthModule`은 Terminus가 내부에서 합성하는 runtime route facade입니다. |
 | `@fluojs/core`, `@fluojs/http` | Application의 `Module`; endpoint middleware를 위한 `Middleware`, `MiddlewareContext`, `Next` 타입 등 |
 
-내부 `TERMINUS_OPTIONS`, `createTerminusProviders`, `createTerminusModule`을 consumer API로 import하지 않습니다. Node listener helper의 공개 소유자는 `@fluojs/platform-nodejs`이며 `@fluojs/runtime/node`가 아닙니다.
+내부 `TERMINUS_OPTIONS`, `createTerminusProviders`, `createTerminusModule`을 consumer API로 import하지 않습니다. 제거된 `createXHealthIndicator` helper는 `XHealthIndicator.create(options)`로 교체하고, DI 의존성을 Terminus에서 resolve해야 할 때만 유지되는 Prisma, Drizzle, Redis provider helper를 사용합니다. `MemoryHealthIndicator`, `DiskHealthIndicator`를 root에서, `createHealthModule`을 runtime에서 import하지 않습니다. Node listener helper의 공개 소유자는 `@fluojs/platform-nodejs`이며 `@fluojs/runtime/node`가 아닙니다.
 
 ## 등록 입력과 기본값
 
@@ -50,7 +50,7 @@ DI-backed dependency module은 `TerminusModule.forRoot({ imports: [ownerModule],
 
 ### 선택적 probe
 
-다음 probe는 자동 등록되지 않습니다. 필요한 class instance 또는 provider factory를 선택합니다. 모든 option 타입과 DI 예제는 [패키지 API](../../packages/terminus/README.ko.md#공개-api-개요)에 연결되며, 여기서는 probe 선택에 필요한 기본 동작을 고정합니다.
+다음 probe는 자동 등록되지 않습니다. Standalone probe는 `XHealthIndicator.create(options)`로 만들고, 의존성을 Terminus에서 resolve해야 할 때만 유지되는 DI provider factory를 선택합니다. 모든 option 타입과 DI 예제는 [패키지 API](../../packages/terminus/README.ko.md#공개-api-개요)에 연결되며, 여기서는 probe 선택에 필요한 기본 동작을 고정합니다.
 
 | Probe | 입력·기본값·결과 |
 | --- | --- |
