@@ -1606,11 +1606,19 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
   const supportedBuilderMethods = new Set([
     'compile',
     'overrideProvider',
-    'overrideProviders',
     'overrideGuard',
     'overrideInterceptor',
     'overrideFilter',
     'overrideModule',
+    'useValue',
+    'useClass',
+    'useFactory',
+    'useExisting',
+  ]);
+  const specializedBuilderMethods = new Set([
+    'overrideGuard',
+    'overrideInterceptor',
+    'overrideFilter',
   ]);
 
   const convertTestingMetadata = (
@@ -1704,6 +1712,24 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     return found;
   };
 
+  const getConvertedTestingModuleCall = (node: ts.CallExpression): ts.CallExpression | undefined => {
+    let cursor: ts.Expression = node;
+    while (
+      ts.isCallExpression(cursor)
+      && ts.isPropertyAccessExpression(cursor.expression)
+      && ts.isCallExpression(cursor.expression.expression)
+    ) {
+      const builderCall = cursor.expression.expression;
+      if (convertedCalls.has(builderCall)) {
+        return builderCall;
+      }
+
+      cursor = builderCall;
+    }
+
+    return undefined;
+  };
+
   const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
     const visit = (node: ts.Node): ts.Node => {
       if (
@@ -1786,13 +1812,40 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     const visit = (node: ts.Node): ts.Node => {
       const metadata = ts.isCallExpression(node) ? convertedCalls.get(node) : undefined;
       if (metadata && ts.isCallExpression(node)) {
-        return ts.factory.updateCallExpression(
-          node,
-          ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(fluoTestName), 'createTestingModule'),
-          node.typeArguments,
-          [metadata],
+        return ts.visitEachChild(
+          ts.factory.updateCallExpression(
+            node,
+            ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(fluoTestName), 'createTestingModule'),
+            node.typeArguments,
+            [metadata],
+          ),
+          visit,
+          context,
         );
       }
+
+      if (
+        ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && specializedBuilderMethods.has(node.expression.name.text)
+        && getConvertedTestingModuleCall(node)
+      ) {
+        return ts.visitEachChild(
+          ts.factory.updateCallExpression(
+            node,
+            ts.factory.updatePropertyAccessExpression(
+              node.expression,
+              node.expression.expression,
+              ts.factory.createIdentifier('overrideProvider'),
+            ),
+            node.typeArguments,
+            node.arguments,
+          ),
+          visit,
+          context,
+        );
+      }
+
       return ts.visitEachChild(node, visit, context);
     };
     return (node) => ts.visitNode(node, visit) as ts.SourceFile;

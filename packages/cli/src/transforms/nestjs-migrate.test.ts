@@ -722,6 +722,113 @@ describe('users', () => {
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unsupported testing builder method "useMocker"'))).toBe(true);
   });
 
+  it('normalizes specialized testing overrides to canonical provider strategies', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'users.spec.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { Test } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+
+const GUARD_TOKEN = Symbol('guard');
+const INTERCEPTOR_TOKEN = Symbol('interceptor');
+const FILTER_TOKEN = Symbol('filter');
+const PROVIDER_TOKEN = Symbol('provider');
+const guard = {};
+class Interceptor {}
+const createFilter = () => ({});
+class ExistingProvider {}
+
+async function createModule() {
+  return Test.createTestingModule({ imports: [UsersModule] })
+    .overrideGuard(GUARD_TOKEN).useValue(guard)
+    .overrideInterceptor(INTERCEPTOR_TOKEN).useClass(Interceptor)
+    .overrideFilter(FILTER_TOKEN).useFactory(createFilter)
+    .overrideProvider(PROVIDER_TOKEN).useExisting(ExistingProvider)
+    .compile();
+}
+
+void createModule();
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: sourceFilePath,
+    });
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    const emitted = ts.transpileModule(migratedSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: sourceFilePath,
+      reportDiagnostics: true,
+    });
+
+    // Then
+    expect(report.warningCount).toBe(0);
+    expect(migratedSource).toContain('import { Test } from "@fluojs/testing";');
+    expect(migratedSource).toContain('Test.createTestingModule({');
+    expect(migratedSource).toContain('rootModule: UsersModule');
+    expect(migratedSource).toContain('.overrideProvider(GUARD_TOKEN).useValue(guard)');
+    expect(migratedSource).toContain('.overrideProvider(INTERCEPTOR_TOKEN).useClass(Interceptor)');
+    expect(migratedSource).toContain('.overrideProvider(FILTER_TOKEN).useFactory(createFilter)');
+    expect(migratedSource).toContain('.overrideProvider(PROVIDER_TOKEN).useExisting(ExistingProvider)');
+    expect(migratedSource).not.toContain('overrideGuard');
+    expect(migratedSource).not.toContain('overrideInterceptor');
+    expect(migratedSource).not.toContain('overrideFilter');
+    expect(migratedSource).not.toContain('@nestjs/testing');
+    expect(emitted.diagnostics).toEqual([]);
+  });
+
+  it('retains batch testing overrides unchanged with one fail-closed warning', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'users.spec.ts');
+    const source = `import { Test, type TestingModule as NestTestingModule } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+
+async function createModule(): Promise<NestTestingModule> {
+  return Test.createTestingModule({ imports: [UsersModule] })
+    .overrideProviders([{ provide: 'token', useValue: 'value' }])
+    .compile();
+}
+
+void createModule();
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const firstReport = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: sourceFilePath,
+    });
+    const secondReport = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: sourceFilePath,
+    });
+
+    // Then
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(firstReport.changedFiles).toBe(0);
+    expect(firstReport.fileResults.flatMap((result) => result.warnings)).toEqual([
+      expect.objectContaining({
+        category: 'testing-unsupported',
+        message: expect.stringContaining('overrideProviders'),
+      }),
+    ]);
+    expect(secondReport.changedFiles).toBe(0);
+    expect(secondReport.warningCount).toBe(1);
+  });
+
   it('keeps mixed Nest testing calls separate from canonical Fluo calls without import collisions', () => {
     const workspaceDirectory = createMigrationFixture();
     const specPath = join(workspaceDirectory, 'src', 'users.spec.ts');
