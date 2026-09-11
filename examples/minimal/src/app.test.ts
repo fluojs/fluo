@@ -25,19 +25,21 @@ describe('AppModule e2e', () => {
   it('serves all routes through Test.createApp request helpers', async () => {
     const app = await Test.createApp({ rootModule: AppModule });
 
-    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
-      body: { status: 'ok' },
-      status: 200,
-    });
-    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
-      body: { status: 'ready' },
-      status: 200,
-    });
-    await expect(app.request('GET', '/hello/').send()).resolves.toMatchObject({
-      body: { message: 'Hello, World!' },
-      status: 200,
-    });
-
-    await app.close();
+    try {
+      await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+        body: { status: 'ok' },
+        status: 200,
+      });
+      await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+        body: { status: 'ready' },
+        status: 200,
+      });
+      await expect(app.request('GET', '/hello/').send()).resolves.toMatchObject({
+        body: { message: 'Hello, World!' },
+        status: 200,
+      });
+    } finally {
+      await app.close();
+    }
   });
 });
