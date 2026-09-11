@@ -18,6 +18,10 @@ FluoBlog에는 아직 쓰기 API가 없으니 데이터가 잘못 바뀔 일이 
 
 테스트를 쓰기 전에 생성된 설정을 확인한다. Node.js 24, pnpm 10을 그대로 사용하며 Vitest는 현재 starter의 4 계열을 따른다. `@fluojs/testing`은 애플리케이션 구성과 요청 테스트를 돕지만 테스트 실행기 자체는 아니다. Vitest와 Babel 의존성이 설치되어 있어야 한다.
 
+```bash
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
+```
+
 아래는 `vitest.config.ts`의 **완전한 설정 파일**이다. 생성된 파일이 같다면 그대로 둔다.
 
 ```ts

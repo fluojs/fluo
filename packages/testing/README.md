@@ -21,7 +21,7 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 ## Installation
 
 ```bash
-pnpm add -D @fluojs/testing vitest
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
 Vitest `^4.1.11` is a required peer dependency for the mock helpers. Configure decorators through `@fluojs/vite`, which owns the single lazy Babel transform:

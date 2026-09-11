@@ -23,7 +23,7 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 ## 설치
 
 ```bash
-pnpm add -D @fluojs/testing vitest
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
 Vitest `^4.1.11`은 mock 헬퍼가 요구하는 peer dependency입니다. decorator는 single lazy Babel transform을 소유하는 `@fluojs/vite`로 설정하세요:

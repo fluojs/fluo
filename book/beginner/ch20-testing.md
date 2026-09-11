@@ -58,7 +58,7 @@ This chapter uses **Vitest** as the default test runner because it is fast, comp
 
 Install the required dependencies:
 ```bash
-pnpm add -D @fluojs/testing vitest @babel/core
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
 Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers, and `@fluojs/vite` owns the Babel transform used by both application and test modules. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime. The package itself declares `engines.node >=24.0.0 <27`; Node versions below 24 and Node 27+ are excluded because the public portability harness exercises listener-level RFC `QUERY`. Runtime-native Deno/Bun test examples should follow their own adapter chapters when they are not executing through Node/Vitest.

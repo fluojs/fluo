@@ -18,6 +18,10 @@ The code in this chapter consists of tests to add to the generated project. Pres
 
 Before writing tests, check the generated configuration. Continue using Node.js 24 and pnpm 10, with Vitest from the 4 series used by the current starter. `@fluojs/testing` helps with application configuration and request testing, but it is not the test runner itself. Vitest and the Babel dependencies must be installed.
 
+```bash
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
+```
+
 Below is the **complete configuration file** for `vitest.config.ts`. If the generated file matches, leave it as it is.
 
 ```ts

@@ -58,7 +58,7 @@
 
 필요한 의존성을 설치합니다:
 ```bash
-pnpm add -D @fluojs/testing vitest @babel/core
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
 `vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼를 위해 Vitest를 peer dependency로 선언하며, application과 test module이 쓰는 Babel transform은 `@fluojs/vite`가 소유합니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다. 이 패키지 자체는 `engines.node >=24.0.0 <27`을 선언합니다. Public portability harness가 listener-level RFC `QUERY`를 검증하므로 Node 24 미만과 Node 27 이상은 제외됩니다. Node/Vitest 경로로 실행하지 않는 runtime-native Deno/Bun 테스트 예제는 각 어댑터 장의 지침을 따르세요.
