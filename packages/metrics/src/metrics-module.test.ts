@@ -11,10 +11,12 @@ import {
   type MiddlewareContext,
   type Next,
 } from '@fluojs/http';
-import { FluoFactory, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
+import { FluoFactory, defineModule, PLATFORM_SHELL, type ModuleType, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
-import { describe, expect, it, vi } from 'vitest';
-import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as metricsIntegration from './integration.js';
+import * as metricsPublicApi from './index.js';
+import { METRICS_REGISTRY, MetricsModule as MetricsModuleImplementation, type MetricsModuleOptions } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
@@ -26,6 +28,23 @@ type TestPlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
 type Deferred<T> = {
   promise: Promise<T>;
   resolve(value: T): void;
+};
+type LegacyMetricsModuleOptions = MetricsModuleOptions & {
+  registry?: Registry;
+};
+
+const legacyRegistries = new WeakMap<ModuleType, Registry>();
+const MetricsModule = {
+  forRoot(options: LegacyMetricsModuleOptions = {}): ModuleType {
+    const { registry, ...moduleOptions } = options;
+    const moduleType = MetricsModuleImplementation.forRoot(moduleOptions);
+
+    if (registry) {
+      legacyRegistries.set(moduleType, registry);
+    }
+
+    return moduleType;
+  },
 };
 
 const perfHooks = createRequire(import.meta.url)('node:perf_hooks');
@@ -130,7 +149,83 @@ function createPlatformComponent({
   };
 }
 
+function findLegacyRegistry(moduleType: ModuleType, visited = new Set<ModuleType>()): Registry | undefined {
+  if (visited.has(moduleType)) {
+    return undefined;
+  }
+
+  visited.add(moduleType);
+
+  const registry = legacyRegistries.get(moduleType);
+  if (registry) {
+    return registry;
+  }
+
+  for (const importedModule of getModuleMetadata(moduleType)?.imports ?? []) {
+    if (!isModuleType(importedModule)) {
+      continue;
+    }
+
+    const importedRegistry = findLegacyRegistry(importedModule, visited);
+    if (importedRegistry) {
+      return importedRegistry;
+    }
+  }
+
+  return undefined;
+}
+
+function isModuleType(value: unknown): value is ModuleType {
+  return typeof value === 'function';
+}
+
+function hasMetricsRegistryProvider(providers: unknown): boolean {
+  return Array.isArray(providers) && providers.some(
+    (provider) => typeof provider === 'object'
+      && provider !== null
+      && 'provide' in provider
+      && provider.provide === METRICS_REGISTRY,
+  );
+}
+
 describe('MetricsModule', () => {
+  const createApplication = FluoFactory.create.bind(FluoFactory);
+
+  beforeEach(() => {
+    vi.spyOn(FluoFactory, 'create').mockImplementation(async (rootModule, options) => {
+      const legacyRegistry = findLegacyRegistry(rootModule);
+
+      if (!legacyRegistry || hasMetricsRegistryProvider(options?.providers)) {
+        return createApplication(rootModule, options);
+      }
+
+      return createApplication(rootModule, {
+        ...options,
+        providers: [...(options?.providers ?? []), { provide: METRICS_REGISTRY, useValue: legacyRegistry }],
+      });
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('keeps application registration APIs separate from low-level integration exports', () => {
+    // Given: the root package namespace that application code imports.
+
+    // When: the public metrics exports are inspected.
+
+    // Then: applications receive the module and service path, not integration-only APIs.
+    expect(metricsPublicApi).not.toHaveProperty('HttpMetricsMiddleware');
+    expect(metricsPublicApi).not.toHaveProperty('METER_PROVIDER');
+    expect(metricsPublicApi).not.toHaveProperty('PrometheusMeterProvider');
+    expect(metricsPublicApi).not.toHaveProperty('Registry');
+    expect(metricsIntegration).toHaveProperty('HttpMetricsMiddleware');
+    expect(metricsIntegration).toHaveProperty('METER_PROVIDER');
+    expect(metricsIntegration).toHaveProperty('PrometheusMeterProvider');
+    expect(metricsIntegration).toHaveProperty('Registry');
+  });
+
   it('can disable the scrape endpoint explicitly', async () => {
     class AppModule {}
 

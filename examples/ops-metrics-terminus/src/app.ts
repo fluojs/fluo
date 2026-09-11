@@ -3,7 +3,7 @@ import { TerminusModule } from '@fluojs/terminus';
 import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 
 import { OpsModule } from './ops/ops.module';
-import { HealthEndpointMiddleware, opsMetricsModule } from './ops/metrics-registry';
+import { HealthEndpointMiddleware, opsMetricsBootstrapProviders, opsMetricsModule } from './ops/metrics-registry';
 
 @Module({
   imports: [
@@ -16,3 +16,5 @@ import { HealthEndpointMiddleware, opsMetricsModule } from './ops/metrics-regist
   ],
 })
 export class AppModule {}
+
+export { opsMetricsBootstrapProviders };

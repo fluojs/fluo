@@ -44,7 +44,7 @@ class AppModule {}
 
 `MetricsModule.forRoot()` exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. When HTTP instrumentation is enabled, the module records request totals, error counts, and request duration. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
-The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap unless the bootstrap configures `METRICS_REGISTRY` or the legacy `registry` option is supplied; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Configure a shared `Registry` at bootstrap only when framework metrics and application-defined metrics intentionally share one scrape surface.
+The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Configure `METRICS_REGISTRY` at bootstrap only when framework metrics and application-defined metrics intentionally share one scrape surface. The former `registry` module option is removed: migrate each independent application by supplying its own bootstrap provider.
 
 ## Public Responsibilities
 
@@ -169,7 +169,8 @@ direct dependency.
 
 ```ts
 import { Module } from '@fluojs/core';
-import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
+import { METRICS_REGISTRY, MetricsModule } from '@fluojs/metrics';
+import { Registry } from '@fluojs/metrics/integration';
 import { FluoFactory } from '@fluojs/runtime';
 
 const registry = new Registry();

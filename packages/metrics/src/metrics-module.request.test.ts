@@ -4,7 +4,7 @@ import { createTestApp } from '@fluojs/testing';
 import { Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
 
-import { MetricsModule } from './metrics-module.js';
+import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 
 describe('MetricsModule request contract', () => {
   it('serves the default Prometheus scrape response through the request helper', async () => {
@@ -70,12 +70,14 @@ describe('MetricsModule request contract', () => {
           defaultMetrics: false,
           endpointMiddleware: [RejectMetricsRequestMiddleware],
           http: true,
-          registry,
         }),
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await createTestApp({
+      providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
+      rootModule: AppModule,
+    });
 
     try {
       // Given: HTTP instrumentation observes a protected metrics endpoint.
