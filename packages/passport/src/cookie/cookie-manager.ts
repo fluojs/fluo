@@ -6,6 +6,11 @@ import { type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-aut
  * Describes the cookie options contract.
  */
 export interface CookieOptions {
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+  path?: string;
+  domain?: string;
   /**
    * Default cookie lifetime in seconds.
    *
@@ -13,11 +18,6 @@ export interface CookieOptions {
    * This value is forwarded to the portable HTTP serializer as `maxAgeSeconds`;
    * it is not the millisecond `maxAge` convention used by some host frameworks.
    */
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: 'strict' | 'lax' | 'none';
-  path?: string;
-  domain?: string;
   maxAge?: number;
 }
 
