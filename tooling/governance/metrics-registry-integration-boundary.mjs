@@ -63,19 +63,51 @@ function hasIdentifier(node, expectedName) {
   return found;
 }
 
-function hasStaticMethod(source, className, methodName) {
+function findStaticMethod(source, className, methodName) {
   const declaration = source.statements.find((statement) =>
     ts.isClassDeclaration(statement) && statement.name?.text === className);
   if (!declaration) {
-    return false;
+    return undefined;
   }
 
-  return declaration.members.some((member) =>
+  return declaration.members.find((member) =>
     ts.isMethodDeclaration(member)
     && member.name
     && ts.isIdentifier(member.name)
-    && member.name.text === methodName
-    && member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword));
+    && member.name.text === methodName &&
+      member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword));
+}
+
+function hasBootstrapRegistryProvider(forRoot) {
+  let registryProvider;
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'registryProvider' &&
+      node.initializer &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      registryProvider = node.initializer;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(forRoot);
+
+  if (!registryProvider) {
+    return false;
+  }
+
+  const property = (name) => registryProvider.properties.find((candidate) =>
+    ts.isPropertyAssignment(candidate) &&
+      ts.isIdentifier(candidate.name) &&
+      candidate.name.text === name)?.initializer;
+  const inject = property('inject');
+  const useFactory = property('useFactory');
+
+  return Boolean(inject && useFactory && hasIdentifier(inject, 'BOOTSTRAP_PROVIDER_TOKENS') &&
+    hasIdentifier(useFactory, 'METRICS_REGISTRY'));
 }
 
 /**
@@ -118,10 +150,11 @@ export function enforceMetricsRegistryIntegrationBoundary(files) {
     !optionNames.includes('registry'),
     'MetricsModuleOptions must not restore the removed registry module option.',
   );
+  const forRoot = findStaticMethod(metricsModuleSource, 'MetricsModule', 'forRoot');
+  assert(forRoot, 'MetricsModule must retain the static forRoot registration path.');
   assert(
-    hasStaticMethod(metricsModuleSource, 'MetricsModule', 'forRoot') &&
-      hasIdentifier(metricsModuleSource, 'METRICS_REGISTRY'),
-    'MetricsModule.forRoot must retain METRICS_REGISTRY bootstrap ownership.',
+    hasBootstrapRegistryProvider(forRoot),
+    'MetricsModule.forRoot must resolve METRICS_REGISTRY through its registry provider bootstrap path.',
   );
 
   const manifest = JSON.parse(files.manifest);

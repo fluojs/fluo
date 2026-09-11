@@ -52,8 +52,8 @@ Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Pr
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, registry ownership을 wiring합니다. | `provider`는 현재 `'prometheus'`만 받습니다. `path: false`는 scrape route와 route-scoped endpoint middleware를 비활성화합니다. |
 | `MetricsService` | Active Registry 위에서 custom `Counter`, `Gauge`, `Histogram`을 만드는 application-facing facade이며, 고급 Registry 공유를 위한 `getRegistry()`도 제공합니다. | `MetricsService`는 non-global service입니다. `MetricsModule.forRoot(...)` registration을 직접 import한 module 또는 `MetricsService`를 re-export하는 module을 import한 module에서 inject하세요. 관련 없는 sibling module에는 자동으로 제공되지 않습니다. 비즈니스/application metric은 collector helper를 사용하세요. `getRegistry()`는 active `prom-client` Registry를 bootstrap의 `METRICS_REGISTRY`로 직접 받을 수 없는 integration에 넘겨야 할 때만 사용하세요. |
-| `METRICS_REGISTRY` | Shared `prom-client` Registry를 위한 bootstrap provider token입니다. | `FluoFactory.create()` provider가 module의 legacy `registry` option보다 우선하여 ownership을 가집니다. |
-| `Registry` | Shared-registry setup을 위한 `prom-client` `Registry` constructor re-export입니다. | 같은 Prometheus Registry 구현체이므로 중복 metric name은 Prometheus semantics에 따라 계속 실패합니다. |
+| `METRICS_REGISTRY` | Shared `prom-client` Registry를 위한 bootstrap provider token입니다. | `FluoFactory.create(..., { providers })`를 통해서만 전달하는 sole shared-registry input입니다. |
+| `Registry` | Shared-registry setup을 위해 `@fluojs/metrics/integration`이 re-export하는 `prom-client` `Registry` constructor입니다. | 같은 Prometheus Registry 구현체이므로 중복 metric name은 Prometheus semantics에 따라 계속 실패합니다. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` / meter type | Provider token 또는 backend-neutral counter/gauge/histogram facade가 필요한 first-party package integration용 low-level meter bridge입니다. | Application code는 package-level integration을 직접 조합하는 경우가 아니면 보통 이 token이 필요하지 않습니다. 현재 bundled provider backend는 Prometheus뿐입니다. |
 | `middleware` | Framework HTTP metrics와 endpoint-scoped middleware 뒤의 module middleware chain에 참여하는 module-level middleware입니다. | Route-scoped가 아니므로 scrape route만 보호하려면 `endpointMiddleware`를 사용하세요. |
 | `endpointMiddleware` | 설정된 scrape endpoint에만 바인딩되는 class-based `@fluojs/http` middleware constructor입니다. | `path: false`일 때만 무시됩니다. `''`를 포함한 모든 문자열 `path`는 활성 endpoint path입니다. 함수나 global middleware declaration은 이 option의 계약 밖입니다. |
@@ -198,7 +198,7 @@ Prometheus 메트릭 이름은 하나의 Registry 안에서 고유해야 합니�
 
 - `fluo_component_ready`: 준비 완료 시 1, 아닐 시 0.
 - `fluo_component_health`: 정상 상태 시 1, 아닐 시 0.
-- `fluo_metrics_registry_mode`: `MetricsModule.forRoot()`가 Registry를 생성하면 `mode="isolated"`, bootstrap이 `METRICS_REGISTRY`를 제공하거나 legacy `registry` option을 제공하면 `mode="shared"` label과 gauge value `1`을 노출합니다. 이 label은 bootstrap 또는 module registration 중 선택한 실효 Registry ownership configuration을 나타내며 scrape 시점에 Registry 공유 여부를 추론하지 않습니다.
+- `fluo_metrics_registry_mode`: `MetricsModule.forRoot()`가 Registry를 생성하면 `mode="isolated"`, bootstrap이 `METRICS_REGISTRY`를 제공하면 `mode="shared"` label과 gauge value `1`을 노출합니다. 이 label은 bootstrap 중 선택한 실효 Registry ownership configuration을 나타내며 scrape 시점에 Registry 공유 여부를 추론하지 않습니다.
 
 이 데이터는 built-in `/metrics` controller와 `MetricsService.getRegistry().metrics()`를 사용하는 advanced custom scraper를 포함해 active Registry가 스크레이프될 때마다 `PLATFORM_SHELL`을 쿼리하여 갱신됩니다. 초기화 시 환경 라벨을 제공할 수 있습니다.
 
@@ -239,13 +239,13 @@ MetricsModule.forRoot({
 - Meter abstraction type: `MeterProvider`, `MeterCounter`, `MeterGauge`, `MeterHistogram`
 - `HttpMetricsMiddleware` 및 HTTP path-label 옵션 타입
 - `provider`(현재는 `'prometheus'`만 지원), module-level `middleware`, endpoint-scoped `endpointMiddleware`를 포함한 module option
-- `prom-client`에서 re-export한 `Registry`
+- `@fluojs/metrics/integration`이 `prom-client`에서 re-export한 `Registry`
 
 ### 운영 기본값
 
 - `path`의 기본값은 `'/metrics'`입니다. `''`를 포함한 모든 문자열 path는 scrape endpoint를 노출하며, `path: false`로만 scrape endpoint를 완전히 비활성화할 수 있습니다.
-- bootstrap `METRICS_REGISTRY`와 legacy `registry` option을 모두 제공하지 않으면 application bootstrap마다 fresh isolated Registry, `MetricsService`, meter provider, telemetry collector set을 소유합니다.
-- Bootstrap `METRICS_REGISTRY` provider는 legacy `registry` option보다 우선하며, 같은 token을 가진 관련 없는 module provider는 metrics ownership을 구성하지 않습니다.
+- bootstrap `METRICS_REGISTRY` provider를 제공하지 않으면 application bootstrap마다 fresh isolated Registry, `MetricsService`, meter provider, telemetry collector set을 소유합니다.
+- `METRICS_REGISTRY`는 `FluoFactory.create(..., { providers })`를 통해서만 전달합니다. 같은 token을 가진 관련 없는 module provider는 metrics ownership을 구성하지 않습니다.
 - scrape response는 active Registry의 Prometheus content type과 Registry contents를 사용합니다.
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
 - `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다. HTTP 계측이 활성화된 경우 endpoint middleware 실패는 내장 HTTP collector에 집계됩니다.

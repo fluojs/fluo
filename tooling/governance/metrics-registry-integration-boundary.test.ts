@@ -83,6 +83,18 @@ describe('Metrics registry integration boundary', () => {
       { ...boundaryFiles, module: boundaryFiles.module.replace('  path?: string | false;\n', '  path?: string | false;\n  registry?: Registry;\n') },
     ],
     [
+      'the forRoot registry provider no longer resolves the bootstrap METRICS_REGISTRY token',
+      {
+        ...boundaryFiles,
+        module: boundaryFiles.module.replace(
+          `const configuredRegistry = assertBootstrapProviderTokens(bootstrapProviderTokens).has(METRICS_REGISTRY)
+          ? assertPrometheusRegistry(await runtimeContainer.resolve(METRICS_REGISTRY))
+          : undefined;`,
+          'const configuredRegistry = undefined;',
+        ),
+      },
+    ],
+    [
       'the published integration subpath removed from the manifest',
       {
         ...boundaryFiles,
@@ -113,6 +125,22 @@ describe('Metrics registry integration boundary', () => {
       "!optionNames.includes('registry')",
       'true',
       { ...boundaryFiles, module: boundaryFiles.module.replace('  path?: string | false;\n', '  path?: string | false;\n  registry?: Registry;\n') },
+    ],
+    [
+      'forRoot registry provider ownership comparison',
+      `hasBootstrapRegistryProvider(forRoot),
+    'MetricsModule.forRoot must resolve METRICS_REGISTRY through its registry provider bootstrap path.',`,
+      `true,
+    'MetricsModule.forRoot must resolve METRICS_REGISTRY through its registry provider bootstrap path.',`,
+      {
+        ...boundaryFiles,
+        module: boundaryFiles.module.replace(
+          `const configuredRegistry = assertBootstrapProviderTokens(bootstrapProviderTokens).has(METRICS_REGISTRY)
+          ? assertPrometheusRegistry(await runtimeContainer.resolve(METRICS_REGISTRY))
+          : undefined;`,
+          'const configuredRegistry = undefined;',
+        ),
+      },
     ],
     [
       'integration export target comparison',
