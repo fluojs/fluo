@@ -1590,19 +1590,22 @@ function rewriteBootstrap(
 }
 
 function rewriteTesting(source: string, filePath: string): { changed: boolean; source: string; warnings: MigrationWarning[] } {
-  const sourceFile = parseSource(source, filePath);
+  const compilerOptions: ts.CompilerOptions = {
+    module: ts.ModuleKind.ESNext,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.ES2022,
+  };
+  const compilerHost = ts.createCompilerHost(compilerOptions, true);
+  const getSourceFile = compilerHost.getSourceFile.bind(compilerHost);
+  compilerHost.getSourceFile = (path, languageVersion, onError, shouldCreateNewSourceFile) =>
+    path === filePath
+      ? parseSource(source, filePath)
+      : getSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
+  const program = ts.createProgram([filePath], compilerOptions, compilerHost);
+  const sourceFile = program.getSourceFile(filePath) ?? parseSource(source, filePath);
+  const checker = program.getTypeChecker();
   const warnings: MigrationWarning[] = [];
-  const nestTestImport = sourceFile.statements.find((statement) =>
-    ts.isImportDeclaration(statement)
-    && ts.isStringLiteral(statement.moduleSpecifier)
-    && statement.moduleSpecifier.text === '@nestjs/testing'
-    && getImportBindings(statement).some((binding) => binding.imported === 'Test' && binding.local === 'Test' && !binding.isTypeOnly),
-  );
-  if (!nestTestImport) {
-    return { changed: false, source, warnings };
-  }
-
-  const convertedCalls = new Map<ts.CallExpression, ts.ObjectLiteralExpression>();
   const supportedBuilderMethods = new Set([
     'compile',
     'overrideProvider',
@@ -1620,6 +1623,111 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     'overrideInterceptor',
     'overrideFilter',
   ]);
+
+  const isTransparentExpression = (
+    expression: ts.Node,
+  ): expression is ts.ParenthesizedExpression | ts.NonNullExpression | ts.AsExpression | ts.TypeAssertion | ts.SatisfiesExpression =>
+    ts.isParenthesizedExpression(expression)
+    || ts.isNonNullExpression(expression)
+    || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression)
+    || ts.isSatisfiesExpression(expression);
+
+  const unwrapTransparentExpression = (expression: ts.Expression): ts.Expression => {
+    let current = expression;
+    while (isTransparentExpression(current)) {
+      current = current.expression;
+    }
+
+    return current;
+  };
+
+  const skipOuterTransparentExpressions = (expression: ts.Expression): ts.Expression => {
+    let current = expression;
+    while (isTransparentExpression(current.parent) && current.parent.expression === current) {
+      current = current.parent;
+    }
+
+    return current;
+  };
+
+  const replaceTransparentExpression = (expression: ts.Expression, replacement: ts.Expression): ts.Expression => {
+    if (ts.isParenthesizedExpression(expression)) {
+      return ts.factory.updateParenthesizedExpression(expression, replaceTransparentExpression(expression.expression, replacement));
+    }
+
+    if (ts.isNonNullExpression(expression)) {
+      return ts.factory.updateNonNullExpression(expression, replaceTransparentExpression(expression.expression, replacement));
+    }
+
+    if (ts.isAsExpression(expression)) {
+      return ts.factory.updateAsExpression(expression, replaceTransparentExpression(expression.expression, replacement), expression.type);
+    }
+
+    if (ts.isTypeAssertionExpression(expression)) {
+      return ts.factory.updateTypeAssertion(expression, expression.type, replaceTransparentExpression(expression.expression, replacement));
+    }
+
+    if (ts.isSatisfiesExpression(expression)) {
+      return ts.factory.updateSatisfiesExpression(expression, replaceTransparentExpression(expression.expression, replacement), expression.type);
+    }
+
+    return replacement;
+  };
+
+  const isNestTestImportSpecifier = (declaration: ts.Declaration): declaration is ts.ImportSpecifier => {
+    if (!ts.isImportSpecifier(declaration) || declaration.isTypeOnly || !ts.isNamedImports(declaration.parent)) {
+      return false;
+    }
+
+    const importClause = declaration.parent.parent;
+    const importDeclaration = importClause.parent;
+    return (
+      !importClause.isTypeOnly
+      && ts.isImportDeclaration(importDeclaration)
+      && ts.isStringLiteral(importDeclaration.moduleSpecifier)
+      && importDeclaration.moduleSpecifier.text === '@nestjs/testing'
+      && (declaration.propertyName ?? declaration.name).text === 'Test'
+    );
+  };
+
+  const getNestTestSymbol = (identifier: ts.Identifier): ts.Symbol | undefined => {
+    if (ts.isShorthandPropertyAssignment(identifier.parent) && identifier.parent.name === identifier) {
+      return checker.getShorthandAssignmentValueSymbol(identifier.parent) ?? checker.getSymbolAtLocation(identifier);
+    }
+
+    if (ts.isExportSpecifier(identifier.parent)) {
+      return checker.getExportSpecifierLocalTargetSymbol(identifier.parent) ?? checker.getSymbolAtLocation(identifier);
+    }
+
+    return checker.getSymbolAtLocation(identifier);
+  };
+
+  const isNestTestValueReference = (identifier: ts.Identifier): ts.Symbol | undefined => {
+    const symbol = getNestTestSymbol(identifier);
+    return symbol?.declarations?.some(isNestTestImportSpecifier) ? symbol : undefined;
+  };
+
+  const getNestTestingModuleCall = (
+    callExpression: ts.CallExpression,
+  ): { receiver: ts.Identifier; symbol: ts.Symbol } | undefined => {
+    if (callExpression.questionDotToken) {
+      return undefined;
+    }
+
+    const callee = unwrapTransparentExpression(callExpression.expression);
+    if (!ts.isPropertyAccessExpression(callee) || callee.questionDotToken || callee.name.text !== 'createTestingModule') {
+      return undefined;
+    }
+
+    const receiver = unwrapTransparentExpression(callee.expression);
+    if (!ts.isIdentifier(receiver)) {
+      return undefined;
+    }
+
+    const symbol = isNestTestValueReference(receiver);
+    return symbol ? { receiver, symbol } : undefined;
+  };
 
   const convertTestingMetadata = (
     callExpression: ts.CallExpression,
@@ -1680,6 +1788,12 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     }
 
     const [rootModuleExpression] = importsProperty.initializer.elements;
+    if (!rootModuleExpression || !ts.isExpression(rootModuleExpression)) {
+      return {
+        warning: 'Unsupported Test.createTestingModule metadata shape. Expected exactly one root module expression.',
+      };
+    }
+
     return {
       convertedArgument: ts.factory.createObjectLiteralExpression(
         [ts.factory.createPropertyAssignment('rootModule', rootModuleExpression)],
@@ -1688,103 +1802,210 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     };
   };
 
-  const hasUnconvertedNestTestReference = (file: ts.SourceFile): boolean => {
-    let found = false;
+  type FactoryConversion =
+    | { kind: 'canonical' }
+    | { arguments: readonly ts.Expression[]; kind: 'converted' }
+    | { kind: 'unsupported'; warning: string };
 
-    const inspect = (node: ts.Node): void => {
-      if (ts.isImportDeclaration(node)) {
-        return;
-      }
-      if (ts.isIdentifier(node) && node.text === 'Test') {
-        const access = node.parent;
-        const call = access.parent;
-        if (!(ts.isPropertyAccessExpression(access) && access.expression === node && ts.isCallExpression(call) && convertedCalls.has(call))) {
-          found = true;
-        }
-      }
-
-      if (!found) {
-        ts.forEachChild(node, inspect);
-      }
-    };
-
-    inspect(file);
-    return found;
-  };
-
-  const getConvertedTestingModuleCall = (node: ts.CallExpression): ts.CallExpression | undefined => {
-    let cursor: ts.Expression = node;
-    while (
-      ts.isCallExpression(cursor)
-      && ts.isPropertyAccessExpression(cursor.expression)
-      && ts.isCallExpression(cursor.expression.expression)
-    ) {
-      const builderCall = cursor.expression.expression;
-      if (convertedCalls.has(builderCall)) {
-        return builderCall;
-      }
-
-      cursor = builderCall;
+  const analyzeUseFactory = (callExpression: ts.CallExpression): FactoryConversion => {
+    const [firstArgument] = callExpression.arguments;
+    if (!firstArgument) {
+      return {
+        kind: 'unsupported',
+        warning: 'Unsupported useFactory call shape. Expected a factory function or a Nest factory options object.',
+      };
     }
 
-    return undefined;
-  };
+    const options = unwrapTransparentExpression(firstArgument);
+    if (!ts.isObjectLiteralExpression(options)) {
+      return callExpression.arguments.length === 1 || callExpression.arguments.length === 2
+        ? { kind: 'canonical' }
+        : {
+            kind: 'unsupported',
+            warning: 'Unsupported useFactory call shape. Expected one factory argument and an optional inject argument.',
+          };
+    }
 
-  const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
-    const visit = (node: ts.Node): ts.Node => {
+    if (callExpression.arguments.length !== 1) {
+      return {
+        kind: 'unsupported',
+        warning: 'Unsupported Nest useFactory options shape. Options objects cannot have additional call arguments.',
+      };
+    }
+
+    let factory: ts.Expression | undefined;
+    let factoryIndex = -1;
+    let inject: ts.Expression | undefined;
+    let injectIndex = -1;
+    for (const [index, property] of options.properties.entries()) {
       if (
-        ts.isCallExpression(node)
-        && ts.isPropertyAccessExpression(node.expression)
-        && ts.isIdentifier(node.expression.expression)
-        && node.expression.expression.text === 'Test'
-        && node.expression.name.text === 'createTestingModule'
+        !ts.isPropertyAssignment(property)
+        || ts.isComputedPropertyName(property.name)
+        || (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name))
       ) {
-        let cursor: ts.Node = node;
-        while (true) {
-          if (
-            ts.isPropertyAccessExpression(cursor.parent)
-            && cursor.parent.expression === cursor
-            && ts.isCallExpression(cursor.parent.parent)
-            && cursor.parent.parent.expression === cursor.parent
-          ) {
-            const methodName = cursor.parent.name.text;
-            if (!supportedBuilderMethods.has(methodName)) {
-              warnings.push(
-                buildWarning(
-                  filePath,
-                  sourceFile,
-                  cursor.parent,
-                  'testing-unsupported',
-                  `Unsupported testing builder method "${methodName}" after Test.createTestingModule. Keep Nest testing chain and migrate manually.`,
-                ),
-              );
-              return node;
-            }
-
-            cursor = cursor.parent.parent;
-            continue;
-          }
-
-          break;
-        }
-
-        const conversion = convertTestingMetadata(node);
-        if ('warning' in conversion) {
-          warnings.push(buildWarning(filePath, sourceFile, node, 'testing-unsupported', `${conversion.warning} Keep Nest testing metadata and migrate this test manually.`));
-          return node;
-        }
-
-        convertedCalls.set(node, conversion.convertedArgument);
-        return node;
+        return {
+          kind: 'unsupported',
+          warning: 'Unsupported Nest useFactory options shape. Use only static factory and inject property assignments.',
+        };
       }
 
-      return ts.visitEachChild(node, visit, context);
-    };
+      const name = property.name.text;
+      if (name === 'factory') {
+        if (factory) {
+          return {
+            kind: 'unsupported',
+            warning: 'Unsupported Nest useFactory options shape. factory may be specified only once.',
+          };
+        }
 
-    return (node: T) => ts.visitNode(node, visit);
+        factory = property.initializer;
+        factoryIndex = index;
+        continue;
+      }
+
+      if (name === 'inject') {
+        if (inject) {
+          return {
+            kind: 'unsupported',
+            warning: 'Unsupported Nest useFactory options shape. inject may be specified only once.',
+          };
+        }
+
+        inject = property.initializer;
+        injectIndex = index;
+        continue;
+      }
+
+      return {
+        kind: 'unsupported',
+        warning: 'Unsupported Nest useFactory options shape. Only factory and inject are supported.',
+      };
+    }
+
+    if (!factory) {
+      return {
+        kind: 'unsupported',
+        warning: 'Unsupported Nest useFactory options shape. factory is required.',
+      };
+    }
+
+    if (inject && injectIndex < factoryIndex) {
+      return {
+        kind: 'unsupported',
+        warning: 'Unsupported Nest useFactory options shape. inject must follow factory to preserve evaluation order.',
+      };
+    }
+
+    return {
+      arguments: inject ? [factory, inject] : [factory],
+      kind: 'converted',
+    };
   };
 
-  ts.transform(sourceFile, [transformer]).dispose();
+  const convertedCalls = new Map<ts.CallExpression, { metadata: ts.ObjectLiteralExpression; receiver: ts.Identifier; symbol: ts.Symbol }>();
+  const specializedCalls = new Set<ts.CallExpression>();
+  const factoryCalls = new Map<ts.CallExpression, readonly ts.Expression[]>();
+
+  const inspectBuilderChain = (
+    root: ts.CallExpression,
+  ): { factoryCalls: Map<ts.CallExpression, readonly ts.Expression[]>; specializedCalls: Set<ts.CallExpression> } | { node: ts.Node; warning: string } => {
+    const chainFactoryCalls = new Map<ts.CallExpression, readonly ts.Expression[]>();
+    const chainSpecializedCalls = new Set<ts.CallExpression>();
+    let cursor: ts.Expression = root;
+
+    while (true) {
+      const chainExpression = skipOuterTransparentExpressions(cursor);
+      const parent = chainExpression.parent;
+      if (ts.isElementAccessExpression(parent) && parent.expression === chainExpression) {
+        return {
+          node: parent,
+          warning: 'Unsupported testing builder element access. Keep Nest testing chain and migrate manually.',
+        };
+      }
+
+      if (!ts.isPropertyAccessExpression(parent) || parent.expression !== chainExpression) {
+        return { factoryCalls: chainFactoryCalls, specializedCalls: chainSpecializedCalls };
+      }
+
+      if (parent.questionDotToken) {
+        return {
+          node: parent,
+          warning: 'Unsupported optional testing builder access. Keep Nest testing chain and migrate manually.',
+        };
+      }
+
+      const callee = skipOuterTransparentExpressions(parent);
+      const call = callee.parent;
+      if (!ts.isCallExpression(call) || call.expression !== callee || call.questionDotToken) {
+        return {
+          node: parent,
+          warning: 'Unsupported testing builder property access. Keep Nest testing chain and migrate manually.',
+        };
+      }
+
+      const methodName = parent.name.text;
+      if (!supportedBuilderMethods.has(methodName)) {
+        return {
+          node: parent,
+          warning: `Unsupported testing builder method "${methodName}" after Test.createTestingModule. Keep Nest testing chain and migrate manually.`,
+        };
+      }
+
+      if (specializedBuilderMethods.has(methodName)) {
+        chainSpecializedCalls.add(call);
+      }
+
+      if (methodName === 'useFactory') {
+        const factoryConversion = analyzeUseFactory(call);
+        if (factoryConversion.kind === 'unsupported') {
+          return { node: call, warning: `${factoryConversion.warning} Keep Nest testing chain and migrate manually.` };
+        }
+
+        if (factoryConversion.kind === 'converted') {
+          chainFactoryCalls.set(call, factoryConversion.arguments);
+        }
+      }
+
+      cursor = call;
+    }
+  };
+
+  const inspectTestingCalls = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const root = getNestTestingModuleCall(node);
+      if (root) {
+        const metadataConversion = convertTestingMetadata(node);
+        if ('warning' in metadataConversion) {
+          warnings.push(
+            buildWarning(
+              filePath,
+              sourceFile,
+              node,
+              'testing-unsupported',
+              `${metadataConversion.warning} Keep Nest testing metadata and migrate this test manually.`,
+            ),
+          );
+        } else {
+          const chain = inspectBuilderChain(node);
+          if ('warning' in chain) {
+            warnings.push(buildWarning(filePath, sourceFile, chain.node, 'testing-unsupported', chain.warning));
+          } else {
+            convertedCalls.set(node, { metadata: metadataConversion.convertedArgument, ...root });
+            for (const specializedCall of chain.specializedCalls) {
+              specializedCalls.add(specializedCall);
+            }
+            for (const [factoryCall, factoryArguments] of chain.factoryCalls) {
+              factoryCalls.set(factoryCall, factoryArguments);
+            }
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, inspectTestingCalls);
+  };
+
+  inspectTestingCalls(sourceFile);
   if (convertedCalls.size === 0) {
     return {
       changed: false,
@@ -1793,9 +2014,34 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     };
   }
 
-  const retainNestTest = hasUnconvertedNestTestReference(sourceFile);
-  let fluoTestName = 'Test';
-  if (retainNestTest) {
+  const convertedReceivers = new Set<ts.Identifier>(
+    [...convertedCalls.values()].map(({ receiver }) => receiver),
+  );
+  const retainedNestTestSymbols = new Set<ts.Symbol>();
+  const inspectNestTestReferences = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      return;
+    }
+
+    if (ts.isIdentifier(node)) {
+      const symbol = isNestTestValueReference(node);
+      if (symbol && !convertedReceivers.has(node)) {
+        retainedNestTestSymbols.add(symbol);
+      }
+    }
+
+    ts.forEachChild(node, inspectNestTestReferences);
+  };
+  inspectNestTestReferences(sourceFile);
+
+  const hasRetainedNestTest = retainedNestTestSymbols.size > 0;
+  const [firstConvertedCall] = convertedCalls.values();
+  if (!firstConvertedCall) {
+    return { changed: false, source, warnings };
+  }
+
+  let fluoTestName = firstConvertedCall.receiver.text;
+  if (hasRetainedNestTest) {
     const identifiers = new Set<string>();
     const collectIdentifiers = (node: ts.Node): void => {
       if (ts.isIdentifier(node)) identifiers.add(node.text);
@@ -1810,37 +2056,55 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
 
   const rewritten = ts.transform(sourceFile, [(context) => {
     const visit = (node: ts.Node): ts.Node => {
-      const metadata = ts.isCallExpression(node) ? convertedCalls.get(node) : undefined;
-      if (metadata && ts.isCallExpression(node)) {
+      const convertedCall = ts.isCallExpression(node) ? convertedCalls.get(node) : undefined;
+      if (convertedCall && ts.isCallExpression(node)) {
+        const originalCallee = unwrapTransparentExpression(node.expression);
+        if (!ts.isPropertyAccessExpression(originalCallee)) {
+          return node;
+        }
+
+        const rewrittenCallee = ts.factory.updatePropertyAccessExpression(
+          originalCallee,
+          replaceTransparentExpression(originalCallee.expression, ts.factory.createIdentifier(fluoTestName)),
+          originalCallee.name,
+        );
         return ts.visitEachChild(
           ts.factory.updateCallExpression(
             node,
-            ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(fluoTestName), 'createTestingModule'),
+            replaceTransparentExpression(node.expression, rewrittenCallee),
             node.typeArguments,
-            [metadata],
+            [convertedCall.metadata],
           ),
           visit,
           context,
         );
       }
 
-      if (
-        ts.isCallExpression(node)
-        && ts.isPropertyAccessExpression(node.expression)
-        && specializedBuilderMethods.has(node.expression.name.text)
-        && getConvertedTestingModuleCall(node)
-      ) {
-        return ts.visitEachChild(
-          ts.factory.updateCallExpression(
-            node,
-            ts.factory.updatePropertyAccessExpression(
-              node.expression,
-              node.expression.expression,
-              ts.factory.createIdentifier('overrideProvider'),
+      if (ts.isCallExpression(node) && specializedCalls.has(node)) {
+        const expression = unwrapTransparentExpression(node.expression);
+        if (ts.isPropertyAccessExpression(expression)) {
+          const rewrittenExpression = ts.factory.updatePropertyAccessExpression(
+            expression,
+            expression.expression,
+            ts.factory.createIdentifier('overrideProvider'),
+          );
+          return ts.visitEachChild(
+            ts.factory.updateCallExpression(
+              node,
+              replaceTransparentExpression(node.expression, rewrittenExpression),
+              node.typeArguments,
+              node.arguments,
             ),
-            node.typeArguments,
-            node.arguments,
-          ),
+            visit,
+            context,
+          );
+        }
+      }
+
+      const factoryArguments = ts.isCallExpression(node) ? factoryCalls.get(node) : undefined;
+      if (factoryArguments && ts.isCallExpression(node)) {
+        return ts.visitEachChild(
+          ts.factory.updateCallExpression(node, node.expression, node.typeArguments, factoryArguments),
           visit,
           context,
         );
@@ -1853,9 +2117,35 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
   let nextSource = printer.printFile(rewritten.transformed[0] as ts.SourceFile);
   rewritten.dispose();
 
-  if (!retainNestTest) {
-    const removedTest = removeImportBinding(nextSource, filePath, '@nestjs/testing', 'Test');
-    nextSource = removedTest.source;
+  const removableNestTestBindings = new Set<string>();
+  for (const { receiver, symbol } of convertedCalls.values()) {
+    if (!retainedNestTestSymbols.has(symbol)) {
+      removableNestTestBindings.add(receiver.text);
+    }
+  }
+
+  if (removableNestTestBindings.size > 0) {
+    const nextSourceFile = parseSource(nextSource, filePath);
+    const nextStatements: ts.Statement[] = [];
+    for (const statement of nextSourceFile.statements) {
+      if (
+        !ts.isImportDeclaration(statement)
+        || !ts.isStringLiteral(statement.moduleSpecifier)
+        || statement.moduleSpecifier.text !== '@nestjs/testing'
+      ) {
+        nextStatements.push(statement);
+        continue;
+      }
+
+      const remainingBindings = getImportBindings(statement).filter(
+        (binding) => binding.isTypeOnly || binding.imported !== 'Test' || !removableNestTestBindings.has(binding.local),
+      );
+      const updated = updateNamedImports(statement, remainingBindings);
+      if (updated) {
+        nextStatements.push(updated);
+      }
+    }
+    nextSource = printSourceFile(nextSourceFile, nextStatements);
   }
 
   const nextSourceFile = parseSource(nextSource, filePath);
