@@ -169,31 +169,25 @@ Use `CookieAuthModule.forRoot(...)` when access tokens arrive through HTTP cooki
 ```ts
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import {
-  CookieAuthModule,
-  CookieAuthStrategy,
-  COOKIE_AUTH_STRATEGY_NAME,
-  PassportModule,
-} from '@fluojs/passport';
+import { CookieAuthModule } from '@fluojs/passport';
 
 @Module({
   imports: [
-    CookieAuthModule.forRoot(),
+    CookieAuthModule.forRoot({
+      accessTokenCookieName: 'session_access',
+      cookieOptions: { path: '/sessions' },
+    }),
     JwtModule.forRoot({
       algorithms: ['HS256'],
       global: true,
       secret: 'your-secure-secret',
     }),
-    PassportModule.forRoot(
-      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
-      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
-    ),
   ],
 })
 export class AuthModule {}
 ```
 
-`CookieAuthModule` and `JwtModule` are sibling imports here. Keep `global: true` on the JWT registration so `DefaultJwtVerifier` is visible when the cookie module resolves `CookieAuthStrategy`.
+`CookieAuthModule` registers the cookie strategy, `CookieManager`, `AuthGuard`, and the matching Passport registry entry. Keep `global: true` on the sibling JWT registration so `DefaultJwtVerifier` is visible when the cookie module resolves `CookieAuthStrategy`. The one cookie-name configuration controls both credential reading and response-cookie writing; use `CookieManager.create(config)` only for a separately owned instance.
 
 Protected routes still need `@UseAuth(...)`. If a route supports both signed-in and guest callers, use `@UseOptionalAuth(...)` intentionally.
 

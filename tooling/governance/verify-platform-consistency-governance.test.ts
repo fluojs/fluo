@@ -5864,18 +5864,19 @@ describe('Passport auth discoverability', () => {
     }
   });
 
-  it('keeps bridge and cookie compatibility provider bundles discoverable', () => {
+  it('keeps the bridge exception and cookie module recipe discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
       expect(content).toContain('createPassportJsStrategyBridge(...)');
-      expect(content).toContain('createCookieAuthPreset(...)');
+      expect(content).toContain('CookieAuthModule.forRoot(...)');
       expect(content).toContain('provider bundle');
+      expect(content).not.toContain('createCookieAuthPreset(...)');
     }
 
     for (const content of [englishReadme, koreanReadme]) {
       expect(content).toContain('PassportModule.forRoot');
       expect(content).toContain('CookieAuthModule.forRoot');
       expect(content).toContain('AuthGuard');
-      expect(content).toMatch(/manual-composition|manual provider|manual provider composition/);
+      expect(content).toContain('CookieManager.create');
     }
   });
 });

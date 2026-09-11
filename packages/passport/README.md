@@ -165,33 +165,28 @@ Use `CookieAuthModule.forRoot(...)` when your app authenticates requests from HT
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import {
-  CookieAuthModule,
-  CookieAuthStrategy,
-  COOKIE_AUTH_STRATEGY_NAME,
-  PassportModule,
-} from '@fluojs/passport';
+import { CookieAuthModule } from '@fluojs/passport';
 
 @Module({
   imports: [
-    CookieAuthModule.forRoot(),
+    CookieAuthModule.forRoot({
+      accessTokenCookieName: 'session_access',
+      refreshTokenCookieName: 'session_refresh',
+      cookieOptions: { path: '/sessions' },
+    }),
     JwtModule.forRoot({
       algorithms: ['HS256'],
       global: true,
       secret: 'your-secure-secret',
     }),
-    PassportModule.forRoot(
-      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
-      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
-    ),
   ],
 })
 export class AuthModule {}
 ```
 
-Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportModule.forRoot(...)` together when you want cookie-auth support in an application module. `CookieAuthModule` and `JwtModule` are sibling imports in this graph, so set the documented `global: true` JWT option to make `DefaultJwtVerifier` visible when the cookie module resolves `CookieAuthStrategy`. The cookie preset provides `CookieAuthStrategy` and cookie options; JWT verification still comes from `@fluojs/jwt`, and the passport registry still comes from `PassportModule.forRoot(...)`.
+Import `CookieAuthModule.forRoot(...)` and `JwtModule.forRoot(...)` together for cookie-auth support. `CookieAuthModule` registers `CookieAuthStrategy`, `CookieManager`, `AuthGuard`, and the matching `PassportModule` registry entry. `CookieAuthModule` and `JwtModule` are sibling imports, so set the documented `global: true` JWT option to make `DefaultJwtVerifier` visible when the cookie strategy resolves.
 
-`CookieAuthModule.forRoot(...)` is the canonical module-first entrypoint for application registration. `createCookieAuthPreset(...)` remains public as a compatibility bundle for manual provider composition; it returns the same cookie-auth providers plus the matching strategy registration for hosts that assemble provider graphs themselves. Prefer the module facade in application docs, generated code, and ordinary app modules.
+Pass cookie names once to `CookieAuthModule.forRoot(...)`: the same configuration supplies `CookieAuthStrategy`'s credential reader and `CookieManager`'s writer and clearer. For a separately owned object outside DI, use `CookieManager.create(config)` with the same `CookieManagerConfig`. See the [cookie preset migration](../../docs/getting-started/migrate-passport-cookie-preset.md) for removed manual helpers.
 
 `CookieAuthStrategy` preserves the normalized JWT principal contract from `@fluojs/jwt`, including `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
 
@@ -305,9 +300,9 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 ### Cookie Auth Preset
 - `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring tokens, preset defaults, and response-cookie defaults.
-- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types. `CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`, whose per-token TTL fields become default cookie `Max-Age` values.
-- `CookieManager`: Utility for setting and clearing HttpOnly access/refresh token cookies.
-- Cookie helpers: `createCookieAuthPreset` (compatibility-only manual provider bundle), `createCookieAuthStrategyRegistration` (low-level registration helper), `createCookieManager`, `normalizeCookieAuthOptions`.
+- `CookieAuthOptions`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types. `CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`, whose per-token TTL fields become default cookie `Max-Age` values.
+- `CookieManager`: Class-token-preserving utility for setting and clearing HttpOnly access/refresh token cookies. Use `CookieManager.create(config)` for separately owned instances.
+- `normalizeCookieAuthOptions`: Low-level cookie option normalization helper.
 
 ### Refresh Token Preset
 - `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.

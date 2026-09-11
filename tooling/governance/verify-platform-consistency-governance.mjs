@@ -2959,19 +2959,19 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
   );
   assert(
     packageSurface.includes('createPassportJsStrategyBridge(...)') &&
-      packageSurface.includes('createCookieAuthPreset(...)') &&
+      packageSurface.includes('CookieAuthModule.forRoot(...)') &&
       docsContext.includes('createPassportJsStrategyBridge(...)') &&
-      docsContext.includes('createCookieAuthPreset(...)') &&
+      docsContext.includes('CookieAuthModule.forRoot(...)') &&
       docsContext.includes('provider bundle'),
-    'docs/CONTEXT.md must keep Passport bridge and cookie compatibility provider bundles discoverable when package-surface.md documents them.',
+    'docs/CONTEXT.md must keep the Passport bridge exception and cookie module recipe discoverable when package-surface.md documents them.',
   );
   assert(
     packageSurfaceKo.includes('createPassportJsStrategyBridge(...)') &&
-      packageSurfaceKo.includes('createCookieAuthPreset(...)') &&
+      packageSurfaceKo.includes('CookieAuthModule.forRoot(...)') &&
       docsContextKo.includes('createPassportJsStrategyBridge(...)') &&
-      docsContextKo.includes('createCookieAuthPreset(...)') &&
+      docsContextKo.includes('CookieAuthModule.forRoot(...)') &&
       docsContextKo.includes('provider bundle'),
-    'docs/CONTEXT.ko.md must keep Passport bridge and cookie compatibility provider bundles discoverable when package-surface.ko.md documents them.',
+    'docs/CONTEXT.ko.md must keep the Passport bridge exception and cookie module recipe discoverable when package-surface.ko.md documents them.',
   );
   assert(
     packageSurface.includes('createSlackProviders(...)') &&

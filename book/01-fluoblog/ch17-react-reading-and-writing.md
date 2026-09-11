@@ -313,7 +313,7 @@ export class FormOriginGuard implements Guard {
       inject: [FormCookiePolicy],
       useFactory: (policy: unknown) => {
         if (!(policy instanceof FormCookiePolicy)) throw new Error('Expected FormCookiePolicy.');
-        return new CookieManager({
+        return CookieManager.create({
           accessTokenCookieName: FORM_COOKIE_NAME,
           cookieOptions: {
             path: '/', httpOnly: true, secure: policy.secure, sameSite: 'lax',
