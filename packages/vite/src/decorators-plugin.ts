@@ -155,6 +155,12 @@ function createMetadataPreloadPlugin(): PluginObj {
   };
 }
 
+function createFluoDecoratorsPreset(): { readonly plugins: readonly [PluginObj, readonly [string, { readonly version: '2023-11' }]] } {
+  return {
+    plugins: [createMetadataPreloadPlugin(), ['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
+  };
+}
+
 /**
  * Creates the Vite transform plugin used by fluo starter projects to compile
  * TC39 standard decorator syntax through Babel before Vite bundles the app.
@@ -198,16 +204,22 @@ function createFluoDecoratorsPlugin(
       }
 
       const filePath = readViteFilePath(id);
+      const babelConfigFile = resolveBabelConfigFile(options.babelConfigFile, filePath);
       const loadedBabelCore = babelCore ?? (await loadBabelCore(filePath, importBabelCoreModule));
       babelCore = loadedBabelCore;
 
       const result = await loadedBabelCore
         .transformAsync(code, {
           babelrc: false,
-          configFile: resolveBabelConfigFile(options.babelConfigFile, filePath),
+          configFile: babelConfigFile,
           filename: filePath,
-          plugins: [createMetadataPreloadPlugin(), ['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
-          presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
+          plugins: babelConfigFile ? [createMetadataPreloadPlugin()] : [],
+          presets: babelConfigFile
+            ? []
+            : [
+                createFluoDecoratorsPreset,
+                ['@babel/preset-typescript', { allowDeclareFields: true }],
+              ],
           sourceMaps: options.sourceMaps ?? shouldGenerateSourceMaps,
         })
         .catch((error: unknown) => {
