@@ -66,9 +66,13 @@ describe('JWT async registration source guard decoys', () => {
 
   it('rejects FakeConfigService as a substring decoy in ConfigModule exports', () => {
     // Given
-    const readWithFakeConfigService = withSource(configModulePath, (source) => source
-      .replace('export class ConfigModule {', 'class FakeConfigService {}\n\nexport class ConfigModule {')
-      .replace('exports: [ConfigService],', 'exports: [FakeConfigService],'));
+    const readWithFakeConfigService = withSource(configModulePath, (source) => {
+      const exportsPrefix = 'exports: [ConfigService,';
+      expect(source).toContain(exportsPrefix);
+      return source
+        .replace('export class ConfigModule {', 'class FakeConfigService {}\n\nexport class ConfigModule {')
+        .replace(exportsPrefix, 'exports: [FakeConfigService,');
+    });
 
     // When
     const runGovernanceGuard = () => enforceJwtAsyncRegistrationSourceContract(readWithFakeConfigService);
