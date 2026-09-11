@@ -1257,8 +1257,21 @@ describe('TerminusModule.forRoot', () => {
   });
 
   it('keeps Terminus HTTP readiness out of rotation while shutdown is in progress', async () => {
+    const admittedReadyRequestCanContinue = createDeferred<void>();
+    const admittedReadyRequestStarted = createDeferred<void>();
     const shutdownBlocker = createDeferred<void>();
     const shutdownStarted = createDeferred<void>();
+    let holdReadyRequests = false;
+
+    class HoldAdmittedReadyRequestMiddleware {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        if (holdReadyRequests) {
+          admittedReadyRequestStarted.resolve();
+          await admittedReadyRequestCanContinue.promise;
+        }
+        await next();
+      }
+    }
 
     class BlockingShutdownService {
       onApplicationShutdown() {
@@ -1277,6 +1290,7 @@ describe('TerminusModule.forRoot', () => {
             check: async (key: string) => ({ [key]: { status: 'up' } }),
           },
         ],
+        endpointMiddleware: [HoldAdmittedReadyRequestMiddleware],
       })],
       providers: [BlockingShutdownService],
     });
@@ -1287,15 +1301,26 @@ describe('TerminusModule.forRoot', () => {
     expect(readyBeforeClose.status).toBe(200);
     expect(readyBeforeClose.body).toEqual({ status: 'ready' });
 
-    const closePromise = app.close();
+    holdReadyRequests = true;
+    const admittedReadyRequest = app.request('GET', '/ready').send();
+    await admittedReadyRequestStarted.promise;
 
+    const closePromise = app.close();
     try {
       await shutdownStarted.promise;
 
-      const readyDuringClose = await app.request('GET', '/ready').send();
+      await expect(app.request('GET', '/ready').send()).rejects.toThrow(
+        'Application cannot dispatch after shutdown has started.',
+      );
+
+      admittedReadyRequestCanContinue.resolve();
+      const readyDuringClose = await admittedReadyRequest;
+
       expect(readyDuringClose.status).toBe(503);
       expect(readyDuringClose.body).toEqual({ status: 'starting' });
     } finally {
+      admittedReadyRequestCanContinue.resolve();
+      await admittedReadyRequest.catch(() => undefined);
       shutdownBlocker.resolve();
       await closePromise;
     }
