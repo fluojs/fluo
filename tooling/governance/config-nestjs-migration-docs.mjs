@@ -483,6 +483,9 @@ function enforceBootstrapRecipe(relativePath, markdown, optionsName, portPath) {
   if (options.has('schema')) {
     failRecipe(relativePath, 'CONFIG_RECIPE_REVALIDATION');
   }
+  if (options.has('envFile') || options.has('envFilePath')) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_LEGACY_ENV_INPUT');
+  }
   const envFiles = options.get('envFilePaths');
   if (!envFiles || !ts.isArrayLiteralExpression(envFiles) || envFiles.elements.length !== 0) {
     failRecipe(relativePath, 'CONFIG_RECIPE_ENV_FILES');

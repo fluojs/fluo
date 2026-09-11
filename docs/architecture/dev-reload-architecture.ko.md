@@ -29,7 +29,7 @@
 | listener 실패 시 롤백 | 스냅샷 교체 중 reload listener가 예외를 던지면 `replaceConfigServiceSnapshotUnchecked(...)`이 이전 스냅샷을 복구합니다. | `packages/config/src/module.ts`, `packages/config/src/reload-module.test.ts` |
 | 종료 시 정리 | `ConfigReloadManager.onModuleDestroy()`는 종료 과정에서 watcher를 닫고 listener를 비웁니다. | `packages/config/src/module.ts` |
 | 종료의 최종성 | manager 종료는 최종 상태입니다. `close()` 또는 `onModuleDestroy()` 이후 `reload()`, `subscribe()`, `subscribeError()`는 `InvariantError`를 던지고, `onApplicationBootstrap()`은 no-op이 되며, 대체 reloader나 watcher는 생성되지 않습니다. | `packages/config/src/module.ts`, `packages/config/src/reload-module.test.ts` |
-| 운영 환경 경계 | 확인한 저장소 소스는 config reload를 가능한 메커니즘으로 문서화하지만, 운영 환경에서의 자동 활성화를 선언하지는 않습니다. watch 활성화는 애플리케이션 경계에서의 명시적 `watch: true` 선택에 달려 있습니다. | `packages/config/src/module.ts`, `packages/config/src/reload-module.ts`, `packages/config/src/load.ts` |
+| 운영 환경 경계 | 확인한 저장소 소스는 config reload를 가능한 메커니즘으로 문서화하지만, 운영 환경에서의 자동 활성화를 선언하지는 않습니다. watch 활성화는 애플리케이션 경계에서의 명시적 `watch: true` 선택에 달려 있습니다. | `packages/config/src/module.ts`, `packages/config/src/load.ts` |
 
 이 아키텍처는 애플리케이션 코드 리로드를 런타임 계약 바깥에 둡니다. 런타임이 직접 관리하는 리로드는 `@fluojs/config`를 통과하는 검증된 설정 스냅샷으로 제한됩니다.
 

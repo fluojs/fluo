@@ -11,7 +11,7 @@ This document defines the configuration source model implemented by `@fluojs/con
 | Precedence | Source | Entry point | Current rule |
 | --- | --- | --- | --- |
 | 1, lowest | `defaults` | `ConfigModule.load(options)` or `ConfigModule.forRoot(options)` | Base snapshot values. |
-| 2 | env file | `envFilePaths` | The sole ordered file input. Relative entries resolve from `cwd`; omitted uses default `<cwd>/.env`, while `[]` disables env-file loading. |
+| 2 | env file | `envFilePaths` | The sole ordered file input. Relative entries resolve from `cwd`; omission loads `<cwd>/.env` only when `cwd` or watch is set, or no explicit in-memory source is supplied; `[]` disables env-file loading. |
 | 3 | `processEnv` snapshot | explicit `processEnv` option | Only values passed into the loader participate. Ambient `process.env` is not read automatically. |
 | 4, highest | `runtimeOverrides` | explicit `runtimeOverrides` option | Final override layer for explicit runtime values. |
 
@@ -77,7 +77,7 @@ ConfigModule.forRoot({
 });
 ```
 
-`envFile` and `envFilePath` are removed public options. Migrate either single-path input to `envFilePaths: ['<path>']`; omitted `envFilePaths` retains default `<cwd>/.env`, while `envFilePaths: []` disables file loading.
+`envFile` and `envFilePath` are removed public options. Migrate either single-path input to `envFilePaths: ['<path>']`; omitted `envFilePaths` loads `<cwd>/.env` only for file-capable loads (`cwd` or watch, or no explicit `defaults`/`processEnv`/`runtimeOverrides`); `envFilePaths: []` disables file loading.
 
 The package performs no automatic profile discovery. Callers own the exact list and its order, so env-file layering stays explicit and deterministic.
 

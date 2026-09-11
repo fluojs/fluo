@@ -11,7 +11,7 @@
 | Precedence | Source | Entry point | Current rule |
 | --- | --- | --- | --- |
 | 1, lowest | `defaults` | `ConfigModule.load(options)` 또는 `ConfigModule.forRoot(options)` | 기본 스냅샷 값입니다. |
-| 2 | env file | `envFilePaths` | 유일한 순서형 파일 입력입니다. 상대 entry는 `cwd`에서 해석하고, 생략하면 기본 `<cwd>/.env`를 사용하며 `[]`는 env-file loading을 해제합니다. |
+| 2 | env file | `envFilePaths` | 유일한 순서형 파일 입력입니다. 상대 entry는 `cwd`에서 해석하고, 생략 시 `cwd` 또는 watch가 있거나 명시적 in-memory source가 없을 때만 `<cwd>/.env`를 로드하며 `[]`는 env-file loading을 해제합니다. |
 | 3 | `processEnv` snapshot | 명시적 `processEnv` option | 로더에 전달된 값만 병합에 참여합니다. 주변 `process.env`는 자동으로 읽지 않습니다. |
 | 4, highest | `runtimeOverrides` | 명시적 `runtimeOverrides` option | 명시적 런타임 값의 최종 override 계층입니다. |
 
@@ -79,7 +79,7 @@ ConfigModule.forRoot({
 });
 ```
 
-`envFile`과 `envFilePath`는 제거된 공개 option입니다. 단수 경로 입력은 `envFilePaths: ['<path>']`로 이행합니다. `envFilePaths`를 생략하면 기본 `<cwd>/.env`를 유지하며, `envFilePaths: []`는 file loading을 해제합니다.
+`envFile`과 `envFilePath`는 제거된 공개 option입니다. 단수 경로 입력은 `envFilePaths: ['<path>']`로 이행합니다. `envFilePaths`를 생략하면 file-capable load(`cwd` 또는 watch, 또는 명시적 `defaults`/`processEnv`/`runtimeOverrides`가 없음)에서만 `<cwd>/.env`를 로드하며, `envFilePaths: []`는 file loading을 해제합니다.
 
 패키지는 자동 profile 탐색을 수행하지 않습니다. 정확한 목록과 순서는 caller가 소유하므로 env-file 계층화는 명시적이고 결정론적으로 유지됩니다.
 

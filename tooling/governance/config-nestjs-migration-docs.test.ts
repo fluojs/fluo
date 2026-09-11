@@ -157,6 +157,8 @@ function mutateRecipe(relativePath: string, part: RecipePart, replacement: (text
 // make the corresponding isolated bad recipe pass the guard and therefore fail its pinned test.
 const recipeMutations: readonly [string, RecipePart, (text: string) => string, string][] = [
   ['registration schema', 'registration', (text) => text.replace('{', '{ schema: ConfigSchema,'), 'CONFIG_RECIPE_REVALIDATION'],
+  ['removed envFile', 'registration', (text) => text.replace('{', "{ envFile: '.env',"), 'CONFIG_RECIPE_LEGACY_ENV_INPUT'],
+  ['removed envFilePath', 'registration', (text) => text.replace('{', "{ envFilePath: '.env',"), 'CONFIG_RECIPE_LEGACY_ENV_INPUT'],
   ['missing envFilePaths', 'registration', (text) => replaceOnce(text, 'envFilePaths: [],', ''), 'CONFIG_RECIPE_ENV_FILES'],
   ['nonempty envFilePaths', 'registration', (text) => replaceOnce(text, 'envFilePaths: []', "envFilePaths: ['.env']"), 'CONFIG_RECIPE_ENV_FILES'],
   ['nonarray envFilePaths', 'registration', (text) => replaceOnce(text, 'envFilePaths: []', 'envFilePaths: undefined'), 'CONFIG_RECIPE_ENV_FILES'],

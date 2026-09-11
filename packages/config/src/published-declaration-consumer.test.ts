@@ -64,11 +64,15 @@ function collectCleanConsumerDiagnostics(): readonly ts.Diagnostic[] {
 function collectRemovedConsumerDiagnostics(): readonly ts.Diagnostic[] {
   const consumerEntryPath = resolve(packageRootPath, 'dist/__fluo-removed-consumer__.ts');
   const consumerEntrySource = [
-    "import { ConfigReloadModule, createConfigReloader, loadConfig } from './index.js';",
+    "import { ConfigModule, ConfigReloadManager, type ConfigModuleOptions, ConfigReloadModule, createConfigReloader, loadConfig } from './index.js';",
     '',
     'void ConfigReloadModule;',
     'void createConfigReloader;',
     'void loadConfig;',
+    "export const legacyModuleOptions: ConfigModuleOptions = { envFile: '.env' };",
+    "ConfigModule.load({ envFilePath: '.env' });",
+    "ConfigReloadManager.create({ envFile: '.env' });",
+    "ConfigModule.forRoot({ envFilePath: '.env' });",
     '',
   ].join('\n');
   const compilerOptions: ts.CompilerOptions = {
@@ -148,6 +152,12 @@ describe('@fluojs/config published declaration consumer surface', () => {
     expect(formattedDiagnostics).toContain('ConfigReloadModule');
     expect(formattedDiagnostics).toContain('createConfigReloader');
     expect(formattedDiagnostics).toContain('loadConfig');
+    for (const property of ['envFile', 'envFilePath']) {
+      expect(diagnostics.some((diagnostic) =>
+        (diagnostic.code === 2353 || diagnostic.code === 2561)
+        && ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').includes(`'${property}'`),
+      ), formattedDiagnostics).toBe(true);
+    }
   });
 
   it('keeps the published process-env option structurally self-contained', () => {

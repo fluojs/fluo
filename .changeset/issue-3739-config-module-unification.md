@@ -1,8 +1,11 @@
 ---
 '@fluojs/config': patch
+'@fluojs/cli': patch
 ---
 
 Unify configuration registration, loading, and reload ownership under `ConfigModule`.
+Fix generated CLI application, microservice, and mixed starter registrations to
+use `envFilePaths` instead of the removed `envFile` input.
 
 Migration: replace `loadConfig(options)` with `ConfigModule.load(options)`, replace
 `createConfigReloader(options)` with `ConfigReloadManager.create(options)`, and inject
