@@ -5,7 +5,7 @@ import type {
   StudioParsedLiveSnapshot,
   StudioLiveEvent as StudioWireLiveEvent,
   StudioRouteDescriptor as StudioWireRouteDescriptor,
-} from '@fluojs/studio/contracts';
+} from '@fluojs/studio';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { FluoFactory, bootstrapModule } from '../bootstrap.js';

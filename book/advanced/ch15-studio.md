@@ -43,22 +43,22 @@ As defined in `packages/studio/README.md`, the inspection and Studio flow is mad
 
 1. **Snapshot producer**: The fluo Runtime and platform shell compile the Module Graph and produce `PlatformShellSnapshot` data during inspection-safe bootstrap.
 2. **CLI sidecar/exporter/delegator**: `fluo dev --studio` starts the Node dev-runner with a token-protected local sidecar, while `fluo inspect` serializes runtime-produced data as JSON, wraps it as a report when requested, writes it to artifact paths through `--output`, and delegates Mermaid rendering to Studio when `--mermaid` is requested.
-3. **Studio contract surface**: The `@fluojs/studio` root export and `@fluojs/studio/contracts` subpath own snapshot parsing, filtering, Mermaid graph rendering, live event validation, and the exported types used by tooling.
+3. **Studio contract surface**: The `@fluojs/studio` root export owns snapshot parsing, filtering, Mermaid graph rendering, live event validation, and the exported types used by tooling.
 4. **Studio viewer**: The `@fluojs/studio/viewer` entrypoint exposes the packaged React browser viewer for live sidecar sessions and static inspect artifacts.
 
 This split matters. Runtime produces truth. The CLI owns the sidecar and chooses an artifact shape. Studio owns the viewer, public contracts, and Mermaid rendering semantics. The CLI does not duplicate graph rendering logic, and Studio does not need to bootstrap the application itself.
 
 ## 15.3 Generating Inspect Artifacts with `fluo inspect`
 
-The main way to interact with Studio is to generate an inspect artifact from your root module.
+The default recipe for a newly stored Studio artifact is a versioned report from your root module.
 
 ```bash
-fluo inspect ./src/app.module.ts --json > artifacts/inspect-snapshot.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-With no explicit output mode, `fluo inspect` defaults to JSON snapshot output. The runtime resolves providers and builds the platform shell through an inspection-safe application context, then the CLI writes the snapshot to stdout. The inspected application is bootstrapped for inspection and then closed. It does not start a server listener.
+With no explicit output mode, `fluo inspect` still defaults to JSON snapshot output. The runtime resolves providers and builds the platform shell through an inspection-safe application context, then the CLI writes the snapshot to stdout. The inspected application is bootstrapped for inspection and then closed. It does not start a server listener.
 
-For CI and support workflows, prefer an explicit artifact path instead of shell redirection.
+Raw snapshots remain supported for compatibility with existing readers:
 
 ```bash
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
@@ -90,7 +90,7 @@ Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(sn
 pnpm add -D @fluojs/studio
 ```
 
-Use a normal dependency instead only when a published package or runtime automation imports `@fluojs/studio` or `@fluojs/studio/contracts` at runtime. The packaged `@fluojs/studio/viewer` entrypoint is an HTML asset resolved by Node package resolution, not a runtime module to bundle into the inspected app. In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
+Use a normal dependency instead only when a published package or runtime automation imports `@fluojs/studio` at runtime. The packaged `@fluojs/studio/viewer` entrypoint is an HTML asset resolved by Node package resolution, not a runtime module to bundle into the inspected app. In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
 
 ## 15.4 Understanding the Snapshot and Report Shapes
 

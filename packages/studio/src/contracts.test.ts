@@ -589,9 +589,10 @@ describe('parseStudioPayload', () => {
     const runtimeLiveContracts = readFileSync(resolve(packageDir, '../runtime/src/devtools/contracts.ts'), 'utf8');
 
     expect(runtimeManifest.dependencies?.['@fluojs/studio']).toBe('workspace:^');
-    expect(runtimeLiveContracts).toContain("from '@fluojs/studio/contracts';");
+    expect(runtimeLiveContracts).toContain("from '@fluojs/studio';");
     expect(runtimeLiveContracts).not.toContain('export interface StudioRouteDescriptor');
     expect(runtimeLiveContracts).not.toContain('export type StudioLiveEvent =');
+    expect(runtimeLiveContracts).not.toContain('StudioProducer');
   });
 
   it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {
@@ -982,15 +983,10 @@ describe('parseStudioPayload', () => {
         types: './dist/index.d.ts',
         import: './dist/index.js',
       },
-      './contracts': {
-        types: './dist/contracts.d.ts',
-        import: './dist/contracts.js',
-      },
       './viewer': './dist/index.html',
     });
     expect(releaseGovernance).toContain('- `@fluojs/studio`');
     expect(readme).toContain('pnpm add @fluojs/studio');
-    expect(readme).toContain('@fluojs/studio/contracts');
     expect(readme).toContain('@fluojs/studio/viewer');
     expect(readme).toContain('`fluo-studio-viewer` is the public launch path');
     expect(readme).toContain('only the integration asset-resolution contract');
@@ -1002,7 +998,6 @@ describe('parseStudioPayload', () => {
     expect(readme).toContain('body-like payload fields');
     expect(readme).toContain('`body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody`');
     expect(readmeKo).toContain('pnpm add @fluojs/studio');
-    expect(readmeKo).toContain('@fluojs/studio/contracts');
     expect(readmeKo).toContain('@fluojs/studio/viewer');
     expect(readmeKo).toContain('`fluo-studio-viewer`가 공개 실행 경로');
     expect(readmeKo).toContain('통합용 asset-resolution 계약으로만');
@@ -1236,7 +1231,6 @@ describe('parseStudioPayload', () => {
         JSON.stringify({
           exports: {
             '.': { import: './dist/index.js', types: './dist/index.d.ts' },
-            './contracts': { import: './dist/contracts.js', types: './dist/contracts.d.ts' },
             './viewer': './dist/index.html',
           },
           name: '@fluojs/studio',
@@ -1259,10 +1253,17 @@ describe('parseStudioPayload', () => {
 
       const directSubpathImport = spawnSync(
         process.execPath,
-        ['--input-type=module', '--eval', "import { parseStudioPayload, renderMermaid } from '@fluojs/studio/contracts'; if (typeof parseStudioPayload !== 'function' || typeof renderMermaid !== 'function') process.exit(1);"],
+        ['--input-type=module', '--eval', "import { parseStudioPayload, renderMermaid } from '@fluojs/studio'; if (typeof parseStudioPayload !== 'function' || typeof renderMermaid !== 'function') process.exit(1);"],
         { cwd: consumerRoot, encoding: 'utf8' },
       );
       expect(directSubpathImport.status, [directSubpathImport.stdout, directSubpathImport.stderr].filter(Boolean).join('\n')).toBe(0);
+
+      const removedContractsSubpath = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', "import('@fluojs/studio/contracts').then(() => process.exit(1), () => process.exit(0));"],
+        { cwd: consumerRoot, encoding: 'utf8' },
+      );
+      expect(removedContractsSubpath.status, [removedContractsSubpath.stdout, removedContractsSubpath.stderr].filter(Boolean).join('\n')).toBe(0);
     } finally {
       rmSync(outputDirectory, { force: true, recursive: true });
     }

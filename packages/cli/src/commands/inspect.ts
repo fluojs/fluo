@@ -93,7 +93,7 @@ type InspectReport = {
   version: 1;
 };
 
-const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio/contracts';
+const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio';
 const RUNTIME_ENTRYPOINT = '@fluojs/runtime';
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const RUNTIME_MISSING_MESSAGE = [

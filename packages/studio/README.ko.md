@@ -29,7 +29,7 @@ Studio는 Node.js tooling package이며 배포 package의 `engines.node` field�
 pnpm add -D @fluojs/studio
 ```
 
-배포 패키지나 runtime automation이 실행 중에 `@fluojs/studio` 또는 `@fluojs/studio/contracts`를 import하는 경우에만 일반 dependency로 설치합니다.
+배포 패키지나 runtime automation이 실행 중에 `@fluojs/studio`를 import하는 경우에만 일반 dependency로 설치합니다.
 
 ```bash
 pnpm add @fluojs/studio
@@ -37,7 +37,7 @@ pnpm add @fluojs/studio
 
 배포된 패키지는 다음 caller-facing entrypoint를 제공합니다.
 
-- `@fluojs/studio` / `@fluojs/studio/contracts`: canonical snapshot 파싱, 필터링, Mermaid graph 렌더링 헬퍼와 runtime-connected Studio live event 계약
+- `@fluojs/studio`: canonical snapshot 파싱, 필터링, Mermaid graph 렌더링 헬퍼와 runtime-connected Studio live event 계약
 - `fluo-studio-viewer`가 공개 실행 경로이며 패키징된 React 브라우저 viewer를 시작합니다.
 - `@fluojs/studio/viewer`는 패키징된 HTML 진입 파일이 필요한 호출자를 위한 통합용 asset-resolution 계약으로만 제공합니다.
 
@@ -80,13 +80,13 @@ MVP request flow는 route/handler와 dependency-graph correlation을 의미합�
 
 ## 정적/리포트 호환성
 
-Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 문자열 `kind` 값과 parameter-name-only `params`를 검증하고, `react-page`를 **React page**로 표시하며, 임의의 route kind 문자열을 보존하고, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다. 파싱된 route 결과는 생략된 legacy `kind`를 `http`로, `params`를 `[]`로, `graphNodeId`를 이전 route-node ID 규칙으로 normalize하지만 제공된 유효하지 않은 값은 거부하며 저장된 artifact 호환성을 위해 export된 wire-input field는 optional로 유지합니다.
+Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 새로 저장하는 artifact의 기본 recipe로는 `fluo inspect --report`가 생성한 versioned report artifact를 사용합니다. Raw snapshot, snapshot-plus-timing envelope, legacy standalone timing diagnostics reader는 호환성을 위해 계속 지원합니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 문자열 `kind` 값과 parameter-name-only `params`를 검증하고, `react-page`를 **React page**로 표시하며, 임의의 route kind 문자열을 보존하고, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다. 파싱된 route 결과는 생략된 legacy `kind`를 `http`로, `params`를 `[]`로, `graphNodeId`를 이전 route-node ID 규칙으로 normalize하지만 제공된 유효하지 않은 값은 거부하며 저장된 artifact 호환성을 위해 export된 wire-input field는 optional로 유지합니다.
 
 이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. successful bootstrap 뒤 `fluo inspect`는 `PlatformShell.snapshot()`과 routes를 읽어 보고된 platform component와 dependencies가 담긴 `PlatformShellSnapshot`을 만들며, Node live Studio가 런타임에 만드는 compiled module/provider graph나 provider scope metadata는 만들지 않습니다. Live 경로는 provider scope metadata를 포함한 compiled module, provider, controller, route graph data, 별도 bootstrap timing event, request trace event를 publish합니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 패키징된 `fluo-studio-viewer`로 시작해야 합니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 남아야 합니다. HTML asset 경로가 필요한 integration은 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
 
-1. **Snapshot 내보내기**:
+1. **Versioned report artifact 내보내기**:
    ```bash
-   fluo inspect ./src/app.module.ts --json > snapshot.json
+   fluo inspect ./src/app.module.ts --report --output inspect-report.json
    ```
 
 2. **패키징된 Studio viewer 열기**:
@@ -100,7 +100,7 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
    pnpm --dir packages/studio dev
    ```
 
-3. **파일 로드**: Studio 웹 인터페이스에 `snapshot.json` 파일을 드래그 앤 드롭합니다. Search와 filter control은 graph, connection explorer, diagnostics, summary가 갱신되는 동안 focus를 유지합니다.
+3. **파일 로드**: Studio 웹 인터페이스에 `inspect-report.json` 파일을 드래그 앤 드롭합니다. Search와 filter control은 graph, connection explorer, diagnostics, summary가 갱신되는 동안 focus를 유지합니다.
 
 ## 로컬 보안 모델
 
@@ -122,7 +122,7 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
 
 ## 공개 API
 
-Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포된 패키지는 도구/자동화가 사용할 수 있는 계약도 함께 공개합니다. `@fluojs/studio`를 snapshot parsing, filtering, Mermaid graph rendering, live Studio event validation 의미론의 canonical owner로 취급합니다. Root `@fluojs/studio` export는 `@fluojs/studio/contracts`의 helper function과 public type을 다시 export합니다.
+Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포된 패키지는 도구/자동화가 사용할 수 있는 계약도 함께 공개합니다. `@fluojs/studio`를 snapshot parsing, filtering, Mermaid graph rendering, live Studio event validation 의미론의 canonical owner로 취급합니다. Root export가 모든 public helper와 type을 직접 소유합니다.
 
 Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, `create_dispatcher`만 허용하며, 그 밖의 모든 값은 static payload와 live timing event에서 거부됩니다.
 
@@ -175,11 +175,14 @@ Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, 
 ### 배포 패키지 진입점
 
 - `@fluojs/studio`: snapshot parsing/filtering/rendering과 live contract용 root helper barrel
-- `@fluojs/studio/contracts`: 계약 헬퍼를 직접 가져오고 싶은 도구용 명시적 subpath
 - `fluo-studio-viewer`: 패키징된 React 브라우저 viewer bundle을 위한 공개 CLI 실행 경로
 - `@fluojs/studio/viewer`: 패키징된 `dist/index.html` 파일을 위한 integration asset-resolution subpath
 
 `@fluojs/studio/viewer`는 통합용 asset-resolution 계약으로만 제공됩니다. 호출자는 JavaScript module이나 TypeScript declaration entrypoint가 아니라 패키징된 HTML 파일 경로를 resolve합니다.
+
+### 제거된 contracts subpath 마이그레이션
+
+`@fluojs/studio/contracts`는 더 이상 export되지 않습니다. 모든 helper와 type import를 `@fluojs/studio`로 바꾸세요. Helper 동작과 wire-input optional field 및 normalized parsed-output required field의 차이는 변하지 않습니다. 새 inspect artifact는 `fluo inspect <module-path> --report --output <path>`로 versioned report를 저장하고, 기존 raw snapshot과 timing artifact reader는 계속 지원합니다.
 
 ## 향후 방향
 

@@ -128,4 +128,7 @@ export function enforcePersistenceTransactionInterceptorCompatibility(
 export function enforceStudioStaticGraphLimitsContract(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceStudioPublicContractOwnership(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): Promise<void>;

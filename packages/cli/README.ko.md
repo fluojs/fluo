@@ -361,6 +361,9 @@ fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
 CLI가 그래프 렌더링을 소유하지 않으면서 애플리케이션 구조를 내보내고 초기화 문제를 해결합니다.
 
 ```bash
+# 새 inspect artifact의 기본 recipe로 versioned report 저장
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+
 # 선택적 Studio 렌더러를 통해 Mermaid 내보내기
 fluo inspect ./src/app.module.ts --mermaid
 
@@ -382,7 +385,7 @@ fluo inspect ./src/app.module.ts --export AdminModule --json
 
 `--format json`은 명시적으로 `--json`과 동등합니다. 두 option 모두 stdout에 정확히 하나의 JSON document를 쓰고 runtime diagnostics는 stderr로 보내며, 다른 `--format` 값은 거부합니다.
 
-런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. CLI는 authoritative HTTP dispatcher descriptor를 사용할 수 있도록 adapterless application을 bootstrap한 뒤 runtime-owned `routes` projection을 JSON, timing envelope, report snapshot에 추가합니다. CLI는 inspect orchestration, JSON serialization, report wrapping, `--output <path>` artifact write를 소유하고, Studio는 snapshot parsing, filtering, connection inspection, viewer rendering, Mermaid graph semantics를 소유합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 명시적인 `--json` flag 없이 제공된 경우를 포함해 JSON snapshot 출력 옆에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다.
+런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. CLI는 authoritative HTTP dispatcher descriptor를 사용할 수 있도록 adapterless application을 bootstrap한 뒤 runtime-owned `routes` projection을 JSON, timing envelope, report snapshot에 추가합니다. CLI는 inspect orchestration, JSON serialization, report wrapping, `--output <path>` artifact write를 소유하고, Studio는 snapshot parsing, filtering, connection inspection, viewer rendering, Mermaid graph semantics를 소유합니다. 새로 저장하는 artifact의 기본 recipe로 `fluo inspect <module-path> --report --output <path>`를 사용하세요. Output mode flag가 없을 때 `fluo inspect`는 여전히 snapshot을 기본 JSON으로 직렬화하고, raw snapshot, timing envelope, legacy timing reader는 호환성을 위해 계속 지원합니다. `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 명시적인 `--json` flag 없이 제공된 경우를 포함해 JSON snapshot 출력 옆에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다.
 
 각 `routes[]` entry는 `id`, `kind`, `method`, effective `path`, optional effective `version`, `params`의
 parameter name, originating `module`, `controller`, `handler`를 포함합니다. React `@Path(...)`

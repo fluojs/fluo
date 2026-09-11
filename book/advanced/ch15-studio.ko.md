@@ -43,22 +43,22 @@ Studio는 local development 진단과 정적 및 bootstrap-time 아키텍처 증
 
 1. **Snapshot producer**: fluo Runtime과 platform shell은 inspection-safe bootstrap 중 Module Graph를 컴파일하고 `PlatformShellSnapshot` 데이터를 생산합니다.
 2. **CLI sidecar/exporter/delegator**: `fluo dev --studio`는 token-protected local sidecar와 함께 Node dev-runner를 시작하고, `fluo inspect`는 런타임이 생산한 데이터를 JSON으로 직렬화하고, 요청 시 report로 감싸고, `--output`으로 artifact 경로에 쓰며, `--mermaid`가 요청되면 Mermaid 렌더링을 Studio에 위임합니다.
-3. **Studio contract surface**: `@fluojs/studio` root export와 `@fluojs/studio/contracts` subpath는 snapshot parsing, filtering, Mermaid graph rendering, live event validation, tooling이 사용하는 exported type을 소유합니다.
+3. **Studio contract surface**: `@fluojs/studio` root export는 snapshot parsing, filtering, Mermaid graph rendering, live event validation, tooling이 사용하는 exported type을 소유합니다.
 4. **Studio viewer**: `@fluojs/studio/viewer` entrypoint는 live sidecar session과 static inspect artifact를 위한 패키징된 React browser viewer를 제공합니다.
 
 이 분리는 중요합니다. Runtime은 진실을 생산합니다. CLI는 sidecar를 소유하고 artifact shape를 고릅니다. Studio는 viewer, public contract, Mermaid rendering semantics를 소유합니다. CLI는 graph rendering logic을 중복하지 않고, Studio는 애플리케이션을 직접 bootstrap할 필요가 없습니다.
 
 ## 15.3 `fluo inspect`로 inspect artifact 생성하기
 
-Studio와 상호작용하는 기본 방법은 root module에서 inspect artifact를 생성하는 것입니다.
+새로 저장하는 Studio artifact의 기본 recipe는 root module에서 versioned report를 만드는 것입니다.
 
 ```bash
-fluo inspect ./src/app.module.ts --json > artifacts/inspect-snapshot.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-명시적인 출력 mode가 없으면 `fluo inspect`는 JSON snapshot 출력을 기본값으로 사용합니다. Runtime은 inspection-safe application context를 통해 provider를 해석하고 platform shell을 만든 뒤, CLI가 snapshot을 stdout에 씁니다. 검사 대상 애플리케이션은 inspection을 위해 bootstrap된 뒤 닫힙니다. 서버 listener는 시작하지 않습니다.
+명시적인 출력 mode가 없으면 `fluo inspect`는 계속 JSON snapshot 출력을 기본값으로 사용합니다. Runtime은 inspection-safe application context를 통해 provider를 해석하고 platform shell을 만든 뒤, CLI가 snapshot을 stdout에 씁니다. 검사 대상 애플리케이션은 inspection을 위해 bootstrap된 뒤 닫힙니다. 서버 listener는 시작하지 않습니다.
 
-CI와 support workflow에서는 shell redirection보다 명시적인 artifact 경로를 사용하는 편이 좋습니다.
+기존 reader 호환성을 위해 raw snapshot도 계속 지원합니다.
 
 ```bash
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
@@ -90,7 +90,7 @@ Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`
 pnpm add -D @fluojs/studio
 ```
 
-배포 패키지나 runtime automation이 실행 중에 `@fluojs/studio` 또는 `@fluojs/studio/contracts`를 import하는 경우에만 일반 dependency를 사용합니다. 패키징된 `@fluojs/studio/viewer` entrypoint는 검사 대상 앱에 bundle하는 runtime module이 아니라 Node package resolution으로 해석되는 HTML asset입니다. 비대화형 실행에서는 Studio dependency가 없을 때 install guidance와 함께 빠르게 실패합니다. 대화형 실행은 확인을 물을 수 있지만, `fluo inspect`는 패키지를 조용히 설치하지 않습니다.
+배포 패키지나 runtime automation이 실행 중에 `@fluojs/studio`를 import하는 경우에만 일반 dependency를 사용합니다. 패키징된 `@fluojs/studio/viewer` entrypoint는 검사 대상 앱에 bundle하는 runtime module이 아니라 Node package resolution으로 해석되는 HTML asset입니다. 비대화형 실행에서는 Studio dependency가 없을 때 install guidance와 함께 빠르게 실패합니다. 대화형 실행은 확인을 물을 수 있지만, `fluo inspect`는 패키지를 조용히 설치하지 않습니다.
 
 ## 15.4 Snapshot과 리포트 shape 이해하기
 
