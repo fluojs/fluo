@@ -253,7 +253,8 @@ In real applications, Providers often depend on configuration values. During tes
 class PostTestModule {}
 
 const module = await Test.createTestingModule({ rootModule: PostTestModule })
-  .overrideProvider(ConfigService, {
+  .overrideProvider(ConfigService)
+  .useValue({
     get: vi.fn().mockReturnValue('test-secret'),
   })
   .compile();
@@ -303,7 +304,7 @@ Sometimes you need to replace an entire Module, not just a single Provider. Fluo
 ## 20.5 E2E-Style HTTP Testing with Test.createApp
 `Test.createApp` is an E2E-style HTTP test surface that runs the real HTTP pipeline, including request dispatch, Guards, Interceptors, DTO validation, and response writing. It does not open a real network socket, but it verifies the request handling stack itself in the same way as the production path.
 
-Instead of starting a real network server, use `Test.createApp`, which provides a virtual request system. The default application-developer path is the fluent `app.request(...).send()` helper because it reads like an HTTP client while still exercising the framework request pipeline. Reserve direct `app.dispatch(...)` and manual request/response stubs for lower-level framework-internal contracts or adapter/runtime packages that need to inspect the dispatch boundary itself. This improves test speed and reliability while still checking that the full request lifecycle is configured correctly.
+Instead of starting a real network server, use `Test.createApp`, which provides a virtual request system. The application-developer path is the fluent `app.request(...).send()` helper because it reads like an HTTP client while still exercising the framework request pipeline. Lower-level framework-internal contracts and adapter/runtime packages can use raw framework request/response dispatch helpers when the dispatch boundary itself is under test. This improves test speed and reliability while still checking that the full request lifecycle is configured correctly.
 
 ### The Test Case
 ```typescript
@@ -384,7 +385,7 @@ mailer.send.mockResolvedValue(true);
 ```
 
 ### 20.6.1 Explicit DI Token Overrides
-`Test.createTestingModule` does not auto-mock missing providers. Keep the module graph explicit, then replace the dependencies that matter with `overrideProvider(...)` or `overrideProviders(...)` before calling `.compile()`. Prefer `.overrideProvider(token).useValue(value)` with an explicit partial or mock. `mockToken(token, value)` remains a provider-registration helper returning a `ValueProvider` descriptor `{ provide: token, useValue: value }`, not a tuple or an override operation. To reuse it in an override, pass only `.overrideProvider(token).useValue(mockToken(token, value).useValue)`, never the descriptor itself.
+`Test.createTestingModule` does not auto-mock missing providers. Keep the module graph explicit, then replace each dependency that matters with `.overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)` before calling `.compile()`. `mockToken(token, value)` remains a provider-registration helper returning a `ValueProvider` descriptor `{ provide: token, useValue: value }`, not a tuple or an override operation. To reuse it in an override, pass only `.overrideProvider(token).useValue(mockToken(token, value).useValue)`, never the descriptor itself.
 
 ### 20.6.2 The Power of Proxies in Mocking
 `ShallowMock.create` uses an ES6 Proxy to preserve supplied values and lazily return a stable `vi.fn()` for each missing property. Supply data properties explicitly because runtime reflection cannot distinguish missing data from methods. Strict mode rejects missing properties instead of creating spies. This makes test setup simpler and easier to adapt when service interfaces change. If you add a new method to a service, you do not need to update every existing mock unless a test specifically verifies that method.

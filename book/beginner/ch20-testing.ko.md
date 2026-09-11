@@ -255,7 +255,8 @@ if (disposeFailed) {
 class PostTestModule {}
 
 const module = await Test.createTestingModule({ rootModule: PostTestModule })
-  .overrideProvider(ConfigService, {
+  .overrideProvider(ConfigService)
+  .useValue({
     get: vi.fn().mockReturnValue('test-secret'),
   })
   .compile();
@@ -305,7 +306,7 @@ if (disposeFailed) {
 ## 20.5 E2E-Style HTTP Testing with Test.createApp
 `Test.createApp`은 요청 디스패치, 가드, 인터셉터, DTO 검증, 응답 작성을 포함한 실제 HTTP 파이프라인을 실행하는 E2E 스타일 HTTP 테스트 표면입니다. 실제 네트워크 소켓만 열지 않을 뿐, 요청 처리 스택 자체는 프로덕션 경로와 같은 방식으로 검증합니다.
 
-실제 네트워크 서버를 시작하는 대신, 가상 요청 시스템을 제공하는 `Test.createApp`을 사용합니다. 애플리케이션 개발자의 기본 경로는 fluent `app.request(...).send()` helper입니다. 이 방식은 HTTP 클라이언트처럼 읽히면서도 framework request pipeline을 그대로 실행합니다. Direct `app.dispatch(...)`와 수동 request/response stub은 dispatch boundary 자체를 검사해야 하는 lower-level framework-internal contract나 adapter/runtime package에 남겨 두세요. 이는 테스트 속도와 안정성을 높이면서도 전체 요청 라이프사이클이 올바르게 구성되었는지 확인합니다.
+실제 네트워크 서버를 시작하는 대신, 가상 요청 시스템을 제공하는 `Test.createApp`을 사용합니다. 애플리케이션 개발자 경로는 fluent `app.request(...).send()` helper입니다. 이 방식은 HTTP 클라이언트처럼 읽히면서도 framework request pipeline을 그대로 실행합니다. Dispatch boundary 자체를 검사해야 하는 lower-level framework-internal contract나 adapter/runtime package는 raw framework request/response dispatch helper를 사용할 수 있습니다. 이는 테스트 속도와 안정성을 높이면서도 전체 요청 라이프사이클이 올바르게 구성되었는지 확인합니다.
 
 ### The Test Case
 ```typescript
@@ -386,7 +387,7 @@ mailer.send.mockResolvedValue(true);
 ```
 
 ### 20.6.1 명시적인 DI Token Override
-`Test.createTestingModule`은 누락된 provider를 자동으로 mock하지 않습니다. Module graph는 명시적으로 유지하고, 교체해야 하는 의존성만 `.compile()` 전에 `overrideProvider(...)` 또는 `overrideProviders(...)`로 바꾸세요. 명시적 partial이나 mock을 전달하는 `.overrideProvider(token).useValue(value)`를 우선 사용하세요. `mockToken(token, value)`는 tuple이나 override 동작이 아니라 `ValueProvider` descriptor `{ provide: token, useValue: value }`를 반환하는 provider 등록 헬퍼로 유지됩니다. Override에서 재사용할 때는 descriptor 자체가 아니라 `.overrideProvider(token).useValue(mockToken(token, value).useValue)`로 값만 전달하세요.
+`Test.createTestingModule`은 누락된 provider를 자동으로 mock하지 않습니다. Module graph는 명시적으로 유지하고, 교체해야 하는 각 의존성을 `.compile()` 전에 `.overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, 또는 `.useExisting(otherToken)`으로 바꾸세요. `mockToken(token, value)`는 tuple이나 override 동작이 아니라 `ValueProvider` descriptor `{ provide: token, useValue: value }`를 반환하는 provider 등록 헬퍼로 유지됩니다. Override에서 재사용할 때는 descriptor 자체가 아니라 `.overrideProvider(token).useValue(mockToken(token, value).useValue)`로 값만 전달하세요.
 
 ### 20.6.2 The Power of Proxies in Mocking
 `ShallowMock.create`는 ES6 Proxy로 제공한 값을 보존하고 누락된 각 속성에 같은 `vi.fn()`을 지연 반환합니다. Runtime reflection은 누락된 data와 method를 구분할 수 없으므로 data property는 명시적으로 제공하세요. Strict mode는 spy를 만드는 대신 누락된 속성 접근을 거부합니다. 이를 통해 테스트 설정이 더 단순해지고 서비스 인터페이스 변경에도 대응하기 쉬워집니다. 서비스에 새로운 메서드를 추가하더라도, 해당 메서드를 구체적으로 검증해야 하는 테스트가 아니라면 기존의 모든 모의 객체를 업데이트할 필요가 없습니다.
