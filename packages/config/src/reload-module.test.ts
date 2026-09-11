@@ -1,13 +1,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ConfigModule } from './module.js';
-import { CONFIG_RELOADER, ConfigReloadManager, ConfigReloadModule } from './reload-module.js';
+import { CONFIG_RELOADER, ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService } from './service.js';
 import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader } from './types.js';
 
@@ -75,6 +74,7 @@ function installNodeBuiltinMock(): void {
         basename,
         dirname,
         join,
+        resolve,
       };
     }
 
@@ -83,25 +83,18 @@ function installNodeBuiltinMock(): void {
 }
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-
-  throw new Error('Timed out waiting for condition.');
+  await vi.advanceTimersByTimeAsync(timeoutMs);
+  expect(predicate()).toBe(true);
 }
 
 beforeEach(() => {
   watchCallbacks.clear();
+  vi.useFakeTimers();
   installNodeBuiltinMock();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -118,8 +111,7 @@ describe('ConfigReloadManager', () => {
 
     const container = new Container();
     container.register(
-      ...extractProviders(ConfigModule.forRoot({ envFile: envPath, processEnv: {} })),
-      ...extractProviders(ConfigReloadModule.forRoot({ envFile: envPath, processEnv: {} })),
+      ...extractProviders(ConfigModule.forRoot({ envFilePaths: [envPath], processEnv: {} })),
     );
 
     const reloader = await container.resolve<ConfigReloader>(CONFIG_RELOADER);
@@ -132,13 +124,13 @@ describe('ConfigReloadManager', () => {
     expect(service.get('PORT')).toBe('4100');
   });
 
-  it('snapshots caller-owned options during ConfigReloadModule registration', () => {
+  it('snapshots caller-owned options during ConfigModule registration', () => {
     const options: ConfigLoadOptions = {
       defaults: { nested: { value: 'registered' }, PORT: '4000' },
       processEnv: { PORT: '4100' },
       runtimeOverrides: { FEATURE: 'enabled' },
     };
-    const moduleRef = ConfigReloadModule.forRoot(options);
+    const moduleRef = ConfigModule.forRoot(options);
 
     options.defaults = { nested: { value: 'mutated' }, PORT: '5000' };
     options.processEnv = { PORT: '5100' };
@@ -168,7 +160,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -207,7 +199,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -237,7 +229,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -283,7 +275,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -332,7 +324,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });

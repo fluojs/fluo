@@ -166,7 +166,7 @@ function resolveCurrentWorkingDirectory(): string {
   if (!cwd) {
     throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
       code: 'CONFIG_RUNTIME_UNAVAILABLE',
-      cause: new Error('The host runtime did not expose process.cwd(). Pass envFilePath or avoid env-file loading outside Node.js.'),
+      cause: new Error('The host runtime did not expose process.cwd(). Pass envFilePaths or avoid env-file loading outside Node.js.'),
     });
   }
 
@@ -364,15 +364,11 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
   }
 }
 
-function rejectAmbiguousEnvFileOptions(options: ConfigLoadOptions): void {
-  if (options.envFilePaths === undefined) {
-    return;
-  }
-
-  if (options.envFile !== undefined || options.envFilePath !== undefined) {
+function rejectLegacyEnvFileOptions(options: ConfigLoadOptions): void {
+  if ('envFile' in options || 'envFilePath' in options) {
     throw new FluoError('Invalid configuration.', {
       code: 'INVALID_CONFIG',
-      cause: new Error('`envFilePaths` cannot be combined with `envFile` or `envFilePath`. Use one explicit ordered list instead of mixing singular and list env-file options.'),
+      cause: new Error('`envFile` and `envFilePath` were removed. Use the ordered `envFilePaths` list instead.'),
     });
   }
 }
@@ -413,17 +409,15 @@ function resolveEnvFilePaths(envFilePaths: readonly string[], cwd: string | unde
 
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
-  rejectAmbiguousEnvFileOptions(options);
+  rejectLegacyEnvFileOptions(options);
 
-  const hasExplicitEnvFile = options.envFilePath !== undefined || options.envFile !== undefined || options.envFilePaths !== undefined;
   const hasExplicitInMemorySource = options.defaults !== undefined || options.processEnv !== undefined || options.runtimeOverrides !== undefined;
-  const shouldUseDefaultEnvFile = !hasExplicitEnvFile && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
+  const shouldUseDefaultEnvFile = options.envFilePaths === undefined && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
   const cwd = shouldUseDefaultEnvFile
     ? options.cwd ?? resolveCurrentWorkingDirectory()
     : options.cwd;
-  const singularEnvFile = options.envFilePath ?? options.envFile ?? (shouldUseDefaultEnvFile && cwd ? nodePath().join(cwd, '.env') : undefined);
   const envFiles = options.envFilePaths === undefined
-    ? (singularEnvFile === undefined ? [] : [singularEnvFile])
+    ? (shouldUseDefaultEnvFile && cwd ? [nodePath().join(cwd, '.env')] : [])
     : resolveEnvFilePaths(options.envFilePaths, options.cwd);
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? {};
@@ -847,7 +841,7 @@ function closeReloader(
  *
  * @example
  * ```ts
- * const reloader = createConfigReloader({ envFile: '.env', watch: true });
+ * const reloader = createConfigReloader({ envFilePaths: ['.env'], watch: true });
  *
  * const subscription = reloader.subscribe((snapshot) => {
  *   console.log(snapshot.PORT);
@@ -858,6 +852,7 @@ function closeReloader(
  * reloader.close();
  * ```
  */
+/** @internal ConfigModule and ConfigReloadManager own the public creation APIs. */
 export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
   const loadOptions = snapshotConfigLoadOptions(options);
   const normalized = normalizeLoadOptions(loadOptions);
@@ -902,6 +897,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
  * @returns A detached normalized configuration dictionary for the current load.
  * @throws {FluoError} When validation throws or the config cannot be normalized.
  */
+/** @internal ConfigModule owns the public standalone loading API. */
 export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   return cloneConfigDictionary(resolveConfig(normalizeLoadOptions(options)));
 }

@@ -10,10 +10,12 @@
 
 | Precedence | Source | Entry point | Current rule |
 | --- | --- | --- | --- |
-| 1, lowest | `defaults` | `loadConfig(options)` 또는 `ConfigModule.forRoot(options)` | 기본 스냅샷 값입니다. |
-| 2 | env file | `envFile`, `envFilePath`, 또는 `envFilePaths` | 빈 `loadConfig({})` / `ConfigModule.forRoot()` option에서는 기본값이 `<cwd>/.env`이며, 설정된 파일 경로에서 파싱됩니다. `envFilePaths`는 명시적인 순서 목록을 동일한 tier에 병합합니다. |
+| 1, lowest | `defaults` | `ConfigModule.load(options)` 또는 `ConfigModule.forRoot(options)` | 기본 스냅샷 값입니다. |
+| 2 | env file | `envFilePaths` | 유일한 순서형 파일 입력입니다. 상대 entry는 `cwd`에서 해석하고, 생략하면 기본 `<cwd>/.env`를 사용하며 `[]`는 env-file loading을 해제합니다. |
 | 3 | `processEnv` snapshot | 명시적 `processEnv` option | 로더에 전달된 값만 병합에 참여합니다. 주변 `process.env`는 자동으로 읽지 않습니다. |
 | 4, highest | `runtimeOverrides` | 명시적 `runtimeOverrides` option | 명시적 런타임 값의 최종 override 계층입니다. |
+
+`envFile` 및 `envFilePath`는 공개 option이 아닙니다. 단수 경로 입력은 하나의 entry를 가진 `envFilePaths` 목록으로 이행하며 compatibility alias는 남지 않습니다.
 
 현재 병합 동작:
 
@@ -22,12 +24,11 @@
 | 여러 source에 존재하는 plain object | key 기준으로 deep merge 됩니다. | `packages/config/src/load.ts` |
 | 배열과 primitive | 우선순위가 더 높은 값이 낮은 값을 대체합니다. | `packages/config/src/load.ts`, `packages/config/README.md` |
 | env file이 없음 | 해당 source는 `{}`로 처리되고 load는 계속됩니다. | `packages/config/src/load.ts` |
-| `envFilePath`와 `envFile`이 모두 설정됨 | `envFilePath`가 우선합니다. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts` |
+| 제거된 단수 경로 입력 | `envFile`과 `envFilePath`는 공개 option이 아닙니다. 둘 중 하나를 한 entry의 `envFilePaths` 목록으로 이행합니다. | `packages/config/src/types.ts`, `packages/config/src/public-api.test.ts` |
 | `envFilePaths` 목록 순서 | 낮은 우선순위에서 높은 우선순위로 병합되므로 뒤쪽 entry가 이깁니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | `envFilePaths`의 상대 경로 entry | `cwd` 기준으로 해석되며 기본값은 `process.cwd()`입니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | `envFilePaths` 내부의 누락된 파일 | 빈 입력으로 건너뛰며 나머지 파일은 그대로 load 됩니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | 빈 `envFilePaths` 목록 | 기본 `<cwd>/.env` fallback을 포함해 env-file loading을 명시적으로 비활성화합니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
-| `envFilePaths`와 `envFile`/`envFilePath` 혼용 | `INVALID_CONFIG`로 거부됩니다. 단수형과 목록형 option은 혼용할 수 없습니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | 중복되거나 비어 있는 `envFilePaths` entry | 경로 해석 후 `INVALID_CONFIG`로 거부됩니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | `processEnv` 내부의 `undefined` 항목 | sanitize 과정에서 제거되며 낮은 우선순위 값을 덮어쓰지 않습니다. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts` |
 
@@ -38,7 +39,7 @@
 | Merge before schema validation | `schema` validator는 모든 설정 source가 병합된 뒤 실행됩니다. | `packages/config/src/load.ts`, `packages/config/README.md` |
 | Fail-fast startup | 초기 load 중 `schema`가 issue를 보고하면 config load는 code `INVALID_CONFIG`를 가진 `FluoError`를 발생시킵니다. | `packages/config/src/load.ts` |
 | No partial snapshot | 유효하지 않은 설정은 전체가 거부됩니다. load 경로는 부분 병합 결과를 반환하지 않습니다. | `packages/config/src/load.ts` |
-| Reload keeps previous snapshot on listener failure | reload 중 listener가 실패하면 이전 스냅샷이 복원됩니다. | `packages/config/src/load.ts`, `packages/config/src/reload-module.ts` |
+| Reload keeps previous snapshot on listener failure | reload 중 listener가 실패하면 이전 스냅샷이 복원됩니다. | `packages/config/src/module.ts` |
 | Watch reload keeps last valid snapshot on validation failure | watch 모드에서 validation이 실패하면 오류를 보고하고 현재 스냅샷은 그대로 유지됩니다. `envFilePaths` 목록 reload에도 동일하게 적용됩니다. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts`, `packages/config/src/load-env-file-paths.test.ts`, `docs/architecture/dev-reload-architecture.md` |
 | Ordered list validated once | `schema` validator는 파일별로가 아니라 완전히 병합된 목록 결과에 대해 한 번만 실행됩니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Ordered list watch recomputation | 목록에 포함된 파일이 변경되면 전체 목록을 다시 계산하고, 우선순위가 높은 파일을 삭제하면 남은 파일로 fallback합니다. 서로 다른 parent directory마다 watcher를 하나씩만 시작합니다. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
@@ -55,7 +56,7 @@ const EnvSchema = z.object({
 });
 
 ConfigModule.forRoot({
-  envFile: '.env',
+  envFilePaths: ['.env'],
   processEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
   },
@@ -78,6 +79,8 @@ ConfigModule.forRoot({
 });
 ```
 
+`envFile`과 `envFilePath`는 제거된 공개 option입니다. 단수 경로 입력은 `envFilePaths: ['<path>']`로 이행합니다. `envFilePaths`를 생략하면 기본 `<cwd>/.env`를 유지하며, `envFilePaths: []`는 file loading을 해제합니다.
+
 패키지는 자동 profile 탐색을 수행하지 않습니다. 정확한 목록과 순서는 caller가 소유하므로 env-file 계층화는 명시적이고 결정론적으로 유지됩니다.
 
 ## Access Constraints
@@ -94,5 +97,5 @@ ConfigModule.forRoot({
 
 - 패키지는 `process.env`를 직접 읽어서는 안 됩니다.
 - 설정은 반드시 `@fluojs/config`를 통해 흘러야 합니다.
-- process 기반 값은 애플리케이션 bootstrap 경계에 속하며, 일반적으로 `ConfigModule.forRoot(...)` 또는 `loadConfig(...)`에 전달하는 명시적 `processEnv` 스냅샷 형태여야 합니다.
+- process 기반 값은 애플리케이션 bootstrap 경계에 속하며, 일반적으로 `ConfigModule.forRoot(...)` 또는 `ConfigModule.load(...)`에 전달하는 명시적 `processEnv` 스냅샷 형태여야 합니다.
 - `ConfigService`는 읽기 전용 런타임 facade입니다. 스냅샷 교체는 config reload 경로 내부에만 남아 있습니다.

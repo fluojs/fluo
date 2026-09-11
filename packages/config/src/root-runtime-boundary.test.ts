@@ -69,7 +69,7 @@ describe('@fluojs/config root runtime boundary', () => {
     const configPublicApi = await import('./index.js');
 
     expect(configPublicApi).toHaveProperty('ConfigService');
-    expect(configPublicApi).toHaveProperty('loadConfig');
+    expect(configPublicApi.ConfigModule).toHaveProperty('load');
   });
 
   it('does not resolve Node builtins when importing the root public API', async () => {
@@ -80,7 +80,7 @@ describe('@fluojs/config root runtime boundary', () => {
     const configPublicApi = await import('./index.js');
 
     expect(configPublicApi).toHaveProperty('ConfigService');
-    expect(configPublicApi).toHaveProperty('loadConfig');
+    expect(configPublicApi.ConfigModule).toHaveProperty('load');
     expect(getBuiltinModule).not.toHaveBeenCalled();
   });
 
@@ -92,9 +92,9 @@ describe('@fluojs/config root runtime boundary', () => {
       throw new Error('In-memory loading attempted to resolve process.cwd().');
     });
 
-    const { loadConfig } = await import('./index.js');
+    const { ConfigModule } = await import('./index.js');
 
-    expect(loadConfig({ defaults: { PORT: '3000' }, processEnv: {}, runtimeOverrides: { FEATURE: 'enabled' } })).toEqual({
+    expect(ConfigModule.load({ defaults: { PORT: '3000' }, processEnv: {}, runtimeOverrides: { FEATURE: 'enabled' } })).toEqual({
       FEATURE: 'enabled',
       PORT: '3000',
     });
@@ -113,9 +113,9 @@ describe('@fluojs/config root runtime boundary', () => {
     });
     spyOnGetBuiltinModule(((id: string) => (id === 'node:module' ? getBuiltinModule?.('node:module') : undefined)) as typeof process.getBuiltinModule);
 
-    const { loadConfig } = await import('./index.js');
+    const { ConfigModule } = await import('./index.js');
 
-    expect(loadConfig({ envFilePath, processEnv: {} })).toMatchObject({ PORT: '4010' });
+    expect(ConfigModule.load({ envFilePaths: [envFilePath], processEnv: {} })).toMatchObject({ PORT: '4010' });
   });
 
   it('fails env-file loading when process.getBuiltinModule is unavailable', async () => {
@@ -129,10 +129,10 @@ describe('@fluojs/config root runtime boundary', () => {
       writable: true,
     });
 
-    const { loadConfig } = await import('./index.js');
+    const { ConfigModule } = await import('./index.js');
 
     try {
-      loadConfig({ envFilePath, processEnv: {} });
+      ConfigModule.load({ envFilePaths: [envFilePath], processEnv: {} });
     } catch (error: unknown) {
       expect(error).toMatchObject({
         code: 'CONFIG_RUNTIME_UNAVAILABLE',
@@ -142,7 +142,7 @@ describe('@fluojs/config root runtime boundary', () => {
       expect(getErrorCause(error)).toMatchObject({
         message: expect.stringContaining('node:module'),
       });
-      expect(loadConfig({ defaults: { PORT: '4010' }, processEnv: {} })).toEqual({ PORT: '4010' });
+      expect(ConfigModule.load({ defaults: { PORT: '4010' }, processEnv: {} })).toEqual({ PORT: '4010' });
       return;
     }
 

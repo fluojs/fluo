@@ -49,15 +49,13 @@ export type DotValue<T, K extends string> = K extends keyof T
  * Module-level configuration options for loading and validating application config.
  */
 export interface ConfigModuleOptions {
-  envFile?: string;
-  envFilePath?: string;
   /**
    * Explicit ordered env-file list merged from lowest to highest precedence.
    *
    * Entries are resolved against `cwd` when relative, missing files contribute nothing,
-   * and the merged result stays below `processEnv` and `runtimeOverrides`. Combining this
-   * option with `envFile` or `envFilePath`, repeating a resolved path, or passing a blank
-   * entry fails with `INVALID_CONFIG`. An empty list opts out of env-file loading entirely.
+   * and the merged result stays below `processEnv` and `runtimeOverrides`. Repeating a
+   * resolved path or passing a blank entry fails with `INVALID_CONFIG`. An empty list opts
+   * out of env-file loading entirely; omitting the option loads the default `<cwd>/.env`.
    */
   envFilePaths?: readonly string[];
   processEnv?: ConfigProcessEnv;

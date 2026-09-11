@@ -5,10 +5,12 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createConfigReloader, loadConfig } from './load.js';
-import { ConfigModule } from './module.js';
+import { ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService } from './service.js';
 import type { ConfigDictionary, ConfigReloader, ConfigSchema } from './types.js';
+
+const loadConfig = ConfigModule.load;
+const createConfigReloader = ConfigReloadManager.create;
 
 type WatchListener = (eventType: string, filename: string | null) => void;
 
@@ -300,38 +302,6 @@ describe('loadConfig envFilePaths ordered multi-file loading', () => {
     expect(loaded).toEqual({ PORT: '3000' });
   });
 
-  it('rejects mixing envFilePaths with envFile', () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-conflict-file-'));
-    const base = join(cwd, '.env');
-
-    writeFileSync(base, 'PORT=3000\n');
-
-    expect(() =>
-      loadConfig({
-        cwd,
-        envFile: base,
-        envFilePaths: [base],
-        processEnv: {},
-      }),
-    ).toThrowError(expect.objectContaining({ code: 'INVALID_CONFIG' }));
-  });
-
-  it('rejects mixing envFilePaths with envFilePath', () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-conflict-path-'));
-    const base = join(cwd, '.env');
-
-    writeFileSync(base, 'PORT=3000\n');
-
-    expect(() =>
-      loadConfig({
-        cwd,
-        envFilePath: base,
-        envFilePaths: [base],
-        processEnv: {},
-      }),
-    ).toThrowError(expect.objectContaining({ code: 'INVALID_CONFIG' }));
-  });
-
   it('rejects duplicate entries inside envFilePaths', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-duplicate-'));
     const base = join(cwd, '.env');
@@ -406,7 +376,7 @@ describe('loadConfig single-file backward compatibility', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { NAME: 'from-default', PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: { NAME: 'from-process' },
       runtimeOverrides: { NAME: 'from-runtime' },
     });

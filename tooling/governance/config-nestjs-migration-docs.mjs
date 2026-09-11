@@ -49,7 +49,7 @@ const requirements = [
   ['packages/config/README.md', [
     '### NestJS Registration Migration',
     'ConfigModule.forRootAsync(...)',
-    'ConfigReloadModule.forRoot(...)',
+    'ConfigModule.forRoot({ watch: true })',
     'NestJS `load` factories',
     'explicit `processEnv` snapshot',
     'synchronous Standard Schema',
@@ -59,7 +59,7 @@ const requirements = [
   ['packages/config/README.ko.md', [
     '### NestJS 등록 마이그레이션',
     'ConfigModule.forRootAsync(...)',
-    'ConfigReloadModule.forRoot(...)',
+    'ConfigModule.forRoot({ watch: true })',
     'NestJS `load` factory',
     '명시적 `processEnv` snapshot',
     '동기 Standard Schema',

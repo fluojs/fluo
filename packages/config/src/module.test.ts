@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { Constructor } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ConfigModule } from './module.js';
+import { CONFIG_RELOADER, ConfigModule } from './module.js';
 import { ConfigService } from './service.js';
-import type { ConfigModuleOptions } from './types.js';
+import type { ConfigDictionary, ConfigModuleOptions, ConfigReloader, ConfigReloadReason } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -51,6 +51,7 @@ function installNodeBuiltinMock(): void {
         basename,
         dirname,
         join,
+        resolve,
       };
     }
 
@@ -77,10 +78,12 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 beforeEach(() => {
+  vi.useFakeTimers();
   installNodeBuiltinMock();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -91,17 +94,8 @@ function emitWatchChange(): void {
 }
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-
-  throw new Error('Timed out waiting for condition.');
+  await vi.advanceTimersByTimeAsync(timeoutMs);
+  expect(predicate()).toBe(true);
 }
 
 type ConfigProvider = { provide?: unknown; useFactory?: () => unknown; useValue?: unknown };
@@ -137,6 +131,39 @@ describe('ConfigModule registration', () => {
 
     expect(service.get('PORT')).toBe('4100');
   });
+
+  it('owns the injectable manual reload contract without ConfigReloadModule', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-reload-owner-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const moduleRef = ConfigModule.forRoot({
+      envFilePaths: [envPath],
+      processEnv: {},
+    });
+    const container = new Container();
+
+    container.register(...moduleProviders(moduleRef));
+
+    const service = await container.resolve(ConfigService);
+    const reloader = await container.resolve<ConfigReloader>(CONFIG_RELOADER);
+    const updates: string[] = [];
+    const subscription = reloader.subscribe((snapshot: ConfigDictionary, reason: ConfigReloadReason) => {
+      if (reason === 'manual' && typeof snapshot['PORT'] === 'string') {
+        updates.push(snapshot['PORT']);
+      }
+    });
+
+    writeFileSync(envPath, 'PORT=4100\n');
+
+    expect(reloader.reload()['PORT']).toBe('4100');
+    expect(service.get('PORT')).toBe('4100');
+    expect(updates).toEqual(['4100']);
+
+    subscription.unsubscribe();
+    reloader.close();
+  });
 });
 
 describe('ConfigModule watch mode', () => {
@@ -147,13 +174,13 @@ describe('ConfigModule watch mode', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const moduleRef = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
     const providers = moduleProviders(moduleRef) as Array<ConfigProvider | WatchManagerConstructor>;
     const watchManagerProvider = providers?.find(
-      (provider): provider is WatchManagerConstructor => typeof provider === 'function' && provider.name === 'ConfigModuleWatchManager',
+      (provider): provider is WatchManagerConstructor => typeof provider === 'function' && provider.name === 'ConfigReloadManager',
     );
     const container = new Container();
 

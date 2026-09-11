@@ -1,14 +1,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, renameSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createConfigReloader, loadConfig } from './load.js';
-import { ConfigModule } from './module.js';
+import { ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
 import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSchema } from './types.js';
+
+const loadConfig = ConfigModule.load;
+const createConfigReloader = ConfigReloadManager.create;
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -50,6 +52,7 @@ function installNodeBuiltinMock(): void {
         basename,
         dirname,
         join,
+        resolve,
       };
     }
 
@@ -169,26 +172,19 @@ function createConfigModuleWatchHarness(moduleRef: new () => ConfigModule): {
 
 beforeEach(() => {
   watchCallbacks.clear();
+  vi.useFakeTimers();
   installNodeBuiltinMock();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-
-  throw new Error('Timed out waiting for condition.');
+  await vi.advanceTimersByTimeAsync(timeoutMs);
+  expect(predicate()).toBe(true);
 }
 
 describe('loadConfig', () => {
@@ -201,7 +197,7 @@ describe('loadConfig', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { NAME: 'from-default', PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: { NAME: 'from-process' },
       runtimeOverrides: { NAME: 'from-runtime' },
     });
@@ -258,7 +254,7 @@ describe('loadConfig', () => {
     expect(configProvider?.useFactory().get('MODULE_DEFAULT_ENV')).toBe('loaded');
   });
 
-  it('supports envFilePath as alias for envFile', () => {
+  it('loads a single explicitly ordered env file', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-envpath-'));
     const envPath = join(cwd, '.env.custom');
 
@@ -266,14 +262,14 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      envFilePath: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
     expect(loaded['API_KEY']).toBe('test-key-123');
   });
 
-  it('prefers envFilePath over envFile when both provided', () => {
+  it('uses the later entry in an ordered env file list', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-envpath-pref-'));
     const envFilePrimary = join(cwd, '.env.primary');
     const envFileAlias = join(cwd, '.env.alias');
@@ -283,8 +279,7 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      envFile: envFilePrimary,
-      envFilePath: envFileAlias,
+      envFilePaths: [envFilePrimary, envFileAlias],
       processEnv: {},
     });
 
@@ -300,7 +295,7 @@ describe('loadConfig', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: { PORT: undefined },
     });
 
@@ -487,7 +482,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQ\\n-----END RSA PRIVATE KEY-----"\n');
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded['PRIVATE_KEY']).toContain('BEGIN RSA PRIVATE KEY');
     expect(loaded['PRIVATE_KEY']).toContain('\n');
@@ -516,7 +511,7 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded).toMatchObject({
       ACTUAL_NEWLINE: 'first line\nsecond line',
@@ -551,7 +546,7 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded).toMatchObject({
       ADJACENT: 'value',
@@ -571,7 +566,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'TOKEN=initial#comment\n');
 
-    const reloader = createConfigReloader({ cwd, envFile: envPath, processEnv: {} });
+    const reloader = createConfigReloader({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     try {
       expect(reloader.current()).toMatchObject({ TOKEN: 'initial' });
@@ -590,7 +585,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'DB_HOST=localhost\nDB_PORT=5432\nDATABASE_URL=${DB_HOST}:${DB_PORT}/mydb\n');
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded['DATABASE_URL']).toBe('localhost:5432/mydb');
   });
@@ -619,7 +614,7 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: { PROCESS_PRECEDENCE: 'from-process', PUBLIC_HOST: 'example.com' } });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: { PROCESS_PRECEDENCE: 'from-process', PUBLIC_HOST: 'example.com' } });
 
     expect(loaded).toMatchObject({
       ESCAPED: '$LOCAL_HOST',
@@ -644,7 +639,7 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       parse: (content) => {
         const result: Record<string, string> = {};
@@ -680,7 +675,7 @@ describe('loadConfig', () => {
     const options: ConfigLoadOptions = {
       cwd,
       defaults: { PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       parse,
       processEnv: { PORT: '4100' },
       runtimeOverrides: { FEATURE: 'registered' },
@@ -742,7 +737,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -779,7 +774,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -814,7 +809,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -851,7 +846,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       schema: createPortSchema(),
       watch: true,
@@ -904,7 +899,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -950,7 +945,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -987,7 +982,7 @@ describe('loadConfig', () => {
     const reloader = createConfigReloader({
       cwd,
       defaults: { PORT: '4000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1028,7 +1023,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1071,7 +1066,7 @@ describe('loadConfig', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const reloader = createConfigReloader({
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1091,7 +1086,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -1119,7 +1114,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -1163,7 +1158,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1207,7 +1202,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1251,7 +1246,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1284,7 +1279,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1436,7 +1431,7 @@ describe('ConfigModule', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const ConfigFeatureModule = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       parse: (content) => {
         parseCalls += 1;
         if (parseCalls === 1) {
@@ -1470,7 +1465,7 @@ describe('ConfigModule', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const ConfigFeatureModule = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       onReloadError: (error, reason) => {
         errors.push(`${reason}:${error instanceof Error ? error.message : String(error)}`);
       },
@@ -1503,7 +1498,7 @@ describe('ConfigModule', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const moduleRef = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       parse: (content) => {
         parseCalls += 1;
         const result: Record<string, string> = {};

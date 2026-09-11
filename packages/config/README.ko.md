@@ -96,7 +96,7 @@ class MyService {
 
 `@fluojs/config`는 주변 환경 변수를 자동으로 스캔하지 않습니다. 환경 기반 값을 우선순위에 포함하려면 부트스트랩 경계에서 `processEnv` 스냅샷을 명시적으로 전달하세요.
 
-`envFilePath`는 `envFile`보다 우선하며, `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 빈 load/module option은 `loadConfig({})`와 `ConfigModule.forRoot()`에 대해 기본 `<cwd>/.env` 동작을 보존합니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
+`envFilePaths`가 유일한 파일 입력입니다. 한 파일에는 한 항목 목록을, 계층화에는 순서가 있는 목록을 사용하세요. 상대 entry는 `cwd`에서 해석하며, option을 생략하면 기본 `<cwd>/.env`를 사용하고 `[]`는 env-file loading을 해제합니다. `envFile`과 `envFilePath`는 제거되었고 JavaScript consumer도 TypeScript consumer와 같은 migration 안내를 받도록 `INVALID_CONFIG`로 실패합니다. `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
 
 ### 순서가 있는 다중 env file loading
 
@@ -118,14 +118,16 @@ contract는 다음과 같습니다.
 - 상대 경로 entry는 `cwd`(기본값 `process.cwd()`) 기준으로 해석되고, 절대 경로 entry는 그대로 사용됩니다.
 - 누락된 파일은 아무 값도 기여하지 않으며 load를 실패시키지 않습니다.
 - `envFilePaths: []`는 기본 `<cwd>/.env` fallback을 포함해 env-file loading 자체를 명시적으로 해제합니다.
-- `envFilePaths`를 `envFile` 또는 `envFilePath`와 함께 쓰면 `INVALID_CONFIG`로 실패하며, 해석 결과가 중복된 경로나 빈 entry도 동일하게 실패합니다.
+- `envFilePaths`가 유일한 파일 입력 option입니다. `envFile: '.env.local'` 또는 `envFilePath: '.env.local'`은 `envFilePaths: ['.env.local']`로 이행하세요. 해석 결과가 중복된 경로나 빈 entry는 계속 `INVALID_CONFIG`로 실패합니다.
 - schema는 개별 파일이 아니라 완전히 병합된 결과를 한 번만 검증합니다.
 - watch mode에서는 서로 다른 parent directory마다 watcher를 하나씩만 시작하고, 목록에 포함된 파일이 변경되면 전체 목록을 다시 계산하며, 우선순위가 높은 파일을 삭제하면 남은 파일로 fallback합니다. 검증 실패 시에는 마지막 유효 snapshot을 유지합니다.
 - 자동 profile 탐색은 패키지 밖에 남습니다. 정확한 목록과 순서는 caller가 결정합니다.
 
 패키지는 `NODE_ENV`에서 env file 이름을 유도하지 않습니다. 환경별 계층화가 필요하다면 bootstrap boundary에서 목록을 직접 구성하세요.
 
-Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`, option type, 또는 명시적 in-memory 입력을 쓰는 `loadConfig(...)` consumer는 non-Node runtime에서도 지원됩니다. Env-file, 기본 `.env`, watch 실행은 Node 전용이며 `process.getBuiltinModule(...)`을 제공하는 host가 필요합니다. 지원하지 않는 host에서는 eager import failure 대신 문서화된 `CONFIG_RUNTIME_UNAVAILABLE` error가 발생합니다.
+`ConfigModule.forRoot({ watch: true })`는 automatic reload를 위한 유일한 module registration 경로입니다. 같은 등록이 manual `reload()`, success/error subscription, listener failure rollback, terminal `close()` 동작을 가진 하나의 `CONFIG_RELOADER` instance를 노출하므로 두 번째 reload module을 등록하지 마세요.
+
+Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`, option type, 또는 명시적 in-memory 입력을 쓰는 `ConfigModule.load(...)` consumer는 non-Node runtime에서도 지원됩니다. Env-file, 기본 `.env`, watch 실행은 Node 전용이며 `process.getBuiltinModule(...)`을 제공하는 host가 필요합니다. 지원하지 않는 host에서는 eager import failure 대신 문서화된 `CONFIG_RUNTIME_UNAVAILABLE` error가 발생합니다.
 
 ### 객체 단위 딥 머지
 
@@ -143,25 +145,22 @@ Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem,
 
 `ConfigReloadManager.reload()`는 리로드 작업을 직렬화합니다. 현재 리로드가 listener 알림을 수행하는 동안 다른 리로드가 요청되면 후속 리로드는 큐에 들어가 활성 알림이 끝난 뒤 적용됩니다. 활성 알림이 실패하면 직전 snapshot을 복구하고 큐에 있던 리로드는 폐기합니다. 동일한 직렬화와 rollback 계약은 `createConfigReloader(...).reload()`에도 적용되며, watch로 시작된 알림 중 큐에 들어간 manual reload도 이 계약을 따릅니다.
 
-Module registration과 reloader 생성은 `schema`로 전달한 nested Standard Schema validator object를 포함해 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. 이 캡처는 provider resolution이나 application bootstrap보다 앞선 `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, `createConfigReloader(...)` 호출 시점에 동기적으로 일어납니다. Config dictionary, `processEnv`, Standard Schema descriptor는 분리하고, `parse`, `onReloadError`, schema validator 같은 callable value는 해당 호출에서 캡처한 reference를 유지합니다. 이후 option object나 snapshot으로 분리된 nested object를 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. `ConfigModule.forRoot({ watch: true, ... })`를 사용하면 module은 application bootstrap 중 env-file watcher를 시작하고, 먼저 injected `ConfigService`를 watch reloader baseline과 맞춘 다음 watch reload가 성공한 뒤 같은 injected `ConfigService` instance를 갱신합니다. `ConfigModule`의 automatic watch reload 실패를 애플리케이션이 소유해야 한다면 `onReloadError`를 전달하세요. Watch mode에서는 기존 env file과 누락된 env file 모두에 대해 parent directory를 watch하므로, 나중에 env file을 생성하거나 atomic replacement로 교체해도 reload가 트리거될 수 있습니다. Watch reload는 reload 전에 최종 env file content를 마지막으로 commit된 watch baseline과 비교하므로, 내용이 바뀌지 않은 저장이나 변경 후 debounce 안에서 원래 내용으로 되돌린 burst는 인프로세스 config snapshot을 교체하지 않습니다.
+Module registration과 standalone reloader 생성은 `schema`로 전달한 nested Standard Schema validator object를 포함해 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. 이 캡처는 provider resolution이나 application bootstrap보다 앞선 `ConfigModule.forRoot(...)`, `createConfigReloader(...)` 호출 시점에 동기적으로 일어납니다. Config dictionary, `processEnv`, Standard Schema descriptor는 분리하고, `parse`, `onReloadError`, schema validator 같은 callable value는 해당 호출에서 캡처한 reference를 유지합니다. 이후 option object나 snapshot으로 분리된 nested object를 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. `ConfigModule.forRoot({ watch: true, ... })`를 사용하면 module은 application bootstrap 중 하나의 env-file watcher를 시작하고, 먼저 injected `ConfigService`를 watch reloader baseline과 맞춘 다음 watch reload가 성공한 뒤 같은 injected `ConfigService` instance를 갱신합니다. `ConfigModule`의 automatic watch reload 실패를 애플리케이션이 소유해야 한다면 `onReloadError`를 전달하세요. Watch mode에서는 목록의 각 env file parent directory를 한 번씩 watch하므로, 나중에 목록의 env file을 생성하거나 atomic replacement로 교체해도 reload가 트리거될 수 있습니다. Watch reload는 reload 전에 최종 순서형 env-file content를 마지막으로 commit된 watch baseline과 비교하므로, 내용이 바뀌지 않은 저장이나 변경 후 debounce 안에서 원래 내용으로 되돌린 burst는 인프로세스 config snapshot을 교체하지 않습니다.
 
-`ConfigReloadModule`은 명시적으로 주입 가능한 reload layer이며 standalone config source가 아닙니다. manual reload나 subscription을 위해 `CONFIG_RELOADER`가 필요한 caller는 `ConfigModule` 또는 다른 `ConfigService` provider와 함께 사용하세요. `ConfigModule` 또는 `ConfigReloadModule`이 만든 watcher는 `watch: true`일 때만 생성되며 module shutdown 중에 닫힙니다. `ConfigReloadManager`의 종료는 최종 상태입니다. `close()` 또는 `onModuleDestroy()` 이후에는 대체 reloader나 watcher를 다시 생성하지 않고, `reload()`, `subscribe()`, `subscribeError()`는 `InvariantError`를 던지며, `current()`는 마지막으로 commit된 스냅샷을 계속 반환합니다. 같은 env file에 대해서는 한 layer에서만 `watch: true`를 활성화하세요. 자동 `ConfigService` 갱신만 필요하면 `ConfigModule`을 사용하고, subscription/manual reload를 위한 injected reloader 계약이 필요하면 `ConfigReloadModule`을 사용합니다.
+`ConfigModule`이 유일한 module registration 경로입니다. manual reload와 subscription을 위한 공유 `CONFIG_RELOADER` 계약을 항상 export하며, `watch: true`일 때만 Node watcher를 만들고 module shutdown 중에 닫습니다. `ConfigReloadManager`의 종료는 최종 상태입니다. `close()` 또는 `onModuleDestroy()` 이후에는 대체 reloader나 watcher를 다시 생성하지 않고, `reload()`, `subscribe()`, `subscribeError()`는 `InvariantError`를 던지며, `current()`는 마지막으로 commit된 스냅샷을 계속 반환합니다. `ConfigReloadModule`을 import하지 말고 동일한 `ConfigModule.forRoot(...)` registration에서 `CONFIG_RELOADER`를 주입하세요.
 
 ## 공개 API
 
 | 클래스/헬퍼 | 설명 |
 |---|---|
-| `ConfigModule` | 설정을 전역 또는 지역으로 등록하기 위한 모듈입니다. |
-| `ConfigReloadModule` | 리로드 매니저를 등록하고 의존성 주입용 공유 `CONFIG_RELOADER` 토큰을 내보냅니다. |
-| `ConfigReloadManager` | 주입된 `ConfigService`의 리로드를 조정하며, 서비스 identity는 유지하고 스냅샷만 리로드 경로로 교체합니다. |
+| `ConfigModule` | 설정, `ConfigService`, 공유 `CONFIG_RELOADER` 계약을 등록하는 유일한 모듈 경로이며 `ConfigModule.load(options)`는 standalone validated loader입니다. |
+| `ConfigReloadManager` | 주입된 `ConfigService`의 리로드를 조정하며, 서비스 identity는 유지하고 스냅샷만 리로드 경로로 교체합니다. `ConfigReloadManager.create(options)`는 standalone terminal manager를 생성합니다. |
 | `CONFIG_RELOADER` | 공유 config reloader 계약을 위한 주입 토큰입니다. |
 | `ConfigService` | 설정 값에 타입 안전하게 접근하기 위한 읽기 전용 서비스입니다. 스냅샷 교체는 config reload 경로 내부에만 남습니다. |
-| `loadConfig(options)` | 설정을 수동으로 로드하기 위한 함수형 엔트리 포인트입니다. |
-| `createConfigReloader(options)` | 동적 설정 업데이트를 위한 리로더를 생성합니다. |
 
 이 패키지는 `ConfigModuleOptions`, `ConfigLoadOptions`, `ConfigReloadSubscription`, `ConfigReloadReason` 같은 option/subscription 타입도 export합니다.
 
-`ConfigReloadManager.reload()`는 기존 `ConfigService` 인스턴스를 갱신하므로 소비자는 주입받은 서비스 identity를 유지하면서 새 스냅샷을 관찰합니다. 리로드 listener가 에러를 던지면 매니저는 직전 스냅샷을 복구하고 listener 에러를 다시 던집니다. `createConfigReloader(...).reload()`도 standalone reloader snapshot에 대해 동일한 listener 직렬화와 rollback 동작을 따릅니다.
+`ConfigReloadManager.reload()`는 기존 `ConfigService` 인스턴스를 갱신하므로 소비자는 주입받은 서비스 identity를 유지하면서 새 스냅샷을 관찰합니다. 리로드 listener가 에러를 던지면 매니저는 직전 스냅샷을 복구하고 listener 에러를 다시 던집니다. `ConfigReloadManager.create(...)`도 standalone reloader snapshot에 대해 같은 listener 직렬화, rollback, terminal close 동작을 따릅니다.
 
 ## 관련 패키지
 
@@ -175,7 +174,5 @@ Module registration과 reloader 생성은 `schema`로 전달한 nested Standard 
 - `packages/config/src/module.ts`
 - `packages/config/src/service.ts`
 - `packages/config/src/load.test.ts`
-- `packages/config/src/reload-module.ts`
-- `packages/config/src/reload-module.test.ts`
 - [구성 및 환경](../../docs/architecture/config-and-environments.ko.md)
 - [개발 리로드 아키텍처](../../docs/architecture/dev-reload-architecture.ko.md)
