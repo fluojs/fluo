@@ -252,8 +252,14 @@ export class AuthController {
       algorithms: ['HS256'],
       global: true,
       secret: 'your-access-token-secret',
+      refreshToken: {
+        secret: 'your-refresh-token-secret',
+        expiresInSeconds: 86_400,
+        rotation: true,
+        store: 'memory',
+      },
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    RefreshTokenModule.forRoot(),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -263,9 +269,9 @@ export class AuthController {
 export class AuthModule {}
 ```
 
-`RefreshTokenModule`은 `forRoot(...)`로 전달한 class를 소유합니다. 해당 class에 constructor dependency가 있으면 application-owned module에서 dependency를 제공하고 export한 뒤, `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`로 `imports`에 전달하세요. `MyRefreshTokenService`를 `AuthModule.providers`에 다시 등록하지 마세요. provider가 중복되고 `duplicateProviderPolicy: 'throw'`에서 실패합니다. `JwtModule`은 sibling import이므로 `DefaultJwtVerifier`를 `RefreshTokenStrategy`에 노출하려면 `global: true`를 유지하세요.
+`JwtModule`이 refresh service, crypto 설정, store를 소유하며 `RefreshTokenModule.forRoot()`는 별도 소유자를 만들지 않고 HTTP strategy가 사용할 동일 서비스를 alias합니다. Sibling module이 JWT service와 verifier를 resolve할 수 있도록 `global: true`를 유지하세요. 위의 명시적 `store: 'memory'`는 개발용 예시입니다. Custom `RefreshTokenServicePort`는 `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`로 등록할 수 있지만, 반환하는 access token은 globally visible `JwtModule` 설정으로 검증되어야 합니다. 같은 custom class를 parent module에 다시 등록하지 마세요.
 
-Production에서는 refresh-token rotation에 atomic `RefreshTokenStore.consume(...)` 구현이 필요합니다. 그래야 replayed token을 안정적으로 감지할 수 있습니다. Memory store는 development 또는 single-instance deployment에만 적합합니다.
+Production에서는 atomic `rotate(...)` 또는 `consume(...)`를 지원하는 durable `RefreshTokenStore`를 `JwtModule`에 제공해 replayed token을 안정적으로 감지하세요. Memory store는 재시작 후 데이터를 보존하지 않습니다.
 
 ## 민감한 route rate limiting
 
