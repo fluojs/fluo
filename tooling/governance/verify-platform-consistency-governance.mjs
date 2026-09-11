@@ -4393,6 +4393,32 @@ export function enforceStudioStaticGraphLimitsContract(readText = read) {
   }
 }
 
+export function enforceStudioPublicContractOwnership(readText = read) {
+  const studioManifest = JSON.parse(readText('packages/studio/package.json'));
+  const studioExports = studioManifest.exports;
+  const runtimeContracts = readText('packages/runtime/src/devtools/contracts.ts');
+  const cliInspectCommand = readText('packages/cli/src/commands/inspect.ts');
+  const studioContracts = readText('packages/studio/src/contracts.ts');
+
+  assert(
+    !Object.hasOwn(studioExports, './contracts'),
+    'Studio public ownership must not expose the removed contracts subpath.',
+  );
+  assert(
+    runtimeContracts.includes("from '@fluojs/core/internal';") &&
+      !runtimeContracts.includes('@fluojs/studio'),
+    'Runtime Studio contract declarations must use @fluojs/core/internal and must not import @fluojs/studio.',
+  );
+  assert(
+    cliInspectCommand.includes("const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio';"),
+    'CLI Mermaid rendering must resolve the canonical Studio root export.',
+  );
+  assert(
+    !studioContracts.includes('StudioProducer'),
+    'Studio public contracts must not retain producer aliases for normalized values.',
+  );
+}
+
 export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
   const contractSentinel =
     '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
@@ -4478,6 +4504,7 @@ export async function main() {
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
   enforceStudioStaticGraphLimitsContract();
+  enforceStudioPublicContractOwnership();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
   enforceTerminusRuntimeHealthContract();

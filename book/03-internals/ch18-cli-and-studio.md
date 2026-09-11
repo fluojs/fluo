@@ -94,7 +94,7 @@ The following is the **complete `fluo-blog/tools/inspect-report.mjs` file**. It 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { runInspectCommand } from '@fluojs/cli';
-import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio/contracts';
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
 
 const artifactPath = 'artifacts/inspect-probe-report.json';
 const exitCode = await runInspectCommand([
@@ -179,7 +179,7 @@ Checking only that a diagram renders misses the purpose of consumer validation. 
 ```js
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio/contracts';
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
 
 const raw = await readFile('artifacts/inspect-probe-report.json', 'utf8');
 const { payload } = parseStudioPayload(raw);

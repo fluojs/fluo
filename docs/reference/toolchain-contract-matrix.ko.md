@@ -81,6 +81,7 @@ dependency graph를 평가합니다.
 | `--report` | `summary`, route-aware `snapshot`, `timing`, `generatedAt`을 포함한 versioned JSON report. | `artifacts/inspect-report.json` 같은 CI/support artifact에 쓰기 위한 형식입니다. Summary에는 component, diagnostic, warning, error total과 readiness status, health status, total timing milliseconds가 포함됩니다. |
 
 `--timing`은 JSON/report workflow 옆에 bootstrap timing diagnostics를 기록합니다. Mermaid rendering은 timing artifact 형식이 아니라 Studio가 소유한 snapshot rendering 계약이므로 `--mermaid`와 함께 사용할 수 없습니다.
+모든 artifact mode에서 bootstrap diagnostics는 stderr로 보냅니다. Mermaid mode의 stdout에는 graph만 포함되며, `--output <path>`는 terminal payload 출력 없이 graph를 artifact에 씁니다.
 
 ## 명명 규칙 (CLI 출력)
 

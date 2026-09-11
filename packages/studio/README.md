@@ -29,7 +29,7 @@ Studio is a Node.js tooling package and requires Node.js `>=24.0.0 <27`, matchin
 pnpm add -D @fluojs/studio
 ```
 
-Use a regular dependency only when a published package or runtime automation imports `@fluojs/studio` or `@fluojs/studio/contracts` at runtime:
+Use a regular dependency only when a published package or runtime automation imports `@fluojs/studio` at runtime:
 
 ```bash
 pnpm add @fluojs/studio
@@ -37,7 +37,7 @@ pnpm add @fluojs/studio
 
 The published package serves these caller-facing entrypoints:
 
-- `@fluojs/studio` / `@fluojs/studio/contracts` for canonical snapshot parsing, filtering, Mermaid graph rendering helpers, and runtime-connected Studio live event contracts.
+- `@fluojs/studio` for canonical snapshot parsing, filtering, Mermaid graph rendering helpers, and runtime-connected Studio live event contracts.
 - `fluo-studio-viewer` is the public launch path for the packaged React browser viewer.
 - `@fluojs/studio/viewer` is only the integration asset-resolution contract for callers that need the packaged HTML entry file.
 
@@ -45,7 +45,7 @@ The published package serves these caller-facing entrypoints:
 
 - `@fluojs/studio` is part of the intended public publish surface for fluo.
 - The app-side CLI/viewer contract is development-only installation (`pnpm add -D @fluojs/studio`); runtime tooling that imports Studio helpers should declare a normal dependency (`pnpm add @fluojs/studio`). Local repo development still uses `pnpm --dir packages/studio dev`.
-- The public package surface is additive: live devtool contracts are added while file-first parsing, filtering, graph rendering, and report artifacts remain supported.
+- The public package surface includes a breaking import migration: `@fluojs/studio/contracts` is removed, so migrate imports to `@fluojs/studio`. Live devtool contracts, file-first parsing, filtering, graph rendering, and report artifact readers remain supported.
 
 ## Quick Start: Live Devtool
 
@@ -80,13 +80,13 @@ MVP request flow intentionally means route/handler and dependency-graph correlat
 
 ## Static/Report Compatibility
 
-Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics. New snapshots may include compiled `routes`; Studio validates string `kind` values and parameter-name-only `params`, displays `react-page` as **React page**, preserves arbitrary route kind strings, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics. Parsed route results normalize omitted legacy `kind` to `http`, `params` to `[]`, and `graphNodeId` to the previous route-node ID convention, while invalid supplied values are rejected and the exported wire-input fields remain optional for persisted artifact compatibility.
+Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Use the versioned report artifact from `fluo inspect --report` as the default recipe for newly stored artifacts. Raw snapshots, snapshot-plus-timing envelopes, and legacy standalone timing diagnostics remain supported readers for compatibility. New snapshots may include compiled `routes`; Studio validates string `kind` values and parameter-name-only `params`, displays `react-page` as **React page**, preserves arbitrary route kind strings, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics. Parsed route results normalize omitted legacy `kind` to `http`, `params` to `[]`, and `graphNodeId` to the previous route-node ID convention, while invalid supplied values are rejected and the exported wire-input fields remain optional for persisted artifact compatibility.
 
 This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. After a successful bootstrap, `fluo inspect` reads `PlatformShell.snapshot()` and routes to produce a `PlatformShellSnapshot` with reported platform components and their dependencies; it does not contain the compiled module/provider graph or provider scope metadata that Node live Studio derives at runtime. The live path publishes compiled module, provider, controller, and route graph data (including provider scope metadata), separate bootstrap timing events, and request trace events. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and launch them with the packaged `fluo-studio-viewer` instead of expecting live sidecar events in the MVP. Workflows that need that compiled DI graph must stay on the supported Node live path with `fluo dev --studio`. Integrations that need the HTML asset path resolve the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`) even when the inspected artifact came from a non-Node runtime fallback workflow.
 
-1. **Export a snapshot**:
+1. **Export a versioned report artifact**:
    ```bash
-   fluo inspect ./src/app.module.ts --json > snapshot.json
+   fluo inspect ./src/app.module.ts --report --output inspect-report.json
    ```
 
 2. **Open the packaged Studio viewer**:
@@ -100,7 +100,7 @@ This file-first path is the compatibility and migration fallback for CI, support
    pnpm --dir packages/studio dev
    ```
 
-3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface. Search and filter controls preserve focus while the graph, connection explorer, diagnostics, and summary update.
+3. **Load the file**: Drag and drop `inspect-report.json` into the Studio web interface. Search and filter controls preserve focus while the graph, connection explorer, diagnostics, and summary update.
 
 ## Local Security Model
 
@@ -122,7 +122,7 @@ This file-first path is the compatibility and migration fallback for CI, support
 
 ## Public API
 
-Studio is primarily a CLI-launched sidecar and browser viewer, but the published package also exposes documented contracts used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, Mermaid graph rendering, and live Studio event validation semantics. The root `@fluojs/studio` export re-exports the helper functions and public types from `@fluojs/studio/contracts`.
+Studio is primarily a CLI-launched sidecar and browser viewer, but the published package also exposes documented contracts used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, Mermaid graph rendering, and live Studio event validation semantics. The root export directly owns every public helper and type.
 
 Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, and `create_dispatcher`; all other values are rejected in static payloads and live timing events.
 
@@ -143,10 +143,15 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 |---|---|
 | `FilterState` | Query, readiness status, and diagnostic severity filters applied by Studio without mutating the source snapshot. |
 | `ParsedPayload` | Return shape from `parseStudioPayload(rawJson)`, including the parsed `StudioPayload` and original JSON string. |
+| `BootstrapTimingDiagnostics` / `BootstrapTimingPhase` | Versioned bootstrap timing artifact contract; timing may be omitted, but present malformed or non-finite values are rejected. |
+| `PlatformCheckResult` | One named readiness or health check outcome in a platform report. |
 | `PlatformDiagnosticIssue` | Studio-owned runtime-neutral diagnostic issue contract for Studio consumers. |
 | `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and live diagnostics. |
+| `PlatformHealthReport` / `PlatformHealthStatus` | Aggregate health result and its status union. |
 | `PlatformReadinessStatus` | Readiness status union used by filters and graph annotations. |
+| `PlatformReadinessReport` | Aggregate readiness result for a platform snapshot. |
 | `PlatformShellSnapshot` | Studio-owned runtime-neutral snapshot contract for inspect artifacts. |
+| `PlatformSnapshot` / `PlatformState` | Per-component snapshot contract and lifecycle state union. |
 | `StudioInspectionSnapshot` | Static inspect snapshot that optionally carries validated compiled route descriptors. |
 | `StudioPayload` | Static artifact envelope containing a snapshot, timing diagnostics, and/or report artifact. |
 | `StudioReportArtifact` | CI/support report artifact produced by `fluo inspect --report`. |
@@ -175,11 +180,14 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 ### Published package entrypoints
 
 - `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering and live contracts.
-- `@fluojs/studio/contracts`: explicit helper subpath for tooling that wants the contract helpers directly.
 - `fluo-studio-viewer`: public CLI launch path for the packaged React browser viewer bundle.
 - `@fluojs/studio/viewer`: integration asset-resolution subpath for the packaged `dist/index.html` file.
 
 `@fluojs/studio/viewer` is only the integration asset-resolution contract: callers resolve the packaged HTML file path, not a JavaScript module or TypeScript declaration entrypoint.
+
+### Migration from the removed contracts subpath
+
+`@fluojs/studio/contracts` is no longer exported. Replace every helper and type import with `@fluojs/studio`; the helper behavior and the wire-input optional fields versus normalized parsed-output required fields are unchanged. For newly persisted inspect artifacts, write a versioned report with `fluo inspect <module-path> --report --output <path>`; existing raw snapshot and timing artifact readers remain supported.
 
 ## Future Direction
 

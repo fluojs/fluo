@@ -128,4 +128,11 @@ export function enforcePersistenceTransactionInterceptorCompatibility(
 export function enforceStudioStaticGraphLimitsContract(
   readText?: (relativePath: string) => string,
 ): void;
+/**
+ * Requires Runtime Studio declarations to use `@fluojs/core/internal` rather
+ * than a Studio package import.
+ */
+export function enforceStudioPublicContractOwnership(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): Promise<void>;

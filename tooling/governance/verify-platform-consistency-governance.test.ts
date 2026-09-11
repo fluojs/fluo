@@ -40,6 +40,7 @@ import {
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
+  enforceStudioPublicContractOwnership,
   enforceStudioStaticGraphLimitsContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
@@ -4511,8 +4512,19 @@ describe('repository governance contracts', () => {
     const nextJobStart = ciWorkflow.indexOf('\n  official-web-runtime-adapter-portability:', studioBrowserStart);
     const studioBrowserJob = ciWorkflow.slice(studioBrowserStart, nextJobStart);
 
-    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(5);
-    expect(studioBrowserJob).toContain(studioNoopCondition);
+    const studioVerificationDirectives = [
+      'uses: actions/checkout@v5',
+      'uses: pnpm/action-setup@v5',
+      'uses: actions/setup-node@v5',
+      'run: pnpm install --frozen-lockfile',
+      'run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio',
+      'run: pnpm --filter @fluojs/studio test:browser',
+    ];
+    for (const directive of studioVerificationDirectives) {
+      expect(studioBrowserJob).toContain(`${studioVerificationCondition}\n        ${directive}`);
+    }
+    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(studioVerificationDirectives.length);
+    expect(studioBrowserJob).toContain(`${studioNoopCondition}\n        run: echo`);
 
     const requiresStudioBrowser = (mode: string, packageNames: readonly string[]): boolean =>
       mode !== 'scoped' || packageNames.includes('@fluojs/studio');
@@ -6093,6 +6105,36 @@ describe('Studio public docs and migration expectations', () => {
     const { enforceStudioStaticGraphLimitsContract } = await loadGovernanceInternals();
 
     expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
+  });
+
+  it('requires Core internal runtime declarations and rejects Studio imports', () => {
+    // Given: the real governed source reader.
+    const readText = (relativePath: string) => readFileSync(join(repoRoot, relativePath), 'utf8');
+
+    // When / Then: the portable declaration seam is accepted.
+    expect(() => enforceStudioPublicContractOwnership(readText)).not.toThrow();
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/studio/package.json'
+        ? content.replace('"./viewer": "./dist/index.html"', '"./contracts": "./dist/contracts.js",\n    "./viewer": "./dist/index.html"')
+        : content;
+    })).toThrow(/contracts subpath/u);
+
+    // When / Then: a Studio root import is rejected from Runtime declarations.
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/runtime/src/devtools/contracts.ts'
+        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/studio';")
+        : content;
+    })).toThrow(/@fluojs\/studio/u);
+
+    // When / Then: removing the Core-internal seam is rejected.
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/runtime/src/devtools/contracts.ts'
+        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/core';")
+        : content;
+    })).toThrow(/@fluojs\/core\/internal/u);
   });
 
   it.each(staticLiveCompanionPairs)(

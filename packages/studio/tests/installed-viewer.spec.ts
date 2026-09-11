@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessByStdio, type SpawnSyncReturns } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -32,6 +32,7 @@ const PACKAGE_COMMAND_TIMEOUT_MS = 60_000;
 const INSTALL_COMMAND_TIMEOUT_MS = 120_000;
 const VIEWER_COMMAND_TIMEOUT_MS = 10_000;
 const commit = runCommand('git', ['rev-parse', 'HEAD'], packageDirectory, COMMIT_COMMAND_TIMEOUT_MS).stdout.trim();
+const corePackageDirectory = resolve(packageDirectory, '..', 'core');
 const viewports = [
   { height: 900, name: 'desktop', width: 1440 },
   { height: 844, name: 'mobile', width: 390 },
@@ -60,6 +61,17 @@ function runCommand(command: string, arguments_: readonly string[], cwd: string,
   }
 
   return result;
+}
+
+function packPackage(packagePath: string, tarballDirectory: string): string {
+  const existingArchives = new Set(readdirSync(tarballDirectory));
+  runCommand('pnpm', ['pack', '--json', '--pack-destination', tarballDirectory], packagePath, PACKAGE_COMMAND_TIMEOUT_MS);
+  const tarballName = readdirSync(tarballDirectory).find((entry) => entry.endsWith('.tgz') && !existingArchives.has(entry));
+  if (!tarballName) {
+    throw new Error(`pnpm pack did not report a tarball for ${packagePath}.`);
+  }
+
+  return join(tarballDirectory, tarballName);
 }
 
 function pngDimensions(path: string): { readonly height: number; readonly width: number } {
@@ -137,14 +149,25 @@ test.beforeAll(async () => {
     writeFileSync(join(sandbox, '.fluo-studio-installed-viewer.json'), '{"managed":true}\n');
 
     runCommand('pnpm', ['build'], packageDirectory, BUILD_COMMAND_TIMEOUT_MS);
-    const packed = runCommand('npm', ['pack', '--json', '--pack-destination', tarballDirectory], packageDirectory, PACKAGE_COMMAND_TIMEOUT_MS);
-    const packResult = JSON.parse(packed.stdout) as readonly { readonly filename: string }[];
-    const tarballName = packResult[0]?.filename;
-    if (!tarballName) {
-      throw new Error('npm pack did not report a Studio tarball.');
-    }
+    const coreTarball = packPackage(corePackageDirectory, tarballDirectory);
+    const studioTarball = packPackage(packageDirectory, tarballDirectory);
+    writeFileSync(
+      join(installedConsumer, 'package.json'),
+      `${JSON.stringify({
+        name: 'fluo-studio-installed-viewer-consumer',
+        private: true,
+        dependencies: {
+          '@fluojs/core': `file:${coreTarball}`,
+          '@fluojs/studio': `file:${studioTarball}`,
+        },
+      }, null, 2)}\n`,
+    );
 
-    runCommand('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', join(tarballDirectory, tarballName)], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
+    const installation = runCommand('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
+    const dependencies = runCommand('npm', ['ls', '@fluojs/core', '@fluojs/studio'], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
+    expect(installation.stdout).toContain('added');
+    expect(dependencies.stdout).toContain('@fluojs/core@');
+    expect(dependencies.stdout).toContain('@fluojs/studio@');
     const binary = join(installedConsumer, 'node_modules', '.bin', 'fluo-studio-viewer');
     const help = runCommand(binary, ['--help'], installedConsumer, VIEWER_COMMAND_TIMEOUT_MS);
     expect(help.stdout).toContain('Usage: fluo-studio-viewer');

@@ -1,7 +1,3 @@
-/**
- * Studio owns the live wire schema. Runtime produces these values through the
- * public `@fluojs/studio/contracts` seam rather than maintaining a duplicate DTO.
- */
 export type {
   StudioDisconnectPayload,
   StudioGraphEdge,
@@ -12,11 +8,11 @@ export type {
   StudioLiveDiagnostic,
   StudioLiveEventBase,
   StudioLiveEventSource,
-  StudioProducerLiveEvent as StudioLiveEvent,
-  StudioProducerLiveSnapshot as StudioLiveSnapshot,
-  StudioProducerRouteDescriptor as StudioRouteDescriptor,
+  StudioParsedLiveEvent as StudioLiveEvent,
+  StudioParsedLiveSnapshot as StudioLiveSnapshot,
+  StudioNormalizedRouteDescriptor as StudioRouteDescriptor,
   StudioRequestStatus,
   StudioRequestTrace,
   StudioRestartPayload,
   StudioRouteKind,
-} from '@fluojs/studio/contracts';
+} from '@fluojs/core/internal';

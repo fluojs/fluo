@@ -196,9 +196,6 @@ export interface StudioNormalizedRouteDescriptor extends Omit<StudioRouteDescrip
   params: string[];
 }
 
-/** Route descriptor emitted by Runtime producers after legacy defaults are resolved. */
-export type StudioProducerRouteDescriptor = StudioNormalizedRouteDescriptor;
-
 /** Static inspect snapshot with optional compiled route diagnostics. */
 export interface StudioInspectionSnapshot extends PlatformShellSnapshot {
   routes?: StudioRouteDescriptor[];
@@ -261,9 +258,6 @@ export interface StudioLiveSnapshot {
 export interface StudioParsedLiveSnapshot extends Omit<StudioLiveSnapshot, 'routes'> {
   routes: StudioNormalizedRouteDescriptor[];
 }
-
-/** Live snapshot emitted by Runtime producers with normalized route fields. */
-export type StudioProducerLiveSnapshot = StudioParsedLiveSnapshot;
 
 /** Studio connection status presented by the live UI. */
 export type StudioConnectionStatus =
@@ -341,16 +335,6 @@ export type StudioParsedLiveEvent =
   | StudioLiveEventBase<'request', StudioRequestTrace>
   | StudioLiveEventBase<'restart', StudioRestartPayload>
   | StudioLiveEventBase<'snapshot', StudioParsedLiveSnapshot>
-  | StudioLiveEventBase<'timing', BootstrapTimingDiagnostics>;
-
-/** Live event emitted by Runtime producers with normalized snapshot routes. */
-export type StudioProducerLiveEvent =
-  | StudioLiveEventBase<'disconnect', StudioDisconnectPayload>
-  | StudioLiveEventBase<'diagnostic', StudioLiveDiagnostic>
-  | StudioLiveEventBase<'heartbeat', StudioHeartbeatPayload>
-  | StudioLiveEventBase<'request', StudioRequestTrace>
-  | StudioLiveEventBase<'restart', StudioRestartPayload>
-  | StudioLiveEventBase<'snapshot', StudioProducerLiveSnapshot>
   | StudioLiveEventBase<'timing', BootstrapTimingDiagnostics>;
 
 /**
@@ -955,20 +939,24 @@ function validateSnapshot(value: unknown): StudioParsedInspectionSnapshot | null
 }
 
 function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
-  if (!isRecord(value)) {
+  if (value === undefined) {
     return null;
+  }
+
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new Error('Invalid bootstrap timing payload.');
   }
 
   if (value.version !== 1) {
     throw new Error('Unsupported bootstrap timing version. Expected version: 1.');
   }
 
-  if (typeof value.totalMs !== 'number' || !Array.isArray(value.phases)) {
+  if (!isNumber(value.totalMs) || !Array.isArray(value.phases)) {
     throw new Error('Invalid bootstrap timing payload.');
   }
 
   for (const phase of value.phases) {
-    if (!isRecord(phase) || !isBootstrapTimingPhaseName(phase.name) || typeof phase.durationMs !== 'number') {
+    if (!isRecord(phase) || !isBootstrapTimingPhaseName(phase.name) || !isNumber(phase.durationMs)) {
       throw new Error('Invalid phase entry in bootstrap timing payload.');
     }
   }

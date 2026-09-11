@@ -82,6 +82,7 @@ without adding a source scanner or another route discovery path.
 | `--report` | Versioned JSON report with `summary`, a route-aware `snapshot`, `timing`, and `generatedAt`. | Intended for CI/support artifacts such as `artifacts/inspect-report.json`. The summary includes component, diagnostic, warning, and error totals plus readiness status, health status, and total timing milliseconds. |
 
 `--timing` records bootstrap timing diagnostics next to JSON/report workflows. It is not valid with `--mermaid`, because Mermaid rendering remains a Studio-owned snapshot rendering contract rather than a timing artifact format.
+For every artifact mode, bootstrap diagnostics are written to stderr. In Mermaid mode stdout contains only the graph, and `--output <path>` writes that graph to the artifact without terminal payload output.
 
 ## naming conventions (CLI output)
 
